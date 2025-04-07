@@ -21,6 +21,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import HumanMessage, AnyMessage, convert_to_openai_messages, ChatMessage
 from langchain_core.runnables import RunnableConfig
 from giskard.rag import evaluate, QATestset
+from giskard.rag.metrics import correctness_metric
 from litellm import APIConnectionError
 
 from fastapi import FastAPI, Header, Query, HTTPException, UploadFile, Response
@@ -897,7 +898,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         logger.debug("Starting evaluation with Judge: %s", judge)
         oci_config = get_client_oci(client)
         judge_client = asyncio.run(models.get_client(MODEL_OBJECTS, {"model": judge}, oci_config, True))
-        report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client)
+        report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric])
 
         eid = testbed.insert_evaluation(
             db_conn=db_conn,

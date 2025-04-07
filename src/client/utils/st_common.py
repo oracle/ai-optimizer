@@ -63,6 +63,7 @@ def patch_settings() -> None:
         api_call.patch(
             endpoint="v1/settings",
             payload={"json": state.user_settings},
+            params={"client": state.user_settings["client"]},
         )
     except api_call.ApiError as ex:
         logger.error("%s Settings Update failed: %s", state.user_settings["client"], ex)
