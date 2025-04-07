@@ -22,7 +22,7 @@ To complete this hands-on lab, you need the following:
 
 > Note: If you are using Windows, please skip to the next section.
 
-This lab works with a a Container Runtime as mentioned before. If you want to use a lighter VM, you have the option to use Colima too. In this case you need as a pre-requisite to install **docker**.
+This lab works with a Container Runtime as mentioned before. If you want to use a lighter VM, you have the option to use Colima too. In this case you need as a pre-requisite to install **docker**.
 Start the container runtime engine with a new profile. If you already have one that you want to use, please double-check that it uses 4 CPUs and 8GB of memory at minimum. Otherwise:
 
 ```bash
