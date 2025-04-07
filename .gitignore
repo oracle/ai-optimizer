@@ -11,7 +11,7 @@ sbin/**
 **/temp/**
 **/chatbot_graph.png
 **/*.sh
-!opentofu/templates/cloudinit-oke.sh
+!opentofu/**/cloudinit-oke.sh
 !src/entrypoint.sh
 !src/client/spring_ai/templates/env.sh
 tests/db_startup_temp/**
