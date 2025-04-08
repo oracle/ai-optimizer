@@ -49,11 +49,15 @@ def init_client(
     # Initialize Client (Workload Identity, Token and API)
     config_json = config.model_dump(exclude_none=False)
     client = None
-    if not config_json["auth_profile"]:
+    if config_json["instance_principle"]:
+        logger.info("OCI Authentication with Instance Principles")
+        instance_signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+        client = client_type(config={}, signer=instance_signer, **client_kwargs)
+    elif config_json["workload_identity"]:
         logger.info("OCI Authentication with Workload Identity")
         oke_workload_signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
         client = client_type(config={}, signer=oke_workload_signer, **client_kwargs)
-    elif config_json["auth_profile"] and config_json["security_token_file"]:
+    elif config_json["security_token_file"]:
         logger.info("OCI Authentication with Security Token")
         token = None
         with open(config_json["security_token_file"], "r", encoding="utf-8") as f:
