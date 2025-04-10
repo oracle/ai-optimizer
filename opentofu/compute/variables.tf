@@ -58,6 +58,11 @@ variable "label_prefix" {
   }
 }
 
+variable "source_repository" {
+  description = "Code that will pulled onto compute; ensure correct branch/tag."
+  default     = "https://github.com/oracle-samples/ai-explorer/archive/refs/heads/IaC"
+}
+
 variable "infra" {
   description = "Infrastructure Choice."
   type        = string
@@ -134,7 +139,7 @@ variable "adb_whitelist_cidrs" {
   # This is a string and not a list to support ORM/MP input, it will be converted to a list in locals
   description = "Comma separated string of CIDR blocks from which the ADB can be accessed."
   type        = string
-  default     = "0.0.0.0/0"
+  default     = ""
   validation {
     condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.adb_whitelist_cidrs))
     error_message = "Must be a comma separated string of valid CIDRs."

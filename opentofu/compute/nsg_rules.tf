@@ -9,7 +9,7 @@ locals {
   workers_default_rules = {
     "Workers Web Access - Ingress." : {
       protocol = local.tcp_protocol, port = 8501
-      source = local.anywhere, source_type = local.rule_type_cidr
+      source   = local.anywhere, source_type = local.rule_type_cidr
     },
     "Workers Path Discovery - Ingress." : {
       protocol = local.icmp_protocol, source = module.network.vcn_cidr_block, source_type = local.rule_type_cidr

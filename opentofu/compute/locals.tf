@@ -30,11 +30,12 @@ locals {
 
 locals {
   cloud_init = templatefile("templates/cloudinit-compute.tpl", {
-    adb_ocid    = oci_database_autonomous_database.default_adb.id
-    db_password = local.adb_password
-    db_name     = oci_database_autonomous_database.default_adb.display_name
-    oci_region  = var.region
-    ssh_pub_key = file("id_ed25519.pub")
+    compartment_id = local.compartment_ocid
+    db_password    = local.adb_password
+    db_name        = local.adb_name
+    oci_region     = var.region
+    source_code    = var.source_repository
+    tenancy_id = var.tenancy_ocid
   })
 }
 

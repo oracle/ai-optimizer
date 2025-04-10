@@ -2,7 +2,8 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 locals {
-  adb_whitelist_cidrs = concat(split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")), [module.network.vcn_ocid])
+  adb_name            = format("%sDB", upper(local.label_prefix))
+  adb_whitelist_cidrs = concat(split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")), [module.network.vcn_ocid, oci_core_instance.instance["VM"].public_ip])
   adb_password        = sensitive(format("%s%s", random_password.adb_char.result, random_password.adb_rest.result))
 }
 
@@ -33,10 +34,10 @@ resource "oci_database_autonomous_database" "default_adb" {
   compute_model                        = "ECPU"
   data_storage_size_in_gb              = var.adb_data_storage_size_in_gb
   database_edition                     = var.adb_license_model == "BRING_YOUR_OWN_LICENSE" ? var.adb_edition : null
-  db_name                              = format("%sDB", upper(local.label_prefix))
+  db_name                              = local.adb_name
   db_version                           = var.adb_version
   db_workload                          = "OLTP"
-  display_name                         = format("%sDB", upper(local.label_prefix))
+  display_name                         = local.adb_name
   is_free_tier                         = false
   is_auto_scaling_enabled              = var.adb_is_cpu_auto_scaling_enabled
   is_auto_scaling_for_storage_enabled  = var.adb_is_storage_auto_scaling_enabled

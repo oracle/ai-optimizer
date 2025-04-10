@@ -30,7 +30,15 @@ resource "oci_identity_policy" "identity_node_policies" {
     format(
       "allow dynamic-group %s to read objectstorage-namespaces in compartment id %s",
       oci_identity_dynamic_group.node_dynamic_group.name, local.compartment_ocid
-    )
+    ),
+    format(
+      "allow dynamic-group %s to inspect buckets in compartment id %s",
+      oci_identity_dynamic_group.node_dynamic_group.name, local.compartment_ocid
+    ),
+    format(
+      "allow dynamic-group %s to read objects in compartment id %s",
+      oci_identity_dynamic_group.node_dynamic_group.name, local.compartment_ocid
+    ),
   ]
   provider = oci.home_region
 }

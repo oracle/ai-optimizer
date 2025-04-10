@@ -144,12 +144,16 @@ def get_buckets(compartment: str, config: OracleCloudSettings = None) -> list:
     logger.info("Getting Buckets in %s", compartment)
     client = init_client(client_type, config)
     bucket_names = []
-    response = client.list_buckets(namespace_name=config.namespace, compartment_id=compartment, fields=["tags"])
-    buckets = response.data
-    for bucket in buckets:
-        freeform_tags = bucket.freeform_tags or {}
-        if freeform_tags.get("genai_chunk") != "true":
-            bucket_names.append(bucket.name)
+    try:
+        response = client.list_buckets(namespace_name=config.namespace, compartment_id=compartment, fields=["tags"])
+        buckets = response.data
+        for bucket in buckets:
+            freeform_tags = bucket.freeform_tags or {}
+            if freeform_tags.get("genai_chunk") != "true":
+                bucket_names.append(bucket.name)
+    except oci.exceptions.ServiceError as ex:
+        # No Access to Buckets in Compartment
+        raise OciException("OCI: AuthN Error") from ex
 
     return bucket_names
 
