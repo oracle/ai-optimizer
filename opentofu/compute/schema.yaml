@@ -63,6 +63,7 @@ variableGroups:
     variables:
       - worker_cpu_ocpu
       - worker_cpu_shape
+      - workers_allowed_cidrs
     visible: true
 
 ###########################################################################
@@ -150,3 +151,10 @@ variables:
     minimum: 1
     maximum: 64
     multipleOf: 1
+
+  workers_allowed_cidrs:
+    type: array
+    title: "Application Access Control"
+    required: true
+    default: "0.0.0.0/0"
+    pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"

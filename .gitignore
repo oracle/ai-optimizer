@@ -3,8 +3,9 @@
 # Project/User Specific
 ##############################################################################
 **/*.log
+**/*.zip
 **/requirements.txt
-app/THIRD_PARTY_LICENSES.txt
+**/THIRD_PARTY_LICENSES.txt
 sbin/**
 **/*.bak
 **/tmp/**

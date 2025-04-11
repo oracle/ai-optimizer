@@ -169,3 +169,13 @@ variable "worker_cpu_ocpu" {
   type        = number
   default     = 2
 }
+
+variable "workers_allowed_cidrs" {
+  description = "Comma separated string of CIDR blocks from which the Application can be accessed."
+  type        = string
+  default     = "0.0.0.0/0"
+  validation {
+    condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.workers_allowed_cidrs))
+    error_message = "Must be a comma separated string of valid CIDRs."
+  }
+}

@@ -3,14 +3,28 @@
 # spell-checker: disable
 
 #########################################################################
+# Variable NSGs
+#########################################################################
+locals {
+  workers_allowed_clients = split(",", replace(var.workers_allowed_cidrs, "/\\s+/", ""))
+}
+
+locals {
+  workers_allowed_clients_rules = {
+    for cidr in local.workers_allowed_clients :
+    "Allow custom ingress to client 8501 from ${cidr}" => {
+      protocol     = local.tcp_protocol
+      port         = 8501
+      source       = cidr
+      source_type  = local.rule_type_cidr
+    }
+  }
+}  
+#########################################################################
 # Static NSGs - Mess with these at your peril
 #########################################################################
 locals {
   workers_default_rules = {
-    "Workers Web Access - Ingress." : {
-      protocol = local.tcp_protocol, port = 8501
-      source   = local.anywhere, source_type = local.rule_type_cidr
-    },
     "Workers Path Discovery - Ingress." : {
       protocol = local.icmp_protocol, source = module.network.vcn_cidr_block, source_type = local.rule_type_cidr
     },
@@ -30,6 +44,7 @@ locals {
 locals {
   # Dynamic map of all NSG rules for enabled NSGs
   all_rules = { for x, y in merge(
+    { for k, v in local.workers_allowed_clients_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.workers.id }) },
     { for k, v in local.workers_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.workers.id }) },
     ) : x => merge(y, {
       description               = x
