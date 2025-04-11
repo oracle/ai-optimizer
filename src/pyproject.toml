@@ -44,6 +44,7 @@ server = [
     "psutil==7.0.0",
     "python-multipart==0.0.20",
     "umap-learn==0.5.7",
+    "unstructured==0.17.2",
     "uvicorn==0.34.0",
 ]
 
