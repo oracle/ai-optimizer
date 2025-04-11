@@ -30,6 +30,7 @@ variableGroups:
       - infra
       - adb_version
       - worker_os_ver
+      - source_repository
     visible: false
 
   #########################################################################

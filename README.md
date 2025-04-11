@@ -33,12 +33,6 @@ For more information, including more details on **Setup and Configuration** plea
 
 <sub>\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [Infrastructure](https://oracle-samples.github.io/ai-explorer/infrastructure) documentation.</sub>
 
-##### Got OCI?
-The **AI Explorer** can be deployed with an Oracle Autonomous Database 23ai using infrastructure as code.  Deploy the **AI Explorer** in Oracle Cloud Infrastructure using OCI Resource Manager:
-
-
-[![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
-
 #### Bare-Metal Installation
 
 To run the application on bare-metal; download the [source](https://github.com/oracle-samples/ai-explorer) and from `src/`:
@@ -91,6 +85,11 @@ To run the application in a container; download the [source](https://github.com/
 1. Navigate to `http://localhost:8501`.
 
 1. [Configure](https://oracle-samples.github.io/ai-explorer/client/configuration/index.html) the **Explorer**.
+
+##### Got OCI?
+The **AI Explorer** can be deployed with an Oracle Autonomous Database 23ai using infrastructure as code.  Deploy the **AI Explorer** in Oracle Cloud Infrastructure using OCI Resource Manager:
+
+[![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
 
 ## Contributing
 
