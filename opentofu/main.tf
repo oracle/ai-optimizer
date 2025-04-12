@@ -25,6 +25,83 @@ resource "random_password" "adb_rest" {
   }
 }
 
+// Load Balancer
+resource "oci_load_balancer" "lb" {
+  compartment_id = local.compartment_ocid
+  display_name   = format("%s-lb", local.label_prefix)
+  shape          = "flexible"
+  is_private     = false
+  shape_details {
+    minimum_bandwidth_in_mbps = var.lb_min_shape
+    maximum_bandwidth_in_mbps = var.lb_max_shape
+  }
+  subnet_ids = [
+    module.network.public_subnet_ocid
+  ]
+  network_security_group_ids = [
+    oci_core_network_security_group.client_lb.id,
+    oci_core_network_security_group.server_lb.id
+  ]
+}
+
+resource "oci_load_balancer_backend_set" "client_lb_backend_set" {
+  for_each         = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
+  load_balancer_id = oci_load_balancer.lb.id
+  name             = format("%s-client-lb-backend-set", local.label_prefix)
+  policy           = "LEAST_CONNECTIONS"
+  health_checker {
+    port     = local.streamlit_port
+    protocol = "HTTP"
+    url_path = "/_stcore/health"
+  }
+}
+
+resource "oci_load_balancer_backend_set" "server_lb_backend_set" {
+  for_each         = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
+  load_balancer_id = oci_load_balancer.lb.id
+  name             = format("%s-server-lb-backend-set", local.label_prefix)
+  policy           = "LEAST_CONNECTIONS"
+  health_checker {
+    port     = local.fast_apiserver_port
+    protocol = "HTTP"
+    url_path = "/v1/liveness"
+  }
+}
+
+resource "oci_load_balancer_listener" "client_lb_listener" {
+  for_each                 = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
+  load_balancer_id         = oci_load_balancer.lb.id
+  name                     = format("%s-client-lb-listener", local.label_prefix)
+  default_backend_set_name = oci_load_balancer_backend_set.client_lb_backend_set["VM"].name
+  port                     = local.client_lb_port
+  protocol                 = "HTTP"
+}
+
+resource "oci_load_balancer_listener" "server_lb_listener" {
+  for_each                 = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
+  load_balancer_id         = oci_load_balancer.lb.id
+  name                     = format("%s-server-lb-listener", local.label_prefix)
+  default_backend_set_name = oci_load_balancer_backend_set.server_lb_backend_set["VM"].name
+  port                     = local.server_lb_port
+  protocol                 = "HTTP"
+}
+
+resource "oci_load_balancer_backend" "client_lb_backend" {
+  for_each         = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
+  load_balancer_id = oci_load_balancer.lb.id
+  backendset_name  = oci_load_balancer_backend_set.client_lb_backend_set["VM"].name
+  ip_address       = oci_core_instance.instance["VM"].private_ip
+  port             = local.streamlit_port
+}
+
+resource "oci_load_balancer_backend" "server_lb_backend" {
+  for_each         = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
+  load_balancer_id = oci_load_balancer.lb.id
+  backendset_name  = oci_load_balancer_backend_set.server_lb_backend_set["VM"].name
+  ip_address       = oci_core_instance.instance["VM"].private_ip
+  port             = local.fast_apiserver_port
+}
+
 // Autonomous Database
 resource "oci_database_autonomous_database" "default_adb" {
   admin_password                       = local.adb_password
@@ -74,8 +151,8 @@ resource "oci_core_instance" "instance" {
     }
   }
   create_vnic_details {
-    subnet_id        = module.network.public_subnet_ocid
-    assign_public_ip = true
+    subnet_id        = module.network.private_subnet_ocid
+    assign_public_ip = false
     nsg_ids          = [oci_core_network_security_group.compute["VM"].id]
   }
   defined_tags = { (local.identity_tag_key) = local.identity_tag_val }

@@ -35,7 +35,6 @@ locals {
   adb_name = format("%sDB", upper(local.label_prefix))
   adb_whitelist_cidrs = concat(
     var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
-    var.infrastructure == "VM" ? [oci_core_instance.instance["VM"].public_ip] : [],
     [module.network.vcn_ocid]
   )
   adb_password = sensitive(format("%s%s", random_password.adb_char.result, random_password.adb_rest.result))
@@ -57,6 +56,8 @@ locals {
 locals {
   # Port numbers
   all_ports           = -1
+  client_lb_port      = 80
+  server_lb_port      = 8000
   streamlit_port      = 8501
   fast_apiserver_port = 8000
   k8s_apiserver_port  = 6443

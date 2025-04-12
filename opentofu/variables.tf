@@ -171,6 +171,19 @@ variable "compute_cpu_ocpu" {
   default     = 2
 }
 
+// LoadBalancer
+variable "lb_min_shape" {
+  description = "LoadBalancer minimum bandwidth (Mbps)."
+  type        = number
+  default     = 10
+}
+
+variable "lb_max_shape" {
+  description = "LoadBalancer maximum bandwidth (Mbps)."
+  type        = number
+  default     = 10
+}
+
 // NSGs
 variable "client_allowed_cidrs" {
   description = "Comma separated string of CIDR blocks from which the application client can be accessed."

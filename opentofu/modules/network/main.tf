@@ -65,7 +65,6 @@ resource "oci_core_subnet" "public" {
 
 // Private Subnet
 resource "oci_core_service_gateway" "sgw" {
-  for_each       = var.infra == "Kubernetes" ? { "Kubernetes" = "Kubernetes" } : {}
   compartment_id = oci_core_vcn.vcn.compartment_id
   vcn_id         = oci_core_vcn.vcn.id
   display_name   = format("%s-sgw", var.label_prefix)
@@ -75,7 +74,6 @@ resource "oci_core_service_gateway" "sgw" {
 }
 
 resource "oci_core_nat_gateway" "ngw" {
-  for_each       = var.infra == "Kubernetes" ? { "Kubernetes" = "Kubernetes" } : {}
   compartment_id = oci_core_vcn.vcn.compartment_id
   vcn_id         = oci_core_vcn.vcn.id
   display_name   = format("%s-ngw", var.label_prefix)
@@ -83,7 +81,6 @@ resource "oci_core_nat_gateway" "ngw" {
 }
 
 resource "oci_core_route_table" "private_route_table" {
-  for_each       = var.infra == "Kubernetes" ? { "Kubernetes" = "Kubernetes" } : {}
   compartment_id = oci_core_vcn.vcn.compartment_id
   vcn_id         = oci_core_vcn.vcn.id
   display_name   = format("%s-private-route-table", var.label_prefix)
@@ -91,13 +88,13 @@ resource "oci_core_route_table" "private_route_table" {
     description       = "traffic to the internet"
     destination       = "0.0.0.0/0"
     destination_type  = "CIDR_BLOCK"
-    network_entity_id = oci_core_nat_gateway.ngw["Kubernetes"].id
+    network_entity_id = oci_core_nat_gateway.ngw.id
   }
   route_rules {
     description       = "traffic to OCI services"
     destination       = data.oci_core_services.core_services.services.0.cidr_block
     destination_type  = "SERVICE_CIDR_BLOCK"
-    network_entity_id = oci_core_service_gateway.sgw["Kubernetes"].id
+    network_entity_id = oci_core_service_gateway.sgw.id
   }
   lifecycle {
     ignore_changes = all
@@ -105,14 +102,13 @@ resource "oci_core_route_table" "private_route_table" {
 }
 
 resource "oci_core_subnet" "private" {
-  for_each                   = var.infra == "Kubernetes" ? { "infra" = "Kubernetes" } : {}
   cidr_block                 = cidrsubnet(one(oci_core_vcn.vcn.cidr_blocks), 1, 0)
   compartment_id             = oci_core_vcn.vcn.compartment_id
   vcn_id                     = oci_core_vcn.vcn.id
   display_name               = format("%s-private", var.label_prefix)
   dns_label                  = oci_core_vcn.vcn.dns_label == null ? null : "priv"
   prohibit_public_ip_on_vnic = true
-  route_table_id             = oci_core_route_table.private_route_table["Kubernetes"].id
+  route_table_id             = oci_core_route_table.private_route_table.id
   lifecycle {
     ignore_changes = [
       cidr_block,

@@ -27,6 +27,7 @@ write_files:
       systemctl restart ollama
       systemctl stop firewalld.service
       firewall-offline-cmd --zone=public --add-port 8501/tcp
+      firewall-offline-cmd --zone=public --add-port 8000/tcp
       systemctl start firewalld.service
     append: false
     defer: false

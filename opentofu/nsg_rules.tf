@@ -6,22 +6,22 @@
 # Variable NSGs
 #########################################################################
 locals {
-  client_nsg_custom = split(",", replace(var.client_allowed_cidrs, "/\\s+/", ""))
-  client_nsg_custom_rules = {
-    for cidr in local.client_nsg_custom :
-    "Allow custom ingress to application client from ${cidr}" => {
+  client_lb_nsg_custom = split(",", replace(var.client_allowed_cidrs, "/\\s+/", ""))
+  client_lb_nsg_custom_rules = {
+    for cidr in local.client_lb_nsg_custom :
+    "Allow custom ingress to lb client from ${cidr}" => {
       protocol    = local.tcp_protocol
-      port        = local.streamlit_port
+      port        = local.client_lb_port
       source      = cidr
       source_type = local.rule_type_cidr
     }
   }
-  server_nsg_custom = split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))
-  server_nsg_custom_rules = {
-    for cidr in local.server_nsg_custom :
-    "Allow custom ingress to application server from ${cidr}" => {
+  server_lb_nsg_custom = split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))
+  server_lb_nsg_custom_rules = {
+    for cidr in local.server_lb_nsg_custom :
+    "Allow custom ingress to lb server from ${cidr}" => {
       protocol    = local.tcp_protocol
-      port        = local.fast_apiserver_port
+      port        = local.server_lb_port
       source      = cidr
       source_type = local.rule_type_cidr
     }
@@ -33,15 +33,49 @@ locals {
 #########################################################################
 locals {
   compute_nsg_default_rules = {
-    "Compute Path Discovery - Ingress." : {
+    "Compute VCN Access - TCP Ingress." : {
+      protocol = local.tcp_protocol, port = local.all_ports
+      source   = module.network.vcn_cidr_block, source_type = local.rule_type_cidr
+    }
+    "Compute Path Discovery - ICMP Ingress." : {
       protocol = local.icmp_protocol, source = module.network.vcn_cidr_block, source_type = local.rule_type_cidr
     },
-    "Compute Path Discovery - Egress." : {
+    "Compute Path Discovery - ICMP Egress." : {
       protocol = local.icmp_protocol, destination = local.anywhere, destination_type = local.rule_type_cidr
     },
-    "Compute to the Internet - Egress." : {
+    "Compute Anywhere - TCP Egress." : {
       protocol    = local.tcp_protocol, port = local.all_ports
       destination = local.anywhere, destination_type = local.rule_type_cidr
+    },
+  }
+
+  client_lb_nsg_default_rules = {
+    "Load Balancer Client to Computes (K8s Health Checks)." : {
+      protocol    = local.tcp_protocol, port = local.health_check_port,
+      destination = module.network.private_subnet_cidr_block, destination_type = local.rule_type_cidr
+    },
+    "Load Balancer Client to Computes." : {
+      protocol    = local.tcp_protocol, port_min = local.node_port_min, port_max = local.node_port_max,
+      destination = module.network.private_subnet_cidr_block, destination_type = local.rule_type_cidr
+    },
+    "Load Balancer Client to Computes (VM Health Checks)." : {
+      protocol    = local.tcp_protocol, port = local.streamlit_port,
+      destination = module.network.private_subnet_cidr_block, destination_type = local.rule_type_cidr
+    },
+  }
+
+  server_lb_nsg_default_rules = {
+    "Load Balancer Server to Computes (K8s Health Checks)." : {
+      protocol    = local.tcp_protocol, port = local.health_check_port,
+      destination = module.network.private_subnet_cidr_block, destination_type = local.rule_type_cidr
+    },
+    "Load Balancer Server to Computes." : {
+      protocol    = local.tcp_protocol, port_min = local.node_port_min, port_max = local.node_port_max,
+      destination = module.network.private_subnet_cidr_block, destination_type = local.rule_type_cidr
+    },
+    "Load Balancer Server to Computes (VM Health Checks)." : {
+      protocol    = local.tcp_protocol, port = local.fast_apiserver_port,
+      destination = module.network.private_subnet_cidr_block, destination_type = local.rule_type_cidr
     },
   }
 }
@@ -52,8 +86,10 @@ locals {
 locals {
   # Dynamic map of all NSG rules for enabled NSGs
   all_rules = { for x, y in merge(
-    { for k, v in local.client_nsg_custom_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.compute["VM"].id }) },
-    { for k, v in local.client_nsg_custom_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.compute["VM"].id }) },
+    { for k, v in local.client_lb_nsg_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.client_lb.id }) },
+    { for k, v in local.client_lb_nsg_custom_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.client_lb.id }) },
+    { for k, v in local.server_lb_nsg_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.server_lb.id }) },
+    { for k, v in local.server_lb_nsg_custom_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.server_lb.id }) },
     { for k, v in local.compute_nsg_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.compute["VM"].id }) },
     ) : x => merge(y, {
       description               = x
@@ -70,7 +106,7 @@ locals {
 #########################################################################
 # Implement
 #########################################################################
-resource "oci_core_network_security_group_security_rule" "k8s" {
+resource "oci_core_network_security_group_security_rule" "nsg_rules" {
   for_each                  = local.all_rules
   stateless                 = false
   description               = each.value.description
