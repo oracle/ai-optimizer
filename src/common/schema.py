@@ -206,6 +206,22 @@ class Settings(BaseModel):
     rag: Optional[RagSettings] = Field(default_factory=RagSettings, description="RAG Settings")
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
 
+    @classmethod
+    def from_json(cls, client: str, json: str):
+        """Create instance from JSON or defaults, if JSON fails to validate"""
+        try:
+            tmp_settings = cls.model_validate_json(json)
+            tmp_settings.client = client
+            return tmp_settings
+        except ValueError as e:
+            return cls(client=client)
+
+
+    def json_to_file(self, settings_file: str):
+        """Store settings to file at given path."""
+        with open(settings_file, 'w') as file:
+            settings_json = file.write(self.model_dump_json())
+
 
 #####################################################
 # Completions
