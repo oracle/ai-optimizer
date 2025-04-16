@@ -16,12 +16,12 @@ output "vcn_cidr_block" {
 // Private Subnet
 output "private_subnet_ocid" {
   description = "Private Subnet Identifier."
-  value = try(oci_core_subnet.private.id, null)
+  value       = try(oci_core_subnet.private.id, null)
 }
 
 output "private_subnet_cidr_block" {
   description = "Private Subnet CIDR Block."
-  value = try(oci_core_subnet.private.cidr_block, null)
+  value       = try(oci_core_subnet.private.cidr_block, null)
 }
 
 // Public Subnet

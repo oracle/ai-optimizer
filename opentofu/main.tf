@@ -25,8 +25,18 @@ resource "random_password" "adb_rest" {
   }
 }
 
+
+
+// Network
+module "network" {
+  source         = "./modules/network"
+  compartment_id = local.compartment_ocid
+  label_prefix   = local.label_prefix
+  infra          = var.infrastructure
+}
+
 // Load Balancer
-resource "oci_load_balancer" "lb" {
+resource "oci_load_balancer_load_balancer" "lb" {
   compartment_id = local.compartment_ocid
   display_name   = format("%s-lb", local.label_prefix)
   shape          = "flexible"
@@ -39,67 +49,8 @@ resource "oci_load_balancer" "lb" {
     module.network.public_subnet_ocid
   ]
   network_security_group_ids = [
-    oci_core_network_security_group.client_lb.id,
-    oci_core_network_security_group.server_lb.id
+    oci_core_network_security_group.lb.id,
   ]
-}
-
-resource "oci_load_balancer_backend_set" "client_lb_backend_set" {
-  for_each         = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
-  load_balancer_id = oci_load_balancer.lb.id
-  name             = format("%s-client-lb-backend-set", local.label_prefix)
-  policy           = "LEAST_CONNECTIONS"
-  health_checker {
-    port     = local.streamlit_port
-    protocol = "HTTP"
-    url_path = "/_stcore/health"
-  }
-}
-
-resource "oci_load_balancer_backend_set" "server_lb_backend_set" {
-  for_each         = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
-  load_balancer_id = oci_load_balancer.lb.id
-  name             = format("%s-server-lb-backend-set", local.label_prefix)
-  policy           = "LEAST_CONNECTIONS"
-  health_checker {
-    port     = local.fast_apiserver_port
-    protocol = "HTTP"
-    url_path = "/v1/liveness"
-  }
-}
-
-resource "oci_load_balancer_listener" "client_lb_listener" {
-  for_each                 = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
-  load_balancer_id         = oci_load_balancer.lb.id
-  name                     = format("%s-client-lb-listener", local.label_prefix)
-  default_backend_set_name = oci_load_balancer_backend_set.client_lb_backend_set["VM"].name
-  port                     = local.client_lb_port
-  protocol                 = "HTTP"
-}
-
-resource "oci_load_balancer_listener" "server_lb_listener" {
-  for_each                 = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
-  load_balancer_id         = oci_load_balancer.lb.id
-  name                     = format("%s-server-lb-listener", local.label_prefix)
-  default_backend_set_name = oci_load_balancer_backend_set.server_lb_backend_set["VM"].name
-  port                     = local.server_lb_port
-  protocol                 = "HTTP"
-}
-
-resource "oci_load_balancer_backend" "client_lb_backend" {
-  for_each         = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
-  load_balancer_id = oci_load_balancer.lb.id
-  backendset_name  = oci_load_balancer_backend_set.client_lb_backend_set["VM"].name
-  ip_address       = oci_core_instance.instance["VM"].private_ip
-  port             = local.streamlit_port
-}
-
-resource "oci_load_balancer_backend" "server_lb_backend" {
-  for_each         = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
-  load_balancer_id = oci_load_balancer.lb.id
-  backendset_name  = oci_load_balancer_backend_set.server_lb_backend_set["VM"].name
-  ip_address       = oci_core_instance.instance["VM"].private_ip
-  port             = local.fast_apiserver_port
 }
 
 // Autonomous Database
@@ -125,42 +76,60 @@ resource "oci_database_autonomous_database" "default_adb" {
   whitelisted_ips                      = local.adb_whitelist_cidrs
 }
 
-// VM Infrastructure
-resource "oci_core_instance" "instance" {
-  for_each            = var.infrastructure == "VM" ? { "VM" = "VM" } : {}
-  compartment_id      = local.compartment_ocid
-  display_name        = format("%s-compute", local.label_prefix)
-  availability_domain = local.availability_domains[0]
-  shape               = var.compute_cpu_shape
-  shape_config {
-    memory_in_gbs = var.compute_cpu_ocpu * 16
-    ocpus         = var.compute_cpu_ocpu
+// Virtual Machine
+module "vm" {
+  count                 = var.infrastructure == "VM" ? 1 : 0
+  source                = "./modules/vm"
+  label_prefix          = local.label_prefix
+  tenancy_id            = var.tenancy_ocid
+  compartment_id        = local.compartment_ocid
+  vcn_id                = module.network.vcn_ocid
+  lb_id                 = oci_load_balancer_load_balancer.lb.id
+  lb_client_port        = local.lb_client_port
+  lb_server_port        = local.lb_server_port
+  region                = var.region
+  adb_name              = local.adb_name
+  adb_password          = local.adb_password
+  streamlit_client_port = local.streamlit_client_port
+  fastapi_server_port   = local.fastapi_server_port
+  source_repository     = var.source_repository
+  compute_os_ver        = var.compute_os_ver
+  compute_cpu_ocpu      = var.compute_cpu_ocpu
+  compute_cpu_shape     = var.compute_cpu_shape
+  availability_domains  = local.availability_domains
+  private_subnet_id     = module.network.private_subnet_ocid
+  providers = {
+    oci.home_region = oci.home_region
   }
-  source_details {
-    source_type             = "image"
-    source_id               = data.oci_core_images.images["VM"].images[0].id
-    boot_volume_size_in_gbs = 50
-  }
-  agent_config {
-    are_all_plugins_disabled = false
-    is_management_disabled   = false
-    is_monitoring_disabled   = false
-    plugins_config {
-      desired_state = "ENABLED"
-      name          = "Bastion"
-    }
-  }
-  create_vnic_details {
-    subnet_id        = module.network.private_subnet_ocid
-    assign_public_ip = false
-    nsg_ids          = [oci_core_network_security_group.compute["VM"].id]
-  }
-  defined_tags = { (local.identity_tag_key) = local.identity_tag_val }
-  metadata = {
-    user_data = "${base64encode(local.cloud_init)}"
-  }
-  lifecycle {
-    create_before_destroy = true
-    ignore_changes        = [source_details.0.source_id, defined_tags]
+}
+
+// Kubernetes
+module "kubernetes" {
+  count                    = var.infrastructure == "Kubernetes" ? 1 : 0
+  source                   = "./modules/kubernetes"
+  label_prefix             = local.label_prefix
+  tenancy_id               = var.tenancy_ocid
+  compartment_id           = local.compartment_ocid
+  vcn_id                   = module.network.vcn_ocid
+  lb_id                    = oci_load_balancer_load_balancer.lb.id
+  region                   = var.region
+  adb_id                   = oci_database_autonomous_database.default_adb.id
+  adb_name                 = local.adb_name
+  adb_password             = local.adb_password
+  k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
+  compute_cpu_ocpu         = var.compute_cpu_ocpu
+  k8s_gpu_node_pool_size   = var.k8s_gpu_node_pool_size
+  k8s_version              = var.k8s_version
+  compute_gpu_shape        = var.compute_gpu_shape
+  compute_cpu_shape        = var.compute_cpu_shape
+  k8s_api_is_public        = var.k8s_api_is_public
+  availability_domains     = local.availability_domains
+  k8s_cpu_node_pool_size   = var.k8s_cpu_node_pool_size
+  compute_os_ver           = var.compute_os_ver
+  public_subnet_id         = module.network.public_subnet_ocid
+  private_subnet_id         = module.network.private_subnet_ocid
+  lb_nsg_id = oci_core_network_security_group.lb.id
+  providers = {
+    oci.home_region = oci.home_region
   }
 }

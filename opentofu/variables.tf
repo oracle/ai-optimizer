@@ -171,6 +171,56 @@ variable "compute_cpu_ocpu" {
   default     = 2
 }
 
+variable "compute_gpu_shape" {
+  description = "Choose the shape of the GPU Computes."
+  type        = string
+  default     = "VM.GPU.A10.1"
+  validation {
+    condition     = contains(["VM.GPU.A10.1", "VM.GPU.A10.2"], var.compute_gpu_shape)
+    error_message = "Must be either VM.GPU.A10.1, or VM.GPU.A10.2."
+  }
+}
+
+// Kubernetes
+variable "k8s_version" {
+  description = "The version of Kubernetes to install into the cluster masters."
+  type        = string
+  default     = "1.32.1"
+}
+
+variable "k8s_api_is_public" {
+  type    = bool
+  default = false
+}
+
+variable "k8s_api_endpoint_allowed_cidrs" {
+  description = "Comma separated string of CIDR blocks from which the API Endpoint can be accessed."
+  type        = string
+  default     = "0.0.0.0/0"
+  validation {
+    condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.k8s_api_endpoint_allowed_cidrs))
+    error_message = "Must be a comma separated string of valid CIDRs."
+  }
+}
+
+variable "k8s_cpu_node_pool_size" {
+  description = "Number of Workers in the CPU Node Pool."
+  type        = number
+  default     = 2
+}
+
+variable "k8s_node_pool_gpu_deploy" {
+  description = "Deploy a GPU Node Pool"
+  type        = bool
+  default     = true
+}
+
+variable "k8s_gpu_node_pool_size" {
+  description = "Number of Workers in the GPU Node Pool."
+  type        = number
+  default     = 1
+}
+
 // LoadBalancer
 variable "lb_min_shape" {
   description = "LoadBalancer minimum bandwidth (Mbps)."

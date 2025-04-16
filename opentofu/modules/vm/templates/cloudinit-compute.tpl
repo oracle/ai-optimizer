@@ -1,4 +1,7 @@
 #cloud-config
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# spell-checker: disable
 
 package_update: false
 packages:
@@ -7,9 +10,6 @@ packages:
   - python36-oci-cli
 
 users:
-  - name: opc
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    ssh-authorized-keys: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGxkRuJIhlCHai6rp2pCOAMJ9tAMRGUumQ4jOUO3MWJS john.lathouwers@oracle.com
   - name: oracleai
     uid: 10001
     gid: 10001
@@ -89,4 +89,4 @@ write_files:
 runcmd:
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
-  # - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz /tmp/wallet.zip
+  - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz /tmp/wallet.zip
