@@ -108,4 +108,4 @@ See [LICENSE](./LICENSE.txt) for more details.
 
 
 [magic_button]: https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg
-[magic_arch_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle-samples/ai-explorer/releases/download/v0.0.1/compute-stack.zip
+[magic_arch_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle-samples/ai-explorer/releases/download/v0.0.1/ai-explorer-stack.zip

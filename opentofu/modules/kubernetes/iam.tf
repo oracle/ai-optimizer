@@ -16,10 +16,10 @@ resource "oci_identity_tag" "identity_tag" {
   provider         = oci.home_region
 }
 
-resource "oci_identity_dynamic_group" "compute_dynamic_group" {
+resource "oci_identity_dynamic_group" "node_dynamic_group" {
   compartment_id = var.tenancy_id
-  name           = format("%s-compute-dyngrp", var.label_prefix)
-  description    = format("%s Dynamic Group - Computes", var.label_prefix)
+  name           = format("%s-workers-dyngrp", var.label_prefix)
+  description    = format("%s Dynamic Group - K8s Workers", var.label_prefix)
   matching_rule = format(
     "All {instance.compartment.id = '%s', tag.%s.value = '%s'}",
     var.compartment_id, local.identity_tag_key, local.identity_tag_val
@@ -30,7 +30,7 @@ resource "oci_identity_dynamic_group" "compute_dynamic_group" {
 resource "oci_identity_policy" "workload_node_policies" {
   compartment_id = var.tenancy_id
   name           = format("%s-worker-workload-policy", var.label_prefix)
-  description    = format("%s WorkloadPrinciple - K8s Nodes", var.label_prefix)
+  description    = format("%s PrincipleAuth - K8s Workers", var.label_prefix)
   statements = [
     format("allow any-user to manage autonomous-database-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'oracle-database-operator-system', request.principal.service_account = 'default', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to manage load-balancers in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
@@ -49,6 +49,7 @@ resource "oci_identity_policy" "workload_node_policies" {
     format("allow any-user to manage waf-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to read cluster-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to use tag-namespaces in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
+    format("allow dynamic-group %s to manage repos in compartment id %s", oci_identity_dynamic_group.node_dynamic_group.name, var.compartment_id)
   ]
   provider = oci.home_region
 }
