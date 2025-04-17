@@ -16,7 +16,7 @@ resource "oci_artifacts_container_repository" "server_repository" {
   is_public      = false
 }
 
-resource "oci_artifacts_container_repository" "explorer_repository" {
+resource "oci_artifacts_container_repository" "client_repository" {
   compartment_id = var.compartment_id
   display_name   = lower(format("%s/client", var.label_prefix))
   is_immutable   = false

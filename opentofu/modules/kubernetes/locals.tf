@@ -20,7 +20,7 @@ locals {
   ]
 
   server_repository = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.server_repository.display_name))
-  client_repository = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.explorer_repository.display_name))
+  client_repository = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.client_repository.display_name))
   k8s_cluster_name  = format("%s-k8s", var.label_prefix)
   helm_values = templatefile("${path.module}/templates/helm_values.yaml", {
     label                    = var.label_prefix
@@ -28,7 +28,7 @@ locals {
     client_repository        = local.client_repository
     oci_region               = var.region
     adb_ocid                 = var.adb_id
-    adb_name                 = var.adb_name
+    adb_name                 = lower(var.adb_name)
     k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
     lb_ip                    = local.lb[0].ip_address_details[0].ip_address
   })
@@ -42,7 +42,7 @@ locals {
     lb_nsgs          = var.lb_nsg_id
     lb_min_shape     = local.lb[0].shape_details[0].minimum_bandwidth_in_mbps
     lb_max_shape     = local.lb[0].shape_details[0].maximum_bandwidth_in_mbps
-    adb_name         = var.adb_name
+    adb_name         = lower(var.adb_name)
     adb_password     = var.adb_password
     adb_service      = format("%s_TP", var.adb_name)
     api_key          = random_string.api_key.result

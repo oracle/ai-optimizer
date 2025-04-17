@@ -132,13 +132,13 @@ spec:
                   name: {{ .models.cohere.secretName }}
                   key: {{ .models.cohere.secretKey | default "apiKey" }}
             {{- end }}
-            {{- if and .models.huggingface .models.huggingface.urlPort }}
+            {{- if and .models.huggingface .models.huggingface.apiUrl }}
             - name: ON_PREM_HF_URL
-              value: {{ .models.huggingface.urlPort }}
+              value: {{ .models.huggingface.apiUrl }}
             {{- end }}
             {{- if and .models.ollama .models.ollama.enabled }}
             - name: ON_PREM_OLLAMA_URL
-              value: {{ include "ollama.serviceUrl" . }}
+              value: {{ include "ollama.serviceUrl" $ }}
             {{- end }}
             {{- end }}
             {{- end }}

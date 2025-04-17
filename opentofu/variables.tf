@@ -56,7 +56,7 @@ variable "source_repository" {
 
 // Infrastructure Type/Label
 variable "infrastructure" {
-  description = "Infrastructure Choice."
+  description = "Choose between a full Kubernetes or a light-weight Virtual Machine deployment."
   type        = string
   default     = ""
   validation {

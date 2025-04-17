@@ -4,7 +4,7 @@
 
 ## Description
 
-AI Vector Search in Oracle Database 23ai provides the ability to store and query private business data using a natural language interface. The **AI Explorer** uses these capabilities to provide more accurate and relevant LLM responses via Retrieval-Augmented Generation (**RAG**). [Oracle Database 23ai Free](https://www.oracle.com/uk/database/free/get-started) provides an ideal, no-cost vector store for this walkthrough.
+AI Vector Search in Oracle Database 23ai provides the ability to store and query private business data using a natural language interface. The **AI Optimizer** uses these capabilities to provide more accurate and relevant LLM responses via Retrieval-Augmented Generation (**RAG**). [Oracle Database 23ai Free](https://www.oracle.com/uk/database/free/get-started) provides an ideal, no-cost vector store for this walkthrough.
 
 ---
 

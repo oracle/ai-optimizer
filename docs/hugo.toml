@@ -3,7 +3,7 @@
 
 baseURL = 'https://oracle-samples.github.io/ai-explorer'
 languageCode = 'en-us'
-title = 'Oracle AI Explorer for Apps'
+title = 'Oracle AI Optimizer & Toolkit'
 theme = "relearn"
 sectionPagesMenu = 'main'
 tableOfContents = true
@@ -28,8 +28,8 @@ enableRobotsTXT = true
   themeVariant = ['auto', 'docs-light', 'docs-dark']
   disableInlineCopyToClipBoard = true
   hideAuthorName = true
-  LongName = "Oracle AI Explorer for Apps"
-  ShortName = "AI Explorer"
+  LongName = "Oracle AI Optimizer and Toolkit"
+  ShortName = "AI Optimizer"
   GitHubRepo = "https://github.com/oracle-samples/ai-explorer"
   
 [menu]

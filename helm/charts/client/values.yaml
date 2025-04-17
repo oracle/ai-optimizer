@@ -3,7 +3,7 @@
 
 replicaCount: 1
 image:
-  repository: localhost/ai-explorer-client
+  repository: localhost/ai-optimizer-client
   tag: "latest"
 imagePullPolicy: IfNotPresent
 imagePullSecrets: []

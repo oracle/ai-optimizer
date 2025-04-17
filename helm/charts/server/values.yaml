@@ -3,7 +3,7 @@
 
 replicaCount: 1
 image:
-  repository: localhost/ai-explorer-server
+  repository: localhost/ai-optimizer-server
   tag: "latest"
 imagePullPolicy: IfNotPresent
 imagePullSecrets: []
@@ -62,6 +62,9 @@ adb:
 models:
   ollama:
     enabled: false
+  huggingface:
+    # -- e.g http://hf.hf.svc.cluster.local:8080
+    apiUrl: ""
   openAI:
     secretName: ""
     secretKey: ""
@@ -71,9 +74,6 @@ models:
   cohere:
     secretName: ""
     secretKey: ""
-  huggingface:
-    # -- e.g http://hf.hf.svc.cluster.local:8080
-    urlPort: ""
 
 # -- Additional volumes on the output Deployment definition.
 volumes: []

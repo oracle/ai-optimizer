@@ -117,10 +117,10 @@ kubectl -n ollama exec svc/ollama -- ollama run "llama3.1" "what is spring boot?
 * tunnel:
 
 ```bash
-kubectl -n ai-explorer port-forward svc/ai-explorer 8181:8501
+kubectl -n ai-optimizer port-forward svc/ai-optimizer 8181:8501
 ```
 
-* on localhost, connect to : `http://localhost:8181/ai-explorer`
+* on localhost, connect to : `http://localhost:8181/ai-optimizer`
 
 * Deploy with `oractl` on a new schema `vector`:
 

@@ -3,7 +3,7 @@
 #############################################################
 # Base - API Server
 # Build from the app/ directory:
-#  podman build -f server/Dockerfile -t ai-explorer-server:0.1.0 .
+#  podman build -f server/Dockerfile -t ai-optimizer-server:0.1.0 .
 #############################################################
 # spell-checker: disable
 FROM container-registry.oracle.com/os/oraclelinux:8-slim AS server_pyenv

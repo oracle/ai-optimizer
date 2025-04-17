@@ -19,7 +19,7 @@ If the API Server is started independently of the {{< short_app_ref >}} client, 
 
 ## Server Configuration
 
-During the startup of the API Server, a `server` client is created and populated with minimal settings.  The `server` client is the default when calling the API Server outside of the {{< short_app_ref >}} GUI client.  To copy your {{< short_app_ref >}} GUI client settings to the `server` client for use with external application clients, click the "Copy AI Explorer Settings".  
+During the startup of the API Server, a `server` client is created and populated with minimal settings.  The `server` client is the default when calling the API Server outside of the {{< short_app_ref >}} GUI client.  To copy your {{< short_app_ref >}} GUI client settings to the `server` client for use with external application clients, click the "Copy AI Optimizer Settings".  
 
 ![Server Settings](images/api_server_settings.png)
 

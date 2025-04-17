@@ -56,7 +56,7 @@ helm/values*.yaml
 ##############################################################################
 # Random
 ##############################################################################
-spring_ai/src/main/resources/data/explorer_settings.json
+spring_ai/src/main/resources/data/optimizer_settings.json
 spring_ai/target/**
 spring_ai/create_user.sql
 spring_ai/drop.sql

@@ -1,5 +1,5 @@
 +++
-title = 'AI Explorer'
+title = 'AI Optimizer'
 weight = 20
 +++
 
@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker:ignore streamlit, uvicorn
 -->
 
-The {{< full_app_ref >}} consists of an API Server ([**ai-explorer-server**](#api-server-ai-explorer-server)) and an _optional_ web-based GUI ([**ai-explorer-client**](#client-ai-explorer-client)) component.  Both the API Server and GUI can be run on bare-metal or inside containers.  
+The {{< full_app_ref >}} consists of an API Server ([**ai-optimizer-server**](#api-server-ai-optimizer-server)) and an _optional_ web-based GUI ([**ai-optimizer-client**](#client-ai-optimizer-client)) component.  Both the API Server and GUI can be run on bare-metal or inside containers.  
 
 ![Architecture Overview](images/arch_overview.png)
 
@@ -21,19 +21,19 @@ The following additional components, not delivered with the {{< short_app_ref >}
 
 The {{< short_app_ref >}} is specifically designed to run in container orchestration systems, such as [Kubernetes](https://kubernetes.io/).  For more information on deploying the {{< short_app_ref >}} in Kubernetes, using a Helm Chart, please review the [Advanced - Microservices](/advanced/microservices) documentation.
 
-## API Server (AI Explorer Server)
+## API Server (AI Optimizer Server)
 
-The workhorse of the {{< short_app_ref >}} is the API Server, referred to as the **AI Explorer Server**.  By default, the **AI Explorer Server** will start on port 8000
+The workhorse of the {{< short_app_ref >}} is the API Server, referred to as the **AI Optimizer Server**.  By default, the **AI Optimizer Server** will start on port 8000
 
 {{% notice style="code" title="All the docs" icon="circle-info" %}}
-The **AI Explorer Server** API documentation can be accessed at `http://<IP Address>:<Port>/v1/docs#` of a running instance. 
+The **AI Optimizer Server** API documentation can be accessed at `http://<IP Address>:<Port>/v1/docs#` of a running instance. 
 {{% /notice %}}
 
 ![API Server](images/api_server.png)
 
-Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://www.uvicorn.org/), the **AI Explorer Server** acts as an intermediary between the clients, AI Models, and the Oracle Database.
+Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://www.uvicorn.org/), the **AI Optimizer Server** acts as an intermediary between the clients, AI Models, and the Oracle Database.
 
-## Client (AI Explorer Client)
+## Client (AI Optimizer Client)
 
 The provided web-based GUI client is built with [Streamlit](https://streamlit.io/) and interacts with the API Server via REST calls.  
 
@@ -50,8 +50,8 @@ You can develop and replace the provided client with any REST capable client.
 ![Database](./images/vector_storage.png)
 
 {{% notice style="code" title="Reduced capabilities" icon="circle-info" %}}
-<!-- Hard-coding AI Explorer to avoid unsafe HTML, this is an exception -->
-The **AI Explorer** can be used to interact with language models without having the database configured, but additional functionality such as RAG, will not be available without the database.
+<!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
+The **AI Optimizer** can be used to interact with language models without having the database configured, but additional functionality such as RAG, will not be available without the database.
 {{% /notice %}}
 
 The 23ai database provides:
