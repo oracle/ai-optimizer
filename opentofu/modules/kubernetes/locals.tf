@@ -30,18 +30,18 @@ locals {
     adb_ocid                 = var.adb_id
     adb_name                 = var.adb_name
     k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
-    lb_ip                    = local.lb.ip_address_details[0].ip_address
+    lb_ip                    = local.lb[0].ip_address_details[0].ip_address
   })
 
   k8s_manifest = templatefile("${path.module}/templates/k8s_manifest.yaml", {
     label            = var.label_prefix
-    compartment_ocid = local.lb.compartment_id
-    lb_ocid          = local.lb.id
+    compartment_ocid = local.lb[0].compartment_id
+    lb_ocid          = local.lb[0].id
     lb_subnet_ocid   = var.public_subnet_id
-    lb_ip_ocid       = local.lb.ip_address_details[0].ip_address
+    lb_ip_ocid       = local.lb[0].ip_address_details[0].ip_address
     lb_nsgs          = var.lb_nsg_id
-    lb_min_shape     = local.lb.shape_details[0].minimum_bandwidth_in_mbps
-    lb_max_shape     = local.lb.shape_details[0].maximum_bandwidth_in_mbps
+    lb_min_shape     = local.lb[0].shape_details[0].minimum_bandwidth_in_mbps
+    lb_max_shape     = local.lb[0].shape_details[0].maximum_bandwidth_in_mbps
     adb_name         = var.adb_name
     adb_password     = var.adb_password
     adb_service      = format("%s_TP", var.adb_name)

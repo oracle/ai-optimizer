@@ -45,7 +45,7 @@ __pycache__/
 **/**.tfvars
 **/.terraform*
 **/terraform.tfstate*
-opentofu/**/examples/*.yaml
+opentofu/**/generated
 
 ##############################################################################
 # Helm

@@ -86,3 +86,8 @@ variable "compute_cpu_ocpu" {
 variable "lb_nsg_id" {
   type = string
 }
+
+variable "k8s_api_endpoint_allowed_cidrs" {
+  type    = string
+  default = ""
+}

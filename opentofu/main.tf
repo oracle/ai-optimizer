@@ -105,30 +105,31 @@ module "vm" {
 
 // Kubernetes
 module "kubernetes" {
-  count                    = var.infrastructure == "Kubernetes" ? 1 : 0
-  source                   = "./modules/kubernetes"
-  label_prefix             = local.label_prefix
-  tenancy_id               = var.tenancy_ocid
-  compartment_id           = local.compartment_ocid
-  vcn_id                   = module.network.vcn_ocid
-  lb_id                    = oci_load_balancer_load_balancer.lb.id
-  region                   = var.region
-  adb_id                   = oci_database_autonomous_database.default_adb.id
-  adb_name                 = local.adb_name
-  adb_password             = local.adb_password
-  k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
-  compute_cpu_ocpu         = var.compute_cpu_ocpu
-  k8s_gpu_node_pool_size   = var.k8s_gpu_node_pool_size
-  k8s_version              = var.k8s_version
-  compute_gpu_shape        = var.compute_gpu_shape
-  compute_cpu_shape        = var.compute_cpu_shape
-  k8s_api_is_public        = var.k8s_api_is_public
-  availability_domains     = local.availability_domains
-  k8s_cpu_node_pool_size   = var.k8s_cpu_node_pool_size
-  compute_os_ver           = var.compute_os_ver
-  public_subnet_id         = module.network.public_subnet_ocid
-  private_subnet_id         = module.network.private_subnet_ocid
-  lb_nsg_id = oci_core_network_security_group.lb.id
+  count                          = var.infrastructure == "Kubernetes" ? 1 : 0
+  source                         = "./modules/kubernetes"
+  label_prefix                   = local.label_prefix
+  tenancy_id                     = var.tenancy_ocid
+  compartment_id                 = local.compartment_ocid
+  vcn_id                         = module.network.vcn_ocid
+  lb_id                          = oci_load_balancer_load_balancer.lb.id
+  region                         = var.region
+  adb_id                         = oci_database_autonomous_database.default_adb.id
+  adb_name                       = local.adb_name
+  adb_password                   = local.adb_password
+  k8s_node_pool_gpu_deploy       = var.k8s_node_pool_gpu_deploy
+  compute_cpu_ocpu               = var.compute_cpu_ocpu
+  k8s_gpu_node_pool_size         = var.k8s_gpu_node_pool_size
+  k8s_version                    = var.k8s_version
+  compute_gpu_shape              = var.compute_gpu_shape
+  compute_cpu_shape              = var.compute_cpu_shape
+  k8s_api_is_public              = var.k8s_api_is_public
+  availability_domains           = local.availability_domains
+  k8s_cpu_node_pool_size         = var.k8s_cpu_node_pool_size
+  k8s_api_endpoint_allowed_cidrs = var.k8s_api_endpoint_allowed_cidrs
+  compute_os_ver                 = var.compute_os_ver
+  public_subnet_id               = module.network.public_subnet_ocid
+  private_subnet_id              = module.network.private_subnet_ocid
+  lb_nsg_id                      = oci_core_network_security_group.lb.id
   providers = {
     oci.home_region = oci.home_region
   }

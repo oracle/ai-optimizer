@@ -12,6 +12,21 @@ data "oci_core_vcn" "vcn" {
   vcn_id = var.vcn_id
 }
 
+data "oci_core_subnet" "public" {
+  subnet_id = var.public_subnet_id
+}
+data "oci_core_subnet" "private" {
+  subnet_id = var.private_subnet_id
+}
+
+data "oci_core_services" "core_services" {
+  filter {
+    name   = "name"
+    values = ["All .* Services In Oracle Services Network"]
+    regex  = true
+  }
+}
+
 data "oci_load_balancer_load_balancers" "all_lb" {
   compartment_id = var.compartment_id
 }
