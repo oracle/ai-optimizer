@@ -76,7 +76,7 @@ client:
 ollama:
   enabled: ${k8s_node_pool_gpu_deploy}
   models:
-    - gemma3
+    - llama3.1
     - mxbai-embed-large
   resources:
     limits:
