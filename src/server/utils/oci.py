@@ -53,6 +53,8 @@ def init_client(
         logger.info("OCI Authentication with Instance Principles")
         instance_signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
         client = client_type(config={}, signer=instance_signer, **client_kwargs)
+        if not config.tenancy:
+            config.tenancy =  instance_signer.tenancy_id
     elif config_json["authentication"] == "workload_identity":
         logger.info("OCI Authentication with Workload Identity")
         oke_workload_signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
@@ -100,7 +102,6 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
         raise OciException(f"OCI: {ex}") from ex
 
     return namespace
-
 
 def get_compartments(config: OracleCloudSettings = None) -> set:
     """Retrieve a list of compartments"""

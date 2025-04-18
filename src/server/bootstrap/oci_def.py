@@ -71,8 +71,7 @@ def main() -> list[OracleCloudSettings]:
         oci_objects.append(oci_config)
         if oci_config.auth_profile == "DEFAULT":
             try:
-                namespace = server_oci.get_namespace(oci_config)
-                oci_config.namespace = namespace
+                oci_config.namespace = server_oci.get_namespace(oci_config)
             except server_oci.OciException:
                 continue
 
