@@ -7,7 +7,6 @@ package_update: false
 packages:
   - git
   - python3.11
-  - python36-oci-cli
 
 users:
   - name: oracleai
@@ -35,12 +34,13 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/bash
+      # Setup for Instance Principles
       export OCI_CLI_AUTH=instance_principal
 
-      # Setup oci config.ini to indicate to app to use instance_principle
-      mkdir -p /app/.oci
-      echo -e '[DEFAULT]\ninstance_principle=true\nregion=${oci_region}\ntenancy=${tenancy_id}' > /app/.oci/config
-      oci setup repair-file-permissions --file /app/.oci/config
+      # Setup oci config.ini to indicate to app to use instance_principal
+      # mkdir -p /app/.oci
+      # echo -e '[DEFAULT]\nregion=${oci_region}\ntenancy=${tenancy_id}' > /app/.oci/config
+      # oci setup repair-file-permissions --file /app/.oci/config
 
       # Download/Setup Source Code
       curl -L -o /tmp/source.tar.gz ${source_code}.tar.gz
@@ -48,7 +48,7 @@ write_files:
       cd /app
       python3.11 -m venv .venv
       source .venv/bin/activate
-      pip3.11 install --upgrade pip wheel setuptools
+      pip3.11 install --upgrade pip wheel setuptools oci-cli
       pip3.11 install torch==2.6.0+cpu -f https://download.pytorch.org/whl/cpu/torch
       pip3.11 install -e ".[all]" --quiet --no-input &
       INSTALL_PID=$!

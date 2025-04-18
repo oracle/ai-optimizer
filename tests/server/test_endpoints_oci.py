@@ -130,6 +130,7 @@ class TestEndpoints:
         "log_requests": False,
         "additional_user_agent": "",
         "pass_phrase": None,
+        "authentication": "api_key",
     }
 
     def test_oci_list(self, client: TestClient) -> None:

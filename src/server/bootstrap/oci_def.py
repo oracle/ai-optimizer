@@ -51,6 +51,10 @@ def main() -> list[OracleCloudSettings]:
             default["security_token_file"] = os.environ.get(
                 "OCI_CLI_SECURITY_TOKEN_FILE", default.get("security_token_file", None)
             )
+            # Authentication Method
+            default["authentication"] = os.environ.get("OCI_CLI_AUTH") or (
+                "security_token" if default["security_token_file"] else "api_key"
+            )
             # GenAI
             default["compartment_id"] = os.environ.get("OCI_GENAI_COMPARTMENT_ID", default.get("compartment_id", ""))
             default["service_endpoint"] = os.environ.get(
