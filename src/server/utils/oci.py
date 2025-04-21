@@ -55,10 +55,10 @@ def init_client(
         client = client_type(config={}, signer=instance_signer, **client_kwargs)
         if not config.tenancy:
             config.tenancy = instance_signer.tenancy_id
-    elif config_json["authentication"] == "workload_identity":
+    elif config_json["authentication"] == "oke_workload_identity":
         logger.info("OCI Authentication with Workload Identity")
         oke_workload_signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
-        client = client_type(config={}, signer=oke_workload_signer, **client_kwargs)
+        client = client_type(config={"region": config_json["region"]}, signer=oke_workload_signer)
     elif config_json["authentication"] == "security_token" and config_json["security_token_file"]:
         logger.info("OCI Authentication with Security Token")
         token = None

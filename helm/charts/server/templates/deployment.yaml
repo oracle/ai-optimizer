@@ -72,8 +72,10 @@ spec:
             {{- if .Values.oci.tenancy }}
             - name: OCI_CLI_TENANCY
               value: {{ .Values.oci.tenancy | quote }}
+            - name: OCI_CLI_REGION
+              value: {{ .Values.oci.region | quote }}
             - name: OCI_CLI_AUTH
-              value: "workload_identity"
+              value: "oke_workload_identity"
             {{- end }}
             {{- if .Values.adb.enabled }}
             - name: TNS_ADMIN
