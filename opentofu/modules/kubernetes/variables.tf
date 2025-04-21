@@ -21,8 +21,18 @@ variable "private_subnet_id" {
   type = string
 }
 
-variable "lb_id" {
-  type = string
+variable "lb" {
+  type = object({
+    id             = string
+    compartment_id = string
+    ip_address_details = list(object({
+      ip_address = string
+    }))
+    shape_details = list(object({
+      minimum_bandwidth_in_mbps = number
+      maximum_bandwidth_in_mbps = number
+    }))
+  })
 }
 
 variable "region" {

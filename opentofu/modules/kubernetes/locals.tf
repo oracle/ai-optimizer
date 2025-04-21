@@ -13,11 +13,6 @@ locals {
     local.region_map,
     var.region
   )
-  // Load Balancer
-  lb = [
-    for lb in data.oci_load_balancer_load_balancers.all_lb.load_balancers : lb
-    if lb.id == var.lb_id
-  ]
 
   server_repository = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.server_repository.display_name))
   client_repository = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.client_repository.display_name))
@@ -26,22 +21,23 @@ locals {
     label                    = var.label_prefix
     server_repository        = local.server_repository
     client_repository        = local.client_repository
+    oci_tenancy              = var.tenancy_id
     oci_region               = var.region
     adb_ocid                 = var.adb_id
     adb_name                 = lower(var.adb_name)
     k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
-    lb_ip                    = local.lb[0].ip_address_details[0].ip_address
+    lb_ip                    = var.lb.ip_address_details[0].ip_address
   })
 
   k8s_manifest = templatefile("${path.module}/templates/k8s_manifest.yaml", {
     label            = var.label_prefix
-    compartment_ocid = local.lb[0].compartment_id
-    lb_ocid          = local.lb[0].id
+    compartment_ocid = var.lb.compartment_id
+    lb_ocid          = var.lb.id
     lb_subnet_ocid   = var.public_subnet_id
-    lb_ip_ocid       = local.lb[0].ip_address_details[0].ip_address
+    lb_ip_ocid       = var.lb.ip_address_details[0].ip_address
     lb_nsgs          = var.lb_nsg_id
-    lb_min_shape     = local.lb[0].shape_details[0].minimum_bandwidth_in_mbps
-    lb_max_shape     = local.lb[0].shape_details[0].maximum_bandwidth_in_mbps
+    lb_min_shape     = var.lb.shape_details[0].minimum_bandwidth_in_mbps
+    lb_max_shape     = var.lb.shape_details[0].maximum_bandwidth_in_mbps
     adb_name         = lower(var.adb_name)
     adb_password     = var.adb_password
     adb_service      = format("%s_TP", var.adb_name)

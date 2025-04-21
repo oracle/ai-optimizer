@@ -21,3 +21,20 @@ output "server_repository" {
   description = "Path to push Client Image"
   value       = var.infrastructure == "Kubernetes" ? module.kubernetes[0].server_repository : "N/A"
 }
+
+output "kubeconfig_cmd" {
+  description = "Command to generate kubeconfig file"
+  value       = var.infrastructure == "Kubernetes" ? module.kubernetes[0].kubeconfig_cmd : "N/A"
+}
+
+output "k8s_manifest" {
+  description = "Kubernetes Manifest"
+  value       = var.infrastructure == "Kubernetes" ? module.kubernetes[0].k8s_manifest : "N/A"
+  sensitive   = true
+}
+
+output "helm_values" {
+  description = "Helm Values"
+  value       = var.infrastructure == "Kubernetes" ? module.kubernetes[0].helm_values : "N/A"
+  sensitive   = true
+}

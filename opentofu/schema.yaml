@@ -277,6 +277,14 @@ outputGroups:
       - server_url
     visible: true
 
+  - title: "Kubernetes KUBECONFIG command"
+    outputs:
+      - kubeconfig_cmd
+    visible:
+      eq:
+        - infrastructure
+        - "Kubernetes"
+
   - title: "Container Image Repositories"
     outputs:
       - client_repository
@@ -286,6 +294,21 @@ outputGroups:
         - infrastructure
         - "Kubernetes"
 
+  - title: "Kubernetes Manifest"
+    outputs:
+      - k8s_manifest
+    visible:
+      eq:
+        - infrastructure
+        - "Kubernetes"
+
+  - title: "Helm Values"
+    outputs:
+      - helm_values
+    visible:
+      eq:
+        - infrastructure
+        - "Kubernetes"
 ###########################################################################
 outputs:
   client_url:
@@ -296,6 +319,10 @@ outputs:
     title: "Server API"
     type: link
 
+  kubeconfig_cmd:
+    title: "KUBECONFIG command"
+    type: string
+
   client_repository:
     title: "Client Image Repository"
     type: string
@@ -303,3 +330,13 @@ outputs:
   server_repository:
     title: "Server Image Repository"
     type: string
+
+  k8s_manifest:
+    title: "Kubernetes Manifest"
+    type: string
+    sensitive: true
+
+  helm_values:
+    title: "Helm Values"
+    type: string
+    sensitive: true

@@ -45,6 +45,7 @@ service:
 
 # -- Oracle Cloud Infrastructure Configuration
 oci:
+  tenancy: ""
   region: ""
 
 # -- Oracle Autonomous Database Configuration

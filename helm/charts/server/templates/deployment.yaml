@@ -69,9 +69,13 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- end }}
           env:
-            {{- if .Values.adb.enabled }}
+            {{- if .Values.oci.tenancy }}
+            - name: OCI_CLI_TENANCY
+              value: {{ .Values.oci.tenancy | quote }}
             - name: OCI_CLI_AUTH
               value: "workload_identity"
+            {{- end }}
+            {{- if .Values.adb.enabled }}
             - name: TNS_ADMIN
               value: /app/tns_admin
             - name: DB_USERNAME

@@ -28,6 +28,7 @@ server:
 
   # -- Oracle Cloud Infrastructure Configuration
   oci:
+    tenancy: "${oci_tenancy}"
     region: "${oci_region}"
 
   # -- Oracle Autonomous Database Configuration
