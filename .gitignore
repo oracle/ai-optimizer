@@ -46,6 +46,7 @@ __pycache__/
 **/.terraform*
 **/terraform.tfstate*
 opentofu/**/generated/*.*
+opentofu/**/generated/kubeconfig
 
 ##############################################################################
 # Helm
