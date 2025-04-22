@@ -10,4 +10,4 @@ appVersion: "0.1.0"
 maintainers:
   - name: Oracle
     email: obaas_ww@oracle.com
-    url: https://github.com/oracle-samples/ai-explorer
+    url: https://github.com/oracle-samples/ai-optimizer

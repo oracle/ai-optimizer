@@ -2,7 +2,7 @@
 title = " "
 menus = 'main'
 archetype = "home"
-description = './oai-explorer/docs'
+description = './ai-optimizer/docs'
 keywords = 'oracle optimizer toolkit microservices development genai rag'
 +++  
 

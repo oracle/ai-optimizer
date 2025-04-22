@@ -2,7 +2,7 @@
 
 ## Description
 
-This directory contains the documentation for the the [**Oracle AI Optimizer & Toolkit**](https://github.com/oracle-samples/ai-explorer).
+This directory contains the documentation for the the [**Oracle AI Optimizer & Toolkit**](https://github.com/oracle-samples/ai-optimizer).
 
 ## Getting Started - Documentation
 
@@ -25,4 +25,4 @@ From the `docs` directory:
 
 1. Start Hugo: `hugo serve`
 
-This will serve the documentation on `http://localhost:1313/ai-explorer/` for review.
+This will serve the documentation on `http://localhost:1313/ai-optimizer/` for review.
