@@ -80,7 +80,7 @@ class LanguageModelParameters(BaseModel):
     presence_penalty: Optional[float] = Field(description=help_text.help_dict["presence_penalty"], default=0.00)
     temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=1.00)
     top_p: Optional[float] = Field(description=help_text.help_dict["top_p"], default=1.00)
-    streaming: Optional[bool] = Field(description="Enable Streaming (set by client)", default=False)
+    stream: Optional[bool] = Field(description="Enable Streaming (set by client)", default=False)
 
 
 class EmbeddingModelParameters(BaseModel):
@@ -169,7 +169,7 @@ class RagSettings(DatabaseVectorStorage):
     """Store RAG Settings incl Vector Storage"""
 
     rag_enabled: bool = Field(default=False, description="RAG Enabled")
-    grading: bool = Field(default=True, description="Grade RAG Results")
+    grading: bool = Field(default=False, description="Grade RAG Results")
     search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
         default="Similarity", description="Search Type"
     )
@@ -257,6 +257,7 @@ class ChatResponse(BaseModel):
     usage: Optional[ChatUsage] = Field(default=None, description="Usage statistics for the completion request.")
 
 
+
 class ChatRequest(LanguageModelParameters):
     """
     Request Body (inherits LanguageModelParameters)
@@ -265,6 +266,7 @@ class ChatRequest(LanguageModelParameters):
 
     model: Optional[str] = Field(default=None, description="The model to use for chat completions.")
     messages: list[ChatMessage] = Field(description="A list of messages comprising the conversation so far.")
+
 
     ### Example Request (will display in docs)
     model_config = {
@@ -279,6 +281,7 @@ class ChatRequest(LanguageModelParameters):
                     "top_p": 1,
                     "frequency_penalty": 0,
                     "presence_penalty": 0,
+                    "stream": True
                 }
             ]
         }

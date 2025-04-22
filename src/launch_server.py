@@ -7,6 +7,14 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import os
 
+from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi import Request
+from fastapi.exception_handlers import request_validation_exception_handler
+
+
 # Set OS Environment (Don't move their position to reflect on imports)
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 os.environ["GSK_DISABLE_SENTRY"] = "true"
@@ -143,6 +151,7 @@ def verify_key(
 #############################################################################
 # APP FACTORY
 #############################################################################
+from fastapi.middleware.cors import CORSMiddleware
 def create_app() -> FastAPI:
     """Create and configure the FastAPI app."""
     app = FastAPI(
@@ -154,15 +163,20 @@ def create_app() -> FastAPI:
             "url": "http://oss.oracle.com/licenses/upl",
         },
     )
-
+    # Add CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Replace with specific domains for production
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     noauth = APIRouter()
     auth = APIRouter(dependencies=[Depends(verify_key)])
-
     # Register Endpoints
     register_endpoints(noauth, auth)
     app.include_router(noauth)
     app.include_router(auth)
-
     return app
 
 
@@ -171,4 +185,32 @@ if __name__ == "__main__":
     logger.info("API Server Using port: %i", PORT)
 
     app = create_app()
+
+    @app.middleware("http")
+    async def log_request_body(request: Request, call_next):
+        body = await request.body()
+        logger.info(f"Raw Request Body: {body.decode('utf-8')}")
+        response = await call_next(request)
+        return response
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+   
+        logger.warning("EXCEPTION: %s - URL: %s", exc.detail, request.url)
+        logger.warning("----- Incoming Request -----")
+        logger.warning("URL: %s", request.url)
+        logger.warning("Method: %s", request.method)
+        logger.warning("Headers: %s", dict(request.headers))
+        logger.warning("Query params: %s", dict(request.query_params))
+        logger.warning("Body: %s", request.body)
+        logger.warning("HEADER: %s", request.headers)
+        logger.warning("----------------------------")
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        logger.info(f"Validation error for request at {request.url}:\n{exc.errors()}")
+        logger.info(f"Request body was: {await request.body()}")
+        return await request_validation_exception_handler(request, exc)
+    
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
