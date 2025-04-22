@@ -30,11 +30,9 @@ output "kubeconfig_cmd" {
 output "k8s_manifest" {
   description = "Kubernetes Manifest"
   value       = var.infrastructure == "Kubernetes" ? module.kubernetes[0].k8s_manifest : "N/A"
-  sensitive   = true
 }
 
 output "helm_values" {
   description = "Helm Values"
   value       = var.infrastructure == "Kubernetes" ? module.kubernetes[0].helm_values : "N/A"
-  sensitive   = true
 }

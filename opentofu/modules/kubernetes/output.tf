@@ -21,7 +21,7 @@ output "server_repository" {
 }
 
 output "k8s_manifest" {
-  value = local.k8s_manifest
+  value = nonsensitive(local.k8s_manifest)
 }
 
 output "helm_values" {

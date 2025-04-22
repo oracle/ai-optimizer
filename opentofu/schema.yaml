@@ -334,9 +334,7 @@ outputs:
   k8s_manifest:
     title: "Kubernetes Manifest"
     type: string
-    sensitive: true
 
   helm_values:
     title: "Helm Values"
     type: string
-    sensitive: true

@@ -51,7 +51,7 @@ variable "private_key_path" {
 
 variable "source_repository" {
   description = "Code that will pulled onto compute; ensure correct branch/tag."
-  default     = "https://github.com/oracle-samples/ai-explorer/archive/refs/heads/IaC"
+  default     = "https://github.com/oracle-samples/ai-explorer/archive/refs/heads/main"
 }
 
 // Infrastructure Type/Label
