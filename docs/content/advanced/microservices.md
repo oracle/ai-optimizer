@@ -14,7 +14,7 @@ The {{< full_app_ref >}} was specifically designed to run on infrastructure supp
 
 ## Oracle Kubernetes Engine
 
-The following example shows running the {{< short_app_ref >}} in [Oracle Kubernetes Engine](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm) (**OKE**).  The Infrastructure as Code (**IaC**) provided in the source [opentofu](https://github.com/oracle-samples/ai-explorer/tree/main/opentofu) directory was used to provision the infrastructure in Oracle Cloud Infrastructure (**OCI**).
+The following example shows running the {{< short_app_ref >}} in [Oracle Kubernetes Engine](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm) (**OKE**).  The Infrastructure as Code (**IaC**) provided in the source [opentofu](https://github.com/oracle-samples/ai-optimizer/tree/main/opentofu) directory was used to provision the infrastructure in Oracle Cloud Infrastructure (**OCI**).
 
 ![OCI OKE](../images/infra_oci.png)
 
@@ -28,9 +28,9 @@ You will need to build the {{< short_app_ref >}} container images and stage them
 
     From the code source `src/` directory:
     ```bash
-    podman build --arch amd64 -f client/Dockerfile -t ai-explorer-client:latest .
+    podman build --arch amd64 -f client/Dockerfile -t ai-optimizer-client:latest .
 
-    podman build --arch amd64 -f server/Dockerfile -t ai-explorer-server:latest .
+    podman build --arch amd64 -f server/Dockerfile -t ai-optimizer-server:latest .
     ```
 
 1. Log into your container registry:
@@ -54,10 +54,10 @@ You will need to build the {{< short_app_ref >}} container images and stage them
 
     Example (the values for `<server_repository>` and `<server_repository>` are provided from the **IaC**):
     ```bash
-    podman tag ai-explorer-client:latest <client_repository>:latest
+    podman tag ai-optimizer-client:latest <client_repository>:latest
     podman push <client_repository>:latest
 
-    podman tag ai-explorer-server:latest <server_repository>:latest
+    podman tag ai-optimizer-server:latest <server_repository>:latest
     podman push <server_repository>:latest
     ```
 
@@ -90,11 +90,11 @@ These will be output as part of the **IaC** but can be removed from the code if 
     kind: IngressClassParameters
     metadata:
       name: native-ic-params
-      namespace: ai-explorer
+      namespace: ai-optimizer
     spec:
       compartmentId: <compartment_ocid>
       subnetId: <lb_subnet_ocid>
-      loadBalancerName: "ai-explorer-lb"
+      loadBalancerName: "ai-optimizer-lb"
       reservedPublicAddressId: <lb_reserved_ip_ocid>
       isPrivate: false
       maxBandwidthMbps: 1250
@@ -123,14 +123,14 @@ These will be output as part of the **IaC** but can be removed from the code if 
 ### The {{< short_app_ref >}}
 
 The {{< short_app_ref >}} can be deployed using the [Helm](https://helm.sh/) chart provided with the source:
-[{{< short_app_ref >}} Helm Chart](https://github.com/oracle-samples/ai-explorer/tree/main/helm).  A list of all values can be found in [values_summary.md](https://github.com/oracle-samples/ai-explorer/tree/main/helm/values_summary.md).
+[{{< short_app_ref >}} Helm Chart](https://github.com/oracle-samples/ai-optimizer/tree/main/helm).  A list of all values can be found in [values_summary.md](https://github.com/oracle-samples/ai-optimizer/tree/main/helm/values_summary.md).
 
 If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama and enable a Large Language and Embedding Model out-of-the-box.
 
-1. Create the `ai-explorer` namespace:
+1. Create the `ai-optimizer` namespace:
     
     ```bash
-    kubectl create namespace ai-explorer
+    kubectl create namespace ai-optimizer
     ```
 
 1. Create a secret to hold the API Key:
@@ -138,7 +138,7 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
     ```bash
     kubectl create secret generic api-key \
       --from-literal=apiKey=$(openssl rand -hex 32) \
-      --namespace=ai-explorer
+      --namespace=ai-optimizer
     ```
 
 1. Create a secret to hold the Database Authentication:
@@ -153,7 +153,7 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
       --from-literal=username='ADMIN' \
       --from-literal=password='<adb_password>' \
       --from-literal=service='<adb_service>' \
-      --namespace=ai-explorer
+      --namespace=ai-optimizer
     ```
 
     These will be output as part of the **IaC**.
@@ -249,8 +249,8 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
 
     ```bash
     helm upgrade \
-      --install ai-explorer . \
-      --namespace ai-explorer \
+      --install ai-optimizer . \
+      --namespace ai-optimizer \
       -f values.yaml
     ```
 
@@ -261,11 +261,11 @@ To remove the {{< short_app_ref >}} from the OKE Cluster:
 1. Uninstall the Helm Chart:
 
     ```bash
-    helm uninstall ai-explorer -n ai-explorer
+    helm uninstall ai-optimizer -n ai-optimizer
     ```
 
-1. Delete the `ai-explorer` namespace:
+1. Delete the `ai-optimizer` namespace:
 
     ```bash
-    kubectl delete namespace ai-explorer
+    kubectl delete namespace ai-optimizer
     ```

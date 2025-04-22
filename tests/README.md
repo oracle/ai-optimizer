@@ -1,7 +1,7 @@
-# AI Explorer for Apps Tests
+# AI Optimizer for Apps Tests
 <!-- spell-checker:ignore streamlit, venv, setuptools, pytest -->
 
-This directory contains Tests for the AI Explorer for Apps.  Tests are automatically
+This directory contains Tests for the AI Optimizer for Apps.  Tests are automatically
 run as part of opening a new Pull Requests.  All tests must pass to enable merging.
 
 ## Installing Test Dependencies
@@ -52,7 +52,7 @@ pytest tests/client -v [--log-cli-level=DEBUG]
 ```
 
 These tests verify the functionality of the Streamlit app by establishing:
-- A real AI Explorer API server 
+- A real AI Optimizer API server 
 - A Docker container used for database tests
 
 ## Test Structure

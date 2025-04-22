@@ -1,26 +1,26 @@
-# Oracle AI Explorer for Apps
+# Oracle AI Optimizer and Toolkit
 
 <!-- spell-checker:ignore streamlit, venv, setuptools -->
 
-🚧 The **AI Explorer** is currently in *Beta*
+🚧 The **AI Optimizer** is currently in *Beta*
 
 ## Description
 
-The **Oracle AI Explorer for Apps** (the **AI Explorer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle Database 23ai** AI Vector Search, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle Database 23ai** AI Vector Search, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
 
-## AI Explorer Features
+## AI Optimizer Features
 
-- [Configuring Embedding and Chat Models](https://oracle-samples.github.io/ai-explorer/client/configuration/model_config)
-- [Splitting and Embedding Documentation](https://oracle-samples.github.io/ai-explorer/client/tools/split_embed)
-- [Modifying System Prompts (Prompt Engineering)](https://oracle-samples.github.io/ai-explorer/client/tools/prompt_eng)
-- [Experimenting with **LLM** Parameters](https://oracle-samples.github.io/ai-explorer/client/chatbot)
-- [Testbed for auto-generated or existing Q&A datasets](https://oracle-samples.github.io/ai-explorer/client/testbed)
+- [Configuring Embedding and Chat Models](https://oracle-samples.github.io/ai-optimizer/client/configuration/model_config)
+- [Splitting and Embedding Documentation](https://oracle-samples.github.io/ai-optimizer/client/tools/split_embed)
+- [Modifying System Prompts (Prompt Engineering)](https://oracle-samples.github.io/ai-optimizer/client/tools/prompt_eng)
+- [Experimenting with **LLM** Parameters](https://oracle-samples.github.io/ai-optimizer/client/chatbot)
+- [Testbed for auto-generated or existing Q&A datasets](https://oracle-samples.github.io/ai-optimizer/client/testbed)
 
 ## Getting Started
 
-The **AI Explorer** is available to install in your own environment, which may be a developer's desktop, on-premises data center environment, or a cloud provider. It can be run either on bare-metal, within a container, or in a Kubernetes Cluster.
+The **AI Optimizer** is available to install in your own environment, which may be a developer's desktop, on-premises data center environment, or a cloud provider. It can be run either on bare-metal, within a container, or in a Kubernetes Cluster.
 
-For more information, including more details on **Setup and Configuration** please visit the [documentation](https://oracle-samples.github.io/ai-explorer).
+For more information, including more details on **Setup and Configuration** please visit the [documentation](https://oracle-samples.github.io/ai-optimizer).
 
 ### Prerequisites
 
@@ -31,11 +31,11 @@ For more information, including more details on **Setup and Configuration** plea
   - API Keys for Third-Party Models
   - On-Premises Models<sub>\*</sub>
 
-<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [Infrastructure](https://oracle-samples.github.io/ai-explorer/infrastructure) documentation.</sub>
+<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [Infrastructure](https://oracle-samples.github.io/ai-optimizer/infrastructure) documentation.</sub>
 
 #### Bare-Metal Installation
 
-To run the application on bare-metal; download the [source](https://github.com/oracle-samples/ai-explorer) and from `src/`:
+To run the application on bare-metal; download the [source](https://github.com/oracle-samples/ai-optimizer) and from `src/`:
 
 1. Create and activate a Python Virtual Environment:
 
@@ -61,11 +61,11 @@ To run the application on bare-metal; download the [source](https://github.com/o
 
 1. Navigate to `http://localhost:8501`.
 
-1. [Configure](https://oracle-samples.github.io/ai-explorer/client/configuration) the **Explorer**.
+1. [Configure](https://oracle-samples.github.io/ai-optimizer/client/configuration) the **AI Optimizer**.
 
 #### Container Installation
 
-To run the application in a container; download the [source](https://github.com/oracle-samples/ai-explorer):
+To run the application in a container; download the [source](https://github.com/oracle-samples/ai-optimizer):
 
 1. Build the all-in-one image.
 
@@ -73,18 +73,23 @@ To run the application in a container; download the [source](https://github.com/
 
    ```bash
    cd src/
-   podman build -t ai-explorer-aio .
+   podman build -t ai-optimizer-aio .
    ```
 
 1. Start the Container:
 
    ```bash
-   podman run -p 8501:8501 -it --rm ai-explorer-aio
+   podman run -p 8501:8501 -it --rm ai-optimizer-aio
    ```
 
 1. Navigate to `http://localhost:8501`.
 
-1. [Configure](https://oracle-samples.github.io/ai-explorer/client/configuration/index.html) the **Explorer**.
+1. [Configure](https://oracle-samples.github.io/ai-optimizer/client/configuration/index.html) the **AI Optimizer**.
+
+##### Got OCI?
+The **AI Optimizer** can be deployed with an Oracle Autonomous Database 23ai using infrastructure as code.  Deploy the **AI Optimizer** in Oracle Cloud Infrastructure using OCI Resource Manager:
+
+[![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
 
 ## Contributing
 
@@ -100,3 +105,7 @@ Copyright (c) 2024 Oracle and/or its affiliates.
 Released under the Universal Permissive License v1.0 as shown at [https://oss.oracle.com/licenses/upl/](https://oss.oracle.com/licenses/upl/)
 
 See [LICENSE](./LICENSE.txt) for more details.
+
+
+[magic_button]: https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg
+[magic_arch_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle-samples/ai-optimizer/releases/download/v0.0.1/ai-optimizer-stack.zip

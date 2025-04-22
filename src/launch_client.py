@@ -37,12 +37,12 @@ except ImportError as ex:
 def main() -> None:
     """Streamlit GUI"""
     st.set_page_config(
-        page_title="Oracle AI Explorer for Apps",
+        page_title="Oracle AI Optimizer and Toolkit",
         layout="wide",
         initial_sidebar_state="expanded",
         menu_items={
-            "Get Help": "https://oracle-samples.github.io/ai-explorer/",
-            "Report a bug": "https://github.com/oracle-samples/ai-explorer/issues/new",
+            "Get Help": "https://oracle-samples.github.io/ai-optimizer/",
+            "Report a bug": "https://github.com/oracle-samples/ai-optimizer/issues/new",
         },
     )
     st.html(

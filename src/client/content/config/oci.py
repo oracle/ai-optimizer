@@ -66,6 +66,8 @@ def patch_oci(
         or not state.oci_config[auth_profile]["namespace"]
     ):
         try:
+            if security_token_file:
+                state.oci_config[auth_profile]["authentication"] = "security_token"
             api_call.patch(
                 endpoint=f"v1/oci/{auth_profile}",
                 payload={
@@ -76,6 +78,7 @@ def patch_oci(
                         "region": region,
                         "key_file": key_file,
                         "security_token_file": security_token_file,
+                        "authentication": state.oci_config[auth_profile]["authentication"]
                     }
                 },
             )

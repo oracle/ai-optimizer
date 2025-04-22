@@ -176,7 +176,7 @@ class AIController {
 				""";
 		
 		//This template doesn't work with agent pattern, but only via RAG 
-		//The contextInstr coming from AI Explorer can't be used here: default only
+		//The contextInstr coming from AI Optimizer can't be used here: default only
 		template = template + "\n" + default_Instr;
 
 		List<Document> similarDocuments = this.vectorStore.similaritySearch(

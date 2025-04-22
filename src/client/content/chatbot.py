@@ -31,7 +31,7 @@ def show_rag_refs(context):
     ref_src = set()
     ref_cols = st.columns([3, 3, 3])
     # Create a button in each column
-    for i, ref_col in enumerate(ref_cols):
+    for i, (ref_col, chunk) in enumerate(zip(ref_cols, context[0])):
         with ref_col.popover(f"Reference: {i + 1}"):
             chunk = context[0][i]
             logger.debug("Chunk Content: %s", chunk)           

@@ -1,12 +1,12 @@
-# Oracle AI Explorer for Apps - Documentation
+# Oracle AI Optimizer & Toolkit - Documentation
 
 ## Description
 
-This directory contains the documentation for the the [**Oracle AI Explorer for Apps**](https://github.com/oracle-samples/ai-explorer).
+This directory contains the documentation for the the [**Oracle AI Optimizer & Toolkit**](https://github.com/oracle-samples/ai-optimizer).
 
 ## Getting Started - Documentation
 
-The **Oracle AI Explorer for Apps** documentation is powered by [Hugo](https://gohugo.io/) using the [Relearn](https://github.com/McShelby/hugo-theme-relearn) theme.
+The **Oracle AI Optimizer & Toolkit** documentation is powered by [Hugo](https://gohugo.io/) using the [Relearn](https://github.com/McShelby/hugo-theme-relearn) theme.
 
 To contribute to the documentation, install [Hugo](https://gohugo.io/installation/). Installation instructions vary per Operating System.
 
@@ -25,4 +25,4 @@ From the `docs` directory:
 
 1. Start Hugo: `hugo serve`
 
-This will serve the documentation on `http://localhost:1313/ai-explorer/` for review.
+This will serve the documentation on `http://localhost:1313/ai-optimizer/` for review.

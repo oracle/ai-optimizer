@@ -314,7 +314,7 @@ def populate_vs(
         embedding_function=embed_client,
         table_name=vector_store_tmp.vector_store,
         distance_strategy=vector_store.distance_metric,
-        query="AI Explorer for Apps - Powered by Oracle",
+        query="AI Optimizer for Apps - Powered by Oracle",
     )
 
     # Batch Size does not have a measurable impact on performance
@@ -343,7 +343,7 @@ def populate_vs(
         embedding_function=embed_client,
         table_name=vector_store.vector_store,
         distance_strategy=vector_store.distance_metric,
-        query="AI Explorer for Apps - Powered by Oracle",
+        query="AI Optimizer for Apps - Powered by Oracle",
     )
     vector_store_idx = f"{vector_store.vector_store}_IDX"
     if vector_store.index_type == "HNSW":

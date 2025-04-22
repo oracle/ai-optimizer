@@ -11,7 +11,7 @@ import os
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 os.environ["GSK_DISABLE_SENTRY"] = "true"
 os.environ["GSK_DISABLE_ANALYTICS"] = "true"
-os.environ["USER_AGENT"] = "ai-explorer"
+os.environ["USER_AGENT"] = "ai-optimizer"
 app_home = os.path.dirname(os.path.abspath(__file__))
 if "TNS_ADMIN" not in os.environ:
     os.environ["TNS_ADMIN"] = os.path.join(app_home, "tns_admin")
@@ -43,7 +43,7 @@ logger = logging_config.logging.getLogger("launch_server")
 ##########################################
 def start_server(port: int = 8000) -> int:
     """Start the uvicorn server for FastAPI"""
-    logger.info("Starting Oracle AI Explorer for Apps")
+    logger.info("Starting Oracle AI Optimizer and Toolkit")
 
     def find_available_port() -> int:
         """If port 8000 is not available, find another open one"""
@@ -146,7 +146,7 @@ def verify_key(
 def create_app() -> FastAPI:
     """Create and configure the FastAPI app."""
     app = FastAPI(
-        title="Oracle AI Explorer for Apps",
+        title="Oracle AI Optimizer and Toolkit",
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
         license_info={

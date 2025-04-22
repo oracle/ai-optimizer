@@ -2,7 +2,7 @@
 
 <!-- spell-checker:ignore streamlit, venv -->
 
-In the **Split/Embed** tab, the AI Explorer allows you to upload various types of documents and transform their content into vector embeddings in a format that is interpretable by LLMs.
+In the **Split/Embed** tab, the AI Optimizer allows you to upload various types of documents and transform their content into vector embeddings in a format that is interpretable by LLMs.
 
 ![split-embed-interface](images/split-embed.png)
 
@@ -48,6 +48,6 @@ In this case, we will get a smaller number of chunks, since the model supports a
 
 ![text-embedding-3-small](images/text-embedding-3-small.png)
 
-You can now navigate to the Database tab in the AI Explorer to see the list of all the vector stores that have been created. If needed, you can easily delete them with a single click.
+You can now navigate to the Database tab in the AI Optimizer to see the list of all the vector stores that have been created. If needed, you can easily delete them with a single click.
 
 ![database-vector-store-list](images/database-vector-store-list.png)

@@ -4,4 +4,4 @@
 # --Global Configuration
 global:
   api:
-    secretName: "explorer-api-keys"
+    secretName: "optimizer-api-keys"
