@@ -131,7 +131,7 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
 1. Download and Unzip the latest version of the {{< short_app_ref >}}:
 
    ```bash
-   curl -L -o ai-optimizer.tar.gz https://github.com/oracle-samples/ai-explorer/archive/refs/heads/main.tar.gz
+   curl -L -o ai-optimizer.tar.gz https://github.com/oracle-samples/ai-optimizer/archive/refs/heads/main.tar.gz
    mkdir ai-optimizer
    tar zxf ai-optimizer.tar.gz --strip-components=1 -C ai-optimizer
    ```

@@ -49,7 +49,7 @@ For OpenAI you need the OPENAI_API_KEY to authenticate and use their services.
 ### 1.2 Clone the right branch
 * Make sure to clone the branch `cdb`. Proceed in this way:
 ```bash
-git clone --branch cdb --single-branch https://github.com/oracle-samples/ai-explorer.git
+git clone --branch cdb --single-branch https://github.com/oracle-samples/ai-optimizer.git
 ```
 
 ### 1.3 Install requirements:

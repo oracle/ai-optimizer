@@ -4,10 +4,10 @@
 
 title: "Oracle AI Optimizer and Toolkit"
 description: "Explore the capabilities of AI with the Oracle Database."
-informationalText: "https://oracle-samples.github.io/ai-explorer/"
+informationalText: "https://oracle-samples.github.io/ai-optimizer/"
 schemaVersion: 1.1.0
 version: "20190304"
-logoUrl: https://github.com/oracle-samples/ai-explorer/blob/main/src/client/media/logo_130_130.png
+logoUrl: https://github.com/oracle-samples/ai-optimizer/blob/main/src/client/media/logo_130_130.png
 locale: "en"
 
 variableGroups:
