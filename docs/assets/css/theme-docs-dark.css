@@ -56,3 +56,7 @@ div.box, div.box code .copy-to-clipboard {
     float:right;
     margin-left: 1em;
 }
+
+#R-logo .powered-by {
+    font-family: "MontserratAlt1-Light",sans-serif
+}

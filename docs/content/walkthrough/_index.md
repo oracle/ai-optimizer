@@ -131,22 +131,22 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
 1. Download and Unzip the latest version of the {{< short_app_ref >}}:
 
    ```bash
-   curl -L -o ai-explorer.tar.gz https://github.com/oracle-samples/ai-explorer/archive/refs/heads/main.tar.gz
-   mkdir ai-explorer
-   tar zxf ai-explorer.tar.gz --strip-components=1 -C ai-explorer
+   curl -L -o ai-optimizer.tar.gz https://github.com/oracle-samples/ai-explorer/archive/refs/heads/main.tar.gz
+   mkdir ai-optimizer
+   tar zxf ai-optimizer.tar.gz --strip-components=1 -C ai-optimizer
    ```
 
 1. Build the Container Image
 
    ```bash
-   cd ai-explorer-client/src
-   podman build --arch amd64 -t localhost/ai-explorer-aio:latest .
+   cd ai-optimizer-client/src
+   podman build --arch amd64 -t localhost/ai-optimizer-aio:latest .
    ```
 
 1. Start the {{< short_app_ref >}}:
 
    ```bash
-   podman run -d --name ai-explorer-aio --network=host localhost/ai-explorer-aio:latest
+   podman run -d --name ai-optimizer-aio --network=host localhost/ai-optimizer-aio:latest
    ```
 
    Operating System specific instructions:
@@ -177,13 +177,13 @@ To start Oracle Database 23ai Free:
 1. Start the container:
 
    ```bash
-   podman run -d --name ai-explorer-db -p 1521:1521 container-registry.oracle.com/database/free:latest
+   podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest
    ```
 
 1. Alter the `vector_memory_size` parameter and create a [new database user](../client/configuration/db_config#database-user):
 
    ```bash
-   podman exec -it ai-explorer-db sqlplus '/ as sysdba'
+   podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
    ```
 
    ```sql
@@ -191,7 +191,7 @@ To start Oracle Database 23ai Free:
 
    alter session set container=FREEPDB1;
 
-   CREATE USER "WALKTHROUGH" IDENTIFIED BY OrA_41_EXPLORER
+   CREATE USER "WALKTHROUGH" IDENTIFIED BY OrA_41_OpTIMIZER
        DEFAULT TABLESPACE "USERS"
        TEMPORARY TABLESPACE "TEMP";
    GRANT "DB_DEVELOPER_ROLE" TO "WALKTHROUGH";
@@ -203,7 +203,7 @@ To start Oracle Database 23ai Free:
 1. Bounce the database for the `vector_memory_size` to take effect:
 
    ```bash
-   podman container restart ai-explorer-db
+   podman container restart ai-optimizer-db
    ```
 
 ## Configuration
@@ -253,7 +253,7 @@ To configure the On-Premises Embedding Model, navigate back to the _Configuratio
 To configure Oracle Database 23ai Free, navigate to the _Configuration -> Database_ screen:
 
 1. Enter the Database Username: `WALKTHROUGH`
-1. Enter the Database Password for the database user: `OrA_41_EXPLORER`
+1. Enter the Database Password for the database user: `OrA_41_OpTIMIZER`
 1. Enter the Database Connection String: `//localhost:1521/FREEPDB1`
 1. Save
 
@@ -284,7 +284,7 @@ Depending on the infrastructure, the embedding process can take a few minutes. A
 ![Split and Embed](images/split_embed_web.png)
 
 {{% notice style="code" title="Thumb Twiddling" icon="circle-info" %}}
-You can watch the progress of the embedding by streaming the logs: `podman logs -f ai-explorer-aio`
+You can watch the progress of the embedding by streaming the logs: `podman logs -f ai-optimizer-aio`
 
 Chunks are processed in batches. Wait until the logs output: `POST Response: <Response [200]>` before continuing.
 {{% /notice %}}
@@ -298,7 +298,7 @@ From the command line:
 1. Connect to the Oracle Database 23ai Database:
 
    ```bash
-   podman exec -it ai-explorer-db sqlplus 'WALKTHROUGH/OrA_41_EXPLORER@FREEPDB1'
+   podman exec -it ai-optimizer-db sqlplus 'WALKTHROUGH/OrA_41_OpTIMIZER@FREEPDB1'
    ```
 
 1. Query the Vector Store:
@@ -359,7 +359,7 @@ To take your experiments to the next level, consider exploring these additional 
 To cleanup the walkthrough "Infrastructure", stop and remove the containers.
 
 ```bash
-podman container rm ai-explorer-db --force
-podman container rm ai-explorer-aio --force
+podman container rm ai-optimizer-db --force
+podman container rm ai-optimizer-aio --force
 podman container rm ollama --force
 ```

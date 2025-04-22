@@ -3,7 +3,7 @@
 #############################################################
 # Base - Web GUI
 # Build from the app/ directory:
-#  podman build -f client/Dockerfile -t ai-explorer-client:0.1.0 .
+#  podman build -f client/Dockerfile -t ai-optimizer-client:0.1.0 .
 #############################################################
 FROM container-registry.oracle.com/os/oraclelinux:8-slim AS client_pyenv
 

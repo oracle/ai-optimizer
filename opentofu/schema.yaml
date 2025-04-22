@@ -1,12 +1,13 @@
 # Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
-# spell-checker: disable
+# spell-checker: ignore ocid ecpu
 
-title: "Oracle AI Explorer for Apps"
+title: "Oracle AI Optimizer and Toolkit"
 description: "Explore the capabilities of AI with the Oracle Database."
+informationalText: "https://oracle-samples.github.io/ai-explorer/"
 schemaVersion: 1.1.0
 version: "20190304"
-logoUrl: https://github.com/oracle-samples/ai-explorer/blob/main/docs/static/images/logo.png
+logoUrl: https://github.com/oracle-samples/ai-explorer/blob/main/src/client/media/logo_130_130.png
 locale: "en"
 
 variableGroups:
@@ -28,18 +29,57 @@ variableGroups:
     variables:
       - adb_version
       - k8s_version
-      - k8s_worker_os_ver
-      - service_lb_allowed_app_client_port
-      - service_lb_allowed_app_server_port
+      - source_repository
+      - compute_gpu_shape
+      - compute_os_ver
     visible: false
 
   #########################################################################
-  # General (Backend as a Service)
+  # General
   #########################################################################
-  - title: "AI Explorer"
+  - title: "AI Optimizer"
     variables:
       - compartment_ocid
       - label_prefix
+      - infrastructure
+    visible: true
+
+    #########################################################################
+    # Infrastructure - Kubernetes
+    #########################################################################
+  - title: "Kubernetes Infrastructure Options"
+    variables:
+      - k8s_api_is_public
+      - k8s_api_endpoint_allowed_cidrs
+      - k8s_cpu_node_pool_size
+      - compute_cpu_ocpu
+      - compute_cpu_shape
+      - k8s_node_pool_gpu_deploy
+      - k8s_gpu_node_pool_size
+      - compute_gpu_shape
+    visible:
+      eq:
+        - infrastructure
+        - "Kubernetes"
+
+  - title: "Virtual Machine Infrastructure Options"
+    variables:
+      - compute_cpu_ocpu
+      - compute_cpu_shape
+    visible:
+      eq:
+        - infrastructure
+        - "VM"
+
+  #########################################################################
+  # Load Balancer
+  #########################################################################
+  - title: "Load Balancers Options"
+    variables:
+      - lb_min_shape
+      - lb_max_shape
+      - client_allowed_cidrs
+      - server_allowed_cidrs
     visible: true
 
   #########################################################################
@@ -56,34 +96,6 @@ variableGroups:
       - adb_is_storage_auto_scaling_enabled
     visible: true
 
-  #########################################################################
-  # Kubernetes Cluster
-  #########################################################################
-  - title: "Kubernetes Cluster Options"
-    variables:
-      - k8s_api_is_public
-      - k8s_api_endpoint_allowed_cidrs
-      - k8s_node_pool_cpu_size
-      - k8s_worker_cpu_shape
-      - k8s_worker_cpu_ocpu
-      - k8s_node_pool_gpu_deploy
-      - k8s_node_pool_gpu_size
-      - k8s_worker_gpu_shape
-    visible: true
-
-  #########################################################################
-  # Load Balancer
-  #########################################################################
-  - title: "Load Balancers Options"
-    variables:
-      - service_lb_is_public
-      - service_lb_min_shape
-      - service_lb_max_shape
-      - service_lb_allowed_app_client_cidrs
-      - service_lb_allowed_app_server_cidrs
-
-    visible: true
-
 ###########################################################################
 variables:
   compartment_ocid:
@@ -96,6 +108,107 @@ variables:
     title: "Application Name"
     pattern: "^$|^[a-zA-Z0-9]{1,12}$"
     required: false
+
+  infrastructure:
+    type: enum
+    title: "Infrastructure to Deploy"
+    required: true
+    default: "Kubernetes"
+    enum:
+      - "Kubernetes"
+      - "VM"
+
+  #########################################################################
+  k8s_api_is_public:
+    type: boolean
+    title: "Public API Endpoint?"
+    required: true
+
+  k8s_api_endpoint_allowed_cidrs:
+    type: array
+    title: "API Endpoint Access Control"
+    required: true
+    default: "0.0.0.0/0"
+    pattern: "$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
+    visible: k8s_api_is_public
+
+  k8s_cpu_node_pool_size:
+    type: integer
+    title: "CPU Node Pool Workers"
+    required: true
+    minimum: 1
+    maximum: 80
+    multipleOf: 1
+
+  compute_cpu_shape:
+    type: enum
+    title: "CPU Node Pool Worker Shape"
+    required: true
+    enum:
+      - "VM.Standard.E5.Flex"
+      - "VM.Standard.E4.Flex"
+
+  compute_cpu_ocpu:
+    type: integer
+    title: "CPU Worker Core Count"
+    required: true
+    minimum: 1
+    maximum: 64
+    multipleOf: 1
+
+  k8s_node_pool_gpu_deploy:
+    type: boolean
+    title: "Deploy GPU Node Pool?"
+    required: true
+
+  compute_gpu_shape:
+    type: enum
+    title: "Node Pool Worker Shape"
+    required: true
+    default: "VM.GPU.A10.1"
+    enum:
+      - "VM.GPU.A10.1"
+    visible: k8s_node_pool_gpu_deploy
+
+  k8s_gpu_node_pool_size:
+    type: integer
+    title: "GPU Node Pool Workers"
+    required: true
+    minimum: 1
+    maximum: 80
+    multipleOf: 1
+    visible: k8s_node_pool_gpu_deploy
+
+  #########################################################################
+  lb_min_shape:
+    type: integer
+    title: "Minimum Load Balancer Bandwidth (Mbps)"
+    required: true
+    minimum: 10
+    maximum: 10
+    multipleOf: 10
+
+  lb_max_shape:
+    type: integer
+    title: "Maximum Load Balancer Bandwidth (Mbps)"
+    required: true
+    minimum: 10
+    maximum: 8000
+    multipleOf: 10
+
+  client_allowed_cidrs:
+    type: array
+    title: "Access Control for Application GUI"
+    required: true
+    default: "0.0.0.0/0"
+    pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
+
+  server_allowed_cidrs:
+    type: array
+    title: "Access Control for Application API Server"
+    required: true
+    default: "0.0.0.0/0"
+    pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
 
   #########################################################################
   adb_license_model:
@@ -154,103 +267,74 @@ variables:
     title: "Allow Autonomous Database Storage Auto Scaling?"
     required: true
 
-  #########################################################################
-  k8s_api_is_public:
-    type: boolean
-    title: "Public API Endpoint?"
-    required: true
+###########################################################################
+# Output Groups
+###########################################################################
+outputGroups:
+  - title: "Access the AI Optimizer and Toolkit"
+    outputs:
+      - client_url
+      - server_url
+    visible: true
 
-  k8s_api_endpoint_allowed_cidrs:
-    type: array
-    title: "API Endpoint Access Control"
-    required: true
-    default: "0.0.0.0/0"
-    pattern: "$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
-    visible: k8s_api_is_public
+  - title: "Kubernetes KUBECONFIG command"
+    outputs:
+      - kubeconfig_cmd
+    visible:
+      eq:
+        - infrastructure
+        - "Kubernetes"
 
-  k8s_node_pool_cpu_size:
-    type: integer
-    title: "CPU Node Pool Workers"
-    required: true
-    minimum: 1
-    maximum: 80
-    multipleOf: 1
+  - title: "Container Image Repositories"
+    outputs:
+      - client_repository
+      - server_repository
+    visible:
+      eq:
+        - infrastructure
+        - "Kubernetes"
 
-  k8s_worker_cpu_shape:
-    type: enum
-    title: "CPU Node Pool Worker Shape"
-    required: true
-    enum:
-      - "VM.Standard.E5.Flex"
-      - "VM.Standard.E4.Flex"
+  - title: "Kubernetes Manifest"
+    outputs:
+      - k8s_manifest
+    visible:
+      eq:
+        - infrastructure
+        - "Kubernetes"
 
-  k8s_worker_cpu_ocpu:
-    type: integer
-    title: "CPU Worker Core Count"
-    required: true
-    minimum: 1
-    maximum: 64
-    multipleOf: 1
+  - title: "Helm Values"
+    outputs:
+      - helm_values
+    visible:
+      eq:
+        - infrastructure
+        - "Kubernetes"
+###########################################################################
+outputs:
+  client_url:
+    title: "Web GUI"
+    type: link
 
-  k8s_node_pool_gpu_deploy:
-    type: boolean
-    title: "Deploy GPU Node Pool?"
-    required: true
+  server_url:
+    title: "Server API"
+    type: link
 
-  k8s_worker_gpu_shape:
-    type: enum
-    title: "Node Pool Worker Shape"
-    required: true
-    default: "VM.GPU.A10.1"
-    enum:
-      - "VM.GPU.A10.1"
-    visible: k8s_node_pool_gpu_deploy
+  kubeconfig_cmd:
+    title: "KUBECONFIG command"
+    type: string
 
-  k8s_node_pool_gpu_size:
-    type: integer
-    title: "GPU Node Pool Workers"
-    required: true
-    minimum: 1
-    maximum: 80
-    multipleOf: 1
-    visible: k8s_node_pool_gpu_deploy
+  client_repository:
+    title: "Client Image Repository"
+    type: string
 
-  #########################################################################
-  service_lb_is_public:
-    type: boolean
-    title: "Enable Ingress through Public Load Balancer?"
-    default: true
+  server_repository:
+    title: "Server Image Repository"
+    type: string
 
-  service_lb_min_shape:
-    type: integer
-    title: "Minimum Load Balancer Bandwidth (Mbps)"
-    required: true
-    minimum: 10
-    maximum: 10
-    multipleOf: 10
-    visible: service_lb_is_public
+  k8s_manifest:
+    title: "Kubernetes Manifest"
+    type: string
 
-  service_lb_max_shape:
-    type: integer
-    title: "Maximum Load Balancer Bandwidth (Mbps)"
-    required: true
-    minimum: 10
-    maximum: 8000
-    multipleOf: 10
-    visible: service_lb_is_public
-
-  service_lb_allowed_app_client_cidrs:
-    type: array
-    title: "Public Load Balancer Access Control for GUI"
-    required: true
-    default: "0.0.0.0/0"
-    pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
-    visible: service_lb_is_public
-
-  service_lb_allowed_app_server_cidrs:
-    type: array
-    title: "Public Load Balancer Access Control for Application Server"
-    required: true
-    default: "0.0.0.0/0"
-    pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
-    visible: service_lb_is_public
+  helm_values:
+    title: "Helm Values"
+    type: string

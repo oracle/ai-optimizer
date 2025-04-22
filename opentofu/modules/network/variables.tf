@@ -10,7 +10,14 @@ variable "label_prefix" {
   type = string
 }
 
+variable "infra" {
+  type = string
+}
+
 variable "vcn_cidr" {
-  type    = string
-  default = "10.42.0.0/16"
+  type = map(any)
+  default = {
+    "VM"         = ["10.42.0.0/28"]
+    "Kubernetes" = ["10.42.0.0/16"]
+  }
 }

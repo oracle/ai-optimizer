@@ -3,7 +3,7 @@
 
 apiVersion: v2
 name: ollama
-description: A Helm chart Oracle AI Explorer for Apps - ollama
+description: A Helm chart Oracle AI Optimizer and Toolkit - ollama
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

@@ -3,7 +3,7 @@
 
 apiVersion: v2
 name: client
-description: A Helm chart Oracle AI Explorer for Apps - GUI
+description: A Helm chart Oracle AI Optimizer and Toolkit - GUI
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

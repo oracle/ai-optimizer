@@ -2,7 +2,7 @@
 
 ## 1. Installation
 ### 1.1 Set up macOS M*
-In this first step we are going to set up all the required components to run the AI Explorer for Apps. As pre-requisites install **docker**.
+In this first step we are going to set up all the required components to run the AI Optimizer for Apps. As pre-requisites install **docker**.
 
 #### 1.1.1 Containers runtime engine
 We begin by starting our container runtime engine. We will be using Colima here,
@@ -56,7 +56,7 @@ git clone --branch cdb --single-branch https://github.com/oracle-samples/ai-expl
 
 #### 1.3.1 Python version
 
-AI Explorer for Apps requires exactly Python 3.11, neither older nor newer.  If you are using a recent version of macOS,
+AI Optimizer for Apps requires exactly Python 3.11, neither older nor newer.  If you are using a recent version of macOS,
 you will need to install that version side by side with the builtin one.
 Install Python 3.11:
 
@@ -114,7 +114,7 @@ source .venv/bin/activate
 streamlit run launch_client.py --server.port 8502
 ```
 
-Set the same `<API_SERVER_KEY>` to be authorized on the AI Explorer.
+Set the same `<API_SERVER_KEY>` to be authorized on the AI Optimizer.
 
 * In a separate shell:
 
@@ -146,7 +146,7 @@ In the OCI configuration tab, you can add your Oracle Cloud Infrastructure (OCI)
 
 Detailed information on obtaining the required credentials is available in the [Oracle Cloud Infrastructure Documentation](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm#Required_Keys_and_OCIDs).
 
-If you have previously created a .oci/config file, the AI Explorer will automatically read this file at startup and load the credentials from the Default profile for authentication.
+If you have previously created a .oci/config file, the AI Optimizer will automatically read this file at startup and load the credentials from the Default profile for authentication.
 
 After entering your credentials, click the Save button. If the credentials are correct, a green confirmation pop-up will appear, indicating successful authentication to your tenancy.
 
@@ -301,7 +301,7 @@ Testbed helps you to massive test your chatbot, generating for you a Q&A test da
 ![testbed](./images/tesbed.png)
 
 #### Generate a Q&A Test dataset
-The platform allows to generate as many questions and answer you desire, based on a single document, that it's part of the knowledge base you have store as vector store with their own embeddings. Selecting the proper radio button you will access to the AI Explorer test dataset generation capabilities:
+The platform allows to generate as many questions and answer you desire, based on a single document, that it's part of the knowledge base you have store as vector store with their own embeddings. Selecting the proper radio button you will access to the AI Optimizer test dataset generation capabilities:
 
 ![generate](./images/generatenew.png)
 
@@ -388,7 +388,7 @@ The second part of the report provides details about each single questions submi
 
 ## 3. Export and run the chatbot as a Spring AI microservice
 
-The AI Explorer allows to export the chatbot defined as a ready-to-run microservice built in Java, Spring Boot and Spring AI framework, that will run independently by the AI Explorer, leveraging only the vector store table created, and the LLM servers used. In the current relase are supported only fully Ollama configuration (embeddings + chat model) or OpenAI.
+The AI Optimizer allows to export the chatbot defined as a ready-to-run microservice built in Java, Spring Boot and Spring AI framework, that will run independently by the AI Optimizer, leveraging only the vector store table created, and the LLM servers used. In the current relase are supported only fully Ollama configuration (embeddings + chat model) or OpenAI.
 
 ### 3.1 Pre-requisites
 To run the microservice exported you need:
@@ -465,7 +465,7 @@ Proceed as in the previous step, choosing in **Select Alias:** the **TEST2** vec
 
 
 ## 4. Backup Env
-All the AI Explorer server can be exported to save the configuration as backup and imported in another server.
+All the AI Optimizer server can be exported to save the configuration as backup and imported in another server.
 
 * Go to the left pane menu **Settings**:
 

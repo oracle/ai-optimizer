@@ -3,15 +3,16 @@
 # Project/User Specific
 ##############################################################################
 **/*.log
+**/*.zip
 **/requirements.txt
-app/THIRD_PARTY_LICENSES.txt
+**/THIRD_PARTY_LICENSES.txt
 sbin/**
 **/*.bak
 **/tmp/**
 **/temp/**
 **/chatbot_graph.png
 **/*.sh
-!opentofu/templates/cloudinit-oke.sh
+!opentofu/**/cloudinit-oke.sh
 !src/entrypoint.sh
 !src/client/spring_ai/templates/env.sh
 tests/db_startup_temp/**
@@ -44,7 +45,8 @@ __pycache__/
 **/**.tfvars
 **/.terraform*
 **/terraform.tfstate*
-opentofu/**/examples/*.yaml
+opentofu/**/generated/*.*
+opentofu/**/generated/kubeconfig
 
 ##############################################################################
 # Helm
@@ -55,7 +57,7 @@ helm/values*.yaml
 ##############################################################################
 # Random
 ##############################################################################
-spring_ai/src/main/resources/data/explorer_settings.json
+spring_ai/src/main/resources/data/optimizer_settings.json
 spring_ai/target/**
 spring_ai/create_user.sql
 spring_ai/drop.sql

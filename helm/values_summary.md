@@ -15,7 +15,7 @@ global:
 server:
   replicaCount: 1
   image:
-    repository: localhost/ai-explorer-server
+    repository: localhost/ai-optimizer-server
     tag: "latest"
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
@@ -98,7 +98,7 @@ server:
 client:
   replicaCount: 1
   image:
-    repository: localhost/ai-explorer-client
+    repository: localhost/ai-optimizer-client
     tag: "latest"
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []

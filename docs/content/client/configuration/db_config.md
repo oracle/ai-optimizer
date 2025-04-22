@@ -53,7 +53,7 @@ For Example:
 ```bash
 export DB_USERNAME="DEMO"
 export DB_PASSWORD=MYCOMPLEXSECRET
-export DB_DSN="//localhost:1521/EXPLORER"
+export DB_DSN="//localhost:1521/OPTIMIZER"
 export DB_WALLET_PASSWORD=MYCOMPLEXWALLETSECRET
 ```
 
@@ -75,8 +75,8 @@ For bare-metal installations, set the `TNS_ADMIN` environment variable, or copy 
 For container installations, there are a couple of ways to include the contents of your `TNS_ADMIN` in the image:
 
 - Before building the image, copy the contents of your `TNS_ADMIN` to `src/tns_admin`. This will include your `TNS_ADMIN` as part of the image build.
-- Mount your `TNS_ADMIN` directory into the container on startup, for example: `podman run -p 8501:8501 -v $TNS_ADMIN:/tns_admin -it --rm ai-explorer-server`
-- Copy the `TNS_ADMIN` directory into an existing running container, for example: `podman cp $TNS_ADMIN /app/tns_admin ai-explorer-server`
+- Mount your `TNS_ADMIN` directory into the container on startup, for example: `podman run -p 8501:8501 -v $TNS_ADMIN:/tns_admin -it --rm ai-optimizer-server`
+- Copy the `TNS_ADMIN` directory into an existing running container, for example: `podman cp $TNS_ADMIN /app/tns_admin ai-optimizer-server`
 
 ## Database User
 

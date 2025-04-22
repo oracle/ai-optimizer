@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai-explorer"
+name = "ai-optimizer"
 version = "0.1.0"
-description = "Oracle AI Explorer for Apps"
+description = "Oracle AI Optimizer and Toolkit"
 requires-python = ">=3.11"
 license =  "UPL-1.0"
 authors = [
@@ -14,9 +14,9 @@ authors = [
 
 # Common dependencies that are always needed
 dependencies = [
-    "langchain-core==0.3.49",
+    "langchain-core==0.3.52",
     "httpx==0.28.1",
-    "oracledb~=3.0",
+    "oracledb~=3.1",
     "plotly==6.0.1",
 ]
 
@@ -29,27 +29,27 @@ server = [
     "fastapi==0.115.12",
     "faiss-cpu==1.10.0",
     "giskard==2.16.2",
-    "IPython==9.0.2",
-    "langchain-cohere==0.4.3",
-    "langchain-community==0.3.20",
+    "IPython==9.1.0",
+    "langchain-cohere==0.4.4",
+    "langchain-community==0.3.21",
     "langchain-huggingface==0.1.2",
-    "langchain-ollama==0.3.0",
-    "langchain-openai==0.3.11",
-    "langgraph==0.3.21",
-    "litellm==1.65.0",
-    "llama_index==0.12.26",
-    "lxml==5.3.1",
+    "langchain-ollama==0.3.2",
+    "langchain-openai==0.3.13",
+    "langgraph==0.3.30",
+    "litellm==1.66.2",
+    "llama_index==0.12.31",
+    "lxml==5.3.2",
     "matplotlib==3.10.1",
     "oci~=2.0",
     "psutil==7.0.0",
     "python-multipart==0.0.20",
     "umap-learn==0.5.7",
-    "uvicorn==0.34.0",
+    "uvicorn==0.34.1",
 ]
 
 # GUI component dependencies
 client = [
-    "streamlit==1.44.0",
+    "streamlit==1.44.1",
 ]
 
 # Test dependencies
@@ -61,15 +61,15 @@ test = [
 
 # All-in-one installation (server + client)
 all = [
-    "ai-explorer[server]",
-    "ai-explorer[client]",
+    "ai-optimizer[server]",
+    "ai-optimizer[client]",
 ]
 
 # All-in-one with tests
 all-test = [
-    "ai-explorer[server]",
-    "ai-explorer[client]",
-    "ai-explorer[test]",
+    "ai-optimizer[server]",
+    "ai-optimizer[client]",
+    "ai-optimizer[test]",
 ]
 
 [tool.setuptools]

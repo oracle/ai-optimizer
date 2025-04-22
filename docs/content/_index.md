@@ -2,8 +2,8 @@
 title = " "
 menus = 'main'
 archetype = "home"
-description = 'Oracle AI Explorer for Apps'
-keywords = 'oracle explorer microservices development genai rag'
+description = './oai-explorer/docs'
+keywords = 'oracle optimizer toolkit microservices development genai rag'
 +++  
 
 <!--
@@ -34,8 +34,8 @@ The {{< short_app_ref >}} streamlines the entire workflow from prototyping to pr
 The {{< short_app_ref >}} is available to install in your own environment, which may be a developer's desktop, on-premises data center environment, or a cloud provider. It can be run either on bare-metal, within a container, or in a Kubernetes Cluster.
 
 {{% notice style="code" title="Prefer a Step-by-Step?" icon="circle-info" %}}
-<!-- Hard-coding AI Explorer to avoid unsafe HTML, this is an exception -->
-The [Walkthrough](walkthrough) is a great way to familiarize yourself with the **AI Explorer** and its features in a development environment.
+<!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
+The [Walkthrough](walkthrough) is a great way to familiarize yourself with the **AI Optimizer** and its features in a development environment.
 {{% /notice %}}
 
 ## Prerequisites
@@ -88,17 +88,17 @@ To run the application in a container; download the [source]({{ .Site.Params.Git
 
 1. Build the image.
 
-   From inside the `src/` directory, build the *ai-explorer-aio* image:
+   From inside the `src/` directory, build the *ai-optimizer-aio* image:
 
    ```bash
    cd src/
-   podman build -t ai-explorer-aio .
+   podman build -t ai-optimizer-aio .
    ```
 
 1. Start the Container:
 
    ```bash
-   podman run -p 8501:8501 -it --rm ai-explorer-aio
+   podman run -p 8501:8501 -it --rm ai-optimizer-aio
    ```
 
 1. Navigate to `http://localhost:8501`.

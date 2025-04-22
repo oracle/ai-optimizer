@@ -2,17 +2,9 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
-terraform {
-  required_providers {
-    oci = {
-      source = "oracle/oci"
-    }
-  }
-}
-
 resource "oci_core_vcn" "vcn" {
   compartment_id = var.compartment_id
-  cidr_blocks    = [var.vcn_cidr]
+  cidr_blocks    = var.vcn_cidr[var.infra]
   display_name   = format("%s-vcn", var.label_prefix)
   dns_label      = var.label_prefix
   lifecycle {
@@ -64,13 +56,6 @@ resource "oci_core_subnet" "public" {
 }
 
 // Private Subnet
-resource "oci_core_nat_gateway" "ngw" {
-  compartment_id = oci_core_vcn.vcn.compartment_id
-  vcn_id         = oci_core_vcn.vcn.id
-  display_name   = format("%s-ngw", var.label_prefix)
-  block_traffic  = "false"
-}
-
 resource "oci_core_service_gateway" "sgw" {
   compartment_id = oci_core_vcn.vcn.compartment_id
   vcn_id         = oci_core_vcn.vcn.id
@@ -78,6 +63,13 @@ resource "oci_core_service_gateway" "sgw" {
   services {
     service_id = data.oci_core_services.core_services.services.0.id
   }
+}
+
+resource "oci_core_nat_gateway" "ngw" {
+  compartment_id = oci_core_vcn.vcn.compartment_id
+  vcn_id         = oci_core_vcn.vcn.id
+  display_name   = format("%s-ngw", var.label_prefix)
+  block_traffic  = "false"
 }
 
 resource "oci_core_route_table" "private_route_table" {

@@ -294,7 +294,7 @@ def main():
         col_left.download_button(
             label="Download Settings",
             data=save_settings(),
-            file_name="explorer_settings.json",
+            file_name="optimizer_settings.json",
         )
     else:
         uploaded_file = st.file_uploader("Upload the Settings file", type="json")

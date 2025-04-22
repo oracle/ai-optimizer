@@ -37,14 +37,15 @@ def get_compartments() -> dict:
     return response
 
 
-@st.cache_data
 def get_buckets(compartment: str) -> list:
     """Get OCI Buckets in selected compartment; function for Streamlit caching"""
-    response = api_call.get(endpoint=f"v1/oci/buckets/{compartment}/{state.user_settings['oci']['auth_profile']}")
+    try:
+        response = api_call.get(endpoint=f"v1/oci/buckets/{compartment}/{state.user_settings['oci']['auth_profile']}")
+    except api_call.ApiError:
+        response = ["No Access to Buckets in this Compartment"]
     return response
 
 
-@st.cache_data
 def get_bucket_objects(bucket: str) -> list:
     """Get OCI Buckets in selected compartment; function for Streamlit caching"""
     response = api_call.get(endpoint=f"v1/oci/objects/{bucket}/{state.user_settings['oci']['auth_profile']}")
@@ -127,8 +128,11 @@ def main() -> None:
     try:
         if not state.oci_config[state.user_settings["oci"]["auth_profile"]].get("namespace"):
             raise KeyError
+        if not state.oci_config[state.user_settings["oci"]["auth_profile"]].get("tenancy"):
+            # Get Compartments requires a tenancy
+            raise KeyError
     except (KeyError, TypeError):
-        st.warning("OCI is not configured, some functionality is disabled", icon="⚠️")
+        st.warning("OCI is not fully configured, some functionality is disabled", icon="⚠️")
         file_sources.remove("OCI")
 
     # Initialize our embedding request

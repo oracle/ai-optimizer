@@ -26,7 +26,9 @@ class DatabaseVectorStorage(BaseModel):
     """Database Vector Storage Tables"""
 
     database: Optional[str] = Field(default="DEFAULT", description="Name of Database (Alias)")
-    vector_store: Optional[str] = Field(default=None, description="Vector Store Table Name (auto-generated, do not set)", readOnly=True)
+    vector_store: Optional[str] = Field(
+        default=None, description="Vector Store Table Name (auto-generated, do not set)", readOnly=True
+    )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
     model: Optional[str] = Field(default=None, description="Embedding Model")
     chunk_size: Optional[int] = Field(default=None, description="Chunk Size")
@@ -102,7 +104,9 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
 
     name: str = Field(..., min_length=1, description="The model to use")
     type: Literal["ll", "embed", "re-rank"] = Field(..., description="Type of Model.")
-    api: str = Field(..., min_length=1, description="API for Model.", examples=["ChatOllama", "OpenAI", "OpenAIEmbeddings"])
+    api: str = Field(
+        ..., min_length=1, description="API for Model.", examples=["ChatOllama", "OpenAI", "OpenAIEmbeddings"]
+    )
     openai_compat: bool = Field(default=True, description="Is the API OpenAI compatible?")
     status: Statuses = Field(default="UNVERIFIED", description="Status (read-only)", readOnly=True)
 
@@ -123,6 +127,9 @@ class OracleCloudSettings(BaseModel):
     namespace: Optional[str] = Field(default=None, description="Object Store Namespace", readOnly=True)
     user: Optional[str] = Field(default=None, description="Optional if using Auth Token")
     security_token_file: Optional[str] = Field(default=None, description="Security Key File for Auth Token")
+    authentication: Literal["api_key", "instance_principal", "oke_workload_identity", "security_token"] = Field(
+        default="api_key", description="Authentication Method."
+    )
 
     class Config(object):
         """Allow arbitrary keys for other OCI settings"""

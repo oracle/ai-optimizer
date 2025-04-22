@@ -2,6 +2,7 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
+// Standard Default Vars
 variable "tenancy_ocid" {
   description = "The Tenancy ID of the OCI Cloud Account in which to create the resources."
   type        = string
@@ -48,6 +49,22 @@ variable "private_key_path" {
   default     = ""
 }
 
+variable "source_repository" {
+  description = "Code that will pulled onto compute; ensure correct branch/tag."
+  default     = "https://github.com/oracle-samples/ai-explorer/archive/refs/heads/main"
+}
+
+// Infrastructure Type/Label
+variable "infrastructure" {
+  description = "Choose between a full Kubernetes or a light-weight Virtual Machine deployment."
+  type        = string
+  default     = ""
+  validation {
+    condition     = contains(["Kubernetes", "VM"], var.infrastructure)
+    error_message = "Must be either Kubernetes or VM."
+  }
+}
+
 variable "label_prefix" {
   description = "Alpha Numeric (less than 12 characters) string that will be prepended to all resources. Leave blank to auto-generate."
   type        = string
@@ -58,135 +75,7 @@ variable "label_prefix" {
   }
 }
 
-// K8s Cluster
-variable "k8s_version" {
-  description = "The version of Kubernetes to install into the cluster masters."
-  type        = string
-  default     = "1.32.1"
-}
-
-variable "k8s_api_is_public" {
-  type    = bool
-  default = false
-}
-
-# This is a string and not a list to support ORM/MP input, it will be converted to a list in locals
-variable "k8s_api_endpoint_allowed_cidrs" {
-  description = "Comma separated string of CIDR blocks from which the API Endpoint can be accessed."
-  type        = string
-  default     = "0.0.0.0/0"
-  validation {
-    condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.k8s_api_endpoint_allowed_cidrs))
-    error_message = "Must be a comma separated string of valid CIDRs."
-  }
-}
-
-variable "k8s_worker_os_ver" {
-  description = "Oracle Linux Version for K8s Node Pool Workers"
-  type        = string
-  default     = "8.10"
-}
-
-variable "k8s_node_pool_cpu_size" {
-  description = "Number of Workers in the CPU Node Pool."
-  type        = number
-  default     = 2
-}
-
-variable "k8s_worker_cpu_shape" {
-  description = "Choose the shape of the CPU Node Pool Workers."
-  type        = string
-  default     = "VM.Standard.E5.Flex"
-  validation {
-    condition     = contains(["VM.Standard.E5.Flex", "VM.Standard.E4.Flex", "VM.Standard3.Flex"], var.k8s_worker_cpu_shape)
-    error_message = "Must be either VM.Standard.E5.Flex, VM.Standard.E4.Flex, or VM.Standard3.Flex."
-  }
-}
-
-variable "k8s_worker_cpu_ocpu" {
-  description = "The initial number of CPU(s) for the Node Pool Workers."
-  type        = number
-  default     = 2
-}
-
-// GPU Node Pool
-variable "k8s_node_pool_gpu_deploy" {
-  description = "Deploy a GPU Node Pool"
-  type        = bool
-  default     = true
-}
-
-variable "k8s_node_pool_gpu_size" {
-  description = "Number of Workers in the GPU Node Pool."
-  type        = number
-  default     = 1
-}
-
-variable "k8s_worker_gpu_shape" {
-  description = "Choose the shape of the GPU Node Pool Workers."
-  type        = string
-  default     = "VM.GPU.A10.1"
-  validation {
-    condition     = contains(["VM.GPU.A10.1", "VM.GPU.A10.2"], var.k8s_worker_gpu_shape)
-    error_message = "Must be either VM.GPU.A10.1, or VM.GPU.A10.2."
-  }
-}
-
-// LoadBalancer
-variable "service_lb_is_public" {
-  type    = bool
-  default = true
-}
-
-variable "service_lb_min_shape" {
-  default = 10
-}
-
-variable "service_lb_max_shape" {
-  default = 1250
-}
-
-variable "service_lb_allowed_app_client_cidrs" {
-  description = "Comma separated string of CIDR blocks from which the application GUI can be accessed."
-  type        = string
-  default     = "0.0.0.0/0"
-  validation {
-    condition     = can(regex("((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.service_lb_allowed_app_client_cidrs))
-    error_message = "Must be a comma separated string of valid CIDRs."
-  }
-}
-
-variable "service_lb_allowed_app_client_port" {
-  description = "Port from which the application GUI can be accessed."
-  type        = string
-  default     = "80"
-  validation {
-    condition     = can(regex("^(((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4})))$", var.service_lb_allowed_app_client_port))
-    error_message = "Must be a single valid port."
-  }
-}
-
-variable "service_lb_allowed_app_server_cidrs" {
-  description = "Comma separated string of CIDR blocks from which the application API Server can be accessed."
-  type        = string
-  default     = "0.0.0.0/0"
-  validation {
-    condition     = can(regex("((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.service_lb_allowed_app_server_cidrs))
-    error_message = "Must be a comma separated string of valid CIDRs."
-  }
-}
-
-variable "service_lb_allowed_app_server_port" {
-  description = "Port from which the application API Server can be accessed."
-  type        = string
-  default     = "8000"
-  validation {
-    condition     = can(regex("^(((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4})))$", var.service_lb_allowed_app_server_port))
-    error_message = "Must be a single valid port."
-  }
-}
-
-// Database
+// Autonomous Database
 variable "adb_version" {
   description = "Autonomous Database Version"
   type        = string
@@ -252,9 +141,116 @@ variable "adb_whitelist_cidrs" {
   # This is a string and not a list to support ORM/MP input, it will be converted to a list in locals
   description = "Comma separated string of CIDR blocks from which the ADB can be accessed."
   type        = string
-  default     = "0.0.0.0/0"
+  default     = ""
   validation {
     condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.adb_whitelist_cidrs))
+    error_message = "Must be a comma separated string of valid CIDRs."
+  }
+}
+
+// Compute - Either VM or Node Workers
+variable "compute_os_ver" {
+  description = "Oracle Linux Version for Compute"
+  type        = string
+  default     = "8.10"
+}
+
+variable "compute_cpu_shape" {
+  description = "Choose the shape of the CPU Computes."
+  type        = string
+  default     = "VM.Standard.E5.Flex"
+  validation {
+    condition     = contains(["VM.Standard.E5.Flex", "VM.Standard.E4.Flex", "VM.Standard3.Flex"], var.compute_cpu_shape)
+    error_message = "Must be either VM.Standard.E5.Flex, VM.Standard.E4.Flex, or VM.Standard3.Flex."
+  }
+}
+
+variable "compute_cpu_ocpu" {
+  description = "The initial number of CPU(s) for the Computes."
+  type        = number
+  default     = 2
+}
+
+variable "compute_gpu_shape" {
+  description = "Choose the shape of the GPU Computes."
+  type        = string
+  default     = "VM.GPU.A10.1"
+  validation {
+    condition     = contains(["VM.GPU.A10.1", "VM.GPU.A10.2"], var.compute_gpu_shape)
+    error_message = "Must be either VM.GPU.A10.1, or VM.GPU.A10.2."
+  }
+}
+
+// Kubernetes
+variable "k8s_version" {
+  description = "The version of Kubernetes to install into the cluster masters."
+  type        = string
+  default     = "1.32.1"
+}
+
+variable "k8s_api_is_public" {
+  type    = bool
+  default = false
+}
+
+variable "k8s_api_endpoint_allowed_cidrs" {
+  description = "Comma separated string of CIDR blocks from which the API Endpoint can be accessed."
+  type        = string
+  default     = "0.0.0.0/0"
+  validation {
+    condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.k8s_api_endpoint_allowed_cidrs))
+    error_message = "Must be a comma separated string of valid CIDRs."
+  }
+}
+
+variable "k8s_cpu_node_pool_size" {
+  description = "Number of Workers in the CPU Node Pool."
+  type        = number
+  default     = 2
+}
+
+variable "k8s_node_pool_gpu_deploy" {
+  description = "Deploy a GPU Node Pool"
+  type        = bool
+  default     = true
+}
+
+variable "k8s_gpu_node_pool_size" {
+  description = "Number of Workers in the GPU Node Pool."
+  type        = number
+  default     = 1
+}
+
+// LoadBalancer
+variable "lb_min_shape" {
+  description = "LoadBalancer minimum bandwidth (Mbps)."
+  type        = number
+  default     = 10
+}
+
+variable "lb_max_shape" {
+  description = "LoadBalancer maximum bandwidth (Mbps)."
+  type        = number
+  default     = 10
+}
+
+// NSGs
+variable "client_allowed_cidrs" {
+  description = "Comma separated string of CIDR blocks from which the application client can be accessed."
+  type        = string
+  default     = "0.0.0.0/0"
+  validation {
+    condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.client_allowed_cidrs))
+    error_message = "Must be a comma separated string of valid CIDRs."
+  }
+}
+
+variable "server_allowed_cidrs" {
+  description = "Comma separated string of CIDR blocks from which the application server can be accessed."
+  type        = string
+  default     = "0.0.0.0/0"
+  validation {
+    condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.server_allowed_cidrs))
     error_message = "Must be a comma separated string of valid CIDRs."
   }
 }

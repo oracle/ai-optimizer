@@ -1,4 +1,4 @@
-# Oracle AI Explorer for Apps Helm Chart
+# Oracle AI Optimizer and Toolkit Helm Chart
 
 ## Secret Pre-Requisites
 
@@ -49,7 +49,7 @@ Example:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: explorerdb-authn
+  name: optimizerdb-authn
 type: Opaque
 stringData:
   password: ...
@@ -60,11 +60,11 @@ stringData:
 ## Install
 
 ```bash
-helm upgrade --install ai-explorer .
+helm upgrade --install ai-optimizer .
 ```
 
 ## Uninstall
 
 ```bash
-helm uninstall ai-explorer
+helm uninstall ai-optimizer
 ```

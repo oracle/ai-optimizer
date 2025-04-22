@@ -49,11 +49,17 @@ def init_client(
     # Initialize Client (Workload Identity, Token and API)
     config_json = config.model_dump(exclude_none=False)
     client = None
-    if not config_json["auth_profile"]:
+    if config_json["authentication"] == "instance_principal":
+        logger.info("OCI Authentication with Instance Principal")
+        instance_signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+        client = client_type(config={}, signer=instance_signer, **client_kwargs)
+        if not config.tenancy:
+            config.tenancy = instance_signer.tenancy_id
+    elif config_json["authentication"] == "oke_workload_identity":
         logger.info("OCI Authentication with Workload Identity")
         oke_workload_signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
-        client = client_type(config={}, signer=oke_workload_signer, **client_kwargs)
-    elif config_json["auth_profile"] and config_json["security_token_file"]:
+        client = client_type(config={"region": config_json["region"]}, signer=oke_workload_signer)
+    elif config_json["authentication"] == "security_token" and config_json["security_token_file"]:
         logger.info("OCI Authentication with Security Token")
         token = None
         with open(config_json["security_token_file"], "r", encoding="utf-8") as f:
@@ -140,12 +146,16 @@ def get_buckets(compartment: str, config: OracleCloudSettings = None) -> list:
     logger.info("Getting Buckets in %s", compartment)
     client = init_client(client_type, config)
     bucket_names = []
-    response = client.list_buckets(namespace_name=config.namespace, compartment_id=compartment, fields=["tags"])
-    buckets = response.data
-    for bucket in buckets:
-        freeform_tags = bucket.freeform_tags or {}
-        if freeform_tags.get("genai_chunk") != "true":
-            bucket_names.append(bucket.name)
+    try:
+        response = client.list_buckets(namespace_name=config.namespace, compartment_id=compartment, fields=["tags"])
+        buckets = response.data
+        for bucket in buckets:
+            freeform_tags = bucket.freeform_tags or {}
+            if freeform_tags.get("genai_chunk") != "true":
+                bucket_names.append(bucket.name)
+    except oci.exceptions.ServiceError as ex:
+        # No Access to Buckets in Compartment
+        raise OciException("OCI: AuthN Error") from ex
 
     return bucket_names
 
