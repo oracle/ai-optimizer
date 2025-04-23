@@ -180,7 +180,7 @@ GRANT SELECT ON ADMIN.<VECTOR_STORE> TO vector;
 ```
 * then deploy:
 ```
-deploy --app-name rag --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-0.0.1-SNAPSHOT.jar --image-version 0.0.1 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
+deploy --app-name rag --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-1.0.0-SNAPSHOT.jar --image-version 1.0.0 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
 ```
 * test:
 ```

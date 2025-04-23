@@ -146,7 +146,7 @@ GRANT SELECT ON ADMIN.MXBAI_EMBED_LARGE_512_103_COSINE TO vector;
 * So, then you can deploy it:
 
 ```bash
-oractl:> deploy --app-name rag --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-0.0.1-SNAPSHOT.jar --image-version 0.0.1 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
+oractl:> deploy --app-name rag --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-1.0.0-SNAPSHOT.jar --image-version 1.0.0 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
 ```
 
 * test opening first a new tunnel:

@@ -86,7 +86,7 @@ To run the application in a container; download the [source](https://github.com/
 
 1. [Configure](https://oracle-samples.github.io/ai-optimizer/client/configuration/index.html) the **AI Optimizer**.
 
-##### Got OCI?
+#### Got OCI?
 The **AI Optimizer** can be deployed with an Oracle Autonomous Database 23ai using infrastructure as code.  Deploy the **AI Optimizer** in Oracle Cloud Infrastructure using OCI Resource Manager:
 
 [![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
