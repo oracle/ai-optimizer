@@ -58,6 +58,16 @@ def get_models(model_type: ModelTypeType = None, force: bool = False) -> dict[st
                 state[enable_key] = {}
 
 
+@st.cache_data
+def get_model_apis(model_type: ModelTypeType = None) -> list:
+    """Get list of valid APIs; function for Streamlit caching"""
+    response = api_call.get(
+        endpoint="v1/models/api",
+        params={"model_type": model_type},
+    )
+    return response
+
+
 def create_model(model: Model) -> None:
     """Add either Language Model or Embed Model"""
     api_call.post(
@@ -114,10 +124,7 @@ def edit_model(model_type: ModelTypeType, action: Literal["add", "edit"], model_
             key="add_model_name",
             disabled=action == "edit",
         )
-        if model_type == "ll":
-            api_values = list({models["api"] for models in state.ll_model_config.values()})
-        else:
-            api_values = list({models["api"] for models in state.embed_model_config.values()})
+        api_values = get_model_apis(model_type)
         api_index = next((i for i, item in enumerate(api_values) if item == model.api), None)
         model.api = st.selectbox(
             "API:",
