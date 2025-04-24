@@ -42,12 +42,30 @@ import common.functions as functions
 logger = logging_config.logging.getLogger("server.endpoints")
 
 
-# Load Models with Definition Data
-DATABASE_OBJECTS = bootstrap.database_def.main()
-MODEL_OBJECTS = bootstrap.model_def.main()
-OCI_OBJECTS = bootstrap.oci_def.main()
-PROMPT_OBJECTS = bootstrap.prompt_eng_def.main()
-SETTINGS_OBJECTS = bootstrap.settings_def.main()
+# DATABASE_OBJECTS = bootstrap.database_def.main()
+# MODEL_OBJECTS = bootstrap.model_def.main()
+# OCI_OBJECTS = bootstrap.oci_def.main()
+# PROMPT_OBJECTS = bootstrap.prompt_eng_def.main()
+# SETTINGS_OBJECTS = bootstrap.settings_def.main()
+
+DATABASE_OBJECTS = None
+MODEL_OBJECTS = None
+OCI_OBJECTS = None
+PROMPT_OBJECTS = None
+SETTINGS_OBJECTS = None
+
+def load_shared_objects() -> None:
+    "Load Models with Definition Data"
+    global DATABASE_OBJECTS
+    DATABASE_OBJECTS = bootstrap.database_def.main()
+    global MODEL_OBJECTS
+    MODEL_OBJECTS = bootstrap.model_def.main()
+    global OCI_OBJECTS
+    OCI_OBJECTS = bootstrap.oci_def.main()
+    global PROMPT_OBJECTS
+    PROMPT_OBJECTS = bootstrap.prompt_eng_def.main()
+    global SETTINGS_OBJECTS
+    SETTINGS_OBJECTS = bootstrap.settings_def.main()
 
 
 #####################################################
