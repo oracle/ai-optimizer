@@ -3,7 +3,7 @@ export PROVIDER="{provider}"
 
 if [[ "{provider}" == "ollama" ]]; then
     PREFIX="OL"; UNSET_PREFIX="OP"
-    unset OPENAI_CHAT_MODEL
+    export OPENAI_CHAT_MODEL=""
     unset OPENAI_EMBEDDING_MODEL
     unset OPENAI_URL
     export OLLAMA_BASE_URL="{ll_model[url]}"
@@ -14,7 +14,7 @@ else
     export OPENAI_CHAT_MODEL="{ll_model[model]}"
     export OPENAI_EMBEDDING_MODEL="{rag[model]}"
     export OPENAI_URL="{ll_model[url]}"
-    unset OLLAMA_CHAT_MODEL
+    export OLLAMA_CHAT_MODEL=""
     unset OLLAMA_EMBEDDING_MODEL
 fi
 
