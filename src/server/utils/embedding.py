@@ -139,7 +139,6 @@ def split_document(
             doc_split = text_splitter.split_documents(document)
         case "html":
             tmp_meta = document[0].metadata
-            print(tmp_meta)
             doc_split = html_splitter.split_text(document[0].page_content)
             # Update metadata with source
             for doc in doc_split:
