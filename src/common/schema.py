@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ollama, hnsw, mult, ocid, testset
 
-from typing import Optional, Literal, Union
+from typing import Optional, Literal, Union, get_args
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from langchain_core.messages import ChatMessage
@@ -131,8 +131,8 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
     @model_validator(mode="after")
     def check_api_matches_type(self):
         """Validate valid API"""
-        ll_apis = LlAPI.__args__
-        embed_apis = EmbedAPI.__args__
+        ll_apis = get_args(LlAPI)
+        embed_apis = get_args(EmbedAPI)
 
         if not self.api or self.api == "unset":
             return self
