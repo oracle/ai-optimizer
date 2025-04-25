@@ -1,7 +1,7 @@
 # Spring AI template
 
 ## How to run:
-Prepare two configurations in the `ai-optimizer`, based on vector stores created using this kind of configuration:
+Prepare two configurations in the `Oracle ai optimizer and toolkit`, based on vector stores created using this kind of configuration:
 
 * OLLAMA: 
   * Embbeding model: mxbai-embed-large
@@ -54,19 +54,23 @@ Start with:
 
 This project contains a web service that will accept HTTP GET requests at
 
-* `http://localhost:8080/v1/chat/completions`: to use RAG via OpenAI REST API 
+* `http://localhost:9090/v1/chat/completions`: to use RAG via OpenAI REST API 
 
-* `http://localhost:8080/v1/service/llm` : to chat straight with the LLM used
-* `http://localhost:8080/v1/service/search/`: to search for document similar to the message provided
+* `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used
+* `http://localhost:9090/v1/service/search/`: to search for document similar to the message provided
 
 
-RAG call example with `openai` build profile: 
+RAG call example with `openai` build profile with no-stream: 
 
 ```
-curl -X POST "localhost:8080/v1/chat/completions" \
-     -H "Content-Type: application/json" \
-     -H "Authorization: Bearer your_api_key" \
-     -d '{"message": "Can I use any kind of development environment to run the example?"}' | jq .
+curl -N http://localhost:9090/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_api_key" \
+  -d '{
+    "model": "server",
+    "messages": [{"role": "user", "content": "Can I use any kind of development environment to run the example?"}],
+    "stream": false
+  }'
 ```
 
 the response with RAG:
@@ -82,10 +86,20 @@ the response with RAG:
   ]
 }
 ```
-
+with stream output:
+```
+curl -N http://localhost:9090/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_api_key" \
+  -d '{
+    "model": "server",
+    "messages": [{"role": "user", "content": "Can I use any kind of development environment to run the example?"}],
+    "stream": true
+  }'
+```
 or the request without RAG:
 ```
-curl --get --data-urlencode 'message=Can I use any kind of development environment to run the example?' localhost:8080/v1/service/llm | jq .
+curl --get --data-urlencode 'message=Can I use any kind of development environment to run the example?' localhost:9090/v1/service/llm | jq .
 ```
 
 response not grounded:
@@ -150,10 +164,10 @@ llama3.1:latest             a80c4f17acd5    2.0 GB    3 minutes ago
 kubectl -n ollama exec svc/ollama -- ollama run "llama3.1" "what is spring boot?"
 ```
 
-* **NOTE**: The Microservices will access to the ADB23ai on which the vector store table should be created as done in the local desktop example shown before. To access the ai-optimizer running on **Oracle Backend for Microservices and AI** and create the same configuration, let's do:
+* **NOTE**: The Microservices will access to the ADB23ai on which the vector store table should be created as done in the local desktop example shown before. To access the ai-explorer running on **Oracle Backend for Microservices and AI** and create the same configuration, let's do:
   * tunnel:
   ```
-  kubectl -n ai-optimizer port-forward svc/ai-optimizer 8181:8501 
+  kubectl -n ai-explorer port-forward svc/ai-explorer 8181:8501 
   ```
   * on localhost:
   ```
@@ -173,14 +187,14 @@ kubectl -n ollama exec svc/ollama -- ollama run "llama3.1" "what is spring boot?
   ```
 
 
-* the `bind` will create the new user, if not exists, but to have the `<VECTOR_STORE>_SPRINGAI` table compatible with SpringAI Oracle vector store adapter, the microservices need to access to the vector store table created by the ai-optimizer with user ADMIN on ADB:
+* the `bind` will create the new user, if not exists, but to have the `<VECTOR_STORE>_SPRINGAI` table compatible with SpringAI Oracle vector store adapter, the microservices need to access to the vector store table created by the ai-explorer with user ADMIN on ADB:
 
 ```
 GRANT SELECT ON ADMIN.<VECTOR_STORE> TO vector;
 ```
 * then deploy:
 ```
-deploy --app-name rag --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-1.0.0-SNAPSHOT.jar --image-version 1.0.0 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
+deploy --app-name rag --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-0.0.1-SNAPSHOT.jar --image-version 0.0.1 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
 ```
 * test:
 ```
@@ -188,10 +202,14 @@ kubectl -n rag port-forward svc/myspringai 9090:8080
 ```
 * from shell:
 ```
-curl -X POST "http://localhost:9090/v1/chat/completions" \
-     -H "Content-Type: application/json" \
-     -H "Authorization: Bearer your_api_key" \
-     -d '{"message": "Can I use any kind of development environment to run the example?"}' | jq .
+curl -N http://localhost:9090/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_api_key" \
+  -d '{
+    "model": "server",
+    "messages": [{"role": "user", "content": "Can I use any kind of development environment to run the example?"}],
+    "stream": false
+  }'
 ```
 it should return:
 ```
