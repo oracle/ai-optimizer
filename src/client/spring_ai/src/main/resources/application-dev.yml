@@ -1,6 +1,7 @@
 server:
   servlet:
     context-path: /v1
+  port: 9090
 spring:
   datasource:
     url: ${DB_DSN}
