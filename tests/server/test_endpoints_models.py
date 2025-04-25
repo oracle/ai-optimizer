@@ -5,10 +5,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 # pylint: disable=import-error
 
-from typing import Any, Dict
+from typing import Any, Dict, get_args
 import pytest
 from fastapi.testclient import TestClient
 from conftest import TEST_HEADERS, TEST_BAD_HEADERS
+from common.schema import LlAPI, EmbedAPI
 
 
 #############################################################################
@@ -54,6 +55,21 @@ class TestNoAuthEndpoints:
 #############################################################################
 class TestEndpoints:
     """Test endpoints with AuthN"""
+
+    @pytest.mark.parametrize(
+        "model_type,expected",
+        [
+            ("ll", list(get_args(LlAPI))),
+            ("embed", list(get_args(EmbedAPI))),
+            (None, []),
+        ],
+    )
+    def test_models_list_api(self, client: TestClient, model_type, expected):
+        """Get a list of model APIs to use with tests"""
+        params = {"model_type": model_type} if model_type else {}
+        response = client.get("/v1/models/api", headers=TEST_HEADERS, params=params)
+        assert response.status_code == 200
+        assert sorted(response.json()) == sorted(expected)
 
     def models_list(self, client: TestClient):
         """Get a list of bootstrapped models to use with tests"""
