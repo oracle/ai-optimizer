@@ -46,6 +46,7 @@ jobs:
         run: |
           cd src/
           python -m pip install --upgrade pip wheel setuptools
+          pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch
           pip install -e ".[all-test]"
 
       - name: Run All Tests

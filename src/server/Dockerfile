@@ -28,7 +28,7 @@ COPY pyproject.toml /opt/package/pyproject.toml
 # Use the virtual environment for pip installations
 RUN source /opt/.venv/bin/activate && \
     pip install --upgrade pip wheel setuptools && \
-    pip install torch==2.6.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
     pip install "/opt/package[server]"
 
 ##################################################
