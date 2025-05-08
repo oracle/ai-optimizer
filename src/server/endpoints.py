@@ -18,7 +18,14 @@ import requests
 from pydantic import HttpUrl
 
 from langgraph.graph.state import CompiledStateGraph
-from langchain_core.messages import HumanMessage, AnyMessage, convert_to_openai_messages, ChatMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langchain_core.messages import (
+    HumanMessage,
+    AnyMessage,
+    convert_to_openai_messages,
+    ChatMessage,
+    RemoveMessage,
+)
 from langchain_core.runnables import RunnableConfig
 from giskard.rag import evaluate, QATestset
 from giskard.rag.metrics import correctness_metric
@@ -729,12 +736,32 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             media_type="application/octet-stream",
         )
 
+    @auth.patch(
+        "/v1/chat/history",
+        description="Delete Chat History",
+        response_model=list[schema.ChatMessage],
+    )
+    async def chat_history_clean(client: schema.ClientIdType = Header(...)) -> list[ChatMessage]:
+        agent: CompiledStateGraph = chatbot.chatbot_graph
+        try:
+            _ = agent.update_state(
+                config=RunnableConfig(
+                    configurable={
+                        "thread_id": client,
+                    }
+                ),
+                values={"messages": RemoveMessage(id=REMOVE_ALL_MESSAGES)},
+            )
+            return [ChatMessage(content="As requested, I've forgotten our conversation.", role="system")]
+        except KeyError:
+            return [ChatMessage(content="I'm sorry, I have no history of this conversation.", role="system")]
+
     @auth.get(
         "/v1/chat/history",
         description="Get Chat History",
         response_model=list[schema.ChatMessage],
     )
-    async def chat_history(client: schema.ClientIdType = Header(...)) -> list[ChatMessage]:
+    async def chat_history_return(client: schema.ClientIdType = Header(...)) -> list[ChatMessage]:
         """Return Chat History"""
         agent: CompiledStateGraph = chatbot.chatbot_graph
         try:
@@ -749,7 +776,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             chat_messages = convert_to_openai_messages(messages)
             return chat_messages
         except KeyError:
-            return [ChatMessage(content="I'm sorry, I have no history of this conversation", role="system")]
+            return [ChatMessage(content="I'm sorry, I have no history of this conversation.", role="system")]
 
     #################################################
     # testbed Endpoints
