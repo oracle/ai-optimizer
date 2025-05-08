@@ -4,8 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ollama, hnsw, mult, ocid, testset
 
-from typing import Optional, Literal, Union
-from pydantic import BaseModel, Field, PrivateAttr
+from typing import Optional, Literal, Union, get_args
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from langchain_core.messages import ChatMessage
 import oracledb
@@ -17,6 +17,24 @@ import common.help_text as help_text
 Statuses = Literal["NOT_CONFIGURED", "UNVERIFIED", "NOT_AUTHORIZED", "UNREACHABLE", "VALID", "CONNECTED", "CUSTOM"]
 DistanceMetrics = Literal["COSINE", "EUCLIDEAN_DISTANCE", "DOT_PRODUCT"]
 IndexTypes = Literal["HNSW", "IVF"]
+
+# ModelAPIs
+EmbedAPI = Literal[
+    "OllamaEmbeddings",
+    "OCIGenAIEmbeddings",
+    "CompatOpenAIEmbeddings",
+    "OpenAIEmbeddings",
+    "CohereEmbeddings",
+    "HuggingFaceEndpointEmbeddings",
+]
+LlAPI = Literal[
+    "ChatOllama",
+    "ChatOCIGenAI",
+    "CompatOpenAI",
+    "Perplexity",
+    "OpenAI",
+    "Cohere",
+]
 
 
 #####################################################
@@ -109,6 +127,21 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
     )
     openai_compat: bool = Field(default=True, description="Is the API OpenAI compatible?")
     status: Statuses = Field(default="UNVERIFIED", description="Status (read-only)", readOnly=True)
+
+    @model_validator(mode="after")
+    def check_api_matches_type(self):
+        """Validate valid API"""
+        ll_apis = get_args(LlAPI)
+        embed_apis = get_args(EmbedAPI)
+
+        if not self.api or self.api == "unset":
+            return self
+
+        if self.type == "ll" and self.api not in ll_apis:
+            raise ValueError(f"API '{self.api}' is not valid for type 'll'. Must be one of: {ll_apis}")
+        if self.type == "embed" and self.api not in embed_apis:
+            raise ValueError(f"API '{self.api}' is not valid for type 'embed'. Must be one of: {embed_apis}")
+        return self
 
 
 #####################################################

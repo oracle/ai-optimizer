@@ -53,7 +53,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-import org.springframework.model.*;
+import org.springframework.ai.openai.samples.helloworld.model.*;
+
 
 @RestController
 class AIController {

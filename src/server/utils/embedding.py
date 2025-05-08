@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore langchain, docstore, docos, vectorstores, oraclevs
+# spell-checker:ignore langchain, docstore, docos, vectorstores, oraclevs, genai, hnsw
 
 import json
 import copy
@@ -22,7 +22,7 @@ from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain.docstore.document import Document as LangchainDocument
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_text_splitters import HTMLSectionSplitter, CharacterTextSplitter
+from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
 
 import server.utils.databases as databases
 
@@ -130,7 +130,7 @@ def split_document(
         ("h4", "Header 4"),
         ("h5", "Header 5"),
     ]
-    html_splitter = HTMLSectionSplitter(headers_to_split_on=headers_to_split_on)
+    html_splitter = HTMLHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
     ##################################
     # Splitters - End
     ##################################
@@ -138,12 +138,11 @@ def split_document(
         case "pdf":
             doc_split = text_splitter.split_documents(document)
         case "html":
-            try:
-                html_split = html_splitter.split_documents(document)
-            except Exception as ex:
-                logger.exception(ex)
-                html_split = document
-            doc_split = text_splitter.split_documents(html_split)
+            tmp_meta = document[0].metadata
+            doc_split = html_splitter.split_text(document[0].page_content)
+            # Update metadata with source
+            for doc in doc_split:
+                doc.metadata.update(tmp_meta)
         case "pdf" | "md" | "txt" | "csv":
             doc_split = text_splitter.split_documents(document)
         case _:
@@ -180,7 +179,8 @@ def load_and_split_documents(
             case "pdf":
                 loader = document_loaders.PyPDFLoader(file)
             case "html":
-                loader = document_loaders.UnstructuredHTMLLoader(file)
+                # Use TextLoader to preserve for header split
+                loader = document_loaders.TextLoader(file)
             case "md":
                 loader = document_loaders.TextLoader(file)
             case "csv":
