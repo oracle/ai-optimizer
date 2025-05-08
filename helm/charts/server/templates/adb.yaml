@@ -13,8 +13,8 @@ data:
 {{- end }}
 ---
 {{- if .Values.adb.ocid }}
-{{- $mtlsWallet := include "getMtlsWallet" . | fromJson }}
-{{- if not $mtlsWallet.secretName }}
+{{- if .Values.adb.mtls.enabled }}
+{{- if not .Values.adb.mtls.secretName }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -23,6 +23,7 @@ metadata:
     app.kubernetes.io/name: {{ .Chart.Name }}
 stringData:
   {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}: {{ randAlphaNum 16 | quote }}
+{{- end }}
 {{- end }}
 ---
 apiVersion: database.oracle.com/v1alpha1

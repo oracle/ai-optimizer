@@ -8,7 +8,7 @@ global:
     apiKey: ""
     # -- The Helm chart supports storing the API Key in a secret.
     # The secret needs to contain one key with its value set
-    secretName: "hologram-api-keys"
+    secretName: "api-keys"
     # -- Name of the key in the secret containing the API Key, overrides the default key name "apiKey"
     secretKey: ""
 
@@ -59,7 +59,10 @@ server:
     adb:
       enabled: false
       ocid: ""
-      mtlsWallet: ""
+      mtls: ""
+        enabled: false
+        secretName: ""
+        secretKey: ""
       authN:
           secretName: ""
           usernameKey: ""
@@ -138,15 +141,14 @@ client:
     http:
       type: "ClusterIP"
 
-  client:
-    features:
-      disableTestbed: "false"
-      disableApi: "false"
-      disableTools: "false"
-      disableDbCfg: "false"
-      disableModelCfg: "false"
-      disableOciCfg: "false"
-      disableSettings: "false"
+  features:
+    disableTestbed: "false"
+    disableApi: "false"
+    disableTools: "false"
+    disableDbCfg: "false"
+    disableModelCfg: "false"
+    disableOciCfg: "false"
+    disableSettings: "false"
 
   # -- Additional volumes on the output Deployment definition.
   volumes: []
