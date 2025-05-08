@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 #############################################################
 # Base - Web GUI
-# Build from the app/ directory:
+# Build from the src/ directory:
 #  podman build -f client/Dockerfile -t ai-optimizer-client:latest .
 #############################################################
 FROM container-registry.oracle.com/os/oraclelinux:8-slim AS client_pyenv

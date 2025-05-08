@@ -130,7 +130,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             try:
                 db_conn = databases.connect(db)
             except databases.DbException as ex:
-                logger.debug("Skipping %s - exception: %s", db.name, str(ex))
+                logger.debug("Skipping Database %s - exception: %s", db.name, str(ex))
                 continue
             db.vector_stores = embedding.get_vs(db_conn)
 

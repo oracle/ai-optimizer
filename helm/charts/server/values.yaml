@@ -51,8 +51,13 @@ oci:
 # -- Oracle Autonomous Database Configuration
 adb:
   enabled: false
+  # -- Setting OCID will trigger an OraOperator ADB Resource creation
+  # -- leave ocid blank if using a pre-deployed ADB and just fill in authN/mtls
   ocid: ""
-  mtlsWallet: ""
+  mtls:
+    enabled: false
+    secretName: ""
+    # secretKey: ""
   authN:
     secretName: ""
     usernameKey: ""

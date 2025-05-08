@@ -13,10 +13,11 @@ metadata:
   name: {{ include "app.fullname" . }}-http
   labels: 
     {{- include "app.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
-  annotations:
+  annotations:  
+    nginx.ingress.kubernetes.io/proxy-body-size: 200m
+    {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   {{- if and .Values.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
   ingressClassName: {{ .Values.ingress.className }}

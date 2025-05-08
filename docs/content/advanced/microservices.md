@@ -202,7 +202,8 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
       adb:
         enabled: true
         ocid: "<adb_ocid>"
-        mtlsWallet: ""
+        mtls:
+          enabled: false
         authN:
           secretName: "db-authn"
 

@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 #############################################################
 # Base - API Server
-# Build from the app/ directory:
+# Build from the src/ directory:
 #  podman build -f server/Dockerfile -t ai-optimizer-server:latest .
 #############################################################
 # spell-checker: disable
