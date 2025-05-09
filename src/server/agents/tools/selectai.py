@@ -10,8 +10,28 @@ import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("server.tools.selectai_executor")
 
+# ------------------------------------------------------------------------------
+# selectai_tool
+# ------------------------------------------------------------------------------
+# Executes an Oracle "SelectAI" query using the provided configuration.
+# 
+# - Expects a RunnableConfig object with the following keys:
+#     - "profile": the Oracle AI profile to activate for the session.
+#     - "query": the AI SQL query to execute (appended to "select ai ").
+#     - "configurable": a dictionary containing runtime objects, including:
+#         - "db_conn": an open Oracle database connection.
+#
+# Steps:
+# 1. Sets the Oracle AI profile for the session using DBMS_CLOUD_AI.SET_PROFILE.
+# 2. Constructs and executes the AI SQL query.
+# 3. Fetches all results, returning them as a list of dictionaries (column name to value).
+# 4. On error, logs the exception and returns a list with a single error dictionary.
+# 
+# This function is intended to be used as a LangChain tool for AI-driven SQL execution.
+# ------------------------------------------------------------------------------
+
+
 def selectai_tool(
-    state: Annotated[dict, InjectedState],
     config: RunnableConfig,
 ) -> list[dict]:
     """Execute a SelectAI call"""

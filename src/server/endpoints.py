@@ -555,6 +555,9 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     @auth.get("/v1/settings", description="Get client settings", response_model=schema.Settings)
     async def settings_get(client: schema.ClientIdType) -> schema.Settings:
         """Get settings for a specific client by name"""
+        logger.debug("CDD GET SETTINGS")
+        import sys
+        print("Force to stderr", file=sys.stderr, flush=True)
         return get_client_settings(client)
 
     @auth.patch("/v1/settings", description="Update client settings")
@@ -912,5 +915,42 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         shutil.rmtree(temp_directory)
 
         return testbed.process_report(db_conn=db_conn, eid=eid)
+
+    #################################################
+    # selectai Endpoints
+    #################################################
+    from server.agents.tools.selectai import selectai_tool
+
+    @auth.post("/v1/selectai", description="Call selectai tool with profile and query", response_model=list[dict])
+    async def selectai_endpoint(
+    request: schema.SelectAIRequest,
+    client: schema.ClientIdType = Header(...)
+) -> list[dict]:
+        """
+        Call selectai_tool with provided profile and query parameters.
+        """
+        logger.debug("Received selectai_endpoint - request: %s", request)
+             
+        try: 
+            # Get Database Connection
+            db_obj = get_client_db(client)
+            db_conn = db_obj.connection      
+
+            # Create RunnableConfig with profile and query
+            config = RunnableConfig(
+                profile=request.profile,
+                query=request.query,
+                configurable={"db_conn": db_conn}
+            )
+            
+            # Call the tool
+            result = selectai_tool(config=config)
+
+            return result
+        except Exception as e:
+            logger.error("An exception occurred: %s", e)
+            raise HTTPException(status_code=500, detail=str(e))
+
+
 
     logger.info("Endpoints Loaded.")
