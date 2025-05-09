@@ -83,7 +83,7 @@ def get_client_oci(client: schema.ClientIdType) -> schema.OracleCloudSettings:
 
 
 def get_client_db(client: schema.ClientIdType) -> schema.Database:
-    """Return a schema.Database Object based on client settings"""
+    """Return a Database Object based on client settings"""
     db_name = "DEFAULT"
     client_settings = get_client_settings(client)
     if client_settings.rag:

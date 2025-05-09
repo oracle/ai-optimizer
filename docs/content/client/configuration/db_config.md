@@ -80,7 +80,7 @@ For container installations, there are a couple of ways to include the contents 
 
 ## Database User
 
-A database user is required to store the embeddings, used for **RAG**, into the Oracle Database. A non-privileged user with a *non-SYSTEM tablespace* should be used for this purpose.  Use the below syntax as an example of creating a new user:
+A database user is required to store the embeddings, used for **RAG**, into the Oracle Database. A non-privileged user with a *non-SYSTEM tablespace* should be used for this purpose.  Use the below syntax as an __example__ of creating a new user with least privileges:
 
 ```sql
 CREATE USER "DEMO" IDENTIFIED BY MYCOMPLEXSECRET
@@ -91,7 +91,12 @@ ALTER USER "DEMO" DEFAULT ROLE ALL;
 ALTER USER "DEMO" QUOTA UNLIMITED ON DATA;
 ```
 
-Replace "DEMO" as required.
+If running on a supported database for [SelectAI](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/select-ai.html) and want to use the feature, grant the following additional privileges:
+
+```sql
+GRANT EXECUTE ON DBMS_CLOUD_AI TO DEMO;
+GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO DEMO;
+```
 
 {{% notice style="default" title="One schema fits none..." icon="circle-info" %}}
 Creating multiple users in the same database allows developers to separate their experiments simply by changing the "Database User"

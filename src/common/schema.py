@@ -71,6 +71,7 @@ class Database(DatabaseAuth):
     """Database Object"""
 
     name: str = Field(default="DEFAULT", description="Name of Database (Alias)")
+    select_ai: bool = Field(default=False, description="SelectAI Possible")
     connected: bool = Field(default=False, description="Connection Established")
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
         default=None, description="Vector Storage (read-only)", readOnly=True
