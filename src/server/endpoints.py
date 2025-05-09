@@ -568,9 +568,6 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     @auth.get("/v1/settings", description="Get client settings", response_model=schema.Settings)
     async def settings_get(client: schema.ClientIdType) -> schema.Settings:
         """Get settings for a specific client by name"""
-        logger.debug("CDD GET SETTINGS")
-        import sys
-        print("Force to stderr", file=sys.stderr, flush=True)
         return get_client_settings(client)
 
     @auth.patch("/v1/settings", description="Update client settings")
