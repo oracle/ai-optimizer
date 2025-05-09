@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 #############################################################
 # Base - API Server
-# Build from the app/ directory:
+# Build from the src/ directory:
 #  podman build -f server/Dockerfile -t ai-optimizer-server:latest .
 #############################################################
 # spell-checker: disable
@@ -28,7 +28,7 @@ COPY pyproject.toml /opt/package/pyproject.toml
 # Use the virtual environment for pip installations
 RUN source /opt/.venv/bin/activate && \
     pip install --upgrade pip wheel setuptools && \
-    pip install torch==2.6.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
     pip install "/opt/package[server]"
 
 ##################################################

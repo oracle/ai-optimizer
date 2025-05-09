@@ -25,12 +25,14 @@ def connect(config: Database) -> oracledb.Connection:
     logger.info("Connecting to Database: %s", config.dsn)
     include_fields = set(DatabaseAuth.model_fields.keys())
     db_config = config.model_dump(include=include_fields)
+    logger.debug("Database Config: %s", db_config)
     # Check if connection settings are configured
     if any(not db_config[key] for key in ("user", "password", "dsn")):
         raise DbException(status_code=400, detail="missing connection details")
 
     # Attempt to Connect
     try:
+        logger.debug("Attempting Database Connection...")
         conn = oracledb.connect(**db_config)
     except oracledb.DatabaseError as ex:
         if "ORA-01017" in str(ex):
@@ -39,6 +41,7 @@ def connect(config: Database) -> oracledb.Connection:
             raise DbException(status_code=503, detail="unable to connect") from ex
         else:
             raise DbException(status_code=500, detail=str(ex)) from ex
+    logger.debug("Connected to Databases: %s", config.dsn)
     return conn
 
 
@@ -57,6 +60,7 @@ def test(config: Database) -> None:
 
 def disconnect(conn: oracledb.Connection) -> None:
     """Disconnect from an Oracle Database"""
+    logger.debug("Disconnecting Databases Connection: %s", conn)
     return conn.close()
 
 

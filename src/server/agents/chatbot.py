@@ -12,7 +12,7 @@ import decimal
 
 from langchain_core.documents.base import Document
 from langchain_core.messages import SystemMessage, ToolMessage
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser, PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langchain_community.vectorstores.oraclevs import OracleVS
@@ -233,7 +233,12 @@ def grade_documents(state: AgentState, config: RunnableConfig) -> Literal["gener
     if config["metadata"]["rag_settings"].grading:
         # LLM (Bound to Tool)
         model = config["configurable"].get("ll_client", None)
-        llm_with_grader = model.with_structured_output(Grade)
+        try:
+            llm_with_grader = model.with_structured_output(Grade)
+        except NotImplementedError:
+            logger.error("Model does not support structured output")
+            parser = PydanticOutputParser(pydantic_object=Grade)
+            llm_with_grader = model | parser
 
         # Prompt
         grade_template = """
@@ -257,13 +262,13 @@ def grade_documents(state: AgentState, config: RunnableConfig) -> Literal["gener
         question = state["context_input"]
         logger.debug("Grading %s against Documents: %s", question, documents)
         chain = grader | llm_with_grader
-        scored_result = chain.invoke({"question": question, "context": documents})
         try:
+            scored_result = chain.invoke({"question": question, "context": documents})
             logger.info("Grading completed.")
             score = scored_result.binary_score
         except Exception:
-            logger.error("LLM is not returning binary score in grader!")
-            score = "no"
+            logger.error("LLM is not returning binary score in grader; marking all results relevant.")
+            score = "yes"
     else:
         logger.info("RAG Grading disabled; marking all results relevant.")
         score = "yes"

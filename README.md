@@ -2,8 +2,6 @@
 
 <!-- spell-checker:ignore streamlit, venv, setuptools -->
 
-🚧 The **AI Optimizer** is currently in *Beta*
-
 ## Description
 
 The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle Database 23ai** AI Vector Search, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
@@ -108,4 +106,4 @@ See [LICENSE](./LICENSE.txt) for more details.
 
 
 [magic_button]: https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg
-[magic_arch_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle-samples/ai-optimizer/releases/download/v0.0.1/ai-optimizer-stack.zip
+[magic_arch_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-stack.zip

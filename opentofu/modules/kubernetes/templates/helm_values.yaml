@@ -35,7 +35,8 @@ server:
   adb:
     enabled: true
     ocid: "${adb_ocid}"
-    mtlsWallet: ""
+    mtls:
+      enabled: true
     authN:
       secretName: "${adb_name}-authn"
       usernameKey: "username"

@@ -95,19 +95,20 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.adb.authN.secretName | quote }}
                   key: {{ .Values.adb.authN.serviceKey | default "service" | quote }}
-            {{- $mtlsWallet := include "getMtlsWallet" . | fromJson }}
-            {{- if $mtlsWallet.secretName }}
+            {{- if .Values.adb.mtls.enabled }}
+              {{- if .Values.adb.mtls.secretName }}
             - name: DB_WALLET_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $mtlsWallet.secretName | quote }}
-                  key: {{ $mtlsWallet.secretKey | quote }}
-            {{ else }}
+                  name: {{ .Values.adb.mtls.secretName | quote }}
+                  key: {{ .Values.adb.mtls.secretKey | default .Values.adb.mtls.secretName | quote }}
+              {{ else }}
             - name: DB_WALLET_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}
                   key: {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}
+              {{- end }}
             {{- end }}
             {{- end }}
             - name: API_SERVER_PORT
@@ -166,9 +167,8 @@ spec:
         {{- if .Values.adb.enabled }}
         - name: tns-admin
           secret:
-            {{- $tnsAdmin := include "getTnsAdmin" . | fromJson }}
-            {{- if $tnsAdmin.secretName }}
-            secretName: {{ $tnsAdmin.secretName | quote }}
+            {{- if .Values.adb.tnsAdmin.secretName }}
+            secretName: {{ .Values.adb.tnsAdmin.secretName | quote }}
             {{ else }}
             secretName: {{ include "app.fullname" . }}-adb-tns-admin-{{ .Release.Revision }}
             {{- end }}
