@@ -91,9 +91,10 @@ ALTER USER "DEMO" DEFAULT ROLE ALL;
 ALTER USER "DEMO" QUOTA UNLIMITED ON DATA;
 ```
 
-If running on a supported database for [SelectAI](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/select-ai.html) and want to use the feature, grant the following additional privileges:
+If running on a supported database for [SelectAI](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/select-ai.html) and want to use the feature, grant the following additional privileges and open appropriate ACLs:
 
 ```sql
+GRANT EXECUTE ON DBMS_CLOUD TO DEMO;
 GRANT EXECUTE ON DBMS_CLOUD_AI TO DEMO;
 GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO DEMO;
 ```
