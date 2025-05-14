@@ -1,12 +1,17 @@
+"""
+Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-from typing import Annotated
+DISABLED!! Due to some models not being able to handle tool calls, this code is not called.  It is
+maintained here for future capabilities.  DO NOT DELETE (gotsysdba - 11-Feb-2025)
+"""
+# spell-checker:ignore selectai
 
 from langchain_core.tools import BaseTool, tool
 from langchain_core.runnables import RunnableConfig
 
-from langgraph.prebuilt import InjectedState
-
 import common.logging_config as logging_config
+from server.utils.databases import execute_sql
 
 logger = logging_config.logging.getLogger("server.tools.selectai_executor")
 
@@ -14,7 +19,7 @@ logger = logging_config.logging.getLogger("server.tools.selectai_executor")
 # selectai_tool
 # ------------------------------------------------------------------------------
 # Executes an Oracle "SelectAI" query using the provided configuration.
-# 
+#
 # - Expects a RunnableConfig object with the following keys:
 #     - "profile": the Oracle AI profile to activate for the session.
 #     - "query": the AI SQL query to execute (appended to "select ai ").
@@ -26,7 +31,7 @@ logger = logging_config.logging.getLogger("server.tools.selectai_executor")
 # 2. Constructs and executes the AI SQL query.
 # 3. Fetches all results, returning them as a list of dictionaries (column name to value).
 # 4. On error, logs the exception and returns a list with a single error dictionary.
-# 
+#
 # This function is intended to be used as a LangChain tool for AI-driven SQL execution.
 # ------------------------------------------------------------------------------
 
@@ -37,43 +42,28 @@ def selectai_tool(
     """Execute a SelectAI call"""
     logger.info("Starting SelectAI Tool")
 
-    if config["profile"] and config["query"]:
+    if config["profile"] and config["query"] and config["action"]:
         try:
             # Retrieve the existing Oracle DB connection from config
-            logger.info("Connecting to VectorStore")
-            db_conn = config["configurable"]["db_conn"] 
-
-            # Get the profile string from config
-            profile = config["profile"]
-            logger.info(f"Using profile: {profile}")
+            logger.info("Connecting to Database")
+            db_conn = config["configurable"]["db_conn"]
             # Prepare the SQL statement
-            setprofile = f"BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => '{profile}'); END;"
-
+            sql = """
+                SELECT DBMS_CLOUD_AI.GENERATE(
+                    prompt       => :query,
+                    profile_name => :profile,
+                    action       => :action)
+                FROM dual
+            """
+            binds = {"query": config["query"], "profile": config["profile"], "action": config["action"]}
             # Execute the SQL using the connection
-            with db_conn.cursor() as cursor:
-                cursor.execute(setprofile)
-                db_conn.commit()
-
-            # Append config["query"] to the base string
-            sql = "select ai " + config["query"]
-
-            logger.info(f"Running query: {sql}")
-
-            # Execute the SQL and fetch results as list[dict]
-            with db_conn.cursor() as cursor:
-                cursor.execute(sql)
-                columns = [col[0] for col in cursor.description]  # Get column names
-                results = [
-                    dict(zip(columns, row))
-                    for row in cursor.fetchall()
-                ]
-
-            # Now results is a list of dictionarie
-            return results
+            response = execute_sql(db_conn, sql, binds)
+            # Response will be [{sql:, completion}]; return the completion
+            return list(response[0].values())[0]
         except Exception as ex:
             logger.exception("Error in selectai_tool")
             # Return an error in the same format as a result list
-            return [{"error": str(ex)}]        
+            return [{"error": str(ex)}]
 
 
 selectai_executor: BaseTool = tool(selectai_tool)

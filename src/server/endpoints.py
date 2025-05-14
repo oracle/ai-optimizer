@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore langgraph, ocid, docos, giskard, testsets, testset, noauth
-# spell-checker:ignore astream, ainvoke, litellm
+# spell-checker:ignore astream, ainvoke, litellm, selectai, explainsql, showsql
 
 import asyncio
 import json
@@ -34,6 +34,7 @@ import server.utils.models as models
 import server.utils.embedding as embedding
 import server.utils.testbed as testbed
 import server.agents.chatbot as chatbot
+from server.agents.tools.selectai import selectai_tool
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -929,38 +930,64 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     #################################################
     # selectai Endpoints
     #################################################
-    from server.agents.tools.selectai import selectai_tool
+    @auth.get(
+        "/v1/selectai/objects",
+        description="Get SelectAI Profile Object List",
+        response_model=list[schema.DatabaseSelectAIObjects],
+    )
+    async def selectai_get_objects(
+        client: schema.ClientIdType = Header(default="server"),
+    ) -> list[schema.DatabaseSelectAIObjects]:
+        """Update DatabaseSelectAIObjects"""
+        db_conn = get_client_db(client).connection
+        select_ai_objects = databases.get_selectai_objects(db_conn)
+        return select_ai_objects
 
-    @auth.post("/v1/selectai", description="Call selectai tool with profile and query", response_model=list[dict])
+    @auth.patch(
+        "/v1/selectai/objects",
+        description="Update SelectAI Profile Object List",
+        response_model=list[schema.DatabaseSelectAIObjects],
+    )
+    async def selectai_update_objects(
+        payload: list[schema.DatabaseSelectAIObjects],
+        client: schema.ClientIdType = Header(default="server"),
+    ) -> list[schema.DatabaseSelectAIObjects]:
+        """Update DatabaseSelectAIObjects"""
+        logger.debug("Received selectai_update - payload: %s", payload)
+        object_list = json.dumps([obj.model_dump(include={"owner", "name"}) for obj in payload])
+        db_conn = get_client_db(client).connection
+        databases.set_selectai_profile(db_conn, "object_list", object_list)
+        return databases.get_selectai_objects(db_conn)
+
+    @auth.post("/v1/selectai", description="Call selectai tool with profile and query", response_model=str)
     async def selectai_endpoint(
-    request: schema.SelectAIRequest,
-    client: schema.ClientIdType = Header(...)
-) -> list[dict]:
+        query: str,
+        action: Literal["runsql", "showsql", "explainsql", "narrate", "chat"] = "narrate",
+        client: schema.ClientIdType = Header(default="server"),
+    ) -> str:
         """
         Call selectai_tool with provided profile and query parameters.
         """
-        logger.debug("Received selectai_endpoint - request: %s", request)
-             
-        try: 
+        logger.debug("Received selectai_endpoint - query: %s", query)
+        try:
             # Get Database Connection
             db_obj = get_client_db(client)
-            db_conn = db_obj.connection      
+            db_conn = db_obj.connection
 
             # Create RunnableConfig with profile and query
             config = RunnableConfig(
-                profile=request.profile,
-                query=request.query,
-                configurable={"db_conn": db_conn}
+                profile="OPTIMIZER_PROFILE",
+                query=query,
+                action=action,
+                configurable={"db_conn": db_conn},
             )
-            
+
             # Call the tool
             result = selectai_tool(config=config)
 
             return result
-        except Exception as e:
-            logger.error("An exception occurred: %s", e)
-            raise HTTPException(status_code=500, detail=str(e))
-
-
+        except Exception as ex:
+            logger.error("An exception occurred: %s", ex)
+            raise HTTPException(status_code=500, detail=str(ex)) from ex
 
     logger.info("Endpoints Loaded.")

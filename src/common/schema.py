@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, hnsw, mult, ocid, testset
+# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai
 
 from typing import Optional, Literal, Union, get_args
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
@@ -55,6 +55,15 @@ class DatabaseVectorStorage(BaseModel):
     index_type: Optional[IndexTypes] = Field(default=None, description="Vector Index")
 
 
+class DatabaseSelectAIObjects(BaseModel):
+    """Database SelectAI Objects"""
+
+    database: Optional[str] = Field(default="DEFAULT", description="Name of Database (Alias)")
+    owner: Optional[str] = Field(default=None, description="Object Owner", readOnly=True)
+    name: Optional[str] = Field(default=None, description="Object Name", readOnly=True)
+    enabled: bool = Field(default=False, description="SelectAI Enabled")
+
+
 class DatabaseAuth(BaseModel):
     """Patch'able Database Configuration (sent to oracledb)"""
 
@@ -71,10 +80,13 @@ class Database(DatabaseAuth):
     """Database Object"""
 
     name: str = Field(default="DEFAULT", description="Name of Database (Alias)")
-    select_ai: bool = Field(default=False, description="SelectAI Possible")
+    selectai: bool = Field(default=False, description="SelectAI Possible")
     connected: bool = Field(default=False, description="Connection Established")
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
         default=None, description="Vector Storage (read-only)", readOnly=True
+    )
+    selectai_objects: Optional[list[DatabaseSelectAIObjects]] = Field(
+        default=None, description="SelectAI Eligible Objects (read-only)", readOnly=True
     )
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
@@ -360,13 +372,6 @@ class EvaluationReport(Evaluation):
     failures: dict = Field(description="Failures")
     html_report: str = Field(description="HTML Report")
 
-
-#####################################################
-# Select AI
-#####################################################
-class SelectAIRequest(BaseModel):
-    profile: str
-    query: str
 
 #####################################################
 # Types

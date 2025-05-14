@@ -45,7 +45,7 @@ def patch_prompt(category: str, name: str, prompt: str) -> None:
     )
     if configured_prompt != prompt:
         try:
-            api_call.patch(
+            _ = api_call.patch(
                 endpoint=f"v1/prompts/{category}/{name}",
                 payload={"json": {"prompt": prompt}},
             )

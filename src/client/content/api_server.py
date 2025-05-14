@@ -37,7 +37,7 @@ def copy_user_settings(new_client: ClientIdType) -> None:
     """Copy User Setting to a new client (e.g. the Server)"""
     logger.info("Copying user settings to: %s", new_client)
     try:
-        api_call.patch(
+        _ = api_call.patch(
             endpoint="v1/settings",
             payload={"json": state.user_settings},
             params={"client": new_client},

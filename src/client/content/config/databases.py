@@ -5,10 +5,12 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 This script initializes a web interface for database configuration using Streamlit (`st`).
 It includes a form to input and test database connection settings.
 """
-# spell-checker:ignore streamlit, selectbox
+# spell-checker:ignore streamlit, selectbox, selectai
 
 import inspect
 import time
+import json
+import pandas as pd
 
 import streamlit as st
 from streamlit import session_state as state
@@ -50,7 +52,7 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
     ):
         try:
             endpoint = f"v1/databases/{name}"
-            api_call.patch(
+            _ = api_call.patch(
                 endpoint=endpoint,
                 payload={
                     "json": {
@@ -73,10 +75,26 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
         time.sleep(2)
 
 
-def drop_vs(vs: dict):
+def drop_vs(vs: dict) -> None:
     """Drop a Vector Storage Table"""
     api_call.delete(endpoint=f"v1/embed/{vs['vector_store']}")
     get_databases(force=True)
+
+
+def update_selectai(sai_df: pd.DataFrame ) -> None:
+    """Update SelectAI Object List"""
+    enabled_objects = sai_df[sai_df["Enabled"]].drop(columns=["Enabled"])
+    enabled_objects.columns = enabled_objects.columns.str.lower()
+    try:
+        endpoint = "v1/selectai/objects"
+        result = api_call.patch(
+            endpoint=endpoint,
+            payload={"json": json.loads(enabled_objects.to_json(orient="records"))}
+        )
+        logger.info("SelectAI Updated.")
+        state.database_config["DEFAULT"]["selectai_objects"] = result
+    except api_call.ApiError as ex:
+        logger.error("SelectAI not updated: %s", ex)
 
 
 #####################################################
@@ -85,7 +103,7 @@ def drop_vs(vs: dict):
 def main() -> None:
     """Streamlit GUI"""
     st.header("Database", divider="red")
-    st.write("Configure the database used for vector storage.")
+    st.write("Configure the database used for Vector Storage and SelectAI.")
     try:
         get_databases()  # Create/Rebuild state
     except api_call.ApiError:
@@ -129,14 +147,17 @@ def main() -> None:
             st.rerun()
 
     if state.database_config[name]["connected"]:
-        st.subheader("Database Vector Storage")
+        # Vector Stores
+        #############################################
+        st.subheader("Database Vector Storage", divider="red")
+        st.write("Existing Vector Storage Tables in Database.")
         with st.container(border=True):
             if state.database_config[name]["vector_stores"]:
-                table_col_format = st.columns([2, 5, 10, 5, 5, 5, 3])
-                headers = ["\u200b", "Alias", "Model", "Chunk: Size", "Overlap", "Distance Metric", "Index"]
+                vs_col_format = st.columns([2, 5, 10, 3, 3, 5, 3])
+                headers = ["\u200b", "Alias", "Model", "Chunk", "Overlap", "Dist. Metric", "Index"]
 
                 # Header row
-                for col, header in zip(table_col_format, headers):
+                for col, header in zip(vs_col_format, headers):
                     col.markdown(f"**<u>{header}</u>**", unsafe_allow_html=True)
 
                 # Vector store rows
@@ -144,7 +165,7 @@ def main() -> None:
                     vector_store = vs["vector_store"].lower()
                     fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
                     # Handle button in col1
-                    table_col_format[0].button(
+                    vs_col_format[0].button(
                         "",
                         icon="🗑️",
                         key=f"vector_stores_{vector_store}",
@@ -152,7 +173,7 @@ def main() -> None:
                         args=[vs],
                         help="Drop Vector Storage Table",
                     )
-                    for col, field in zip(table_col_format[1:], fields):  # Starting from col2
+                    for col, field in zip(vs_col_format[1:], fields):  # Starting from col2
                         col.text_input(
                             field.capitalize(),
                             value=vs[field],
@@ -162,6 +183,35 @@ def main() -> None:
                         )
             else:
                 st.write("No Vector Stores Found")
+
+        # Select AI
+        #############################################
+        st.subheader("SelectAI", divider="red")
+        if state.database_config[name]["selectai"]:
+            st.write("Tables eligible and enabled/disabled for SelectAI.")
+            if state.database_config[name]["selectai_objects"]:
+                df = pd.DataFrame(
+                    state.database_config[name]["selectai_objects"], columns=["owner", "name", "enabled"]
+                )
+                df.columns = ["Owner", "Name", "Enabled"]
+                sai_df = st.data_editor(
+                    df,
+                    column_config={
+                        "enabled": st.column_config.CheckboxColumn(label="Enabled", help="Toggle to enable or disable")
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                if st.button("Apply SelectAI Changes", type='primary'):
+                    changes = sai_df[sai_df["Enabled"] != df["Enabled"]]
+                    if not changes.empty:
+                        update_selectai(sai_df)
+                    else:
+                        st.write("No changes detected.")
+            else:
+                st.write("No tables found for SelectAI.")
+        else:
+            st.write("Unable to use SelectAI with Database.")
 
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:

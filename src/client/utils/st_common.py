@@ -60,7 +60,7 @@ def switch_prompt(prompt_type: PromptPromptType, prompt_name: PromptNameType) ->
 def patch_settings() -> None:
     """Patch user settings on Server"""
     try:
-        api_call.patch(
+        _ = api_call.patch(
             endpoint="v1/settings",
             payload={"json": state.user_settings},
             params={"client": state.user_settings["client"]},

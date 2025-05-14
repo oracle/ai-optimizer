@@ -84,7 +84,7 @@ def create_model(model: Model) -> None:
 def patch_model(model: Model) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
     try:
-        api_call.patch(
+        _ = api_call.patch(
             endpoint=f"v1/models/{model.name}",
             payload={"json": model.model_dump()},
         )
