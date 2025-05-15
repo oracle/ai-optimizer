@@ -2,11 +2,11 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore streamlit, selectbox, mult, iloc
+# spell-checker:ignore streamlit, selectbox, mult, iloc, selectai
 
 import os
 from io import BytesIO
-from typing import Union
+from typing import Union, get_args
 from uuid import uuid4
 import pandas as pd
 
@@ -19,7 +19,7 @@ import client.utils.api_call as api_call
 
 import common.help_text as help_text
 import common.logging_config as logging_config
-from common.schema import ClientIdType, PromptPromptType, PromptNameType
+from common.schema import ClientIdType, PromptPromptType, PromptNameType, SelectAISettings
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
@@ -220,42 +220,94 @@ def ll_sidebar() -> None:
 
 
 #####################################################
+# Tools Options
+#####################################################
+def tools_sidebar() -> None:
+    """SelectAI Sidebar Settings, conditional if all sorts of bs setup"""
+
+    def update_settings():
+        state.user_settings["rag"]["rag_enabled"] = state.selected_tool == "RAG"
+        state.user_settings["selectai"]["selectai_enabled"] = state.selected_tool == "SelectAI"
+
+    disable_selectai = not is_db_configured()
+    disable_rag = not is_db_configured()
+
+    if disable_selectai and disable_rag:
+        logger.debug("RAG/SelectAI Disabled (Database not configured)")
+        st.warning("Database is not configured. Disabling RAG and SelectAI tools.", icon="⚠️")
+        state.user_settings["selectai"]["selectai_enabled"] = disable_selectai
+        state.user_settings["rag"]["rag_enabled"] = disable_rag
+        switch_prompt("sys", "Basic Example")
+    else:
+        tools = [
+            ("None", "Do not use tools", False),
+            ("SelectAI", "Use AI with Structured Data", disable_selectai),
+            ("RAG", "Retrieval Augmented Generation", disable_rag),
+        ]
+
+        # RAG Reqs
+        get_models(model_type="embed")
+        available_embed_models = list(state.embed_model_enabled.keys())
+        if not available_embed_models:
+            logger.debug("RAG Disabled (no Embedding Models)")
+            st.warning("No embedding models are configured and/or enabled. Disabling RAG.", icon="⚠️")
+            tools = [t for t in tools if t[0] != "RAG"]
+        elif not state.database_config[state.user_settings["rag"]["database"]].get("vector_stores"):
+            logger.debug("RAG Disabled (Database has no vector stores.)")
+            st.warning("Database has no Vector Stores. Disabling RAG.", icon="⚠️")
+            tools = [t for t in tools if t[0] != "RAG"]
+
+        tool_box = [name for name, _, disabled in tools if not disabled]
+        tool_cap = [desc for _, desc, disabled in tools if not disabled]
+        if len(tool_box) > 1:
+            st.sidebar.subheader("Tools", divider="red")
+            tool_index = next(
+                (i for i, t in enumerate(tools) if
+                (t[0] == "SelectAI" and state.user_settings["selectai"]["selectai_enabled"]) or
+                (t[0] == "RAG" and state.user_settings["rag"]["rag_enabled"])),
+                0
+            )
+            st.sidebar.radio(
+                "Tool Selection",
+                tool_box,
+                #captions=tool_cap,
+                index=tool_index,
+                label_visibility="collapsed",
+                on_change=update_settings,
+                key="selected_tool",
+            )
+            if state.selected_tool == "None":
+                switch_prompt("sys", "Basic Example")
+            selectai_sidebar()
+            rag_sidebar()
+
+
+#####################################################
+# SelectAI Options
+#####################################################
+def selectai_sidebar() -> None:
+    """SelectAI Sidebar Settings, conditional if Database/SelectAI are configured"""
+    if state.user_settings["selectai"]["selectai_enabled"]:
+        st.sidebar.subheader("SelectAI", divider="red")
+        st.sidebar.selectbox(
+            "Action:",
+            get_args(SelectAISettings.__annotations__["action"]),
+            index=get_args(SelectAISettings.__annotations__["action"]).index(
+                state.user_settings["selectai"]["action"]
+            ),
+            key="selected_selectai_action",
+            on_change=update_user_settings("selectai"),
+        )
+
+
+#####################################################
 # RAG Options
 #####################################################
 def rag_sidebar() -> None:
     """RAG Sidebar Settings, conditional if Database/Embeddings are configured"""
-    st.sidebar.subheader("Retrieval Augmented Generation", divider="red")
-    get_models(model_type="embed")
-    available_embed_models = list(state.embed_model_enabled.keys())
-    if not available_embed_models:
-        logger.debug("RAG Disabled (no Embedding Models)")
-        st.warning("No embedding models are configured and/or enabled. Disabling RAG.", icon="⚠️")
-        disable_rag = True
-    else:
-        disable_rag = not is_db_configured()
+    if state.user_settings["rag"]["rag_enabled"]:
+        st.sidebar.subheader("Retrieval Augmented Generation", divider="red")
 
-    if disable_rag:
-        logger.debug("RAG Disabled (Database not configured)")
-        st.warning("Database is not configured. Disabling RAG.", icon="⚠️")
-        state.user_settings["rag"]["rag_enabled"] = False
-        switch_prompt("sys", "Basic Example")
-    elif not state.database_config[state.user_settings["rag"]["database"]].get("vector_stores"):
-        logger.debug("RAG Disabled (Database has no vector stores.)")
-        st.warning("Database has no Vector Stores. Disabling RAG.", icon="⚠️")
-        state.user_settings["rag"]["rag_enabled"] = False
-        switch_prompt("sys", "Basic Example")
-        disable_rag = True
-
-    rag_enabled = st.sidebar.checkbox(
-        "Enable RAG?",
-        help=help_text.help_dict["rag"],
-        value=state.user_settings["rag"]["rag_enabled"],
-        disabled=disable_rag,
-        key="selected_rag_rag_enabled",
-        on_change=update_user_settings("rag"),
-    )
-
-    if rag_enabled:
         switch_prompt("sys", "RAG Example")
         ##########################
         # Search
@@ -409,5 +461,3 @@ def rag_sidebar() -> None:
 
         # Reset button
         st.sidebar.button("Reset", type="primary", on_click=vs_reset)
-    else:
-        switch_prompt("sys", "Basic Example")

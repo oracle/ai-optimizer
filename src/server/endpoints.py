@@ -85,18 +85,21 @@ def get_client_oci(client: schema.ClientIdType) -> schema.OracleCloudSettings:
 
 def get_client_db(client: schema.ClientIdType) -> schema.Database:
     """Return a Database Object based on client settings"""
-    db_name = "DEFAULT"
     client_settings = get_client_settings(client)
-    if client_settings.rag:
+
+    # Get database name from client settings, defaulting to "DEFAULT"
+    db_name = "DEFAULT"
+    if (hasattr(client_settings, "rag") and client_settings.rag) or (
+        hasattr(client_settings, "selectai") and client_settings.selectai
+    ):
         db_name = getattr(client_settings.rag, "database", "DEFAULT")
-        db_obj = next((db for db in DATABASE_OBJECTS if db.name == db_name), None)
-        # Refresh the connection if disconnected
-        try:
-            if db_obj:
-                databases.test(db_obj)
-        except databases.DbException as ex:
-            db_obj.connected = False
-            raise HTTPException(status_code=ex.status_code, detail=f"Database: {db_obj.name} {ex.detail}.") from ex
+
+    # Find the database object
+    db_obj = next((db for db in DATABASE_OBJECTS if db.name == db_name), None)
+    if not db_obj:
+        raise HTTPException(
+            status_code=404, detail=f"Database configuration '{db_name}' not found for client {client}."
+        )
 
     return db_obj
 
@@ -649,7 +652,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
 
         # Setup RAG
-        embed_client, ctx_prompt, db_conn = None, None, None
+        embed_client, ctx_prompt = None, None
         if client_settings.rag.rag_enabled:
             embed_client = await models.get_client(MODEL_OBJECTS, client_settings.rag.model_dump(), oci_config)
 
@@ -658,7 +661,6 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 (prompt for prompt in PROMPT_OBJECTS if prompt.category == "ctx" and prompt.name == user_ctx_prompt),
                 None,
             )
-            db_conn = get_client_db(client).connection
 
         kwargs = {
             "input": {"messages": [HumanMessage(content=request.messages[0].content)]},
@@ -667,12 +669,13 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                     "thread_id": client,
                     "ll_client": ll_client,
                     "embed_client": embed_client,
-                    "db_conn": db_conn,
+                    "db_conn": get_client_db(client).connection,
                 },
                 metadata={
                     "model_name": model["model"],
                     "use_history": client_settings.ll_model.chat_history,
                     "rag_settings": client_settings.rag,
+                    "selectai_settings": client_settings.selectai,
                     "sys_prompt": sys_prompt,
                     "ctx_prompt": ctx_prompt,
                 },
@@ -959,27 +962,25 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         databases.set_selectai_profile(db_conn, "object_list", object_list)
         return databases.get_selectai_objects(db_conn)
 
-    @auth.post("/v1/selectai", description="Call selectai tool with profile and query", response_model=str)
+    @auth.post("/v1/selectai", description="Call SelectAI Tool", response_model=str)
     async def selectai_endpoint(
         query: str,
-        action: Literal["runsql", "showsql", "explainsql", "narrate", "chat"] = "narrate",
         client: schema.ClientIdType = Header(default="server"),
     ) -> str:
-        """
-        Call selectai_tool with provided profile and query parameters.
-        """
+        """Call selectai_tool with provided profile and query parameters."""
         logger.debug("Received selectai_endpoint - query: %s", query)
-        try:
-            # Get Database Connection
-            db_obj = get_client_db(client)
-            db_conn = db_obj.connection
+        client_settings = get_client_settings(client)
+        logger.debug("SelectAI Enabled: %s", client_settings.selectai.selectai_enabled)
+        if not client_settings.selectai.selectai_enabled:
+            return f"SelectAI is Disabled for client: {client}"
 
+        try:
             # Create RunnableConfig with profile and query
             config = RunnableConfig(
                 profile="OPTIMIZER_PROFILE",
                 query=query,
-                action=action,
-                configurable={"db_conn": db_conn},
+                action=client_settings.selectai.action,
+                configurable={"db_conn": get_client_db(client).connection},
             )
 
             # Call the tool

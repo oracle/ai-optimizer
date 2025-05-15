@@ -2,7 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore langgraph, oraclevs, checkpointer, ainvoke, vectorstore, vectorstores, oraclevs, mult
+# spell-checker:ignore langgraph, oraclevs, checkpointer, ainvoke
+# spell-checker:ignore vectorstore, vectorstores, oraclevs, mult, selectai
 
 from datetime import datetime, timezone
 from typing import Literal
@@ -22,11 +23,9 @@ from langgraph.graph import MessagesState, StateGraph, START, END
 
 from pydantic import BaseModel, Field
 
+from server.utils.databases import execute_sql
 from common.schema import ChatResponse, ChatUsage, ChatChoices, ChatMessage
 from common import logging_config
-
-# from IPython.display import Image, display
-
 
 logger = logging_config.logging.getLogger("server.agents.chatbot")
 
@@ -80,12 +79,15 @@ def document_formatter(rag_context) -> str:
     chunks = "\n\n".join([doc["page_content"] for doc in rag_context])
     return chunks
 
+
 class DecimalEncoder(json.JSONEncoder):
     """Used with json.dumps to encode decimals"""
+
     def default(self, o):
         if isinstance(o, decimal.Decimal):
             return str(o)
         return super().default(o)
+
 
 #############################################################################
 # NODES and EDGES
@@ -278,7 +280,7 @@ def grade_documents(state: AgentState, config: RunnableConfig) -> Literal["gener
         # This is where we fake a tools response before the completion.
         logger.debug("Creating ToolsMessage Documents: %s", state["documents"])
         logger.debug("Creating ToolsMessage ContextQ:  %s", state["context_input"])
-        
+
         state["messages"].append(
             ToolMessage(
                 content=json.dumps([state["documents"], state["context_input"]], cls=DecimalEncoder),
@@ -318,6 +320,37 @@ async def vs_generate(state: AgentState, config: RunnableConfig) -> None:
     return {"messages": ("assistant", response)}
 
 
+async def selectai_generate(state: AgentState, config: RunnableConfig) -> None:
+    """Generate answer when SelectAI enabled; modify state with response"""
+    history = copy.deepcopy(state["cleaned_messages"])
+    selectai_prompt = history.pop().content
+
+    logger.info("Generating SelectAI Response on %s", selectai_prompt)
+    sql = """
+        SELECT DBMS_CLOUD_AI.GENERATE(
+            prompt       => :query,
+            profile_name => :profile,
+            action       => :action)
+        FROM dual
+    """
+    binds = {
+        "query": selectai_prompt,
+        "profile": config["metadata"]["selectai_settings"].profile,
+        "action": config["metadata"]["selectai_settings"].action,
+    }
+    # Execute the SQL using the connection
+    db_conn = config["configurable"]["db_conn"]
+    try:
+        completion = execute_sql(db_conn, sql, binds)
+    except Exception as ex:
+        completion = [{sql: f"I'm sorry, SelectAI has hit an issue: `{str(ex)}`"}]
+    # Response will be [{sql:, completion}]; return the completion
+    logger.debug("SelectAI Responded: %s", completion)
+    response = list(completion[0].values())[0]
+
+    return {"messages": ("assistant", response)}
+
+
 async def agent(state: AgentState, config: RunnableConfig) -> AgentState:
     """Invokes the chatbot with messages to be used"""
     logger.debug("Initializing Agent")
@@ -325,11 +358,19 @@ async def agent(state: AgentState, config: RunnableConfig) -> AgentState:
     return {"cleaned_messages": messages}
 
 
-def use_rag(_, config: RunnableConfig) -> Literal["vs_retrieve", "generate_response"]:
-    """Conditional edge to determine if using RAG or not"""
+def use_tool(_, config: RunnableConfig) -> Literal["selectai_generate", "vs_retrieve", "generate_response"]:
+    """Conditional edge to determine if using SelectAI, RAG or not"""
+    selectai_enabled = config["metadata"]["selectai_settings"].selectai_enabled
+    if selectai_enabled:
+        logger.info("Invoking Chatbot with SelectAI: %s", selectai_enabled)
+        return "selectai_generate"
+
     rag_enabled = config["metadata"]["rag_settings"].rag_enabled
-    logger.info("Invoking Chatbot with RAG: %s", rag_enabled)
-    return "vs_retrieve" if rag_enabled else "generate_response"
+    if rag_enabled:
+        logger.info("Invoking Chatbot with RAG: %s", rag_enabled)
+        return "vs_retrieve"
+
+    return "generate_response"
 
 
 async def generate_response(state: AgentState, config: RunnableConfig) -> AgentState:
@@ -355,15 +396,19 @@ workflow = StateGraph(AgentState)
 workflow.add_node("agent", agent)
 workflow.add_node("vs_retrieve", vs_retrieve)
 workflow.add_node("vs_generate", vs_generate)
+workflow.add_node("selectai_generate", selectai_generate)
 workflow.add_node("generate_response", generate_response)
 workflow.add_node("respond", respond)
 
 # Start the agent with clean messages
 workflow.add_edge(START, "agent")
 
-# Branch to either "vs_retrieve" or "generate_response"
-workflow.add_conditional_edges("agent", use_rag)
+# Branch to either "selectai_generate", "vs_retrieve", or "generate_response"
+workflow.add_conditional_edges("agent", use_tool)
 workflow.add_edge("generate_response", "respond")
+
+# If selectAI
+workflow.add_edge("selectai_generate", "respond")
 
 # If retrieving, grade the documents returned and either generate (not relevant) or vs_generate (relevant)
 workflow.add_conditional_edges("vs_retrieve", grade_documents)
@@ -376,5 +421,8 @@ workflow.add_edge("respond", END)
 memory = MemorySaver()
 chatbot_graph = workflow.compile(checkpointer=memory)
 
-# This will write a graph.png file of the LangGraph; don't deliver uncommented
+## This will write a graph.png file of the LangGraph; don't deliver uncommented
+from IPython.display import Image, display
+
 # display(Image(chatbot_graph.get_graph(xray=True).draw_mermaid_png(output_file_path="chatbot_graph.png")))
+chatbot_graph.get_graph(xray=True).print_ascii()

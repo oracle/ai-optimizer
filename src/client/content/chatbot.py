@@ -34,7 +34,7 @@ def show_rag_refs(context):
     for i, (ref_col, chunk) in enumerate(zip(ref_cols, context[0])):
         with ref_col.popover(f"Reference: {i + 1}"):
             chunk = context[0][i]
-            logger.debug("Chunk Content: %s", chunk)           
+            logger.debug("Chunk Content: %s", chunk)
             st.subheader("Reference Text", divider="red")
             st.markdown(chunk["page_content"])
             try:
@@ -69,7 +69,7 @@ async def main() -> None:
     state.enable_client = True
     st_common.history_sidebar()
     st_common.ll_sidebar()
-    st_common.rag_sidebar()
+    st_common.tools_sidebar()
     # Stop when sidebar configurations not set
     if not state.enable_client:
         st.stop()

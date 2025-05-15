@@ -43,10 +43,7 @@ def selectai_tool(
     logger.info("Starting SelectAI Tool")
 
     if config["profile"] and config["query"] and config["action"]:
-        try:
-            # Retrieve the existing Oracle DB connection from config
-            logger.info("Connecting to Database")
-            db_conn = config["configurable"]["db_conn"]
+        try:           
             # Prepare the SQL statement
             sql = """
                 SELECT DBMS_CLOUD_AI.GENERATE(
@@ -57,8 +54,10 @@ def selectai_tool(
             """
             binds = {"query": config["query"], "profile": config["profile"], "action": config["action"]}
             # Execute the SQL using the connection
+            db_conn = config["configurable"]["db_conn"]
             response = execute_sql(db_conn, sql, binds)
             # Response will be [{sql:, completion}]; return the completion
+            logger.debug("SelectAI Responded: %s", response)
             return list(response[0].values())[0]
         except Exception as ex:
             logger.exception("Error in selectai_tool")

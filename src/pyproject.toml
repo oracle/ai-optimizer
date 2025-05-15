@@ -31,13 +31,13 @@ server = [
     "giskard==2.16.2",
     "IPython==9.2.0",
     "langchain-cohere==0.4.4",
-    "langchain-community==0.3.23",
+    "langchain-community==0.3.24",
     "langchain-huggingface==0.2.0",
     "langchain-ollama==0.3.2",
     "langchain-openai==0.3.16",
     "langgraph==0.4.3",
-    "litellm==1.69.0",
-    "llama_index==0.12.35",
+    "litellm==1.69.2",
+    "llama_index==0.12.36",
     "lxml==5.4.0",
     "matplotlib==3.10.1",
     "oci~=2.0",
@@ -49,7 +49,7 @@ server = [
 
 # GUI component dependencies
 client = [
-    "streamlit==1.45.0",
+    "streamlit==1.45.1",
 ]
 
 # Test dependencies

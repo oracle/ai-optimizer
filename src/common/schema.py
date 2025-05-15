@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai
+# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql
 
 from typing import Optional, Literal, Union, get_args
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
@@ -49,8 +49,8 @@ class DatabaseVectorStorage(BaseModel):
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
     model: Optional[str] = Field(default=None, description="Embedding Model")
-    chunk_size: Optional[int] = Field(default=None, description="Chunk Size")
-    chunk_overlap: Optional[int] = Field(default=None, description="Chunk Overlap")
+    chunk_size: Optional[int] = Field(default=0, description="Chunk Size")
+    chunk_overlap: Optional[int] = Field(default=0, description="Chunk Overlap")
     distance_metric: Optional[DistanceMetrics] = Field(default=None, description="Distance Metric")
     index_type: Optional[IndexTypes] = Field(default=None, description="Vector Index")
 
@@ -236,6 +236,16 @@ class RagSettings(DatabaseVectorStorage):
     )
 
 
+class SelectAISettings(BaseModel):
+    """Store SelectAI Settings"""
+
+    selectai_enabled: bool = Field(default=False, description="SelectAI Enabled")
+    profile: str = Field(default="OPTIMIZER_PROFILE", description="SelectAI Profile", readOnly=True)
+    action: Literal["runsql", "showsql", "explainsql", "narrate"] = Field(
+        default="narrate", description="SelectAI Action"
+    )
+
+
 class OciSettings(BaseModel):
     """OCI Settings"""
 
@@ -258,6 +268,7 @@ class Settings(BaseModel):
     )
     rag: Optional[RagSettings] = Field(default_factory=RagSettings, description="RAG Settings")
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
+    selectai: Optional[SelectAISettings] = Field(default_factory=SelectAISettings, description="SelectAI Settings")
 
 
 #####################################################
