@@ -174,6 +174,7 @@ def set_selectai_profile(conn: oracledb.Connection, attribute_name: str, attribu
     """Update SelectAI Profile"""
     logger.info("Updating SelectAI Profile attribute: %s = %s", attribute_name, attribute_value)
     # Attribute Names: provider, credential_name, object_list, provider_endpoint, model
+    # Attribute Names: temperature, max_tokens
     binds = {"attribute_name": attribute_name, "attribute_value": attribute_value}
     sql = """
             BEGIN

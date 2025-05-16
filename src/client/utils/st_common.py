@@ -133,7 +133,7 @@ def history_sidebar() -> None:
 def ll_sidebar() -> None:
     """Language Model Sidebar"""
     st.sidebar.subheader("Language Model Parameters", divider="red")
-    # If no user_settings defined for , set to the first available_ll_model
+    # If no user_settings defined for model, set to the first available_ll_model
     if state.user_settings["ll_model"].get("model") is None:
         default_ll_model = list(state.ll_model_enabled.keys())[0]
         defaults = {
@@ -144,24 +144,31 @@ def ll_sidebar() -> None:
         }
         state.user_settings["ll_model"].update(defaults)
 
-    ll_idx = list(state.ll_model_enabled.keys()).index(state.user_settings["ll_model"]["model"])
-    selected_model = st.sidebar.selectbox(
-        "Chat model:",
-        options=list(state.ll_model_enabled.keys()),
-        index=ll_idx,
-        key="selected_ll_model_model",
-        on_change=update_user_settings("ll_model"),
-    )
+    selected_model = state.user_settings["ll_model"]["model"]
+    ll_idx = list(state.ll_model_enabled.keys()).index(selected_model)
+    if not state.user_settings["selectai"]["enabled"]:
+        selected_model = st.sidebar.selectbox(
+            "Chat model:",
+            options=list(state.ll_model_enabled.keys()),
+            index=ll_idx,
+            key="selected_ll_model_model",
+            on_change=update_user_settings("ll_model"),
+            disabled=state.user_settings["selectai"]["enabled"]
+        )
 
     # Temperature
     temperature = state.ll_model_enabled[selected_model]["temperature"]
     user_temperature = state.user_settings["ll_model"]["temperature"]
+    max_value = 2.0
+    if state.user_settings["selectai"]["enabled"]:
+        user_temperature = 1.0
+        max_value = 1.0
     st.sidebar.slider(
         f"Temperature (Default: {temperature}):",
         help=help_text.help_dict["temperature"],
         value=user_temperature if user_temperature is not None else temperature,
         min_value=0.0,
-        max_value=2.0,
+        max_value=max_value,
         key="selected_ll_model_temperature",
         on_change=update_user_settings("ll_model"),
     )
@@ -184,39 +191,40 @@ def ll_sidebar() -> None:
     )
 
     # Top P
-    st.sidebar.slider(
-        "Top P (Default: 1.0):",
-        help=help_text.help_dict["top_p"],
-        value=state.user_settings["ll_model"]["top_p"],
-        min_value=0.0,
-        max_value=1.0,
-        key="selected_ll_model_top_p",
-        on_change=update_user_settings("ll_model"),
-    )
+    if not state.user_settings["selectai"]["enabled"]:
+        st.sidebar.slider(
+            "Top P (Default: 1.0):",
+            help=help_text.help_dict["top_p"],
+            value=state.user_settings["ll_model"]["top_p"],
+            min_value=0.0,
+            max_value=1.0,
+            key="selected_ll_model_top_p",
+            on_change=update_user_settings("ll_model"),
+        )
 
-    # Frequency Penalty
-    frequency_penalty = state.ll_model_enabled[selected_model]["frequency_penalty"]
-    user_frequency_penalty = state.user_settings["ll_model"]["frequency_penalty"]
-    st.sidebar.slider(
-        f"Frequency penalty (Default: {frequency_penalty}):",
-        help=help_text.help_dict["frequency_penalty"],
-        value=user_frequency_penalty if user_frequency_penalty is not None else frequency_penalty,
-        min_value=-2.0,
-        max_value=2.0,
-        key="selected_ll_model_frequency_penalty",
-        on_change=update_user_settings("ll_model"),
-    )
+        # Frequency Penalty
+        frequency_penalty = state.ll_model_enabled[selected_model]["frequency_penalty"]
+        user_frequency_penalty = state.user_settings["ll_model"]["frequency_penalty"]
+        st.sidebar.slider(
+            f"Frequency penalty (Default: {frequency_penalty}):",
+            help=help_text.help_dict["frequency_penalty"],
+            value=user_frequency_penalty if user_frequency_penalty is not None else frequency_penalty,
+            min_value=-2.0,
+            max_value=2.0,
+            key="selected_ll_model_frequency_penalty",
+            on_change=update_user_settings("ll_model"),
+        )
 
-    # Presence Penalty
-    st.sidebar.slider(
-        "Presence penalty (Default: 0.0):",
-        help=help_text.help_dict["presence_penalty"],
-        value=state.user_settings["ll_model"]["presence_penalty"],
-        min_value=-2.0,
-        max_value=2.0,
-        key="selected_ll_model_presence_penalty",
-        on_change=update_user_settings("ll_model"),
-    )
+        # Presence Penalty
+        st.sidebar.slider(
+            "Presence penalty (Default: 0.0):",
+            help=help_text.help_dict["presence_penalty"],
+            value=state.user_settings["ll_model"]["presence_penalty"],
+            min_value=-2.0,
+            max_value=2.0,
+            key="selected_ll_model_presence_penalty",
+            on_change=update_user_settings("ll_model"),
+        )
 
 
 #####################################################

@@ -608,11 +608,11 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     ) -> AsyncGenerator[str, None]:
         """Generate a completion from agent, stream the results"""
         client_settings = get_client_settings(client)
+        model = request.model_dump()
         logger.debug("Settings: %s", client_settings)
-        logger.debug("Request: %s", request.model_dump())
+        logger.debug("Request: %s", model)
 
         # Establish LL schema.Model Params (if the request specs a model, otherwise override from settings)
-        model = request.model_dump()
         if not model["model"]:
             model = client_settings.ll_model.model_dump()
 
@@ -651,9 +651,17 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             logger.error("A settings exception occurred: %s", ex)
             raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
 
+        db_conn = None
+        # Setup selectai
+        if client_settings.selectai.enabled:
+            db_conn = get_client_db(client).connection
+            databases.set_selectai_profile(db_conn, "temperature", model["temperature"])
+            databases.set_selectai_profile(db_conn, "max_tokens", model["max_completion_tokens"])
+
         # Setup vector_search
         embed_client, ctx_prompt = None, None
         if client_settings.vector_search.enabled:
+            db_conn = get_client_db(client).connection
             embed_client = await models.get_client(
                 MODEL_OBJECTS, client_settings.vector_search.model_dump(), oci_config
             )
@@ -671,7 +679,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                     "thread_id": client,
                     "ll_client": ll_client,
                     "embed_client": embed_client,
-                    "db_conn": get_client_db(client).connection,
+                    "db_conn": db_conn,
                 },
                 metadata={
                     "model_name": model["model"],
