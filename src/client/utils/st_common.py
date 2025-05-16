@@ -226,7 +226,7 @@ def tools_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if all sorts of bs setup"""
 
     def update_settings():
-        state.user_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
+        state.user_settings["vector_search"]["enabled"] = state.selected_tool == "VectorSearch"
         state.user_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
     disable_selectai = not is_db_configured()
@@ -290,7 +290,7 @@ def tools_sidebar() -> None:
 #####################################################
 def selectai_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if Database/SelectAI are configured"""
-    if state.user_settings["selectai"]["selectai_enabled"]:
+    if state.user_settings["selectai"]["enabled"]:
         st.sidebar.subheader("SelectAI", divider="red")
         st.sidebar.selectbox(
             "Action:",

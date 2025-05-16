@@ -179,30 +179,30 @@ def vs_retrieve(state: AgentState, config: RunnableConfig) -> AgentState:
         logger.info("Connecting to VectorStore")
         db_conn = config["configurable"]["db_conn"]
         embed_client = config["configurable"]["embed_client"]
-        rag_settings = config["metadata"]["rag_settings"]
-        logger.info("Initializing Vector Store: %s", rag_settings.vector_store)
+        vector_search = config["metadata"]["vector_search"]
+        logger.info("Initializing Vector Store: %s", vector_search.vector_store)
         try:
-            vectorstore = OracleVS(db_conn, embed_client, rag_settings.vector_store, rag_settings.distance_metric)
+            vectorstore = OracleVS(db_conn, embed_client, vector_search.vector_store, vector_search.distance_metric)
         except Exception as ex:
             logger.exception("Failed to initialize the Vector Store")
             raise ex
 
         try:
-            search_type = rag_settings.search_type
-            search_kwargs = {"k": rag_settings.top_k}
+            search_type = vector_search.search_type
+            search_kwargs = {"k": vector_search.top_k}
 
             if search_type == "Similarity":
                 retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
             elif search_type == "Similarity Score Threshold":
-                search_kwargs["score_threshold"] = rag_settings.score_threshold
+                search_kwargs["score_threshold"] = vector_search.score_threshold
                 retriever = vectorstore.as_retriever(
                     search_type="similarity_score_threshold", search_kwargs=search_kwargs
                 )
             elif search_type == "Maximal Marginal Relevance":
                 search_kwargs.update(
                     {
-                        "fetch_k": rag_settings.fetch_k,
-                        "lambda_mult": rag_settings.lambda_mult,
+                        "fetch_k": vector_search.fetch_k,
+                        "lambda_mult": vector_search.lambda_mult,
                     }
                 )
                 retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs=search_kwargs)
@@ -232,7 +232,7 @@ def grade_documents(state: AgentState, config: RunnableConfig) -> Literal["gener
 
         binary_score: str = Field(description="Relevance score 'yes' or 'no'")
 
-    if config["metadata"]["rag_settings"].grading:
+    if config["metadata"]["vector_search"].grading:
         # LLM (Bound to Tool)
         model = config["configurable"].get("ll_client", None)
         try:
@@ -335,15 +335,16 @@ async def selectai_generate(state: AgentState, config: RunnableConfig) -> None:
     """
     binds = {
         "query": selectai_prompt,
-        "profile": config["metadata"]["selectai_settings"].profile,
-        "action": config["metadata"]["selectai_settings"].action,
+        "profile": config["metadata"]["selectai"].profile,
+        "action": config["metadata"]["selectai"].action,
     }
     # Execute the SQL using the connection
     db_conn = config["configurable"]["db_conn"]
     try:
         completion = execute_sql(db_conn, sql, binds)
     except Exception as ex:
-        completion = [{sql: f"I'm sorry, SelectAI has hit an issue: `{str(ex)}`"}]
+        logger.error("SelectAI has hit an issue: %s", ex)
+        completion = [{sql: "I'm sorry, I have no information related to your query."}]
     # Response will be [{sql:, completion}]; return the completion
     logger.debug("SelectAI Responded: %s", completion)
     response = list(completion[0].values())[0]
@@ -365,9 +366,9 @@ def use_tool(_, config: RunnableConfig) -> Literal["selectai_generate", "vs_retr
         logger.info("Invoking Chatbot with SelectAI: %s", selectai_enabled)
         return "selectai_generate"
 
-    rag_enabled = config["metadata"]["vector_search"].enabled
-    if rag_enabled:
-        logger.info("Invoking Chatbot with Vector Search: %s", rag_enabled)
+    enabled = config["metadata"]["vector_search"].enabled
+    if enabled:
+        logger.info("Invoking Chatbot with Vector Search: %s", enabled)
         return "vs_retrieve"
 
     return "generate_response"
