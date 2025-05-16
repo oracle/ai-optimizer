@@ -8,6 +8,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # from time import sleep
 # from conftest import COMMON_VARS
 
+#############################################################################
+# Test Streamlit UI
+#############################################################################
+# class TestStreamlit:
+#     """Test the Streamlit UI"""
 
 # def test_model_delete_all(app_test):
 #     """Deleting Models"""

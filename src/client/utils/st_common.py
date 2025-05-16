@@ -242,7 +242,7 @@ def tools_sidebar() -> None:
         tools = [
             ("None", "Do not use tools", False),
             ("SelectAI", "Use AI with Structured Data", disable_selectai),
-            ("RAG", "Retrieval Augmented Generation", disable_rag),
+            ("VectorSearch", "Use AI with Unstructured Data", disable_rag),
         ]
 
         # RAG Reqs
@@ -264,7 +264,7 @@ def tools_sidebar() -> None:
             tool_index = next(
                 (i for i, t in enumerate(tools) if
                 (t[0] == "SelectAI" and state.user_settings["selectai"]["selectai_enabled"]) or
-                (t[0] == "RAG" and state.user_settings["rag"]["rag_enabled"])),
+                (t[0] == "VectorSearch" and state.user_settings["rag"]["rag_enabled"])),
                 0
             )
             st.sidebar.radio(

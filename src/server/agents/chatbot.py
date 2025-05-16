@@ -73,9 +73,9 @@ def get_messages(state: AgentState, config: RunnableConfig) -> list:
 
 
 def document_formatter(rag_context) -> str:
-    """Extract the RAG Documents and format into a string"""
-    logger.info("Extracting chunks from RAG Retrieval")
-    logger.debug("RAG Context: %s", rag_context)
+    """Extract the Vector Search Documents and format into a string"""
+    logger.info("Extracting chunks from Vector Search Retrieval")
+    logger.debug("Vector Search Context: %s", rag_context)
     chunks = "\n\n".join([doc["page_content"] for doc in rag_context])
     return chunks
 
@@ -136,7 +136,7 @@ def respond(state: AgentState, config: RunnableConfig) -> ChatResponse:
 
 
 def vs_retrieve(state: AgentState, config: RunnableConfig) -> AgentState:
-    """Search and return information using retrieval augmented generation (RAG)"""
+    """Search and return information using Vector Search"""
     ## Note that this should be a tool call; but some models (Perplexity/OCI GenAI)
     ## have limited or no tools support.  Instead we'll call as part of the pipeline
     ## and fake a tools call.  This can be later reverted to a tool without much code change.
@@ -224,7 +224,7 @@ def vs_retrieve(state: AgentState, config: RunnableConfig) -> AgentState:
 
 def grade_documents(state: AgentState, config: RunnableConfig) -> Literal["generate_response", "vs_generate"]:
     """Determines whether the retrieved documents are relevant to the question."""
-    logger.info("Grading RAG Response using %i retrieved documents", len(state["documents"]))
+    logger.info("Grading Vector Search Response using %i retrieved documents", len(state["documents"]))
 
     # Data model
     class Grade(BaseModel):
@@ -272,10 +272,10 @@ def grade_documents(state: AgentState, config: RunnableConfig) -> Literal["gener
             logger.error("LLM is not returning binary score in grader; marking all results relevant.")
             score = "yes"
     else:
-        logger.info("RAG Grading disabled; marking all results relevant.")
+        logger.info("Vector Search Grading disabled; marking all results relevant.")
         score = "yes"
 
-    logger.info("Grading Decision: RAG Relevant: %s", score)
+    logger.info("Grading Decision: Vector Search Relevant: %s", score)
     if score == "yes":
         # This is where we fake a tools response before the completion.
         logger.debug("Creating ToolsMessage Documents: %s", state["documents"])
@@ -295,10 +295,10 @@ def grade_documents(state: AgentState, config: RunnableConfig) -> Literal["gener
 
 
 async def vs_generate(state: AgentState, config: RunnableConfig) -> None:
-    """Generate answer when RAG enabled; modify state with response"""
-    logger.info("Generating RAG Response")
+    """Generate answer when Vector Search enabled; modify state with response"""
+    logger.info("Generating Vector Search Response")
 
-    # Generate prompt with RAG context
+    # Generate prompt with Vector Search context
     generate_template = "SystemMessage(content='{sys_prompt}\n {context}'), HumanMessage(content='{question}')"
     prompt_template = PromptTemplate(
         template=generate_template,
@@ -309,7 +309,7 @@ async def vs_generate(state: AgentState, config: RunnableConfig) -> None:
     llm = config["configurable"].get("ll_client", None)
     generate_chain = prompt_template | llm | StrOutputParser()
     documents = document_formatter(state["documents"])
-    logger.debug("Completing: '%s' against relevant RAG documents", state["context_input"])
+    logger.debug("Completing: '%s' against relevant VectorStore documents", state["context_input"])
     chain = {
         "sys_prompt": config["metadata"]["sys_prompt"].prompt,
         "question": state["context_input"],
@@ -359,15 +359,15 @@ async def agent(state: AgentState, config: RunnableConfig) -> AgentState:
 
 
 def use_tool(_, config: RunnableConfig) -> Literal["selectai_generate", "vs_retrieve", "generate_response"]:
-    """Conditional edge to determine if using SelectAI, RAG or not"""
-    selectai_enabled = config["metadata"]["selectai_settings"].selectai_enabled
+    """Conditional edge to determine if using SelectAI, Vector Search or not"""
+    selectai_enabled = config["metadata"]["selectai"].enabled
     if selectai_enabled:
         logger.info("Invoking Chatbot with SelectAI: %s", selectai_enabled)
         return "selectai_generate"
 
-    rag_enabled = config["metadata"]["rag_settings"].rag_enabled
+    rag_enabled = config["metadata"]["vector_search"].enabled
     if rag_enabled:
-        logger.info("Invoking Chatbot with RAG: %s", rag_enabled)
+        logger.info("Invoking Chatbot with Vector Search: %s", rag_enabled)
         return "vs_retrieve"
 
     return "generate_response"

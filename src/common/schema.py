@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql
+# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql, vector_search
 
 from typing import Optional, Literal, Union, get_args
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
@@ -196,7 +196,9 @@ class Prompt(PromptText):
     """Prompt Object"""
 
     name: str = Field(
-        default="Basic Example", description="Name of Prompt.", examples=["Basic Example", "RAG Example", "Custom"]
+        default="Basic Example",
+        description="Name of Prompt.",
+        examples=["Basic Example", "vector_search Example", "Custom"],
     )
     category: Literal["sys", "ctx"] = Field(..., description="Category of Prompt.")
 
@@ -218,11 +220,11 @@ class PromptSettings(BaseModel):
     sys: str = Field(default="Basic Example", description="System Prompt Name")
 
 
-class RagSettings(DatabaseVectorStorage):
-    """Store RAG Settings incl Vector Storage"""
+class VectorSearchSettings(DatabaseVectorStorage):
+    """Store vector_search Settings incl VectorStorage"""
 
-    rag_enabled: bool = Field(default=False, description="RAG Enabled")
-    grading: bool = Field(default=True, description="Grade RAG Results")
+    enabled: bool = Field(default=False, description="vector_search Enabled")
+    grading: bool = Field(default=True, description="Grade vector_search Results")
     search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
         default="Similarity", description="Search Type"
     )
@@ -239,7 +241,7 @@ class RagSettings(DatabaseVectorStorage):
 class SelectAISettings(BaseModel):
     """Store SelectAI Settings"""
 
-    selectai_enabled: bool = Field(default=False, description="SelectAI Enabled")
+    enabled: bool = Field(default=False, description="SelectAI Enabled")
     profile: str = Field(default="OPTIMIZER_PROFILE", description="SelectAI Profile", readOnly=True)
     action: Literal["runsql", "showsql", "explainsql", "narrate"] = Field(
         default="narrate", description="SelectAI Action"
@@ -266,8 +268,10 @@ class Settings(BaseModel):
     prompts: Optional[PromptSettings] = Field(
         default_factory=PromptSettings, description="Prompt Engineering Settings"
     )
-    rag: Optional[RagSettings] = Field(default_factory=RagSettings, description="RAG Settings")
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
+    vector_search: Optional[VectorSearchSettings] = Field(
+        default_factory=VectorSearchSettings, description="Vector Search Settings"
+    )
     selectai: Optional[SelectAISettings] = Field(default_factory=SelectAISettings, description="SelectAI Settings")
 
 

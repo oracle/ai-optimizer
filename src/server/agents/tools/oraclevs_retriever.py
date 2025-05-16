@@ -28,7 +28,7 @@ def oraclevs_tool(
     state: Annotated[dict, InjectedState],
     config: RunnableConfig,
 ) -> list[dict]:
-    """Search and return information using retrieval augmented generation (RAG)"""
+    """Search and return information using Vector Search"""
     logger.info("Initializing OracleVS Tool")
     # Take our contextualization prompt and reword the question
     # before doing the vector search; do only if history is turned on
@@ -68,30 +68,30 @@ def oraclevs_tool(
         logger.info("Connecting to VectorStore")
         db_conn = config["configurable"]["db_conn"]
         embed_client = config["configurable"]["embed_client"]
-        rag_settings = config["metadata"]["rag_settings"]
-        logger.info("Initializing Vector Store: %s", rag_settings.vector_store)
+        vs_settings = config["metadata"]["vector_search"]
+        logger.info("Initializing Vector Store: %s", vs_settings.vector_store)
         try:
-            vectorstore = OracleVS(db_conn, embed_client, rag_settings.vector_store, rag_settings.distance_metric)
+            vectorstore = OracleVS(db_conn, embed_client, vs_settings.vector_store, vs_settings.distance_metric)
         except Exception as ex:
             logger.exception("Failed to initialize the Vector Store")
             raise ex
 
         try:
-            search_type = rag_settings.search_type
-            search_kwargs = {"k": rag_settings.top_k}
+            search_type = vs_settings.search_type
+            search_kwargs = {"k": vs_settings.top_k}
 
             if search_type == "Similarity":
                 retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
             elif search_type == "Similarity Score Threshold":
-                search_kwargs["score_threshold"] = rag_settings.score_threshold
+                search_kwargs["score_threshold"] = vs_settings.score_threshold
                 retriever = vectorstore.as_retriever(
                     search_type="similarity_score_threshold", search_kwargs=search_kwargs
                 )
             elif search_type == "Maximal Marginal Relevance":
                 search_kwargs.update(
                     {
-                        "fetch_k": rag_settings.fetch_k,
-                        "lambda_mult": rag_settings.lambda_mult,
+                        "fetch_k": vs_settings.fetch_k,
+                        "lambda_mult": vs_settings.lambda_mult,
                     }
                 )
                 retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs=search_kwargs)

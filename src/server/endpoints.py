@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore langgraph, ocid, docos, giskard, testsets, testset, noauth
-# spell-checker:ignore astream, ainvoke, litellm, selectai, explainsql, showsql
+# spell-checker:ignore astream, ainvoke, litellm, selectai, explainsql, showsql, vector_search
 
 import asyncio
 import json
@@ -89,10 +89,10 @@ def get_client_db(client: schema.ClientIdType) -> schema.Database:
 
     # Get database name from client settings, defaulting to "DEFAULT"
     db_name = "DEFAULT"
-    if (hasattr(client_settings, "rag") and client_settings.rag) or (
+    if (hasattr(client_settings, "vector_search") and client_settings.vector_search) or (
         hasattr(client_settings, "selectai") and client_settings.selectai
     ):
-        db_name = getattr(client_settings.rag, "database", "DEFAULT")
+        db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
 
     # Find the database object
     db_obj = next((db for db in DATABASE_OBJECTS if db.name == db_name), None)
@@ -284,7 +284,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 output_dir=None,
             )
             embed_client = await models.get_client(
-                MODEL_OBJECTS, {"model": request.model, "rag_enabled": True}, oci_config
+                MODEL_OBJECTS, {"model": request.model, "enabled": True}, oci_config
             )
 
             # Calculate and set the vector_store name using get_vs_table
@@ -626,7 +626,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                     {
                         "message": {
                             "role": "assistant",
-                            "content": "I'm sorry, I'm unable to initialise the Language Model. Please refresh the application.",
+                            "content": "I'm unable to initialise the Language Model. Please refresh the application.",
                         },
                         "index": 0,
                         "finish_reason": "stop",
@@ -651,10 +651,12 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             logger.error("A settings exception occurred: %s", ex)
             raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
 
-        # Setup RAG
+        # Setup vector_search
         embed_client, ctx_prompt = None, None
-        if client_settings.rag.rag_enabled:
-            embed_client = await models.get_client(MODEL_OBJECTS, client_settings.rag.model_dump(), oci_config)
+        if client_settings.vector_search.enabled:
+            embed_client = await models.get_client(
+                MODEL_OBJECTS, client_settings.vector_search.model_dump(), oci_config
+            )
 
             user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
             ctx_prompt = next(
@@ -674,8 +676,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 metadata={
                     "model_name": model["model"],
                     "use_history": client_settings.ll_model.chat_history,
-                    "rag_settings": client_settings.rag,
-                    "selectai_settings": client_settings.selectai,
+                    "vector_search": client_settings.vector_search,
+                    "selectai": client_settings.selectai,
                     "sys_prompt": sys_prompt,
                     "ctx_prompt": ctx_prompt,
                 },
@@ -899,8 +901,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         client_settings = get_client_settings(client)
         # Change Disable History
         client_settings.ll_model.chat_history = False
-        # Change Grade RAG
-        client_settings.rag.grading = False
+        # Change Grade vector_search
+        client_settings.vector_search.grading = False
 
         db_conn = get_client_db(client).connection
         testset = testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())
