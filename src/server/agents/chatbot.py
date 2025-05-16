@@ -422,8 +422,5 @@ workflow.add_edge("respond", END)
 memory = MemorySaver()
 chatbot_graph = workflow.compile(checkpointer=memory)
 
-## This will write a graph.png file of the LangGraph; don't deliver uncommented
-from IPython.display import Image, display
-
-# display(Image(chatbot_graph.get_graph(xray=True).draw_mermaid_png(output_file_path="chatbot_graph.png")))
-chatbot_graph.get_graph(xray=True).print_ascii()
+## This will output the Graph in ascii; don't deliver uncommented
+# chatbot_graph.get_graph(xray=True).print_ascii()

@@ -15,6 +15,7 @@ from streamlit import session_state as state
 
 from client.content.config.models import get_models
 from client.content.config.databases import get_databases
+from client.content.config.oci import get_oci
 import client.utils.api_call as api_call
 
 import common.help_text as help_text
@@ -253,6 +254,14 @@ def tools_sidebar() -> None:
             ("VectorSearch", "Use AI with Unstructured Data", disable_vector_search),
         ]
 
+        # SelectAI Requirements
+        if "oci_config" not in state.user_settings:
+            get_oci()
+        oci_auth_profile = state.user_settings["oci"]["auth_profile"]
+        if not state.oci_config[oci_auth_profile]["namespace"]:
+            logger.debug("SelectAI Disabled (OCI not configured.)")
+            st.warning("OCI is not fully configured.  Disabling SelectAI.", icon="⚠️")
+            tools = [t for t in tools if t[0] != "SelectAI"]
         # Vector Search Requirements
         get_models(model_type="embed")
         available_embed_models = list(state.embed_model_enabled.keys())
