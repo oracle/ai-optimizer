@@ -15,7 +15,6 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-from client.content.config.oci import get_oci
 import client.utils.api_call as api_call
 import common.logging_config as logging_config
 
@@ -188,10 +187,7 @@ def main() -> None:
         # Select AI
         #############################################
         st.subheader("SelectAI", divider="red")
-        if "oci_config" not in state.user_settings:
-            get_oci()
-        oci_auth_profile = state.user_settings["oci"]["auth_profile"]
-        if state.database_config[name]["selectai"] and state.oci_config[oci_auth_profile]["namespace"] :
+        if state.database_config[name]["selectai"]:
             st.write("Tables eligible and enabled/disabled for SelectAI.")
             if state.database_config[name]["selectai_objects"]:
                 df = pd.DataFrame(
