@@ -207,8 +207,8 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
         provider=provider,
         ctx_prompt=f"{ctx_prompt}",
         ll_model=state["user_settings"]["ll_model"] | state["ll_model_enabled"][ll_model],
-        rag=state["user_settings"]["rag"],
-        database_config=state["database_config"][state["user_settings"]["rag"]["database"]],
+        vector_search=state["user_settings"]["vector_search"],
+        database_config=state["database_config"][state["user_settings"]["vector_search"]["database"]],
     )
 
     if file_name.endswith(".yaml"):
@@ -218,8 +218,8 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
             provider=provider,
             ctx_prompt=ctx_prompt,
             ll_model=state["user_settings"]["ll_model"] | state["ll_model_enabled"][ll_model],
-            rag=state["user_settings"]["rag"],
-            database_config=state["database_config"][state["user_settings"]["rag"]["database"]],
+            vector_search=state["user_settings"]["vector_search"],
+            database_config=state["database_config"][state["user_settings"]["vector_search"]["database"]],
         )
 
         yaml_data = yaml.safe_load(formatted_content)
@@ -327,7 +327,7 @@ def main():
 
     st.header("SpringAI Settings", divider="red")
     ll_model = state["user_settings"]["ll_model"]["model"]
-    embed_model = state["user_settings"]["rag"]["model"]
+    embed_model = state["user_settings"]["vector_search"]["model"]
     spring_ai_conf = spring_ai_conf_check(ll_model, embed_model)
 
     if spring_ai_conf == "hybrid":

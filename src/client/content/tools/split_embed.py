@@ -291,7 +291,7 @@ def main() -> None:
     # Populate Vector Store
     ######################################
     st.header("Populate Vector Store", divider="red")
-    existing_vs = state["database_config"][state["user_settings"]["rag"]["database"]]["vector_stores"]
+    existing_vs = state["database_config"][state["user_settings"]["vector_search"]["database"]]["vector_stores"]
     # Mandatory Alias
     embed_alias_size, _ = st.columns([0.5, 0.5])
     embed_alias_invalid = False

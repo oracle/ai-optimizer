@@ -96,7 +96,7 @@ class TestStreamlit:
         # Set up current session state
         at.session_state.user_settings = {
             "ll_model": {"model": "gpt-3.5-turbo"},
-            "rag": {"database": "DEFAULT", "model": "text-embedding-ada-002"},
+            "vector_search": {"database": "DEFAULT", "model": "text-embedding-ada-002"},
         }
         at.session_state.database_config = {
             "DEFAULT": {"name": "DEFAULT", "user": "test_user", "password": "test_pass"}
@@ -106,7 +106,7 @@ class TestStreamlit:
         uploaded_settings = {
             "user_settings": {
                 "ll_model": {"model": "gpt-4"},  # Different model
-                "rag": {"database": "DEFAULT", "model": "text-embedding-ada-002"},
+                "vector_search": {"database": "DEFAULT", "model": "text-embedding-ada-002"},
             },
             "database_config": {
                 "DEFAULT": {"name": "DEFAULT", "user": "new_user", "password": ""}  # Different user, empty password

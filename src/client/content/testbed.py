@@ -85,18 +85,18 @@ def evaluation_report(eid=None, report=None) -> None:
     ll_settings.drop(["streaming", "chat_history"], axis=1, inplace=True)
     ll_settings_reversed = ll_settings.iloc[:, ::-1]
     st.dataframe(ll_settings_reversed, hide_index=True)
-    if report["settings"]["rag"]["rag_enabled"]:
-        st.subheader("RAG Settings")
-        st.markdown(f"""**Database**: {report["settings"]["rag"]["database"]};
-            **Vector Store**: {report["settings"]["rag"]["vector_store"]}
+    if report["settings"]["vector_search"]["enabled"]:
+        st.subheader("Vector Search Settings")
+        st.markdown(f"""**Database**: {report["settings"]["vector_search"]["database"]};
+            **Vector Store**: {report["settings"]["vector_search"]["vector_store"]}
         """)
-        embed_settings = pd.DataFrame(report["settings"]["rag"], index=[0])
-        embed_settings.drop(["database", "vector_store", "alias", "rag_enabled", "grading"], axis=1, inplace=True)
-        if report["settings"]["rag"]["search_type"] == "Similarity":
+        embed_settings = pd.DataFrame(report["settings"]["vector_search"], index=[0])
+        embed_settings.drop(["database", "vector_store", "alias", "enabled", "grading"], axis=1, inplace=True)
+        if report["settings"]["vector_search"]["search_type"] == "Similarity":
             embed_settings.drop(["score_threshold", "fetch_k", "lambda_mult"], axis=1, inplace=True)
         st.dataframe(embed_settings, hide_index=True)
     else:
-        st.markdown("**Evaluated without RAG**")
+        st.markdown("**Evaluated without Vector Search**")
 
     # Show the Gauge
     gauge_fig = create_gauge(report["correctness"] * 100)
@@ -489,7 +489,7 @@ def main():
         st.subheader("Q&A Evaluation", divider="red")
         st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
         st_common.ll_sidebar()
-        st_common.rag_sidebar()
+        st_common.tools_sidebar()
         st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
         col_left, col_center, _ = st.columns([3, 3, 4])
         col_left.selectbox(

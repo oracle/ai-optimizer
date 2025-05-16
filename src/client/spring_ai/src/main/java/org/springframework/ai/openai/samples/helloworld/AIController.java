@@ -195,7 +195,7 @@ class AIController {
 				I'm sorry but I haven't enough information to answer.
 				""";
 		
-		//This template doesn't work with re-phrasing/grading pattern, but only via RAG 
+		//This template doesn't work with re-phrasing/grading pattern, but only via Vector Search 
 		//The contextInstr coming from Oracle ai optimizer and toolkit can't be used here: default only
 		//Modifiy it to include re-phrasing/grading if you wish.
 
@@ -247,7 +247,7 @@ public ResponseBodyEmitter streamCompletions(@RequestBody ChatRequest request) {
 					logger.info("prompt message: "+prompt.getContents());
 					String contentResponse = chatClient.prompt(prompt).call().content();
 					logger.info("-------------------------------------------------------");
-					logger.info("- RAG RETURN                                          -");
+					logger.info("- VECTOR SEARCH RETURN                                -");
 					logger.info("-------------------------------------------------------");
 					logger.info(contentResponse);
 					new Thread(() -> {

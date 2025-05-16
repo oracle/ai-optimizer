@@ -25,8 +25,8 @@ logger = logging_config.logging.getLogger("client.content.chatbot")
 #############################################################################
 # Functions
 #############################################################################
-def show_rag_refs(context):
-    """When RAG Content Found, show the references"""
+def show_vector_search_refs(context):
+    """When Vector Search Content Found, show the references"""
     st.markdown("**References:**")
     ref_src = set()
     ref_cols = st.columns([3, 3, 3])
@@ -88,18 +88,18 @@ async def main() -> None:
 
     history = await user_client.get_history()
     st.chat_message("ai").write("Hello, how can I help you?")
-    rag_refs = []
+    vector_search_refs = []
     for message in history:
         if not message["content"]:
             continue
         if message["role"] == "tool" and message["name"] == "oraclevs_tool":
-            rag_refs = json.loads(message["content"])
+            vector_search_refs = json.loads(message["content"])
         if message["role"] in ("ai", "assistant"):
             with st.chat_message("ai"):
                 st.markdown(message["content"])
-                if rag_refs:
-                    show_rag_refs(rag_refs)
-                    rag_refs = []
+                if vector_search_refs:
+                    show_vector_search_refs(vector_search_refs)
+                    vector_search_refs = []
         elif message["role"] in ("human", "user"):
             st.chat_message("human").write(message["content"])
 

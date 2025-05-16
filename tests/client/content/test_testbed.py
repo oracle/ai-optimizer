@@ -57,7 +57,7 @@ class TestStreamlit:
         at.session_state.user_settings = {
             "client": "test_client",
             "oci": {"auth_profile": "DEFAULT"},
-            "rag": {"database": "DEFAULT"},
+            "vector_search": {"database": "DEFAULT"},
         }
 
         # Mock the available models that get_models would set
@@ -136,7 +136,7 @@ class TestStreamlit:
         at.session_state.user_settings = {
             "client": "test_client",
             "oci": {"auth_profile": "DEFAULT"},
-            "rag": {"database": "DEFAULT"},
+            "vector_search": {"database": "DEFAULT"},
         }
 
         at.session_state.ll_model_enabled = {
@@ -213,7 +213,7 @@ class TestStreamlit:
         at.session_state.user_settings = {
             "client": "test_client",
             "oci": {"auth_profile": "DEFAULT"},
-            "rag": {"database": "DEFAULT"},
+            "vector_search": {"database": "DEFAULT"},
         }
 
         at.session_state.ll_model_enabled = {

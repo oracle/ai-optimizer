@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore streamlit, selectbox, mult, iloc, selectai
+# spell-checker:ignore streamlit, selectbox, mult, iloc, selectai, isin
 
 import os
 from io import BytesIO
@@ -95,7 +95,7 @@ def update_user_settings(
 def is_db_configured() -> bool:
     """Verify that a database is configured"""
     get_databases()
-    return state.database_config[state.user_settings["rag"]["database"]].get("connected")
+    return state.database_config[state.user_settings["vector_search"]["database"]].get("connected")
 
 
 def set_server_state() -> None:
@@ -226,51 +226,54 @@ def tools_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if all sorts of bs setup"""
 
     def update_settings():
-        state.user_settings["rag"]["rag_enabled"] = state.selected_tool == "RAG"
-        state.user_settings["selectai"]["selectai_enabled"] = state.selected_tool == "SelectAI"
+        state.user_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
+        state.user_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
     disable_selectai = not is_db_configured()
-    disable_rag = not is_db_configured()
+    disable_vector_search = not is_db_configured()
 
-    if disable_selectai and disable_rag:
-        logger.debug("RAG/SelectAI Disabled (Database not configured)")
-        st.warning("Database is not configured. Disabling RAG and SelectAI tools.", icon="⚠️")
-        state.user_settings["selectai"]["selectai_enabled"] = disable_selectai
-        state.user_settings["rag"]["rag_enabled"] = disable_rag
+    if disable_selectai and disable_vector_search:
+        logger.debug("Vector Search/SelectAI Disabled (Database not configured)")
+        st.warning("Database is not configured. Disabling Vector Search and SelectAI tools.", icon="⚠️")
+        state.user_settings["selectai"]["enabled"] = disable_selectai
+        state.user_settings["vector_search"]["enabled"] = disable_vector_search
         switch_prompt("sys", "Basic Example")
     else:
         tools = [
             ("None", "Do not use tools", False),
             ("SelectAI", "Use AI with Structured Data", disable_selectai),
-            ("VectorSearch", "Use AI with Unstructured Data", disable_rag),
+            ("VectorSearch", "Use AI with Unstructured Data", disable_vector_search),
         ]
 
-        # RAG Reqs
+        # Vector Search Requirements
         get_models(model_type="embed")
         available_embed_models = list(state.embed_model_enabled.keys())
         if not available_embed_models:
-            logger.debug("RAG Disabled (no Embedding Models)")
-            st.warning("No embedding models are configured and/or enabled. Disabling RAG.", icon="⚠️")
-            tools = [t for t in tools if t[0] != "RAG"]
-        elif not state.database_config[state.user_settings["rag"]["database"]].get("vector_stores"):
-            logger.debug("RAG Disabled (Database has no vector stores.)")
-            st.warning("Database has no Vector Stores. Disabling RAG.", icon="⚠️")
-            tools = [t for t in tools if t[0] != "RAG"]
+            logger.debug("Vector Search Disabled (no Embedding Models)")
+            st.warning("No embedding models are configured and/or enabled. Disabling Vector Search.", icon="⚠️")
+            tools = [t for t in tools if t[0] != "Vector Search"]
+        elif not state.database_config[state.user_settings["vector_search"]["database"]].get("vector_stores"):
+            logger.debug("Vector Search Disabled (Database has no vector stores.)")
+            st.warning("Database has no Vector Stores. Disabling Vector Search.", icon="⚠️")
+            tools = [t for t in tools if t[0] != "Vector Search"]
 
         tool_box = [name for name, _, disabled in tools if not disabled]
-        tool_cap = [desc for _, desc, disabled in tools if not disabled]
+        # tool_cap = [desc for _, desc, disabled in tools if not disabled]
         if len(tool_box) > 1:
             st.sidebar.subheader("Tools", divider="red")
             tool_index = next(
-                (i for i, t in enumerate(tools) if
-                (t[0] == "SelectAI" and state.user_settings["selectai"]["selectai_enabled"]) or
-                (t[0] == "VectorSearch" and state.user_settings["rag"]["rag_enabled"])),
-                0
+                (
+                    i
+                    for i, t in enumerate(tools)
+                    if (t[0] == "SelectAI" and state.user_settings["selectai"]["enabled"])
+                    or (t[0] == "VectorSearch" and state.user_settings["vector_search"]["enabled"])
+                ),
+                0,
             )
             st.sidebar.radio(
                 "Tool Selection",
                 tool_box,
-                #captions=tool_cap,
+                # captions=tool_cap,
                 index=tool_index,
                 label_visibility="collapsed",
                 on_change=update_settings,
@@ -279,7 +282,7 @@ def tools_sidebar() -> None:
             if state.selected_tool == "None":
                 switch_prompt("sys", "Basic Example")
             selectai_sidebar()
-            rag_sidebar()
+            vector_search_sidebar()
 
 
 #####################################################
@@ -301,67 +304,67 @@ def selectai_sidebar() -> None:
 
 
 #####################################################
-# RAG Options
+# Vector Search Options
 #####################################################
-def rag_sidebar() -> None:
-    """RAG Sidebar Settings, conditional if Database/Embeddings are configured"""
-    if state.user_settings["rag"]["rag_enabled"]:
-        st.sidebar.subheader("Retrieval Augmented Generation", divider="red")
+def vector_search_sidebar() -> None:
+    """Vector Search Sidebar Settings, conditional if Database/Embeddings are configured"""
+    if state.user_settings["vector_search"]["enabled"]:
+        st.sidebar.subheader("Vector Search", divider="red")
 
-        switch_prompt("sys", "RAG Example")
+        switch_prompt("sys", "Vector Search Example")
         ##########################
         # Search
         ##########################
         # TODO(gotsysdba) "Similarity Score Threshold" currently raises NotImplementedError
-        # rag_search_type_list =
+        # vector_search_type_list =
         # ["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"]
-        rag_search_type_list = ["Similarity", "Maximal Marginal Relevance"]
-        rag_search_type = st.sidebar.selectbox(
+        vector_search_type_list = ["Similarity", "Maximal Marginal Relevance"]
+        vector_search_type = st.sidebar.selectbox(
             "Search Type:",
-            rag_search_type_list,
-            index=rag_search_type_list.index(state.user_settings["rag"]["search_type"]),
-            key="selected_rag_search_type",
-            on_change=update_user_settings("rag"),
+            vector_search_type_list,
+            index=vector_search_type_list.index(state.user_settings["vector_search"]["search_type"]),
+            key="selected_vector_search_type",
+            on_change=update_user_settings("vector_search"),
         )
         st.sidebar.number_input(
             "Top K:",
             help=help_text.help_dict["top_k"],
-            value=state.user_settings["rag"]["top_k"],
+            value=state.user_settings["vector_search"]["top_k"],
             min_value=1,
             max_value=10000,
-            key="selected_rag_top_k",
-            on_change=update_user_settings("rag"),
+            key="selected_vector_search_top_k",
+            on_change=update_user_settings("vector_search"),
         )
-        if rag_search_type == "Similarity Score Threshold":
+        if vector_search_type == "Similarity Score Threshold":
             st.sidebar.slider(
                 "Minimum Relevance Threshold:",
                 help=help_text.help_dict["score_threshold"],
-                value=state.user_settings["rag"]["score_threshold"],
+                value=state.user_settings["vector_search"]["score_threshold"],
                 min_value=0.0,
                 max_value=1.0,
                 step=0.1,
-                key="selected_rag_score_threshold",
-                on_change=update_user_settings("rag"),
+                key="selected_vector_search_score_threshold",
+                on_change=update_user_settings("vector_search"),
             )
-        if rag_search_type == "Maximal Marginal Relevance":
+        if vector_search_type == "Maximal Marginal Relevance":
             st.sidebar.number_input(
                 "Fetch K:",
                 help=help_text.help_dict["fetch_k"],
-                value=state.user_settings["rag"]["fetch_k"],
+                value=state.user_settings["vector_search"]["fetch_k"],
                 min_value=1,
                 max_value=10000,
-                key="selected_rag_fetch_k",
-                on_change=update_user_settings("rag"),
+                key="selected_vector_search_fetch_k",
+                on_change=update_user_settings("vector_search"),
             )
             st.sidebar.slider(
                 "Degree of Diversity:",
                 help=help_text.help_dict["lambda_mult"],
-                value=state.user_settings["rag"]["lambda_mult"],
+                value=state.user_settings["vector_search"]["lambda_mult"],
                 min_value=0.0,
                 max_value=1.0,
                 step=0.1,
-                key="selected_rag_lambda_mult",
-                on_change=update_user_settings("rag"),
+                key="selected_vector_search_lambda_mult",
+                on_change=update_user_settings("vector_search"),
             )
 
         ##########################
@@ -369,11 +372,13 @@ def rag_sidebar() -> None:
         ##########################
         st.sidebar.subheader("Vector Store", divider="red")
         # Create a DataFrame of all database vector storage tables
-        vs_df = pd.DataFrame(state.database_config[state.user_settings["rag"]["database"]].get("vector_stores"))
+        vs_df = pd.DataFrame(
+            state.database_config[state.user_settings["vector_search"]["database"]].get("vector_stores")
+        )
 
         def vs_reset() -> None:
             """Reset Vector Store Selections"""
-            for key in state["user_settings"]["rag"]:
+            for key in state["user_settings"]["vector_search"]:
                 if key in (
                     "model",
                     "chunk_size",
@@ -383,8 +388,8 @@ def rag_sidebar() -> None:
                     "alias",
                     "index_type",
                 ):
-                    clear_state_key(f"selected_rag_{key}")
-                    state["user_settings"]["rag"][key] = ""
+                    clear_state_key(f"selected_vector_search_{key}")
+                    state["user_settings"]["vector_search"][key] = ""
 
         def vs_gen_selectbox(label, options, key):
             """Handle selectbox with auto-setting for a single unique value"""
@@ -398,7 +403,9 @@ def rag_sidebar() -> None:
                     selected_value = valid_options[0]
                     logger.debug("Defaulting %s to %s", key, selected_value)
                 else:
-                    selected_value = state["user_settings"]["rag"][key.removeprefix("selected_rag_")] or ""
+                    selected_value = (
+                        state["user_settings"]["vector_search"][key.removeprefix("selected_vector_search_")] or ""
+                    )
                     logger.debug("User selected %s to %s", key, selected_value)
             return st.sidebar.selectbox(
                 label,
@@ -413,50 +420,62 @@ def rag_sidebar() -> None:
             filtered = vs_df.copy()
             # Remove vector stores where the model is not enabled
             filtered = vs_df[vs_df["model"].isin(state["embed_model_enabled"].keys())]
-            if st.session_state.get("selected_rag_alias"):
-                filtered = filtered[filtered["alias"] == st.session_state["selected_rag_alias"]]
-            if st.session_state.get("selected_rag_model"):
-                filtered = filtered[filtered["model"] == st.session_state["selected_rag_model"]]
-            if st.session_state.get("selected_rag_chunk_size"):
-                filtered = filtered[filtered["chunk_size"] == st.session_state["selected_rag_chunk_size"]]
-            if st.session_state.get("selected_rag_chunk_overlap"):
-                filtered = filtered[filtered["chunk_overlap"] == st.session_state["selected_rag_chunk_overlap"]]
-            if st.session_state.get("selected_rag_distance_metric"):
-                filtered = filtered[filtered["distance_metric"] == st.session_state["selected_rag_distance_metric"]]
-            if st.session_state.get("selected_rag_index_type"):
-                filtered = filtered[filtered["index_type"] == st.session_state["selected_rag_index_type"]]
+            if st.session_state.get("selected_vector_search_alias"):
+                filtered = filtered[filtered["alias"] == st.session_state["selected_vector_search_alias"]]
+            if st.session_state.get("selected_vector_search_model"):
+                filtered = filtered[filtered["model"] == st.session_state["selected_vector_search_model"]]
+            if st.session_state.get("selected_vector_search_chunk_size"):
+                filtered = filtered[filtered["chunk_size"] == st.session_state["selected_vector_search_chunk_size"]]
+            if st.session_state.get("selected_vector_search_chunk_overlap"):
+                filtered = filtered[
+                    filtered["chunk_overlap"] == st.session_state["selected_vector_search_chunk_overlap"]
+                ]
+            if st.session_state.get("selected_vector_search_distance_metric"):
+                filtered = filtered[
+                    filtered["distance_metric"] == st.session_state["selected_vector_search_distance_metric"]
+                ]
+            if st.session_state.get("selected_vector_search_index_type"):
+                filtered = filtered[filtered["index_type"] == st.session_state["selected_vector_search_index_type"]]
             return filtered
 
         # Initialize filtered options
         filtered_df = update_filtered_df()
 
         # Render selectbox with updated options
-        alias = vs_gen_selectbox("Select Alias:", filtered_df["alias"].unique().tolist(), "selected_rag_alias")
-        embed_model = vs_gen_selectbox("Select Model:", filtered_df["model"].unique().tolist(), "selected_rag_model")
+        alias = vs_gen_selectbox(
+            "Select Alias:", filtered_df["alias"].unique().tolist(), "selected_vector_search_alias"
+        )
+        embed_model = vs_gen_selectbox(
+            "Select Model:", filtered_df["model"].unique().tolist(), "selected_vector_search_model"
+        )
         chunk_size = vs_gen_selectbox(
-            "Select Chunk Size:", filtered_df["chunk_size"].unique().tolist(), "selected_rag_chunk_size"
+            "Select Chunk Size:", filtered_df["chunk_size"].unique().tolist(), "selected_vector_search_chunk_size"
         )
         chunk_overlap = vs_gen_selectbox(
-            "Select Chunk Overlap:", filtered_df["chunk_overlap"].unique().tolist(), "selected_rag_chunk_overlap"
+            "Select Chunk Overlap:",
+            filtered_df["chunk_overlap"].unique().tolist(),
+            "selected_vector_search_chunk_overlap",
         )
         distance_metric = vs_gen_selectbox(
-            "Select Distance Metric:", filtered_df["distance_metric"].unique().tolist(), "selected_rag_distance_metric"
+            "Select Distance Metric:",
+            filtered_df["distance_metric"].unique().tolist(),
+            "selected_vector_search_distance_metric",
         )
         index_type = vs_gen_selectbox(
-            "Select Index Type:", filtered_df["index_type"].unique().tolist(), "selected_rag_index_type"
+            "Select Index Type:", filtered_df["index_type"].unique().tolist(), "selected_vector_search_index_type"
         )
 
         if all([alias, embed_model, chunk_size, chunk_overlap, distance_metric, index_type]):
             vs = filtered_df["vector_store"].iloc[0]
-            state.user_settings["rag"]["vector_store"] = vs
-            state.user_settings["rag"]["alias"] = alias
-            state.user_settings["rag"]["model"] = embed_model
-            state.user_settings["rag"]["chunk_size"] = chunk_size
-            state.user_settings["rag"]["chunk_overlap"] = chunk_overlap
-            state.user_settings["rag"]["distance_metric"] = distance_metric
-            state.user_settings["rag"]["index_type"] = index_type
+            state.user_settings["vector_search"]["vector_store"] = vs
+            state.user_settings["vector_search"]["alias"] = alias
+            state.user_settings["vector_search"]["model"] = embed_model
+            state.user_settings["vector_search"]["chunk_size"] = chunk_size
+            state.user_settings["vector_search"]["chunk_overlap"] = chunk_overlap
+            state.user_settings["vector_search"]["distance_metric"] = distance_metric
+            state.user_settings["vector_search"]["index_type"] = index_type
         else:
-            st.error("Please select Vector Store options or disable RAG to continue.", icon="❌")
+            st.error("Please select Vector Store options or disable Vector Search to continue.", icon="❌")
             state.enable_client = False
 
         # Reset button
