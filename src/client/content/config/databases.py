@@ -66,6 +66,12 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
             logger.info("Database updated: %s", name)
             state.database_config[name]["connected"] = True
             get_databases(force=True)
+            endpoint = "v1/selectai/enabled"
+            selectai = api_call.get(
+                            endpoint=endpoint,
+            )
+            logger.info("SelectAI enabled: %s", selectai["enabled"])
+            state.database_config[name]["selectai"] = selectai["enabled"]
         except api_call.ApiError as ex:
             logger.error("Database not updated: %s (%s)", name, ex)
             state.database_config[name]["connected"] = False

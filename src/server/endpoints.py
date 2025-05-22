@@ -154,6 +154,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         try:
             db_conn = databases.connect(db)
             db.vector_stores = embedding.get_vs(db_conn)
+            # SelectAI Enabled?
         except databases.DbException as ex:
             raise HTTPException(status_code=406, detail=f"Database: {name} {str(ex)}.") from ex
         return db
@@ -956,6 +957,24 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         select_ai_objects = databases.get_selectai_objects(db_conn)
         return select_ai_objects
 
+    @auth.get(
+        "/v1/selectai/enabled",
+        description="SelectAI enabled?",
+        response_model=dict,
+    )
+    async def selectai_enabled(
+        client: schema.ClientIdType = Header(default="server"),
+    ):
+        """Check if SelectAI is enabled for the client."""
+        client_settings = get_client_settings(client)
+        db_conn = get_client_db(client).connection
+        if db_conn is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        enabled = databases.selectai_enabled(db_conn)
+        client_settings.selectai.enabled = enabled
+        logger.debug(f"SelectAI enabled: {enabled}")
+        return {"enabled": enabled}
+    
     @auth.patch(
         "/v1/selectai/objects",
         description="Update SelectAI Profile Object List",
