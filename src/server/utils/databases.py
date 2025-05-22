@@ -28,6 +28,9 @@ def connect(config: Database) -> oracledb.Connection:
     include_fields = set(DatabaseAuth.model_fields.keys())
     db_config = config.model_dump(include=include_fields)
     logger.debug("Database Config: %s", db_config)
+    # If a wallet password is provided but no wallet location is set, default the wallet location to the config directory
+    if db_config.get("wallet_password") and not db_config.get("wallet_location"):
+        db_config["wallet_location"] = db_config["config_dir"]
     # Check if connection settings are configured
     if any(not db_config[key] for key in ("user", "password", "dsn")):
         raise DbException(status_code=400, detail="missing connection details")
