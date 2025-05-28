@@ -67,9 +67,11 @@ async def main() -> None:
         st.stop()
     # the sidebars will set this to False if not everything is configured.
     state.enable_client = True
+    st_common.tools_sidebar()
     st_common.history_sidebar()
     st_common.ll_sidebar()
-    st_common.tools_sidebar()
+    st_common.selectai_sidebar()
+    st_common.vector_search_sidebar()    
     # Stop when sidebar configurations not set
     if not state.enable_client:
         st.stop()

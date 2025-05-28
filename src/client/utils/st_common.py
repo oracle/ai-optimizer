@@ -249,7 +249,7 @@ def tools_sidebar() -> None:
         switch_prompt("sys", "Basic Example")
     else:
         tools = [
-            ("None", "Do not use tools", False),
+            ("LLM Only", "Do not use tools", False),
             ("SelectAI", "Use AI with Structured Data", disable_selectai),
             ("VectorSearch", "Use AI with Unstructured Data", disable_vector_search),
         ]
@@ -277,7 +277,7 @@ def tools_sidebar() -> None:
         tool_box = [name for name, _, disabled in tools if not disabled]
         # tool_cap = [desc for _, desc, disabled in tools if not disabled]
         if len(tool_box) > 1:
-            st.sidebar.subheader("Tools", divider="red")
+            st.sidebar.subheader("Toolkit", divider="red")
             tool_index = next(
                 (
                     i
@@ -287,7 +287,7 @@ def tools_sidebar() -> None:
                 ),
                 0,
             )
-            st.sidebar.radio(
+            st.sidebar.selectbox(
                 "Tool Selection",
                 tool_box,
                 # captions=tool_cap,
@@ -298,9 +298,6 @@ def tools_sidebar() -> None:
             )
             if state.selected_tool == "None":
                 switch_prompt("sys", "Basic Example")
-            selectai_sidebar()
-            vector_search_sidebar()
-
 
 #####################################################
 # SelectAI Options
