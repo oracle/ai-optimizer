@@ -72,6 +72,22 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
             )
             logger.info("SelectAI enabled: %s", selectai["enabled"])
             state.database_config[name]["selectai"] = selectai["enabled"]
+
+            # Check if SelectAI is enabled and get objects if so
+            if selectai["enabled"]:
+                try:
+                    endpoint = "v1/selectai/objects"
+                    selectai_objects = api_call.get(
+                        endpoint=endpoint,
+                    )
+                    logger.info("SelectAI objects retrieved: %d objects", len(selectai_objects))
+                    state.database_config[name]["selectai_objects"] = selectai_objects
+                except api_call.ApiError as ex:
+                    logger.error("Failed to retrieve SelectAI objects: %s", ex)
+                    state.database_config[name]["selectai_objects"] = []
+            else:
+                state.database_config[name]["selectai_objects"] = None
+
         except api_call.ApiError as ex:
             logger.error("Database not updated: %s (%s)", name, ex)
             state.database_config[name]["connected"] = False
