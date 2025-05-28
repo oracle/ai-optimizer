@@ -14,17 +14,17 @@ authors = [
 
 # Common dependencies that are always needed
 dependencies = [
-    "langchain-core==0.3.59",
+    "langchain-core==0.3.62",
     "httpx==0.28.1",
     "oracledb~=3.1",
-    "plotly==6.0.1",
+    "plotly==6.1.2",
 ]
 
 [project.optional-dependencies]
 # Server component dependencies
 # torch is installed via requirements for platform specifics
 server = [
-    "bokeh==3.7.2",
+    "bokeh==3.7.3",
     "evaluate==0.4.3",
     "fastapi==0.115.12",
     "faiss-cpu==1.11.0",
@@ -33,13 +33,13 @@ server = [
     "langchain-cohere==0.4.4",
     "langchain-community==0.3.24",
     "langchain-huggingface==0.2.0",
-    "langchain-ollama==0.3.2",
-    "langchain-openai==0.3.16",
-    "langgraph==0.4.3",
-    "litellm==1.69.2",
-    "llama_index==0.12.36",
+    "langchain-ollama==0.3.3",
+    "langchain-openai==0.3.18",
+    "langgraph==0.4.7",
+    "litellm==1.71.1",
+    "llama_index==0.12.37",
     "lxml==5.4.0",
-    "matplotlib==3.10.1",
+    "matplotlib==3.10.3",
     "oci~=2.0",
     "psutil==7.0.0",
     "python-multipart==0.0.20",
