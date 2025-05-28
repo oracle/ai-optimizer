@@ -74,6 +74,7 @@ resource "oci_database_autonomous_database" "default_adb" {
   license_model                        = var.adb_license_model
   is_mtls_connection_required          = true
   whitelisted_ips                      = local.adb_whitelist_cidrs
+  defined_tags                         = { (local.identity_tag_key) = local.label_prefix }
 }
 
 // Virtual Machine
@@ -112,6 +113,7 @@ module "kubernetes" {
   compartment_id                 = local.compartment_ocid
   vcn_id                         = module.network.vcn_ocid
   region                         = var.region
+  dynamic_group                  = oci_identity_dynamic_group.resource_dynamic_group.name
   lb                             = oci_load_balancer_load_balancer.lb
   adb_id                         = oci_database_autonomous_database.default_adb.id
   adb_name                       = local.adb_name
@@ -130,6 +132,7 @@ module "kubernetes" {
   public_subnet_id               = module.network.public_subnet_ocid
   private_subnet_id              = module.network.private_subnet_ocid
   lb_nsg_id                      = oci_core_network_security_group.lb.id
+  identity_tag_key               = local.identity_tag_key
   providers = {
     oci.home_region = oci.home_region
   }

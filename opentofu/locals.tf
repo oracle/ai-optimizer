@@ -6,6 +6,7 @@
 locals {
   compartment_ocid = var.compartment_ocid != "" ? var.compartment_ocid : var.tenancy_ocid
   label_prefix     = var.label_prefix != "" ? lower(var.label_prefix) : lower(random_pet.label.id)
+  identity_tag_key = format("%s.%s", oci_identity_tag_namespace.tag_namespace.name, oci_identity_tag.identity_tag.name)
 }
 
 // Autonomous Database

@@ -4,8 +4,6 @@
 
 // Region Mapping
 locals {
-  identity_tag_key = format("%s.%s", oci_identity_tag_namespace.tag_namespace.name, oci_identity_tag.identity_tag.name)
-  identity_tag_val = var.label_prefix
   region_map = {
     for r in data.oci_identity_regions.identity_regions.regions : r.name => r.key
   }
