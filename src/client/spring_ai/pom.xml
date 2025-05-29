@@ -6,24 +6,24 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.0</version>
+		<version>3.4.5</version>
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.example</groupId>
 	<artifactId>myspringai</artifactId>
-	<version>1.0.0-M6</version>
+	<version>1.0.0</version>
 	<name>myspringai</name>
-	<description>Simple AI Application using OpenAPI Service</description>
+	<description>Simple AI Application using OpenAPI or Ollama Service</description>
 	<properties>
 		<java.version>17</java.version>
-		<spring-ai.version>1.0.0-M6</spring-ai.version>
+		<spring-ai.version>1.0.0</spring-ai.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
 				<groupId>org.springframework.ai</groupId>
 				<artifactId>spring-ai-bom</artifactId>
-				<version>1.0.0-M6</version>
+				<version>1.0.0</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
@@ -31,18 +31,7 @@
 	</dependencyManagement>
 
 	<dependencies>
-		<!--  OPTIONALS: choose one permanently if you want delete the profiles ollama/openai  
-		<dependency>
-			<groupId>org.springframework.ai</groupId>
-			<artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
-		 </dependency>
-
-		<dependency>
-			<groupId>org.springframework.ai</groupId>
-			<artifactId>spring-ai-openai-spring-boot-starter</artifactId>
-		</dependency>
-	    -->
-
+		
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
@@ -74,14 +63,12 @@
 		<!-- ORACLE DB-->
 		<dependency>
 			<groupId>org.springframework.ai</groupId>
-			<artifactId>spring-ai-oracle-store-spring-boot-starter</artifactId>
-			<version>1.0.0-M6</version>
+			<artifactId>spring-ai-advisors-vector-store</artifactId>
 		</dependency>
-		<!--<dependency>
+		<dependency>
 			<groupId>org.springframework.ai</groupId>
-			<artifactId>spring-ai-oracle-store</artifactId>
-			<version>1.0.0-SNAPSHOT</version>
-		</dependency>-->
+			<artifactId>spring-ai-starter-vector-store-oracle</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>com.oracle.database.jdbc</groupId>
 			<artifactId>ojdbc11</artifactId>
@@ -112,7 +99,7 @@
 			<dependencies>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
-					<artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
+					<artifactId>spring-ai-starter-model-ollama</artifactId>
 				</dependency>
 			</dependencies>
 		</profile>
@@ -126,7 +113,7 @@
 			<dependencies>
 				<dependency>
 					<groupId>org.springframework.ai</groupId>
-					<artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+					<artifactId>spring-ai-starter-model-openai</artifactId>
 				</dependency>
 			</dependencies>
 		</profile>

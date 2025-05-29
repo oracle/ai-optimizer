@@ -11,6 +11,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.embedding.Embedding;
 //import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest;
 import org.springframework.ai.reader.ExtractedTextFormatter;
 import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
@@ -46,15 +47,13 @@ import java.util.Map;
 import java.util.HashMap;
 import java.security.SecureRandom;
 import java.time.Instant;
-
+import java.util.stream.Collectors;
 
 import java.util.Iterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 import org.springframework.ai.openai.samples.helloworld.model.*;
-
 
 @RestController
 class AIController {
@@ -90,8 +89,9 @@ class AIController {
 	private JdbcTemplate jdbcTemplate;
 
 	private static final Logger logger = LoggerFactory.getLogger(AIController.class);
-	private static final int SLEEP = 50; 		// Wait in streaming between chunks
-	private static final int STREAM_SIZE = 5;    // chars in each chunk
+	private static final int SLEEP = 50; // Wait in streaming between chunks
+	private static final int STREAM_SIZE = 5; // chars in each chunk
+
 	AIController(ChatClient chatClient, EmbeddingModel embeddingModel, OracleVectorStore vectorStore) {
 
 		this.chatClient = chatClient;
@@ -116,10 +116,10 @@ class AIController {
 		String sqlUser = "SELECT USER FROM DUAL";
 		String user = "";
 		String sql = "";
-		String newTable = legacyTable+"_SPRINGAI";
+		String newTable = legacyTable + "_SPRINGAI";
 
 		user = jdbcTemplate.queryForObject(sqlUser, String.class);
-		if (doesTableExist(legacyTable,user)!=-1) {
+		if (doesTableExist(legacyTable, user) != -1) {
 			// RUNNING LOCAL
 			logger.info("Running local with user: " + user);
 			sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
@@ -127,18 +127,18 @@ class AIController {
 		} else {
 			// RUNNING in OBAAS
 			logger.info("Running on OBaaS with user: " + user);
-			sql = "INSERT INTO " + user + "." + newTable+ " (ID, CONTENT, METADATA, EMBEDDING) " +
+			sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
 					"SELECT ID, TEXT, METADATA, EMBEDDING FROM ADMIN." + legacyTable;
 		}
 		// Execute the insert
-		logger.info("doesExist"+  user + ": "+ doesTableExist(newTable,user));
-		if (countRecordsInTable(newTable,user)==0) {
+		logger.info("doesExist" + user + ": " + doesTableExist(newTable, user));
+		if (countRecordsInTable(newTable, user) == 0) {
 			// First microservice execution
-			logger.info("Table " + user + "." + newTable+ " doesn't exist: create from ADMIN/USER." + legacyTable);
+			logger.info("Table " + user + "." + newTable + " doesn't exist: create from ADMIN/USER." + legacyTable);
 			jdbcTemplate.update(sql);
 		} else {
 			// Table conversion already done
-			logger.info("Table +"+ newTable+" exists: drop before if you want use with new contents " + legacyTable);
+			logger.info("Table +" + newTable + " exists: drop before if you want use with new contents " + legacyTable);
 		}
 	}
 
@@ -146,11 +146,11 @@ class AIController {
 		// Dynamically construct the SQL query with the table and schema names
 		String sql = String.format("SELECT COUNT(*) FROM %s.%s", schemaName.toUpperCase(), tableName.toUpperCase());
 		logger.info("Checking if table is empty: " + tableName + " in schema: " + schemaName);
-		
+
 		try {
 			// Execute the query and get the count of records in the table
 			Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
-			
+
 			// Return the count if it's not null, otherwise return -1
 			return count != null ? count : -1;
 		} catch (Exception e) {
@@ -168,9 +168,12 @@ class AIController {
 			// schema
 			Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tableName.toUpperCase(),
 					schemaName.toUpperCase());
-			
-			if (count != null && count > 0) { return count;}
-			else {return -1;}
+
+			if (count != null && count > 0) {
+				return count;
+			} else {
+				return -1;
+			}
 		} catch (Exception e) {
 			logger.error("Error checking table existence: " + e.getMessage());
 			return -1;
@@ -194,10 +197,11 @@ class AIController {
 				If the DOCUMENTS doesn’t contain the facts to answer the QUESTION, return:
 				I'm sorry but I haven't enough information to answer.
 				""";
-		
-		//This template doesn't work with re-phrasing/grading pattern, but only via RAG 
-		//The contextInstr coming from Oracle ai optimizer and toolkit can't be used here: default only
-		//Modifiy it to include re-phrasing/grading if you wish.
+
+		// This template doesn't work with re-phrasing/grading pattern, but only via RAG
+		// The contextInstr coming from Oracle ai optimizer and toolkit can't be used
+		// here: default only
+		// Modifiy it to include re-phrasing/grading if you wish.
 
 		template = template + "\n" + default_Instr;
 
@@ -230,21 +234,20 @@ class AIController {
 		return context;
 	}
 
+	@PostMapping(value = "/chat/completions", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public ResponseBodyEmitter streamCompletions(@RequestBody ChatRequest request) {
+		ResponseBodyEmitter bodyEmitter = new ResponseBodyEmitter();
+		String userMessageContent;
 
-@PostMapping(value = "/chat/completions", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-public ResponseBodyEmitter streamCompletions(@RequestBody ChatRequest request) {
-	ResponseBodyEmitter bodyEmitter = new ResponseBodyEmitter();
-	String userMessageContent;
+		for (Map<String, String> message : request.getMessages()) {
+			if ("user".equals(message.get("role"))) {
 
-	for (Map<String, String> message : request.getMessages()) {
-		if ("user".equals(message.get("role"))) {
-			
 				String content = message.get("content");
 				if (content != null && !content.trim().isEmpty()) {
 					userMessageContent = content;
-					logger.info("user message: "+userMessageContent);
+					logger.info("user message: " + userMessageContent);
 					Prompt prompt = promptEngineering(userMessageContent, contextInstr);
-					logger.info("prompt message: "+prompt.getContents());
+					logger.info("prompt message: " + prompt.getContents());
 					String contentResponse = chatClient.prompt(prompt).call().content();
 					logger.info("-------------------------------------------------------");
 					logger.info("- RAG RETURN                                          -");
@@ -253,56 +256,56 @@ public ResponseBodyEmitter streamCompletions(@RequestBody ChatRequest request) {
 					new Thread(() -> {
 						try {
 							ObjectMapper mapper = new ObjectMapper();
-				
+
 							if (request.isStream()) {
 								logger.info("Request is a Stream");
-								List<String> chunks= chunkString(contentResponse);
+								List<String> chunks = chunkString(contentResponse);
 								for (String token : chunks) {
-									
-									ChatMessage  messageAnswer = new ChatMessage("assistant", token);
+
+									ChatMessage messageAnswer = new ChatMessage("assistant", token);
 									ChatChoice choice = new ChatChoice(messageAnswer);
-									ChatStreamResponse chunk = new ChatStreamResponse("chat.completion.chunk", new ChatChoice[]{choice});
-									
+									ChatStreamResponse chunk = new ChatStreamResponse("chat.completion.chunk",
+											new ChatChoice[] { choice });
+
 									bodyEmitter.send("data: " + mapper.writeValueAsString(chunk) + "\n\n");
 									Thread.sleep(SLEEP);
 								}
-								
+
 								bodyEmitter.send("data: [DONE]\n\n");
 							} else {
 								logger.info("Request isn't a Stream");
-								String id="chatcmpl-"+generateRandomToken(28);
-								String object="chat.completion";
-								String created=String.valueOf(Instant.now().getEpochSecond());
-								String model=getModel();
-								ChatMessage  messageAnswer = new ChatMessage("assistant", contentResponse);
+								String id = "chatcmpl-" + generateRandomToken(28);
+								String object = "chat.completion";
+								String created = String.valueOf(Instant.now().getEpochSecond());
+								String model = getModel();
+								ChatMessage messageAnswer = new ChatMessage("assistant", contentResponse);
 								List<ChatChoice> choices = List.of(new ChatChoice(messageAnswer));
-								bodyEmitter.send(new ChatResponse(id, object,created, model, choices));
+								bodyEmitter.send(new ChatResponse(id, object, created, model, choices));
 							}
 							bodyEmitter.complete();
 						} catch (Exception e) {
 							bodyEmitter.completeWithError(e);
 						}
 					}).start();
-				
+
 					return bodyEmitter;
 
 				}
-			break; 
+				break;
+			}
 		}
-	}
-	
 
-	return bodyEmitter;
-}
+		return bodyEmitter;
+	}
 
 	@GetMapping("/service/search")
 	List<Map<String, Object>> search(@RequestParam(value = "message", defaultValue = "Tell me a joke") String query,
 			@RequestParam(value = "topk", defaultValue = "5") Integer topK) {
 
 		List<Document> similarDocs = vectorStore.similaritySearch(SearchRequest.builder()
-			.query(query)
-			.topK(topK)
-			.build());
+				.query(query)
+				.topK(topK)
+				.build());
 
 		List<Map<String, Object>> resultList = new ArrayList<>();
 		for (Document d : similarDocs) {
@@ -315,32 +318,53 @@ public ResponseBodyEmitter streamCompletions(@RequestBody ChatRequest request) {
 		return resultList;
 	}
 
+	@PostMapping("/service/store-chunks")
+	List<List<Double>> store(@RequestBody List<String> chunks) {
+		List<List<Double>> allVectors = new ArrayList<>();
+		List<Document> documents = chunks.stream()
+				.map(chunk -> {
+					double[] vector = floatToDouble(embeddingModel.embed(chunk));
+					Double[] sVector = java.util.Arrays.stream(vector)
+							.mapToObj(Double::valueOf)
+							.toArray(Double[]::new);
+					allVectors.add(java.util.Arrays.asList(sVector));
+					return Document.builder()
+							.text(chunk)
+							.metadata("source", "user-added")
+							.build();
+				})
+				.collect(Collectors.toList());
+
+		vectorStore.doAdd(documents);
+
+		return allVectors;
+	}
+
 	@GetMapping("/models")
-	Map<String, Object> models(@RequestBody (required = false) Map<String, String> requestBody) {
+	Map<String, Object> models(@RequestBody(required = false) Map<String, String> requestBody) {
 		String modelId = "custom";
 		logger.info("models request");
 		if (!"".equals(modelOpenAI)) {
 			modelId = modelOpenAI;
 		} else if (!"".equals(modelOllamaAI)) {
 			modelId = modelOllamaAI;
-		} 
+		}
 		logger.info("model");
-		
-		
+
 		logger.info(chatClient.prompt().toString());
 		try {
 			Map<String, Object> model = new HashMap<>();
 			model.put("id", modelId);
-        	model.put("object", "model");
-        	model.put("created", 0000000000L);
-        	model.put("owned_by", "no-info");
+			model.put("object", "model");
+			model.put("created", 0000000000L);
+			model.put("owned_by", "no-info");
 
-        	List<Map<String, Object>> dataList = new ArrayList<>();
-        	dataList.add(model);
+			List<Map<String, Object>> dataList = new ArrayList<>();
+			dataList.add(model);
 
-        	Map<String, Object> response = new HashMap<>();
-        	response.put("object", "list");
-        	response.put("data", dataList);
+			Map<String, Object> response = new HashMap<>();
+			response.put("object", "list");
+			response.put("data", dataList);
 
 			return response;
 
@@ -350,41 +374,48 @@ public ResponseBodyEmitter streamCompletions(@RequestBody ChatRequest request) {
 		}
 	}
 
-
 	public List<String> chunkString(String input) {
 		List<String> chunks = new ArrayList<>();
-		int chunkSize = STREAM_SIZE; 
-	
+		int chunkSize = STREAM_SIZE;
+
 		for (int i = 0; i < input.length(); i += chunkSize) {
 			int end = Math.min(input.length(), i + chunkSize);
 			chunks.add(input.substring(i, end));
 		}
-	
+
 		return chunks;
 	}
 
 	public String generateRandomToken(int length) {
 		String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    	SecureRandom random = new SecureRandom();
-        StringBuilder sb = new StringBuilder(length);
-        for (int i = 0; i < length; i++) {
-            int index = random.nextInt(CHARACTERS.length());
-            sb.append(CHARACTERS.charAt(index));
-        }
-        return sb.toString();
-    }
+		SecureRandom random = new SecureRandom();
+		StringBuilder sb = new StringBuilder(length);
+		for (int i = 0; i < length; i++) {
+			int index = random.nextInt(CHARACTERS.length());
+			sb.append(CHARACTERS.charAt(index));
+		}
+		return sb.toString();
+	}
 
-	public String getModel(){
-		String modelId="custom";
+	public String getModel() {
+		String modelId = "custom";
 		if (!"".equals(modelOpenAI)) {
 			modelId = modelOpenAI;
 		} else if (!"".equals(modelOllamaAI)) {
 			modelId = modelOllamaAI;
-		} 
+		}
 		return modelId;
 	}
-}
 
+	public double[] floatToDouble(float[] floatArray) {
+		double[] doubleArray = new double[floatArray.length];
+
+		for (int i = 0; i < floatArray.length; i++) {
+			doubleArray[i] = floatArray[i]; // implicit widening cast per element
+		}
+		return doubleArray;
+	}
+}
 
 
 
