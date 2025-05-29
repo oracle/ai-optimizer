@@ -65,6 +65,7 @@ def patch_settings() -> None:
             endpoint="v1/settings",
             payload={"json": state.user_settings},
             params={"client": state.user_settings["client"]},
+            toast=False,
         )
     except api_call.ApiError as ex:
         logger.error("%s Settings Update failed: %s", state.user_settings["client"], ex)
@@ -96,7 +97,7 @@ def update_user_settings(
 def is_db_configured() -> bool:
     """Verify that a database is configured"""
     get_databases()
-    return state.database_config[state.user_settings["vector_search"]["database"]].get("connected")
+    return state.database_config[state.user_settings["database"]["alias"]].get("connected")
 
 
 def set_server_state() -> None:
@@ -154,7 +155,7 @@ def ll_sidebar() -> None:
             index=ll_idx,
             key="selected_ll_model_model",
             on_change=update_user_settings("ll_model"),
-            disabled=state.user_settings["selectai"]["enabled"]
+            disabled=state.user_settings["selectai"]["enabled"],
         )
 
     # Temperature
@@ -234,7 +235,7 @@ def ll_sidebar() -> None:
 def tools_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if all sorts of bs setup"""
 
-    def update_settings():
+    def update_set_tool():
         state.user_settings["vector_search"]["enabled"] = state.selected_tool == "VectorSearch"
         state.user_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
@@ -248,6 +249,7 @@ def tools_sidebar() -> None:
         state.user_settings["vector_search"]["enabled"] = disable_vector_search
         switch_prompt("sys", "Basic Example")
     else:
+        db_alias = state.user_settings["database"]["alias"]
         tools = [
             ("LLM Only", "Do not use tools", False),
             ("SelectAI", "Use AI with Structured Data", disable_selectai),
@@ -262,6 +264,15 @@ def tools_sidebar() -> None:
             logger.debug("SelectAI Disabled (OCI not configured.)")
             st.warning("OCI is not fully configured.  Disabling SelectAI.", icon="⚠️")
             tools = [t for t in tools if t[0] != "SelectAI"]
+        elif not state.database_config[db_alias]["selectai"]:
+            logger.debug("SelectAI Disabled (Database not Compatible.)")
+            st.warning("Database not Compatible.  Disabling SelectAI.", icon="⚠️")
+            tools = [t for t in tools if t[0] != "SelectAI"]
+        elif len(state.database_config[db_alias]["selectai_profiles"]) == 0:
+            logger.debug("SelectAI Disabled (No profiles found.)")
+            st.warning("No profiles found.  Disabling SelectAI.", icon="⚠️")
+            tools = [t for t in tools if t[0] != "SelectAI"]
+
         # Vector Search Requirements
         get_models(model_type="embed")
         available_embed_models = list(state.embed_model_enabled.keys())
@@ -269,7 +280,7 @@ def tools_sidebar() -> None:
             logger.debug("Vector Search Disabled (no Embedding Models)")
             st.warning("No embedding models are configured and/or enabled. Disabling Vector Search.", icon="⚠️")
             tools = [t for t in tools if t[0] != "Vector Search"]
-        elif not state.database_config[state.user_settings["vector_search"]["database"]].get("vector_stores"):
+        elif not state.database_config[db_alias].get("vector_stores"):
             logger.debug("Vector Search Disabled (Database has no vector stores.)")
             st.warning("Database has no Vector Stores. Disabling Vector Search.", icon="⚠️")
             tools = [t for t in tools if t[0] != "Vector Search"]
@@ -293,11 +304,12 @@ def tools_sidebar() -> None:
                 # captions=tool_cap,
                 index=tool_index,
                 label_visibility="collapsed",
-                on_change=update_settings,
+                on_change=update_set_tool,
                 key="selected_tool",
             )
             if state.selected_tool == "None":
                 switch_prompt("sys", "Basic Example")
+
 
 #####################################################
 # SelectAI Options
@@ -306,6 +318,16 @@ def selectai_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if Database/SelectAI are configured"""
     if state.user_settings["selectai"]["enabled"]:
         st.sidebar.subheader("SelectAI", divider="red")
+        selectai_profiles = state.database_config[state.user_settings["database"]["alias"]]["selectai_profiles"]
+        if not state.user_settings["selectai"]["profile"]:
+            state.user_settings["selectai"]["profile"] = selectai_profiles[0]
+        st.sidebar.selectbox(
+            "Profile:",
+            options=selectai_profiles,
+            index=selectai_profiles.index(state.user_settings["selectai"]["profile"]),
+            key="selected_selectai_profile",
+            on_change=update_user_settings("selectai"),
+        )
         st.sidebar.selectbox(
             "Action:",
             get_args(SelectAISettings.__annotations__["action"]),

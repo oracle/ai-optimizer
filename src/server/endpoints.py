@@ -32,6 +32,7 @@ import server.utils.databases as databases
 import server.utils.oci as server_oci
 import server.utils.models as models
 import server.utils.embedding as embedding
+import server.utils.selectai as selectai
 import server.utils.testbed as testbed
 import server.agents.chatbot as chatbot
 from server.agents.tools.selectai import selectai_tool
@@ -137,7 +138,9 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 logger.debug("Skipping Database %s - exception: %s", db.name, str(ex))
                 continue
             db.vector_stores = embedding.get_vs(db_conn)
-
+            db.selectai = selectai.enabled(db_conn)
+            if db.selectai:
+                db.selectai_profiles = selectai.get_profiles(db_conn)
         return DATABASE_OBJECTS
 
     @auth.get(
@@ -154,7 +157,9 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         try:
             db_conn = databases.connect(db)
             db.vector_stores = embedding.get_vs(db_conn)
-            # SelectAI Enabled?
+            db.selectai = selectai.enabled(db_conn)
+            if db.selectai:
+                db.selectai_profiles = selectai.get_profiles(db_conn)
         except databases.DbException as ex:
             raise HTTPException(status_code=406, detail=f"Database: {name} {str(ex)}.") from ex
         return db
@@ -656,8 +661,10 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         # Setup selectai
         if client_settings.selectai.enabled:
             db_conn = get_client_db(client).connection
-            databases.set_selectai_profile(db_conn, "temperature", model["temperature"])
-            databases.set_selectai_profile(db_conn, "max_tokens", model["max_completion_tokens"])
+            selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
+            selectai.set_profile(
+                db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
+            )
 
         # Setup vector_search
         embed_client, ctx_prompt = None, None
@@ -952,29 +959,12 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     async def selectai_get_objects(
         client: schema.ClientIdType = Header(default="server"),
     ) -> list[schema.DatabaseSelectAIObjects]:
-        """Update DatabaseSelectAIObjects"""
-        db_conn = get_client_db(client).connection
-        select_ai_objects = databases.get_selectai_objects(db_conn)
-        return select_ai_objects
-
-    @auth.get(
-        "/v1/selectai/enabled",
-        description="SelectAI enabled?",
-        response_model=dict,
-    )
-    async def selectai_enabled(
-        client: schema.ClientIdType = Header(default="server"),
-    ):
-        """Check if SelectAI is enabled for the client."""
+        """Get DatabaseSelectAIObjects"""
         client_settings = get_client_settings(client)
         db_conn = get_client_db(client).connection
-        if db_conn is None:
-            raise HTTPException(status_code=500, detail="Database connection failed")
-        enabled = databases.selectai_enabled(db_conn)
-        client_settings.selectai.enabled = enabled
-        logger.debug(f"SelectAI enabled: {enabled}")
-        return {"enabled": enabled}
-    
+        select_ai_objects = selectai.get_objects(db_conn, client_settings.selectai.profile)
+        return select_ai_objects
+
     @auth.patch(
         "/v1/selectai/objects",
         description="Update SelectAI Profile Object List",
@@ -986,38 +976,39 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     ) -> list[schema.DatabaseSelectAIObjects]:
         """Update DatabaseSelectAIObjects"""
         logger.debug("Received selectai_update - payload: %s", payload)
+        client_settings = get_client_settings(client)
         object_list = json.dumps([obj.model_dump(include={"owner", "name"}) for obj in payload])
         db_conn = get_client_db(client).connection
-        databases.set_selectai_profile(db_conn, "object_list", object_list)
-        return databases.get_selectai_objects(db_conn)
+        selectai.set_profile(db_conn, client_settings.selectai.profile, "object_list", object_list)
+        return selectai.get_objects(db_conn, client_settings.selectai.profile)
 
-    @auth.post("/v1/selectai", description="Call SelectAI Tool", response_model=str)
-    async def selectai_endpoint(
-        query: str,
-        client: schema.ClientIdType = Header(default="server"),
-    ) -> str:
-        """Call selectai_tool with provided profile and query parameters."""
-        logger.debug("Received selectai_endpoint - query: %s", query)
-        client_settings = get_client_settings(client)
-        logger.debug("SelectAI Enabled: %s", client_settings.selectai.selectai_enabled)
-        if not client_settings.selectai.selectai_enabled:
-            return f"SelectAI is Disabled for client: {client}"
+    # @auth.post("/v1/selectai", description="Call SelectAI Tool", response_model=str)
+    # async def selectai_endpoint(
+    #     query: str,
+    #     client: schema.ClientIdType = Header(default="server"),
+    # ) -> str:
+    #     """Call selectai_tool with provided profile and query parameters."""
+    #     logger.debug("Received selectai_endpoint - query: %s", query)
+    #     client_settings = get_client_settings(client)
+    #     logger.debug("SelectAI Enabled: %s", client_settings.selectai.selectai_enabled)
+    #     if not client_settings.selectai.selectai_enabled:
+    #         return f"SelectAI is Disabled for client: {client}"
 
-        try:
-            # Create RunnableConfig with profile and query
-            config = RunnableConfig(
-                profile="OPTIMIZER_PROFILE",
-                query=query,
-                action=client_settings.selectai.action,
-                configurable={"db_conn": get_client_db(client).connection},
-            )
+    #     try:
+    #         # Create RunnableConfig with profile and query
+    #         config = RunnableConfig(
+    #             profile=client_settings.selectai.profile,
+    #             query=query,
+    #             action=client_settings.selectai.action,
+    #             configurable={"db_conn": get_client_db(client).connection},
+    #         )
 
-            # Call the tool
-            result = selectai_tool(config=config)
+    #         # Call the tool
+    #         result = selectai_tool(config=config)
 
-            return result
-        except Exception as ex:
-            logger.error("An exception occurred: %s", ex)
-            raise HTTPException(status_code=500, detail=str(ex)) from ex
+    #         return result
+    #     except Exception as ex:
+    #         logger.error("An exception occurred: %s", ex)
+    #         raise HTTPException(status_code=500, detail=str(ex)) from ex
 
     logger.info("Endpoints Loaded.")

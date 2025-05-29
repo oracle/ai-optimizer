@@ -142,6 +142,7 @@ def patch(
     timeout: int = 60,
     retries: int = 5,
     backoff_factor: float = 1.5,
+    toast = True
 ) -> None:
     """PATCH Requests"""
     response = send_request(
@@ -153,7 +154,8 @@ def patch(
         retries=retries,
         backoff_factor=backoff_factor,
     )
-    st.toast("Update Successful.", icon="✅")
+    if toast:
+        st.toast("Update Successful.", icon="✅")
     return response.json()
 
 
@@ -162,8 +164,10 @@ def delete(
     timeout: int = 60,
     retries: int = 5,
     backoff_factor: float = 1.5,
+    toast = True
 ) -> None:
     """DELETE Requests"""
     response = send_request("DELETE", endpoint, timeout=timeout, retries=retries, backoff_factor=backoff_factor)
     success = response.json()["message"]
-    st.toast(success, icon="✅")
+    if toast:
+        st.toast(success, icon="✅")

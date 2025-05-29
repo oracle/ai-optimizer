@@ -43,7 +43,6 @@ LlAPI = Literal[
 class DatabaseVectorStorage(BaseModel):
     """Database Vector Storage Tables"""
 
-    database: Optional[str] = Field(default="DEFAULT", description="Name of Database (Alias)")
     vector_store: Optional[str] = Field(
         default=None, description="Vector Store Table Name (auto-generated, do not set)", readOnly=True
     )
@@ -58,7 +57,6 @@ class DatabaseVectorStorage(BaseModel):
 class DatabaseSelectAIObjects(BaseModel):
     """Database SelectAI Objects"""
 
-    database: Optional[str] = Field(default="DEFAULT", description="Name of Database (Alias)")
     owner: Optional[str] = Field(default=None, description="Object Owner", readOnly=True)
     name: Optional[str] = Field(default=None, description="Object Name", readOnly=True)
     enabled: bool = Field(default=False, description="SelectAI Enabled")
@@ -80,14 +78,12 @@ class Database(DatabaseAuth):
     """Database Object"""
 
     name: str = Field(default="DEFAULT", description="Name of Database (Alias)")
-    selectai: bool = Field(default=False, description="SelectAI Possible")
     connected: bool = Field(default=False, description="Connection Established")
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
         default=None, description="Vector Storage (read-only)", readOnly=True
     )
-    selectai_objects: Optional[list[DatabaseSelectAIObjects]] = Field(
-        default=None, description="SelectAI Eligible Objects (read-only)", readOnly=True
-    )
+    selectai: bool = Field(default=False, description="SelectAI Possible")
+    selectai_profiles: Optional[list] = Field(default=[], description="SelectAI Profiles (read-only)", readOnly=True)
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
 
@@ -242,7 +238,7 @@ class SelectAISettings(BaseModel):
     """Store SelectAI Settings"""
 
     enabled: bool = Field(default=False, description="SelectAI Enabled")
-    profile: str = Field(default="OPTIMIZER_PROFILE", description="SelectAI Profile", readOnly=True)
+    profile: Optional[str] = Field(default=None, description="SelectAI Profile")
     action: Literal["runsql", "showsql", "explainsql", "narrate"] = Field(
         default="narrate", description="SelectAI Action"
     )
@@ -252,6 +248,12 @@ class OciSettings(BaseModel):
     """OCI Settings"""
 
     auth_profile: Optional[str] = Field(default="DEFAULT", description="Oracle Cloud Settings Profile")
+
+
+class DatabaseSettings(BaseModel):
+    """Database Settings"""
+
+    alias: str = Field(default="DEFAULT", description="Name of Database (Alias)")
 
 
 class Settings(BaseModel):
@@ -269,6 +271,7 @@ class Settings(BaseModel):
         default_factory=PromptSettings, description="Prompt Engineering Settings"
     )
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
+    database: Optional[DatabaseSettings] = Field(default_factory=DatabaseSettings, description="Database Settings")
     vector_search: Optional[VectorSearchSettings] = Field(
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
@@ -401,6 +404,7 @@ OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]
 PromptNameType = Prompt.__annotations__["name"]
 PromptCategoryType = Prompt.__annotations__["category"]
 PromptPromptType = PromptText.__annotations__["prompt"]
+SelectAIProfileType = Database.__annotations__["selectai_profiles"]
 TestSetsIdType = TestSets.__annotations__["tid"]
 TestSetsNameType = TestSets.__annotations__["name"]
 TestSetDateType = TestSets.__annotations__["created"]

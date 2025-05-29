@@ -154,7 +154,7 @@ class TestEndpoints:
                 "user": TEST_CONFIG["db_username"],
                 "vector_stores": [],
                 "selectai": False,
-                "selectai_objects": None,
+                "selectai_profiles": [],
                 "wallet_location": None,
                 "wallet_password": None,
             },

@@ -2,12 +2,11 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai, PRIVS, PYQSYS, RMAN, RQSYS, SYSAUX
+# spell-checker:ignore selectai, PRIVS
 
-from typing import Union
 import oracledb
 
-from common.schema import Database, DatabaseAuth, DatabaseSelectAIObjects
+from common.schema import Database, DatabaseAuth
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("server.utils.database")
@@ -120,72 +119,3 @@ def execute_sql(conn: oracledb.Connection, run_sql: str, binds: dict = None) -> 
     except oracledb.InterfaceError as ex:
         logger.exception("Interface error: %s", ex)
         raise
-
-
-def selectai_enabled(conn: oracledb.Connection) -> bool:
-    """Determine if SelectAI can be used"""
-    logger.debug("Checking %s for SelectAI", conn)
-    enabled = "False"
-    sql = """
-          SELECT COUNT(*)
-            FROM ALL_TAB_PRIVS 
-           WHERE TYPE = 'PACKAGE'
-             AND PRIVILEGE = 'EXECUTE'
-             AND GRANTEE = USER
-             AND TABLE_NAME IN ('DBMS_CLOUD','DBMS_CLOUD_AI','DBMS_CLOUD_PIPELINE')
-          """
-    result = execute_sql(conn, sql)
-    if result[0][0] == 3:
-        enabled = True
-    logger.debug("SelectAI enabled (results: %s): %s", result[0][0], enabled)
-
-    return enabled
-
-
-def get_selectai_objects(conn: oracledb.Connection) -> DatabaseSelectAIObjects:
-    """Retrieve SelectAI Tables"""
-    logger.info("Looking for SelectAI Tables")
-    selectai_objects = []
-    sql = """
-            SELECT  a.owner, a.table_name,
-                    CASE WHEN b.owner IS NOT NULL THEN 'Y' ELSE 'N' END AS enabled
-            FROM ALL_TABLES a
-            LEFT JOIN (
-                SELECT UPPER(jt.owner) AS owner, UPPER(jt.name) AS table_name
-                FROM USER_CLOUD_AI_PROFILE_ATTRIBUTES t,
-                    JSON_TABLE(t.attribute_value, '$[*]'
-                        COLUMNS (
-                            owner VARCHAR2(30) PATH '$.owner',
-                            name  VARCHAR2(30) PATH '$.name'
-                        )
-                    ) jt
-                WHERE profile_name = 'OPTIMIZER_PROFILE'
-            ) b ON a.owner = b.owner AND a.table_name = b.table_name
-            WHERE a.tablespace_name NOT IN ('SYSTEM','SYSAUX')
-              AND a.owner NOT IN ('SYS','PYQSYS','OML$METADATA','RQSYS',
-                'RMAN$CATALOG','ADMIN','ODI_REPO_USER','C##CLOUD$SERVICE')
-          """
-    results = execute_sql(conn, sql)
-    for owner, table_name, enabled in results:
-        selectai_objects.append(DatabaseSelectAIObjects(owner=owner, name=table_name, enabled=enabled))
-    logger.debug("Found SelectAI Tables: %s", selectai_objects)
-
-    return selectai_objects
-
-
-def set_selectai_profile(conn: oracledb.Connection, attribute_name: str, attribute_value: Union[str, list]) -> None:
-    """Update SelectAI Profile"""
-    logger.info("Updating SelectAI Profile attribute: %s = %s", attribute_name, attribute_value)
-    # Attribute Names: provider, credential_name, object_list, provider_endpoint, model
-    # Attribute Names: temperature, max_tokens
-    binds = {"attribute_name": attribute_name, "attribute_value": attribute_value}
-    sql = """
-            BEGIN
-                DBMS_CLOUD_AI.SET_ATTRIBUTE(
-                    profile_name => 'OPTIMIZER_PROFILE',
-                    attribute_name => :attribute_name,
-                    attribute_value => :attribute_value
-                );
-            END;
-          """
-    _ = execute_sql(conn, sql, binds)

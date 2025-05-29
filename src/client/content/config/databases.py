@@ -16,7 +16,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 import client.utils.api_call as api_call
+import client.utils.st_common as st_common
 import common.logging_config as logging_config
+from common.schema import SelectAIProfileType
 
 logger = logging_config.logging.getLogger("client.content.config.database")
 
@@ -24,12 +26,11 @@ logger = logging_config.logging.getLogger("client.content.config.database")
 #####################################################
 # Functions
 #####################################################
-def get_databases(force: bool = False) -> dict[str, dict]:
+def get_databases(force: bool = False) -> None:
     """Get a dictionary of all Databases and Store Vector Store Tables"""
     if "database_config" not in state or state["database_config"] == {} or force:
         try:
-            endpoint = "v1/databases"
-            response = api_call.get(endpoint=endpoint)
+            response = api_call.get(endpoint="v1/databases")
             state["database_config"] = {
                 item["name"]: {k: v for k, v in item.items() if k != "name"} for item in response
             }
@@ -51,9 +52,8 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
         or not state.database_config[name]["connected"]
     ):
         try:
-            endpoint = f"v1/databases/{name}"
             _ = api_call.patch(
-                endpoint=endpoint,
+                endpoint=f"v1/databases/{name}",
                 payload={
                     "json": {
                         "user": user,
@@ -66,28 +66,6 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
             logger.info("Database updated: %s", name)
             state.database_config[name]["connected"] = True
             get_databases(force=True)
-            endpoint = "v1/selectai/enabled"
-            selectai = api_call.get(
-                            endpoint=endpoint,
-            )
-            logger.info("SelectAI enabled: %s", selectai["enabled"])
-            state.database_config[name]["selectai"] = selectai["enabled"]
-
-            # Check if SelectAI is enabled and get objects if so
-            if selectai["enabled"]:
-                try:
-                    endpoint = "v1/selectai/objects"
-                    selectai_objects = api_call.get(
-                        endpoint=endpoint,
-                    )
-                    logger.info("SelectAI objects retrieved: %d objects", len(selectai_objects))
-                    state.database_config[name]["selectai_objects"] = selectai_objects
-                except api_call.ApiError as ex:
-                    logger.error("Failed to retrieve SelectAI objects: %s", ex)
-                    state.database_config[name]["selectai_objects"] = []
-            else:
-                state.database_config[name]["selectai_objects"] = None
-
         except api_call.ApiError as ex:
             logger.error("Database not updated: %s (%s)", name, ex)
             state.database_config[name]["connected"] = False
@@ -102,21 +80,39 @@ def drop_vs(vs: dict) -> None:
     api_call.delete(endpoint=f"v1/embed/{vs['vector_store']}")
     get_databases(force=True)
 
+def select_ai_profile() -> None:
+    """Update the chosen SelectAI Profile"""
+    st_common.update_user_settings("selectai")
+    st_common.patch_settings()
+    selectai_df.clear()
 
-def update_selectai(sai_df: pd.DataFrame ) -> None:
+@st.cache_data
+def selectai_df(profile):
+    """Get SelectAI Object List and produce Dataframe"""
+    logger.info("Retrieving objects from SelectAI Profile: %s", profile)
+    st_common.patch_settings()
+    selectai_objects = api_call.get(endpoint="v1/selectai/objects")
+    df = pd.DataFrame(selectai_objects, columns=["owner", "name", "enabled"])
+    df.columns = ["Owner", "Name", "Enabled"]
+    return df
+
+
+def update_selectai(sai_new_df: pd.DataFrame, sai_old_df: pd.DataFrame) -> None:
     """Update SelectAI Object List"""
-    enabled_objects = sai_df[sai_df["Enabled"]].drop(columns=["Enabled"])
-    enabled_objects.columns = enabled_objects.columns.str.lower()
-    try:
-        endpoint = "v1/selectai/objects"
-        result = api_call.patch(
-            endpoint=endpoint,
-            payload={"json": json.loads(enabled_objects.to_json(orient="records"))}
-        )
-        logger.info("SelectAI Updated.")
-        state.database_config["DEFAULT"]["selectai_objects"] = result
-    except api_call.ApiError as ex:
-        logger.error("SelectAI not updated: %s", ex)
+    changes = sai_new_df[sai_new_df["Enabled"] != sai_old_df["Enabled"]]
+    if changes.empty:
+        st.toast("No changes detected.", icon="ℹ️")
+    else:
+        enabled_objects = sai_new_df[sai_new_df["Enabled"]].drop(columns=["Enabled"])
+        enabled_objects.columns = enabled_objects.columns.str.lower()
+        try:
+            _ = api_call.patch(
+                endpoint="v1/selectai/objects", payload={"json": json.loads(enabled_objects.to_json(orient="records"))}
+            )
+            logger.info("SelectAI Updated. Clearing Cache.")
+            selectai_df.clear()
+        except api_call.ApiError as ex:
+            logger.error("SelectAI not updated: %s", ex)
 
 
 #####################################################
@@ -209,29 +205,33 @@ def main() -> None:
         # Select AI
         #############################################
         st.subheader("SelectAI", divider="red")
-        if state.database_config[name]["selectai"]:
-            st.write("Tables eligible and enabled/disabled for SelectAI.")
-            if state.database_config[name]["selectai_objects"]:
-                df = pd.DataFrame(
-                    state.database_config[name]["selectai_objects"], columns=["owner", "name", "enabled"]
-                )
-                df.columns = ["Owner", "Name", "Enabled"]
+        selectai_profiles = state.database_config[name]["selectai_profiles"]
+        if state.database_config[name]["selectai"] and len(selectai_profiles) > 0:
+            if not state.user_settings["selectai"]["profile"]:
+                state.user_settings["selectai"]["profile"] = selectai_profiles[0]
+            # Select Profile
+            st.selectbox(
+                "Profile:",
+                options=selectai_profiles,
+                index=selectai_profiles.index(state.user_settings["selectai"]["profile"]),
+                key="selected_selectai_profile",
+                on_change=select_ai_profile,
+            )
+            selectai_objects = selectai_df(state.user_settings["selectai"]["profile"])
+            if not selectai_objects.empty:
                 sai_df = st.data_editor(
-                    df,
+                    selectai_objects,
                     column_config={
                         "enabled": st.column_config.CheckboxColumn(label="Enabled", help="Toggle to enable or disable")
                     },
                     use_container_width=True,
                     hide_index=True,
                 )
-                if st.button("Apply SelectAI Changes", type='primary'):
-                    changes = sai_df[sai_df["Enabled"] != df["Enabled"]]
-                    if not changes.empty:
-                        update_selectai(sai_df)
-                    else:
-                        st.write("No changes detected.")
+                if st.button("Apply SelectAI Changes", type="secondary"):
+                    update_selectai(sai_df, selectai_objects)
+                    st.rerun()
             else:
-                st.write("No tables found for SelectAI.")
+                st.write("No objects found for SelectAI.")
         else:
             st.write("Unable to use SelectAI with Database.")
 
