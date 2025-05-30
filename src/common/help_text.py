@@ -40,8 +40,11 @@ help_dict = {
         A higher presence penalty makes bringing up new subjects more likely rather than
         sticking to what has already been mentioned.
         """,
-    "rag": """
-        Enable Retrieval-Augmented Generation.
+    "selectai": """
+        Enable SelectAI Generation.
+        """,
+    "vector_search": """
+        Enable Vector Search Generation.
         """,
     "rerank": """
         Organize the initially fetched documents based on their relevance to the question.
@@ -71,7 +74,7 @@ help_dict = {
         comprehensive and varied set of information for generating the final response.
         """,
     "embed_alias": """
-        Provide an alias to help identify the embedding during RAG experimentation.
+        Provide an alias to help identify the embedding during Vector Search experimentation.
         It must start with a character and only contain alphanumerics and underscores.
         Max Characters: 20
         """,

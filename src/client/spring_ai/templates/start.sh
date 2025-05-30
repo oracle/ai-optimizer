@@ -8,11 +8,11 @@ if [[ "{provider}" == "ollama" ]]; then
     unset OPENAI_URL
     export OLLAMA_BASE_URL="{ll_model[url]}"
     export OLLAMA_CHAT_MODEL="{ll_model[model]}"
-    export OLLAMA_EMBEDDING_MODEL="{rag[model]}"
+    export OLLAMA_EMBEDDING_MODEL="{vector_search[model]}"
 else
     PREFIX="OP"; UNSET_PREFIX="OL"
     export OPENAI_CHAT_MODEL="{ll_model[model]}"
-    export OPENAI_EMBEDDING_MODEL="{rag[model]}"
+    export OPENAI_EMBEDDING_MODEL="{vector_search[model]}"
     export OPENAI_URL="{ll_model[url]}"
     export OLLAMA_CHAT_MODEL=""
     unset OLLAMA_EMBEDDING_MODEL
@@ -36,10 +36,10 @@ export SPRING_AI_OPENAI_API_KEY=${{OPENAI_API_KEY}}
 export DB_DSN="jdbc:oracle:thin:@{database_config[dsn]}"
 export DB_USERNAME="{database_config[user]}"
 export DB_PASSWORD="{database_config[password]}"
-export DISTANCE_TYPE="{rag[distance_metric]}"
-export INDEX_TYPE="{rag[index_type]}"
+export DISTANCE_TYPE="{vector_search[distance_metric]}"
+export INDEX_TYPE="{vector_search[index_type]}"
 export CONTEXT_INSTR="{ctx_prompt}"
-export TOP_K="{rag[top_k]}"
+export TOP_K="{vector_search[top_k]}"
 
-export VECTOR_STORE="{rag[vector_store]}"
+export VECTOR_STORE="{vector_search[vector_store]}"
 mvn spring-boot:run -P {provider}

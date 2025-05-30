@@ -3,132 +3,101 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
 
-from typing import Any, Dict
 import pytest
-from fastapi.testclient import TestClient
-from conftest import TEST_HEADERS, TEST_BAD_HEADERS
 
 
 #############################################################################
 # Test AuthN required and Valid
 #############################################################################
-class TestNoAuthEndpoints:
-    """Test endpoints without AuthN"""
+class TestInvalidAuthEndpoints:
+    """Test endpoints without Headers and Invalid AuthN"""
 
-    test_cases = [
-        pytest.param(
-            {"endpoint": "/v1/prompts", "method": "get"},
-            id="prompts_list",
-        ),
-        pytest.param(
-            {"endpoint": "/v1/prompts/sys/Basic", "method": "get"},
-            id="prompts_get",
-        ),
-        pytest.param(
-            {"endpoint": "/v1/prompts/sys/Basic", "method": "patch"},
-            id="prompts_update",
-        ),
-    ]
-
-    @pytest.mark.parametrize("test_case", test_cases)
-    def test_no_auth(self, client: TestClient, test_case: Dict[str, Any]) -> None:
-        """Testing for required AuthN"""
-        response = getattr(client, test_case["method"])(test_case["endpoint"])
-        assert response.status_code == 403
-        response = getattr(client, test_case["method"])(test_case["endpoint"], headers=TEST_BAD_HEADERS)
-        assert response.status_code == 401
+    @pytest.mark.parametrize(
+        "auth_type, status_code",
+        [
+            pytest.param("no_auth", 403, id="no_auth"),
+            pytest.param("invalid_auth", 401, id="invalid_auth"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "endpoint, api_method",
+        [
+            pytest.param("/v1/prompts", "get", id="prompts_list"),
+            pytest.param("/v1/prompts/sys/Basic", "get", id="prompts_get"),
+            pytest.param("/v1/prompts/sys/Basic", "patch", id="prompts_update"),
+        ],
+    )
+    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valide authentication."""
+        response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
+        assert response.status_code == status_code
 
 
 #############################################################################
-# Test AuthN
+# Endpoints Test
 #############################################################################
 class TestEndpoints:
-    """Test endpoints with AuthN"""
+    """Test Endpoints"""
 
     test_cases = [
-        pytest.param(
-            {"name": "Basic Example", "category": "sys", "status_code": 200},
-            id="basic_example_sys_prompt",
-        ),
-        pytest.param(
-            {"name": "RAG Example", "category": "sys", "status_code": 200},
-            id="rag_example_sys_prompt",
-        ),
-        pytest.param(
-            {"name": "Custom", "category": "sys", "status_code": 200},
-            id="basic_sys_prompt",
-        ),
-        pytest.param(
-            {"name": "NONEXISTANT", "category": "sys", "status_code": 404},
-            id="nonexistant_sys_prompt",
-        ),
-        pytest.param(
-            {"name": "Basic Example", "category": "ctx", "status_code": 200},
-            id="basic_example_ctx_prompt",
-        ),
-        pytest.param(
-            {"name": "Custom", "category": "ctx", "status_code": 200},
-            id="custom_ctx_prompt",
-        ),
-        pytest.param(
-            {"name": "NONEXISTANT", "category": "ctx", "status_code": 404},
-            id="nonexistant_ctx_prompt",
-        ),
+        pytest.param("Basic Example", "sys", 200, id="basic_example_sys_prompt"),
+        pytest.param("Vector Search Example", "sys", 200, id="vs_example_sys_prompt"),
+        pytest.param("Custom", "sys", 200, id="basic_sys_prompt"),
+        pytest.param("NONEXISTANT", "sys", 404, id="nonexistant_sys_prompt"),
+        pytest.param("Basic Example", "ctx", 200, id="basic_example_ctx_prompt"),
+        pytest.param("Custom", "ctx", 200, id="custom_ctx_prompt"),
+        pytest.param("NONEXISTANT", "ctx", 404, id="nonexistant_ctx_prompt"),
     ]
 
-    @pytest.mark.parametrize("test_case", test_cases)
-    def test_prompts_list_before(self, client: TestClient, test_case: Dict[str, Any]):
+    @pytest.mark.parametrize("name, category, status_code", test_cases)
+    def test_prompts_list_before(self, client, auth_headers, name, category, status_code):
         """List boostrapped prompts"""
-        response = client.get("/v1/prompts", headers=TEST_HEADERS)
+        response = client.get("/v1/prompts", headers=auth_headers["valid_auth"])
         assert response.status_code == 200
-        if test_case["status_code"] == 200:
-            assert any(
-                r["name"] == test_case["name"] and r["category"] == test_case["category"] for r in response.json()
-            )
+        # If our status_code should return 200, then check that prompt is in output
+        if response.status_code == status_code:
+            assert any(r["name"] == name and r["category"] == category for r in response.json())
 
-    @pytest.mark.parametrize("test_case", test_cases)
-    def test_prompts_get_before(self, client: TestClient, test_case: Dict[str, Any]):
+    @pytest.mark.parametrize("name, category, status_code", test_cases)
+    def test_prompts_get_before(self, client, auth_headers, name, category, status_code):
         """Get individual prompts"""
-        response = client.get(f"/v1/prompts/{test_case['category']}/{test_case['name']}", headers=TEST_HEADERS)
-        assert response.status_code == test_case["status_code"]
-        if test_case["status_code"] == 200:
+        response = client.get(f"/v1/prompts/{category}/{name}", headers=auth_headers["valid_auth"])
+        assert response.status_code == status_code
+        if status_code == 200:
             data = response.json()
-            assert data["name"] == test_case["name"]
-            assert data["category"] == test_case["category"]
+            assert data["name"] == name
+            assert data["category"] == category
             assert data["prompt"] is not None
         else:
-            assert response.json() == {"detail": f"Prompt: {test_case['name']} ({test_case['category']}) not found."}
+            assert response.json() == {"detail": f"Prompt: {name} ({category}) not found."}
 
-    @pytest.mark.parametrize("test_case", test_cases)
-    def test_prompts_update(self, client: TestClient, test_case: Dict[str, Any]):
+    @pytest.mark.parametrize("name, category, status_code", test_cases)
+    def test_prompts_update(self, client, auth_headers, name, category, status_code):
         """Update Prompt"""
         payload = {"prompt": "New prompt instructions"}
-        response = client.patch(
-            f"/v1/prompts/{test_case['category']}/{test_case['name']}", headers=TEST_HEADERS, json=payload
-        )
-        assert response.status_code == test_case["status_code"]
-        if test_case["status_code"] == 200:
+        response = client.patch(f"/v1/prompts/{category}/{name}", headers=auth_headers["valid_auth"], json=payload)
+        assert response.status_code == status_code
+        if status_code == 200:
             data = response.json()
-            assert data["name"] == test_case["name"]
-            assert data["category"] == test_case["category"]
+            assert data["name"] == name
+            assert data["category"] == category
             assert data["prompt"] == "New prompt instructions"
         else:
-            assert response.json() == {"detail": f"Prompt: {test_case['name']} ({test_case['category']}) not found."}
+            assert response.json() == {"detail": f"Prompt: {name} ({category}) not found."}
 
-    @pytest.mark.parametrize("test_case", test_cases)
-    def test_prompts_get_after(self, client: TestClient, test_case: Dict[str, Any]):
+    @pytest.mark.parametrize("name, category, status_code", test_cases)
+    def test_prompts_get_after(self, client, auth_headers, name, category, status_code):
         """Get individual prompts"""
-        response = client.get(f"/v1/prompts/{test_case['category']}/{test_case['name']}", headers=TEST_HEADERS)
-        assert response.status_code == test_case["status_code"]
-        if test_case["status_code"] == 200:
+        response = client.get(f"/v1/prompts/{category}/{name}", headers=auth_headers["valid_auth"])
+        assert response.status_code == status_code
+        if status_code == 200:
             response_data = response.json()
             assert response_data["prompt"] == "New prompt instructions"
 
-    def test_prompts_list_after(self, client: TestClient):
+    def test_prompts_list_after(self, client, auth_headers):
         """List boostrapped prompts"""
-        response = client.get("/v1/prompts", headers=TEST_HEADERS)
+        response = client.get("/v1/prompts", headers=auth_headers["valid_auth"])
         assert response.status_code == 200
         response_data = response.json()
         assert all(item["prompt"] == "New prompt instructions" for item in response_data)

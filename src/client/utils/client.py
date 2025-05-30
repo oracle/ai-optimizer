@@ -95,4 +95,3 @@ class Client:
             return f"Error: {response.status_code} - {error_msg}"
         except httpx.ConnectError:
             logger.error("Unable to contact the API Server; will try again later.")
-

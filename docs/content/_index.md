@@ -13,7 +13,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker:ignore streamlit, genai, venv
 -->
 
-The {{< full_app_ref >}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**) combined with Retrieval-Augmented Generation (**RAG**) capabilities. By integrating Oracle Database AI Vector Search, the {{< short_app_ref >}} enables users to enhance existing Large Language Models (**LLM**s) through **RAG**. This method significantly improves the performance and accuracy of AI models, helping to avoid common issues such as knowledge cutoff and hallucinations.
+The {{< full_app_ref >}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**) combined with Retrieval-Augmented Generation (**RAG**) capabilities. By integrating Oracle Database AI VectorSearch and SelectAI, the {{< short_app_ref >}} enables users to enhance existing Large Language Models (**LLM**s) through **RAG**. This method significantly improves the performance and accuracy of AI models, helping to avoid common issues such as knowledge cutoff and hallucinations.
 
 - **GenAI**: Powers the generation of text, images, or other data based on prompts using pre-trained **LLM**s.
 - **RAG**: Enhances **LLM**s by retrieving relevant, real-time information allowing models to provide up-to-date and accurate responses.

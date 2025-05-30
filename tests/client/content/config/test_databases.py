@@ -10,17 +10,19 @@ import pytest
 
 from conftest import TEST_CONFIG
 
+
 #############################################################################
 # Test Streamlit UI
 #############################################################################
-class TestDatabase:
-    """Test the Streamlit UI for OCI"""
+class TestStreamlit:
+    """Test the Streamlit UI"""
 
     # Streamlit File
     ST_FILE = "../src/client/content/config/databases.py"
 
-    def test_missing_details(self, app_test):
+    def test_missing_details(self, app_server, app_test):
         """Submits with missing required inputs"""
+        assert app_server is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_config is not None
         at.button[0].click().run()
@@ -39,8 +41,9 @@ class TestDatabase:
         assert at.session_state.database_config["DEFAULT"]["connected"] is False
         assert at.session_state.database_config["DEFAULT"]["vector_stores"] is None
 
-    def test_wrong_details(self, app_test):
+    def test_wrong_details(self, app_server, app_test):
         """Submits with wrong details"""
+        assert app_server is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_config is not None
         at.text_input(key="database_user").set_value(TEST_CONFIG["db_username"]).run()
@@ -59,8 +62,9 @@ class TestDatabase:
         assert at.session_state.database_config["DEFAULT"]["connected"] is False
         assert at.session_state.database_config["DEFAULT"]["vector_stores"] is None
 
-    def test_connected(self, app_test, db_container):
+    def test_connected(self, app_server, app_test, db_container):
         """Sumbits with good DSN"""
+        assert app_server is not None
         assert db_container is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_config is not None
@@ -136,8 +140,9 @@ class TestDatabase:
     ]
 
     @pytest.mark.parametrize("test_case", test_cases)
-    def test_disconnected(self, app_test, db_container, test_case):
+    def test_disconnected(self, app_server, app_test, db_container, test_case):
         """Submits with incorrect details"""
+        assert app_server is not None
         assert db_container is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_config is not None

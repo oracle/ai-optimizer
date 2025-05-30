@@ -37,12 +37,12 @@ def copy_user_settings(new_client: ClientIdType) -> None:
     """Copy User Setting to a new client (e.g. the Server)"""
     logger.info("Copying user settings to: %s", new_client)
     try:
-        api_call.patch(
+        response = api_call.patch(
             endpoint="v1/settings",
             payload={"json": state.user_settings},
             params={"client": new_client},
         )
-        st_common.clear_state_key(f"{new_client}_settings")
+        state[f"{new_client}_settings"] = response
     except api_call.ApiError as ex:
         st.error(f"Settings for {new_client} - Update Failed", icon="❌")
         logger.error("%s Settings Update failed: %s", new_client, ex)
@@ -72,7 +72,7 @@ async def main() -> None:
     left, right = st.columns([0.2, 0.8])
     left.number_input(
         "API Server Port:",
-        value=state.server["port"],
+        value=int(state.server["port"]),
         key="user_server_port",
         min_value=1,
         max_value=65535,
@@ -93,15 +93,19 @@ async def main() -> None:
              The API Server maintains its own settings, independent of the Client.
              You can copy the Client settings to the API Server below.
              """)
+
+    if "server_settings" not in state:
+        copy_user_settings(new_client="server")
+
     st.json(state.server_settings, expanded=False)
     st.button(
         "Copy Client Settings",
+        key="copy_client_settings",
         type="primary",
         on_click=copy_user_settings,
         kwargs={"new_client": "server"},
         help="Copy your settings, from the ChatBot, by clicking here.",
     )
-
     st.header("Server Activity", divider="red")
     if "server_client" not in state:
         state.server_client = client.Client(
@@ -109,7 +113,6 @@ async def main() -> None:
             settings=state["server_settings"],
             timeout=10,
         )
-
     server_client: client.Client = state.server_client
 
     auto_refresh = st.toggle("Auto Refresh (every 10sec)", value=False, key="selected_auto_refresh")
@@ -131,4 +134,3 @@ async def main() -> None:
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
     asyncio.run(main())
-

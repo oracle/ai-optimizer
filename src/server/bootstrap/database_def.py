@@ -2,17 +2,20 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# spell-checker:ignore selectai
 
 import os
 import server.utils.databases as databases
 import server.utils.embedding as embedding
+import server.utils.selectai as selectai
 from common.schema import Database
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("server.bootstrap.database_def")
 
+
 def main() -> list[Database]:
-    """Define Default Database"""  
+    """Define Default Database"""
     database_list = [
         {
             "name": "DEFAULT",
@@ -46,6 +49,9 @@ def main() -> list[Database]:
             db.connected = False
             continue
         db.vector_stores = embedding.get_vs(conn)
+        db.selectai = selectai.enabled(conn)
+        if db.selectai:
+            db.selectai_profiles = selectai.get_profiles(conn)
         if not db.connection and len(database_objects) > 1:
             db.set_connection = databases.disconnect(conn)
         else:

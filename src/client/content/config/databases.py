@@ -5,16 +5,20 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 This script initializes a web interface for database configuration using Streamlit (`st`).
 It includes a form to input and test database connection settings.
 """
-# spell-checker:ignore streamlit, selectbox
+# spell-checker:ignore streamlit, selectbox, selectai
 
 import inspect
 import time
+import json
+import pandas as pd
 
 import streamlit as st
 from streamlit import session_state as state
 
 import client.utils.api_call as api_call
+import client.utils.st_common as st_common
 import common.logging_config as logging_config
+from common.schema import SelectAIProfileType
 
 logger = logging_config.logging.getLogger("client.content.config.database")
 
@@ -22,12 +26,11 @@ logger = logging_config.logging.getLogger("client.content.config.database")
 #####################################################
 # Functions
 #####################################################
-def get_databases(force: bool = False) -> dict[str, dict]:
+def get_databases(force: bool = False) -> None:
     """Get a dictionary of all Databases and Store Vector Store Tables"""
     if "database_config" not in state or state["database_config"] == {} or force:
         try:
-            endpoint = "v1/databases"
-            response = api_call.get(endpoint=endpoint)
+            response = api_call.get(endpoint="v1/databases")
             state["database_config"] = {
                 item["name"]: {k: v for k, v in item.items() if k != "name"} for item in response
             }
@@ -49,9 +52,8 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
         or not state.database_config[name]["connected"]
     ):
         try:
-            endpoint = f"v1/databases/{name}"
-            api_call.patch(
-                endpoint=endpoint,
+            _ = api_call.patch(
+                endpoint=f"v1/databases/{name}",
                 payload={
                     "json": {
                         "user": user,
@@ -73,10 +75,44 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
         time.sleep(2)
 
 
-def drop_vs(vs: dict):
+def drop_vs(vs: dict) -> None:
     """Drop a Vector Storage Table"""
     api_call.delete(endpoint=f"v1/embed/{vs['vector_store']}")
     get_databases(force=True)
+
+def select_ai_profile() -> None:
+    """Update the chosen SelectAI Profile"""
+    st_common.update_user_settings("selectai")
+    st_common.patch_settings()
+    selectai_df.clear()
+
+@st.cache_data
+def selectai_df(profile):
+    """Get SelectAI Object List and produce Dataframe"""
+    logger.info("Retrieving objects from SelectAI Profile: %s", profile)
+    st_common.patch_settings()
+    selectai_objects = api_call.get(endpoint="v1/selectai/objects")
+    df = pd.DataFrame(selectai_objects, columns=["owner", "name", "enabled"])
+    df.columns = ["Owner", "Name", "Enabled"]
+    return df
+
+
+def update_selectai(sai_new_df: pd.DataFrame, sai_old_df: pd.DataFrame) -> None:
+    """Update SelectAI Object List"""
+    changes = sai_new_df[sai_new_df["Enabled"] != sai_old_df["Enabled"]]
+    if changes.empty:
+        st.toast("No changes detected.", icon="ℹ️")
+    else:
+        enabled_objects = sai_new_df[sai_new_df["Enabled"]].drop(columns=["Enabled"])
+        enabled_objects.columns = enabled_objects.columns.str.lower()
+        try:
+            _ = api_call.patch(
+                endpoint="v1/selectai/objects", payload={"json": json.loads(enabled_objects.to_json(orient="records"))}
+            )
+            logger.info("SelectAI Updated. Clearing Cache.")
+            selectai_df.clear()
+        except api_call.ApiError as ex:
+            logger.error("SelectAI not updated: %s", ex)
 
 
 #####################################################
@@ -85,7 +121,7 @@ def drop_vs(vs: dict):
 def main() -> None:
     """Streamlit GUI"""
     st.header("Database", divider="red")
-    st.write("Configure the database used for vector storage.")
+    st.write("Configure the database used for Vector Storage and SelectAI.")
     try:
         get_databases()  # Create/Rebuild state
     except api_call.ApiError:
@@ -129,14 +165,17 @@ def main() -> None:
             st.rerun()
 
     if state.database_config[name]["connected"]:
-        st.subheader("Database Vector Storage")
+        # Vector Stores
+        #############################################
+        st.subheader("Database Vector Storage", divider="red")
+        st.write("Existing Vector Storage Tables in Database.")
         with st.container(border=True):
             if state.database_config[name]["vector_stores"]:
-                table_col_format = st.columns([2, 5, 10, 5, 5, 5, 3])
-                headers = ["\u200b", "Alias", "Model", "Chunk: Size", "Overlap", "Distance Metric", "Index"]
+                vs_col_format = st.columns([2, 5, 10, 3, 3, 5, 3])
+                headers = ["\u200b", "Alias", "Model", "Chunk", "Overlap", "Dist. Metric", "Index"]
 
                 # Header row
-                for col, header in zip(table_col_format, headers):
+                for col, header in zip(vs_col_format, headers):
                     col.markdown(f"**<u>{header}</u>**", unsafe_allow_html=True)
 
                 # Vector store rows
@@ -144,7 +183,7 @@ def main() -> None:
                     vector_store = vs["vector_store"].lower()
                     fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
                     # Handle button in col1
-                    table_col_format[0].button(
+                    vs_col_format[0].button(
                         "",
                         icon="🗑️",
                         key=f"vector_stores_{vector_store}",
@@ -152,7 +191,7 @@ def main() -> None:
                         args=[vs],
                         help="Drop Vector Storage Table",
                     )
-                    for col, field in zip(table_col_format[1:], fields):  # Starting from col2
+                    for col, field in zip(vs_col_format[1:], fields):  # Starting from col2
                         col.text_input(
                             field.capitalize(),
                             value=vs[field],
@@ -162,6 +201,39 @@ def main() -> None:
                         )
             else:
                 st.write("No Vector Stores Found")
+
+        # Select AI
+        #############################################
+        st.subheader("SelectAI", divider="red")
+        selectai_profiles = state.database_config[name]["selectai_profiles"]
+        if state.database_config[name]["selectai"] and len(selectai_profiles) > 0:
+            if not state.user_settings["selectai"]["profile"]:
+                state.user_settings["selectai"]["profile"] = selectai_profiles[0]
+            # Select Profile
+            st.selectbox(
+                "Profile:",
+                options=selectai_profiles,
+                index=selectai_profiles.index(state.user_settings["selectai"]["profile"]),
+                key="selected_selectai_profile",
+                on_change=select_ai_profile,
+            )
+            selectai_objects = selectai_df(state.user_settings["selectai"]["profile"])
+            if not selectai_objects.empty:
+                sai_df = st.data_editor(
+                    selectai_objects,
+                    column_config={
+                        "enabled": st.column_config.CheckboxColumn(label="Enabled", help="Toggle to enable or disable")
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                if st.button("Apply SelectAI Changes", type="secondary"):
+                    update_selectai(sai_df, selectai_objects)
+                    st.rerun()
+            else:
+                st.write("No objects found for SelectAI.")
+        else:
+            st.write("Unable to use SelectAI with Database.")
 
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:

@@ -6,14 +6,19 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # pylint: disable=import-error
 
 
-class TestPromptEng:
-    """Test Prompt Engineering"""
+#############################################################################
+# Test Streamlit UI
+#############################################################################
+class TestStreamlit:
+    """Test the Streamlit UI"""
 
     # Streamlit File
     ST_FILE = "../src/client/content/tools/prompt_eng.py"
 
-    def test_change_sys(self, app_test):
+    def test_change_sys(self, app_server, app_test):
         """Change the Current System Prompt"""
+        assert app_server is not None
+
         at = app_test(self.ST_FILE).run()
         at.selectbox(key="selected_prompts_sys").set_value("Custom").run()
         assert at.session_state.user_settings["prompts"]["sys"] == "Custom"
@@ -32,8 +37,10 @@ class TestPromptEng:
         )
         assert prompt["prompt"] == "This is my custom, sys prompt."
 
-    def test_change_ctx(self, app_test):
+    def test_change_ctx(self, app_server, app_test):
         """Change the Current System Prompt"""
+        assert app_server is not None
+
         at = app_test(self.ST_FILE).run()
         print(at.selectbox)
         at.selectbox(key="selected_prompts_ctx").set_value("Custom").run()

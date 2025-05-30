@@ -68,7 +68,7 @@ def patch_oci(
         try:
             if security_token_file:
                 state.oci_config[auth_profile]["authentication"] = "security_token"
-            api_call.patch(
+            _ = api_call.patch(
                 endpoint=f"v1/oci/{auth_profile}",
                 payload={
                     "json": {
@@ -107,7 +107,7 @@ def patch_oci_genai(
         or state.oci_config[auth_profile]["service_endpoint"] != service_endpoint
     ):
         try:
-            api_call.patch(
+            _ = api_call.patch(
                 endpoint=f"v1/oci/{auth_profile}",
                 payload={
                     "json": {

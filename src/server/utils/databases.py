@@ -2,6 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# spell-checker:ignore selectai, PRIVS
 
 import oracledb
 
@@ -26,6 +27,10 @@ def connect(config: Database) -> oracledb.Connection:
     include_fields = set(DatabaseAuth.model_fields.keys())
     db_config = config.model_dump(include=include_fields)
     logger.debug("Database Config: %s", db_config)
+    # If a wallet password is provided but no wallet location is set
+    # default the wallet location to the config directory
+    if db_config.get("wallet_password") and not db_config.get("wallet_location"):
+        db_config["wallet_location"] = db_config["config_dir"]
     # Check if connection settings are configured
     if any(not db_config[key] for key in ("user", "password", "dsn")):
         raise DbException(status_code=400, detail="missing connection details")
@@ -77,6 +82,20 @@ def execute_sql(conn: oracledb.Connection, run_sql: str, binds: dict = None) -> 
             cursor.execute(run_sql, binds)
             if cursor.description:  # Check if the query returns rows
                 rows = cursor.fetchall()
+                lob_columns = [
+                    idx
+                    for idx, fetch_info in enumerate(cursor.description)
+                    if fetch_info.type_code in (oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_NCLOB)
+                ]
+                if lob_columns:
+                    # Convert rows to list of dictionaries with LOB handling
+                    rows = [
+                        {
+                            cursor.description[idx].name: (value.read() if idx in lob_columns else value)
+                            for idx, value in enumerate(row)
+                        }
+                        for row in rows
+                    ]
             else:
                 cursor.callproc("dbms_output.get_line", (text_var, status_var))
                 if status_var.getvalue() == 0:

@@ -250,7 +250,7 @@ class AIController {
 					logger.info("prompt message: " + prompt.getContents());
 					String contentResponse = chatClient.prompt(prompt).call().content();
 					logger.info("-------------------------------------------------------");
-					logger.info("- RAG RETURN                                          -");
+					logger.info("- VECTOR SEARCH RETURN                                -");
 					logger.info("-------------------------------------------------------");
 					logger.info(contentResponse);
 					new Thread(() -> {

@@ -54,14 +54,13 @@ Start with:
 
 This project contains a web service that will accept HTTP GET requests at
 
-* `http://localhost:9090/v1/chat/completions`: to use RAG via OpenAI REST API 
+* `http://localhost:9090/v1/chat/completions`: to use Vector Search via OpenAI REST API 
 * `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used
 * `http://localhost:9090/v1/service/search/`: to search for document similar to the message provided
 * `http://localhost:9090/v1/service/store-chunks/`: to embedd and store a list of text chunks in the vectorstore
 
 
-### Completions
-RAG call example with `openai` build profile with no-stream: 
+Vector Search call example with `openai` build profile with no-stream: 
 
 ```
 curl -N http://localhost:9090/v1/chat/completions \
@@ -74,7 +73,7 @@ curl -N http://localhost:9090/v1/chat/completions \
   }'
 ```
 
-the response with RAG:
+the response with Vector Search:
 
 ```
 {
@@ -98,7 +97,7 @@ curl -N http://localhost:9090/v1/chat/completions \
     "stream": true
   }'
 ```
-or the request without RAG:
+or the request without Vector Search:
 ```
 curl --get --data-urlencode 'message=Can I use any kind of development environment to run the example?' localhost:9090/v1/service/llm | jq .
 ```
@@ -206,8 +205,8 @@ kubectl -n ollama exec svc/ollama -- ollama run "llama3.1" "what is spring boot?
   
   * oractl:
   ```
-  create --app-name rag
-  bind --app-name rag --service-name myspringai --username vector
+  create --app-name vector_search
+  bind --app-name vector_search --service-name myspringai --username vector
   ```
 
 
@@ -218,11 +217,11 @@ GRANT SELECT ON ADMIN.<VECTOR_STORE> TO vector;
 ```
 * then deploy:
 ```
-deploy --app-name rag --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-0.0.1-SNAPSHOT.jar --image-version 0.0.1 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
+deploy --app-name vector_search --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-0.0.1-SNAPSHOT.jar --image-version 0.0.1 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
 ```
 * test:
 ```
-kubectl -n rag port-forward svc/myspringai 9090:8080
+kubectl -n vector_search port-forward svc/myspringai 9090:8080
 ```
 * from shell:
 ```
