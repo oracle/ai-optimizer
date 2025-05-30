@@ -8,12 +8,13 @@ Session States Set:
 # spell-checker:ignore streamlit, scriptrunner
 
 import os
+from uuid import uuid4
 
 import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import api_call
-from client.utils.st_common import set_server_state, client_gen_id
+from client.utils.st_common import set_server_state
 
 import common.logging_config as logging_config
 
@@ -62,7 +63,7 @@ def main() -> None:
     if "user_settings" not in state:
         try:
             state.user_settings = api_call.post(
-                endpoint="v1/settings", params={"client": client_gen_id()}, retries=10, backoff_factor=1.5
+                endpoint="v1/settings", params={"client": str(uuid4())}, retries=10, backoff_factor=1.5
             )
         except api_call.ApiError:
             logger.error("Unable to contact API Server; setting as Down!")

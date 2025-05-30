@@ -7,7 +7,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import os
 from io import BytesIO
 from typing import Union
-from uuid import uuid4
 import pandas as pd
 
 import streamlit as st
@@ -19,7 +18,7 @@ import client.utils.api_call as api_call
 
 import common.help_text as help_text
 import common.logging_config as logging_config
-from common.schema import ClientIdType, PromptPromptType, PromptNameType
+from common.schema import PromptPromptType, PromptNameType
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
@@ -27,12 +26,6 @@ logger = logging_config.logging.getLogger("client.utils.st_common")
 #############################################################################
 # Common Helpers
 #############################################################################
-def client_gen_id() -> ClientIdType:
-    """Generate a new client ID; can be used to clear history"""
-    logger.info("Creating new client identifier")
-    return str(uuid4())
-
-
 def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
     """Upload Single file from Streamlit to the Server"""
     # If it's a single file, convert it to a list for consistent processing
@@ -122,8 +115,11 @@ def history_sidebar() -> None:
         on_change=update_user_settings("ll_model"),
     )
     if button_col.button("Clear", disabled=not chat_history_enable, use_container_width=True):
-        # Establish a new thread
-        state.user_settings["client"] = client_gen_id()
+        # Clean out history
+        try:
+            api_call.patch(endpoint="v1/chat/history")
+        except api_call.ApiError as ex:
+            logger.error("Clearing Chat History for %s failed: %s", state.user_settings["client"], ex)
         clear_state_key("user_client")
 
 

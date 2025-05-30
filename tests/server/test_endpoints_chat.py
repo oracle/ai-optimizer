@@ -30,8 +30,12 @@ class TestNoAuthEndpoints:
             id="chat_stream",
         ),
         pytest.param(
+            {"endpoint": "/v1/chat/history", "method": "patch"},
+            id="chat_history_clean",
+        ),
+        pytest.param(
             {"endpoint": "/v1/chat/history", "method": "get"},
-            id="chat_history",
+            id="chat_history_return",
         ),
     ]
 
@@ -172,6 +176,17 @@ class TestChatHistory:
             assert len(history) == 2
             assert history[0]["role"] == "user"
             assert history[0]["content"] == "Hello"
+
+    def test_chat_history_clean(self, client: TestClient):
+        """Test chat history with no history"""
+        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
+            mock_graph.get_state.side_effect = KeyError()
+            response = client.patch("/v1/chat/history", headers=TEST_HEADERS)
+            assert response.status_code == 200
+            history = response.json()
+            assert len(history) == 1
+            assert history[0]["role"] == "system"
+            assert "forgotten" in history[0]["content"].lower()
 
     def test_chat_history_empty(self, client: TestClient):
         """Test chat history with no history"""
