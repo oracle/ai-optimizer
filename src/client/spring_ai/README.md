@@ -55,11 +55,12 @@ Start with:
 This project contains a web service that will accept HTTP GET requests at
 
 * `http://localhost:9090/v1/chat/completions`: to use RAG via OpenAI REST API 
-
 * `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used
 * `http://localhost:9090/v1/service/search/`: to search for document similar to the message provided
+* `http://localhost:9090/v1/service/store-chunks/`: to embedd and store a list of text chunks in the vectorstore
 
 
+### Completions
 RAG call example with `openai` build profile with no-stream: 
 
 ```
@@ -110,10 +111,33 @@ response not grounded:
 }
 ```
 
+### Add chunks
+Store additional text chunks in the vector store: 
+
+```
+curl -X POST http://localhost:9090/v1/service/store-chunks \
+  -H "Content-Type: application/json" \
+  -d '["First chunk of text.", "Second chunk.", "Another example."]'
+```
+
+response:
+
+```
+[
+  [
+    -0.014500250108540058,
+    -0.03604526072740555,
+    0.035963304340839386,
+    0.010181647725403309,
+    -0.01610776223242283,
+    -0.021091962233185768,
+    0.03924199938774109,
+    ..
+  ]  
+]
+```
+
 ## Oracle Backend for Microservices and AI
-
-
-
 * Add in `application-obaas.yml` the **OPENAI_API_KEY**, if the deployement is based on the OpenAI LLM services:
 ```
    openai:
