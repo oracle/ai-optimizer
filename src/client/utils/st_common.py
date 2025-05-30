@@ -236,6 +236,7 @@ def tools_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if all sorts of bs setup"""
 
     def update_set_tool():
+        """Update user settings as to which tool is being used"""
         state.user_settings["vector_search"]["enabled"] = state.selected_tool == "VectorSearch"
         state.user_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
@@ -286,7 +287,6 @@ def tools_sidebar() -> None:
             tools = [t for t in tools if t[0] != "Vector Search"]
 
         tool_box = [name for name, _, disabled in tools if not disabled]
-        # tool_cap = [desc for _, desc, disabled in tools if not disabled]
         if len(tool_box) > 1:
             st.sidebar.subheader("Toolkit", divider="red")
             tool_index = next(
@@ -301,7 +301,6 @@ def tools_sidebar() -> None:
             st.sidebar.selectbox(
                 "Tool Selection",
                 tool_box,
-                # captions=tool_cap,
                 index=tool_index,
                 label_visibility="collapsed",
                 on_change=update_set_tool,

@@ -982,33 +982,4 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         selectai.set_profile(db_conn, client_settings.selectai.profile, "object_list", object_list)
         return selectai.get_objects(db_conn, client_settings.selectai.profile)
 
-    # @auth.post("/v1/selectai", description="Call SelectAI Tool", response_model=str)
-    # async def selectai_endpoint(
-    #     query: str,
-    #     client: schema.ClientIdType = Header(default="server"),
-    # ) -> str:
-    #     """Call selectai_tool with provided profile and query parameters."""
-    #     logger.debug("Received selectai_endpoint - query: %s", query)
-    #     client_settings = get_client_settings(client)
-    #     logger.debug("SelectAI Enabled: %s", client_settings.selectai.selectai_enabled)
-    #     if not client_settings.selectai.selectai_enabled:
-    #         return f"SelectAI is Disabled for client: {client}"
-
-    #     try:
-    #         # Create RunnableConfig with profile and query
-    #         config = RunnableConfig(
-    #             profile=client_settings.selectai.profile,
-    #             query=query,
-    #             action=client_settings.selectai.action,
-    #             configurable={"db_conn": get_client_db(client).connection},
-    #         )
-
-    #         # Call the tool
-    #         result = selectai_tool(config=config)
-
-    #         return result
-    #     except Exception as ex:
-    #         logger.error("An exception occurred: %s", ex)
-    #         raise HTTPException(status_code=500, detail=str(ex)) from ex
-
     logger.info("Endpoints Loaded.")
