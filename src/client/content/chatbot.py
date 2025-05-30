@@ -6,7 +6,7 @@ Session States Set:
 - user_client: Stores the Client
 """
 
-# spell-checker:ignore streamlit, oraclevs
+# spell-checker:ignore streamlit, oraclevs, selectai
 import asyncio
 import inspect
 import json
@@ -71,7 +71,7 @@ async def main() -> None:
     st_common.history_sidebar()
     st_common.ll_sidebar()
     st_common.selectai_sidebar()
-    st_common.vector_search_sidebar()    
+    st_common.vector_search_sidebar()
     # Stop when sidebar configurations not set
     if not state.enable_client:
         st.stop()

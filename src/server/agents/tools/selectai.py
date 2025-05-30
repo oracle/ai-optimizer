@@ -43,7 +43,7 @@ def selectai_tool(
     logger.info("Starting SelectAI Tool")
 
     if config["profile"] and config["query"] and config["action"]:
-        try:           
+        try:
             # Prepare the SQL statement
             sql = """
                 SELECT DBMS_CLOUD_AI.GENERATE(

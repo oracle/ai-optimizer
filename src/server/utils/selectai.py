@@ -20,7 +20,7 @@ def enabled(conn: oracledb.Connection) -> bool:
     is_enabled = False
     sql = """
           SELECT COUNT(*)
-            FROM ALL_TAB_PRIVS 
+            FROM ALL_TAB_PRIVS
            WHERE TYPE = 'PACKAGE'
              AND PRIVILEGE = 'EXECUTE'
              AND GRANTEE = USER
