@@ -29,7 +29,8 @@ class TestInvalidAuthEndpoints:
         [
             pytest.param("/v1/chat/completions", "post", id="chat_post"),
             pytest.param("/v1/chat/streams", "post", id="chat_stream"),
-            pytest.param("/v1/chat/history", "get", id="chat_history"),
+            pytest.param("/v1/chat/history", "patch", id="chat_history_clean"),
+            pytest.param("/v1/chat/history", "get", id="chat_history_return"),
         ],
     )
     def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
@@ -125,14 +126,6 @@ class TestEndpoints:
             content = b"".join(response.iter_bytes())
             assert b"Test streaming response" in content
 
-    def test_chat_history_empty(self, client, auth_headers):
-        """Test no model chat completion request"""
-        response = client.get("/v1/chat/history", headers=auth_headers["valid_auth"])
-        assert response.status_code == 200
-        history = response.json()
-        assert history[0]["role"] == "system"
-        assert history[0]["content"] == "I'm sorry, I have no history of this conversation"
-
     def test_chat_history_valid_mock(self, client, auth_headers):
         """Test valid chat history request"""
         # Create the mock history response
@@ -152,3 +145,25 @@ class TestEndpoints:
             assert len(history) == 2
             assert history[0]["role"] == "user"
             assert history[0]["content"] == "Hello"
+
+    def test_chat_history_clean(self, client, auth_headers):
+        """Test chat history with no history"""
+        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
+            mock_graph.get_state.side_effect = KeyError()
+            response = client.patch("/v1/chat/history", headers=auth_headers["valid_auth"])
+            assert response.status_code == 200
+            history = response.json()
+            assert len(history) == 1
+            assert history[0]["role"] == "system"
+            assert "forgotten" in history[0]["content"].lower()
+
+    def test_chat_history_empty(self, client, auth_headers):
+        """Test chat history with no history"""
+        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
+            mock_graph.get_state.side_effect = KeyError()
+            response = client.get("/v1/chat/history", headers=auth_headers["valid_auth"])
+            assert response.status_code == 200
+            history = response.json()
+            assert len(history) == 1
+            assert history[0]["role"] == "system"
+            assert "no history" in history[0]["content"].lower()
