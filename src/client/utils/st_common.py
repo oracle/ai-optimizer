@@ -238,12 +238,12 @@ def tools_sidebar() -> None:
 
     disable_selectai = not is_db_configured()
     disable_vector_search = not is_db_configured()
-
-    if disable_selectai and disable_vector_search:
+    
+    if disable_selectai and disable_vector_search:    
         logger.debug("Vector Search/SelectAI Disabled (Database not configured)")
         st.warning("Database is not configured. Disabling Vector Search and SelectAI tools.", icon="⚠️")
-        state.user_settings["selectai"]["enabled"] = disable_selectai
-        state.user_settings["vector_search"]["enabled"] = disable_vector_search
+        state.user_settings["selectai"]["enabled"] = False
+        state.user_settings["vector_search"]["enabled"] = False
         switch_prompt("sys", "Basic Example")
     else:
         db_alias = state.user_settings["database"]["alias"]
