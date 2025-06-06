@@ -404,7 +404,7 @@ def vector_search_sidebar() -> None:
         st.sidebar.subheader("Vector Store", divider="red")
         # Create a DataFrame of all database vector storage tables
         vs_df = pd.DataFrame(
-            state.database_config[state.user_settings["vector_search"]["database"]].get("vector_stores")
+            state["database_config"][state["user_settings"]["database"]["alias"]].get("vector_stores")
         )
 
         def vs_reset() -> None:
