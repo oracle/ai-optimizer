@@ -208,7 +208,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
         ctx_prompt=f"{ctx_prompt}",
         ll_model=state["user_settings"]["ll_model"] | state["ll_model_enabled"][ll_model],
         vector_search=state["user_settings"]["vector_search"],
-        database_config=state["database_config"][state["user_settings"]["vector_search"]["database"]],
+        database_config=state["database_config"][state["user_settings"]["database"]["alias"]],
     )
 
     if file_name.endswith(".yaml"):
@@ -219,7 +219,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
             ctx_prompt=ctx_prompt,
             ll_model=state["user_settings"]["ll_model"] | state["ll_model_enabled"][ll_model],
             vector_search=state["user_settings"]["vector_search"],
-            database_config=state["database_config"][state["user_settings"]["vector_search"]["database"]],
+            database_config=state["database_config"][state["user_settings"]["database"]["alias"]],
         )
 
         yaml_data = yaml.safe_load(formatted_content)

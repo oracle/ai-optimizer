@@ -220,7 +220,7 @@ class TestStreamlit:
         at.session_state.user_settings = {
             "client": "test_client",
             "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
+            "database": {"alias": "DEFAULT"},
         }
 
         at.session_state.embed_model_enabled = {
@@ -281,7 +281,7 @@ class TestStreamlit:
         at.session_state.user_settings = {
             "client": "test_client",
             "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
+            "database": {"alias": "DEFAULT"},
         }
 
         at.session_state.embed_model_enabled = {
@@ -342,7 +342,7 @@ class TestStreamlit:
         at.session_state.user_settings = {
             "client": "test_client",
             "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
+            "database": {"alias": "DEFAULT"},
         }
 
         at.session_state.embed_model_enabled = {
@@ -412,7 +412,7 @@ class TestStreamlit:
         at.session_state.user_settings = {
             "client": "test_client",
             "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
+            "database": {"alias": "DEFAULT"},
         }
         at.session_state.embed_model_enabled = {
             "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}

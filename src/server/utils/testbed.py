@@ -323,24 +323,22 @@ def process_report(db_conn: Connection, eid: TestSetsIdType) -> EvaluationReport
     # Main
     binds = {"eid": eid}
     sql = """
-        SELECT eid, to_char(evaluated), correctness, settings, rag_report
+        SELECT eid, to_char(evaluated) as evaluated, correctness, settings, rag_report
           FROM oai_evaluations WHERE eid=:eid
          ORDER BY evaluated
         """
     results = databases.execute_sql(db_conn, sql, binds)
-    pickled_report = results[0][4].read()
-
-    report = pickle.loads(pickled_report)
+    report = pickle.loads(results[0]["RAG_REPORT"])
     full_report = report.to_pandas()
     html_report = report.to_html()
     by_topic = report.correctness_by_topic()
     failures = report.failures
 
     evaluation_results = {
-        "eid": results[0][0].hex(),
-        "evaluated": results[0][1],
-        "correctness": results[0][2],
-        "settings": results[0][3],
+        "eid": results[0]["EID"].hex(),
+        "evaluated": results[0]["EVALUATED"],
+        "correctness": results[0]["CORRECTNESS"],
+        "settings": results[0]["SETTINGS"],
         "report": full_report.to_dict(),
         "correct_by_topic": by_topic.to_dict(),
         "failures": failures.to_dict(),

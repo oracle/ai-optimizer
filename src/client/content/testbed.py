@@ -87,7 +87,7 @@ def evaluation_report(eid=None, report=None) -> None:
     st.dataframe(ll_settings_reversed, hide_index=True)
     if report["settings"]["vector_search"]["enabled"]:
         st.subheader("Vector Search Settings")
-        st.markdown(f"""**Database**: {report["settings"]["vector_search"]["database"]};
+        st.markdown(f"""**Database**: {report["settings"]["database"]["alias"]};
             **Vector Store**: {report["settings"]["vector_search"]["vector_store"]}
         """)
         embed_settings = pd.DataFrame(report["settings"]["vector_search"], index=[0])
