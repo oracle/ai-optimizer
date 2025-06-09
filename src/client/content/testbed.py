@@ -161,16 +161,25 @@ def qa_update_db() -> None:
 
 @st.fragment()
 def update_record(direction: int = 0) -> None:
-    """Update streamlit state with user changes"""
+    """Update streamlit state with record changes"""
     state.testbed_qa[state.testbed["qa_index"]]["question"] = state[f"selected_q_{state.testbed['qa_index']}"]
     state.testbed_qa[state.testbed["qa_index"]]["reference_answer"] = state[f"selected_a_{state.testbed['qa_index']}"]
     state.testbed["qa_index"] += direction
 
+@st.fragment()
+def delete_record() -> None:
+    """Delete record from streamlit state"""
+    state.testbed_qa.pop(state.testbed["qa_index"])
+    if state.testbed["qa_index"] != 0:
+        state.testbed["qa_index"] += -1
 
 def qa_update_gui(qa_testset: list) -> None:
     """Update Q&A Records in GUI"""
     dataframe = pd.DataFrame(qa_testset)
     records = dataframe.shape[0]
+    delete_disabled = False
+    if records == 1:
+        delete_disabled = True
     st.write("Record: " + str(state.testbed["qa_index"] + 1) + "/" + str(records))
 
     prev_disabled = next_disabled = records == 0
@@ -178,7 +187,7 @@ def qa_update_gui(qa_testset: list) -> None:
         prev_disabled = True
     if state.testbed["qa_index"] + 1 == records:
         next_disabled = True
-    prev_col, next_col, _ = st.columns([3, 3, 6])
+    prev_col, next_col, _, delete_col = st.columns([3, 3, 4, 3])
     prev_col.button(
         "← Previous",
         disabled=prev_disabled,
@@ -192,6 +201,13 @@ def qa_update_gui(qa_testset: list) -> None:
         use_container_width=True,
         on_click=update_record,
         kwargs={"direction": 1},
+    )
+    delete_col.button(
+        "⚠ Delete Q&A",
+        type="tertiary",
+        disabled=delete_disabled,
+        use_container_width=True,
+        on_click=delete_record,
     )
     st.text_area(
         "Question:",
