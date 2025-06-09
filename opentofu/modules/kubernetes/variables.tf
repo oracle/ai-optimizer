@@ -47,10 +47,6 @@ variable "label_prefix" {
   type = string
 }
 
-variable "dynamic_group" {
-  type = string
-}
-
 variable "adb_id" {
   type = string
 }
@@ -104,8 +100,4 @@ variable "lb_nsg_id" {
 variable "k8s_api_endpoint_allowed_cidrs" {
   type    = string
   default = ""
-}
-
-variable "identity_tag_key" {
-  type = string
 }

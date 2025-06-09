@@ -181,8 +181,8 @@ def spring_ai_conf_check(ll_model, embed_model) -> str:
     if ll_model is None or embed_model is None:
         return "hybrid"
 
-    ll_api = state["ll_model_enabled"][ll_model]["api"]
-    embed_api = state["embed_model_enabled"][embed_model]["api"]
+    ll_api = state.ll_model_enabled[ll_model]["api"]
+    embed_api = state.embed_model_enabled[embed_model]["api"]
 
     if "OpenAI" in ll_api and "OpenAI" in embed_api:
         return "openai"
@@ -196,8 +196,8 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
     """Get the users CTX Prompt"""
     ctx_prompt = next(
         item["prompt"]
-        for item in state["prompts_config"]
-        if item["name"] == state["user_settings"]["prompts"]["ctx"] and item["category"] == "ctx"
+        for item in state.prompts_config
+        if item["name"] == state.user_settings["prompts"]["ctx"] and item["category"] == "ctx"
     )
 
     with open(src_dir / "templates" / file_name, "r", encoding="utf-8") as template:
@@ -206,9 +206,9 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
     formatted_content = template_content.format(
         provider=provider,
         ctx_prompt=f"{ctx_prompt}",
-        ll_model=state["user_settings"]["ll_model"] | state["ll_model_enabled"][ll_model],
-        vector_search=state["user_settings"]["vector_search"],
-        database_config=state["database_config"][state["user_settings"]["database"]["alias"]],
+        ll_model=state.user_settings["ll_model"] | state.ll_model_enabled[ll_model],
+        vector_search=state.user_settings["vector_search"],
+        database_config=state.database_config[state.user_settings["database"]["alias"]],
     )
 
     if file_name.endswith(".yaml"):
@@ -217,9 +217,9 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
         formatted_content = template_content.format(
             provider=provider,
             ctx_prompt=ctx_prompt,
-            ll_model=state["user_settings"]["ll_model"] | state["ll_model_enabled"][ll_model],
-            vector_search=state["user_settings"]["vector_search"],
-            database_config=state["database_config"][state["user_settings"]["database"]["alias"]],
+            ll_model=state.user_settings["ll_model"] | state.ll_model_enabled[ll_model],
+            vector_search=state.user_settings["vector_search"],
+            database_config=state.database_config[state.user_settings["database"]["alias"]],
         )
 
         yaml_data = yaml.safe_load(formatted_content)
@@ -326,8 +326,8 @@ def main():
             st.info("Please upload a Settings file.")
 
     st.header("SpringAI Settings", divider="red")
-    ll_model = state["user_settings"]["ll_model"]["model"]
-    embed_model = state["user_settings"]["vector_search"]["model"]
+    ll_model = state.user_settings["ll_model"]["model"]
+    embed_model = state.user_settings["vector_search"]["model"]
     spring_ai_conf = spring_ai_conf_check(ll_model, embed_model)
 
     if spring_ai_conf == "hybrid":

@@ -31,17 +31,17 @@ logger = logging_config.logging.getLogger("client.content.config.oci")
 #####################################################
 def get_oci(force: bool = False) -> dict[str, dict]:
     """Get a dictionary of all OCI Configurations"""
-    if "oci_config" not in state or state["oci_config"] == {} or force:
+    if "oci_config" not in state or state.oci_config == {} or force:
         try:
             response = api_call.get(endpoint="v1/oci")
-            state["oci_config"] = {
+            state.oci_config = {
                 item["auth_profile"]: {k: v if v is not None else None for k, v in item.items() if k != "auth_profile"}
                 for item in response
             }
             logger.info("State created: state['oci_config']")
         except api_call.ApiError as ex:
             st.error(f"Unable to retrieve oci_configuration: {ex}", icon="🚨")
-            state["oci_config"] = {}
+            state.oci_config = {}
 
 
 def patch_oci(

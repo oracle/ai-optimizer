@@ -2,6 +2,16 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
+resource "oci_identity_dynamic_group" "workers_dynamic_group" {
+  compartment_id = var.tenancy_id
+  name           = format("%s-worker-dyngrp", var.label_prefix)
+  description    = format("%s Workers Dynamic Group", var.label_prefix)
+  matching_rule = format(
+    "ALL {instance.compartment.id = '%s', tag.Oracle-Tags.CreatedBy.value = '%s'}",
+  var.compartment_id, oci_containerengine_node_pool.default_node_pool_details.id)
+  provider = oci.home_region
+}
+
 resource "oci_identity_policy" "workers_policies" {
   compartment_id = var.tenancy_id
   name           = format("%s-workers-policy", var.label_prefix)
@@ -27,7 +37,8 @@ resource "oci_identity_policy" "workers_policies" {
     format("allow any-user to manage waf-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to read cluster-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to use tag-namespaces in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
-    format("allow dynamic-group %s to manage repos in compartment id %s", var.dynamic_group, var.compartment_id),
+    format("allow dynamic-group %s to use generative-ai-family in compartment id %s", oci_identity_dynamic_group.workers_dynamic_group.name, var.compartment_id),
+    format("allow dynamic-group %s to manage repos in compartment id %s", oci_identity_dynamic_group.workers_dynamic_group.name, var.compartment_id),
   ]
   provider = oci.home_region
 }

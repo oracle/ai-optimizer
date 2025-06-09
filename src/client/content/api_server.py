@@ -110,7 +110,7 @@ async def main() -> None:
     if "server_client" not in state:
         state.server_client = client.Client(
             server=state.server,
-            settings=state["server_settings"],
+            settings=state.server_settings,
             timeout=10,
         )
     server_client: client.Client = state.server_client

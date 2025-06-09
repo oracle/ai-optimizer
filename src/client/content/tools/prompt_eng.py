@@ -27,13 +27,13 @@ logger = logging_config.logging.getLogger("client.tools.prompt_eng")
 #####################################################
 def get_prompts(force: bool = False) -> dict[str, dict]:
     """Get a dictionary of all Prompts"""
-    if "prompts_config" not in state or state["prompts_config"] == {} or force:
+    if "prompts_config" not in state or state.prompts_config == {} or force:
         try:
-            state["prompts_config"] = api_call.get(endpoint="v1/prompts")
+            state.prompts_config = api_call.get(endpoint="v1/prompts")
             logger.info("State created: state['prompts_config']")
         except api_call.ApiError as ex:
             logger.error("Unable to retrieve prompts: %s", ex)
-            state["prompts_config"] = {}
+            state.prompts_config = {}
 
 
 def patch_prompt(category: str, name: str, prompt: str) -> None:
@@ -41,7 +41,7 @@ def patch_prompt(category: str, name: str, prompt: str) -> None:
     get_prompts()
     # Check if the prompt instructions are changed
     configured_prompt = next(
-        item["prompt"] for item in state["prompts_config"] if item["name"] == name and item["category"] == category
+        item["prompt"] for item in state.prompts_config if item["name"] == name and item["category"] == category
     )
     if configured_prompt != prompt:
         try:

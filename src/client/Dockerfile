@@ -28,17 +28,16 @@ RUN microdnf -y update && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/.oci
 
 COPY pyproject.toml /opt/package/pyproject.toml
-COPY --chown=$RUNUSER:$RUNUSER . /app
+# Use the virtual environment for pip installations (Client Specific)
+RUN source /opt/.venv/bin/activate && \
+    pip install "/opt/package[client]"
 
 ##################################################
 # Clint Application
 ##################################################
 FROM optimizer_base AS client
 
-# Use the virtual environment for pip installations (Client Specific)
-RUN source /opt/.venv/bin/activate && \
-    pip install "/opt/package[client]"
-
+COPY --chown=$RUNUSER:$RUNUSER . /app
 RUN rm -rf /app/server /app/.oci /app/launch_server.py
 
 # Set user and working directory

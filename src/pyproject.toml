@@ -14,7 +14,7 @@ authors = [
 
 # Common dependencies that are always needed
 dependencies = [
-    "langchain-core==0.3.62",
+    "langchain-core==0.3.64",
     "httpx==0.28.1",
     "oracledb~=3.1",
     "plotly==6.1.2",
@@ -29,22 +29,22 @@ server = [
     "fastapi==0.115.12",
     "faiss-cpu==1.11.0",
     "giskard==2.16.2",
-    "IPython==9.2.0",
+    "IPython==9.3.0",
     "langchain-cohere==0.4.4",
     "langchain-community==0.3.24",
     "langchain-huggingface==0.2.0",
     "langchain-ollama==0.3.3",
-    "langchain-openai==0.3.18",
-    "langgraph==0.4.7",
-    "litellm==1.71.1",
-    "llama_index==0.12.37",
+    "langchain-openai==0.3.21",
+    "langgraph==0.4.8",
+    "litellm==1.72.2",
+    "llama_index==0.12.40",
     "lxml==5.4.0",
     "matplotlib==3.10.3",
     "oci~=2.0",
     "psutil==7.0.0",
     "python-multipart==0.0.20",
     "umap-learn==0.5.7",
-    "uvicorn==0.34.2",
+    "uvicorn==0.34.3",
 ]
 
 # GUI component dependencies

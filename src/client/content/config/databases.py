@@ -28,16 +28,16 @@ logger = logging_config.logging.getLogger("client.content.config.database")
 #####################################################
 def get_databases(force: bool = False) -> None:
     """Get a dictionary of all Databases and Store Vector Store Tables"""
-    if "database_config" not in state or state["database_config"] == {} or force:
+    if "database_config" not in state or state.database_config == {} or force:
         try:
             response = api_call.get(endpoint="v1/databases")
-            state["database_config"] = {
+            state.database_config = {
                 item["name"]: {k: v for k, v in item.items() if k != "name"} for item in response
             }
             logger.info("State created: state['database_config']")
         except api_call.ApiError as ex:
             logger.error("Unable to retrieve databases: %s", ex)
-            state["database_config"] = {}
+            state.database_config = {}
 
 
 def patch_database(name: str, user: str, password: str, dsn: str, wallet_password: str) -> None:
@@ -182,7 +182,7 @@ def main() -> None:
                 for vs in state.database_config[name]["vector_stores"]:
                     vector_store = vs["vector_store"].lower()
                     fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
-                    # Handle button in col1
+                    # Delete Button in Column1
                     vs_col_format[0].button(
                         "",
                         icon="🗑️",
@@ -233,7 +233,10 @@ def main() -> None:
             else:
                 st.write("No objects found for SelectAI.")
         else:
-            st.write("Unable to use SelectAI with Database.")
+            if not state.database_config[name]["selectai"]:
+                st.write("Unable to use SelectAI with Database.")
+            elif len(selectai_profiles) == 0:
+                st.write("No SelectAI Profiles Found.")
 
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
