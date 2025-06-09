@@ -25,7 +25,7 @@ The *System* prompt for non-RAG and RAG will normally provide different instruct
 ![System Prompt](../images/prompt_eng_system.png)
 
 {{% notice style="code" title="Auto Switcher-oo" icon="circle-info" %}}
-When enabling or disabling RAG, the *System* prompt will automatically switch between the **Basic Example** and **RAG Example**.  When the *System* prompt has been set to **Custom**, this auto-switching will be disabled.
+When enabling or disabling Vector Search, the *System* prompt will automatically switch between the **Basic Example** and **Vector Search Example**.  When the *System* prompt has been set to **Custom**, this auto-switching will be disabled.
 {{% /notice %}}
 
 #### Examples of how the *System* prompt can be used:
@@ -54,12 +54,12 @@ When enabling or disabling RAG, the *System* prompt will automatically switch be
 ---
 ## Context Prompt
 
-The *Context* prompt is used when RAG is enabled.  It is used in a "private conversation" with the model, prior to retrieval, to re-phrase the user input.  
+The *Context* prompt is used when Vector Search is enabled.  It is used in a "private conversation" with the model, prior to retrieval, to re-phrase the user input.  
 
 ![Context Prompt](../images/prompt_eng_context.png)
 
-As an example to the importance of the *Context* prompt, if the previous interactions with the model included Oracle documentation topics about vector indexes and the user asks: "Can you give me more details?"; the RAG retrieval process should not search for similar vectors for "Can you give me more details?".  Instead, the user input should be re-phrased and a vector search should be performed on a more contextual relevant phrase, such as: "More details on creating and altering hybrid vector indexes in Oracle Database."
+As an example to the importance of the *Context* prompt, if the previous interactions with the model included Oracle documentation topics about vector indexes and the user asks: "Can you give me more details?"; the Vector Search retrieval process should not search for similar vectors for "Can you give me more details?".  Instead, the user input should be re-phrased and a vector search should be performed on a more contextual relevant phrase, such as: "More details on creating and altering hybrid vector indexes in Oracle Database."
 
-When RAG is enabled, you will see what was generated and used for the vector search in the **Notes:** section under the **References:**
+When Vector Search is enabled, you will see what was generated and used for the vector search in the **Notes:** section under the **References:**
 
 ![System Prompt](../images/chatbot_rephrase.png)

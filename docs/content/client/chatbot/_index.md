@@ -43,14 +43,28 @@ Once you've selected a model, you can change the different model parameters to h
 
 For more details on the parameters, ask the Chatbot or review [Concepts for Generative AI](https://docs.oracle.com/en-us/iaas/Content/generative-ai/concepts.htm).
 
-## Retrieval Augmented Generation (RAG)
+## Toolkit
 
-Once you've created embeddings using [Split/Embed](../tools/split_embed), the option to enable and disable RAG will be available.  Once you've enabled RAG, if you have more than one [Vector Store](#vector-store) you will need select the one you want to work with.
+The {{< short_app_ref >}} provides tools to augment Large Language Models with your proprietary data using Retrieval Augmented Generation (**RAG**), including:
+* [Vector Search](#vector-search) for Unstructured Data
+* [SelectAI](#selectai) for Structured Data
 
-![Chatbot RAG](images/chatbot_rag.png)
+
+## Vector Search
+
+Once you've created embeddings using [Split/Embed](../tools/split_embed), the option use Vector Search will be available. After selecting Vector Search, if you have more than one [Vector Store](#vector-store) you will need select the one you want to work with.
+
+![Chatbot Vector Search](images/chatbot_vs.png)
 
 Choose the type of Search you want performed and the additional parameters associated with that search.
 
-## Vector Store
+### Vector Store
 
-With RAG enabled, if you have more than one Vector Store, you can select which one will be used for searching, otherwise it will default to the only one available.  To choose a different Vector Store, click the "Reset" button to open up the available options.
+With Vector Search selected, if you have more than one Vector Store, you can select which one will be used for searching, otherwise it will default to the only one available.  To choose a different Vector Store, click the "Reset" button to open up the available options.
+
+
+## SelectAI
+
+Once you've [configured SelectAI](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/select-ai-get-started.html#GUID-E9872607-42A6-43FA-9851-7B60430C21B7), the option to use SelectAI will be available.  After selecting the SelectAI toolkit, a profile and the default narrate option will automatically be selected.  If you have more then one profile, you can choose which one to use.  You can also select different SelectAI actions.
+
+![Chatbot SelectAI](images/chatbot_selectai.png)
