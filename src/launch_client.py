@@ -141,5 +141,5 @@ if __name__ == "__main__":
         try:
             logger.debug("Server PID: %i", state.server["pid"])
         except KeyError:
-            state.server["pid"] = start_server()
+            state.server["pid"] = start_server(logfile=True)
     main()

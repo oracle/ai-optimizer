@@ -291,7 +291,7 @@ def main() -> None:
     # Populate Vector Store
     ######################################
     st.header("Populate Vector Store", divider="red")
-    existing_vs = state["database_config"][state["user_settings"]["database"]["alias"]]["vector_stores"]
+    existing_vs = state.database_config[state.user_settings["database"]["alias"]]["vector_stores"]
     # Mandatory Alias
     embed_alias_size, _ = st.columns([0.5, 0.5])
     embed_alias_invalid = False
@@ -358,7 +358,7 @@ def main() -> None:
             # Place files on Server for Embedding
             if file_source == "Local":
                 endpoint = "v1/embed/local/store"
-                files = st_common.local_file_payload(state["local_file_uploader"])
+                files = st_common.local_file_payload(state.local_file_uploader)
                 api_payload = {"files": files}
 
             if file_source == "Web":

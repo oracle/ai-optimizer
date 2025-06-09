@@ -28,7 +28,10 @@ RUN microdnf -y update && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/.oci
 
 COPY pyproject.toml /opt/package/pyproject.toml
-COPY --chown=$RUNUSER:$RUNUSER . /app
+# Use the virtual environment for pip installations (Server Specific)
+RUN source /opt/.venv/bin/activate && \
+    pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    pip install "/opt/package[server]"
 
 ##################################################
 # Server Application
@@ -41,11 +44,7 @@ ENV MPLCONFIGDIR=/app/tmp
 ENV TIKTOKEN_CACHE_DIR=/app/tmp
 ENV NLTK_DATA=/app/tmp
 
-# Use the virtual environment for pip installations (Server Specific)
-RUN source /opt/.venv/bin/activate && \
-    pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
-    pip install "/opt/package[server]"
-
+COPY --chown=$RUNUSER:$RUNUSER . /app
 RUN rm -rf /app/client /app/.streamlit /app/launch_client.py
 
 # Remove the OCI file if not development; update the key path if so

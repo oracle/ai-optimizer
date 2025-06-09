@@ -76,3 +76,4 @@ The tests use a combination of real and mocked components:
 - A Docker container is used for database tests
 - Streamlit components are tested using the AppTest framework
 - External dependencies are mocked where appropriate 
+- To see the elements in the page for testing; use: `print([el for el in at.main])`

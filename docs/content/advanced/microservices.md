@@ -61,6 +61,17 @@ You will need to build the {{< short_app_ref >}} container images and stage them
     podman push <server_repository>:latest
     ```
 
+### Namespace
+
+Create a Kubernetes namespace to logically isolate the {{< short_app_ref >}} resources.  For demonstration purposes, the `ai-optimizer` namespace will be created and used throughout this documentation.
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-optimizer
+```
+
 ### Ingress
 
 To access the {{< short_app_ref >}} GUI and API Server, you can either use a port-forward or an Ingress service.  For demonstration purposes, the [OCI Native Ingress Controller](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengsettingupnativeingresscontroller.htm), which was enabled on the **OKE** cluster as part of the **IaC**, will be used to for public Ingress access.
@@ -81,30 +92,25 @@ These will be output as part of the **IaC** but can be removed from the code if 
 
 1. Create a `native_ingress.yaml`:
     ```yaml
-    apiVersion: v1
-    kind: Namespace
-    metadata:
-      name: hologram
-    ---
     apiVersion: "ingress.oraclecloud.com/v1beta1"
     kind: IngressClassParameters
     metadata:
       name: native-ic-params
       namespace: ai-optimizer
     spec:
-      compartmentId: <compartment_ocid>
+      compartmentId: <lb_compartment_ocid>
       subnetId: <lb_subnet_ocid>
       loadBalancerName: "ai-optimizer-lb"
       reservedPublicAddressId: <lb_reserved_ip_ocid>
       isPrivate: false
-      maxBandwidthMbps: 1250
+      maxBandwidthMbps: 100
       minBandwidthMbps: 10
     ---
     apiVersion: networking.k8s.io/v1
     kind: IngressClass
     metadata:
       name: native-ic
-      namespace: hologram
+      namespace: ai-optimizer
       annotations:
         ingressclass.kubernetes.io/is-default-class: "true"
         oci-native-ingress.oraclecloud.com/network-security-group-ids: <lb_nsg_ocid>
@@ -114,7 +120,7 @@ These will be output as part of the **IaC** but can be removed from the code if 
       controller: oci.oraclecloud.com/native-ingress-controller
       parameters:
         scope: Namespace
-        namespace: hologram
+        namespace: ai-optimizer
         apiGroup: ingress.oraclecloud.com
         kind: IngressClassParameters
         name: native-ic-params
@@ -125,20 +131,13 @@ These will be output as part of the **IaC** but can be removed from the code if 
 The {{< short_app_ref >}} can be deployed using the [Helm](https://helm.sh/) chart provided with the source:
 [{{< short_app_ref >}} Helm Chart](https://github.com/oracle-samples/ai-optimizer/tree/main/helm).  A list of all values can be found in [values_summary.md](https://github.com/oracle-samples/ai-optimizer/tree/main/helm/values_summary.md).
 
-If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama and enable a Large Language and Embedding Model out-of-the-box.
-
-1. Create the `ai-optimizer` namespace:
-    
-    ```bash
-    kubectl create namespace ai-optimizer
-    ```
+If you deployed a GPU node pool as part of the **IaC**, [Ollama](https://ollama.com/) will be deployed automatically and a Large Language and Embedding Model will be available out-of-the-box.
 
 1. Create a secret to hold the API Key:
 
     ```bash
-    kubectl create secret generic api-key \
-      --from-literal=apiKey=$(openssl rand -hex 32) \
-      --namespace=ai-optimizer
+    kubectl -n ai-optimizer create secret generic api-key \
+      --from-literal=apiKey=$(openssl rand -hex 32)
     ```
 
 1. Create a secret to hold the Database Authentication:
@@ -149,11 +148,10 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
     - `<adb_service>` - The Service Name (i.e. ADBDB_TP)
 
     ```bash
-    kubectl create secret generic db-authn \
+    kubectl -n ai-optimizer create secret generic db-authn \
       --from-literal=username='ADMIN' \
       --from-literal=password='<adb_password>' \
-      --from-literal=service='<adb_service>' \
-      --namespace=ai-optimizer
+      --from-literal=service='<adb_service>'
     ```
 
     These will be output as part of the **IaC**.
@@ -172,7 +170,7 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
 
     These will be output as part of the **IaC**.
 
-    {{< icon "star" >}} If using the **IaC** for **OCI**, it is not required to specify an ImagePullSecret as the cluster nodes are configured with the [Image Credential Provider for OKE](https://github.com/oracle-devrel/oke-credential-provider-for-ocir).
+    {{< icon "star" >}} If using the **IaC** for **OCI**, it is not required to specify an ImagePullSecret as the cluster nodes are configured with the [Image Credential Provider for OKE](https://github.com/oracle-devrel/oke-credential-provider-for-ocir).  It may take up to 5 minutes for the policy allowing for the image pull to be recognized.
 
     ```yaml
     global:
@@ -185,6 +183,7 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
       image:
         repository: <server_repository>
         tag: "latest"
+      imagePullPolicy: Always
 
       ingress:
         enabled: true
@@ -198,20 +197,33 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
         http:
           type: "NodePort"
 
+      # -- Oracle Cloud Infrastructure Configuration
+      oci:
+        tenancy: "<tenancy_ocid>"
+        region: "<oci_region>"
+
       # -- Oracle Autonomous Database Configuration
       adb:
         enabled: true
         ocid: "<adb_ocid>"
         mtls:
-          enabled: false
+          enabled: true
         authN:
           secretName: "db-authn"
+          usernameKey: "username"
+          passwordKey: "password"
+          serviceKey: "service"
+
+      models:
+        ollama:
+          enabled: false
 
     client:
       enabled: true
       image:
         repository: <client_repository>
         tag: "latest"
+      imagePullPolicy: Always
 
       ingress:
         enabled: true
@@ -229,10 +241,10 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
         disableTestbed: "false"
         disableApi: "false"
         disableTools: "false"
-        disableDbCfg: "true"
+        disableDbCfg: "false"
         disableModelCfg: "false"
-        disableOciCfg: "true"
-        disableSettings: "true"
+        disableOciCfg: "false"
+        disableSettings: "false"
 
     ollama:
       enabled: true
@@ -250,8 +262,8 @@ If you deployed a GPU node pool as part of the **IaC**, you can deploy Ollama an
 
     ```bash
     helm upgrade \
-      --install ai-optimizer . \
       --namespace ai-optimizer \
+      --install ai-optimizer . \
       -f values.yaml
     ```
 

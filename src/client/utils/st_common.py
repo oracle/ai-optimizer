@@ -45,7 +45,7 @@ def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
 
 def switch_prompt(prompt_type: PromptPromptType, prompt_name: PromptNameType) -> None:
     """Auto Switch Prompts when not set to Custom"""
-    current_prompt = state["user_settings"]["prompts"][prompt_type]
+    current_prompt = state.user_settings["prompts"][prompt_type]
     if current_prompt != "Custom" and current_prompt != prompt_name:
         state.user_settings["prompts"][prompt_type] = prompt_name
         st.info(f"Prompt Engineering - {prompt_name} Prompt has been set.", icon="ℹ️")
@@ -233,7 +233,7 @@ def tools_sidebar() -> None:
 
     def update_set_tool():
         """Update user settings as to which tool is being used"""
-        state.user_settings["vector_search"]["enabled"] = state.selected_tool == "VectorSearch"
+        state.user_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
         state.user_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
     disable_selectai = not is_db_configured()
@@ -250,7 +250,7 @@ def tools_sidebar() -> None:
         tools = [
             ("LLM Only", "Do not use tools", False),
             ("SelectAI", "Use AI with Structured Data", disable_selectai),
-            ("VectorSearch", "Use AI with Unstructured Data", disable_vector_search),
+            ("Vector Search", "Use AI with Unstructured Data", disable_vector_search),
         ]
 
         # SelectAI Requirements
@@ -263,11 +263,11 @@ def tools_sidebar() -> None:
             tools = [t for t in tools if t[0] != "SelectAI"]
         elif not state.database_config[db_alias]["selectai"]:
             logger.debug("SelectAI Disabled (Database not Compatible.)")
-            st.warning("Database not Compatible.  Disabling SelectAI.", icon="⚠️")
+            st.warning("Database not SelectAI Compatible.  Disabling SelectAI.", icon="⚠️")
             tools = [t for t in tools if t[0] != "SelectAI"]
         elif len(state.database_config[db_alias]["selectai_profiles"]) == 0:
             logger.debug("SelectAI Disabled (No profiles found.)")
-            st.warning("No profiles found.  Disabling SelectAI.", icon="⚠️")
+            st.warning("Database has no SelectAI Profiles.  Disabling SelectAI.", icon="⚠️")
             tools = [t for t in tools if t[0] != "SelectAI"]
 
         # Vector Search Requirements
@@ -290,7 +290,7 @@ def tools_sidebar() -> None:
                     i
                     for i, t in enumerate(tools)
                     if (t[0] == "SelectAI" and state.user_settings["selectai"]["enabled"])
-                    or (t[0] == "VectorSearch" and state.user_settings["vector_search"]["enabled"])
+                    or (t[0] == "Vector Search" and state.user_settings["vector_search"]["enabled"])
                 ),
                 0,
             )
@@ -404,12 +404,12 @@ def vector_search_sidebar() -> None:
         st.sidebar.subheader("Vector Store", divider="red")
         # Create a DataFrame of all database vector storage tables
         vs_df = pd.DataFrame(
-            state["database_config"][state["user_settings"]["database"]["alias"]].get("vector_stores")
+            state.database_config[state.user_settings["database"]["alias"]].get("vector_stores")
         )
 
         def vs_reset() -> None:
             """Reset Vector Store Selections"""
-            for key in state["user_settings"]["vector_search"]:
+            for key in state.user_settings["vector_search"]:
                 if key in (
                     "model",
                     "chunk_size",
@@ -420,7 +420,7 @@ def vector_search_sidebar() -> None:
                     "index_type",
                 ):
                     clear_state_key(f"selected_vector_search_{key}")
-                    state["user_settings"]["vector_search"][key] = ""
+                    state.user_settings["vector_search"][key] = ""
 
         def vs_gen_selectbox(label, options, key):
             """Handle selectbox with auto-setting for a single unique value"""
@@ -435,7 +435,7 @@ def vector_search_sidebar() -> None:
                     logger.debug("Defaulting %s to %s", key, selected_value)
                 else:
                     selected_value = (
-                        state["user_settings"]["vector_search"][key.removeprefix("selected_vector_search_")] or ""
+                        state.user_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
                     )
                     logger.debug("User selected %s to %s", key, selected_value)
             return st.sidebar.selectbox(
@@ -450,23 +450,23 @@ def vector_search_sidebar() -> None:
             """Dynamically update filtered_df based on selected filters"""
             filtered = vs_df.copy()
             # Remove vector stores where the model is not enabled
-            filtered = vs_df[vs_df["model"].isin(state["embed_model_enabled"].keys())]
-            if st.session_state.get("selected_vector_search_alias"):
-                filtered = filtered[filtered["alias"] == st.session_state["selected_vector_search_alias"]]
-            if st.session_state.get("selected_vector_search_model"):
-                filtered = filtered[filtered["model"] == st.session_state["selected_vector_search_model"]]
-            if st.session_state.get("selected_vector_search_chunk_size"):
-                filtered = filtered[filtered["chunk_size"] == st.session_state["selected_vector_search_chunk_size"]]
-            if st.session_state.get("selected_vector_search_chunk_overlap"):
+            filtered = vs_df[vs_df["model"].isin(state.embed_model_enabled.keys())]
+            if state.get("selected_vector_search_alias"):
+                filtered = filtered[filtered["alias"] == state.selected_vector_search_alias]
+            if state.get("selected_vector_search_model"):
+                filtered = filtered[filtered["model"] == state.selected_vector_search_model]
+            if state.get("selected_vector_search_chunk_size"):
+                filtered = filtered[filtered["chunk_size"] == state.selected_vector_search_chunk_size]
+            if state.get("selected_vector_search_chunk_overlap"):
                 filtered = filtered[
-                    filtered["chunk_overlap"] == st.session_state["selected_vector_search_chunk_overlap"]
+                    filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap
                 ]
-            if st.session_state.get("selected_vector_search_distance_metric"):
+            if state.get("selected_vector_search_distance_metric"):
                 filtered = filtered[
-                    filtered["distance_metric"] == st.session_state["selected_vector_search_distance_metric"]
+                    filtered["distance_metric"] == state.selected_vector_search_distance_metric
                 ]
-            if st.session_state.get("selected_vector_search_index_type"):
-                filtered = filtered[filtered["index_type"] == st.session_state["selected_vector_search_index_type"]]
+            if state.get("selected_vector_search_index_type"):
+                filtered = filtered[filtered["index_type"] == state.selected_vector_search_index_type]
             return filtered
 
         # Initialize filtered options

@@ -17,6 +17,7 @@ import oracledb
 # Langchain
 import langchain_community.document_loaders as document_loaders
 from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.document_loaders.image import UnstructuredImageLoader
 from langchain_community.vectorstores import oraclevs as LangchainVS
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -175,6 +176,7 @@ def load_and_split_documents(
         stat = os.stat(file)
         extension = os.path.splitext(file)[1][1:]
         logger.info("Loading %s (%i bytes)", name, stat.st_size)
+        split = True
         match extension.lower():
             case "pdf":
                 loader = document_loaders.PyPDFLoader(file)
@@ -185,6 +187,9 @@ def load_and_split_documents(
                 loader = document_loaders.TextLoader(file)
             case "csv":
                 loader = document_loaders.CSVLoader(file)
+            case "png" | "jpg" | "jpeg":
+                loader = UnstructuredImageLoader(file)
+                split = False
             case _:
                 raise ValueError(f"{extension} is not a supported file extension")
 
@@ -192,13 +197,16 @@ def load_and_split_documents(
         logger.info("Loaded Pages: %i", len(loaded_doc))
 
         # Chunk the File
-        split_doc = split_document(model, chunk_size, chunk_overlap, loaded_doc, extension)
-
-        # Add IDs to metadata
-        split_docos = []
-        for idx, chunk in enumerate(split_doc, start=1):
-            split_doc_with_mdata = process_metadata(idx, chunk)
-            split_docos += split_doc_with_mdata
+        if split:
+            split_doc = split_document(model, chunk_size, chunk_overlap, loaded_doc, extension)
+            # Add IDs to metadata
+            split_docos = []
+            for idx, chunk in enumerate(split_doc, start=1):
+                split_doc_with_mdata = process_metadata(idx, chunk)
+                split_docos += split_doc_with_mdata
+        else:
+            split_files = file
+            all_split_docos = loaded_doc
 
         if write_json and output_dir:
             split_files.append(doc_to_json(split_docos, file, output_dir))
