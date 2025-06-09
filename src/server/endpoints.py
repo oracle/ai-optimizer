@@ -42,7 +42,6 @@ import server.utils.embedding as embedding
 import server.utils.selectai as selectai
 import server.utils.testbed as testbed
 import server.agents.chatbot as chatbot
-from server.agents.tools.selectai import selectai_tool
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -108,6 +107,9 @@ def get_client_db(client: schema.ClientIdType) -> schema.Database:
         raise HTTPException(
             status_code=404, detail=f"Database configuration '{db_name}' not found for client {client}."
         )
+    else:
+        # Ping the Database
+        databases.test(db_obj)
 
     return db_obj
 
