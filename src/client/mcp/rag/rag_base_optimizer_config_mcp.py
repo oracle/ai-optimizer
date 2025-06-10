@@ -31,7 +31,8 @@ CHUNKS_DIR = "chunks_temp"
 data = {}
 
 # Initialize FastMCP server
-mcp = FastMCP("rag")
+#mcp = FastMCP("research", port=8001) #Remote client
+mcp = FastMCP("rag") #Local
 
 
 @mcp.tool()
@@ -181,4 +182,5 @@ if __name__ == "__main__":
     with open(file_path, "r") as file:
         #rag_tool.__doc__=rag_tool_desc[0]
         data = json.load(file)
-        mcp.run(transport='stdio')
+        #mcp.run(transport='stdio')
+        mcp.run(transport='sse')
