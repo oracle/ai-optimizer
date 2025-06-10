@@ -34,19 +34,103 @@ chmod 755 ./start.sh
 ```bash
 export DB_PASSWORD=""
 ```
-
-* drop the table `SPRING_AI_VECTORS` if exists, on which it will be automatically converted and ingested the langchain table used to store the embeddings part of the Chatbot configuration:
+* The `<VECTOR_STORE>` created in the Oracle AI Optimizer and Toolkit will be automatically converted in a `<VECTOR_STORE>_SPRINGAI` table, and it will store the same data. If already exists it will be used without modification.
+If you want to start from scratch, drop the table `<VECTOR_STORE>_SPRINGAI`, running in sql:
 
 ```sql
-DROP TABLE SPRING_AI_VECTORS CASCADE CONSTRAINTS;
+DROP TABLE <VECTOR_STORE>_SPRINGAI CASCADE CONSTRAINTS;
 COMMIT;
 ```
 
-This microservice will expose the following REST endpoints:
+* This microservice will expose the following REST endpoints:
 
-* `http://localhost:8080/v1/chat/completions`: to use RAG via OpenAI REST API
-* `http://localhost:8080/v1/service/llm`: to chat straight with the LLM used
-* `http://localhost:8080/v1/service/search/`: to search for document similar to the message provided
+  * `http://localhost:9090/v1/chat/completions`: to use RAG via OpenAI REST API 
+  * `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used
+  * `http://localhost:9090/v1/service/search/`: to search for document similar to the message provided
+  * `http://localhost:9090/v1/service/store-chunks/`: to embedd and store a list of text chunks in the vectorstore
+
+### Completions endpoint usage examples
+A RAG call example with `openai` build profile, with no-stream: 
+
+```
+curl -N http://localhost:9090/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_api_key" \
+  -d '{
+    "model": "server",
+    "messages": [{"role": "user", "content": "Can I use any kind of development environment to run the example?"}],
+    "stream": false
+  }'
+```
+
+the response with RAG:
+
+```
+{
+  "choices": [
+    {
+      "message": {
+        "content": "Yes, you can use any kind of development environment to run the example, but for ease of development, the guide specifically mentions using an integrated development environment (IDE). It uses IntelliJ IDEA Community version as an example for creating and updating the files for the application (see Document 96EECD7484D3B56C). However, you are not limited to this IDE and can choose any development environment that suits your needs."
+      }
+    }
+  ]
+}
+```
+
+If you want to ask for a stream output, the request it should be:
+```
+curl -N http://localhost:9090/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_api_key" \
+  -d '{
+    "model": "server",
+    "messages": [{"role": "user", "content": "Can I use any kind of development environment to run the example?"}],
+    "stream": true
+  }'
+```
+
+Or a request without RAG:
+```
+curl --get --data-urlencode 'message=Can I use any kind of development environment to run the example?' localhost:9090/v1/service/llm | jq .
+```
+
+In this case, the response not grounded it could be:
+
+```
+{
+  "completion": "Yes, you can use various development environments to run examples, depending on the programming language and the specific example you are working with. Here are some common options:\n\n1. **Integrated Development Environments (IDEs)**:\n   - **Visual Studio Code**: A versatile code editor that supports many languages through extensions.\n   - **PyCharm**: Great for Python development.\n   - **Eclipse**: Commonly used for Java development.\n   - **IntelliJ IDEA**: Another popular choice for Java and other languages.\n   - **Xcode**: For macOS and iOS development (Swift, Objective-C).\n\n2. **Text Editors**:\n   - **Sublime Text**: A lightweight text editor with support for many languages.\n   - **Atom**: A hackable text editor for the 21st century.\n   - **Notepad++**: A free source code editor for Windows.\n\n3. **Command Line Interfaces**:\n   - You can run"
+}
+```
+
+### Add new text chunks in the vector store example
+Store additional text chunks in the vector store, along their vector embeddings: 
+
+```
+curl -X POST http://localhost:9090/v1/service/store-chunks \
+  -H "Content-Type: application/json" \
+  -d '["First chunk of text.", "Second chunk.", "Another example."]'
+```
+
+response will be a list of vector embeddings created:
+
+```
+[
+  [
+    -0.014500250108540058,
+    -0.03604526072740555,
+    0.035963304340839386,
+    0.010181647725403309,
+    -0.01610776223242283,
+    -0.021091962233185768,
+    0.03924199938774109,
+    ..
+  ],
+  [
+    ..
+  ]  
+]
+```
+
 
 ### Run in the Oracle Backend for Microservices and AI
 
