@@ -10,7 +10,7 @@ This document describe how to re-use the configuration tested in the **AI Optimi
 With **[`uv`](https://docs.astral.sh/uv/getting-started/installation/)** installed, run the following commands in your current project directory `<PROJECT_DIR>/src/client/mcp/rag/`:
 
 ```bash
-uv init --python=3.11
+uv init --python=3.11 --no-workspace
 uv venv --python=3.11
 source .venv/bin/activate
 uv add mcp langchain-core==0.3.52 oracledb~=3.1 langchain-community==0.3.21 langchain-huggingface==0.1.2 langchain-openai==0.3.13 langchain-ollama==0.3.2

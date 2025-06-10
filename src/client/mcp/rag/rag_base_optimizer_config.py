@@ -1,5 +1,5 @@
 from typing import List
-from mcp.server.fastmcp import FastMCP
+#from mcp.server.fastmcp import FastMCP
 import os
 from dotenv import load_dotenv
 #from sentence_transformers import CrossEncoder
@@ -30,11 +30,23 @@ print("Successfully imported libraries and modules")
 CHUNKS_DIR = "chunks_temp"
 data = {}
 
-# Initialize FastMCP server
-mcp = FastMCP("rag")
+def similarity_search(question: str, max_results: int = 5) -> List[str]:
+    """
+    Use this tool to get the top similar information to any question that may benefit from up-to-date or domain-specific information.
+    
+    Args:
+        question: The topic to search for
+        max_results: Maximum number of results to retrieve (default: 5)
+        
+    Returns:
+        List of information related to the question
+    """
+    
+    print(f"Results provided for question: {question} with top {max_results}")
+    chunks=["first chunk", "second chunk"]
+    
+    return chunks
 
-
-@mcp.tool()
 def rag_tool(question: str) -> str:
     """
     Use this tool to answer any question that may benefit from up-to-date or domain-specific information.
@@ -45,7 +57,7 @@ def rag_tool(question: str) -> str:
     Returns:
         JSON string with answer
     """
-    
+
     try: 
         
         embeddings = get_embeddings(data)
@@ -56,6 +68,7 @@ def rag_tool(question: str) -> str:
     
         print("knowledge_base successful!")
         user_question = question
+        #result_chunks=knowledge_base.similarity_search(user_question, 5)
         
         for d in data["prompts_config"]:
             if d["name"]==data["user_settings"]["prompts"]["sys"]:
@@ -161,24 +174,42 @@ def get_vectorstore(data,embeddings):
     return knowledge_base
 
 
-if __name__ == "__main__":
-    rag_tool_desc=[
-    f"""
-    Use this tool to answer any question that may benefit from up-to-date or domain-specific information.
+def get_conf(data):
+
+    # Explore top-level keys
+    print("Top-level keys:", list(data.keys()))
+
+    # Example: Access user_settings
+    user_settings = data.get("user_settings", {})
+    print("\nUser Settings Keys:", list(user_settings.keys()))
+
+    # Drill down to ll_model
+    ll_model = user_settings.get("ll_model", {})
+    print("\nLL Model Settings:")
+    for key, value in ll_model.items():
+        print(f"  {key}: {value}")
+
+    llm_config = data["ll_model_config"][user_settings["ll_model"]["model"]]
+    for key, value in llm_config.items():
+        print(f"  {key}: {value}")
+  
+    #llmodel type to import the right dir:
+    llm_config = data["ll_model_config"][user_settings["ll_model"]["model"]]
+    api=llm_config["api"]
+    url=llm_config["url"]
+    api_key=llm_config["api_key"]
     
-    Args:
-        question: the question for which are you looking for an answer
-        
-    Returns:
-        JSON string with answer
-    """
-    ]
 
 
+if __name__ == "__main__":
     # Initialize and run the server
     # Load JSON file
-    file_path = "/Users/cdebari/Documents/GitHub/ai-optimizer-mcp-export/src/client/mcp/rag/optimizer_settings.json"
+    file_path = os.path.join(os.getcwd(), "optimizer_settings.json")
+    #file="/Users/cdebari/Documents/GitHub/mcp/rag/optimizer_settings_openai.json"
+    print(file_path)
     with open(file_path, "r") as file:
-        #rag_tool.__doc__=rag_tool_desc[0]
         data = json.load(file)
-        mcp.run(transport='stdio')
+        print(get_embeddings(data))
+        question="Which kind of IDE should be used in this demo?"
+        print(f"Question: {question}")
+        print(f"Answer: {rag_tool(question)}")
