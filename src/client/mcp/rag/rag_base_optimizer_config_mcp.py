@@ -160,32 +160,6 @@ def get_vectorstore(data,embeddings):
     knowledge_base = OracleVS(conn23c, embeddings, data["user_settings"]["rag"]["vector_store"], dist_strategy)
     return knowledge_base
 
-def get_conf(data):
-
-    # Explore top-level keys
-    print("Top-level keys:", list(data.keys()))
-
-    # Example: Access user_settings
-    user_settings = data.get("user_settings", {})
-    print("\nUser Settings Keys:", list(user_settings.keys()))
-
-    # Drill down to ll_model
-    ll_model = user_settings.get("ll_model", {})
-    print("\nLL Model Settings:")
-    for key, value in ll_model.items():
-        print(f"  {key}: {value}")
-
-    llm_config = data["ll_model_config"][user_settings["ll_model"]["model"]]
-    for key, value in llm_config.items():
-        print(f"  {key}: {value}")
-  
-    #llmodel type to import the right dir:
-    llm_config = data["ll_model_config"][user_settings["ll_model"]["model"]]
-    api=llm_config["api"]
-    url=llm_config["url"]
-    api_key=llm_config["api_key"]
-    
-
 
 if __name__ == "__main__":
     rag_tool_desc=[
