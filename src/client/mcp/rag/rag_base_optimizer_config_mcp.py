@@ -1,3 +1,7 @@
+"""
+Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+"""
 from typing import List
 from mcp.server.fastmcp import FastMCP
 import os
@@ -177,7 +181,7 @@ if __name__ == "__main__":
 
 
     # Initialize and run the server
-    # Load JSON file
+    # Load JSON file: set your absolute path
     file_path = "/Users/cdebari/Documents/GitHub/ai-optimizer-mcp-export/src/client/mcp/rag/optimizer_settings.json"
     with open(file_path, "r") as file:
         #rag_tool.__doc__=rag_tool_desc[0]

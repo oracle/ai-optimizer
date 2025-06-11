@@ -1,3 +1,7 @@
+"""
+Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+"""
 from typing import List
 #from mcp.server.fastmcp import FastMCP
 import os
@@ -205,11 +209,11 @@ if __name__ == "__main__":
     # Initialize and run the server
     # Load JSON file
     file_path = os.path.join(os.getcwd(), "optimizer_settings.json")
-    #file="/Users/cdebari/Documents/GitHub/mcp/rag/optimizer_settings_openai.json"
     print(file_path)
     with open(file_path, "r") as file:
         data = json.load(file)
         print(get_embeddings(data))
+        #Set your question to check if configuration is working
         question="Which kind of IDE should be used in this demo?"
         print(f"Question: {question}")
         print(f"Answer: {rag_tool(question)}")

@@ -2,7 +2,15 @@
 # MCP Server for a tested AI Optimizer & Toolkit configuration
 
 ## Introduction
-This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop**. It will be provided further info to setup as a remote MCP server. This early draft implementation utilizes the `stdio` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. 
+This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop** and how to setup as a remote MCP server. This early draft implementation utilizes the `stdio` and `sse` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. Not always the parameters are exported at the moment, and only Ollama or OpenAI configuration are supported. 
+Full support will come.
+
+## Pre-requisites.
+You need:
+- Node.js: v20.17.0+
+- npx/npm: v11.2.0+
+- uv: v0.7.10+
+- Claude Desktop free
 
 ## Setup
 With **[`uv`](https://docs.astral.sh/uv/getting-started/installation/)** installed, run the following commands in your current project directory `<PROJECT_DIR>/src/client/mcp/rag/`:
@@ -21,8 +29,17 @@ In the **AI Optimizer & Toolkit** web interface, after tested a configuration, i
 
 * select the checkbox `Include Sensitive Settings` 
 * press button `Download Settings` to download configuration in the project directory: `src/client/mcp/rag` as `optimizer_settings.json`.
+* in `<PROJECT_DIR>/src/client/mcp/rag/rag_base_optimizer_config_mcp.py` change filepath with the absolute path of your `optimizer_settings.json` file.
 
-## Quick test
+
+## Standalone client
+There is a client that you can run without MCP via commandline to test it:
+
+```bash
+uv run rag_base_optimizer_config.py   
+```
+
+## Quick test via MCP "inspector"
 
 * Run the inspector:
 
@@ -175,4 +192,4 @@ chmod +x claude-remote-wrapper.sh
 
 * restart and test as remote server
 
-{{% children %}}
+
