@@ -29,7 +29,6 @@ variableGroups:
     variables:
       - adb_version
       - k8s_version
-      - source_repository
       - compute_gpu_shape
       - compute_os_ver
     visible: false
