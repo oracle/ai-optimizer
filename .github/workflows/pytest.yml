@@ -7,6 +7,7 @@ on:
       - opened
       - synchronize
       - reopened
+      - ready_for_review
 
   # Allows running this workflow manually
   workflow_dispatch:
