@@ -1,8 +1,6 @@
 
-+++
-title = 'MCP RAG tool'
-weight = 10
-+++
+# MCP Server for a tested AI Optimizer & Toolkit configuration
+
 ## Introduction
 This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop**. It will be provided further info to setup as a remote MCP server. This early draft implementation utilizes the `stdio` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. 
 
