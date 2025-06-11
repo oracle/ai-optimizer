@@ -51,7 +51,7 @@ The [Walkthrough](walkthrough) is a great way to familiarize yourself with the *
 
 ### Bare-Metal Installation
 
-To run the application on bare-metal; download the [source]({{ .Site.Params.GitHubRepo }}) and from the `src/` directory:
+To run the application on bare-metal; download the source code from the {{< latest_release >}} and from the `src/` directory:
 
 1. Create and activate a Python Virtual Environment:
 
@@ -84,7 +84,7 @@ To run the application on bare-metal; download the [source]({{ .Site.Params.GitH
 References to `podman` commands, if applicable to your environment, can be substituted with `docker`.
 {{% /notice %}}
 
-To run the application in a container; download the [source]({{ .Site.Params.GitHubRepo }}) and from the top-level directory:
+To run the application in a container; download the source code from the {{< latest_release >}} and from the top-level directory:
 
 1. Build the image.
 
