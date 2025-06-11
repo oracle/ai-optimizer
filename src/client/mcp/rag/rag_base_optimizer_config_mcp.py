@@ -186,5 +186,5 @@ if __name__ == "__main__":
     with open(file_path, "r") as file:
         #rag_tool.__doc__=rag_tool_desc[0]
         data = json.load(file)
-        #mcp.run(transport='stdio')
-        mcp.run(transport='sse')
+        mcp.run(transport='stdio')
+        #mcp.run(transport='sse')

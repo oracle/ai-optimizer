@@ -116,7 +116,7 @@ mcp = FastMCP("rag") #Local
   #mcp.run(transport='sse')
 ```
 
-* Start MCP server with:
+* Start MCP server in another shell with:
 ```bash
 uv run rag_base_optimizer_config_mcp.py
 ```
@@ -142,55 +142,29 @@ npx @modelcontextprotocol/inspector
 
 ## Claude Desktop setup for remote/local server
 Claude Desktop, in free version, not allows to connect remote server. You can overcome, for testing purpose only, with a proxy library called `mcp-remote`. These are the options.
-
-### Option 1:
-If you have already installed Node.js v18+, it should work:
+If you have already installed Node.js v20.17.0+, it should work:
 
 * replace `rag` mcpServer, setting in `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
     "remote": {
-      "command": "npx",
-      "args": ["mcp-remote", "http://localhost:8001/sse"]
-    }
+			"command": "npx",
+			"args": [
+				"mcp-remote",
+				"http://127.0.0.1:8001/sse"
+			]
+		}
   }
 }
 ```
 * restart Claude Desktop. 
 
-
-### Option 2:
-If for any reason Claude desktop has issue in starting this connection, even recent Node has been installed:
-
-* find the absolute position:
+**NOTICE**: If you have any problem running, check the logs if it's related to an old npx/nodejs version used with mcp-remote library. Check with:
 ```bash
-which node
+nvm -list
 ```
-
-* create a file in `<PROJECT_DIR>/src/client/mcp/rag/` named `claude-remote-wrapper.sh`, with the absolute path to Node. For example, if you have `Node v20.17.0`:
-
-```bash
-#!/bin/bash
-export PATH="$HOME/.nvm/versions/node/v20.17.0/bin:$PATH"
-export NODE_VERSION=20.17.0
-exec npx mcp-remote "$@"
-```
-
-* change the permission:
-
-```bash
-chmod +x claude-remote-wrapper.sh
-```
-
-* change the `claude_desktop_config.json`:
-
-```json
-"remote": {
-  "command": "<PROJECT_DIR>/src/client/mcp/rag/claude-remote-wrapper.sh",
-  "args": ["http://localhost:8001/sse"]
-}
-```
+if you have any other versions available than the default. It could happen that Claude Desktop uses the older one. Try to remove any other nvm versions available to force the use the only one avalable, at minimum v20.17.0+.
 
 * restart and test as remote server
 
