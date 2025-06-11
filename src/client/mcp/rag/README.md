@@ -1,6 +1,8 @@
 
 # MCP Server for a tested AI Optimizer & Toolkit configuration
 
+**Version:** *Developer preview*
+
 ## Introduction
 This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop** and how to setup as a remote MCP server. This early draft implementation utilizes the `stdio` and `sse` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. Not always the parameters are exported at the moment, and only Ollama or OpenAI configuration are supported. 
 Full support will come.
