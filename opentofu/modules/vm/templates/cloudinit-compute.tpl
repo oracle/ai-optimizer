@@ -2,20 +2,18 @@
 # Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
+users:
+  - default
+  - name: oracleai
+    uid: 10001
+    shell: /bin/bash
+    homedir: /app
+
 package_update: false
 packages:
   - python36-oci-cli
   - python3.11
 
-users:
-  - default
-  - name: oracleai
-    uid: 10001
-    gid: 10001
-    shell: /bin/bash
-    homedir: /app
-
-write_files:
 write_files:
   - path: /etc/systemd/system/ai-optimizer.service
     permissions: '0644'
@@ -37,13 +35,11 @@ write_files:
       WantedBy=multi-user.target
 
   - path: /tmp/root_setup.sh
-    append: false
-    defer: false
     permissions: '0755'
     content: |
       #!/bin/env bash
       mkdir -p /app
-      chown 10001:10001 /app
+      chown oracleai:oracleai /app
       curl -fsSL https://ollama.com/install.sh | sh
       systemctl enable ollama
       systemctl daemon-reload
@@ -54,8 +50,6 @@ write_files:
       systemctl start firewalld.service
 
   - path: /tmp/app_setup.sh
-    append: false
-    defer: false
     permissions: '0755'
     content: |
       #!/bin/bash
@@ -99,9 +93,7 @@ write_files:
       wait $INSTALL_PID
 
   - path: /app/start.sh
-    append: false
-    defer: false
-    permissions: '0661'
+    permissions: '0750'
     content: |
       #!/bin/bash
       export OCI_CLI_AUTH=instance_principal
@@ -111,8 +103,8 @@ write_files:
       export DB_WALLET_PASSWORD='${db_password}'
       export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
       # Clean Cache
-      find /app -type d -name "__pycache__" -exec rm -rf {} +
-      find /app -type d -name ".numba_cache" -exec rm -rf {} +
+      find /app -type d -name "__pycache__" -exec rm -rf {} \;
+      find /app -type d -name ".numba_cache" -exec rm -rf {} \;
       find /app -name "*.nbc" -delete
       # Set venv and start
       source /app/.venv/bin/activate
@@ -122,6 +114,7 @@ runcmd:
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
   - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz /tmp/wallet.zip
+  - chown oracleai:oracleai /app/start.sh
   - systemctl daemon-reexec
   - systemctl daemon-reload
   - systemctl enable ai-optimizer.service
