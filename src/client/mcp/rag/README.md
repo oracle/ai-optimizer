@@ -4,7 +4,7 @@
 **Version:** *Developer preview*
 
 ## Introduction
-This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop** and how to setup as a remote MCP server. This early draft implementation utilizes the `stdio` and `sse` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. Not always the parameters are exported at the moment, and only Ollama or OpenAI configuration are supported. 
+This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop** and how to setup as a remote MCP server. This early draft implementation utilizes the `stdio` and `sse` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. Only Ollama or OpenAI configuration are currently supported. 
 Full support will come.
 
 ## Pre-requisites.
@@ -103,17 +103,23 @@ This will impose the usage of `rag_tool` in any case.
 
 In `rag_base_optimizer_config_mcp.py`:
 
+* Update the absolute path of your `optimizer_settings.json`. Example:
+
+```python
+rag.set_optimizer_settings_path("/Users/cdebari/Documents/GitHub/ai-optimizer-mcp-export/src/client/mcp/rag/optimizer_settings.json")
+```
+
 * Substitute `Local` with `Remote client` line:
 
 ```python
-#mcp = FastMCP("research", port=8001) #Remote client
+#mcp = FastMCP("rag", port=8001) #Remote client
 mcp = FastMCP("rag") #Local
 ```
 
 * Substitute `stdio` with `sse` line of code:
 ```python
-  mcp.run(transport='stdio')
-  #mcp.run(transport='sse')
+mcp.run(transport='stdio')
+#mcp.run(transport='sse')
 ```
 
 * Start MCP server in another shell with:
