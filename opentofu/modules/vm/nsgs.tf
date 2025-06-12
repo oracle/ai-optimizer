@@ -26,6 +26,15 @@ resource "oci_core_network_security_group_security_rule" "vcn_icmp_ingress" {
   source_type               = "CIDR_BLOCK"
 }
 
+resource "oci_core_network_security_group_security_rule" "vcn_services_egress" {
+  network_security_group_id = oci_core_network_security_group.compute.id
+  description               = "Compute OCI Services - All Ingress."
+  direction                 = "INGRESS"
+  protocol                  = "all"
+  source                    = data.oci_core_services.core_services.services.0.cidr_block
+  source_type               = "SERVICE_CIDR_BLOCK"
+}
+
 resource "oci_core_network_security_group_security_rule" "vcn_icmp_egress" {
   network_security_group_id = oci_core_network_security_group.compute.id
   description               = "Compute Path Discovery - ICMP Egress."

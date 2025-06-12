@@ -49,11 +49,6 @@ variable "private_key_path" {
   default     = ""
 }
 
-variable "source_repository" {
-  description = "Code that will pulled onto compute; ensure correct branch/tag."
-  default     = "https://github.com/oracle-samples/ai-optimizer/archive/refs/heads/main"
-}
-
 // Infrastructure Type/Label
 variable "infrastructure" {
   description = "Choose between a full Kubernetes or a light-weight Virtual Machine deployment."

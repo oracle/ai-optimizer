@@ -17,7 +17,7 @@ variable "infra" {
 variable "vcn_cidr" {
   type = map(any)
   default = {
-    "VM"         = ["10.42.0.0/28"]
+    "VM"         = ["10.42.0.0/27"]
     "Kubernetes" = ["10.42.0.0/16"]
   }
 }

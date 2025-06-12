@@ -52,10 +52,6 @@ variable "adb_password" {
   type = string
 }
 
-variable "source_repository" {
-  type = string
-}
-
 variable "streamlit_client_port" {
   type = number
 }
