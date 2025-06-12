@@ -30,6 +30,7 @@ write_files:
       User=oracleai
       Group=oracleai
       WorkingDirectory=/app
+      Environment="HOME=/app"
       Restart=on-failure
 
       [Install]
@@ -100,19 +101,22 @@ write_files:
   - path: /app/start.sh
     append: false
     defer: false
-    permissions: '0755'
+    permissions: '0661'
     content: |
       #!/bin/bash
-      cd /app
-      source .venv/bin/activate
       export OCI_CLI_AUTH=instance_principal
       export DB_USERNAME='ADMIN'
       export DB_PASSWORD='${db_password}'
       export DB_DSN='${db_name}_TP'
       export DB_WALLET_PASSWORD='${db_password}'
       export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
-      export LOG_LEVEL=DEBUG
-      nohup streamlit run launch_client.py --server.port 8501 --server.address 0.0.0.0 &
+      # Clean Cache
+      find /app -type d -name "__pycache__" -exec rm -rf {} +
+      find /app -type d -name ".numba_cache" -exec rm -rf {} +
+      find /app -name "*.nbc" -delete
+      # Set venv and start
+      source /app/.venv/bin/activate
+      streamlit run /app/launch_client.py --server.port 8501 --server.address 0.0.0.0
 
 runcmd:
   - /tmp/root_setup.sh
