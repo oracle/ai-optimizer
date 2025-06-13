@@ -6,7 +6,7 @@ weight = 10
 After having downloaded and unzipped the SpringAI file from the [Settings](../client/configuration/settings) screen, you can open and set the latest two things in the code to be executed. For the detailed description, please refer to the **README.md** file included
 
 ### Prerequisites
-Before using a microservice that exploit OpenAI API, make sure you have a developer token from OpenAI. To do this, create an account at [OpenAI Signup](https://platform.openai.com/signup) and generate the token at [API Keys](https://platform.openai.com/account/api-keys).
+Before using a microservice that exploit OpenAI API, make sure you have a developer token from OpenAI. To do this, create an account at [OpenAI](https://platform.openai.com/signup) and generate the token at [API Keys](https://platform.openai.com/account/api-keys).
 
 
 The Spring AI project defines a configuration property named: `spring.ai.openai.api-key`, that you should set to the value of the **API Key** got from `openai.com`.
@@ -29,7 +29,7 @@ You have simply to:
 chmod 755 ./start.sh
 ```
 
-* add the password for the user used to connect from the {{ .Site.Params.LongName | markdownify }} to the Oracle DB23ai used as vectorstore: 
+* add the password for the user used to connect from the {{< short_app_ref >}} to the Oracle DB23ai used as vectorstore: 
 
 ```bash
 export DB_PASSWORD=""
@@ -196,7 +196,7 @@ llama3.1:latest             a80c4f17acd5    2.0 GB    3 minutes ago
 kubectl -n ollama exec svc/ollama -- ollama run "llama3.1" "what is spring boot?"
 ```
 
-**NOTICE**: The Microservices will access to the ADB23ai on which the vector store table should be created, as done in the local desktop example shown before. To access the {{ .Site.Params.LongName | markdownify }} running on **Oracle Backend for Microservices and AI** and create the same configuration, let’s do:
+**NOTICE**: The Microservices will access to the ADB23ai on which the vector store table should be created, as done in the local desktop example shown before. To access the {{< short_app_ref >}} running on **Oracle Backend for Microservices and AI** and create the same configuration, let’s do:
 
 * tunnel:
 
@@ -221,7 +221,7 @@ oractl:> create --app-name rag
 oractl:> bind --app-name rag --service-name myspringai --username vector
 ```
 
-The `bind` will create the new user, if not exists, but to have the `SPRING_AI_VECTORS` table compatible with SpringAI Oracle vector store adapter, the microservices needs to access to the vector store table created by the {{ .Site.Params.LongName | markdownify }} with user ADMIN on ADB, for example:
+The `bind` will create the new user, if not exists, but to have the `SPRING_AI_VECTORS` table compatible with SpringAI Oracle vector store adapter, the microservices needs to access to the vector store table created by the {{< short_app_ref >}} with user ADMIN on ADB, for example:
 
 ```sql
 GRANT SELECT ON ADMIN.MXBAI_EMBED_LARGE_512_103_COSINE TO vector;
