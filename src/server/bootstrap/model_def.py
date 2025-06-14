@@ -5,13 +5,25 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 NOTE: Provide only one example per API to populate supported API lists; additional models should be
 added via the APIs
 """
-# spell-checker:ignore ollama, minilm, pplx, thenlper, mxbai, nomic, genai, docos
+# spell-checker:ignore ollama, minilm, pplx, thenlper, mxbai, nomic, genai, docos, huggingface
 
 import os
+import threading
+from huggingface_hub import hf_hub_download
+
 from common.schema import Model
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("server.bootstrap.model_def")
+
+
+def preload():
+    """Preload Models"""
+    base_repo = "openai/clip-vit-base-patch32"
+
+    hf_hub_download(repo_id=base_repo, filename="config.json")
+    hf_hub_download(repo_id=base_repo, filename="preprocessor_config.json")
+    hf_hub_download(repo_id=base_repo, filename="pytorch_model.bin")
 
 
 def main() -> list[Model]:
@@ -151,6 +163,16 @@ def main() -> list[Model]:
             "max_chunk_size": 8192,
         },
         {
+            "name": "clip-vit-base-patch32",
+            "enabled": True,
+            "type": "embed",
+            "api": "CLIPEmbeddings",
+            "url": "N/A",
+            "api_key": "",
+            "openai_compat": True,
+            "max_chunk_size": 0,
+        },
+        {
             # This is intentionally last to line up with docos
             "name": "mxbai-embed-large",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
@@ -162,6 +184,9 @@ def main() -> list[Model]:
             "max_chunk_size": 512,
         },
     ]
+
+    # Download Model in background
+    threading.Thread(target=preload, daemon=True).start()
 
     # Check for Duplicates
     unique_entries = set()

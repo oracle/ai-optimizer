@@ -150,7 +150,9 @@ def main() -> None:
     )
     embed_url = state.embed_model_enabled[embed_request.model]["url"]
     st.write(f"Embedding Server: {embed_url}")
-    is_embed_accessible, embed_err_msg = common.functions.is_url_accessible(embed_url)
+    is_embed_accessible, embed_err_msg = (
+        (True, "") if embed_url == "N/A" else common.functions.is_url_accessible(embed_url)
+    )
     if not is_embed_accessible:
         st.warning(embed_err_msg, icon="⚠️")
         if st.button("Retry"):
@@ -158,50 +160,51 @@ def main() -> None:
         st.stop()
 
     chunk_size_max = state.embed_model_enabled[embed_request.model]["max_chunk_size"]
-    col1_1, col1_2 = st.columns([0.8, 0.2])
-    with col1_1:
-        st.slider(
-            "Chunk Size (tokens):",
-            min_value=0,
-            max_value=chunk_size_max,
-            value=chunk_size_max,
-            key="selected_chunk_size_slider",
-            on_change=update_chunk_size_input,
-            help=help_text.help_dict["chunk_size"],
-        )
-        st.slider(
-            "Chunk Overlap (% of Chunk Size)",
-            min_value=0,
-            max_value=100,
-            value=20,
-            step=5,
-            key="selected_chunk_overlap_slider",
-            on_change=update_chunk_overlap_input,
-            format="%d%%",
-            help=help_text.help_dict["chunk_overlap"],
-        )
+    if chunk_size_max > 0:
+        col1_1, col1_2 = st.columns([0.8, 0.2])
+        with col1_1:
+            st.slider(
+                "Chunk Size (tokens):",
+                min_value=0,
+                max_value=chunk_size_max,
+                value=chunk_size_max,
+                key="selected_chunk_size_slider",
+                on_change=update_chunk_size_input,
+                help=help_text.help_dict["chunk_size"],
+            )
+            st.slider(
+                "Chunk Overlap (% of Chunk Size)",
+                min_value=0,
+                max_value=100,
+                value=20,
+                step=5,
+                key="selected_chunk_overlap_slider",
+                on_change=update_chunk_overlap_input,
+                format="%d%%",
+                help=help_text.help_dict["chunk_overlap"],
+            )
 
-    with col1_2:
-        embed_request.chunk_size = st.number_input(
-            "Chunk Size (tokens):",
-            label_visibility="hidden",
-            min_value=0,
-            max_value=chunk_size_max,
-            value=chunk_size_max,
-            key="selected_chunk_size_input",
-            on_change=update_chunk_size_slider,
-        )
-        chunk_overlap_pct = st.number_input(
-            "Chunk Overlap (% of Chunk Size):",
-            label_visibility="hidden",
-            min_value=0,
-            max_value=100,
-            value=20,
-            step=5,
-            key="selected_chunk_overlap_input",
-            on_change=update_chunk_overlap_slider,
-        )
-        embed_request.chunk_overlap = math.ceil((chunk_overlap_pct / 100) * embed_request.chunk_size)
+        with col1_2:
+            embed_request.chunk_size = st.number_input(
+                "Chunk Size (tokens):",
+                label_visibility="hidden",
+                min_value=0,
+                max_value=chunk_size_max,
+                value=chunk_size_max,
+                key="selected_chunk_size_input",
+                on_change=update_chunk_size_slider,
+            )
+            chunk_overlap_pct = st.number_input(
+                "Chunk Overlap (% of Chunk Size):",
+                label_visibility="hidden",
+                min_value=0,
+                max_value=100,
+                value=20,
+                step=5,
+                key="selected_chunk_overlap_input",
+                on_change=update_chunk_overlap_slider,
+            )
+            embed_request.chunk_overlap = math.ceil((chunk_overlap_pct / 100) * embed_request.chunk_size)
 
     col2_1, col2_2 = st.columns([0.5, 0.5])
     embed_request.distance_metric = col2_1.selectbox(

@@ -26,6 +26,7 @@ EmbedAPI = Literal[
     "OpenAIEmbeddings",
     "CohereEmbeddings",
     "HuggingFaceEndpointEmbeddings",
+    "CLIPEmbeddings"
 ]
 LlAPI = Literal[
     "ChatOllama",

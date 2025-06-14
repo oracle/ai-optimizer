@@ -719,6 +719,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                         continue  # Skip Tool Call messages
                     if "vs_retrieve" in str(chunk["metadata"]["langgraph_node"]):
                         continue  # Skip Fake-Tool Call messages
+                    if "grade_documents" in str(chunk["metadata"]["langgraph_node"]):
+                        continue  # Skip Document Grader
                     content = chunk["data"]["chunk"].content
                     if content != "" and call == "streams":
                         yield content.encode("utf-8")

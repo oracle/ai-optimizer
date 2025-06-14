@@ -2,12 +2,19 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, pplx, huggingface, genai, giskard
+# spell-checker:ignore ollama, pplx, huggingface, genai, giskard, keepdim
 
 from typing import Optional
+import io
+import base64
+from pathlib import Path
+from PIL import Image
+import torch
 
 from openai import OpenAI
+from transformers import CLIPProcessor, CLIPModel
 
+from langchain.embeddings.base import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_cohere import ChatCohere, CohereEmbeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
@@ -23,6 +30,55 @@ from common.schema import ModelNameType, ModelTypeType, Model, ModelAccess, Orac
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("server.utils.models")
+
+
+#####################################################
+# Classes
+#####################################################
+class CLIPImageEmbeddings(Embeddings):
+    """Custom Local Embedding for Images"""
+
+    def __init__(self, model_name="openai/clip-vit-base-patch32"):
+        self.model = CLIPModel.from_pretrained(model_name, local_files_only=True)
+        self.processor = CLIPProcessor.from_pretrained(model_name, local_files_only=True)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embedding Images"""
+        try:
+            logger.debug("Processing embed_documents: %s", texts)
+            image = Image.open(io.BytesIO(Path(texts[0]).read_bytes())).convert("RGB")
+            inputs = self.processor(images=image, return_tensors="pt")
+            with torch.no_grad():
+                feats = self.model.get_image_features(**inputs)
+            feats = feats / feats.norm(p=2, dim=-1, keepdim=True)
+            # return feats[0].tolist()
+            return [feats[0].cpu().numpy().tolist()]
+        except FileNotFoundError:
+            logger.error("CLIP Embedding FileNotFound: %s:", texts[0])
+            return [[0.0] * self.model.visual_projection.out_features]
+
+    def embed_query(self, text: str) -> float:
+        """User prompt call"""
+        logger.debug("Processing embed_query: %s", text)
+        if text.startswith("data:") and ";base64," in text:
+            try:
+                base64_data = text.split(",", 1)[1]
+                decoded_bytes = base64.b64decode(base64_data)
+                image = Image.open(io.BytesIO(decoded_bytes))
+                inputs = self.processor(images=image, return_tensors="pt")
+                with torch.no_grad():
+                    feats = self.model.get_image_features(**inputs)
+                feats = feats / feats.norm(p=2, dim=-1, keepdim=True)
+            except Exception as ex:
+                logger.error("Failed to decode base64 input: %s", ex)
+                return [0.0] * self.model.visual_projection.out_features
+        else:
+            inputs = self.processor(text=text, return_tensors="pt", padding=True, truncation=True)
+            with torch.no_grad():
+                feats = self.model.get_text_features(**inputs)
+            feats = feats / feats.norm(p=2, dim=-1, keepdim=True)
+
+        return feats[0].cpu().numpy().tolist()
 
 
 #####################################################
@@ -136,6 +192,7 @@ async def get_client(
                 client=init_genai_client(oci_cfg),
                 compartment_id=oci_cfg.compartment_id,
             ),
+            "CLIPEmbeddings": lambda: CLIPImageEmbeddings(),
         }
 
     try:

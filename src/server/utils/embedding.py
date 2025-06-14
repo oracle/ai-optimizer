@@ -8,8 +8,10 @@ import json
 import copy
 import math
 import os
+import shutil
 import time
 from typing import Union
+from pathlib import Path
 
 import bs4
 import oracledb
@@ -17,7 +19,6 @@ import oracledb
 # Langchain
 import langchain_community.document_loaders as document_loaders
 from langchain_community.document_loaders import WebBaseLoader
-from langchain_community.document_loaders.image import UnstructuredImageLoader
 from langchain_community.vectorstores import oraclevs as LangchainVS
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -33,6 +34,17 @@ from common.schema import DatabaseVectorStorage, VectorStoreTableType, Database
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("server.utils.embedding")
+
+
+def get_binary_storage() -> Path:
+    """Location to store large binary files (e.g. images)"""
+    if Path("/app/tmp").exists() and Path("/app/tmp").is_dir():
+        large_storage = Path("/app/tmp/ai-explorer/binary_storage")
+    else:
+        large_storage = Path("/tmp/ai-explorer/binary_storage")
+    large_storage.mkdir(parents=True, exist_ok=True)
+    logger.debug("Created binary storage: %s", large_storage)
+    return large_storage
 
 
 def drop_vs(conn: oracledb.Connection, vs: VectorStoreTableType) -> None:
@@ -172,6 +184,7 @@ def load_and_split_documents(
     split_files = []
     all_split_docos = []
     for file in src_files:
+        path = os.path.dirname(file)
         name = os.path.basename(file)
         stat = os.stat(file)
         extension = os.path.splitext(file)[1][1:]
@@ -188,12 +201,19 @@ def load_and_split_documents(
             case "csv":
                 loader = document_loaders.CSVLoader(file)
             case "png" | "jpg" | "jpeg":
-                loader = UnstructuredImageLoader(file)
+                # Move image from temporary location to more "permanent" one
+                # that location will be the text of the embedding
+                storage_dir = get_binary_storage()
+                shutil.move(os.path.join(path, name), os.path.join(storage_dir, name))
+                loader = os.path.join(storage_dir, name)
                 split = False
             case _:
                 raise ValueError(f"{extension} is not a supported file extension")
 
-        loaded_doc = loader.load()
+        if isinstance(loader, str):
+            loaded_doc = loader
+        else:
+            loaded_doc = loader.load()
         logger.info("Loaded Pages: %i", len(loaded_doc))
 
         # Chunk the File
@@ -205,9 +225,20 @@ def load_and_split_documents(
                 split_doc_with_mdata = process_metadata(idx, chunk)
                 split_docos += split_doc_with_mdata
         else:
-            split_files = file
-            all_split_docos = loaded_doc
-
+            split_files = name
+            split_docos = [
+                LangchainDocument(
+                    metadata={
+                        "id": name,
+                        "category": "image",
+                        "filetype": os.path.splitext(name)[1][1:],
+                        "filename": name,
+                        "source": loaded_doc,
+                        "page": 1,
+                    },
+                    page_content=loaded_doc,
+                )
+            ]
         if write_json and output_dir:
             split_files.append(doc_to_json(split_docos, file, output_dir))
         all_split_docos += split_docos

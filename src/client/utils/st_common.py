@@ -19,7 +19,7 @@ import client.utils.api_call as api_call
 
 import common.help_text as help_text
 import common.logging_config as logging_config
-from common.schema import ClientIdType, PromptPromptType, PromptNameType, SelectAISettings
+from common.schema import PromptPromptType, PromptNameType, SelectAISettings
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
@@ -403,9 +403,7 @@ def vector_search_sidebar() -> None:
         ##########################
         st.sidebar.subheader("Vector Store", divider="red")
         # Create a DataFrame of all database vector storage tables
-        vs_df = pd.DataFrame(
-            state.database_config[state.user_settings["database"]["alias"]].get("vector_stores")
-        )
+        vs_df = pd.DataFrame(state.database_config[state.user_settings["database"]["alias"]].get("vector_stores"))
 
         def vs_reset() -> None:
             """Reset Vector Store Selections"""
@@ -458,13 +456,9 @@ def vector_search_sidebar() -> None:
             if state.get("selected_vector_search_chunk_size"):
                 filtered = filtered[filtered["chunk_size"] == state.selected_vector_search_chunk_size]
             if state.get("selected_vector_search_chunk_overlap"):
-                filtered = filtered[
-                    filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap
-                ]
+                filtered = filtered[filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap]
             if state.get("selected_vector_search_distance_metric"):
-                filtered = filtered[
-                    filtered["distance_metric"] == state.selected_vector_search_distance_metric
-                ]
+                filtered = filtered[filtered["distance_metric"] == state.selected_vector_search_distance_metric]
             if state.get("selected_vector_search_index_type"):
                 filtered = filtered[filtered["index_type"] == state.selected_vector_search_index_type]
             return filtered
@@ -496,7 +490,9 @@ def vector_search_sidebar() -> None:
             "Select Index Type:", filtered_df["index_type"].unique().tolist(), "selected_vector_search_index_type"
         )
 
-        if all([alias, embed_model, chunk_size, chunk_overlap, distance_metric, index_type]):
+        if all(
+            x not in [None, ""] for x in [alias, embed_model, chunk_size, chunk_overlap, distance_metric, index_type]
+        ):
             vs = filtered_df["vector_store"].iloc[0]
             state.user_settings["vector_search"]["vector_store"] = vs
             state.user_settings["vector_search"]["alias"] = alias
@@ -508,6 +504,5 @@ def vector_search_sidebar() -> None:
         else:
             st.error("Please select Vector Store options or disable Vector Search to continue.", icon="❌")
             state.enable_client = False
-
         # Reset button
         st.sidebar.button("Reset", type="primary", on_click=vs_reset)

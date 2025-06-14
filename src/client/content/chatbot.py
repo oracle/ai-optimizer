@@ -41,8 +41,11 @@ def show_vector_search_refs(context):
             try:
                 ref_src.add(chunk["metadata"]["filename"])
                 st.subheader("Metadata", divider="red")
-                st.markdown(f"File:  {chunk['metadata']['source']}")
-                st.markdown(f"Chunk: {chunk['metadata']['page']}")
+                if chunk.get("metadata", {}).get("category") == "image":
+                    st.image(chunk["page_content"])
+                else:
+                    st.markdown(f"File:  {chunk['metadata']['source']}")
+                    st.markdown(f"Chunk: {chunk['metadata']['page']}")
             except KeyError:
                 logger.error("Chunk Metadata NOT FOUND!!")
 
