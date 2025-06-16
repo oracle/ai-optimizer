@@ -11,6 +11,7 @@ import asyncio
 import inspect
 import json
 import base64
+import pandas as pd
 
 import streamlit as st
 from streamlit import session_state as state
@@ -102,7 +103,12 @@ async def main() -> None:
             vector_search_refs = json.loads(message["content"])
         if message["role"] in ("ai", "assistant"):
             with st.chat_message("ai"):
-                st.markdown(message["content"])
+                try:
+                    content = json.loads(message["content"])
+                    st.dataframe(pd.DataFrame(content))
+                except json.decoder.JSONDecodeError:
+                    content = message["content"]
+                    st.markdown(content)               
                 if vector_search_refs:
                     show_vector_search_refs(vector_search_refs)
                     vector_search_refs = []
