@@ -20,11 +20,12 @@ logger = logging_config.logging.getLogger("server.bootstrap.model_def")
 def preload():
     """Preload Models"""
     base_repo = "openai/clip-vit-base-patch32"
-
-    hf_hub_download(repo_id=base_repo, filename="config.json")
-    hf_hub_download(repo_id=base_repo, filename="preprocessor_config.json")
-    hf_hub_download(repo_id=base_repo, filename="pytorch_model.bin")
-
+    try:
+        hf_hub_download(repo_id=base_repo, filename="config.json")
+        hf_hub_download(repo_id=base_repo, filename="preprocessor_config.json")
+        hf_hub_download(repo_id=base_repo, filename="pytorch_model.bin")
+    except Exception:
+        logger.error("Unable to pull from huggingface_hub")
 
 def main() -> list[Model]:
     """Define example Model Support"""
