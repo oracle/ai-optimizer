@@ -433,7 +433,8 @@ def vector_search_sidebar() -> None:
                     logger.debug("Defaulting %s to %s", key, selected_value)
                 else:
                     selected_value = (
-                        state.user_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
+                        state.user_settings["vector_search"][key.removeprefix("selected_vector_search_")] is not None
+                        or ""
                     )
                     logger.debug("User selected %s to %s", key, selected_value)
             return st.sidebar.selectbox(
