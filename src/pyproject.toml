@@ -35,7 +35,7 @@ server = [
     "langchain-ollama==0.3.3",
     "langchain-openai==0.3.23",
     "langgraph==0.4.8",
-    "litellm==1.72.4",
+    "litellm==1.72.6",
     "llama_index==0.12.42",
     "lxml==5.4.0",
     "matplotlib==3.10.3",

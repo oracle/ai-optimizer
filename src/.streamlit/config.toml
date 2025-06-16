@@ -3,6 +3,9 @@
 [global]
 disableWidgetStateDuplicationWarning = true
 
+[logger]
+level = "error"
+
 [browser]
 gatherUsageStats = false
 serverAddress = "localhost"
