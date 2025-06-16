@@ -108,7 +108,7 @@ async def main() -> None:
                     st.dataframe(pd.DataFrame(content))
                 except json.decoder.JSONDecodeError:
                     content = message["content"]
-                    st.markdown(content)               
+                    st.markdown(content)
                 if vector_search_refs:
                     show_vector_search_refs(vector_search_refs)
                     vector_search_refs = []
