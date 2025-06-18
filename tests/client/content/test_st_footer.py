@@ -72,3 +72,4 @@ class TestStreamlit:
         # Verify disclaimer doesn't appear on other pages
         assert "current_page" in at.session_state
         assert at.session_state.current_page == "other"
+
