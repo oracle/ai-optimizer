@@ -28,6 +28,7 @@ from client.content.config.databases import patch_database, get_databases
 from client.content.config.oci import patch_oci, get_oci
 from client.content.tools.prompt_eng import patch_prompt, get_prompts
 from client.content.config.models import patch_model, get_models
+from client.utils.st_footer import remove_footer
 
 # Schema
 from common.schema import Model
@@ -269,6 +270,7 @@ def spring_ai_zip(provider, ll_model):
 #####################################################
 def main():
     """Streamlit GUI"""
+    remove_footer()
     st.header("Client Settings", divider="red")
     get_models(model_type="ll", force=True)
     get_models(model_type="embed", force=True)
