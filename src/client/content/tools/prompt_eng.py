@@ -18,6 +18,7 @@ from streamlit import session_state as state
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call
 import common.logging_config as logging_config
+from client.utils.st_footer import remove_footer
 
 logger = logging_config.logging.getLogger("client.tools.prompt_eng")
 
@@ -66,6 +67,7 @@ def patch_prompt(category: str, name: str, prompt: str) -> None:
 #############################################################################
 def main():
     """Streamlit GUI"""
+    remove_footer()
     st.header("Prompt Engineering")
     st.write("Select which prompts to use and their instructions.  Currently selected prompts are used.")
     try:

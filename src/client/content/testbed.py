@@ -18,6 +18,7 @@ from streamlit import session_state as state
 from client.content.config.models import get_models
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call
+from client.utils.st_footer import remove_footer
 
 import common.logging_config as logging_config
 
@@ -233,6 +234,7 @@ def qa_update_gui(qa_testset: list) -> None:
 #############################################################################
 def main():
     """Streamlit GUI"""
+    remove_footer()
     db_avail = st_common.is_db_configured()
     if not db_avail:
         logger.debug("Testbed Disabled (Database not configured)")

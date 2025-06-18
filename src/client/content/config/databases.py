@@ -19,6 +19,7 @@ import client.utils.api_call as api_call
 import client.utils.st_common as st_common
 import common.logging_config as logging_config
 from common.schema import SelectAIProfileType
+from client.utils.st_footer import remove_footer
 
 logger = logging_config.logging.getLogger("client.content.config.database")
 
@@ -120,6 +121,7 @@ def update_selectai(sai_new_df: pd.DataFrame, sai_old_df: pd.DataFrame) -> None:
 #####################################################
 def main() -> None:
     """Streamlit GUI"""
+    remove_footer()
     st.header("Database", divider="red")
     st.write("Configure the database used for Vector Storage and SelectAI.")
     try:

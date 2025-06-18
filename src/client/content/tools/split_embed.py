@@ -19,6 +19,7 @@ from client.content.config.oci import get_oci
 from client.content.config.models import get_models
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
+from client.utils.st_footer import remove_footer
 from common.schema import DistanceMetrics, IndexTypes, DatabaseVectorStorage
 import common.functions
 import common.help_text as help_text
@@ -109,6 +110,7 @@ def update_chunk_size_input() -> None:
 #############################################################################
 def main() -> None:
     """Streamlit GUI"""
+    remove_footer()
     db_avail = st_common.is_db_configured()
     if not db_avail:
         logger.debug("Embedding Disabled (Database not configured)")
