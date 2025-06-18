@@ -16,6 +16,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 import client.utils.st_common as st_common
+from client.utils.st_footer import render_chat_footer
 import client.utils.client as client
 from client.content.config.models import get_models
 import common.logging_config as logging_config
@@ -116,6 +117,7 @@ async def main() -> None:
                     st.write(content)
 
     sys_prompt = state.user_settings["prompts"]["sys"]
+    render_chat_footer()
     if human_request := st.chat_input(
         f"Ask your question here... (current prompt: {sys_prompt})",
         accept_file=True,
