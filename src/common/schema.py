@@ -35,6 +35,7 @@ LlAPI = Literal[
     "Perplexity",
     "OpenAI",
     "Cohere",
+    "LocalMistral"
 ]
 
 

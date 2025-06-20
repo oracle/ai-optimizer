@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 NOTE: Provide only one example per API to populate supported API lists; additional models should be
 added via the APIs
 """
-# spell-checker:ignore ollama, minilm, pplx, thenlper, mxbai, nomic, genai, docos, huggingface
+# spell-checker:ignore ollama, minilm, pplx, thenlper, mxbai, nomic, genai, docos, huggingface, Qwen
 
 import os
 import threading
@@ -19,13 +19,15 @@ logger = logging_config.logging.getLogger("server.bootstrap.model_def")
 
 def preload():
     """Preload Models"""
-    base_repo = "openai/clip-vit-base-patch32"
+    clip_repo = "openai/clip-vit-base-patch32"
     try:
-        hf_hub_download(repo_id=base_repo, filename="config.json")
-        hf_hub_download(repo_id=base_repo, filename="preprocessor_config.json")
-        hf_hub_download(repo_id=base_repo, filename="pytorch_model.bin")
-    except Exception:
-        logger.error("Unable to pull from huggingface_hub")
+        # Config
+        hf_hub_download(repo_id=clip_repo, filename="config.json")
+        hf_hub_download(repo_id=clip_repo, filename="preprocessor_config.json")
+        # Model
+        hf_hub_download(repo_id=clip_repo, filename="pytorch_model.bin")
+    except Exception as ex:
+        logger.error("Unable to pull from huggingface_hub: %s", ex)
 
 def main() -> list[Model]:
     """Define example Model Support"""
@@ -70,17 +72,17 @@ def main() -> list[Model]:
             "frequency_penalty": 1.0,
         },
         {
-            "name": "phi-4",
-            "enabled": False,
+            "name": "qwen2.5:7b-instruct",
+            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "ll",
-            "api": "CompatOpenAI",
+            "api": "ChatOllama",
             "api_key": "",
             "openai_compat": True,
-            "url": "http://localhost:1234/v1",
-            "context_length": 131072,
-            "temperature": 1.0,
-            "max_completion_tokens": 4096,
-            "frequency_penalty": 0.0,
+            "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "context_length": 127072,
+            "temperature": 0.7,
+            "max_completion_tokens": 1024,
+            "frequency_penalty": 0.0
         },
         {
             # OCI GenAI; url and enabled will be determined by OCI config

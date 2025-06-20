@@ -172,7 +172,7 @@ async def get_client(
                     for k, v in ll_common_params.items()
                     if k not in {"streaming"}
                 },
-            ),
+            )
         }
     if embedding:
         logger.debug("Configuring Embed Model")
