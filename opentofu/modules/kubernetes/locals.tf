@@ -28,18 +28,20 @@ locals {
   })
 
   k8s_manifest = templatefile("${path.module}/templates/k8s_manifest.yaml", {
-    label            = var.label_prefix
-    compartment_ocid = var.lb.compartment_id
-    lb_ocid          = var.lb.id
-    lb_subnet_ocid   = var.public_subnet_id
-    lb_ip_ocid       = var.lb.ip_address_details[0].ip_address
-    lb_nsgs          = var.lb_nsg_id
-    lb_min_shape     = var.lb.shape_details[0].minimum_bandwidth_in_mbps
-    lb_max_shape     = var.lb.shape_details[0].maximum_bandwidth_in_mbps
-    adb_name         = lower(var.adb_name)
-    adb_password     = var.adb_password
-    adb_service      = format("%s_TP", var.adb_name)
-    api_key          = random_string.api_key.result
+    label             = var.label_prefix
+    server_repository = local.server_repository
+    client_repository = local.client_repository
+    compartment_ocid  = var.lb.compartment_id
+    lb_ocid           = var.lb.id
+    lb_subnet_ocid    = var.public_subnet_id
+    lb_ip_ocid        = var.lb.ip_address_details[0].ip_address
+    lb_nsgs           = var.lb_nsg_id
+    lb_min_shape      = var.lb.shape_details[0].minimum_bandwidth_in_mbps
+    lb_max_shape      = var.lb.shape_details[0].maximum_bandwidth_in_mbps
+    adb_name          = lower(var.adb_name)
+    adb_password      = var.adb_password
+    adb_service       = format("%s_TP", var.adb_name)
+    api_key           = random_string.api_key.result
   })
 
   oke_worker_images = try({
