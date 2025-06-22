@@ -9,6 +9,10 @@ variable "compartment_id" {
   type = string
 }
 
+variable "user_id" {
+  type = string
+}
+
 variable "vcn_id" {
   type = string
 }

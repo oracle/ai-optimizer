@@ -12,13 +12,22 @@ locals {
     var.region
   )
 
-  server_repository = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.server_repository.display_name))
-  client_repository = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.client_repository.display_name))
+  registry_user     = lower(format("%s/%s", data.oci_objectstorage_namespace.objectstorage_namespace.namespace, data.oci_identity_user.identity_user.name))
+  repository_server = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.repository_server.display_name))
+  repository_client = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.repository_client.display_name))
   k8s_cluster_name  = format("%s-k8s", var.label_prefix)
+  repository_auth = base64encode(
+    format(
+      "{\"auths\": {\"%s.ocir.io\": {\"auth\": \"%s\"}}}",
+      lower(local.image_region),
+      base64encode(format("%s:%s", local.registry_user, oci_identity_auth_token.registry_auth_token.token))
+    )
+  )
+
   helm_values = templatefile("${path.module}/templates/helm_values.yaml", {
     label                    = var.label_prefix
-    server_repository        = local.server_repository
-    client_repository        = local.client_repository
+    repository_server        = local.repository_server
+    repository_client        = local.repository_client
     oci_tenancy              = var.tenancy_id
     oci_region               = var.region
     adb_ocid                 = var.adb_id
@@ -29,8 +38,9 @@ locals {
 
   k8s_manifest = templatefile("${path.module}/templates/k8s_manifest.yaml", {
     label             = var.label_prefix
-    server_repository = local.server_repository
-    client_repository = local.client_repository
+    repository_server = local.repository_server
+    repository_client = local.repository_client
+    repository_auth   = local.repository_auth
     compartment_ocid  = var.lb.compartment_id
     lb_ocid           = var.lb.id
     lb_subnet_ocid    = var.public_subnet_id

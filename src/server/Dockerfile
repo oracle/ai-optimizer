@@ -17,8 +17,7 @@ RUN microdnf -y update && \
     microdnf -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
-    source /opt/.venv/bin/activate && \
-    pip install --upgrade pip wheel setuptools && \
+    /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
     groupadd $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/tmp && \
@@ -28,10 +27,8 @@ RUN microdnf -y update && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/.oci
 
 COPY pyproject.toml /opt/package/pyproject.toml
-# Use the virtual environment for pip installations (Server Specific)
-RUN source /opt/.venv/bin/activate && \
-    pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
-    pip install "/opt/package[server]"
+
+RUN /opt/.venv/bin/pip install "/opt/package[server]"
 
 ##################################################
 # Server Application
@@ -44,8 +41,9 @@ ENV MPLCONFIGDIR=/app/tmp
 ENV TIKTOKEN_CACHE_DIR=/app/tmp
 ENV NLTK_DATA=/app/tmp
 
-COPY --chown=$RUNUSER:$RUNUSER . /app
-RUN rm -rf /app/client /app/.streamlit /app/launch_client.py
+COPY . /app
+RUN rm -rf /app/client /app/.streamlit /app/launch_client.py && \
+    chown -R oracleai:oracleai /app
 
 # Remove the OCI file if not development; update the key path if so
 ENV ENVIRONMENT=${ENVIRONMENT}

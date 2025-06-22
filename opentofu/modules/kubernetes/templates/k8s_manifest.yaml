@@ -20,6 +20,15 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
+  name: ${label}-regcred
+  namespace: ${label}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: ${repository_auth}
+---
+apiVersion: v1
+kind: Secret
+metadata:
   name: ${adb_name}-authn
   namespace: ${label}
 type: Opaque
@@ -67,6 +76,7 @@ metadata:
   name: buildkit
   namespace: ${label}
 spec:
+  ttlSecondsAfterFinished: 300
   template:
     spec:
       restartPolicy: Never
@@ -93,12 +103,17 @@ spec:
         - name: buildkit-server
           image: docker.io/moby/buildkit:master-rootless
           env:
+            - name: DOCKER_CONFIG
+              value: /home/user/.docker
             - name: BUILDKITD_FLAGS
-              value: --oci-worker-no-process-sandbox
+              value: --oci-worker-no-process-sandbox --oci-worker-gc=false
           command:
             - buildctl-daemonless.sh
           args:
             - build
+            - --no-cache
+            - --progress
+            - plain
             - --frontend
             - dockerfile.v0
             - --local
@@ -106,7 +121,7 @@ spec:
             - --local
             - dockerfile=/workspace/src/server
             - --output 
-            - type=image,name=${server_repository}:latest,push=true
+            - type=image,name=${repository_server}:latest,push=true
           securityContext:
             seccompProfile:
               type: Unconfined
@@ -116,19 +131,27 @@ spec:
             runAsGroup: 1000
           volumeMounts:
             - name: workspace
-              readOnly: true
               mountPath: /workspace
-            - mountPath: /home/user/.local/share/buildkit
-              name: buildkitd
+              readOnly: true
+            - name: buildkitd
+              mountPath: /home/user/.local/share/buildkit/server
+            - name: registryauth
+              mountPath: /home/user/.docker
+              readOnly: true
         - name: buildkit-client
           image: docker.io/moby/buildkit:master-rootless
           env:
+            - name: DOCKER_CONFIG
+              value: /home/user/.docker
             - name: BUILDKITD_FLAGS
-              value: --oci-worker-no-process-sandbox
+              value: --oci-worker-no-process-sandbox --oci-worker-gc=false
           command:
             - buildctl-daemonless.sh
           args:
             - build
+            - --no-cache
+            - --progress
+            - plain
             - --frontend
             - dockerfile.v0
             - --local
@@ -136,7 +159,7 @@ spec:
             - --local
             - dockerfile=/workspace/src/client
             - --output 
-            - type=image,name=${client_repository}:latest,push=true
+            - type=image,name=${repository_client}:latest,push=true
           securityContext:
             seccompProfile:
               type: Unconfined
@@ -146,12 +169,21 @@ spec:
             runAsGroup: 1000
           volumeMounts:
             - name: workspace
-              readOnly: true
               mountPath: /workspace
-            - mountPath: /home/user/.local/share/buildkit
-              name: buildkitd
+              readOnly: true
+            - name: buildkitd
+              mountPath: /home/user/.local/share/buildkit/client
+            - name: registryauth
+              mountPath: /home/user/.docker
+              readOnly: true
       volumes:
         - name: workspace
           emptyDir: {}
         - name: buildkitd
           emptyDir: {}
+        - name: registryauth
+          secret:
+            secretName: ${label}-regcred
+            items:
+            - key: .dockerconfigjson
+              path: config.json

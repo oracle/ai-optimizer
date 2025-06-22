@@ -2,6 +2,11 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
+resource "oci_identity_auth_token" "registry_auth_token" {
+  description = "Registry Push Token"
+  user_id     = var.user_id
+}
+
 resource "oci_identity_dynamic_group" "workers_dynamic_group" {
   compartment_id = var.tenancy_id
   name           = format("%s-worker-dyngrp", var.label_prefix)
@@ -17,10 +22,9 @@ resource "oci_identity_policy" "workers_policies" {
   name           = format("%s-workers-policy", var.label_prefix)
   description    = format("%s - K8s Workers", var.label_prefix)
   statements = [
+    # Workload Principles specific to oracle-database-operator-system Namespace
     format("allow any-user to manage autonomous-database-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'oracle-database-operator-system', request.principal.service_account = 'default', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
-    format("allow any-user to read objectstorage-namespaces in compartment id %s where all {request.principal.type = 'workload', request.principal.service_account = 'default', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
-    format("allow any-user to inspect buckets in compartment id %s where all {request.principal.type = 'workload', request.principal.service_account = 'default', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
-    format("allow any-user to read objects in compartment id %s where all {request.principal.type = 'workload', request.principal.service_account = 'default', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
+    # Workload Principles specific to native-ingress-controller-system Namespace
     format("allow any-user to manage load-balancers in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to use virtual-network-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to manage cabundles in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
@@ -37,6 +41,12 @@ resource "oci_identity_policy" "workers_policies" {
     format("allow any-user to manage waf-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to read cluster-family in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to use tag-namespaces in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = 'native-ingress-controller-system', request.principal.service_account = 'oci-native-ingress-controller', request.principal.cluster_id = '%s'}", var.compartment_id, oci_containerengine_cluster.default_cluster.id),
+    # Workload Principles specific to Custom Namespace
+    format("allow any-user to read objectstorage-namespaces in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = '%s', request.principal.cluster_id = '%s'}", var.compartment_id, var.label_prefix, oci_containerengine_cluster.default_cluster.id),
+    format("allow any-user to inspect buckets in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = '%s', request.principal.cluster_id = '%s'}", var.compartment_id, var.label_prefix, oci_containerengine_cluster.default_cluster.id),
+    format("allow any-user to read objects in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = '%s', request.principal.cluster_id = '%s'}", var.compartment_id, var.label_prefix, oci_containerengine_cluster.default_cluster.id),
+    format("allow any-user to manage repos in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = '%s', request.principal.cluster_id = '%s'}", var.compartment_id, var.label_prefix, oci_containerengine_cluster.default_cluster.id),
+    # Instance Principles
     format("allow dynamic-group %s to use generative-ai-family in compartment id %s", oci_identity_dynamic_group.workers_dynamic_group.name, var.compartment_id),
     format("allow dynamic-group %s to manage repos in compartment id %s", oci_identity_dynamic_group.workers_dynamic_group.name, var.compartment_id),
   ]

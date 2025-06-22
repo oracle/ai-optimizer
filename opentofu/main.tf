@@ -109,6 +109,7 @@ module "kubernetes" {
   label_prefix                   = local.label_prefix
   tenancy_id                     = var.tenancy_ocid
   compartment_id                 = local.compartment_ocid
+  user_id                        = local.user_ocid
   vcn_id                         = module.network.vcn_ocid
   region                         = var.region
   lb                             = oci_load_balancer_load_balancer.lb

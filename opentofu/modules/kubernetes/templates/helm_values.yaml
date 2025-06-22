@@ -10,7 +10,7 @@ global:
 server:
   enabled: true
   image:
-    repository: ${server_repository}
+    repository: ${repository_server}
     tag: "latest"
   imagePullPolicy: Always
 
@@ -50,7 +50,7 @@ server:
 client:
   enabled: true
   image:
-    repository: ${client_repository}
+    repository: ${repository_client}
     tag: "latest"
   imagePullPolicy: Always
 
