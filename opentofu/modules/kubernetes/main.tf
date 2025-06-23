@@ -23,24 +23,6 @@ resource "oci_artifacts_container_repository" "repository_client" {
   is_public      = false
 }
 
-resource "local_sensitive_file" "kubeconfig" {
-  content         = data.oci_containerengine_cluster_kube_config.default_cluster_kube_config.content
-  filename        = "${path.root}/cfgmgt/stage/kubeconfig"
-  file_permission = 0600
-}
-
-resource "local_sensitive_file" "helm_values" {
-  content         = local.helm_values
-  filename        = "${path.root}/cfgmgt/stage/helm-values.yaml"
-  file_permission = 0600
-}
-
-resource "local_sensitive_file" "k8s_manifest" {
-  content         = local.k8s_manifest
-  filename        = "${path.root}/cfgmgt/stage/k8s-manifest.yaml"
-  file_permission = 0600
-}
-
 // Cluster
 resource "oci_containerengine_cluster" "default_cluster" {
   compartment_id     = var.compartment_id

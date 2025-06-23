@@ -24,36 +24,6 @@ locals {
     )
   )
 
-  helm_values = templatefile("${path.module}/templates/helm_values.yaml", {
-    label                    = var.label_prefix
-    repository_server        = local.repository_server
-    repository_client        = local.repository_client
-    oci_tenancy              = var.tenancy_id
-    oci_region               = var.region
-    adb_ocid                 = var.adb_id
-    adb_name                 = lower(var.adb_name)
-    k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
-    lb_ip                    = var.lb.ip_address_details[0].ip_address
-  })
-
-  k8s_manifest = templatefile("${path.module}/templates/k8s_manifest.yaml", {
-    label             = var.label_prefix
-    repository_server = local.repository_server
-    repository_client = local.repository_client
-    repository_auth   = local.repository_auth
-    compartment_ocid  = var.lb.compartment_id
-    lb_ocid           = var.lb.id
-    lb_subnet_ocid    = var.public_subnet_id
-    lb_ip_ocid        = var.lb.ip_address_details[0].ip_address
-    lb_nsgs           = var.lb_nsg_id
-    lb_min_shape      = var.lb.shape_details[0].minimum_bandwidth_in_mbps
-    lb_max_shape      = var.lb.shape_details[0].maximum_bandwidth_in_mbps
-    adb_name          = lower(var.adb_name)
-    adb_password      = var.adb_password
-    adb_service       = format("%s_TP", var.adb_name)
-    api_key           = random_string.api_key.result
-  })
-
   oke_worker_images = try({
     for k, v in data.oci_containerengine_node_pool_option.images.sources : v.image_id => merge(
       try(element(regexall("OKE-(?P<k8s_version>[0-9\\.]+)-(?P<build>[0-9]+)", v.source_name), 0), { k8s_version = "none" }),

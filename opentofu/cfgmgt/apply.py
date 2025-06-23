@@ -86,8 +86,6 @@ def apply_helm_chart(release_name, namespace):
 
     print("✅ Helm chart applied:")
     print(stdout)
-    print()
-
 
 def apply_manifest():
     """Apply a Kubernetes manifest from the stage path."""
