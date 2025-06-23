@@ -19,6 +19,13 @@ resource "oci_core_default_security_list" "lockdown" {
   compartment_id             = oci_core_vcn.vcn.compartment_id
   display_name               = format("%s-default-sec-list", var.label_prefix)
   manage_default_resource_id = oci_core_vcn.vcn.default_security_list_id
+  egress_security_rules {
+    description      = "Egress for Bastion Access"
+    destination      = "0.0.0.0/0"
+    destination_type = "CIDR_BLOCK"
+    protocol         = "all"
+    stateless        = "false"
+  }
 }
 
 // Public Subnet

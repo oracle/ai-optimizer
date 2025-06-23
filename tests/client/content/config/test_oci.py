@@ -43,13 +43,14 @@ def _mock_server_get_namespace():
 #############################################################################
 # Test Streamlit UI
 #############################################################################
-class TestOCIUI:
-    """Test the Streamlit UI for OCI"""
+class TestStreamlit:
+    """Test the Streamlit UI"""
 
     ST_FILE = "../src/client/content/config/oci.py"
 
-    def test_initialise_streamlit_no_env(self, app_test):
+    def test_initialise_streamlit_no_env(self, app_server, app_test):
         """Initialisation of streamlit without any OCI environment"""
+        assert app_server is not None
         at = app_test(self.ST_FILE).run()
         user_oci_profile = at.session_state.user_settings["oci"]["auth_profile"]
         assert user_oci_profile == "DEFAULT"
@@ -145,8 +146,9 @@ class TestOCIUI:
         at.text_input(key="oci_key_file").set_value(test_case.get("oci_key_file", "")).run()
 
     @pytest.mark.parametrize("test_case", [tc for tc in test_cases if tc.values[0].get("expected_error") is not None])
-    def test_patch_oci_error(self, app_test, test_case):
+    def test_patch_oci_error(self, app_server, app_test, test_case):
         """Update OCI Profile Settings - Error Cases"""
+        assert app_server is not None
         at = app_test(self.ST_FILE).run()
         user_oci_profile = at.session_state.user_settings["oci"]["auth_profile"]
         assert at.selectbox(key="selected_oci_profile").value == user_oci_profile
@@ -154,22 +156,25 @@ class TestOCIUI:
         at.button[0].click().run()
         assert at.error[0].value == "Current Status: Unverified"
         assert at.error[1].value == test_case["expected_error"]
-            
-    @pytest.mark.parametrize("test_case", [tc for tc in test_cases if tc.values[0].get("expected_success") is not None])
-    def test_patch_oci_success(self, app_test, test_case):
+
+    @pytest.mark.parametrize(
+        "test_case", [tc for tc in test_cases if tc.values[0].get("expected_success") is not None]
+    )
+    def test_patch_oci_success(self, app_server, app_test, test_case):
         """Update OCI Profile Settings - Success Cases"""
+        assert app_server is not None
         # This test directly checks the UI when the namespace is set, without making any API calls
-        
+
         # Initialize the app
         at = app_test(self.ST_FILE)
-        
+
         # Set the namespace directly in the session state before running the app
         user_oci_profile = at.session_state.user_settings["oci"]["auth_profile"]
-        
+
         # Create the oci_config dictionary if it doesn't exist
         if "oci_config" not in at.session_state:
             at.session_state.oci_config = {}
-            
+
         # Create the user_oci_profile dictionary if it doesn't exist
         if user_oci_profile not in at.session_state.oci_config:
             at.session_state.oci_config[user_oci_profile] = {
@@ -186,13 +191,13 @@ class TestOCIUI:
                 "additional_user_agent": "",
                 "pass_phrase": None,
             }
-            
+
         # Set the namespace
         at.session_state.oci_config[user_oci_profile]["namespace"] = "test_namespace"
-        
+
         # Run the app with the namespace already set
         at.run()
-        
+
         # Verify the success message is displayed
         success_elements = at.success
         assert len(success_elements) > 0

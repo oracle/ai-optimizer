@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore streamlit, selectbox, testset, testsets, iloc, mult
+# spell-checker:ignore streamlit, selectbox, testset, testsets, iloc, mult, selectai
 
 import random
 import string
@@ -18,6 +18,7 @@ from streamlit import session_state as state
 from client.content.config.models import get_models
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call
+from client.utils.st_footer import remove_footer
 
 import common.logging_config as logging_config
 
@@ -85,18 +86,18 @@ def evaluation_report(eid=None, report=None) -> None:
     ll_settings.drop(["streaming", "chat_history"], axis=1, inplace=True)
     ll_settings_reversed = ll_settings.iloc[:, ::-1]
     st.dataframe(ll_settings_reversed, hide_index=True)
-    if report["settings"]["rag"]["rag_enabled"]:
-        st.subheader("RAG Settings")
-        st.markdown(f"""**Database**: {report["settings"]["rag"]["database"]};
-            **Vector Store**: {report["settings"]["rag"]["vector_store"]}
+    if report["settings"]["vector_search"]["enabled"]:
+        st.subheader("Vector Search Settings")
+        st.markdown(f"""**Database**: {report["settings"]["database"]["alias"]};
+            **Vector Store**: {report["settings"]["vector_search"]["vector_store"]}
         """)
-        embed_settings = pd.DataFrame(report["settings"]["rag"], index=[0])
-        embed_settings.drop(["database", "vector_store", "alias", "rag_enabled", "grading"], axis=1, inplace=True)
-        if report["settings"]["rag"]["search_type"] == "Similarity":
+        embed_settings = pd.DataFrame(report["settings"]["vector_search"], index=[0])
+        embed_settings.drop(["vector_store", "alias", "enabled", "grading"], axis=1, inplace=True)
+        if report["settings"]["vector_search"]["search_type"] == "Similarity":
             embed_settings.drop(["score_threshold", "fetch_k", "lambda_mult"], axis=1, inplace=True)
         st.dataframe(embed_settings, hide_index=True)
     else:
-        st.markdown("**Evaluated without RAG**")
+        st.markdown("**Evaluated without Vector Search**")
 
     # Show the Gauge
     gauge_fig = create_gauge(report["correctness"] * 100)
@@ -161,16 +162,25 @@ def qa_update_db() -> None:
 
 @st.fragment()
 def update_record(direction: int = 0) -> None:
-    """Update streamlit state with user changes"""
+    """Update streamlit state with record changes"""
     state.testbed_qa[state.testbed["qa_index"]]["question"] = state[f"selected_q_{state.testbed['qa_index']}"]
     state.testbed_qa[state.testbed["qa_index"]]["reference_answer"] = state[f"selected_a_{state.testbed['qa_index']}"]
     state.testbed["qa_index"] += direction
 
+@st.fragment()
+def delete_record() -> None:
+    """Delete record from streamlit state"""
+    state.testbed_qa.pop(state.testbed["qa_index"])
+    if state.testbed["qa_index"] != 0:
+        state.testbed["qa_index"] += -1
 
 def qa_update_gui(qa_testset: list) -> None:
     """Update Q&A Records in GUI"""
     dataframe = pd.DataFrame(qa_testset)
     records = dataframe.shape[0]
+    delete_disabled = False
+    if records == 1:
+        delete_disabled = True
     st.write("Record: " + str(state.testbed["qa_index"] + 1) + "/" + str(records))
 
     prev_disabled = next_disabled = records == 0
@@ -178,7 +188,7 @@ def qa_update_gui(qa_testset: list) -> None:
         prev_disabled = True
     if state.testbed["qa_index"] + 1 == records:
         next_disabled = True
-    prev_col, next_col, _ = st.columns([3, 3, 6])
+    prev_col, next_col, _, delete_col = st.columns([3, 3, 4, 3])
     prev_col.button(
         "← Previous",
         disabled=prev_disabled,
@@ -192,6 +202,13 @@ def qa_update_gui(qa_testset: list) -> None:
         use_container_width=True,
         on_click=update_record,
         kwargs={"direction": 1},
+    )
+    delete_col.button(
+        "⚠ Delete Q&A",
+        type="tertiary",
+        disabled=delete_disabled,
+        use_container_width=True,
+        on_click=delete_record,
     )
     st.text_area(
         "Question:",
@@ -217,6 +234,7 @@ def qa_update_gui(qa_testset: list) -> None:
 #############################################################################
 def main():
     """Streamlit GUI"""
+    remove_footer()
     db_avail = st_common.is_db_configured()
     if not db_avail:
         logger.debug("Testbed Disabled (Database not configured)")
@@ -408,9 +426,8 @@ def main():
             # Retrieve TestSet Data
             response = api_call.get(endpoint=endpoint, params=api_params)
         try:
-            print(response)
             state.testbed_qa = response["qa_data"]
-            st.success(f"{len(state.testbed_qa)} Tests Loaded.", icon="✅")
+            st.success(f"{len(state.testbed_qa)} Q&A Loaded.", icon="✅")
         except UnboundLocalError as ex:
             logger.exception("Failed to load Tests: %s", ex)
             st.error("Unable to process Tests", icon="🚨")
@@ -488,8 +505,10 @@ def main():
 
         st.subheader("Q&A Evaluation", divider="red")
         st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
+        st_common.tools_sidebar()
         st_common.ll_sidebar()
-        st_common.rag_sidebar()
+        st_common.selectai_sidebar()
+        st_common.vector_search_sidebar()
         st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
         col_left, col_center, _ = st.columns([3, 3, 4])
         col_left.selectbox(

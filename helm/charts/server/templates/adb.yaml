@@ -33,16 +33,17 @@ metadata:
   labels: 
     {{- include "app.labels" . | nindent 4 }}
 spec:
+  action: "Sync"
   details:
-    autonomousDatabaseOCID: {{ .Values.adb.ocid }}
+    id: {{ .Values.adb.ocid }}
     adminPassword:
       k8sSecret:
         name: place-holder
-    wallet:
-      name: {{ include "app.fullname" . }}-adb-tns-admin-{{ .Release.Revision }}
-      password:
-        k8sSecret:
-          name: {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}
+  wallet:
+    name: {{ include "app.fullname" . }}-adb-tns-admin-{{ .Release.Revision }}
+    password:
+      k8sSecret:
+        name: {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}
   {{- if .Values.oci.region }}
   ociConfig: 
     configMapName: {{ include "app.fullname" . }}-oci-cred

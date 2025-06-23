@@ -7,11 +7,11 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
 
-The {{< full_app_ref >}} is powered by an API Server to allow for any client to access its features.  The API Server can be run as part of the provided {{< short_app_ref >}} GUI client or as a separate, independent process.  
+The {{< full_app_ref >}} is powered by an API Server to allow for any client to access its features.  The API Server can be run as part of the provided {{< short_app_ref >}} GUI client (referred to as the "All-in-One" deployment) or as a separate, independent process.  
 
 Each client connected to the API Server, including those from the {{< short_app_ref >}} GUI client, share the same configuration but maintain their own settings.  Database, Model, OCI, and Prompt configurations are used across all clients; but which database, models, OCI profile, and prompts set are specific to each client.
 
-When started as part of the {{< short_app_ref >}} client, you can change the Port it listens on and the API Server Key.  A restart is required for the changes to take effect.
+When started as part of the {{< short_app_ref >}} "All-in-One" deployment, you can change the Port it listens on and the API Server Key.  A restart is required for the changes to take effect.
 
 ![Server Configuration](images/api_server_config.png)
 

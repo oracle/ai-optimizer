@@ -20,6 +20,7 @@ import urllib.parse
 
 import streamlit as st
 from streamlit import session_state as state
+from client.utils.st_footer import render_models_footer
 
 import client.utils.api_call as api_call
 
@@ -84,7 +85,7 @@ def create_model(model: Model) -> None:
 def patch_model(model: Model) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
     try:
-        api_call.patch(
+        _ = api_call.patch(
             endpoint=f"v1/models/{model.name}",
             payload={"json": model.model_dump()},
         )
@@ -322,6 +323,7 @@ def main() -> None:
         )
     if st.button(label="Add", type="primary", key="add_embed_model"):
         edit_model(model_type="embed", action="add")
+    render_models_footer()
 
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:

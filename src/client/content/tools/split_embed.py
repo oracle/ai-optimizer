@@ -19,6 +19,7 @@ from client.content.config.oci import get_oci
 from client.content.config.models import get_models
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
+from client.utils.st_footer import remove_footer
 from common.schema import DistanceMetrics, IndexTypes, DatabaseVectorStorage
 import common.functions
 import common.help_text as help_text
@@ -109,6 +110,7 @@ def update_chunk_size_input() -> None:
 #############################################################################
 def main() -> None:
     """Streamlit GUI"""
+    remove_footer()
     db_avail = st_common.is_db_configured()
     if not db_avail:
         logger.debug("Embedding Disabled (Database not configured)")
@@ -291,7 +293,7 @@ def main() -> None:
     # Populate Vector Store
     ######################################
     st.header("Populate Vector Store", divider="red")
-    existing_vs = state["database_config"][state["user_settings"]["rag"]["database"]]["vector_stores"]
+    existing_vs = state.database_config[state.user_settings["database"]["alias"]]["vector_stores"]
     # Mandatory Alias
     embed_alias_size, _ = st.columns([0.5, 0.5])
     embed_alias_invalid = False
@@ -358,7 +360,7 @@ def main() -> None:
             # Place files on Server for Embedding
             if file_source == "Local":
                 endpoint = "v1/embed/local/store"
-                files = st_common.local_file_payload(state["local_file_uploader"])
+                files = st_common.local_file_payload(state.local_file_uploader)
                 api_payload = {"files": files}
 
             if file_source == "Web":

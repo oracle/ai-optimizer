@@ -9,7 +9,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
-
 //import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest;
 
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -39,7 +38,6 @@ import java.util.HashMap;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
-
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -174,7 +172,7 @@ class AIController {
 					logger.info("prompt message: " + prompt.getContents());
 					String contentResponse = chatClient.prompt(prompt).call().content();
 					logger.info("-------------------------------------------------------");
-					logger.info("- RAG RETURN                                          -");
+					logger.info("- VECTOR SEARCH RETURN                                -");
 					logger.info("-------------------------------------------------------");
 					logger.info(contentResponse);
 					new Thread(() -> {

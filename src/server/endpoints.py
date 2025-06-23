@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore langgraph, ocid, docos, giskard, testsets, testset, noauth
-# spell-checker:ignore astream, ainvoke, litellm
+# spell-checker:ignore astream, ainvoke, litellm, selectai, explainsql, showsql, vector_search
 
 import asyncio
 import json
@@ -18,7 +18,14 @@ import requests
 from pydantic import HttpUrl
 
 from langgraph.graph.state import CompiledStateGraph
-from langchain_core.messages import HumanMessage, AnyMessage, convert_to_openai_messages, ChatMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langchain_core.messages import (
+    HumanMessage,
+    AnyMessage,
+    convert_to_openai_messages,
+    ChatMessage,
+    RemoveMessage,
+)
 from langchain_core.runnables import RunnableConfig
 from giskard.rag import evaluate, QATestset
 from giskard.rag.metrics import correctness_metric
@@ -32,6 +39,7 @@ import server.utils.databases as databases
 import server.utils.oci as server_oci
 import server.utils.models as models
 import server.utils.embedding as embedding
+import server.utils.selectai as selectai
 import server.utils.testbed as testbed
 import server.agents.chatbot as chatbot
 
@@ -83,19 +91,25 @@ def get_client_oci(client: schema.ClientIdType) -> schema.OracleCloudSettings:
 
 
 def get_client_db(client: schema.ClientIdType) -> schema.Database:
-    """Return a schema.Database Object based on client settings"""
-    db_name = "DEFAULT"
+    """Return a Database Object based on client settings"""
     client_settings = get_client_settings(client)
-    if client_settings.rag:
-        db_name = getattr(client_settings.rag, "database", "DEFAULT")
-        db_obj = next((db for db in DATABASE_OBJECTS if db.name == db_name), None)
-        # Refresh the connection if disconnected
-        try:
-            if db_obj:
-                databases.test(db_obj)
-        except databases.DbException as ex:
-            db_obj.connected = False
-            raise HTTPException(status_code=ex.status_code, detail=f"Database: {db_obj.name} {ex.detail}.") from ex
+
+    # Get database name from client settings, defaulting to "DEFAULT"
+    db_name = "DEFAULT"
+    if (hasattr(client_settings, "vector_search") and client_settings.vector_search) or (
+        hasattr(client_settings, "selectai") and client_settings.selectai
+    ):
+        db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
+
+    # Find the database object
+    db_obj = next((db for db in DATABASE_OBJECTS if db.name == db_name), None)
+    if not db_obj:
+        raise HTTPException(
+            status_code=404, detail=f"Database configuration '{db_name}' not found for client {client}."
+        )
+    else:
+        # Ping the Database
+        databases.test(db_obj)
 
     return db_obj
 
@@ -133,7 +147,9 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 logger.debug("Skipping Database %s - exception: %s", db.name, str(ex))
                 continue
             db.vector_stores = embedding.get_vs(db_conn)
-
+            db.selectai = selectai.enabled(db_conn)
+            if db.selectai:
+                db.selectai_profiles = selectai.get_profiles(db_conn)
         return DATABASE_OBJECTS
 
     @auth.get(
@@ -150,6 +166,9 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         try:
             db_conn = databases.connect(db)
             db.vector_stores = embedding.get_vs(db_conn)
+            db.selectai = selectai.enabled(db_conn)
+            if db.selectai:
+                db.selectai_profiles = selectai.get_profiles(db_conn)
         except databases.DbException as ex:
             raise HTTPException(status_code=406, detail=f"Database: {name} {str(ex)}.") from ex
         return db
@@ -280,7 +299,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 output_dir=None,
             )
             embed_client = await models.get_client(
-                MODEL_OBJECTS, {"model": request.model, "rag_enabled": True}, oci_config
+                MODEL_OBJECTS, {"model": request.model, "enabled": True}, oci_config
             )
 
             # Calculate and set the vector_store name using get_vs_table
@@ -604,11 +623,11 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     ) -> AsyncGenerator[str, None]:
         """Generate a completion from agent, stream the results"""
         client_settings = get_client_settings(client)
+        model = request.model_dump()
         logger.debug("Settings: %s", client_settings)
-        logger.debug("Request: %s", request.model_dump())
+        logger.debug("Request: %s", model)
 
         # Establish LL schema.Model Params (if the request specs a model, otherwise override from settings)
-        model = request.model_dump()
         if not model["model"]:
             model = client_settings.ll_model.model_dump()
 
@@ -622,7 +641,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                     {
                         "message": {
                             "role": "assistant",
-                            "content": "I'm sorry, I'm unable to initialise the Language Model. Please refresh the application.",
+                            "content": "I'm unable to initialise the Language Model. Please refresh the application.",
                         },
                         "index": 0,
                         "finish_reason": "stop",
@@ -647,17 +666,28 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             logger.error("A settings exception occurred: %s", ex)
             raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
 
-        # Setup RAG
-        embed_client, ctx_prompt, db_conn = None, None, None
-        if client_settings.rag.rag_enabled:
-            embed_client = await models.get_client(MODEL_OBJECTS, client_settings.rag.model_dump(), oci_config)
+        db_conn = None
+        # Setup selectai
+        if client_settings.selectai.enabled:
+            db_conn = get_client_db(client).connection
+            selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
+            selectai.set_profile(
+                db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
+            )
+
+        # Setup vector_search
+        embed_client, ctx_prompt = None, None
+        if client_settings.vector_search.enabled:
+            db_conn = get_client_db(client).connection
+            embed_client = await models.get_client(
+                MODEL_OBJECTS, client_settings.vector_search.model_dump(), oci_config
+            )
 
             user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
             ctx_prompt = next(
                 (prompt for prompt in PROMPT_OBJECTS if prompt.category == "ctx" and prompt.name == user_ctx_prompt),
                 None,
             )
-            db_conn = get_client_db(client).connection
 
         kwargs = {
             "input": {"messages": [HumanMessage(content=request.messages[0].content)]},
@@ -671,7 +701,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 metadata={
                     "model_name": model["model"],
                     "use_history": client_settings.ll_model.chat_history,
-                    "rag_settings": client_settings.rag,
+                    "vector_search": client_settings.vector_search,
+                    "selectai": client_settings.selectai,
                     "sys_prompt": sys_prompt,
                     "ctx_prompt": ctx_prompt,
                 },
@@ -729,12 +760,32 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             media_type="application/octet-stream",
         )
 
+    @auth.patch(
+        "/v1/chat/history",
+        description="Delete Chat History",
+        response_model=list[schema.ChatMessage],
+    )
+    async def chat_history_clean(client: schema.ClientIdType = Header(...)) -> list[ChatMessage]:
+        agent: CompiledStateGraph = chatbot.chatbot_graph
+        try:
+            _ = agent.update_state(
+                config=RunnableConfig(
+                    configurable={
+                        "thread_id": client,
+                    }
+                ),
+                values={"messages": RemoveMessage(id=REMOVE_ALL_MESSAGES)},
+            )
+            return [ChatMessage(content="As requested, I've forgotten our conversation.", role="system")]
+        except KeyError:
+            return [ChatMessage(content="I'm sorry, I have no history of this conversation.", role="system")]
+
     @auth.get(
         "/v1/chat/history",
         description="Get Chat History",
         response_model=list[schema.ChatMessage],
     )
-    async def chat_history(client: schema.ClientIdType = Header(...)) -> list[ChatMessage]:
+    async def chat_history_return(client: schema.ClientIdType = Header(...)) -> list[ChatMessage]:
         """Return Chat History"""
         agent: CompiledStateGraph = chatbot.chatbot_graph
         try:
@@ -749,7 +800,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             chat_messages = convert_to_openai_messages(messages)
             return chat_messages
         except KeyError:
-            return [ChatMessage(content="I'm sorry, I have no history of this conversation", role="system")]
+            return [ChatMessage(content="I'm sorry, I have no history of this conversation.", role="system")]
 
     #################################################
     # testbed Endpoints
@@ -895,8 +946,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         client_settings = get_client_settings(client)
         # Change Disable History
         client_settings.ll_model.chat_history = False
-        # Change Grade RAG
-        client_settings.rag.grading = False
+        # Change Grade vector_search
+        client_settings.vector_search.grading = False
 
         db_conn = get_client_db(client).connection
         testset = testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())
@@ -925,5 +976,39 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         shutil.rmtree(temp_directory)
 
         return testbed.process_report(db_conn=db_conn, eid=eid)
+
+    #################################################
+    # selectai Endpoints
+    #################################################
+    @auth.get(
+        "/v1/selectai/objects",
+        description="Get SelectAI Profile Object List",
+        response_model=list[schema.DatabaseSelectAIObjects],
+    )
+    async def selectai_get_objects(
+        client: schema.ClientIdType = Header(default="server"),
+    ) -> list[schema.DatabaseSelectAIObjects]:
+        """Get DatabaseSelectAIObjects"""
+        client_settings = get_client_settings(client)
+        db_conn = get_client_db(client).connection
+        select_ai_objects = selectai.get_objects(db_conn, client_settings.selectai.profile)
+        return select_ai_objects
+
+    @auth.patch(
+        "/v1/selectai/objects",
+        description="Update SelectAI Profile Object List",
+        response_model=list[schema.DatabaseSelectAIObjects],
+    )
+    async def selectai_update_objects(
+        payload: list[schema.DatabaseSelectAIObjects],
+        client: schema.ClientIdType = Header(default="server"),
+    ) -> list[schema.DatabaseSelectAIObjects]:
+        """Update DatabaseSelectAIObjects"""
+        logger.debug("Received selectai_update - payload: %s", payload)
+        client_settings = get_client_settings(client)
+        object_list = json.dumps([obj.model_dump(include={"owner", "name"}) for obj in payload])
+        db_conn = get_client_db(client).connection
+        selectai.set_profile(db_conn, client_settings.selectai.profile, "object_list", object_list)
+        return selectai.get_objects(db_conn, client_settings.selectai.profile)
 
     logger.info("Endpoints Loaded.")

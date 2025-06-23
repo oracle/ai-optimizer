@@ -19,7 +19,7 @@ def main() -> list[Prompt]:
             "prompt": "You are a friendly, helpful assistant.",
         },
         {
-            "name": "RAG Example",
+            "name": "Vector Search Example",
             "category": "sys",
             "prompt": (
                 "You are an assistant for question-answering tasks, be concise.  "

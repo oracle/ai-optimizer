@@ -68,7 +68,7 @@ async def get_client(
 
     # Determine if configuring an embedding model
     try:
-        embedding = model_config["rag_enabled"]
+        embedding = model_config["enabled"]
     except (AttributeError, KeyError):
         embedding = False
 
@@ -103,8 +103,6 @@ async def get_client(
                 base_url=model_url,
                 **ll_common_params,
                 num_predict=ll_common_params["max_completion_tokens"],
-                # repeat_penalty=ll_common_params["frequency_penalty"],
-                # disable_streaming=not ll_common_params["streaming"]
             ),
             "Perplexity": lambda: ChatOpenAI(
                 model=model_name, base_url=model_url, api_key=model_api_key, **ll_common_params

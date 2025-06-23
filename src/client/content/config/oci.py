@@ -20,6 +20,7 @@ from streamlit import session_state as state
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
 from client.content.config.models import get_models
+from client.utils.st_footer import remove_footer
 
 import common.logging_config as logging_config
 
@@ -31,17 +32,17 @@ logger = logging_config.logging.getLogger("client.content.config.oci")
 #####################################################
 def get_oci(force: bool = False) -> dict[str, dict]:
     """Get a dictionary of all OCI Configurations"""
-    if "oci_config" not in state or state["oci_config"] == {} or force:
+    if "oci_config" not in state or state.oci_config == {} or force:
         try:
             response = api_call.get(endpoint="v1/oci")
-            state["oci_config"] = {
+            state.oci_config = {
                 item["auth_profile"]: {k: v if v is not None else None for k, v in item.items() if k != "auth_profile"}
                 for item in response
             }
             logger.info("State created: state['oci_config']")
         except api_call.ApiError as ex:
             st.error(f"Unable to retrieve oci_configuration: {ex}", icon="🚨")
-            state["oci_config"] = {}
+            state.oci_config = {}
 
 
 def patch_oci(
@@ -68,7 +69,7 @@ def patch_oci(
         try:
             if security_token_file:
                 state.oci_config[auth_profile]["authentication"] = "security_token"
-            api_call.patch(
+            _ = api_call.patch(
                 endpoint=f"v1/oci/{auth_profile}",
                 payload={
                     "json": {
@@ -107,7 +108,7 @@ def patch_oci_genai(
         or state.oci_config[auth_profile]["service_endpoint"] != service_endpoint
     ):
         try:
-            api_call.patch(
+            _ = api_call.patch(
                 endpoint=f"v1/oci/{auth_profile}",
                 payload={
                     "json": {
@@ -138,6 +139,7 @@ def patch_oci_genai(
 #####################################################
 def main() -> None:
     """Streamlit GUI"""
+    remove_footer()
     st.header("Oracle Cloud Infrastructure", divider="red")
     st.write("Configure OCI for Object Storage Access and OCI GenAI Services.")
     try:

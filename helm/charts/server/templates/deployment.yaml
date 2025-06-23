@@ -164,10 +164,10 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if .Values.adb.enabled }}
+        {{- if and .Values.adb .Values.adb.enabled }}
         - name: tns-admin
           secret:
-            {{- if .Values.adb.tnsAdmin.secretName }}
+            {{- if and .Values.adb.tnsAdmin .Values.adb.tnsAdmin.secretName }}
             secretName: {{ .Values.adb.tnsAdmin.secretName | quote }}
             {{ else }}
             secretName: {{ include "app.fullname" . }}-adb-tns-admin-{{ .Release.Revision }}

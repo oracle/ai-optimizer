@@ -16,15 +16,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     openChatBtn.addEventListener('click', () => {
         chatWidget.classList.remove('chat-hidden');
-        openChatBtn.style.display = 'none';        
+        openChatBtn.style.display = 'none';
     });
 
     closeChatBtn.addEventListener('click', () => {
-        chatWidget.classList.add('chat-hidden');   
-        openChatBtn.style.display = 'block';       
+        chatWidget.classList.add('chat-hidden');
+        openChatBtn.style.display = 'block';
     });
 
-  
+
     sendBtn.addEventListener('click', async () => {
         const userMessage = chatInput.value;
         if (userMessage.trim()) {
@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-   
+
     function appendMessage(message, className) {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message', className);
@@ -63,15 +63,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json', 
-                    'Authorization': 'Bearer '+api_key
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + api_key
                 },
-                body: JSON.stringify(messagePayload)  
+                body: JSON.stringify(messagePayload)
             });
 
             const data = await response.json();
             //return data.answer;
-            return data.choices[0].text+"\n Source: "+data.sources[0];
+            return data.choices[0].text + "\n Source: " + data.sources[0];
         } catch (error) {
             console.error('Error fetching API:', error);
             return "Sorry, I couldn't connect to the server.";
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
- 
 
 
- 
+
+

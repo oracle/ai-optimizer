@@ -9,6 +9,5 @@ locals {
     oci_region     = var.region
     db_name        = var.adb_name
     db_password    = var.adb_password
-    source_code    = var.source_repository
   })
 }

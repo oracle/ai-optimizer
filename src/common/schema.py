@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, hnsw, mult, ocid, testset
+# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql, vector_search
 
 from typing import Optional, Literal, Union, get_args
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
@@ -43,16 +43,23 @@ LlAPI = Literal[
 class DatabaseVectorStorage(BaseModel):
     """Database Vector Storage Tables"""
 
-    database: Optional[str] = Field(default="DEFAULT", description="Name of Database (Alias)")
     vector_store: Optional[str] = Field(
         default=None, description="Vector Store Table Name (auto-generated, do not set)", readOnly=True
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
     model: Optional[str] = Field(default=None, description="Embedding Model")
-    chunk_size: Optional[int] = Field(default=None, description="Chunk Size")
-    chunk_overlap: Optional[int] = Field(default=None, description="Chunk Overlap")
+    chunk_size: Optional[int] = Field(default=0, description="Chunk Size")
+    chunk_overlap: Optional[int] = Field(default=0, description="Chunk Overlap")
     distance_metric: Optional[DistanceMetrics] = Field(default=None, description="Distance Metric")
     index_type: Optional[IndexTypes] = Field(default=None, description="Vector Index")
+
+
+class DatabaseSelectAIObjects(BaseModel):
+    """Database SelectAI Objects"""
+
+    owner: Optional[str] = Field(default=None, description="Object Owner", readOnly=True)
+    name: Optional[str] = Field(default=None, description="Object Name", readOnly=True)
+    enabled: bool = Field(default=False, description="SelectAI Enabled")
 
 
 class DatabaseAuth(BaseModel):
@@ -75,6 +82,8 @@ class Database(DatabaseAuth):
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
         default=None, description="Vector Storage (read-only)", readOnly=True
     )
+    selectai: bool = Field(default=False, description="SelectAI Possible")
+    selectai_profiles: Optional[list] = Field(default=[], description="SelectAI Profiles (read-only)", readOnly=True)
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
 
@@ -183,7 +192,9 @@ class Prompt(PromptText):
     """Prompt Object"""
 
     name: str = Field(
-        default="Basic Example", description="Name of Prompt.", examples=["Basic Example", "RAG Example", "Custom"]
+        default="Basic Example",
+        description="Name of Prompt.",
+        examples=["Basic Example", "vector_search Example", "Custom"],
     )
     category: Literal["sys", "ctx"] = Field(..., description="Category of Prompt.")
 
@@ -205,11 +216,11 @@ class PromptSettings(BaseModel):
     sys: str = Field(default="Basic Example", description="System Prompt Name")
 
 
-class RagSettings(DatabaseVectorStorage):
-    """Store RAG Settings incl Vector Storage"""
+class VectorSearchSettings(DatabaseVectorStorage):
+    """Store vector_search Settings incl VectorStorage"""
 
-    rag_enabled: bool = Field(default=False, description="RAG Enabled")
-    grading: bool = Field(default=True, description="Grade RAG Results")
+    enabled: bool = Field(default=False, description="vector_search Enabled")
+    grading: bool = Field(default=True, description="Grade vector_search Results")
     search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
         default="Similarity", description="Search Type"
     )
@@ -223,10 +234,26 @@ class RagSettings(DatabaseVectorStorage):
     )
 
 
+class SelectAISettings(BaseModel):
+    """Store SelectAI Settings"""
+
+    enabled: bool = Field(default=False, description="SelectAI Enabled")
+    profile: Optional[str] = Field(default=None, description="SelectAI Profile")
+    action: Literal["runsql", "showsql", "explainsql", "narrate"] = Field(
+        default="narrate", description="SelectAI Action"
+    )
+
+
 class OciSettings(BaseModel):
     """OCI Settings"""
 
     auth_profile: Optional[str] = Field(default="DEFAULT", description="Oracle Cloud Settings Profile")
+
+
+class DatabaseSettings(BaseModel):
+    """Database Settings"""
+
+    alias: str = Field(default="DEFAULT", description="Name of Database (Alias)")
 
 
 class Settings(BaseModel):
@@ -243,8 +270,12 @@ class Settings(BaseModel):
     prompts: Optional[PromptSettings] = Field(
         default_factory=PromptSettings, description="Prompt Engineering Settings"
     )
-    rag: Optional[RagSettings] = Field(default_factory=RagSettings, description="RAG Settings")
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
+    database: Optional[DatabaseSettings] = Field(default_factory=DatabaseSettings, description="Database Settings")
+    vector_search: Optional[VectorSearchSettings] = Field(
+        default_factory=VectorSearchSettings, description="Vector Search Settings"
+    )
+    selectai: Optional[SelectAISettings] = Field(default_factory=SelectAISettings, description="SelectAI Settings")
 
 
 #####################################################
@@ -373,6 +404,7 @@ OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]
 PromptNameType = Prompt.__annotations__["name"]
 PromptCategoryType = Prompt.__annotations__["category"]
 PromptPromptType = PromptText.__annotations__["prompt"]
+SelectAIProfileType = Database.__annotations__["selectai_profiles"]
 TestSetsIdType = TestSets.__annotations__["tid"]
 TestSetsNameType = TestSets.__annotations__["name"]
 TestSetDateType = TestSets.__annotations__["created"]

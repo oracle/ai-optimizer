@@ -31,7 +31,12 @@ class ApiError(Exception):
 def sanitize_sensitive_data(data):
     """Use to sanitize sensitive data for logging"""
     if isinstance(data, dict):
-        return {k: "*****" if "password" in k.lower() else sanitize_sensitive_data(v) for k, v in data.items()}
+        return {
+            k: "*****"
+            if "password" in k.lower() or (isinstance(v, str) and "bearer" in v.lower())
+            else sanitize_sensitive_data(v)
+            for k, v in data.items()
+        }
     elif isinstance(data, list):
         return [sanitize_sensitive_data(i) for i in data]
     return data
@@ -137,9 +142,10 @@ def patch(
     timeout: int = 60,
     retries: int = 5,
     backoff_factor: float = 1.5,
+    toast = True
 ) -> None:
     """PATCH Requests"""
-    send_request(
+    response = send_request(
         "PATCH",
         endpoint,
         payload=payload,
@@ -148,7 +154,9 @@ def patch(
         retries=retries,
         backoff_factor=backoff_factor,
     )
-    st.toast("Update Successful.", icon="✅")
+    if toast:
+        st.toast("Update Successful.", icon="✅")
+    return response.json()
 
 
 def delete(
@@ -156,8 +164,10 @@ def delete(
     timeout: int = 60,
     retries: int = 5,
     backoff_factor: float = 1.5,
+    toast = True
 ) -> None:
     """DELETE Requests"""
     response = send_request("DELETE", endpoint, timeout=timeout, retries=retries, backoff_factor=backoff_factor)
     success = response.json()["message"]
-    st.toast(success, icon="✅")
+    if toast:
+        st.toast(success, icon="✅")

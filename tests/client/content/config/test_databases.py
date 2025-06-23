@@ -10,17 +10,19 @@ import pytest
 
 from conftest import TEST_CONFIG
 
+
 #############################################################################
 # Test Streamlit UI
 #############################################################################
-class TestDatabase:
-    """Test the Streamlit UI for OCI"""
+class TestStreamlit:
+    """Test the Streamlit UI"""
 
     # Streamlit File
     ST_FILE = "../src/client/content/config/databases.py"
 
-    def test_missing_details(self, app_test):
+    def test_missing_details(self, app_server, app_test):
         """Submits with missing required inputs"""
+        assert app_server is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_config is not None
         at.button[0].click().run()
@@ -39,8 +41,9 @@ class TestDatabase:
         assert at.session_state.database_config["DEFAULT"]["connected"] is False
         assert at.session_state.database_config["DEFAULT"]["vector_stores"] is None
 
-    def test_wrong_details(self, app_test):
+    def test_wrong_details(self, app_server, app_test):
         """Submits with wrong details"""
+        assert app_server is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_config is not None
         at.text_input(key="database_user").set_value(TEST_CONFIG["db_username"]).run()
@@ -59,8 +62,9 @@ class TestDatabase:
         assert at.session_state.database_config["DEFAULT"]["connected"] is False
         assert at.session_state.database_config["DEFAULT"]["vector_stores"] is None
 
-    def test_connected(self, app_test, db_container):
+    def test_connected(self, app_server, app_test, db_container):
         """Sumbits with good DSN"""
+        assert app_server is not None
         assert db_container is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_config is not None
@@ -136,8 +140,9 @@ class TestDatabase:
     ]
 
     @pytest.mark.parametrize("test_case", test_cases)
-    def test_disconnected(self, app_test, db_container, test_case):
+    def test_disconnected(self, app_server, app_test, db_container, test_case):
         """Submits with incorrect details"""
+        assert app_server is not None
         assert db_container is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_config is not None
@@ -158,3 +163,46 @@ class TestDatabase:
         assert at.session_state.database_config["DEFAULT"]["tcp_connect_timeout"] is not None
         assert at.session_state.database_config["DEFAULT"]["connected"] is False
         assert at.session_state.database_config["DEFAULT"]["vector_stores"] == []
+
+    def test_vector_stores(self, app_server, app_test, db_container):
+        """Test Vector Storage Form"""
+        assert app_server is not None
+        assert db_container is not None
+        at = app_test(self.ST_FILE).run()
+        assert at.session_state.database_config is not None
+        # Populate Vector Storage State
+        at.session_state.database_config["DEFAULT"]["vector_stores"] = [
+            {
+                "vector_store": "VS_USERS_TEXT_EMBEDDING_3_SMALL_8191_1639_COSINE_HNSW",
+                "alias": "TEST1",
+                "model": "text-embedding-3-small",
+                "chunk_size": 8191,
+                "chunk_overlap": 1639,
+                "distance_metric": "COSINE",
+                "index_type": "HNSW",
+            },
+            {
+                "vector_store": "VS_USERS_TEXT_EMBEDDING_3_SMALL_510_102_COSINE_HNSW",
+                "alias": "TEST2",
+                "model": "text-embedding-3-small",
+                "chunk_size": 510,
+                "chunk_overlap": 102,
+                "distance_metric": "COSINE",
+                "index_type": "HNSW",
+            },
+        ]
+        # Mimic Connected to show additional forms
+        at.session_state.database_config["DEFAULT"]["connected"] = True
+        # Refresh the Page
+        at.run()
+        for vs in at.session_state.database_config["DEFAULT"]["vector_stores"]:
+            vector_store = vs["vector_store"].lower()
+            assert at.button(key=f"vector_stores_{vector_store}").icon == "🗑️"
+            fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
+            for field in fields:
+                assert at.text_input(key=f"vector_stores_{vector_store}_{field}").label == field.capitalize()
+                assert at.text_input(key=f"vector_stores_{vector_store}_{field}").value == str(vs[field])
+
+        # Drop a Vector Store
+        at.button[1].click().run()
+        assert "dropped" in at.toast[0].value and at.toast[0].icon == "✅"

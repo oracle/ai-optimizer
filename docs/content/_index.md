@@ -13,7 +13,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker:ignore streamlit, genai, venv
 -->
 
-The {{< full_app_ref >}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**) combined with Retrieval-Augmented Generation (**RAG**) capabilities. By integrating Oracle Database AI Vector Search, the {{< short_app_ref >}} enables users to enhance existing Large Language Models (**LLM**s) through **RAG**. This method significantly improves the performance and accuracy of AI models, helping to avoid common issues such as knowledge cutoff and hallucinations.
+The {{< full_app_ref >}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**) combined with Retrieval-Augmented Generation (**RAG**) capabilities. By integrating Oracle Database AI VectorSearch and SelectAI, the {{< short_app_ref >}} enables users to enhance existing Large Language Models (**LLM**s) through **RAG**. This method significantly improves the performance and accuracy of AI models, helping to avoid common issues such as knowledge cutoff and hallucinations.
 
 - **GenAI**: Powers the generation of text, images, or other data based on prompts using pre-trained **LLM**s.
 - **RAG**: Enhances **LLM**s by retrieving relevant, real-time information allowing models to provide up-to-date and accurate responses.
@@ -51,7 +51,7 @@ The [Walkthrough](walkthrough) is a great way to familiarize yourself with the *
 
 ### Bare-Metal Installation
 
-To run the application on bare-metal; download the [source]({{ .Site.Params.GitHubRepo }}) and from the `src/` directory:
+To run the application on bare-metal; download the source code from the {{< latest_release >}} and from the `src/` directory:
 
 1. Create and activate a Python Virtual Environment:
 
@@ -84,7 +84,7 @@ To run the application on bare-metal; download the [source]({{ .Site.Params.GitH
 References to `podman` commands, if applicable to your environment, can be substituted with `docker`.
 {{% /notice %}}
 
-To run the application in a container; download the [source]({{ .Site.Params.GitHubRepo }}) and from the top-level directory:
+To run the application in a container; download the source code from the {{< latest_release >}} and from the top-level directory:
 
 1. Build the image.
 

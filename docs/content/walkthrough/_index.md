@@ -18,7 +18,8 @@ By the end of the walkthrough you will be familiar with:
 - Configuring a Large Language Model (**LLM**)
 - Configuring an Embedding Model
 - Configuring the Vector Storage
-- Splitting, Embedding, and Storing vectors for **RAG**
+- Splitting, Embedding, and Storing vectors
+- Configuring SelectAI
 - Experimenting with the {{< short_app_ref >}}
 
 What you'll need for the walkthrough:
@@ -49,7 +50,7 @@ You will run four container images to establish the "Infrastructure":
 
 - On-Premises **LLM** - llama3.1
 - On-Premises Embedding Model - mxbai-embed-large
-- Vector Storage - Oracle Database 23ai Free
+- Vector Storage/SelectAI - Oracle Database 23ai Free
 - The {{< short_app_ref >}}
 
 ### LLM - llama3.1
@@ -128,18 +129,27 @@ To enable the **RAG** functionality, access to an embedding model is required. T
 
 The {{< short_app_ref >}} provides an easy to use front-end for experimenting with **LLM** parameters and **RAG**.
 
-1. Download and Unzip the latest version of the {{< short_app_ref >}}:
+1. Download and Unzip the [latest release](https://github.com/oracle-samples/ai-optimizer/releases/latest) of the {{< short_app_ref >}}:
 
    ```bash
-   curl -L -o ai-optimizer.tar.gz https://github.com/oracle-samples/ai-optimizer/archive/refs/heads/main.tar.gz
+   curl -s https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
+   | grep tarball_url \
+   | cut -d '"' -f 4 \
+   | xargs curl -L -o ai-optimizer.tar.gz
+   ```
+
+   ```bash
    mkdir ai-optimizer
+   ```
+
+   ```bash
    tar zxf ai-optimizer.tar.gz --strip-components=1 -C ai-optimizer
    ```
 
 1. Build the Container Image
 
    ```bash
-   cd ai-optimizer-client/src
+   cd ai-optimizer/src
    podman build --arch amd64 -t localhost/ai-optimizer-aio:latest .
    ```
 
@@ -148,25 +158,6 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
    ```bash
    podman run -d --name ai-optimizer-aio --network=host localhost/ai-optimizer-aio:latest
    ```
-
-   Operating System specific instructions:
-   {{< tabs "client" >}}
-   {{% tab title="Linux" %}}
-   If you are running on a remote host, you may need to allow access to the `8501` port.
-
-   For example, in Oracle Linux 8/9 with `firewalld`:
-
-   ```bash
-   firewall-cmd --zone=public --add-port=8501/tcp
-   ```
-   {{% /tab %}}
-   {{% tab title="MacOS/Windows" %}}
-   As the container is running in a VM, a port-forward is required from the localhost to the Podman VM:
-   ```bash
-   podman machine ssh -- -N -L 8501:localhost:8501
-   ```
-   {{% /tab %}}
-   {{% /tabs %}}
 
 ### Vector Storage - Oracle Database 23ai Free
 
@@ -207,6 +198,25 @@ To start Oracle Database 23ai Free:
    ```
 
 ## Configuration
+
+Operating System specific instructions:
+{{< tabs "client" >}}
+{{% tab title="Linux" %}}
+If you are running on a remote host, you may need to allow access to the `8501` port.
+
+For example, in Oracle Linux 8/9 with `firewalld`:
+
+```bash
+firewall-cmd --zone=public --add-port=8501/tcp
+```
+{{% /tab %}}
+{{% tab title="MacOS/Windows" %}}
+As the container is running in a VM, a port-forward is required from the localhost to the Podman VM:
+```bash
+podman machine ssh -- -N -L 8501:localhost:8501
+```
+{{% /tab %}}
+{{% /tabs %}}
 
 With the "Infrastructure" in-place, you're ready to configure the {{< short_app_ref >}}. 
 
@@ -263,14 +273,14 @@ To configure Oracle Database 23ai Free, navigate to the _Configuration -> Databa
 
 ## Split and Embed
 
-With the embedding model and database configured, you can now split and embed documents for use in **RAG**.
+With the embedding model and database configured, you can now split and embed documents for use in **Vector Search**.
 
 Navigate to the _Split/Embed_ Screen:
 
 1. Change the File Source to `Web`
 1. Enter the URL: 
    ```text
-   https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/ai-vector-search-users-guide.pdf
+   https://docs.oracle.com/en/engineered-systems/health-diagnostics/autonomous-health-framework/ahfug/oracle-autonomous-health-framework-users-guide.pdf
    ```
 1. Press Enter
 1. Give the Vector Store an Alias: `WALKTHROUGH`
@@ -284,9 +294,9 @@ Depending on the infrastructure, the embedding process can take a few minutes. A
 ![Split and Embed](images/split_embed_web.png)
 
 {{% notice style="code" title="Thumb Twiddling" icon="circle-info" %}}
-You can watch the progress of the embedding by streaming the logs: `podman logs -f ai-optimizer-aio`
+You can watch the progress of the embedding by streaming the server logs: `podman exec -it ai-optimizer-aio tail -f /app/apiserver_8000.log`
 
-Chunks are processed in batches. Wait until the logs output: `POST Response: <Response [200]>` before continuing.
+Chunks are processed in batches. Wait until the logs output: `POST ... HTTP/1.1" 200 OK` before continuing.
 {{% /notice %}}
 
 ### Query the Vector Store
@@ -307,25 +317,27 @@ From the command line:
    select * from WALKTHROUGH.WALKTHROUGH_MXBAI_EMBED_LARGE_512_103_COSINE_HNSW;
    ```
 
-## Experiment
+## Experiment with Vector Search
 
 With the {{< short_app_ref >}} configured, you're ready for some experimentation.
 
-Navigate back to the _ChatBot_. There will be no more configuration warnings.
+Navigate back to the _ChatBot_.
 
 For this guided experiment, perform the following:
 
 1. Ask the _ChatBot_:
    ```text
-   In Oracle Database 23ai, how do I determine the accuracy of my vector indexes?
+   In Oracle Database 23ai, how do I use AHF?
    ```
 
 Responses may vary, but generally the _ChatBot_'s response will be inaccurate, including:
 
 - Not understanding that 23ai is an Oracle Database release. This is known as knowledge-cutoff.
-- Suggestions of running SELECTS, irrelevant DBMS or non-existent stored procedures, and maybe an ANALYZE. These are hallucinations.
+- Suggestions that AFH has to do with a non-existant Hybrid Feature and running `emcli` commands. These are hallucinations.
 
-Now enable _RAG?_ and simply ask: `Are you sure?`
+Now select "Vector Search" in the Toolkit options and simply ask: `Are you sure?`
+
+![Enable RAG](images/chatbot_vs_enable.png)
 
 {{% notice style="code" title="Performance: Host Overload..." icon="circle-info" %}}
 With **RAG** enabled, all the services (**LLM**/Embedding Models and Database) are being utilized simultaneously:
@@ -339,10 +351,8 @@ With **RAG** enabled, all the services (**LLM**/Embedding Models and Database) a
 Depending on your hardware, this may cause the response to be **_significantly_** delayed.
 {{% /notice %}}
 
-![Enable RAG](images/chatbot_rag_enable.png)
-
 By asking `Are you sure?`, you are taking advantage of the {{< short_app_ref >}}'s history and context functionality.  
-The response should be different and include references to `DBMS_VECTOR` and links to the embedded documentation where this information can be found. It might even include an apology!
+The response should be different and include references to `Cluster Health Advisor` and links to the embedded documentation where this information can be found. It might even include an apology!
 
 ## What's Next?
 

@@ -45,6 +45,7 @@ __pycache__/
 **/**.tfvars
 **/.terraform*
 **/terraform.tfstate*
+**/*.pem
 opentofu/**/generated/*.*
 opentofu/**/generated/kubeconfig
 
