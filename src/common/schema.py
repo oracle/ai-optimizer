@@ -50,8 +50,8 @@ class DatabaseVectorStorage(BaseModel):
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
     model: Optional[str] = Field(default=None, description="Embedding Model")
-    chunk_size: Optional[int] = Field(default=0, description="Chunk Size")
-    chunk_overlap: Optional[int] = Field(default=0, description="Chunk Overlap")
+    chunk_size: Optional[int] = Field(default=None, description="Chunk Size")
+    chunk_overlap: Optional[int] = Field(default=None, description="Chunk Overlap")
     distance_metric: Optional[DistanceMetrics] = Field(default=None, description="Distance Metric")
     index_type: Optional[IndexTypes] = Field(default=None, description="Vector Index")
 

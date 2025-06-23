@@ -432,10 +432,8 @@ def vector_search_sidebar() -> None:
                     selected_value = valid_options[0]
                     logger.debug("Defaulting %s to %s", key, selected_value)
                 else:
-                    selected_value = (
-                        state.user_settings["vector_search"][key.removeprefix("selected_vector_search_")] is not None
-                        or ""
-                    )
+                    value = state.user_settings["vector_search"].get(key.removeprefix("selected_vector_search_"))
+                    selected_value = value if value is not None else ""
                     logger.debug("User selected %s to %s", key, selected_value)
             return st.sidebar.selectbox(
                 label,
@@ -447,6 +445,7 @@ def vector_search_sidebar() -> None:
 
         def update_filtered_df():
             """Dynamically update filtered_df based on selected filters"""
+            logger.debug("Filtering Vector Stores")
             filtered = vs_df.copy()
             # Remove vector stores where the model is not enabled
             filtered = vs_df[vs_df["model"].isin(state.embed_model_enabled.keys())]
@@ -454,9 +453,9 @@ def vector_search_sidebar() -> None:
                 filtered = filtered[filtered["alias"] == state.selected_vector_search_alias]
             if state.get("selected_vector_search_model"):
                 filtered = filtered[filtered["model"] == state.selected_vector_search_model]
-            if state.get("selected_vector_search_chunk_size"):
+            if state.get("selected_vector_search_chunk_size") not in (None, ""):
                 filtered = filtered[filtered["chunk_size"] == state.selected_vector_search_chunk_size]
-            if state.get("selected_vector_search_chunk_overlap"):
+            if state.get("selected_vector_search_chunk_overlap") not in (None, ""):
                 filtered = filtered[filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap]
             if state.get("selected_vector_search_distance_metric"):
                 filtered = filtered[filtered["distance_metric"] == state.selected_vector_search_distance_metric]
