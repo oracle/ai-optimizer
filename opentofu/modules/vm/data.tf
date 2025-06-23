@@ -22,3 +22,11 @@ data "oci_core_images" "images" {
 data "oci_core_vcn" "vcn" {
   vcn_id = var.vcn_id
 }
+
+data "oci_core_services" "core_services" {
+  filter {
+    name   = "name"
+    values = ["All .* Services In Oracle Services Network"]
+    regex  = true
+  }
+}

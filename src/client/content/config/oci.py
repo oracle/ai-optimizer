@@ -20,6 +20,7 @@ from streamlit import session_state as state
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
 from client.content.config.models import get_models
+from client.utils.st_footer import remove_footer
 
 import common.logging_config as logging_config
 
@@ -138,6 +139,7 @@ def patch_oci_genai(
 #####################################################
 def main() -> None:
     """Streamlit GUI"""
+    remove_footer()
     st.header("Oracle Cloud Infrastructure", divider="red")
     st.write("Configure OCI for Object Storage Access and OCI GenAI Services.")
     try:
