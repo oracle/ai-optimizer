@@ -161,6 +161,17 @@ def main() -> list[Model]:
             "openai_compat": True,
             "max_chunk_size": 512,
         },
+        {
+            # This is intentionally last to line up with docos
+            "name": "all-minilm",
+            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
+            "type": "embed",
+            "api": "OllamaEmbeddings",
+            "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "api_key": "",
+            "openai_compat": True,
+            "max_chunk_size": 256,
+        },
     ]
 
     # Check for Duplicates

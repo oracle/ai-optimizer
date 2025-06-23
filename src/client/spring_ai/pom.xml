@@ -33,6 +33,11 @@
 	<dependencies>
 		
 		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+		</dependency>
+		
+		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
@@ -75,7 +80,7 @@
 			<version>23.5.0.24.07</version>
 		</dependency>
 
-		<dependency> 
+		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-jdbc</artifactId>
 		</dependency>
@@ -83,7 +88,7 @@
 			<groupId>com.oracle.database.spring</groupId>
 			<artifactId>oracle-spring-boot-starter-wallet</artifactId>
 			<version>23.4.0</version>
-		 </dependency>
+		</dependency>
 
 		<!-- ORACLE DB END-->
 

@@ -20,12 +20,12 @@ Get Started with Java Development](https://docs.oracle.com/en/database/oracle/or
 
 Download one of them through the `Download SpringAI` button. Unzip the content and set the executable permission on the `start.sh`  with `chmod 755 ./start.sh`.
 
-Edit `start.sh` to add only the DB_PASSWORD not exported, as in this example:
+Edit `start.sh` to change the DB_PASSWORD or any other referece/credential changed by the dev env, as in this example:
 ```
 export SPRING_AI_OPENAI_API_KEY=$OPENAI_API_KEY
 export DB_DSN="jdbc:oracle:thin:@localhost:1521/FREEPDB1"
 export DB_USERNAME=<DB_USER_NAME>
-export DB_PASSWORD=""
+export DB_PASSWORD=<DB_PASSWORD>
 export DISTANCE_TYPE=COSINE
 export OPENAI_CHAT_MODEL=gpt-4o-mini
 export OPENAI_EMBEDDING_MODEL=text-embedding-3-small
@@ -55,9 +55,12 @@ Start with:
 This project contains a web service that will accept HTTP GET requests at
 
 * `http://localhost:9090/v1/chat/completions`: to use RAG via OpenAI REST API 
+* `http://localhost:9090/v1/models`: return models behind the RAG via OpenAI REST API 
 * `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used
 * `http://localhost:9090/v1/service/search/`: to search for document similar to the message provided
 * `http://localhost:9090/v1/service/store-chunks/`: to embedd and store a list of text chunks in the vectorstore
+
+
 
 
 ### Completions
@@ -120,24 +123,45 @@ curl -X POST http://localhost:9090/v1/service/store-chunks \
   -d '["First chunk of text.", "Second chunk.", "Another example."]'
 ```
 
-response:
+### Get model name
+Return the name of model used. It's useful to integrate ChatGUIs that require the model list before proceed.
 
 ```
-[
-  [
-    -0.014500250108540058,
-    -0.03604526072740555,
-    0.035963304340839386,
-    0.010181647725403309,
-    -0.01610776223242283,
-    -0.021091962233185768,
-    0.03924199938774109,
-    ..
-  ]  
-]
+curl http://localhost:9090/v1/models
 ```
+
+## MCP RagTool
+The completion service is also available as an MCP server based on the SSE transport protocol.
+To test it:
+
+* Start as usual the microservice: 
+```shell
+./start.sh
+```
+
+* Start the MCP inspector:
+```shell
+export DANGEROUSLY_OMIT_AUTH=true
+npx @modelcontextprotocol/inspector  
+```
+
+* With a web browser open: http://127.0.0.1:6274
+
+* Configure:
+  * Transport Type: SSE
+  * URL: http://localhost:9090/sse
+  * set Request Timeout to: 200000
+
+* Test a call to `getRag` Tool.
+
+
+
+
 
 ## Oracle Backend for Microservices and AI
+
+
+
 * Add in `application-obaas.yml` the **OPENAI_API_KEY**, if the deployement is based on the OpenAI LLM services:
 ```
    openai:
@@ -249,11 +273,6 @@ it should return:
 ```
 
 
-
-
-
-
-
 ## Prerequisites
 
 Before using the AI commands, make sure you have a developer token from OpenAI.
@@ -269,4 +288,8 @@ export SPRING_AI_OPENAI_API_KEY=<INSERT KEY HERE>
 
 Setting the API key is all you need to run the application.
 However, you can find more information on setting started in the [Spring AI reference documentation section on OpenAI Chat](https://docs.spring.io/spring-ai/reference/api/clients/openai-chat.html).
+
+
+
+
 

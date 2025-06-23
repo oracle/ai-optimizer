@@ -1,6 +1,4 @@
 server:
-  servlet:
-    context-path: /v1
   port: 9090
 spring:
   datasource:
@@ -8,6 +6,18 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
   ai:
+    mcp:
+      server:
+        name: webmvc-mcp-server
+        version: 1.0.0
+        type: SYNC
+        request-timeout: 120
+        instructions: "Use this tool to answer any question that may benefit from up-to-date or domain-specific information."
+        capabilities:
+          tool: true
+          resource: true
+          prompt: true
+          completion: true
     vectorstore:
       oracle:
         distance-type: ${DISTANCE_TYPE}
@@ -48,4 +58,3 @@ aims:
   rag_params: 
     search_type: Similarity
     top_k: ${TOP_K}
-

@@ -6,22 +6,15 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 package org.springframework.ai.openai.samples.helloworld;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.embedding.Embedding;
+
 //import org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest;
-import org.springframework.ai.reader.ExtractedTextFormatter;
-import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
-import org.springframework.ai.reader.pdf.config.PdfDocumentReaderConfig;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,21 +28,19 @@ import org.springframework.ai.vectorstore.oracle.OracleVectorStore;
 
 import jakarta.annotation.PostConstruct;
 
-import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
-import java.security.SecureRandom;
+
 import java.time.Instant;
 import java.util.stream.Collectors;
 
-import java.util.Iterator;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,49 +49,60 @@ import org.springframework.ai.openai.samples.helloworld.model.*;
 @RestController
 class AIController {
 
-	@Value("${spring.ai.openai.chat.options.model}")
-	private String modelOpenAI;
-
-	@Value("${spring.ai.ollama.chat.options.model}")
-	private String modelOllamaAI;
-
-	@Autowired
-	private final OracleVectorStore vectorStore;
-
-	@Autowired
-	private final EmbeddingModel embeddingModel;
-
-	@Autowired
+	private final String modelOpenAI;
+	private final String modelOllamaAI;
 	private final ChatClient chatClient;
-
-	@Value("${aims.vectortable.name}")
-	private String legacyTable;
-
-	@Value("${aims.context_instr}")
-	private String contextInstr;
-
-	@Value("${aims.rag_params.search_type}")
-	private String searchType;
-
-	@Value("${aims.rag_params.top_k}")
-	private int TOPK;
-
-	@Autowired
+	private final OracleVectorStore vectorStore;
+	private final EmbeddingModel embeddingModel;
+	private final String legacyTable;
+	private final String contextInstr;
+	private final String searchType;
+	private final int TOPK;
 	private JdbcTemplate jdbcTemplate;
 
 	private static final Logger logger = LoggerFactory.getLogger(AIController.class);
 	private static final int SLEEP = 50; // Wait in streaming between chunks
 	private static final int STREAM_SIZE = 5; // chars in each chunk
 
-	AIController(ChatClient chatClient, EmbeddingModel embeddingModel, OracleVectorStore vectorStore) {
+	@Autowired
+	private PromptBuilderService promptBuilderService;
 
+	@Autowired
+	private Helper helper;
+
+	AIController(
+			String modelOpenAI,
+			String modelOllamaAI,
+			@Lazy  ChatClient chatClient,
+			EmbeddingModel embeddingModel,
+			OracleVectorStore vectorStore,
+			JdbcTemplate jdbcTemplate,
+			String legacyTable,
+			String contextInstr,
+			String searchType,
+			int TOPK) {
+
+		this.modelOpenAI = modelOpenAI;
+		this.modelOllamaAI = modelOllamaAI;
+		this.vectorStore = vectorStore;
 		this.chatClient = chatClient;
 		this.embeddingModel = embeddingModel;
-		this.vectorStore = vectorStore;
+		this.legacyTable = legacyTable;
+		this.contextInstr = contextInstr;
+		this.searchType = searchType;
+		this.TOPK = TOPK;
+		this.jdbcTemplate = jdbcTemplate;
 
 	}
 
-	@GetMapping("/service/llm")
+
+	/**
+ 	* Chat completion endpoint to interact with the LLM, without RAG,memory or system prompting.
+ 	* No compliant with Open AI API
+	*
+ 	* @param message: the message to be routed to the LLM 
+ 	*/
+	@GetMapping("/v1/service/llm")
 	Map<String, String> completion(@RequestParam(value = "message", defaultValue = "Tell me a joke") String message) {
 
 		return Map.of(
@@ -111,6 +113,11 @@ class AIController {
 						.content());
 	}
 
+	/**
+ 	* Create a new table with the Spring AI format from an existing vectorstore made by langchain 
+	* If table already exists, it will not be overrided.
+	*
+ 	*/
 	@PostConstruct
 	public void insertData() {
 		String sqlUser = "SELECT USER FROM DUAL";
@@ -119,7 +126,7 @@ class AIController {
 		String newTable = legacyTable + "_SPRINGAI";
 
 		user = jdbcTemplate.queryForObject(sqlUser, String.class);
-		if (doesTableExist(legacyTable, user) != -1) {
+		if (helper.doesTableExist(legacyTable, user,this.jdbcTemplate) != -1) {
 			// RUNNING LOCAL
 			logger.info("Running local with user: " + user);
 			sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
@@ -131,8 +138,8 @@ class AIController {
 					"SELECT ID, TEXT, METADATA, EMBEDDING FROM ADMIN." + legacyTable;
 		}
 		// Execute the insert
-		logger.info("doesExist" + user + ": " + doesTableExist(newTable, user));
-		if (countRecordsInTable(newTable, user) == 0) {
+		logger.info("doesExist" + user + ": " + helper.doesTableExist(newTable, user,this.jdbcTemplate));
+		if (helper.countRecordsInTable(newTable, user,this.jdbcTemplate) == 0) {
 			// First microservice execution
 			logger.info("Table " + user + "." + newTable + " doesn't exist: create from ADMIN/USER." + legacyTable);
 			jdbcTemplate.update(sql);
@@ -142,99 +149,16 @@ class AIController {
 		}
 	}
 
-	public int countRecordsInTable(String tableName, String schemaName) {
-		// Dynamically construct the SQL query with the table and schema names
-		String sql = String.format("SELECT COUNT(*) FROM %s.%s", schemaName.toUpperCase(), tableName.toUpperCase());
-		logger.info("Checking if table is empty: " + tableName + " in schema: " + schemaName);
 
-		try {
-			// Execute the query and get the count of records in the table
-			Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
-
-			// Return the count if it's not null, otherwise return -1
-			return count != null ? count : -1;
-		} catch (Exception e) {
-			logger.error("Error checking table record count: " + e.getMessage());
-			return -1; // Return -1 in case of an error
-		}
-	}
-
-	public int doesTableExist(String tableName, String schemaName) {
-		String sql = "SELECT COUNT(*) FROM all_tables WHERE table_name = ? AND owner = ?";
-		logger.info("Checking if table exists: " + tableName + " in schema: " + schemaName);
-
-		try {
-			// Query the system catalog to check for the existence of the table in the given
-			// schema
-			Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tableName.toUpperCase(),
-					schemaName.toUpperCase());
-
-			if (count != null && count > 0) {
-				return count;
-			} else {
-				return -1;
-			}
-		} catch (Exception e) {
-			logger.error("Error checking table existence: " + e.getMessage());
-			return -1;
-		}
-	}
-
-	public Prompt promptEngineering(String message, String contextInstr) {
-
-		String template = """
-				DOCUMENTS:
-				{documents}
-
-				QUESTION:
-				{question}
-
-				INSTRUCTIONS:""";
-
-		String default_Instr = """
-				Answer the users question using the DOCUMENTS text above.
-				Keep your answer ground in the facts of the DOCUMENTS.
-				If the DOCUMENTS doesn’t contain the facts to answer the QUESTION, return:
-				I'm sorry but I haven't enough information to answer.
-				""";
-
-		// This template doesn't work with re-phrasing/grading pattern, but only via RAG
-		// The contextInstr coming from Oracle ai optimizer and toolkit can't be used
-		// here: default only
-		// Modifiy it to include re-phrasing/grading if you wish.
-
-		template = template + "\n" + default_Instr;
-
-		List<Document> similarDocuments = this.vectorStore.similaritySearch(
-				SearchRequest.builder().query(message).topK(TOPK).build());
-
-		StringBuilder context = createContext(similarDocuments);
-
-		PromptTemplate promptTemplate = new PromptTemplate(template);
-
-		Prompt prompt = promptTemplate.create(Map.of("documents", context, "question", message));
-
-		logger.info(prompt.toString());
-
-		return prompt;
-
-	}
-
-	StringBuilder createContext(List<Document> similarDocuments) {
-		String START = "\n<article>\n";
-		String STOP = "\n</article>\n";
-
-		Iterator<Document> iterator = similarDocuments.iterator();
-		StringBuilder context = new StringBuilder();
-		while (iterator.hasNext()) {
-			Document document = iterator.next();
-			context.append(document.getId() + ".");
-			context.append(START + document.getFormattedContent() + STOP);
-		}
-		return context;
-	}
-
-	@PostMapping(value = "/chat/completions", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	/**
+ 	* Chat completion endpoint to interact with the LLM, with RAG support.
+ 	* Compliant with Open AI API
+	* It works also in stream 
+	*
+ 	* @param message: the message to be routed to the LLM along the prompt/context
+	* @return the llm response in one shot or in streaming
+ 	*/
+	@PostMapping(value = "/v1/chat/completions", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public ResponseBodyEmitter streamCompletions(@RequestBody ChatRequest request) {
 		ResponseBodyEmitter bodyEmitter = new ResponseBodyEmitter();
 		String userMessageContent;
@@ -246,7 +170,7 @@ class AIController {
 				if (content != null && !content.trim().isEmpty()) {
 					userMessageContent = content;
 					logger.info("user message: " + userMessageContent);
-					Prompt prompt = promptEngineering(userMessageContent, contextInstr);
+					Prompt prompt = promptBuilderService.buildPrompt(userMessageContent, contextInstr, TOPK);
 					logger.info("prompt message: " + prompt.getContents());
 					String contentResponse = chatClient.prompt(prompt).call().content();
 					logger.info("-------------------------------------------------------");
@@ -259,7 +183,7 @@ class AIController {
 
 							if (request.isStream()) {
 								logger.info("Request is a Stream");
-								List<String> chunks = chunkString(contentResponse);
+								List<String> chunks = helper.chunkString(contentResponse);
 								for (String token : chunks) {
 
 									ChatMessage messageAnswer = new ChatMessage("assistant", token);
@@ -274,10 +198,10 @@ class AIController {
 								bodyEmitter.send("data: [DONE]\n\n");
 							} else {
 								logger.info("Request isn't a Stream");
-								String id = "chatcmpl-" + generateRandomToken(28);
+								String id = "chatcmpl-" + helper.generateRandomToken(28);
 								String object = "chat.completion";
 								String created = String.valueOf(Instant.now().getEpochSecond());
-								String model = getModel();
+								String model = helper.getModel(this.modelOpenAI,this.modelOllamaAI);
 								ChatMessage messageAnswer = new ChatMessage("assistant", contentResponse);
 								List<ChatChoice> choices = List.of(new ChatChoice(messageAnswer));
 								bodyEmitter.send(new ChatResponse(id, object, created, model, choices));
@@ -298,7 +222,14 @@ class AIController {
 		return bodyEmitter;
 	}
 
-	@GetMapping("/service/search")
+	/**
+ 	* Similarity search 
+	*
+ 	* @param message: the message to be routed to the LLM along the prompt/context
+	* @param topK: the number of chunks to be included in the context
+	* @return the list of the nearest topK chunks
+ 	*/
+	@GetMapping("/v1/service/search")
 	List<Map<String, Object>> search(@RequestParam(value = "message", defaultValue = "Tell me a joke") String query,
 			@RequestParam(value = "topk", defaultValue = "5") Integer topK) {
 
@@ -318,12 +249,18 @@ class AIController {
 		return resultList;
 	}
 
-	@PostMapping("/service/store-chunks")
+	/**
+ 	* Store new chunks, sent as a list of strings in the request body 
+	*
+ 	* @param chunks: the list of chunks
+	* @return the list of vector embeddings created and stored along the chunks
+ 	*/
+	@PostMapping("/v1/service/store-chunks")
 	List<List<Double>> store(@RequestBody List<String> chunks) {
 		List<List<Double>> allVectors = new ArrayList<>();
 		List<Document> documents = chunks.stream()
 				.map(chunk -> {
-					double[] vector = floatToDouble(embeddingModel.embed(chunk));
+					double[] vector = helper.floatToDouble(embeddingModel.embed(chunk));
 					Double[] sVector = java.util.Arrays.stream(vector)
 							.mapToObj(Double::valueOf)
 							.toArray(Double[]::new);
@@ -339,8 +276,14 @@ class AIController {
 
 		return allVectors;
 	}
-
-	@GetMapping("/models")
+	
+	/**
+ 	* List of model
+	*
+ 	* @param requestBody: the message to be routed to the LLM along the prompt/context
+	* @return in this case it will be returned a list with only one model on which is based this microservice
+ 	*/
+	@GetMapping("/v1/models")
 	Map<String, Object> models(@RequestBody(required = false) Map<String, String> requestBody) {
 		String modelId = "custom";
 		logger.info("models request");
@@ -374,48 +317,5 @@ class AIController {
 		}
 	}
 
-	public List<String> chunkString(String input) {
-		List<String> chunks = new ArrayList<>();
-		int chunkSize = STREAM_SIZE;
 
-		for (int i = 0; i < input.length(); i += chunkSize) {
-			int end = Math.min(input.length(), i + chunkSize);
-			chunks.add(input.substring(i, end));
-		}
-
-		return chunks;
-	}
-
-	public String generateRandomToken(int length) {
-		String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-		SecureRandom random = new SecureRandom();
-		StringBuilder sb = new StringBuilder(length);
-		for (int i = 0; i < length; i++) {
-			int index = random.nextInt(CHARACTERS.length());
-			sb.append(CHARACTERS.charAt(index));
-		}
-		return sb.toString();
-	}
-
-	public String getModel() {
-		String modelId = "custom";
-		if (!"".equals(modelOpenAI)) {
-			modelId = modelOpenAI;
-		} else if (!"".equals(modelOllamaAI)) {
-			modelId = modelOllamaAI;
-		}
-		return modelId;
-	}
-
-	public double[] floatToDouble(float[] floatArray) {
-		double[] doubleArray = new double[floatArray.length];
-
-		for (int i = 0; i < floatArray.length; i++) {
-			doubleArray[i] = floatArray[i]; // implicit widening cast per element
-		}
-		return doubleArray;
-	}
 }
-
-
-
