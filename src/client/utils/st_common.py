@@ -73,13 +73,15 @@ def clear_state_key(state_key: str) -> None:
     logger.debug("State cleared: %s", state_key)
 
 
-def update_user_settings(
-    user_setting: str,
-) -> None:
+def update_user_settings(user_setting: str) -> None:
     """Update user settings"""
+
     for setting_key, setting_value in state.user_settings[user_setting].items():
         widget_key = f"selected_{user_setting}_{setting_key}"
         widget_value = state.get(widget_key, setting_value)
+        print(f"{widget_key} = {widget_value}")
+        print(f"{setting_key} = {setting_value}")
+
         if state.get(widget_key, setting_value) != setting_value:
             logger.info("Updating user_settings['%s']['%s'] to %s", user_setting, setting_key, widget_value)
             state.user_settings[user_setting][setting_key] = widget_value
@@ -349,12 +351,13 @@ def vector_search_sidebar() -> None:
         # TODO(gotsysdba) "Similarity Score Threshold" currently raises NotImplementedError
         # vector_search_type_list =
         # ["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"]
-        vector_search_type_list = ["Similarity", "Maximal Marginal Relevance"]
+        # TODO(gotsysdba) Use VectorSearchSettings.search_type from schema for list
+        vector_search_type_list = ["Similarity", "Maximal Marginal Relevance", "Anomaly Detection"]
         vector_search_type = st.sidebar.selectbox(
             "Search Type:",
             vector_search_type_list,
             index=vector_search_type_list.index(state.user_settings["vector_search"]["search_type"]),
-            key="selected_vector_search_type",
+            key="selected_vector_search_search_type",
             on_change=update_user_settings("vector_search"),
         )
         st.sidebar.number_input(
@@ -445,7 +448,6 @@ def vector_search_sidebar() -> None:
 
         def update_filtered_df():
             """Dynamically update filtered_df based on selected filters"""
-            logger.debug("Filtering Vector Stores")
             filtered = vs_df.copy()
             # Remove vector stores where the model is not enabled
             filtered = vs_df[vs_df["model"].isin(state.embed_model_enabled.keys())]

@@ -40,6 +40,7 @@ class CLIPImageEmbeddings(Embeddings):
 
     def __init__(self, model_name="openai/clip-vit-base-patch32"):
         self.model = CLIPModel.from_pretrained(model_name, local_files_only=True)
+        self.model.eval()
         self.processor = CLIPProcessor.from_pretrained(model_name, local_files_only=True)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -172,7 +173,7 @@ async def get_client(
                     for k, v in ll_common_params.items()
                     if k not in {"streaming"}
                 },
-            )
+            ),
         }
     if embedding:
         logger.debug("Configuring Embed Model")

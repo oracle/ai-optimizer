@@ -5,7 +5,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore langgraph, oraclevs, checkpointer, ainvoke
 # spell-checker:ignore vectorstore, vectorstores, oraclevs, mult, selectai
 
-import base64
 from datetime import datetime, timezone
 from typing import Literal
 import json
@@ -13,7 +12,7 @@ import copy
 import decimal
 
 from langchain_core.documents.base import Document
-from langchain_core.messages import SystemMessage, ToolMessage, HumanMessage
+from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.output_parsers import StrOutputParser, PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableConfig
@@ -81,6 +80,51 @@ def document_formatter(rag_context) -> str:
     return chunks
 
 
+def rephrase_with_context(retrieve_question: str, history: list, config: RunnableConfig) -> str:
+    """Rephrases the input question using conversation history and a context prompt."""
+    model = config["configurable"].get("ll_client", None)
+    ctx_prompt = config["metadata"]["ctx_prompt"].prompt
+
+    if not model or not ctx_prompt:
+        logger.warning("Model or context prompt not found; skipping rephrasing.")
+        return retrieve_question
+
+    ctx_template = """
+        {ctx_prompt}
+        Here is the context and history:
+        -------
+        {history}
+        -------
+        Here is the user input:
+        -------
+        {question}
+        -------
+        Return ONLY the rephrased query without any explanation or additional text.
+    """
+
+    prompt = PromptTemplate(
+        template=ctx_template,
+        input_variables=["ctx_prompt", "history", "question"],
+    )
+
+    chain = prompt | model
+    logger.info("Retrieving Rephrased Input for VS")
+
+    result = chain.invoke(
+        {
+            "ctx_prompt": ctx_prompt,
+            "history": history,
+            "question": retrieve_question,
+        }
+    )
+
+    if result.content != retrieve_question:
+        logger.info("**** Replacing User Question: %s with contextual one: %s", retrieve_question, result.content)
+        return result.content
+
+    return retrieve_question
+
+
 class DecimalEncoder(json.JSONEncoder):
     """Used with json.dumps to encode decimals"""
 
@@ -136,17 +180,13 @@ def respond(state: AgentState, config: RunnableConfig) -> ChatResponse:
     return {"final_response": openai_response}
 
 
-def vs_retrieve(state: AgentState, config: RunnableConfig) -> AgentState:
-    """Search and return information using Vector Search"""
-    ## Note that this should be a tool call; but some models (Perplexity/OCI GenAI)
-    ## have limited or no tools support.  Instead we'll call as part of the pipeline
-    ## and fake a tools call.  This can be later reverted to a tool without much code change.
-    logger.info("Perform Vector Search")
-    # Take our contextualization prompt and reword the question
-    # before doing the vector search; do only if history is turned on and not an image
+def vs_anomaly(state: AgentState, config: RunnableConfig) -> AgentState:
+    """Get and analyse vector distances"""
+    logger.info("Perform Vector Search Anomaly Detection")
     history = copy.deepcopy(state["cleaned_messages"])
     is_image = False
     retrieve_question = history.pop().content
+
     if not isinstance(retrieve_question, str):
         is_image = True
         retrieve_question = retrieve_question[1]["image_url"]["url"]
@@ -157,35 +197,90 @@ def vs_retrieve(state: AgentState, config: RunnableConfig) -> AgentState:
         and config["metadata"]["ctx_prompt"].prompt
         and len(history) > 1
     ):
+        retrieve_question = rephrase_with_context(retrieve_question, history, config)
+
+    # Perform the Vector Search
+    try:
+        logger.info("Connecting to VectorStore")
+        db_conn = config["configurable"]["db_conn"]
+        embed_client = config["configurable"]["embed_client"]
+        vector_search = config["metadata"]["vector_search"]
+        question_embed = embed_client.embed_query(retrieve_question)
         model = config["configurable"].get("ll_client", None)
-        ctx_template = """
-            {ctx_prompt}
-            Here is the context and history:
+
+        try:
+            sql = f"""
+                DECLARE
+                    l_embedding VECTOR := VECTOR(:question_embed);
+                    l_max_sim NUMBER;
+                BEGIN
+                    SELECT ROUND(MAX((1 - COSINE_DISTANCE(l_embedding, vs.embedding)) * 100), 2)
+                    INTO l_max_sim
+                    FROM {vector_search.vector_store} vs;
+                    
+                    DBMS_OUTPUT.PUT_LINE(l_max_sim);
+                END;
+            """
+            binds = {"question_embed": str(question_embed).replace(" ", "")}
+            max_similarity = execute_sql(db_conn, sql, binds)
+            analysis_template = """
+            You are a machine learning expert specializing in vector embeddings and semantic similarity analysis.
+            Evaluate whether a given vector is an outlier based on its maximum cosine similarity to a known dataset of CLIP embeddings.
+            Return a concise interpretation, including:
+
+            - Whether it's typical or anomalous
+            - Your confidence level
+            - What the similarity score means
+
+            Input:
             -------
-            {history}
-            -------
-            Here is the user input:
-            -------
-            {question}
-            -------
-            Return ONLY the rephrased query without any explanation or additional text.
-        """
-        rephrase = PromptTemplate(
-            template=ctx_template,
-            input_variables=["ctx_prompt", "history", "question"],
-        )
-        chain = rephrase | model
-        logger.info("Retrieving Rephrased Input for VS")
-        result = chain.invoke(
-            {
-                "ctx_prompt": config["metadata"]["ctx_prompt"].prompt,
-                "history": history,
-                "question": retrieve_question,
-            }
-        )
-        if result.content != retrieve_question:
-            logger.info("**** Replacing User Question: %s with contextual one: %s", retrieve_question, result.content)
-            retrieve_question = result.content
+            A new vector was compared to a dataset using cosine similarity.
+            Maximum similarity: {max_similarity}%
+            """
+            analysis = PromptTemplate(
+                template=analysis_template,
+                input_variables=["max_similarity"],
+            )
+            chain = analysis | model
+            response = chain.invoke(
+                {
+                    "max_similarity": max_similarity,
+                }
+            )
+        except Exception as ex:
+            logger.exception("Failed to perform Oracle Vector Store retrieval")
+            raise ex
+    except Exception as ex:
+        if hasattr(ex, "message"):
+            response = f"I'm sorry: {ex.message}"
+        else:
+            raise
+    return {"messages": [response]}
+
+
+def vs_retrieve(state: AgentState, config: RunnableConfig) -> AgentState:
+    """Search and return information using Vector Search"""
+    ## Note that this should be a tool call; but some models (Perplexity/OCI GenAI)
+    ## have limited or no tools support.  Instead we'll call as part of the pipeline
+    ## and fake a tools call.  This can be later reverted to a tool without much code change.
+    logger.info("Perform Vector Search Retrieval")
+    # Take our contextualization prompt and reword the question
+    # before doing the vector search; do only if history is turned on and not an image
+    history = copy.deepcopy(state["cleaned_messages"])
+    is_image = False
+    retrieve_question = history.pop().content
+
+    if not isinstance(retrieve_question, str):
+        is_image = True
+        retrieve_question = retrieve_question[1]["image_url"]["url"]
+
+    if (
+        not is_image
+        and config["metadata"]["use_history"]
+        and config["metadata"]["ctx_prompt"].prompt
+        and len(history) > 1
+    ):
+        retrieve_question = rephrase_with_context(retrieve_question, history, config)
 
     # Perform the Vector Search
     try:
@@ -236,8 +331,7 @@ def vs_retrieve(state: AgentState, config: RunnableConfig) -> AgentState:
         )
     documents_dict = [vars(doc) for doc in documents]
     logger.info("Found Documents: %i", len(documents_dict))
-    if is_image:
-        return {"context_input": "Similar Images?", "documents": documents_dict}
+
     return {"context_input": retrieve_question, "documents": documents_dict}
 
 
@@ -252,53 +346,58 @@ def grade_documents(state: AgentState, config: RunnableConfig) -> dict:
         binary_score: str = Field(description="Relevance score 'yes' or 'no'")
 
     graded_documents = []
+    question = state["context_input"]
     if config["metadata"]["vector_search"].grading:
-        # LLM (Bound to Tool)
-        model = config["configurable"].get("ll_client", None)
-        try:
-            llm_with_grader = model.with_structured_output(Grade)
-            grade_prompt = """
-            You MUST respond with a only a binary score of 'yes' or 'no'.
-            You are a Grader assessing the relevance of retrieved documents or image to the user's input.    
-            """
-            question = state["context_input"]
-        except NotImplementedError:
-            logger.error("Model does not support structured output")
-            parser = PydanticOutputParser(pydantic_object=Grade)
-            llm_with_grader = model | parser
-
         if state["documents"][0].get("metadata", {}).get("category") == "image":
-            logger.debug("Image Grading")
-            # Image Grading (all docs will be images if the first one is)
-            input_text = f"""
-            {grade_prompt}
-            Here is the user input:
-            -------
-            {question}
-            Here is the image:
-            -------                      
-            """
+            logger.debug("Image Grading using Vectors")
+
+            db_conn = config["configurable"]["db_conn"]
+            vector_search = config["metadata"]["vector_search"]
+            embed_client = config["configurable"]["embed_client"]
+            question_embed = embed_client.embed_query(question)
+
             for document in state["documents"]:
-                logger.debug("Grading %s against Image: %s", question, document["page_content"])
-                with open(document["page_content"], "rb") as image_file:
-                    b64_string = base64.b64encode(image_file.read()).decode("utf-8")
-                    input_image = f"data:image/jpeg;base64,{b64_string}"
-                    message = HumanMessage(
-                        content=[
-                            {"type": "text", "text": input_text},
-                            {"type": "image_url", "image_url": {"url": input_image}},
-                        ]
-                    )
-                    scored_result = llm_with_grader.invoke([message])
-                    logger.info(
-                        "Image %s Grading completed.  Relevant: %s",
-                        document["page_content"],
-                        scored_result.binary_score,
-                    )
-                    if scored_result.binary_score == "yes":
-                        graded_documents.append(document)
+                logger.debug("Grading against Image: %s", document["page_content"])
+                sql = f"""
+                    DECLARE
+                        l_source VARCHAR2(4000) := :image_source;
+                        l_embedding VECTOR := VECTOR(:question_embed);
+                        l_sim NUMBER;
+                    BEGIN
+                        SELECT ROUND((1 - COSINE_DISTANCE(vs.embedding, l_embedding)) * 100, 2)
+                        INTO l_sim
+                        FROM {vector_search.vector_store} vs
+                        WHERE DBMS_LOB.SUBSTR(vs.text, 4000) = l_source;
+                        
+                        DBMS_OUTPUT.PUT_LINE(l_sim);
+                    END;
+                """
+                binds = {
+                    "question_embed": str(question_embed).replace(" ", ""),
+                    "image_source": document["page_content"],
+                }
+                similarity_percentage = execute_sql(db_conn, sql, binds)
+                logger.debug("Image Similarity: %.2f%%", float(similarity_percentage))
+
+                if float(similarity_percentage) > 90:
+                    document["score"] = similarity_percentage
+                    graded_documents.append(document)
         else:
-            logger.debug("Document Grading")
+            logger.debug("Document Grading using LLM")
+
+            # LLM (Bound to Tool)
+            model = config["configurable"].get("ll_client", None)
+            try:
+                llm_with_grader = model.with_structured_output(Grade)
+                grade_prompt = """
+                You MUST respond with a only a binary score of 'yes' or 'no'.
+                You are a Grader assessing the relevance of retrieved documents or image to the user's input.    
+                """
+            except NotImplementedError:
+                logger.error("Model does not support structured output")
+                parser = PydanticOutputParser(pydantic_object=Grade)
+                llm_with_grader = model | parser
+
             grade_template = """
             {grade_prompt}
             Here is the user input:
@@ -369,7 +468,7 @@ async def vs_generate(state: AgentState, config: RunnableConfig) -> None:
     generate_chain = prompt_template | llm | StrOutputParser()
 
     if state["documents"][0].get("metadata", {}).get("category") == "image":
-        response = f"I found {len(state['documents'])} relevant image(s) for your query."
+        response = f"I found {len(state['documents'])} relevant image(s) for your query (showing top 3)."
     else:
         documents = document_formatter(state["documents"])
         logger.debug("Completing: '%s' against relevant VectorStore documents", state["context_input"])
@@ -422,7 +521,14 @@ async def agent(state: AgentState, config: RunnableConfig) -> AgentState:
     return {"cleaned_messages": messages}
 
 
-def use_tool(_, config: RunnableConfig) -> Literal["selectai_generate", "vs_retrieve", "generate_response"]:
+def use_tool(
+    _, config: RunnableConfig
+) -> Literal[
+    "selectai_generate",
+    "vs_retrieve",
+    "vs_anomaly",
+    "generate_response",
+]:
     """Conditional edge to determine if using SelectAI, Vector Search or not"""
     selectai_enabled = config["metadata"]["selectai"].enabled
     if selectai_enabled:
@@ -431,8 +537,13 @@ def use_tool(_, config: RunnableConfig) -> Literal["selectai_generate", "vs_retr
 
     enabled = config["metadata"]["vector_search"].enabled
     if enabled:
-        logger.info("Invoking Chatbot with Vector Search: %s", enabled)
-        return "vs_retrieve"
+        search_type = config["metadata"]["vector_search"].search_type
+        if search_type == "Anomaly Detection":
+            logger.info("Invoking Chatbot with Vector Search Anomaly: %s", enabled)
+            return "vs_anomaly"
+        else:
+            logger.info("Invoking Chatbot with Vector Search Retrieval: %s", enabled)
+            return "vs_retrieve"
 
     return "generate_response"
 
@@ -462,18 +573,22 @@ workflow.add_node("vs_retrieve", vs_retrieve)
 workflow.add_node("vs_generate", vs_generate)
 workflow.add_node("grade_documents", grade_documents)
 workflow.add_node("selectai_generate", selectai_generate)
+workflow.add_node("vs_anomaly", vs_anomaly)
 workflow.add_node("generate_response", generate_response)
 workflow.add_node("respond", respond)
 
 # Start the agent with clean messages
 workflow.add_edge(START, "agent")
 
-# Branch to either "selectai_generate", "vs_retrieve", or "generate_response"
+# Branch to either "selectai_generate", "vs_retrieve", "vs_anomaly", or "generate_response"
 workflow.add_conditional_edges("agent", use_tool)
 workflow.add_edge("generate_response", "respond")
 
 # If selectAI
 workflow.add_edge("selectai_generate", "respond")
+
+# If vs_anomaly
+workflow.add_edge("vs_anomaly", "respond")
 
 # If retrieving, grade the documents returned and either generate (not relevant) or vs_generate (relevant)
 workflow.add_edge("vs_retrieve", "grade_documents")
@@ -488,4 +603,4 @@ memory = MemorySaver()
 chatbot_graph = workflow.compile(checkpointer=memory)
 
 ## This will output the Graph in ascii; don't deliver uncommented
-# chatbot_graph.get_graph(xray=True).print_ascii()
+chatbot_graph.get_graph(xray=True).print_ascii()

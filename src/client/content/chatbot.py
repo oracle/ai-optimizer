@@ -31,17 +31,21 @@ logger = logging_config.logging.getLogger("client.content.chatbot")
 def show_vector_search_refs(context):
     """When Vector Search Content Found, show the references"""
     st.markdown("**References:**")
-    ref_src = set()
+    ref_src = []
     ref_cols = st.columns([3, 3, 3])
     # Create a button in each column
     for i, (ref_col, chunk) in enumerate(zip(ref_cols, context[0])):
         with ref_col.popover(f"Reference: {i + 1}"):
             chunk = context[0][i]
             logger.debug("Chunk Content: %s", chunk)
-            st.subheader("Reference Text", divider="red")
+            st.subheader("Reference", divider="red")
             st.markdown(chunk["page_content"])
             try:
-                ref_src.add(chunk["metadata"]["filename"])
+                # Build Links
+                score = chunk.get("score")
+                filename = chunk["metadata"]["filename"]
+                ref_src.append(f"{filename} - {score}%" if score else filename)
+
                 st.subheader("Metadata", divider="red")
                 if chunk.get("metadata", {}).get("category") == "image":
                     st.image(chunk["page_content"])
@@ -51,9 +55,11 @@ def show_vector_search_refs(context):
             except KeyError:
                 logger.error("Chunk Metadata NOT FOUND!!")
 
-    for link in ref_src:
+    unique_src = list(dict.fromkeys(ref_src))
+    for link in unique_src:
         st.markdown("- " + link)
-    st.markdown(f"**Notes:** Vector Search Query - {context[1]}")
+    if not context[1].startswith("data:image"):
+        st.markdown(f"**Notes:** Vector Search Query - {context[1]}")
 
 
 #############################################################################

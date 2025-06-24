@@ -162,7 +162,11 @@ def main() -> None:
         st.stop()
 
     chunk_size_max = state.embed_model_enabled[embed_request.model]["max_chunk_size"]
-    if chunk_size_max > 0:
+    st.write(chunk_size_max)
+    if chunk_size_max == 0:
+        embed_request.chunk_size = 0
+        embed_request.chunk_overlap = 0
+    else:
         col1_1, col1_2 = st.columns([0.8, 0.2])
         with col1_1:
             st.slider(

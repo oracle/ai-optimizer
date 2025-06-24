@@ -231,7 +231,10 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             response = requests.get(url, timeout=60)
             content_type = response.headers.get("Content-Type", "").lower()
 
-            if "application/pdf" in content_type or "application/octet-stream" in content_type:
+            if any(ct in content_type for ct in ["application/pdf", "application/octet-stream"]):
+                with open(temp_directory / filename, "wb") as file:
+                    file.write(response.content)
+            elif content_type.startswith("image/"):
                 with open(temp_directory / filename, "wb") as file:
                     file.write(response.content)
             elif "text" in content_type or "html" in content_type:
@@ -624,8 +627,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         """Generate a completion from agent, stream the results"""
         client_settings = get_client_settings(client)
         model = request.model_dump()
-        logger.debug("Settings: %s", client_settings)
-        logger.debug("Request: %s", model)
+        logger.debug("Completion Settings: %s", client_settings)
+        logger.debug("Completion Request: %s", model)
 
         # Establish LL schema.Model Params (if the request specs a model, otherwise override from settings)
         if not model["model"]:
@@ -708,12 +711,12 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 },
             ),
         }
-        logger.debug("Completion Kwargs: %s", kwargs)
+        # logger.debug("Completion Kwargs: %s", kwargs)
         agent: CompiledStateGraph = chatbot.chatbot_graph
         try:
             async for chunk in agent.astream_events(**kwargs, version="v2"):
                 # The below will produce A LOT of output; uncomment when desperate
-                # logger.debug("Streamed Chunk: %s", chunk)
+                logger.info("Streamed Chunk: %s", chunk)
                 if chunk["event"] == "on_chat_model_stream":
                     if "tools_condition" in str(chunk["metadata"]["langgraph_triggers"]):
                         continue  # Skip Tool Call messages
