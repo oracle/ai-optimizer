@@ -603,4 +603,4 @@ memory = MemorySaver()
 chatbot_graph = workflow.compile(checkpointer=memory)
 
 ## This will output the Graph in ascii; don't deliver uncommented
-chatbot_graph.get_graph(xray=True).print_ascii()
+# chatbot_graph.get_graph(xray=True).print_ascii()
