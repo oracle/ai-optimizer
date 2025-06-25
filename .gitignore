@@ -64,4 +64,3 @@ spring_ai/create_user.sql
 spring_ai/drop.sql
 src/client/spring_ai/target/classes/*
 api_server_key
-src/mcp/optimizer_settings_openai.json
