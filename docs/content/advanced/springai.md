@@ -29,11 +29,25 @@ You have simply to:
 chmod 755 ./start.sh
 ```
 
-* add the password for the user used to connect from the {{< short_app_ref >}} to the Oracle DB23ai used as vectorstore: 
-
-```bash
-export DB_PASSWORD=""
+* Edit `start.sh` to change the DB_PASSWORD or any other reference/credentials changed by the dev env, as in this example:
 ```
+export SPRING_AI_OPENAI_API_KEY=$OPENAI_API_KEY
+export DB_DSN="jdbc:oracle:thin:@localhost:1521/FREEPDB1"
+export DB_USERNAME=<DB_USER_NAME>
+export DB_PASSWORD=<DB_PASSWORD>
+export DISTANCE_TYPE=COSINE
+export OPENAI_CHAT_MODEL=gpt-4o-mini
+export OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+export OLLAMA_CHAT_MODEL="llama3.1"
+export OLLAMA_EMBEDDING_MODEL=mxbai-embed-large
+export OLLAMA_BASE_URL="http://<OLLAMA_SERVER>:11434"
+export CONTEXT_INSTR=" You are an assistant for question-answering tasks. Use the retrieved Documents and history to answer the question as accurately and comprehensively as possible. Keep your answer grounded in the facts of the Documents, be concise, and reference the Documents where possible. If you don't know the answer, just say that you are sorry as you don't haven't enough information. "
+export TOP_K=4
+export VECTOR_STORE=TEXT_EMBEDDING_3_SMALL_8191_1639_COSINE
+export PROVIDER=openai
+mvn spring-boot:run -P openai
+```
+
 * The `<VECTOR_STORE>` created in the Oracle AI Optimizer and Toolkit will be automatically converted in a `<VECTOR_STORE>_SPRINGAI` table, and it will store the same data. If already exists it will be used without modification.
 If you want to start from scratch, drop the table `<VECTOR_STORE>_SPRINGAI`, running in sql:
 
@@ -45,6 +59,7 @@ COMMIT;
 * This microservice will expose the following REST endpoints:
 
   * `http://localhost:9090/v1/chat/completions`: to use RAG via OpenAI REST API 
+  * `http://localhost:9090/v1/models`: return models behind the RAG via OpenAI REST API 
   * `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used
   * `http://localhost:9090/v1/service/search/`: to search for document similar to the message provided
   * `http://localhost:9090/v1/service/store-chunks/`: to embedd and store a list of text chunks in the vectorstore
@@ -130,6 +145,37 @@ response will be a list of vector embeddings created:
   ]  
 ]
 ```
+
+### Get model name
+Return the name of model used. It's useful to integrate ChatGUIs that require the model list before proceed.
+
+```
+curl http://localhost:9090/v1/models
+```
+
+## MCP RagTool
+The completion service is also available as an MCP server based on the **SSE** transport protocol.
+To test it:
+
+* Start as usual the microservice: 
+```shell
+./start.sh
+```
+
+* Start the **MCP inspector**:
+```shell
+export DANGEROUSLY_OMIT_AUTH=true
+npx @modelcontextprotocol/inspector  
+```
+
+* With a web browser open: http://127.0.0.1:6274
+
+* Configure:
+  * Transport Type: SSE
+  * URL: http://localhost:9090/sse
+  * set Request Timeout to: **200000**
+
+* Test a call to `getRag` Tool.
 
 
 ### Run in the Oracle Backend for Microservices and AI
@@ -263,3 +309,7 @@ it should return something like:
   ]
 }
 ```
+
+{{% notice style="code" title="Documentation is Hard!" icon="circle-info" %}}
+More information coming soon... 25-June-2025
+{{% /notice %}}
