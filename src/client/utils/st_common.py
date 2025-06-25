@@ -111,7 +111,7 @@ def history_sidebar() -> None:
     checkbox_col, button_col = st.sidebar.columns(2)
     chat_history_enable = checkbox_col.checkbox(
         "Enable?",
-        value=True,
+        value=state.user_settings["ll_model"]["chat_history"],
         key="selected_ll_model_chat_history",
         on_change=update_user_settings("ll_model"),
     )
