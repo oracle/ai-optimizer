@@ -19,7 +19,7 @@ import client.utils.api_call as api_call
 
 import common.help_text as help_text
 import common.logging_config as logging_config
-from common.schema import ClientIdType, PromptPromptType, PromptNameType, SelectAISettings
+from common.schema import PromptPromptType, PromptNameType, SelectAISettings
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
@@ -73,9 +73,7 @@ def clear_state_key(state_key: str) -> None:
     logger.debug("State cleared: %s", state_key)
 
 
-def update_user_settings(
-    user_setting: str,
-) -> None:
+def update_user_settings(user_setting: str) -> None:
     """Update user settings"""
     for setting_key, setting_value in state.user_settings[user_setting].items():
         widget_key = f"selected_{user_setting}_{setting_key}"
@@ -112,7 +110,7 @@ def history_sidebar() -> None:
     checkbox_col, button_col = st.sidebar.columns(2)
     chat_history_enable = checkbox_col.checkbox(
         "Enable?",
-        value=True,
+        value=state.user_settings["ll_model"]["chat_history"],
         key="selected_ll_model_chat_history",
         on_change=update_user_settings("ll_model"),
     )
@@ -354,7 +352,7 @@ def vector_search_sidebar() -> None:
             "Search Type:",
             vector_search_type_list,
             index=vector_search_type_list.index(state.user_settings["vector_search"]["search_type"]),
-            key="selected_vector_search_type",
+            key="selected_vector_search_search_type",
             on_change=update_user_settings("vector_search"),
         )
         st.sidebar.number_input(
@@ -403,9 +401,7 @@ def vector_search_sidebar() -> None:
         ##########################
         st.sidebar.subheader("Vector Store", divider="red")
         # Create a DataFrame of all database vector storage tables
-        vs_df = pd.DataFrame(
-            state.database_config[state.user_settings["database"]["alias"]].get("vector_stores")
-        )
+        vs_df = pd.DataFrame(state.database_config[state.user_settings["database"]["alias"]].get("vector_stores"))
 
         def vs_reset() -> None:
             """Reset Vector Store Selections"""
@@ -458,13 +454,9 @@ def vector_search_sidebar() -> None:
             if state.get("selected_vector_search_chunk_size"):
                 filtered = filtered[filtered["chunk_size"] == state.selected_vector_search_chunk_size]
             if state.get("selected_vector_search_chunk_overlap"):
-                filtered = filtered[
-                    filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap
-                ]
+                filtered = filtered[filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap]
             if state.get("selected_vector_search_distance_metric"):
-                filtered = filtered[
-                    filtered["distance_metric"] == state.selected_vector_search_distance_metric
-                ]
+                filtered = filtered[filtered["distance_metric"] == state.selected_vector_search_distance_metric]
             if state.get("selected_vector_search_index_type"):
                 filtered = filtered[filtered["index_type"] == state.selected_vector_search_index_type]
             return filtered
