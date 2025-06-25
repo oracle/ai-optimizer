@@ -64,3 +64,11 @@ spring_ai/create_user.sql
 spring_ai/drop.sql
 src/client/spring_ai/target/classes/*
 api_server_key
+src/client/mcp/rag/optimizer_settings.json
+src/client/mcp/rag/pyproject.toml
+src/client/mcp/rag/main.py
+src/client/mcp/rag/.python-version
+src/client/mcp/rag/uv.lock
+src/client/mcp/rag/node_modules/
+src/client/mcp/rag/package-lock.json
+src/client/mcp/rag/package.json
