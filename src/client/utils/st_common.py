@@ -79,9 +79,6 @@ def update_user_settings(user_setting: str) -> None:
     for setting_key, setting_value in state.user_settings[user_setting].items():
         widget_key = f"selected_{user_setting}_{setting_key}"
         widget_value = state.get(widget_key, setting_value)
-        print(f"{widget_key} = {widget_value}")
-        print(f"{setting_key} = {setting_value}")
-
         if state.get(widget_key, setting_value) != setting_value:
             logger.info("Updating user_settings['%s']['%s'] to %s", user_setting, setting_key, widget_value)
             state.user_settings[user_setting][setting_key] = widget_value
@@ -344,7 +341,6 @@ def vector_search_sidebar() -> None:
     if state.user_settings["vector_search"]["enabled"]:
         st.sidebar.subheader("Vector Search", divider="red")
 
-        switch_prompt("sys", "Vector Search Example")
         ##########################
         # Search
         ##########################
@@ -360,15 +356,19 @@ def vector_search_sidebar() -> None:
             key="selected_vector_search_search_type",
             on_change=update_user_settings("vector_search"),
         )
-        st.sidebar.number_input(
-            "Top K:",
-            help=help_text.help_dict["top_k"],
-            value=state.user_settings["vector_search"]["top_k"],
-            min_value=1,
-            max_value=10000,
-            key="selected_vector_search_top_k",
-            on_change=update_user_settings("vector_search"),
-        )
+        if vector_search_type == "Anomaly Detection":
+            switch_prompt("sys", "Anomaly Detection Example")
+        else:
+            switch_prompt("sys", "Vector Search Example")
+            st.sidebar.number_input(
+                "Top K:",
+                help=help_text.help_dict["top_k"],
+                value=state.user_settings["vector_search"]["top_k"],
+                min_value=1,
+                max_value=10000,
+                key="selected_vector_search_top_k",
+                on_change=update_user_settings("vector_search"),
+            )
         if vector_search_type == "Similarity Score Threshold":
             st.sidebar.slider(
                 "Minimum Relevance Threshold:",

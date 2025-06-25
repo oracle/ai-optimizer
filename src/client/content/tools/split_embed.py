@@ -162,7 +162,6 @@ def main() -> None:
         st.stop()
 
     chunk_size_max = state.embed_model_enabled[embed_request.model]["max_chunk_size"]
-    st.write(chunk_size_max)
     if chunk_size_max == 0:
         embed_request.chunk_size = 0
         embed_request.chunk_overlap = 0

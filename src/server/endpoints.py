@@ -716,7 +716,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         try:
             async for chunk in agent.astream_events(**kwargs, version="v2"):
                 # The below will produce A LOT of output; uncomment when desperate
-                logger.info("Streamed Chunk: %s", chunk)
+                #logger.debug("Streamed Chunk: %s", chunk)
                 if chunk["event"] == "on_chat_model_stream":
                     if "tools_condition" in str(chunk["metadata"]["langgraph_triggers"]):
                         continue  # Skip Tool Call messages

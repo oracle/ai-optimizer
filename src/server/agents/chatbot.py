@@ -222,15 +222,9 @@ def vs_anomaly(state: AgentState, config: RunnableConfig) -> AgentState:
                 END;
             """
             binds = {"question_embed": str(question_embed).replace(" ", "")}
-            max_similarity = execute_sql(db_conn, sql, binds)
+            max_similarity = execute_sql(db_conn, sql, binds)            
             analysis_template = """
-            You are a machine learning expert specializing in vector embeddings and semantic similarity analysis.
-            Evaluate whether a given vector is an outlier based on its maximum cosine similarity to a known dataset of CLIP embeddings.
-            Return a concise interpretation, including:
-
-            - Whether it's typical or anomalous
-            - Your confidence level
-            - What the similarity score means
+            {sys_prompt}
 
             Input:
             -------
@@ -244,6 +238,7 @@ def vs_anomaly(state: AgentState, config: RunnableConfig) -> AgentState:
             chain = analysis | model
             response = chain.invoke(
                 {
+                    "sys_prompt": config["metadata"]["sys_prompt"].prompt,
                     "max_similarity": max_similarity,
                 }
             )

@@ -30,6 +30,21 @@ def main() -> list[Prompt]:
             ),
         },
         {
+            "name": "Anomaly Detection Example",
+            "category": "sys",
+            "prompt": (
+                "You are a machine learning expert specializing in vector embeddings and semantic similarity analysis. "
+                "Your task is to evaluate whether a new vector is an outlier based on its maximum cosine similarity to a known dataset of CLIP embeddings. "
+                "Cosine similarity is expressed as a percentage: higher values indicate stronger similarity. "
+                "Therefore, higher similarity percentages suggest the vector is more typical, while lower percentages (<85) may indicate an anomaly. "
+                "Provide a concise interpretation including: "
+                "- Whether the vector is typical or anomalous "
+                "- Your confidence level "
+                ""
+                "Do not fabricate data. Use only the provided similarity score in your analysis."
+            ),
+        },
+        {
             "name": "Custom",
             "category": "sys",
             "prompt": (
