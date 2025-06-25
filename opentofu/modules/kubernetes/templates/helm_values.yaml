@@ -1,0 +1,85 @@
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# spell-checker: disable
+
+global:
+  api:
+    secretName: "${label}-api-key"
+
+# -- API Server configuration
+server:
+  enabled: true
+  image:
+    repository: ${server_repository}
+    tag: "latest"
+  imagePullPolicy: Always
+
+  ingress:
+    enabled: true
+    className: native-ic
+    annotations:
+      nginx.ingress.kubernetes.io/upstream-vhost: "${lb_ip}"
+      oci-native-ingress.oraclecloud.com/http-listener-port: "8000"
+      oci-native-ingress.oraclecloud.com/protocol: TCP
+
+  service:
+    http:
+      type: "NodePort"
+
+  # -- Oracle Cloud Infrastructure Configuration
+  oci:
+    tenancy: "${oci_tenancy}"
+    region: "${oci_region}"
+
+  # -- Oracle Autonomous Database Configuration
+  adb:
+    enabled: true
+    ocid: "${adb_ocid}"
+    mtls:
+      enabled: true
+    authN:
+      secretName: "${adb_name}-authn"
+      usernameKey: "username"
+      passwordKey: "password"
+      serviceKey: "service"
+
+  models:
+    ollama:
+      enabled: ${k8s_node_pool_gpu_deploy}
+
+client:
+  enabled: true
+  image:
+    repository: ${client_repository}
+    tag: "latest"
+  imagePullPolicy: Always
+
+  ingress:
+    enabled: true
+    className: native-ic
+    annotations:
+      nginx.ingress.kubernetes.io/upstream-vhost: "${lb_ip}"
+      oci-native-ingress.oraclecloud.com/http-listener-port: "80"
+      oci-native-ingress.oraclecloud.com/protocol: TCP
+
+  service:
+    http:
+      type: "NodePort"
+
+  features:
+    disableTestbed: "true"
+    disableApi: "false"
+    disableTools: "false"
+    disableDbCfg: "true"
+    disableModelCfg: "true"
+    disableOciCfg: "true"
+    disableSettings: "true"
+
+ollama:
+  enabled: ${k8s_node_pool_gpu_deploy}
+  models:
+    - llama3.1
+    - mxbai-embed-large
+  resources:
+    limits:
+      nvidia.com/gpu: 1

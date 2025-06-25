@@ -1,13 +1,14 @@
 # Workflow for deploying static documentation
-name: Deploy Documentation to Pages
+name: Deploy Documentation/Helm to Pages
 
 on:
   push:
     branches:
       - main
-    # Limit runs to only when docs change
+    # Limit runs to only when docs/helm change
     paths:
-      - 'docs/**'
+      - "docs/**"
+      - "helm/**"
 
   # Allows running this workflow manually
   workflow_dispatch:
@@ -34,28 +35,36 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HUGO_VERSION: 0.134.1
+      HUGO_VERSION: 0.145.0
     steps:
       - name: Install Hugo CLI
         run: |
           wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
-          && sudo dpkg -i ${{ runner.temp }}/hugo.deb          
+          && sudo dpkg -i ${{ runner.temp }}/hugo.deb
+
       - name: Install Dart Sass
         run: sudo snap install dart-sass
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
+
       - name: Download Hugo Theme
         run: |
           mkdir -p docs/themes/relearn \
-          && wget -qO- $(curl -s https://api.github.com/repos/McShelby/hugo-theme-relearn/releases/latest | grep "tarball_url" | awk -F'"' '{print $4}') | tar --exclude='*/exampleSite' -xz -C docs/themes/relearn --strip-components=1
+          && curl -L $(curl -s https://api.github.com/repos/McShelby/hugo-theme-relearn/releases/latest \
+          | grep "tarball_url" | cut -d '"' -f 4) \
+          | tar -xz -C docs/themes/relearn --strip-components=1 --exclude='*/exampleSite'
+
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
+
       - name: Install Node.js dependencies
         run: "[[ -f package-lock.json || -f npm-shrinkwrap.json ]] && npm ci || true"
+
       - name: Build with Hugo
         env:
           HUGO_CACHEDIR: ${{ runner.temp }}/hugo_cache
@@ -66,7 +75,14 @@ jobs:
             --gc \
             --minify \
             --source docs \
-            --baseURL "${{ steps.pages.outputs.base_url }}/"          
+            --baseURL "${{ steps.pages.outputs.base_url }}/"
+
+      - name: Package Helm chart
+        run: |
+          mkdir -p docs/public/helm
+          helm package helm -d docs/public/helm
+          helm repo index docs/public/helm --url "${{ steps.pages.outputs.base_url }}/helm"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

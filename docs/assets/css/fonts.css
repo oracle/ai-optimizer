@@ -1,0 +1,10 @@
+@import "fonts.css";
+
+@font-face {
+    font-family: 'MontserratAlt1-Light';
+    src: url('/ai-optimizer/fonts/MontserratAlt1-Light.woff2') format('woff2'),
+         url('/ai-optimizer/fonts/MontserratAlt1-Light.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-size: smaller;
+}

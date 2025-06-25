@@ -1,9 +1,12 @@
-<!-- Copyright (c) 2023, 2024, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. -->
-<!-- spell-checker: ignore Luma, assetbusting, SMPTE, octicon -->
-{{- $assetBusting := partialCached "assetbusting.hugo" . }}
+<!--
+Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. 
+
+spell-checker: ignore Luma, assetbusting, SMPTE, octicon
+-->
+{{- $assetBusting := partialCached "assetbusting.gotmpl" . }} 
             <span class="github-buttons"></span>
-            <p>Built with <a href="https://github.com/oracle-samples/oaim-sandbox" title="love"><i class="fas fa-heart"></i></a> by <a href="https://https://www.oracle.com/"><span style="color:#C74634;">ORACLE</span></a></p>
+            <p>Built with <a href="https://github.com/oracle-samples/ai-optimizer" title="love"><i class="fas fa-heart"></i></a> by <a href="https://www.oracle.com/"><span style="color:#C74634;">ORACLE</span></a></p>
             <script>
               function githubButtonsScheme(){
                 var scheme = 'light';
@@ -21,9 +24,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
                 }
                 var scheme = githubButtonsScheme();
                 var githubButtonsHTML = `
-                  <a class="github-button" href="https://github.com/oracle-samples/oaim-sandbox/archive/main.zip" data-color-scheme="${scheme}" data-icon="octicon-cloud-download"  aria-label="Download the Sandbox on GitHub">Download</a>
-                  <a class="github-button" href="https://github.com/oracle-samples/oaim-sandbox" data-color-scheme="${scheme}" data-icon="octicon-star" data-show-count="true"  aria-label="Star the Sandbox on GitHub">Star</a>
-                  <a class="github-button" href="https://github.com/oracle-samples/oaim-sandbox/fork" data-color-scheme="${scheme}" data-icon="octicon-repo-forked"   data-show-count="true" aria-label="Fork the Sandbox on GitHub">Fork</a>
+                  <a class="github-button" href="https://github.com/oracle-samples/ai-optimizer/archive/main.zip" data-color-scheme="${scheme}" data-icon="octicon-cloud-download"  aria-label="Download the AI Optimizer on GitHub">Download</a>
+                  <a class="github-button" href="https://github.com/oracle-samples/ai-optimizer" data-color-scheme="${scheme}" data-icon="octicon-star" data-show-count="true"  aria-label="Star the AI Optimizer on GitHub">Star</a>
+                  <a class="github-button" href="https://github.com/oracle-samples/ai-optimizer/fork" data-color-scheme="${scheme}" data-icon="octicon-repo-forked"   data-show-count="true" aria-label="Fork the AI Optimizer on GitHub">Fork</a>
                  `;
                 document.querySelector( '.github-buttons' ).innerHTML = githubButtonsHTML;
                 document.querySelectorAll( '.github-button' ).forEach( function( anchor ){

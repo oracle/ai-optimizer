@@ -1,0 +1,59 @@
+# Workflow for running tests on server code
+name: Test Suite
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+  # Allows running this workflow manually
+  workflow_dispatch:
+
+jobs:
+  check:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:latest
+        options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            src/.tox
+          key: ${{ runner.os }}-pip-${{ hashFiles('src/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          cd src/
+          python -m pip install --upgrade pip wheel setuptools
+          pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch
+          pip install -e ".[all-test]"
+
+      - name: Run All Tests
+        run: pytest
+
+    # Block merging if the job fails
+    permissions:
+      pull-requests: write

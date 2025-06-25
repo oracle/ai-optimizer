@@ -1,29 +1,42 @@
-## Copyright (c) 2023, 2024, Oracle and/or its affiliates.
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-baseURL = 'https://oracle-samples.github.io/oaim-sandbox'
+baseURL = 'https://oracle-samples.github.io/ai-optimizer'
 languageCode = 'en-us'
-title = 'AI Microservices Sandbox'
+title = 'Oracle AI Optimizer & Toolkit'
 theme = "relearn"
 sectionPagesMenu = 'main'
 tableOfContents = true
+enableGitInfo = true
 
 # Required if you want to render robots.txt template
 enableRobotsTXT = true
+
+[markup]
+  [markup.goldmark]
+    duplicateResourceFiles = false
+    [markup.goldmark.extensions]
+      strikethrough = false
+      [markup.goldmark.extensions.extras]
+        [markup.goldmark.extensions.extras.subscript]
+          enable = true
 
 # Parameters
 [params]
   collapsibleMenu = true
   showVisitedLinks = true
-  themeVariant = ['auto', 'sandbox-light', 'sandbox-dark']
+  themeVariant = ['auto', 'docs-light', 'docs-dark']
   disableInlineCopyToClipBoard = true
-
-
+  hideAuthorName = true
+  LongName = "Oracle AI Optimizer and Toolkit"
+  ShortName = "AI Optimizer"
+  GitHubRepo = "https://github.com/oracle-samples/ai-optimizer"
+  
 [menu]
   [[menu.shortcuts]]
     identifier = 'ds'
     name = "<i class='fa-fw fab fa-github'></i> GitHub Repository"
-    url = 'https://github.com/oracle-samples/oaim-sandbox'
+    url = 'https://github.com/oracle-samples/ai-optimizer'
     weight = 10
   [[menu.shortcuts]]
     name = "<i class='fa-fw fab fa-youtube'></i>Building a Chatbot"

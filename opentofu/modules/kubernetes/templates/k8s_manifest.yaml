@@ -1,0 +1,62 @@
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# spell-checker: disable
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${label}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${label}-api-key
+  namespace: ${label}
+type: Opaque
+stringData:
+  apiKey: ${api_key}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${adb_name}-authn
+  namespace: ${label}
+type: Opaque
+stringData:
+  username: ADMIN
+  password: ${adb_password}
+  service: ${adb_service}
+---
+apiVersion: "ingress.oraclecloud.com/v1beta1"
+kind: IngressClassParameters
+metadata:
+  name: native-ic-params
+  namespace: ${label}
+spec:
+  compartmentId: ${compartment_ocid}
+  subnetId: ${lb_subnet_ocid}
+  loadBalancerName: "${label}-lb"
+  reservedPublicAddressId: ${lb_ip_ocid}
+  isPrivate: false
+  maxBandwidthMbps: ${lb_max_shape}
+  minBandwidthMbps: ${lb_min_shape}
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: native-ic
+  namespace: ${label}
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
+    oci-native-ingress.oraclecloud.com/network-security-group-ids: ${lb_nsgs}
+    oci-native-ingress.oraclecloud.com/id: ${lb_ocid}
+    oci-native-ingress.oraclecloud.com/delete-protection-enabled: "true"
+spec:
+  controller: oci.oraclecloud.com/native-ingress-controller
+  parameters:
+    scope: Namespace
+    namespace: ${label}
+    apiGroup: ingress.oraclecloud.com
+    kind: IngressClassParameters
+    name: native-ic-params

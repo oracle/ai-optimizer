@@ -1,0 +1,95 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. 
+
+replicaCount: 1
+image:
+  repository: localhost/ai-optimizer-server
+  tag: "latest"
+imagePullPolicy: IfNotPresent
+imagePullSecrets: []
+  # - name: regcred
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
+  tls: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+serviceAccount:
+  create: false
+
+service:
+  http:
+    type: "ClusterIP"
+
+# -- Oracle Cloud Infrastructure Configuration
+oci:
+  tenancy: ""
+  region: ""
+
+# -- Oracle Autonomous Database Configuration
+adb:
+  enabled: false
+  # -- Setting OCID will trigger an OraOperator ADB Resource creation
+  # -- leave ocid blank if using a pre-deployed ADB and just fill in authN/mtls
+  ocid: ""
+  mtls:
+    enabled: false
+    secretName: ""
+    # secretKey: ""
+  authN:
+    secretName: ""
+    usernameKey: ""
+    passwordKey: ""
+    serviceKey: ""
+
+# -- Model Configuration
+models:
+  ollama:
+    enabled: false
+  huggingface:
+    # -- e.g http://hf.hf.svc.cluster.local:8080
+    apiUrl: ""
+  openAI:
+    secretName: ""
+    secretKey: ""
+  perplexity:
+    secretName: ""
+    secretKey: ""
+  cohere:
+    secretName: ""
+    secretKey: ""
+
+# -- Additional volumes on the output Deployment definition.
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# -- Additional volumeMounts on the output Deployment definition.
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true

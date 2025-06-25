@@ -1,46 +1,66 @@
-## Copyright (c) 2023, 2024, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-##############################################################################
-# Developer Custom
-##############################################################################
-assets/docos/samples/oracle-ai-vector-search-users-guide-qa.jsonl
-assets/docos/oracle-ai-vector-search-users-guide.pdf
-
+# spell-checker: disable
 ##############################################################################
 # Project/User Specific
 ##############################################################################
+**/*.log
+**/*.zip
 **/requirements.txt
-!app/requirements.txt
-app/THIRD_PARTY_LICENSES.txt
-rag/**
+**/THIRD_PARTY_LICENSES.txt
 sbin/**
-helm/values.yaml
 **/*.bak
+**/tmp/**
+**/temp/**
+**/chatbot_graph.png
+**/*.sh
+!opentofu/**/cloudinit-oke.sh
+!src/entrypoint.sh
+!src/client/spring_ai/templates/env.sh
+tests/db_startup_temp/**
 
 ##############################################################################
-# Enviroment (PyVen, IDE, etc.)
+# Environment (PyVen, IDE, etc.)
 ##############################################################################
 **/.venv
 **/.vscode
 **/.DS_Store
 **/*.swp
 **/.scannerwork
+**/.cursorignore
+**/tns_admin
 sonar-project.properties
 
 ##############################################################################
 # Python
 ##############################################################################
 __pycache__/
+.pytest_cache
 *.py[cod]
 *$py.class
-spring_ai/src/main/resources/data/sandbox_settings.json
+*/*.egg-info
+**/build/
+
+##############################################################################
+# IaC
+##############################################################################
+**/**.tfvars
+**/.terraform*
+**/terraform.tfstate*
+**/*.pem
+opentofu/**/generated/*.*
+opentofu/**/generated/kubeconfig
+
+##############################################################################
+# Helm
+##############################################################################
+helm/values*.yaml
+!helm/values.yaml
+
+##############################################################################
+# Random
+##############################################################################
+spring_ai/src/main/resources/data/optimizer_settings.json
 spring_ai/target/**
 spring_ai/create_user.sql
 spring_ai/drop.sql
-start.sh
-spring_ai/env.sh
-temp/rag_agent.ipynb
-temp/tools.ipynb
-temp/tools.py
-temp/json-dual.sql
-env.sh
+src/client/spring_ai/target/classes/*
+api_server_key

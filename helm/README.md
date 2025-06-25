@@ -1,4 +1,4 @@
-# oaim-sandbox Helm Chart
+# Oracle AI Optimizer and Toolkit Helm Chart
 
 ## Secret Pre-Requisites
 
@@ -6,7 +6,7 @@ This Helm Chart requires three Kubernetes Secrets to be created prior to install
 
 ### Registry Credentials
 
-**Note**: This requirement maybe deprecated in OCI/OKE: [Credential Provider](https://github.com/oracle-devrel/oke-credential-provider-for-ocir/issues/2)
+**Note**: This requirement is deprecated in OCI/OKE when using the IaC from opentofu: [Credential Provider](https://github.com/oracle-devrel/oke-credential-provider-for-ocir)
 
 ```yaml
 apiVersion: v1
@@ -21,7 +21,7 @@ stringData:
 Example:
 
 ```bash
-docker login iad.ocir.io -u <username>
+podman login iad.ocir.io -u <username>
 kubectl create secret docker-registry regcred --from-file=.dockerconfigjson=/run/user/1002/containers/auth.json
 ```
 
@@ -33,7 +33,7 @@ Example:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: sandbox-api-keys
+  name: client-api-keys
 type: Opaque
 stringData:
   api_server_key: ...
@@ -49,7 +49,7 @@ Example:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: sandboxdb-authn
+  name: optimizerdb-authn
 type: Opaque
 stringData:
   password: ...
@@ -60,11 +60,11 @@ stringData:
 ## Install
 
 ```bash
-helm upgrade --install oaim-sandbox .
+helm upgrade --install ai-optimizer .
 ```
 
 ## Uninstall
 
 ```bash
-helm uninstall oaim-sandbox
+helm uninstall ai-optimizer
 ```

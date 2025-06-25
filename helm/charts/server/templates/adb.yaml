@@ -1,0 +1,51 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+{{- if .Values.oci.region }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "app.fullname" . }}-oci-cred
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+data:
+  region: {{ .Values.oci.region }}
+{{- end }}
+---
+{{- if .Values.adb.ocid }}
+{{- if .Values.adb.mtls.enabled }}
+{{- if not .Values.adb.mtls.secretName }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+stringData:
+  {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}: {{ randAlphaNum 16 | quote }}
+{{- end }}
+{{- end }}
+---
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabase
+metadata:
+  name: {{ include "app.fullname" . }}-adb
+  labels: 
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  action: "Sync"
+  details:
+    id: {{ .Values.adb.ocid }}
+    adminPassword:
+      k8sSecret:
+        name: place-holder
+  wallet:
+    name: {{ include "app.fullname" . }}-adb-tns-admin-{{ .Release.Revision }}
+    password:
+      k8sSecret:
+        name: {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}
+  {{- if .Values.oci.region }}
+  ociConfig: 
+    configMapName: {{ include "app.fullname" . }}-oci-cred
+  {{- end }}
+{{ end }}

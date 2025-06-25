@@ -1,10 +1,14 @@
-<!-- Copyright (c) 2023, 2024, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. -->
+<!--
+Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. 
+-->
   <style>
+    a#R-logo.R-default {
+      font-size: 1.75rem;
+    }
     a#R-logo {
       font-family: 'MontserratAlt1-Light', sans-serif;
       font-style: normal;
-      font-size: 1.2rem;
       font-weight: 300;
       margin-top: -.8125rem;
       text-transform: uppercase;
@@ -27,14 +31,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
     }
     @media only all and (max-width: 59.999rem) {
       a#R-logo {
-        font-size: 1.2rem;
         margin-top: -.1875rem;
       }
   }
   </style>
-  <a id="R-logo" href="{{ partial "relLangPrettyUglyURL.hugo" (dict "to" .Site.Home) }}">
-    AI Microservices<br>Sandbox<br>
+  <a id="R-logo" class="R-default" href="{{ partial "permalink.gotmpl" (dict "to" .Site.Home) }}">
+    AI Optimizer<br>& Toolkit
   </a>
   <a id="R-logo" href="https://www.oracle.com">
-    <span class="powered-by">Powered by <img src="/oaim-sandbox/images/logo.png"></span>
+    <span class="powered-by">Powered by <img src="/ai-optimizer/images/logo.png" alt="Oracle AI Optimizer & Toolkit"></span>
   </a>

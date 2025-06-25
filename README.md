@@ -1,27 +1,24 @@
-# Oracle AI Microservices Sandbox
+# Oracle AI Optimizer and Toolkit
 
-<!-- spell-checker:ignore streamlit, venv, oaim -->
-
-🚧 Developer Preview
+<!-- spell-checker:ignore streamlit, venv, setuptools -->
 
 ## Description
 
-The **Oracle AI Microservices Sandbox** provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle Database 23ai** AI Vector Search, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle Database 23ai** AI VectorSearch and SelectAI, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
 
-## Sandbox Features
+## AI Optimizer Features
 
-- [Configuring Embedding and Chat Models](https://oracle-samples.github.io/oaim-sandbox/sandbox/configuration/model_config)
-- [Splitting and Embedding Documentation](https://oracle-samples.github.io/oaim-sandbox/sandbox/tools/split_embed)
-- [Storing Embedded Documents into the Oracle Database](https://oracle-samples.github.io/oaim-sandbox/sandbox/tools/split_embed)
-- [Modifying System Prompts (Prompt Engineering)](https://oracle-samples.github.io/oaim-sandbox/sandbox/tools/prompt_eng)
-- [Experimenting with **LLM** Parameters](https://oracle-samples.github.io/oaim-sandbox/sandbox/chatbot)
-- [Testing Framework on auto-generated or existing Q&A datasets](https://oracle-samples.github.io/oaim-sandbox/sandbox/test_framework)
+- [Configuring Embedding and Chat Models](https://oracle-samples.github.io/ai-optimizer/client/configuration/model_config)
+- [Splitting and Embedding Documentation](https://oracle-samples.github.io/ai-optimizer/client/tools/split_embed)
+- [Modifying System Prompts (Prompt Engineering)](https://oracle-samples.github.io/ai-optimizer/client/tools/prompt_eng)
+- [Experimenting with **LLM** Parameters](https://oracle-samples.github.io/ai-optimizer/client/chatbot)
+- [Testbed for auto-generated or existing Q&A datasets](https://oracle-samples.github.io/ai-optimizer/client/testbed)
 
 ## Getting Started
 
-The **Oracle AI Microservices Sandbox** is available to install in your own environment, which may be a developer's desktop, on-premises data center environment, or a cloud provider. It can be run either on bare-metal, within a container, or in a Kubernetes Cluster.
+The **AI Optimizer** is available to install in your own environment, which may be a developer's desktop, on-premises data center environment, or a cloud provider. It can be run either on bare-metal, within a container, or in a Kubernetes Cluster.
 
-For more information, including more details on **Setup and Configuration** please visit the [documentation](https://oracle-samples.github.io/oaim-sandbox).
+For more information, including more details on **Setup and Configuration** please visit the [documentation](https://oracle-samples.github.io/ai-optimizer).
 
 ### Prerequisites
 
@@ -32,64 +29,69 @@ For more information, including more details on **Setup and Configuration** plea
   - API Keys for Third-Party Models
   - On-Premises Models<sub>\*</sub>
 
-<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [Infrastructure](https://oracle-samples.github.io/oaim-sandbox/infrastructure) documentation.</sub>
+<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [Infrastructure](https://oracle-samples.github.io/ai-optimizer/infrastructure) documentation.</sub>
 
 #### Bare-Metal Installation
 
-To run the application on bare-metal; download the [source](https://github.com/oracle-samples/oaim-sandbox) and from the top-level directory:
+To run the application on bare-metal; download the [source](https://github.com/oracle-samples/ai-optimizer) and from `src/`:
 
 1. Create and activate a Python Virtual Environment:
 
    ```bash
-   python3.11 -m venv .venv
+   cd src/
+   python3.11 -m venv .venv --copies
    source .venv/bin/activate
-   pip3 install --upgrade pip wheel
+   pip3.11 install --upgrade pip wheel setuptools
    ```
 
 1. Install the Python modules:
 
    ```bash
-   pip3 install -r app/requirements.txt
-   ```
-
-1. Exit from your shell and run again:
-
-   ```bash
+   pip3.11 install -e ".[all]"
    source .venv/bin/activate
    ```
 
 1. Start Streamlit:
 
    ```bash
-   cd app/src
-   streamlit run oaim-sandbox.py --server.port 8501
+   streamlit run launch_client.py --server.port 8501
    ```
 
 1. Navigate to `http://localhost:8501`.
 
-1. [Configure](https://oracle-samples.github.io/oaim-sandbox/sandbox/configuration) the Sandbox.
+1. [Configure](https://oracle-samples.github.io/ai-optimizer/client/configuration) the **AI Optimizer**.
 
 #### Container Installation
 
-To run the application in a container; download the [source](https://github.com/oracle-samples/oaim-sandbox) and from the top-level directory:
+To run the application in a container; download the [source](https://github.com/oracle-samples/ai-optimizer):
 
-1. Build the image.
+1. Build the all-in-one image.
 
-   From the root of the project, build Image:
+   From the `src/` directory, build image:
 
    ```bash
-   podman build -t oaim-sandbox .
+   cd src/
+   podman build -t ai-optimizer-aio .
    ```
 
 1. Start the Container:
 
    ```bash
-   podman run -p 8501:8501 -it --rm oaim-sandbox
+   podman run -p 8501:8501 -it --rm ai-optimizer-aio
    ```
 
 1. Navigate to `http://localhost:8501`.
 
-1. [Configure](https://oracle-samples.github.io/oaim-sandbox/sandbox/configuration/index.html) the Sandbox.
+1. [Configure](https://oracle-samples.github.io/ai-optimizer/client/configuration/index.html) the **AI Optimizer**.
+
+#### Got OCI?
+
+The **AI Optimizer** can be deployed in Oracle Cloud Infrastructure (OCI) using Infrastructure as Code (IaC).
+
+Choose either a light-weight Virtual Machine or robust Oracle Kubernetes Engine deployment, both with an Oracle Autonomous Database 23ai:  
+[![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
+
+For more information, please visit the [IaC Documentation](https://oracle-samples.github.io/ai-optimizer/advanced/iac/index.html).
 
 ## Contributing
 
@@ -105,3 +107,7 @@ Copyright (c) 2024 Oracle and/or its affiliates.
 Released under the Universal Permissive License v1.0 as shown at [https://oss.oracle.com/licenses/upl/](https://oss.oracle.com/licenses/upl/)
 
 See [LICENSE](./LICENSE.txt) for more details.
+
+
+[magic_button]: https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg
+[magic_arch_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-stack.zip
