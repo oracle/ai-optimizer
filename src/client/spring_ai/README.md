@@ -52,13 +52,13 @@ Start with:
 ./start.sh
 ```
 
-This project contains a web service that will accept HTTP GET requests at
+This project contains a web service that will accept HTTP requests at
 
-* `http://localhost:9090/v1/chat/completions`: to use RAG via OpenAI REST API 
-* `http://localhost:9090/v1/models`: return models behind the RAG via OpenAI REST API 
-* `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used
-* `http://localhost:9090/v1/service/search/`: to search for document similar to the message provided
-* `http://localhost:9090/v1/service/store-chunks/`: to embedd and store a list of text chunks in the vectorstore
+* `http://localhost:9090/v1/chat/completions`: to use RAG via OpenAI REST API [**POST**]
+* `http://localhost:9090/v1/models`: return models behind the RAG via OpenAI REST API [**GET**]
+* `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used [**GET**]
+* `http://localhost:9090/v1/service/search/`: to search for document similar to the message provided [**GET**]
+* `http://localhost:9090/v1/service/store-chunks/`: to embedd and store a list of text chunks in the vectorstore [**POST**]
 
 
 
@@ -149,13 +149,10 @@ npx @modelcontextprotocol/inspector
 
 * Configure:
   * Transport Type: SSE
-  * URL: http://localhost:9090/sse
+  * URL: http://127.0.0.1:9090/sse
   * set Request Timeout to: 200000
 
 * Test a call to `getRag` Tool.
-
-
-
 
 
 ## Oracle Backend for Microservices and AI
