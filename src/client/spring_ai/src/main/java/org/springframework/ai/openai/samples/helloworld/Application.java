@@ -5,7 +5,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 package org.springframework.ai.openai.samples.helloworld;
 
-import org.springframework.ai.embedding.EmbeddingModel; 
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.oracle.OracleVectorStore;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,6 +16,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+
 
 @SpringBootApplication
 public class Application {
@@ -32,5 +38,10 @@ public class Application {
             .build();
         return ovs;
     }
+
+    @Bean
+	public ToolCallbackProvider ragTools(RagService ragService) {
+		return MethodToolCallbackProvider.builder().toolObjects(ragService).build();
+	}
 
 }
