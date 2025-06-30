@@ -60,6 +60,10 @@ def set_profile(
     logger.info("Updating SelectAI Profile (%s) attribute: %s = %s", profile_name, attribute_name, attribute_value)
     # Attribute Names: provider, credential_name, object_list, provider_endpoint, model
     # Attribute Names: temperature, max_tokens
+    
+    if isinstance(attribute_value, float) or isinstance(attribute_value, int):
+        attribute_value = str(attribute_value)
+
     binds = {"profile_name": profile_name, "attribute_name": attribute_name, "attribute_value": attribute_value}
     sql = """
             BEGIN
