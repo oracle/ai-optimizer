@@ -58,7 +58,7 @@ This project contains a web service that will accept HTTP requests at
 * `http://localhost:9090/v1/models`: returns models behind the RAG via OpenAI REST API [**GET**]
 * `http://localhost:9090/v1/service/llm` : to chat straight with the LLM used [**GET**]
 * `http://localhost:9090/v1/service/search/`: to search for similar chunk documents to the message provided [**GET**]
-* `http://localhost:9090/v1/service/store-chunks/`: to embedd and store a list of text chunks in the vectorstore [**POST**]
+* `http://localhost:9090/v1/service/store-chunks/`: from a list of chunks provided, it generates vector embeddings and store them in the vector store. [**POST**]
 
 
 
