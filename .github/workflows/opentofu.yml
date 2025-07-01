@@ -1,0 +1,53 @@
+# Workflow for validating Infrastructure as Code
+name: Validate Infrastructure as Code
+
+on:
+  push:
+    branches:
+      - main
+    # Limit runs to only when opentofu changes
+    paths:
+      - "opentofu/**"
+      - ".github/workflows/opentofu.yml"
+
+  # Allows running this workflow manually
+  workflow_dispatch:
+
+# Permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+# Default to bash
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install OpenTofu
+        run: |
+          curl -sSL https://get.opentofu.org/install.sh | bash
+          echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
+
+      - name: Initialize OpenTofu
+        run: tofu init -backend=false
+
+      - name: Validate OpenTofu code
+        run: tofu validate
+
+      - name: Validate OpenTofu formatting
+        run: tofu fmt -recursive -check
