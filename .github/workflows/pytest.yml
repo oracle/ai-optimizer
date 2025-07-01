@@ -20,11 +20,13 @@ jobs:
       docker:
         image: docker:latest
         options: --privileged
+    # Block merging if the job fails
+    permissions:
+      pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
         with:
@@ -53,7 +55,3 @@ jobs:
 
       - name: Run All Tests
         run: pytest
-
-    # Block merging if the job fails
-    permissions:
-      pull-requests: write
