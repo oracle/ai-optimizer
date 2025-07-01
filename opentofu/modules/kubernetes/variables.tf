@@ -5,11 +5,8 @@
 variable "tenancy_id" {
   type = string
 }
-variable "compartment_id" {
-  type = string
-}
 
-variable "user_id" {
+variable "compartment_id" {
   type = string
 }
 

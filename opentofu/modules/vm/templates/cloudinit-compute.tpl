@@ -66,7 +66,6 @@ write_files:
       python3.11 -m venv .venv
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools
-      pip3.11 install torch==2.6.0+cpu -f https://download.pytorch.org/whl/cpu/torch
       pip3.11 install -e ".[all]" --quiet --no-input &
       INSTALL_PID=$!
 

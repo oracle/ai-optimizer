@@ -11,8 +11,8 @@ ENV TOKENIZERS_PARALLELISM=true \
     RUNUSER=oracleai
 
 # Combine related commands into a single RUN layer to minimize image layers
-RUN microdnf -y update && \
-    microdnf -y install python3.11 python3.11-pip && \
+RUN microdnf --nodocs -y update && \
+    microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
     groupadd $RUNUSER && \
@@ -28,8 +28,7 @@ COPY pyproject.toml /opt/package/pyproject.toml
 # Use the virtual environment for pip installations
 RUN source /opt/.venv/bin/activate && \
     pip install --upgrade pip wheel setuptools && \
-    pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
-    pip install "/opt/package[all]"
+    pip install --no-cache-dir "/opt/package[all]"
 
 ##################################################
 # Application

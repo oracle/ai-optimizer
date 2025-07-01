@@ -2,11 +2,6 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
-resource "oci_identity_auth_token" "registry_auth_token" {
-  description = "Registry Push Token"
-  user_id     = var.user_id
-}
-
 resource "oci_identity_dynamic_group" "workers_dynamic_group" {
   compartment_id = var.tenancy_id
   name           = format("%s-worker-dyngrp", var.label_prefix)

@@ -13,8 +13,8 @@ ENV PATH=/opt/.venv/bin:$PATH
 ENV TEMP=/app/tmp
 
 # Combine related commands into a single RUN layer to minimize image layers
-RUN microdnf -y update && \
-    microdnf -y install python3.11 python3.11-pip && \
+RUN microdnf --nodocs -y update && \
+    microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
     /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
@@ -28,7 +28,7 @@ RUN microdnf -y update && \
 
 COPY pyproject.toml /opt/package/pyproject.toml
 
-RUN /opt/.venv/bin/pip install "/opt/package[server]"
+RUN /opt/.venv/bin/pip install --no-cache-dir "/opt/package[server]"
 
 ##################################################
 # Server Application

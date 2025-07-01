@@ -75,7 +75,7 @@ def apply_helm_chart(release_name, namespace):
         values_path,
         "--wait",
         "--timeout",
-        "300s",
+        "600s",
     ]
 
     print(f"🚀 Applying Helm chart '{HELM_NAME}' to namespace '{namespace}'...")

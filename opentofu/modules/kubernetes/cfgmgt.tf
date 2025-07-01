@@ -3,7 +3,7 @@
 # spell-checker: disable
 
 locals {
- helm_values = templatefile("${path.module}/templates/helm_values.yaml", {
+  helm_values = templatefile("${path.module}/templates/helm_values.yaml", {
     label                    = var.label_prefix
     repository_server        = local.repository_server
     repository_client        = local.repository_client
@@ -17,9 +17,9 @@ locals {
 
   k8s_manifest = templatefile("${path.module}/templates/k8s_manifest.yaml", {
     label             = var.label_prefix
+    repository_host   = local.repository_host
     repository_server = local.repository_server
     repository_client = local.repository_client
-    repository_auth   = local.repository_auth
     compartment_ocid  = var.lb.compartment_id
     lb_ocid           = var.lb.id
     lb_subnet_ocid    = var.public_subnet_id
@@ -52,18 +52,20 @@ resource "local_sensitive_file" "k8s_manifest" {
   file_permission = 0600
 }
 
-# resource "null_resource" "apply" {
-#   triggers = {
-#     always_run = "${timestamp()}"
-#   }
-#   provisioner "local-exec" {
-#     command = <<EOT
-#       python3 ${path.root}/cfgmgt/apply.py ${var.label_prefix} ${var.label_prefix}
-#     EOT
-#   }
-#   depends_on = [
-#     local_sensitive_file.kubeconfig,
-#     local_sensitive_file.helm_values,
-#     local_sensitive_file.k8s_manifest,
-#   ]
-# }
+resource "null_resource" "apply" {
+  triggers = {
+    always_run = "${timestamp()}"
+  }
+  provisioner "local-exec" {
+    command = <<EOT
+      python3 ${path.root}/cfgmgt/apply.py ${var.label_prefix} ${var.label_prefix}
+    EOT
+  }
+  depends_on = [
+    local_sensitive_file.kubeconfig,
+    local_sensitive_file.helm_values,
+    local_sensitive_file.k8s_manifest,
+    oci_containerengine_node_pool.default_node_pool_details,
+    oci_containerengine_node_pool.gpu_node_pool_details
+  ]
+}

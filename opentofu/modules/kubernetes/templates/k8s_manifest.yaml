@@ -20,15 +20,6 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${label}-regcred
-  namespace: ${label}
-type: kubernetes.io/dockerconfigjson
-data:
-  .dockerconfigjson: ${repository_auth}
----
-apiVersion: v1
-kind: Secret
-metadata:
   name: ${adb_name}-authn
   namespace: ${label}
 type: Opaque
@@ -81,6 +72,22 @@ spec:
     spec:
       restartPolicy: Never
       initContainers:
+        - name: init-ocir-login
+          image: docker.io/alpine:latest
+          command:
+            - sh
+            - -c
+            - |
+              apk add --no-cache jq oci-cli docker && \
+              export TOKEN=$(oci raw-request --http-method GET --target-uri https://${repository_host}/20180419/docker/token | jq -r '.data.token') && \
+              echo "$TOKEN" | docker login -u 'BEARER_TOKEN' --password-stdin ${repository_host} && \
+              chown 1000:1000 /root/.docker/config.json
+          env:
+            - name: OCI_CLI_AUTH
+              value: instance_principal
+          volumeMounts:
+            - name: docker-auth
+              mountPath: /root/.docker
         - name: prepare-source-code
           image: docker.io/alpine:latest
           command:
@@ -103,8 +110,6 @@ spec:
         - name: buildkit-server
           image: docker.io/moby/buildkit:master-rootless
           env:
-            - name: DOCKER_CONFIG
-              value: /home/user/.docker
             - name: BUILDKITD_FLAGS
               value: --oci-worker-no-process-sandbox --oci-worker-gc=false
           command:
@@ -135,14 +140,12 @@ spec:
               readOnly: true
             - name: buildkitd
               mountPath: /home/user/.local/share/buildkit/server
-            - name: registryauth
+            - name: docker-auth
               mountPath: /home/user/.docker
               readOnly: true
         - name: buildkit-client
           image: docker.io/moby/buildkit:master-rootless
           env:
-            - name: DOCKER_CONFIG
-              value: /home/user/.docker
             - name: BUILDKITD_FLAGS
               value: --oci-worker-no-process-sandbox --oci-worker-gc=false
           command:
@@ -173,7 +176,7 @@ spec:
               readOnly: true
             - name: buildkitd
               mountPath: /home/user/.local/share/buildkit/client
-            - name: registryauth
+            - name: docker-auth
               mountPath: /home/user/.docker
               readOnly: true
       volumes:
@@ -181,9 +184,5 @@ spec:
           emptyDir: {}
         - name: buildkitd
           emptyDir: {}
-        - name: registryauth
-          secret:
-            secretName: ${label}-regcred
-            items:
-            - key: .dockerconfigjson
-              path: config.json
+        - name: docker-auth
+          emptyDir: {}

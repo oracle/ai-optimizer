@@ -11,18 +11,10 @@ locals {
     local.region_map,
     var.region
   )
-
-  registry_user     = lower(format("%s/%s", data.oci_objectstorage_namespace.objectstorage_namespace.namespace, data.oci_identity_user.identity_user.name))
-  repository_server = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.repository_server.display_name))
-  repository_client = lower(format("%s.ocir.io/%s/%s", local.image_region, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.repository_client.display_name))
+  repository_host   = lower(format("%s.ocir.io", local.image_region))
+  repository_server = lower(format("%s/%s/%s", local.repository_host, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.repository_server.display_name))
+  repository_client = lower(format("%s/%s/%s", local.repository_host, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, oci_artifacts_container_repository.repository_client.display_name))
   k8s_cluster_name  = format("%s-k8s", var.label_prefix)
-  repository_auth = base64encode(
-    format(
-      "{\"auths\": {\"%s.ocir.io\": {\"auth\": \"%s\"}}}",
-      lower(local.image_region),
-      base64encode(format("%s:%s", local.registry_user, oci_identity_auth_token.registry_auth_token.token))
-    )
-  )
 
   oke_worker_images = try({
     for k, v in data.oci_containerengine_node_pool_option.images.sources : v.image_id => merge(
