@@ -7,12 +7,14 @@
 data "oci_core_images" "images" {
   compartment_id   = var.compartment_id
   operating_system = "Oracle Linux"
-  shape            = var.compute_cpu_shape
+  shape            = local.vm_compute_shape
 
   filter {
-    name   = "display_name"
-    values = ["Oracle-Linux-${var.compute_os_ver}-.*"]
-    regex  = true
+    name = "display_name"
+    values = [
+      var.vm_is_gpu_shape ? "Oracle-Linux-${var.compute_os_ver}-.*(GPU|NVIDIA|A10).*" : "Oracle-Linux-${var.compute_os_ver}-.*"
+    ]
+    regex = true
   }
 
   sort_by    = "TIMECREATED"
@@ -28,5 +30,39 @@ data "oci_core_services" "core_services" {
     name   = "name"
     values = ["All .* Services In Oracle Services Network"]
     regex  = true
+  }
+}
+
+data "cloudinit_config" "workers" {
+  gzip          = true
+  base64_encode = true
+
+  # Expand root filesystem to fill available space on volume
+  part {
+    content_type = "text/cloud-config"
+    content = jsonencode({
+      # https://cloudinit.readthedocs.io/en/latest/reference/modules.html#growpart
+      growpart = {
+        mode                     = "auto"
+        devices                  = ["/"]
+        ignore_growroot_disabled = false
+      }
+
+      # https://cloudinit.readthedocs.io/en/latest/reference/modules.html#resizefs
+      resize_rootfs = true
+
+      # Resize logical LVM root volume when utility is present
+      bootcmd = ["if [[ -f /usr/libexec/oci-growfs ]]; then /usr/libexec/oci-growfs -y; fi"]
+    })
+    filename   = "10-growpart.yml"
+    merge_type = "list(append)+dict(no_replace,recurse_list)+str(append)"
+  }
+
+  # Startup Initialisation
+  part {
+    content_type = "text/x-shellscript"
+    content      = local.cloud_init
+    filename     = "50-custom-init.sh"
+    merge_type   = "list(append)+dict(no_replace,recurse_list)+str(append)"
   }
 }
