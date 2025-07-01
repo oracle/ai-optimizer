@@ -20,6 +20,8 @@ jobs:
   check:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    container:
+      image: hashicorp/terraform:latest
     # Block merging if the job fails
     permissions:
       pull-requests: write
@@ -28,16 +30,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install OpenTofu
-        run: |
-          curl -sSL https://get.opentofu.org/install.sh | bash
-          echo "${HOME}/.opentofu/bin" >> $GITHUB_PATH
-
       - name: Initialize OpenTofu
-        run: tofu init -backend=false
+        run: terraform init -backend=false
 
       - name: Validate OpenTofu code
-        run: tofu validate
+        run: terraform validate
 
       - name: Validate OpenTofu formatting
-        run: tofu fmt -recursive -check
+        run: terraform fmt -recursive -check
