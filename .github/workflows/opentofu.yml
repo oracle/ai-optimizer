@@ -30,11 +30,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Initialize OpenTofu
+      - name: Initialize Infrastructure as Code
+        working-directory: ./opentofu
         run: terraform init -backend=false
 
-      - name: Validate OpenTofu code
+      - name: Validate Infrastructure as Code
+        working-directory: ./opentofu
         run: terraform validate
 
-      - name: Validate OpenTofu formatting
+      - name: Validate Infrastructure as Code formatting
+        working-directory: ./opentofu
         run: terraform fmt -recursive -check
