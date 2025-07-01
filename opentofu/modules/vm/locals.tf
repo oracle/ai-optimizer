@@ -10,4 +10,6 @@ locals {
     db_name        = var.adb_name
     db_password    = var.adb_password
   })
+
+  vm_compute_shape = var.vm_is_gpu_shape ? var.compute_gpu_shape : var.compute_cpu_shape
 }

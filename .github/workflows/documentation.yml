@@ -9,6 +9,7 @@ on:
     paths:
       - "docs/**"
       - "helm/**"
+      - ".github/workflows/documentation.yml"
 
   # Allows running this workflow manually
   workflow_dispatch:

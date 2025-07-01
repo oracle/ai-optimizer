@@ -60,15 +60,18 @@ resource "oci_core_instance" "instance" {
   compartment_id      = var.compartment_id
   display_name        = format("%s-compute", var.label_prefix)
   availability_domain = var.availability_domains[0]
-  shape               = var.compute_cpu_shape
-  shape_config {
-    memory_in_gbs = var.compute_cpu_ocpu * 16
-    ocpus         = var.compute_cpu_ocpu
+  shape               = local.vm_compute_shape
+  dynamic "shape_config" {
+    for_each = var.vm_is_gpu_shape ? [] : [1]
+    content {
+      memory_in_gbs = var.compute_cpu_ocpu * 16
+      ocpus         = var.compute_cpu_ocpu
+    }
   }
   source_details {
     source_type             = "image"
     source_id               = data.oci_core_images.images.images[0].id
-    boot_volume_size_in_gbs = 50
+    boot_volume_size_in_gbs = 100
   }
   agent_config {
     are_all_plugins_disabled = false
@@ -85,7 +88,7 @@ resource "oci_core_instance" "instance" {
     nsg_ids          = [oci_core_network_security_group.compute.id]
   }
   metadata = {
-    user_data = "${base64encode(local.cloud_init)}"
+    user_data = data.cloudinit_config.workers.rendered
   }
   lifecycle {
     create_before_destroy = true

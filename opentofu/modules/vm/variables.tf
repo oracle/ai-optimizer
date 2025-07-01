@@ -32,6 +32,11 @@ variable "vcn_id" {
 variable "private_subnet_id" {
   type = string
 }
+
+variable "vm_is_gpu_shape" {
+  type = bool
+}
+
 variable "compute_os_ver" {
   type = string
 }
@@ -42,6 +47,10 @@ variable "compute_cpu_shape" {
 
 variable "compute_cpu_ocpu" {
   type = number
+}
+
+variable "compute_gpu_shape" {
+  type = string
 }
 
 variable "adb_name" {

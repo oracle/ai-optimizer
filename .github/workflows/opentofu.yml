@@ -1,0 +1,43 @@
+# Workflow for validating Infrastructure as Code
+name: Validate Infrastructure as Code
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    # Limit runs to only when opentofu changes
+    paths:
+      - "opentofu/**"
+      - ".github/workflows/opentofu.yml"
+
+  # Allows running this workflow manually
+  workflow_dispatch:
+
+jobs:
+  check:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    container:
+      image: hashicorp/terraform:latest
+    # Block merging if the job fails
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Initialize Infrastructure as Code
+        working-directory: ./opentofu
+        run: terraform init -backend=false
+
+      - name: Validate Infrastructure as Code
+        working-directory: ./opentofu
+        run: terraform validate
+
+      - name: Validate Infrastructure as Code formatting
+        working-directory: ./opentofu
+        run: terraform fmt -recursive -check
