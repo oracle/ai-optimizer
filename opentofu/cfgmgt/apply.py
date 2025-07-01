@@ -41,15 +41,14 @@ def helm_repo_add_if_missing():
     if rc != 0:
         print(f"❌ Failed to add repo:\n{stderr}")
         sys.exit(1)
-    print(stdout)
+    print(f"Add Helm Repo: {stdout}")
 
     print("⬆️ Checking for Helm updates...")
     stdout, stderr, rc = run_cmd(["helm", "repo", "update"], capture_output=False)
     if rc != 0:
         print(f"❌ Failed to update repos:\n{stderr}")
         sys.exit(1)
-    print(stdout)
-
+    print(f"Update Helm Repo: {stdout}")
     print(f"✅ Repo '{HELM_NAME}' added and updated.\n")
 
 
@@ -70,12 +69,8 @@ def apply_helm_chart(release_name, namespace):
         f"{HELM_NAME}/{HELM_NAME}",
         "--namespace",
         namespace,
-        "--create-namespace",
-        "--values",
+          "--values",
         values_path,
-        "--wait",
-        "--timeout",
-        "600s",
     ]
 
     print(f"🚀 Applying Helm chart '{HELM_NAME}' to namespace '{namespace}'...")
@@ -85,7 +80,7 @@ def apply_helm_chart(release_name, namespace):
         sys.exit(1)
 
     print("✅ Helm chart applied:")
-    print(stdout)
+    print(f"Apply Helm Chart: {stdout}")
 
 def apply_manifest():
     """Apply a Kubernetes manifest from the stage path."""

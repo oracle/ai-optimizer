@@ -28,7 +28,6 @@ server = [
     "fastapi==0.115.14",
     "faiss-cpu==1.11.0",
     "giskard==2.17.0",
-    "IPython==9.4.0",
     "langchain-cohere==0.4.4",
     "langchain-community==0.3.26",
     "langchain-huggingface==0.3.0",
