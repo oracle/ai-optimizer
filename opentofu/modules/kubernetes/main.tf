@@ -9,36 +9,18 @@ resource "random_string" "api_key" {
 }
 
 // oci_artifacts_container_repository
-resource "oci_artifacts_container_repository" "server_repository" {
+resource "oci_artifacts_container_repository" "repository_server" {
   compartment_id = var.compartment_id
   display_name   = lower(format("%s/server", var.label_prefix))
   is_immutable   = false
   is_public      = false
 }
 
-resource "oci_artifacts_container_repository" "client_repository" {
+resource "oci_artifacts_container_repository" "repository_client" {
   compartment_id = var.compartment_id
   display_name   = lower(format("%s/client", var.label_prefix))
   is_immutable   = false
   is_public      = false
-}
-
-resource "local_sensitive_file" "kubeconfig" {
-  content         = data.oci_containerengine_cluster_kube_config.default_cluster_kube_config.content
-  filename        = "${path.root}/generated/kubeconfig"
-  file_permission = 0600
-}
-
-resource "local_sensitive_file" "helm_values" {
-  content         = local.helm_values
-  filename        = "${path.root}/generated/${var.label_prefix}-values.yaml"
-  file_permission = 0600
-}
-
-resource "local_sensitive_file" "k8s_manifest" {
-  content         = local.k8s_manifest
-  filename        = "${path.root}/generated/${var.label_prefix}-manifest.yaml"
-  file_permission = 0600
 }
 
 // Cluster

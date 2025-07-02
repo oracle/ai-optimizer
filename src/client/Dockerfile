@@ -13,12 +13,11 @@ ENV PATH=/opt/.venv/bin:$PATH
 ENV TEMP=/app/tmp
 
 # Combine related commands into a single RUN layer to minimize image layers
-RUN microdnf -y update && \
-    microdnf -y install python3.11 python3.11-pip && \
+RUN microdnf --nodocs -y update && \
+    microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
-    source /opt/.venv/bin/activate && \
-    pip install --upgrade pip wheel setuptools && \
+    /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
     groupadd $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/tmp && \
@@ -28,17 +27,17 @@ RUN microdnf -y update && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/.oci
 
 COPY pyproject.toml /opt/package/pyproject.toml
-# Use the virtual environment for pip installations (Client Specific)
-RUN source /opt/.venv/bin/activate && \
-    pip install "/opt/package[client]"
+
+RUN /opt/.venv/bin/pip install --no-cache-dir "/opt/package[client]"
 
 ##################################################
 # Clint Application
 ##################################################
 FROM optimizer_base AS client
 
-COPY --chown=$RUNUSER:$RUNUSER . /app
-RUN rm -rf /app/server /app/.oci /app/launch_server.py
+COPY . /app
+RUN rm -rf /app/server /app/.oci /app/launch_server.py && \
+    chown -R oracleai:oracleai /app
 
 # Set user and working directory
 USER $RUNUSER

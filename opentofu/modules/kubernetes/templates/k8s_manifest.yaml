@@ -60,3 +60,129 @@ spec:
     apiGroup: ingress.oraclecloud.com
     kind: IngressClassParameters
     name: native-ic-params
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: buildkit
+  namespace: ${label}
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: init-ocir-login
+          image: docker.io/alpine:latest
+          command:
+            - sh
+            - -c
+            - |
+              apk add --no-cache jq oci-cli docker && \
+              export TOKEN=$(oci raw-request --http-method GET --target-uri https://${repository_host}/20180419/docker/token | jq -r '.data.token') && \
+              echo "$TOKEN" | docker login -u 'BEARER_TOKEN' --password-stdin ${repository_host} && \
+              chown 1000:1000 /root/.docker/config.json
+          env:
+            - name: OCI_CLI_AUTH
+              value: instance_principal
+          volumeMounts:
+            - name: docker-auth
+              mountPath: /root/.docker
+        - name: prepare-source-code
+          image: docker.io/alpine:latest
+          command:
+            - sh
+            - -c
+            - |
+              wget -qO- https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
+                | grep "tarball_url" \
+                | cut -d '"' -f 4 \
+                | xargs -I{} sh -c \
+                  'wget -O /workspace/latest-release.tar.gz "{}" && \
+                   tar -xzf /workspace/latest-release.tar.gz --strip-components=1 -C /workspace'		  	
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      containers:
+        - name: buildkit-server
+          image: docker.io/moby/buildkit:master-rootless
+          env:
+            - name: BUILDKITD_FLAGS
+              value: --oci-worker-no-process-sandbox --oci-worker-gc=false
+          command:
+            - buildctl-daemonless.sh
+          args:
+            - build
+            - --no-cache
+            - --progress
+            - plain
+            - --frontend
+            - dockerfile.v0
+            - --local
+            - context=/workspace/src
+            - --local
+            - dockerfile=/workspace/src/server
+            - --output 
+            - type=image,name=${repository_server}:latest,push=true
+          securityContext:
+            seccompProfile:
+              type: Unconfined
+            appArmorProfile:
+              type: Unconfined
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+              readOnly: true
+            - name: buildkitd
+              mountPath: /home/user/.local/share/buildkit/server
+            - name: docker-auth
+              mountPath: /home/user/.docker
+              readOnly: true
+        - name: buildkit-client
+          image: docker.io/moby/buildkit:master-rootless
+          env:
+            - name: BUILDKITD_FLAGS
+              value: --oci-worker-no-process-sandbox --oci-worker-gc=false
+          command:
+            - buildctl-daemonless.sh
+          args:
+            - build
+            - --no-cache
+            - --progress
+            - plain
+            - --frontend
+            - dockerfile.v0
+            - --local
+            - context=/workspace/src
+            - --local
+            - dockerfile=/workspace/src/client
+            - --output 
+            - type=image,name=${repository_client}:latest,push=true
+          securityContext:
+            seccompProfile:
+              type: Unconfined
+            appArmorProfile:
+              type: Unconfined
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+              readOnly: true
+            - name: buildkitd
+              mountPath: /home/user/.local/share/buildkit/client
+            - name: docker-auth
+              mountPath: /home/user/.docker
+              readOnly: true
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: buildkitd
+          emptyDir: {}
+        - name: docker-auth
+          emptyDir: {}

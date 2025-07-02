@@ -11,19 +11,3 @@ output "kubeconfig_cmd" {
     oci_containerengine_cluster.default_cluster.endpoint_config[0].is_public_ip_enabled ? "PUBLIC_ENDPOINT" : "PRIVATE_ENDPOINT"
   )
 }
-
-output "client_repository" {
-  value = local.client_repository
-}
-
-output "server_repository" {
-  value = local.server_repository
-}
-
-output "k8s_manifest" {
-  value = nonsensitive(local.k8s_manifest)
-}
-
-output "helm_values" {
-  value = local.helm_values
-}

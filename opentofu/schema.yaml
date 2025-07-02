@@ -366,19 +366,3 @@ outputs:
   kubeconfig_cmd:
     title: "KUBECONFIG command"
     type: string
-
-  client_repository:
-    title: "Client Image Repository"
-    type: string
-
-  server_repository:
-    title: "Server Image Repository"
-    type: string
-
-  k8s_manifest:
-    title: "Kubernetes Manifest"
-    type: string
-
-  helm_values:
-    title: "Helm Values"
-    type: string
