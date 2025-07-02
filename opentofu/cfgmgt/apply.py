@@ -8,6 +8,7 @@ import subprocess
 import argparse
 import os
 import sys
+import time
 
 # --- Constants ---
 HELM_NAME = "ai-optimizer"
@@ -52,8 +53,8 @@ def helm_repo_add_if_missing():
     print(f"✅ Repo '{HELM_NAME}' added and updated.\n")
 
 
-def apply_helm_chart(release_name, namespace):
-    """Install or upgrade a Helm release."""
+def apply_helm_chart(release_name, namespace, retries=3, delay=10):
+    """Install or upgrade a Helm release with retry on failure."""
     values_path = os.path.join(STAGE_PATH, "helm-values.yaml")
     if not os.path.isfile(values_path):
         print(f"⚠️ Values file not found: {values_path}")
@@ -69,18 +70,27 @@ def apply_helm_chart(release_name, namespace):
         f"{HELM_NAME}/{HELM_NAME}",
         "--namespace",
         namespace,
-          "--values",
+        "--values",
         values_path,
     ]
 
-    print(f"🚀 Applying Helm chart '{HELM_NAME}' to namespace '{namespace}'...")
-    stdout, stderr, rc = run_cmd(cmd)
-    if rc != 0:
-        print(f"❌ Failed to apply Helm chart:\n{stderr}")
-        sys.exit(1)
-
-    print("✅ Helm chart applied:")
-    print(f"Apply Helm Chart: {stdout}")
+    attempt = 0
+    while attempt < retries:
+        print(f"🚀 Applying Helm chart '{HELM_NAME}' to namespace '{namespace}' (attempt {attempt + 1}/{retries})...")
+        stdout, stderr, rc = run_cmd(cmd)
+        if rc == 0:
+            print("✅ Helm chart applied:")
+            print(f"Apply Helm Chart: {stdout}")
+            return
+        else:
+            print(f"❌ Failed to apply Helm chart:\n{stderr}")
+            attempt += 1
+            if attempt < retries:
+                print(f"⏳ Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                print("🚨 Maximum retries reached. Exiting.")
+                sys.exit(1)
 
 def apply_manifest():
     """Apply a Kubernetes manifest from the stage path."""
