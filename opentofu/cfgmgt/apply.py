@@ -19,14 +19,14 @@ os.environ["KUBECONFIG"] = os.path.join(STAGE_PATH, "kubeconfig")
 
 # --- Utility Functions ---
 def run_cmd(cmd, capture_output=True):
-    """Run a shell command and return (stdout, stderr, returncode)."""
+    """Generic subprocess execution"""
     try:
         result = subprocess.run(
             cmd,
             stdout=subprocess.PIPE if capture_output else None,
             stderr=subprocess.PIPE if capture_output else None,
             text=True,
-            check=False,  # Explicitly set check=False
+            check=False,
         )
         stdout = result.stdout.strip() if result.stdout else ""
         stderr = result.stderr.strip() if result.stderr else ""
@@ -34,31 +34,43 @@ def run_cmd(cmd, capture_output=True):
     except subprocess.SubprocessError as e:
         return "", str(e), 1
 
+
+def retry(func, retries=3, delay=10):
+    """Retry a function with given arguments on failure."""
+    for attempt in range(1, retries + 1):
+        print(f"🔁 Attempt {attempt}/{retries}")
+        if func():
+            return True
+        if attempt < retries:
+            print(f"⏳ Retrying in {delay} seconds...")
+            time.sleep(delay)
+    print("🚨 Maximum retries reached. Exiting.")
+    sys.exit(1)
+
+
 # --- Core Functionalities ---
 def helm_repo_add_if_missing():
-    """Add Helm repo if not already added."""
+    """Add/Update Helm Repo"""
     print(f"➕ Adding Helm repo '{HELM_NAME}'...")
-    stdout, stderr, rc = run_cmd(["helm", "repo", "add", HELM_NAME, HELM_REPO], capture_output=False)
+    _, stderr, rc = run_cmd(["helm", "repo", "add", HELM_NAME, HELM_REPO], capture_output=False)
     if rc != 0:
         print(f"❌ Failed to add repo:\n{stderr}")
         sys.exit(1)
-    print(f"Add Helm Repo: {stdout}")
 
     print("⬆️ Checking for Helm updates...")
-    stdout, stderr, rc = run_cmd(["helm", "repo", "update"], capture_output=False)
+    _, stderr, rc = run_cmd(["helm", "repo", "update"], capture_output=False)
     if rc != 0:
         print(f"❌ Failed to update repos:\n{stderr}")
         sys.exit(1)
-    print(f"Update Helm Repo: {stdout}")
     print(f"✅ Repo '{HELM_NAME}' added and updated.\n")
 
 
-def apply_helm_chart(release_name, namespace, retries=3, delay=10):
-    """Install or upgrade a Helm release with retry on failure."""
+def apply_helm_chart_inner(release_name, namespace):
+    """Apply Helm Chart"""
     values_path = os.path.join(STAGE_PATH, "helm-values.yaml")
     if not os.path.isfile(values_path):
         print(f"⚠️ Values file not found: {values_path}")
-        sys.exit(1)
+        return False
 
     helm_repo_add_if_missing()
 
@@ -74,33 +86,42 @@ def apply_helm_chart(release_name, namespace, retries=3, delay=10):
         values_path,
     ]
 
-    attempt = 0
-    while attempt < retries:
-        print(f"🚀 Applying Helm chart '{HELM_NAME}' to namespace '{namespace}' (attempt {attempt + 1}/{retries})...")
-        stdout, stderr, rc = run_cmd(cmd)
-        if rc == 0:
-            print("✅ Helm chart applied:")
-            print(f"Apply Helm Chart: {stdout}")
-            return
-        else:
-            print(f"❌ Failed to apply Helm chart:\n{stderr}")
-            attempt += 1
-            if attempt < retries:
-                print(f"⏳ Retrying in {delay} seconds...")
-                time.sleep(delay)
-            else:
-                print("🚨 Maximum retries reached. Exiting.")
-                sys.exit(1)
+    print(f"🚀 Applying Helm chart '{HELM_NAME}' to namespace '{namespace}'...")
+    stdout, stderr, rc = run_cmd(cmd)
+    if rc == 0:
+        print("✅ Helm chart applied:")
+        print(f"Apply Helm Chart: {stdout}")
+        return True
+    else:
+        print(f"❌ Failed to apply Helm chart:\n{stderr}")
+        return False
 
-def apply_manifest():
-    """Apply a Kubernetes manifest from the stage path."""
+
+def apply_helm_chart(release_name, namespace):
+    """Retry Enabled Add/Update Helm Chart"""
+    retry(lambda: apply_helm_chart_inner(release_name, namespace))
+
+
+def apply_manifest_inner():
+    """Apply Manifest"""
     manifest_path = os.path.join(STAGE_PATH, "k8s-manifest.yaml")
     if not os.path.isfile(manifest_path):
         print(f"⚠️ Manifest not found: {manifest_path}")
-        return
+        return False
+
     print("🚀 Applying Kubernetes manifest: k8s-manifest.yaml")
-    run_cmd(["kubectl", "apply", "-f", manifest_path], capture_output=False)
-    print("✅ Manifest applied.\n")
+    _, stderr, rc = run_cmd(["kubectl", "apply", "-f", manifest_path], capture_output=False)
+    if rc == 0:
+        print("✅ Manifest applied.\n")
+        return True
+    else:
+        print(f"❌ Failed to apply manifest:\n{stderr}")
+        return False
+
+
+def apply_manifest():
+    """Retry Enabled Add/Update Manifest"""
+    retry(apply_manifest_inner)
 
 
 # --- Entry Point ---

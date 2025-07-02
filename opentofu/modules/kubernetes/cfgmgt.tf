@@ -66,6 +66,9 @@ resource "null_resource" "apply" {
     local_sensitive_file.helm_values,
     local_sensitive_file.k8s_manifest,
     oci_containerengine_node_pool.default_node_pool_details,
-    oci_containerengine_node_pool.gpu_node_pool_details
+    oci_containerengine_node_pool.gpu_node_pool_details,
+    oci_containerengine_addon.oraoper_addon,
+    oci_containerengine_addon.certmgr_addon,
+    oci_containerengine_addon.ingress_addon
   ]
 }
