@@ -1,0 +1,63 @@
+# Workflow for validating container image builds
+name: Validate Container Images
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+  # Allows running this workflow manually
+  workflow_dispatch:
+
+jobs:
+  docker-build:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    # Block merging if the job fails
+    permissions:
+      pull-requests: write
+    strategy:
+      matrix:
+        build:
+          - name: aio
+            dockerfile: Dockerfile
+            context: src
+          - name: client
+            dockerfile: client/Dockerfile
+            context: src
+          - name: server
+            dockerfile: server/Dockerfile
+            context: src
+
+    name: ${{ matrix.build.name }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-${{ matrix.build.name }}
+          restore-keys: |
+            ${{ runner.os }}-docker-
+
+      - name: Build with cache
+        run: |
+          docker build \
+            --cache-from=type=local,src=/tmp/.buildx-cache \
+            --cache-to=type=local,dest=/tmp/.buildx-cache-new \
+            -f ${{ matrix.build.dockerfile }} \
+            -t temp-image:${{ matrix.build.name }} \
+            ${{ matrix.build.context }}
+
+      - name: Move cache for reuse
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache

@@ -26,9 +26,9 @@ RUN microdnf --nodocs -y update && \
 # Copy only pyproject.toml for dependency installation
 COPY pyproject.toml /opt/package/pyproject.toml
 # Use the virtual environment for pip installations
-RUN source /opt/.venv/bin/activate && \
-    pip install --upgrade pip wheel setuptools && \
-    pip install --no-cache-dir "/opt/package[all]"
+RUN /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
+    /opt/.venv/bin/pip install torch==2.7.1+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    /opt/.venv/bin/pip install --no-cache-dir "/opt/package[all]"
 
 ##################################################
 # Application

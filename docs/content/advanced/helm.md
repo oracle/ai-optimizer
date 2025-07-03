@@ -1,5 +1,5 @@
 +++
-title = 'Microservices'
+title = 'Helm Chart'
 weight = 5
 +++
 

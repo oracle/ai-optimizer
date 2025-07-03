@@ -28,7 +28,8 @@ RUN microdnf --nodocs -y update && \
 
 COPY pyproject.toml /opt/package/pyproject.toml
 
-RUN /opt/.venv/bin/pip install --no-cache-dir "/opt/package[server]"
+RUN /opt/.venv/bin/pip install torch==2.7.1+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    /opt/.venv/bin/pip install --no-cache-dir "/opt/package[server]"
 
 ##################################################
 # Server Application
