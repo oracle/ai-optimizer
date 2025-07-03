@@ -39,25 +39,29 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
 
-      - name: Cache Docker layers
+      - name: Cache Image Layers
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-docker-${{ matrix.build.name }}
+          key: ${{ runner.os }}-buildx-${{ matrix.build.name }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-docker-
+            ${{ runner.os }}-buildx-${{ matrix.build.name }}-
 
-      - name: Build with cache
+      - name: Build Container Image with Cache
         run: |
-          docker build \
+          docker buildx create --use
+          docker buildx build \
             --cache-from=type=local,src=/tmp/.buildx-cache \
             --cache-to=type=local,dest=/tmp/.buildx-cache-new \
-            -f ${{ matrix.build.dockerfile }} \
-            -t temp-image:${{ matrix.build.name }} \
+            --file ${{ matrix.build.context }}/${{ matrix.build.dockerfile }} \
+            --tag temp-image:${{ matrix.build.name }} \
+            --load \
             ${{ matrix.build.context }}
 
-      - name: Move cache for reuse
+      - name: Move Cache for Reuse
         run: |
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
