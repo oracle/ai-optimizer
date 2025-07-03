@@ -23,8 +23,7 @@ RUN microdnf --nodocs -y update && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/tmp && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/client && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/server && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/common && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/.oci
+    install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/common
 
 COPY pyproject.toml /opt/package/pyproject.toml
 
