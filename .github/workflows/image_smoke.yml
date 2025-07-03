@@ -57,8 +57,7 @@ jobs:
             --cache-from=type=local,src=/tmp/.buildx-cache \
             --cache-to=type=local,dest=/tmp/.buildx-cache-new \
             --file ${{ matrix.build.context }}/${{ matrix.build.dockerfile }} \
-            --tag temp-image:${{ matrix.build.name }} \
-            --load \
+            --output=type=cacheonly \
             ${{ matrix.build.context }}
 
       - name: Move Cache for Reuse
