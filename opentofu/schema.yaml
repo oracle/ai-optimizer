@@ -30,7 +30,6 @@ variableGroups:
     variables:
       - adb_version
       - k8s_version
-      - compute_gpu_shape
       - compute_os_ver
     visible: false
 
@@ -52,11 +51,8 @@ variableGroups:
       - k8s_api_is_public
       - k8s_api_endpoint_allowed_cidrs
       - k8s_cpu_node_pool_size
-      - compute_cpu_shape
-      - compute_cpu_ocpu
       - k8s_node_pool_gpu_deploy
       - k8s_gpu_node_pool_size
-      - compute_gpu_shape
     visible:
       eq:
         - infrastructure
@@ -68,13 +64,19 @@ variableGroups:
   - title: "Virtual Machine Infrastructure Options"
     variables:
       - vm_is_gpu_shape
-      - compute_cpu_shape
-      - compute_cpu_ocpu
-      - compute_gpu_shape
     visible:
       eq:
         - infrastructure
         - "VM"
+
+  #########################################################################
+  # Compute Options
+  #########################################################################
+  - title: "Compute Instance Options"
+    variables:
+      - compute_cpu_shape
+      - compute_cpu_ocpu
+      - compute_gpu_shape
 
   #########################################################################
   # Load Balancer
@@ -145,6 +147,26 @@ variables:
     maximum: 80
     multipleOf: 1
 
+  k8s_node_pool_gpu_deploy:
+    type: boolean
+    title: "Deploy GPU Node Pool?"
+    required: true
+
+  vm_is_gpu_shape:
+    type: boolean
+    title: "Use a GPU shape?"
+    required: false
+
+  k8s_gpu_node_pool_size:
+    type: integer
+    title: "GPU Workers"
+    required: true
+    minimum: 1
+    maximum: 80
+    multipleOf: 1
+    visible: k8s_node_pool_gpu_deploy
+
+  #########################################################################
   compute_cpu_shape:
     type: enum
     title: "CPU Worker Shape"
@@ -183,16 +205,6 @@ variables:
             - infrastructure
             - "Kubernetes"
 
-  k8s_node_pool_gpu_deploy:
-    type: boolean
-    title: "Deploy GPU Node Pool?"
-    required: true
-
-  vm_is_gpu_shape:
-    type: boolean
-    title: "Use a GPU shape?"
-    required: false
-
   compute_gpu_shape:
     type: enum
     title: "GPU Worker Shape"
@@ -213,15 +225,6 @@ variables:
                 - infrastructure
                 - "Kubernetes"
             - k8s_node_pool_gpu_deploy
-
-  k8s_gpu_node_pool_size:
-    type: integer
-    title: "GPU Workers"
-    required: true
-    minimum: 1
-    maximum: 80
-    multipleOf: 1
-    visible: k8s_node_pool_gpu_deploy
 
   #########################################################################
   lb_min_shape:
