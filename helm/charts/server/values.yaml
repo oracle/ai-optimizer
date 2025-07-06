@@ -43,37 +43,36 @@ ingress:
 # database: Oracle Database Configuration, many different options
 # review the documentation for more details; use the OraOperator 
 database:
-  type: "FREE"
-  image:
-    repository: container-registry.oracle.com/database/free
-    tag: latest
-  # - name: "ADB_CONTAINER"
-  #   type: "ADB-FREE"
-  #   image:
-  #     tag: latest
-  # - name: "ADB-S"
-  #   type: "ADB-S"
-  #   ocid: ""
-  #   mtls:
-  #     enabled: false
-  #     secretName: ""
-  #     secretKey: ""
-  #   authN:
-  #     secretName: ""
-  #     usernameKey: ""
-  #     passwordKey: ""
-  #     serviceKey: ""    
+  ## SIDB Containerized Example
+  # type: "SIDB-FREE"
+  # image:
+  #   repository: container-registry.oracle.com/database/free
+  #   tag: latest
+  ## ADB Containerized Example (not implemented)
+  # type: "ADB-FREE"
+  # image:
+  #   repository: container-registry.oracle.com/database/adb-free
+  #   tag: latest-23ai
+  ## OCI ADB-S Workload Principle Example (requires OraOperator)
+  # type: "ADB-S"
+  # ocid: "ocid1.autonomousdatabase.oc1..."
+  # authN:
+  #   secretName: "db-authn"
 
-# oke: specify tenancy/region if running inside Oracle Kubernetes Engine
-# this will enable workload identity principals (if policies are in place)
-oke:
-  tenancy: ""
-  region: ""
-
-# oci_config: provide the secretName containing a config file and the key_file(s)
-# use the scripts/oci_config.py script to help create the secret
+# oci_config: Oracle Cloud Infrastructure configurations
 oci_config:
-  secretName: ""
+  # oke: will enable workload identity principals (must be implemented)
+  oke: false
+  tenancy: ""
+  user: ""
+  fingerprint: ""
+  region: ""
+  # fileSecretName: containing a config file and the key_file(s)
+  # use the scripts/oci_config.py script to help create the secret
+  fileSecretName: ""
+  # privateKeySecret: single API key corresponding to above parameters
+  # used by OraOperator when not OKE
+  privateKeySecret:
 
 # models: specify secretName and secretKey to enable 3rd-Party Models
 models:

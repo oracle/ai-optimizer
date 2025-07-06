@@ -79,16 +79,16 @@ server:
       #     - example.com
       #   secretName: example-tls
 
-  # oke: specify tenancy/region if running inside Oracle Kubernetes Engine
-  # this will enable workload identity principals (if policies are in place)
-  oke:
-    tenancy: ""
-    region: ""
-
-  # oci_config: provide the secretName containing a config file
+  # oci_config: provide the configFileSecret containing a config file and the key_file(s)
   # use the scripts/oci_config.py script to help create the secret
   oci_config:
-    secretName: "oci-config-file"
+    # oke: will enable workload identity principals (must be implemented)
+    oke: false
+    tenancy: ""
+    user: ""
+    fingerprint: ""
+    region: ""
+    configFileSecret: ""
 
   # models: specify secretName and secretKey to enable 3rd-Party Models
   models:

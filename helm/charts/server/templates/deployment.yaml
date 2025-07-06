@@ -55,28 +55,35 @@ spec:
                 secretKeyRef:
                   name: {{ include "app.apiSecretName" . }}
                   key: {{ include "app.apiSecretKey" . }}
-            {{- if eq (include "oke.isConfigured" $ | trim) "true" }}
-            - name: OCI_CLI_TENANCY
-              value: {{ .Values.oke.tenancy | quote }}
+            {{- if (default false .Values.oci_config.oke) }}
             - name: OCI_CLI_REGION
-              value: {{ .Values.oke.region | quote }}
+              value: {{ .Values.oci_config.region }}
             - name: OCI_CLI_AUTH
               value: "oke_workload_identity"
             {{- end }}
             {{- if .Values.database }}
             - name: DB_USERNAME
-              value: "AI_OPTIMIZER"
-            - name: DB_PASSWORD
-              {{- if eq .Values.database.type "FREE" }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "release.name" . }}-sidb-free
-                  key: "password"
-              {{- end }}
+                  name: {{ include "databaseSecret" . }}
+                  key: {{ default "username" (.Values.database.authN.usernameKey | default "") }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "databaseSecret" . }}
+                  key: {{ default "password" (.Values.database.authN.passwordKey | default "") }}
             - name: DB_DSN
-              {{- if eq .Values.database.type "FREE" }}
-              value: {{ include "release.name" . }}-sidb-free:1521/FREEPDB1
-              {{- end }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "databaseSecret" . }}
+                  key: {{ default "service" (.Values.database.authN.serviceKey | default "") }}
+              {{- if eq .Values.database.type "ADB-S" }}
+            - name: DB_WALLET_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "release.name" . }}-adb-wallet-pass-{{ .Release.Revision }}
+                  key: {{ include "release.name" . }}-adb-wallet-pass-{{ .Release.Revision }}
+              {{- end }}             
             {{- end }}
             {{- if $.Values.global.enableOllama }}
             - name: ON_PREM_OLLAMA_URL
@@ -125,7 +132,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: "/app/tmp"
-            {{- if and .Values.oci_config .Values.oci_config.secretName }}
+            {{- if and (hasKey .Values "database") (eq (default "" .Values.database.type) "ADB-S") }}
+            - name: tns-admin
+              mountPath: /app/tns_admin
+            {{- end }}
+            {{- if and .Values.oci_config .Values.oci_config.fileSecretName }}
             - name: oci-config
               mountPath: "/app/runtime/.oci"
             {{- end }}
@@ -135,10 +146,15 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if and .Values.oci_config .Values.oci_config.secretName }}
+        {{- if and (hasKey .Values "database") (eq (default "" .Values.database.type) "ADB-S") }}
+        - name: tns-admin
+          secret:
+            secretName: {{ include "release.name" . }}-adb-tns-admin-{{ .Release.Revision }}
+        {{- end }}        
+        {{- if and .Values.oci_config .Values.oci_config.fileSecretName }}
         - name: oci-config
           secret:
-            secretName: {{ .Values.oci_config.secretName | quote }}
+            secretName: {{ .Values.oci_config.fileSecretName | quote }}
             optional: true
         {{- end }}
       {{- with .Values.volumes }}

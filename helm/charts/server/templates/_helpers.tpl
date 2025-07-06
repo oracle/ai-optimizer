@@ -1,17 +1,16 @@
 {{/*
-Check if OKE is configured
+Database Secret Name
 */}}
-{{- define "oke.isConfigured" -}}
-{{- if and .Values.oke (hasKey .Values.oke "tenancy") (hasKey .Values.oke "region") -}}
-  {{- if and (ne .Values.oke.tenancy "") (ne .Values.oke.region "") -}}
-    true
-  {{- else -}}
-    false
-  {{- end -}}
+{{- define "databaseSecret" -}}
+{{- $authN := .Values.database.authN | default dict }}
+{{- $secretName := $authN.secretName | default "" }}
+{{- if $secretName -}}
+  {{- $secretName -}}
 {{- else -}}
-  false
+  {{- printf "%s-db-authn" (include "release.name" .) -}}
 {{- end -}}
-{{- end -}}
+{{- end }}
+
 
 {{/*
 Password Generator for Databases

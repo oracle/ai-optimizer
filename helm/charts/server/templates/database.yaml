@@ -1,32 +1,13 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent freepdb sidb
+# spell-checker: ignore FREEPDB SIDB nindent
 
 {{- if .Values.database }}
-{{- $root := . }}
-{{- $pdbName := "" }}
-
-{{- if eq .Values.database.type "FREE" }}
-# -----------------------
-# -- FREE database
-{{- $pdbName = "FREEPDB1" }}
-{{- $secretName := printf "%s-sidb-free" (include "release.name" $root) }}
-{{- $existing := lookup "v1" "Secret" $root.Release.Namespace $secretName }}
-
-{{- if not $existing }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ $secretName }}
-  labels:
-    {{- include "app.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/resource-policy": keep
-type: Opaque
-data:
-  password: {{ include "randomPassword" . | b64enc }}
----
-{{- end }}
+  {{- $secretName := include "databaseSecret" . }}
+  {{- if eq .Values.database.type "SIDB-FREE" }}
+  # -----------------------
+  # -- SIDB-FREE database
+  {{- $pdbName = "FREEPDB1" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -72,62 +53,37 @@ spec:
               mountPath: "/opt/oracle/scripts/startup"
       volumes:
         - name: db-custom-scripts
-          secret:
-            secretName: db-custom-scripts
-            optional: true
----
-apiVersion: v1
-kind: Service
+          configMap:
+            name:  db-custom-scripts
+  {{- else if eq .Values.database.type "ADB-S" }}
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabase
 metadata:
-  name: {{ include "release.name" $root }}-sidb-free
+  name: {{ include "release.name" . }}-adb-s
   labels: 
     {{- include "app.labels" . | nindent 4 }}
-spec:
-  selector: 
-    {{- include "app.selectorLabels" . | nindent 4 }}
     "app.kubernetes.io/component": "database"
-  ports:
-  - protocol: TCP
-    port: 1521
-    targetPort: 1521
-  type: ClusterIP
-
-{{- else }}
-# --- Unknown type ---
-# Skipping due to unsupported type: {{ .Values.database.type }}
-{{- end }}
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-custom-scripts
-  labels:
-    {{- include "app.labels" . | nindent 4 }}
-type: Opaque
-stringData:
-  init.sh: |
-    sqlplus <<- EOF
-    connect / as sysdba
-    ALTER SYSTEM SET VECTOR_MEMORY_SIZE=512M SCOPE=SPFILE;
-    ALTER SESSION SET CONTAINER={{- $pdbName }};
-    DECLARE
-      l_conn_user VARCHAR2(255);
-      l_user      VARCHAR2(255);
-      l_tblspace  VARCHAR2(255);
-    BEGIN
-      BEGIN
-          SELECT user INTO l_conn_user FROM DUAL;
-          SELECT username INTO l_user FROM DBA_USERS WHERE USERNAME='AI_OPTIMIZER';
-      EXCEPTION WHEN no_data_found THEN
-          EXECUTE IMMEDIATE 'CREATE USER "AI_OPTIMIZER" IDENTIFIED BY "${ORACLE_PWD}"';
-      END;
-      SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = 'AI_OPTIMIZER';
-      EXECUTE IMMEDIATE 'ALTER USER "AI_OPTIMIZER" QUOTA UNLIMITED ON ' || l_tblspace;
-      EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "AI_OPTIMIZER"';
-      EXECUTE IMMEDIATE 'ALTER USER "AI_OPTIMIZER" DEFAULT ROLE ALL';
-    END;
-    /
-    STARTUP FORCE;
-    ALTER SYSTEM REGISTER;
-    EOF
+spec:
+  action: "Sync"
+  details:
+    id: {{ .Values.database.ocid }}
+    adminPassword:
+      k8sSecret:
+        name: place-holder
+  wallet:
+    name: {{ include "release.name" . }}-adb-tns-admin-{{ .Release.Revision }}
+    password:
+      k8sSecret:
+        name: {{ include "release.name" . }}-adb-wallet-pass-{{ .Release.Revision }}
+    {{- if .Values.oci_config }}
+  ociConfig: 
+    configMapName: {{ include "release.name" . }}-oci-config
+      {{- if .Values.oci_config.privateKeySecret }}
+    secretName: {{ .Values.oci_config.privateKeySecret }}
+      {{- end -}}
+    {{- end -}}
+  {{- else }}
+  # --- Unknown type ---
+  # Skipping due to unsupported type: {{ .Values.database.type }}
+  {{- end }}
 {{- end }}

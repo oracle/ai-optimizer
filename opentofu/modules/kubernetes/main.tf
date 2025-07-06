@@ -145,6 +145,7 @@ resource "oci_containerengine_node_pool" "default_node_pool_details" {
   node_source_details {
     image_id    = local.oke_worker_cpu_image
     source_type = "IMAGE"
+    boot_volume_size_in_gbs = 100
   }
   node_metadata = {
     user_data = data.cloudinit_config.workers.rendered
