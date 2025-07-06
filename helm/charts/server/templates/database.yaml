@@ -1,0 +1,133 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent freepdb sidb
+
+{{- if .Values.database }}
+{{- $root := . }}
+{{- $pdbName := "" }}
+
+{{- if eq .Values.database.type "FREE" }}
+# -----------------------
+# -- FREE database
+{{- $pdbName = "FREEPDB1" }}
+{{- $secretName := printf "%s-sidb-free" (include "release.name" $root) }}
+{{- $existing := lookup "v1" "Secret" $root.Release.Namespace $secretName }}
+
+{{- if not $existing }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/resource-policy": keep
+type: Opaque
+data:
+  password: {{ include "randomPassword" . | b64enc }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "release.name" . }}-sidb
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+    "app.kubernetes.io/component": "database"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+      "app.kubernetes.io/component": "database"
+  template:
+    metadata:
+      labels:
+        {{- include "app.labels" . | nindent 8 }}
+        "app.kubernetes.io/component": "database"
+    spec:
+      securityContext:
+        fsGroup: 54321
+        runAsGroup: 54321
+        runAsUser: 54321
+      containers:
+        - name: sidb-free
+          image: {{ .Values.database.image.repository }}:{{ .Values.database.image.tag }}
+          imagePullPolicy: IfNotPresent
+          ports:
+          - containerPort: 1521
+          readinessProbe:
+            tcpSocket:
+              port: 1521
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          env:
+          - name: ORACLE_PWD
+            valueFrom:
+              secretKeyRef:
+                name: {{ $secretName }}
+                key: password
+          volumeMounts:
+            - name: db-custom-scripts
+              mountPath: "/opt/oracle/scripts/startup"
+      volumes:
+        - name: db-custom-scripts
+          secret:
+            secretName: db-custom-scripts
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "release.name" $root }}-sidb-free
+  labels: 
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  selector: 
+    {{- include "app.selectorLabels" . | nindent 4 }}
+    "app.kubernetes.io/component": "database"
+  ports:
+  - protocol: TCP
+    port: 1521
+    targetPort: 1521
+  type: ClusterIP
+
+{{- else }}
+# --- Unknown type ---
+# Skipping due to unsupported type: {{ .Values.database.type }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-custom-scripts
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  init.sh: |
+    sqlplus <<- EOF
+    connect / as sysdba
+    ALTER SYSTEM SET VECTOR_MEMORY_SIZE=512M SCOPE=SPFILE;
+    ALTER SESSION SET CONTAINER={{- $pdbName }};
+    DECLARE
+      l_conn_user VARCHAR2(255);
+      l_user      VARCHAR2(255);
+      l_tblspace  VARCHAR2(255);
+    BEGIN
+      BEGIN
+          SELECT user INTO l_conn_user FROM DUAL;
+          SELECT username INTO l_user FROM DBA_USERS WHERE USERNAME='AI_OPTIMIZER';
+      EXCEPTION WHEN no_data_found THEN
+          EXECUTE IMMEDIATE 'CREATE USER "AI_OPTIMIZER" IDENTIFIED BY "${ORACLE_PWD}"';
+      END;
+      SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = 'AI_OPTIMIZER';
+      EXECUTE IMMEDIATE 'ALTER USER "AI_OPTIMIZER" QUOTA UNLIMITED ON ' || l_tblspace;
+      EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "AI_OPTIMIZER"';
+      EXECUTE IMMEDIATE 'ALTER USER "AI_OPTIMIZER" DEFAULT ROLE ALL';
+    END;
+    /
+    STARTUP FORCE;
+    ALTER SYSTEM REGISTER;
+    EOF
+{{- end }}

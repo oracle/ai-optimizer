@@ -1,22 +1,11 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. 
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore
 
+# replicaCount: number of desired pod replicas for the Deployment when autoscaling is disabled
 replicaCount: 1
-image:
-  repository: localhost/ai-optimizer-server
-  tag: "latest"
-imagePullPolicy: IfNotPresent
-imagePullSecrets: []
-  # - name: regcred
 
-ingress:
-  enabled: false
-  className: nginx
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
-  tls: []
-
+# autoscaling: HPA when enabled, requires metrics-server to be installed
 autoscaling:
   enabled: false
   minReplicas: 1
@@ -24,11 +13,127 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+# imagePullSecrets: Secret name containing image pull secrets
+imagePullSecrets: []
+  # - name: registry_cred
+
+# image: image and tag to pull incl policy
+image:
+  repository: localhost/ai-optimizer-server
+  tag: latest
+imagePullPolicy: IfNotPresent
+
+# service: type of Kubernetes service to expose the HTTP port.
+service:
+  http:
+    type: "ClusterIP"
+
+# ingress: controls the Ingress resource to expose the service.
+ingress:
+  enabled: false
+  className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
+  tls: []
+    # - hosts:
+    #     - example.com
+    #   secretName: example-tls
+
+# database: Oracle Database Configuration, many different options
+# review the documentation for more details; use the OraOperator 
+database:
+  type: "FREE"
+  image:
+    repository: container-registry.oracle.com/database/free
+    tag: latest
+  # - name: "ADB_CONTAINER"
+  #   type: "ADB-FREE"
+  #   image:
+  #     tag: latest
+  # - name: "ADB-S"
+  #   type: "ADB-S"
+  #   ocid: ""
+  #   mtls:
+  #     enabled: false
+  #     secretName: ""
+  #     secretKey: ""
+  #   authN:
+  #     secretName: ""
+  #     usernameKey: ""
+  #     passwordKey: ""
+  #     serviceKey: ""    
+
+# oke: specify tenancy/region if running inside Oracle Kubernetes Engine
+# this will enable workload identity principals (if policies are in place)
+oke:
+  tenancy: ""
+  region: ""
+
+# oci_config: provide the secretName containing a config file and the key_file(s)
+# use the scripts/oci_config.py script to help create the secret
+oci_config:
+  secretName: ""
+
+# models: specify secretName and secretKey to enable 3rd-Party Models
+models:
+  openAI:
+    # secretName: "openai-secret"
+    # secretKey: ""       # Optional, defaults to "apiKey" if not specified
+  perplexity:
+    # secretName: "perplexity-secret"
+    # # secretKey omitted, will default to "apiKey"
+  cohere:
+    # secretName: "cohere-secret"
+    # secretKey: "customKeyName"  # Example of overriding the default key
+
+# livenessProbe: defines settings for the liveness probe.
+# Set `enabled` to false to disable the probe entirely.
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 10       # Time (in seconds) to wait before starting the probe
+  periodSeconds: 30             # Time (in seconds) between probe checks
+  timeoutSeconds: 30            # Time (in seconds) to wait for probe response
+  failureThreshold: 10          # Number of failures before marking the container as unhealthy
+  successThreshold: 1           # Number of successes required to consider the container healthy
+
+# readinessProbe: defines settings for the liveness probe.
+# Set `enabled` to false to disable the probe entirely.
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 15
+  failureThreshold: 10
+  successThreshold: 1 
+
+# volumes: user defined additional volumes
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# volumeMounts:  user defined additional volumeMounts
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+# podLabels: additional key:value labels to add to pods
+podLabels: {}
+  # environment: "production"
+  # team: "devops"
+
+# podAnnotations: additional key:value annotations to add to the Pod template metadata
+podAnnotations: {}
+  # prometheus.io/scrape: "true"
+  # prometheus.io/port: "9102"
+
+# resources: requests and limits for the container
+# Recommended not to specify default resources and to leave this as a conscious choice for the user.
+# This also increases chances charts run on environments with little resources, such as Kind. 
 resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
   # limits:
   #   cpu: 100m
   #   memory: 128Mi
@@ -36,60 +141,24 @@ resources: {}
   #   cpu: 100m
   #   memory: 128Mi
 
-serviceAccount:
-  create: false
+# nodeSelector: to constrain pods to specific nodes
+nodeSelector: {}
+  # disktype: ssd
 
-service:
-  http:
-    type: "ClusterIP"
+# affinity: rules for scheduling pods
+affinity: {}
+  # podAntiAffinity:
+  #   requiredDuringSchedulingIgnoredDuringExecution:
+  #     - labelSelector:
+  #         matchExpressions:
+  #           - key: app
+  #             operator: In
+  #             values:
+  #               - my-app
+  #       topologyKey: "kubernetes.io/hostname"
 
-# -- Oracle Cloud Infrastructure Configuration
-oci:
-  tenancy: ""
-  region: ""
-
-# -- Oracle Autonomous Database Configuration
-adb:
-  enabled: false
-  # -- Setting OCID will trigger an OraOperator ADB Resource creation
-  # -- leave ocid blank if using a pre-deployed ADB and just fill in authN/mtls
-  ocid: ""
-  mtls:
-    enabled: false
-    secretName: ""
-    # secretKey: ""
-  authN:
-    secretName: ""
-    usernameKey: ""
-    passwordKey: ""
-    serviceKey: ""
-
-# -- Model Configuration
-models:
-  ollama:
-    enabled: false
-  huggingface:
-    # -- e.g http://hf.hf.svc.cluster.local:8080
-    apiUrl: ""
-  openAI:
-    secretName: ""
-    secretKey: ""
-  perplexity:
-    secretName: ""
-    secretKey: ""
-  cohere:
-    secretName: ""
-    secretKey: ""
-
-# -- Additional volumes on the output Deployment definition.
-volumes: []
-# - name: foo
-#   secret:
-#     secretName: mysecret
-#     optional: false
-
-# -- Additional volumeMounts on the output Deployment definition.
-volumeMounts: []
-# - name: foo
-#   mountPath: "/etc/foo"
-#   readOnly: true
+# tolerations: for scheduling pods on tainted nodes
+tolerations: []
+  # - key: "key1"
+  #   operator: "Exists"
+  #   effect: "NoSchedule"

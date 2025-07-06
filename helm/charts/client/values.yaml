@@ -1,22 +1,11 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. 
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore
 
+# replicaCount: number of desired pod replicas for the Deployment when autoscaling is disabled
 replicaCount: 1
-image:
-  repository: localhost/ai-optimizer-client
-  tag: "latest"
-imagePullPolicy: IfNotPresent
-imagePullSecrets: []
-  # - name: regcred
 
-ingress:
-  enabled: false
-  className: nginx
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
-  tls: []
-
+# autoscaling: HPA when enabled, requires metrics-server to be installed
 autoscaling:
   enabled: false
   minReplicas: 1
@@ -24,11 +13,90 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+# imagePullSecrets: Secret name containing image pull secrets
+imagePullSecrets: []
+  # - name: registry_cred
+
+# image: image and tag to pull incl policy
+image:
+  repository: localhost/ai-optimizer-client
+  tag: latest
+imagePullPolicy: IfNotPresent
+
+# service: type of Kubernetes service to expose the HTTP port.
+service:
+  http:
+    type: "ClusterIP"
+
+# ingress: controls the Ingress resource to expose the service.
+ingress:
+  enabled: false
+  className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
+  tls: []
+    # - hosts:
+    #     - example.com
+    #   secretName: example-tls
+
+# features: enable/disable specific client features
+features:
+  disableTestbed: false
+  disableApi: false
+  disableTools: false
+  disableDbCfg: false
+  disableModelCfg: false
+  disableOciCfg: false
+  disableSettings: false
+
+# livenessProbe: defines settings for the liveness probe.
+# Set `enabled` to false to disable the probe entirely.
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 20       # Time (in seconds) to wait before starting the probe
+  periodSeconds: 20             # Time (in seconds) between probe checks
+  timeoutSeconds: 1             # Time (in seconds) to wait for probe response
+  failureThreshold: 3           # Number of failures before marking the container as unhealthy
+  successThreshold: 1           # Number of successes required to consider the container healthy
+
+# readinessProbe: defines settings for the liveness probe.
+# Set `enabled` to false to disable the probe entirely.
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 1
+  failureThreshold: 3
+  successThreshold: 1 
+
+# volumes: user defined additional volumes
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# volumeMounts:  user defined additional volumeMounts
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+# podLabels: additional key:value labels to add to pods
+podLabels: {}
+  # environment: "production"
+  # team: "devops"
+
+# podAnnotations: additional key:value annotations to add to the Pod template metadata
+podAnnotations: {}
+  # prometheus.io/scrape: "true"
+  # prometheus.io/port: "9102"
+
+# resources: requests and limits for the container
+# Recommended not to specify default resources and to leave this as a conscious choice for the user.
+# This also increases chances charts run on environments with little resources, such as Kind.
 resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
   # limits:
   #   cpu: 100m
   #   memory: 128Mi
@@ -36,32 +104,24 @@ resources: {}
   #   cpu: 100m
   #   memory: 128Mi
 
-serviceAccount:
-  create: false
+# nodeSelector: to constrain pods to specific nodes
+nodeSelector: {}
+  # disktype: ssd
 
-service:
-  http:
-    type: "ClusterIP"
+# affinity: rules for scheduling pods
+affinity: {}
+  # podAntiAffinity:
+  #   requiredDuringSchedulingIgnoredDuringExecution:
+  #     - labelSelector:
+  #         matchExpressions:
+  #           - key: app
+  #             operator: In
+  #             values:
+  #               - my-app
+  #       topologyKey: "kubernetes.io/hostname"
 
-client:
-  features:
-    disableTestbed: "false"
-    disableApi: "false"
-    disableTools: "false"
-    disableDbCfg: "false"
-    disableModelCfg: "false"
-    disableOciCfg: "false"
-    disableSettings: "false"
-
-# -- Additional volumes on the output Deployment definition.
-volumes: []
-# - name: foo
-#   secret:
-#     secretName: mysecret
-#     optional: false
-
-# -- Additional volumeMounts on the output Deployment definition.
-volumeMounts: []
-# - name: foo
-#   mountPath: "/etc/foo"
-#   readOnly: true
+# tolerations: for scheduling pods on tainted nodes
+tolerations: []
+  # - key: "key1"
+  #   operator: "Exists"
+  #   effect: "NoSchedule"

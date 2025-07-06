@@ -1,5 +1,6 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent tolerations ollama
 
 apiVersion: apps/v1
 kind: Deployment
@@ -7,6 +8,7 @@ metadata:
   name: {{ include "app.fullname" . }}
   labels:
     {{- include "app.labels" . | nindent 4 }}
+    "app.kubernetes.io/component": "api"
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
@@ -14,6 +16,7 @@ spec:
   selector:
     matchLabels:
       {{- include "app.selectorLabels" . | nindent 6 }}
+      "app.kubernetes.io/component": "api"
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -25,16 +28,18 @@ spec:
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        "app.kubernetes.io/component": "api"
     spec:
+      securityContext:
+        fsGroup: 10001
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "app.serviceAccountName" . }}
-      securityContext:
-        fsGroup: 10001
       containers:
         - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy | default "IfNotPresent" }}
           securityContext:
             capabilities:
               drop:
@@ -42,121 +47,87 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 10001
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.imagePullPolicy | default "IfNotPresent" }}
+          env:
+            - name: LOG_LEVEL
+              value: DEBUG
+            - name: API_SERVER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "app.apiSecretName" . }}
+                  key: {{ include "app.apiSecretKey" . }}
+            {{- if eq (include "oke.isConfigured" $ | trim) "true" }}
+            - name: OCI_CLI_TENANCY
+              value: {{ .Values.oke.tenancy | quote }}
+            - name: OCI_CLI_REGION
+              value: {{ .Values.oke.region | quote }}
+            - name: OCI_CLI_AUTH
+              value: "oke_workload_identity"
+            {{- end }}
+            {{- if .Values.database }}
+            - name: DB_USERNAME
+              value: "AI_OPTIMIZER"
+            - name: DB_PASSWORD
+              {{- if eq .Values.database.type "FREE" }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "release.name" . }}-sidb-free
+                  key: "password"
+              {{- end }}
+            - name: DB_DSN
+              {{- if eq .Values.database.type "FREE" }}
+              value: {{ include "release.name" . }}-sidb-free:1521/FREEPDB1
+              {{- end }}
+            {{- end }}
+            {{- if $.Values.global.enableOllama }}
+            - name: ON_PREM_OLLAMA_URL
+              value: {{ include "ollama.serviceUrl" $ }}
+            {{- end }}
+            {{- with .Values.models }}
+            {{- $envMap := dict "openAI" "OPENAI_API_KEY" "perplexity" "PPLX_API_KEY" "cohere" "COHERE_API_KEY" }}
+            {{- range $key, $envName := $envMap }}
+              {{- with index . $key }}
+                {{- if .secretName }}
+            - name: {{ $envName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: {{ .secretKey | default "apiKey" }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+            {{- end }}
           ports:
             - name: server-port
               containerPort: 8000
               protocol: TCP
+          {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: {{ include "getPath" . }}v1/liveness
               port: server-port
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 30
-            failureThreshold: 10
+            {{- with omit .Values.livenessProbe "enabled" }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: {{ include "getPath" . }}v1/readiness
               port: server-port
-            initialDelaySeconds: 30
-            periodSeconds: 15
-            timeoutSeconds: 15
-            failureThreshold: 6
+            {{- with omit .Values.readinessProbe "enabled" }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
           {{- if .Values.resources }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- end }}
-          env:
-            {{- if .Values.oci.tenancy }}
-            - name: OCI_CLI_TENANCY
-              value: {{ .Values.oci.tenancy | quote }}
-            - name: OCI_CLI_REGION
-              value: {{ .Values.oci.region | quote }}
-            - name: OCI_CLI_AUTH
-              value: "oke_workload_identity"
-            {{- end }}
-            {{- if .Values.adb.enabled }}
-            - name: TNS_ADMIN
-              value: /app/tns_admin
-            - name: DB_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.adb.authN.secretName | quote }}
-                  key: {{ .Values.adb.authN.usernameKey | default "username" | quote }}
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.adb.authN.secretName | quote }}
-                  key: {{ .Values.adb.authN.passwordKey | default "password" | quote }}
-            - name: DB_DSN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.adb.authN.secretName | quote }}
-                  key: {{ .Values.adb.authN.serviceKey | default "service" | quote }}
-            {{- if .Values.adb.mtls.enabled }}
-              {{- if .Values.adb.mtls.secretName }}
-            - name: DB_WALLET_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.adb.mtls.secretName | quote }}
-                  key: {{ .Values.adb.mtls.secretKey | default .Values.adb.mtls.secretName | quote }}
-              {{ else }}
-            - name: DB_WALLET_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}
-                  key: {{ include "app.fullname" . }}-adb-wallet-pass-{{ .Release.Revision }}
-              {{- end }}
-            {{- end }}
-            {{- end }}
-            - name: API_SERVER_PORT
-              value: "8000"
-            - name: API_SERVER_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.global.api.secretName | default (printf "%s-api-key" (include "release.name" .)) }}
-                  key: {{ .Values.global.api.secretKey | default "apiKey" }}
-            {{- with .Values }}
-            {{- if .models }}
-            {{- if and .models.openAI .models.openAI.secretName }}
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .models.openAI.secretName }}
-                  key: {{ .models.openAI.secretKey | default "apiKey" }}
-            {{- end }}
-            {{- if and .models.perplexity .models.perplexity.secretName }}
-            - name: PPLX_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .models.perplexity.secretName }}
-                  key: {{ .models.perplexity.secretKey | default "apiKey" }}
-            {{- end }}
-            {{- if and .models.cohere .models.cohere.secretName }}
-            - name: COHERE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .models.cohere.secretName }}
-                  key: {{ .models.cohere.secretKey | default "apiKey" }}
-            {{- end }}
-            {{- if and .models.huggingface .models.huggingface.apiUrl }}
-            - name: ON_PREM_HF_URL
-              value: {{ .models.huggingface.apiUrl }}
-            {{- end }}
-            {{- if and .models.ollama .models.ollama.enabled }}
-            - name: ON_PREM_OLLAMA_URL
-              value: {{ include "ollama.serviceUrl" $ }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
           volumeMounts:
             - name: tmp
               mountPath: "/app/tmp"
-            {{- if .Values.adb.enabled }}
-            - name: tns-admin
-              mountPath: /app/tns_admin
+            {{- if and .Values.oci_config .Values.oci_config.secretName }}
+            - name: oci-config
+              mountPath: "/app/runtime/.oci"
             {{- end }}
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -164,14 +135,11 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if and .Values.adb .Values.adb.enabled }}
-        - name: tns-admin
+        {{- if and .Values.oci_config .Values.oci_config.secretName }}
+        - name: oci-config
           secret:
-            {{- if and .Values.adb.tnsAdmin .Values.adb.tnsAdmin.secretName }}
-            secretName: {{ .Values.adb.tnsAdmin.secretName | quote }}
-            {{ else }}
-            secretName: {{ include "app.fullname" . }}-adb-tns-admin-{{ .Release.Revision }}
-            {{- end }}
+            secretName: {{ .Values.oci_config.secretName | quote }}
+            optional: true
         {{- end }}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}

@@ -151,16 +151,6 @@ def main() -> list[Model]:
             "max_chunk_size": 8192,
         },
         {
-            "name": "all-minilm",
-            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
-            "type": "embed",
-            "api": "OllamaEmbeddings",
-            "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
-            "api_key": "",
-            "openai_compat": True,
-            "max_chunk_size": 256,
-        },
-        {
             # This is intentionally last to line up with docos
             "name": "mxbai-embed-large",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,

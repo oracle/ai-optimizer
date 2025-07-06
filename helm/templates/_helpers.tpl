@@ -1,65 +1,49 @@
 {{/* 
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. 
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore ollama
 */}}
 
 {{/*
-Expand the name of the chart.
+Return the Helm release name.
 */}}
 {{- define "release.name" -}}
-{{ .Release.Name }}
+  {{- .Release.Name | trim }}
 {{- end }}
 
+{{/*
+Return the Chart Name
+*/}}
 {{- define "chart.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+  {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" | trim }}
 {{- end }}
 
 {{/*
-Define the ServiceName of the API Server for Client Access.
+Return the Chart Name with Version
 */}}
-{{- define "server.serviceName" -}}
-{{ include "release.name" . }}-server-http
-{{- end -}}
-
-{{- define "server.serviceUrl" -}}
-http://{{ include "server.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local
-{{- end -}}
-
-{{/*
-Define the ServiceName of the Ollama.
-*/}}
-{{- define "ollama.serviceName" -}}
-{{ include "release.name" . }}-ollama-http
-{{- end -}}
-
-{{- define "ollama.serviceUrl" -}}
-http://{{ include "ollama.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local:11434
-{{- end -}}
+{{- define "app.chart" -}}
+  {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" | trim }}
+{{- end }}
 
 {{/*
 Create a default fully qualified app name.
-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
-If release name contains chart name it will be used as a full name.
+Truncates at 63 characters because some Kubernetes name fields are limited by the DNS naming spec.
+If .Values.fullnameOverride is set, it takes precedence.
+If the release name contains the chart name, we use it directly.
 */}}
 {{- define "app.fullname" -}}
-{{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
-{{- if contains $name .Release.Name }}
-{{- .Release.Name | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
-{{- end }}
+  {{- if .Values.fullnameOverride }}
+    {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+  {{- else }}
+    {{- $name := default .Chart.Name .Values.nameOverride }}
+    {{- if contains $name .Release.Name }}
+      {{- .Release.Name | trunc 63 | trimSuffix "-" }}
+    {{- else }}
+      {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+    {{- end }}
+  {{- end }}
 {{- end }}
 
-{{/*
-Create chart name and version as used by the chart label.
-*/}}
-{{- define "app.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
-{{- end }}
 
 {{/*
 Common labels
@@ -81,27 +65,65 @@ app.kubernetes.io/name: {{ include "chart.name" . }}
 app.kubernetes.io/instance: {{ include "release.name" . }}
 {{- end }}
 
+{{- /*
+Validate that either global.api.apiKey or global.api.secretName is provided.
+*/ -}}
+{{- define "apiKeyOrSecretName.required" -}}
+  {{- $apiKey := .Values.global.api.apiKey | trim | default "" -}}
+  {{- $secretName := .Values.global.api.secretName | trim | default "" -}}
+
+  {{- if and (eq $apiKey "") (eq $secretName "") -}}
+    {{- fail "You must specify either global.api.apiKey or global.api.secretName" -}}
+  {{- end -}}
+
+  {{- if and (ne $apiKey "") (ne $secretName "") -}}
+    {{- fail "You cannot specify both global.api.apiKey and global.api.secretName; please choose one" -}}
+  {{- end -}}
+{{- end -}}
+
 {{/*
-Create the name of the service account to use
+Define the API Key Secret with Defaults
 */}}
-{{- define "app.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "app.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
+{{- define "app.apiSecretName" -}}
+{{- .Values.global.api.secretName | default (printf "%s-api-key" (include "release.name" .)) -}}
 {{- end }}
+
+{{- define "app.apiSecretKey" -}}
+{{- .Values.global.api.secretKey | default "apiKey" -}}
 {{- end }}
 
 {{/*
 Set the path based on baseUrlPath
 */}}
 {{- define "getPath" -}}
-{{- $baseUrlPath := .Values.baseUrlPath | default "" -}}
-{{- if eq $baseUrlPath "" -}}
-/
-{{- else if not (hasPrefix "/" $baseUrlPath) -}}
-{{- printf "/%s" $baseUrlPath -}}
-{{- else -}}
-{{- $baseUrlPath -}}
+  {{- $baseUrlPath := .Values.global.baseUrlPath | default "" -}}
+  {{- if eq $baseUrlPath "" -}}
+    /
+  {{- else if not (hasPrefix "/" $baseUrlPath) -}}
+    {{- printf "/%s" $baseUrlPath -}}
+  {{- else -}}
+    {{- $baseUrlPath -}}
+  {{- end -}}
 {{- end -}}
+
+{{/*
+Define the serviceName and serviceUrl of the API Server for Client Access.
+*/}}
+{{- define "server.serviceName" -}}
+{{ include "release.name" . }}-server-http
+{{- end -}}
+
+{{- define "server.serviceUrl" -}}
+http://{{ include "server.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local
+{{- end -}}
+
+{{/*
+Define serviceName and serviceUrl of the Ollama Server for API Server Access.
+*/}}
+{{- define "ollama.serviceName" -}}
+{{ include "release.name" . }}-ollama-http
+{{- end -}}
+
+{{- define "ollama.serviceUrl" -}}
+http://{{ include "ollama.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local:11434
 {{- end -}}

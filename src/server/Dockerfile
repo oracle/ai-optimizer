@@ -10,20 +10,16 @@ FROM container-registry.oracle.com/os/oraclelinux:8-slim AS optimizer_base
 
 ENV RUNUSER=oracleai
 ENV PATH=/opt/.venv/bin:$PATH
-ENV TEMP=/app/tmp
 
-# Combine related commands into a single RUN layer to minimize image layers
 RUN microdnf --nodocs -y update && \
     microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
-    /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
     groupadd $RUNUSER && \
-    useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/tmp && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/client && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/server && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/common
+    useradd -u 10001 -g $RUNUSER -md /app $RUNUSER
+RUN for dir in server client common; do \
+      install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/$dir; \
+    done
 
 COPY pyproject.toml /opt/package/pyproject.toml
 
@@ -40,15 +36,21 @@ ENV NUMBA_CACHE_DIR=/app/tmp
 ENV MPLCONFIGDIR=/app/tmp
 ENV TIKTOKEN_CACHE_DIR=/app/tmp
 ENV NLTK_DATA=/app/tmp
-
-COPY . /app
-RUN rm -rf /app/client /app/.streamlit /app/launch_client.py && \
-    chown -R oracleai:oracleai /app
+ENV TEMP=/app/tmp
+ENV TNS_ADMIN=/app/tns_admin
+ENV OCI_CLI_CONFIG_FILE=/app/runtime/.oci/config
 
 # Expect the .oci directory to be mounted to /app/.oci
 VOLUME ["/app/.oci"]
 # Expect the TNS_ADMIN directory to be mounted to /app/tns_admin
 VOLUME ["/app/tns_admin"]
+
+# Prep the app directory
+RUN for dir in $TEMP $TNS_ADMIN $(dirname $OCI_CLI_CONFIG_FILE); do \
+      install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
+    done
+COPY --chown=$RUNUSER:$RUNUSER . /app/
+RUN rm -rf /app/client /app/.streamlit /app/launch_client.py
 
 # Set user and working directory
 USER $RUNUSER
