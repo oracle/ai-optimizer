@@ -143,8 +143,8 @@ resource "oci_containerengine_node_pool" "default_node_pool_details" {
     ocpus         = var.compute_cpu_ocpu
   }
   node_source_details {
-    image_id    = local.oke_worker_cpu_image
-    source_type = "IMAGE"
+    image_id                = local.oke_worker_cpu_image
+    source_type             = "IMAGE"
     boot_volume_size_in_gbs = 100
   }
   node_metadata = {
