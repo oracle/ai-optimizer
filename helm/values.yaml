@@ -12,201 +12,175 @@ nameOverride: ""
 # -----------------------
 # -- Global Configuration
 global:
-  # api: specify either this 'apiKey' directly or provide a secretName referring to an existing Secret containing the API key.
+  # -- Either provide the 'apiKey' directly or provide a secretName referring to an existing Secret containing the API key.
   api:
-    # apiKey: key for making API calls to the server
+    # -- Key for making API calls to the server.
+    # Recommended to supply at command line or use the secretName to avoid storing in the values file.
     # Example: "abcd1234opt5678"
     apiKey: ""
 
-    # secretName: name of the Secret that stores the API key.
+    # -- Name of the Secret that stores the API key.
     # This allows you to keep the API key out of the values file and manage it securely via Secrets.
     # Example: "optimizer-api-keys"
     secretName: ""
 
-    # secretKey: key name inside the Secret that contains the API key when secretName defined
-    # defaults to api-key when not specified
-    # Example: "api-key"
-    secretKey: ""
+    # -- Key name inside the Secret that contains the API key when secretName defined.
+    secretKey: "api-key"
 
-  # baseUrlPath: url path appended to the host 
+  # -- URL path appended to the host.
   # Example: "/test" results in URLs like http://hostname/test/...
   baseUrlPath: "/"
 
-  # enableClient: deploy Web frontend client
+  # -- Deploy Web frontend client
   enableClient: true
 
-  # enableOllama: deploy Ollama and optionally pull models
-  enableOllama: true
+  # -- Deploy Ollama and optionally pull models
+  enableOllama: false
 
 # -----------------------
-# -- Server Configuration
+# Server Configuration
 server:
-  # replicaCount: number of desired pod replicas for the Deployment when autoscaling is disabled
+  # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
   replicaCount: 1
 
-  # autoscaling: HPA when enabled, requires metrics-server to be installed
-  autoscaling:
-    enabled: false
-    minReplicas: 1
-    maxReplicas: 100
-    targetCPUUtilizationPercentage: 80
-    targetMemoryUtilizationPercentage: 80
-
-  # imagePullSecrets: Secret name containing image pull secrets
+  # -- Secret name containing image pull secrets
   imagePullSecrets: []
-    # - name: registry_cred
 
-  # image: image and tag to pull incl policy
+  # image: Image and Tag to pull including pull policy
   image:
+    # -- Image Repository
     repository: localhost/ai-optimizer-server
+    # -- Image Tag
     tag: latest
-  imagePullPolicy: IfNotPresent
 
-  # service: type of Kubernetes service to expose the HTTP port.
-  service:
-    http:
-      type: "ClusterIP"
+  # -- Oracle Database Configuration
+  database:
+    # -- Either SIDB-FREE, ADB-FREE, or ADB-S
+    type: ""
+    # image: For SIDB-FREE/ADB-FREE, repository location and tag of the image
+    # Ignored for ADB-S
+    image:
+      # -- For SIDB-FREE/ADB-FREE, repository location of the image
+      repository: ""
+      # -- For SIDB-FREE/ADB-FREE, tag of the image
+      tag: latest
+    # -- For ADB-S, OCID of the Autonomous Database
+    # Exclude for SIDB-FREE/ADB-FREE
+    ocid: ""
+    # -- Authentication/Connection Details
+    authN:
+      # -- Name of Secret containing the authentication/connection details
+      secretName: "db-authn"
+      # -- Key in secretName containing the username
+      usernameKey: "username"
+      # -- Key in secretName containing the password
+      passwordKey: "password"
+      # -- Key in secretName containing the connection service name
+      serviceKey: "service"
 
-  # ingress: controls the Ingress resource to expose the service.
-  ingress:
-    enabled: false
-    className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
-    annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
-    tls: []
-      # - hosts:
-      #     - example.com
-      #   secretName: example-tls
-
-  # oci_config: provide the configFileSecret containing a config file and the key_file(s)
-  # use the scripts/oci_config.py script to help create the secret
+  # -- Oracle Cloud Infrastructure Configuration
   oci_config:
-    # oke: will enable workload identity principals (must be implemented)
+    # -- Enable Workload Identity Principals (WIP) (must be implemented)
     oke: false
+    # -- Tenancy OCID.  Required when specifying keySecretName.
     tenancy: ""
+    # -- User OCID.  Required when specifying keySecretName.
     user: ""
+    # -- Fingerprint.  Required when specifying keySecretName.
     fingerprint: ""
+    # -- Region. Required when oke is true.
     region: ""
-    configFileSecret: ""
+    # -- Secret containing an OCI config file and the key_file(s).
+    # Use the scripts/oci_config.py script to help create the secret based on an existing ~.oci/config file
+    fileSecretName: ""
+    # -- Secret containing a single API key corresponding to above tenancy configuration
+    # This used by OraOperator when not running in OKE
+    keySecretName: ""
 
-  # models: specify secretName and secretKey to enable 3rd-Party Models
+  # -- Specify secretName and secretKey to enable 3rd-Party Models
   models:
+    # -- OpenAI API Key
     openAI:
-      # secretName: "openai-secret"
-      # secretKey: ""       # Optional, defaults to "apiKey" if not specified
+      secretName: ""
+      secretKey: "apiKey"
+    # -- Perplexity API Key
     perplexity:
-      # secretName: "perplexity-secret"
-      # # secretKey omitted, will default to "apiKey"
+      secretName: ""
+      secretKey: "apiKey"
+    # -- Cohere API Key
     cohere:
-      # secretName: "cohere-secret"
-      # secretKey: "customKeyName"  # Example of overriding the default key
+      secretName: ""
+      secretKey: "apiKey"
 
 # -----------------------
-# -- Client Configuration
-# -- enabled/disable from global.enableClient
+# Client Configuration
+# Enabled from global.enableClient
 client:
-  # replicaCount: number of desired pod replicas for the Deployment when autoscaling is disabled
+  # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
   replicaCount: 1
 
-  # autoscaling: HPA when enabled, requires metrics-server to be installed
-  autoscaling:
-    enabled: false
-    minReplicas: 1
-    maxReplicas: 100
-    targetCPUUtilizationPercentage: 80
-    targetMemoryUtilizationPercentage: 80
-
-  # imagePullSecrets: Secret name containing image pull secrets
+  # -- Secret name containing image pull secrets
   imagePullSecrets: []
-    # - name: registry_cred
 
-  # image: image and tag to pull incl policy
+  # image: Image and Tag to pull including pull policy
   image:
+    # -- Image Repository
     repository: localhost/ai-optimizer-client
+    # -- Image Tag
     tag: latest
-  imagePullPolicy: IfNotPresent
 
-  # service: type of Kubernetes service to expose the HTTP port.
-  service:
-    http:
-      type: "ClusterIP"
-
-  # ingress: controls the Ingress resource to expose the service.
-  ingress:
-    enabled: false
-    className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
-    annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
-    tls: []
-      # - hosts:
-      #     - example.com
-      #   secretName: example-tls
-
-  # features: enable/disable specific client features
+  # -- Disable specific client features
   features:
+    # -- Disable the Test Bed
     disableTestbed: false
+    # -- Disable the API Server Administration/Monitoring
     disableApi: false
+    # -- Disable Tools such as Prompt Engineering and Split/Embed
     disableTools: false
+    # -- Disable Tools Database Configuration
     disableDbCfg: false
+    # -- Disable Tools Model Configuration
     disableModelCfg: false
+    # -- Disable OCI Configuration
     disableOciCfg: false
+    # -- Disable the Import/Export of Settings
     disableSettings: false
 
 # -----------------------
-# -- Ollama Configuration
-# -- enabled/disable from global.enableOllama
+# Ollama Configuration
+# Enabled from global.enableOllama
 ollama:
-  # replicaCount: number of desired pod replicas for the Deployment
+  # -- Number of desired pod replicas for the Deployment
   replicaCount: 1
 
-  # imagePullSecrets: Secret name containing image pull secrets
-  imagePullSecrets: []
-    # - name: registry_cred
-
-  # image: image and tag to pull incl policy
+  # image: Image and Tag to pull including pull policy
   image:
+    # -- Image Repository
     repository: docker.io/ollama/ollama
-    tag: "latest"
-  imagePullPolicy: IfNotPresent
-
-  # service: type of Kubernetes service to expose the HTTP port.
-  service:
-    http:
-      type: "ClusterIP"
+    # -- Image Tag
+    tag: latest
 
   # models: to automatically deploy if enabled
   models:
+    # -- Enable automatic pulling of models
     enabled: true
+    # -- List of models to automatically pull
     modelPullList:
       - llama3.1
       - mxbai-embed-large
 
-  # resources: requests and limits for the container
+  # -- Requests and limits for the container.
   # Often used to ensure pod is running on a GPU worker
   resources: {}
-    # limits:
-    #   nvidia.com/gpu: 1
 
-  # nodeSelector: to constrain pods to specific nodes
+  # -- Constrain pods to specific nodes
+  # Often used to ensure pod is running on a GPU worker
   nodeSelector: {}
-    # disktype: ssd
 
-  # affinity: rules for scheduling pods
+  # -- Rules for scheduling pods
+  # Often used to ensure pod is running on a GPU worker
   affinity: {}
-    # podAntiAffinity:
-    #   requiredDuringSchedulingIgnoredDuringExecution:
-    #     - labelSelector:
-    #         matchExpressions:
-    #           - key: app
-    #             operator: In
-    #             values:
-    #               - my-app
-    #       topologyKey: "kubernetes.io/hostname"
 
-  # tolerations: for scheduling pods on tainted nodes
+  # -- For scheduling pods on tainted nodes
+  # Often used to ensure pod is running on a GPU worker
   tolerations: []
-    # - key: "key1"
-    #   operator: "Exists"
-    #   effect: "NoSchedule"

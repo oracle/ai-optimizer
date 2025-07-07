@@ -7,7 +7,6 @@
   {{- if eq .Values.database.type "SIDB-FREE" }}
   # -----------------------
   # -- SIDB-FREE database
-  {{- $pdbName = "FREEPDB1" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -78,8 +77,8 @@ spec:
     {{- if .Values.oci_config }}
   ociConfig: 
     configMapName: {{ include "release.name" . }}-oci-config
-      {{- if .Values.oci_config.privateKeySecret }}
-    secretName: {{ .Values.oci_config.privateKeySecret }}
+      {{- if .Values.oci_config.keySecretName }}
+    secretName: {{ .Values.oci_config.keySecretName }}
       {{- end -}}
     {{- end -}}
   {{- else }}

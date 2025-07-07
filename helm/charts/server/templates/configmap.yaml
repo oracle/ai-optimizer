@@ -4,7 +4,6 @@
 
 {{- if .Values.database }}
 {{- if eq .Values.database.type "SIDB-FREE" }}
-{{- $pdbName = "FREEPDB1" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,7 +15,7 @@ data:
     sqlplus <<- EOF
     connect / as sysdba
     ALTER SYSTEM SET VECTOR_MEMORY_SIZE=512M SCOPE=SPFILE;
-    ALTER SESSION SET CONTAINER={{- $pdbName }};
+    ALTER SESSION SET CONTAINER=FREEPDB1;
     DECLARE
       l_conn_user VARCHAR2(255);
       l_user      VARCHAR2(255);

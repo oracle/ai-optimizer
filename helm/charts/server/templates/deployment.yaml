@@ -66,17 +66,17 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "databaseSecret" . }}
-                  key: {{ default "username" (.Values.database.authN.usernameKey | default "") }}
+                  key: {{ default "username" (get (default dict .Values.database.authN) "usernameKey") }}
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "databaseSecret" . }}
-                  key: {{ default "password" (.Values.database.authN.passwordKey | default "") }}
+                  key: {{ default "password" (get (default dict .Values.database.authN) "passwordKey") }}
             - name: DB_DSN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "databaseSecret" . }}
-                  key: {{ default "service" (.Values.database.authN.serviceKey | default "") }}
+                  key: {{ default "service" (get (default dict .Values.database.authN) "serviceKey") }}
               {{- if eq .Values.database.type "ADB-S" }}
             - name: DB_WALLET_PASSWORD
               valueFrom:
@@ -90,18 +90,19 @@ spec:
               value: {{ include "ollama.serviceUrl" $ }}
             {{- end }}
             {{- with .Values.models }}
-            {{- $envMap := dict "openAI" "OPENAI_API_KEY" "perplexity" "PPLX_API_KEY" "cohere" "COHERE_API_KEY" }}
-            {{- range $key, $envName := $envMap }}
-              {{- with index . $key }}
-                {{- if .secretName }}
+              {{- $models := . }}
+              {{- $envMap := dict "openAI" "OPENAI_API_KEY" "perplexity" "PPLX_API_KEY" "cohere" "COHERE_API_KEY" }}
+              {{- range $key, $envName := $envMap }}
+                {{- with index $models $key }}
+                  {{- if .secretName }}
             - name: {{ $envName }}
               valueFrom:
                 secretKeyRef:
                   name: {{ .secretName }}
                   key: {{ .secretKey | default "apiKey" }}
+                  {{- end }}
                 {{- end }}
               {{- end }}
-            {{- end }}
             {{- end }}
           ports:
             - name: server-port

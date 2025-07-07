@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore
 
-# replicaCount: number of desired pod replicas for the Deployment when autoscaling is disabled
+# -- Number of desired pod replicas for the Deployment when autoscaling is disabled
 replicaCount: 1
 
 # autoscaling: HPA when enabled, requires metrics-server to be installed
@@ -13,13 +13,15 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# imagePullSecrets: Secret name containing image pull secrets
+# -- Secret name containing image pull secrets
 imagePullSecrets: []
   # - name: registry_cred
 
-# image: image and tag to pull incl policy
+# image: Image and Tag to pull including pull policy
 image:
+  # -- Image Repository
   repository: localhost/ai-optimizer-server
+  # -- Image Tag
   tag: latest
 imagePullPolicy: IfNotPresent
 
@@ -40,51 +42,62 @@ ingress:
     #     - example.com
     #   secretName: example-tls
 
-# database: Oracle Database Configuration, many different options
-# review the documentation for more details; use the OraOperator 
+# -- Oracle Database Configuration
 database:
-  ## SIDB Containerized Example
-  # type: "SIDB-FREE"
-  # image:
-  #   repository: container-registry.oracle.com/database/free
-  #   tag: latest
-  ## ADB Containerized Example (not implemented)
-  # type: "ADB-FREE"
-  # image:
-  #   repository: container-registry.oracle.com/database/adb-free
-  #   tag: latest-23ai
-  ## OCI ADB-S Workload Principle Example (requires OraOperator)
-  # type: "ADB-S"
-  # ocid: "ocid1.autonomousdatabase.oc1..."
-  # authN:
-  #   secretName: "db-authn"
+  # -- Either SIDB-FREE, ADB-FREE, or ADB-S
+  type: ""
+  # -- For SIDB-FREE/ADB-FREE, location of the image and its tag
+  # Exclude for ADB-S
+  image:
+    repository: ""
+    tag: latest
+  # -- For ADB-S, OCID of the Autonomous Database
+  # Exclude for SIDB-FREE/ADB-FREE
+  ocid: ""
+  # -- Authentication/Connection Details
+  authN:
+    # -- Name of Secret containing the authentication/connection details
+    secretName: "db-authn"
+    # -- Key in secretName containing the username
+    usernameKey: "username"
+    # -- Key in secretName containing the password
+    passwordKey: "password"
+    # -- Key in secretName containing the connection service name
+    serviceKey: "service"
 
-# oci_config: Oracle Cloud Infrastructure configurations
+# -- Oracle Cloud Infrastructure Configuration
 oci_config:
-  # oke: will enable workload identity principals (must be implemented)
+  # -- Enable Workload Identity Principals (WIP) (must be implemented)
   oke: false
+  # -- Tenancy OCID.  Required when specifying keySecretName.
   tenancy: ""
+  # -- User OCID.  Required when specifying keySecretName.
   user: ""
+  # -- Fingerprint.  Required when specifying keySecretName.
   fingerprint: ""
+  # -- Region. Required when oke is true.
   region: ""
-  # fileSecretName: containing a config file and the key_file(s)
-  # use the scripts/oci_config.py script to help create the secret
+  # -- Secret containing an OCI config file and the key_file(s).
+  # Use the scripts/oci_config.py script to help create the secret based on an existing ~.oci/config file
   fileSecretName: ""
-  # privateKeySecret: single API key corresponding to above parameters
-  # used by OraOperator when not OKE
-  privateKeySecret:
+  # -- Secret containing a single API key corresponding to above tenancy configuration
+  # This used by OraOperator when not running in OKE
+  keySecretName: ""
 
-# models: specify secretName and secretKey to enable 3rd-Party Models
+# -- Specify secretName and secretKey to enable 3rd-Party Models
 models:
+  # -- OpenAI API Key
   openAI:
-    # secretName: "openai-secret"
-    # secretKey: ""       # Optional, defaults to "apiKey" if not specified
+    secretName: ""
+    secretKey: "apiKey"
+  # -- Perplexity API Key
   perplexity:
-    # secretName: "perplexity-secret"
-    # # secretKey omitted, will default to "apiKey"
+    secretName: ""
+    secretKey: "apiKey"
+  # -- Cohere API Key
   cohere:
-    # secretName: "cohere-secret"
-    # secretKey: "customKeyName"  # Example of overriding the default key
+    secretName: ""
+    secretKey: "apiKey"
 
 # livenessProbe: defines settings for the liveness probe.
 # Set `enabled` to false to disable the probe entirely.

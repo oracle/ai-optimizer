@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore
 
-# replicaCount: number of desired pod replicas for the Deployment when autoscaling is disabled
+# -- Number of desired pod replicas for the Deployment when autoscaling is disabled
 replicaCount: 1
 
 # autoscaling: HPA when enabled, requires metrics-server to be installed
@@ -13,13 +13,15 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# imagePullSecrets: Secret name containing image pull secrets
+# -- Secret name containing image pull secrets
 imagePullSecrets: []
   # - name: registry_cred
 
-# image: image and tag to pull incl policy
+# image: Image and Tag to pull including pull policy
 image:
+  # -- Image Repository
   repository: localhost/ai-optimizer-client
+  # -- Image Tag
   tag: latest
 imagePullPolicy: IfNotPresent
 
@@ -40,14 +42,21 @@ ingress:
     #     - example.com
     #   secretName: example-tls
 
-# features: enable/disable specific client features
+# -- Disable specific client features
 features:
+  # -- Disable the Test Bed
   disableTestbed: false
+  # -- Disable the API Server Administration/Monitoring
   disableApi: false
+  # -- Disable Tools such as Prompt Engineering and Split/Embed
   disableTools: false
+  # -- Disable Tools Database Configuration
   disableDbCfg: false
+  # -- Disable Tools Model Configuration
   disableModelCfg: false
+  # -- Disable OCI Configuration
   disableOciCfg: false
+  # -- Disable the Import/Export of Settings
   disableSettings: false
 
 # livenessProbe: defines settings for the liveness probe.

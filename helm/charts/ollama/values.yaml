@@ -2,17 +2,19 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore mxbai
 
-# replicaCount: number of desired pod replicas for the Deployment
+# -- Number of desired pod replicas for the Deployment
 replicaCount: 1
 
 # imagePullSecrets: Secret name containing image pull secrets
 imagePullSecrets: []
   # - name: registry_cred
 
-# image: image and tag to pull incl policy
+# image: Image and Tag to pull including pull policy
 image:
+  # -- Image Repository
   repository: docker.io/ollama/ollama
-  tag: "latest"
+  # -- Image Tag
+  tag: latest
 imagePullPolicy: IfNotPresent
 
 # service: type of Kubernetes service to expose the HTTP port.
@@ -22,7 +24,9 @@ service:
 
 # models: to automatically deploy if enabled
 models:
+  # -- Enable automatic pulling of models
   enabled: true
+  # -- List of models to automatically pull
   modelPullList:
     - llama3.1
     - mxbai-embed-large
@@ -57,17 +61,19 @@ podAnnotations: {}
   # prometheus.io/scrape: "true"
   # prometheus.io/port: "9102"
 
-# resources: requests and limits for the container
+# -- Requests and limits for the container.
 # Often used to ensure pod is running on a GPU worker
 resources: {}
   # limits:
   #   nvidia.com/gpu: 1
 
-# nodeSelector: to constrain pods to specific nodes
+# -- Constrain pods to specific nodes
+# Often used to ensure pod is running on a GPU worker
 nodeSelector: {}
   # disktype: ssd
 
-# affinity: rules for scheduling pods
+# -- Rules for scheduling pods
+# Often used to ensure pod is running on a GPU worker
 affinity: {}
   # podAntiAffinity:
   #   requiredDuringSchedulingIgnoredDuringExecution:
@@ -79,7 +85,8 @@ affinity: {}
   #               - my-app
   #       topologyKey: "kubernetes.io/hostname"
 
-# tolerations: for scheduling pods on tainted nodes
+# -- For scheduling pods on tainted nodes
+# Often used to ensure pod is running on a GPU worker
 tolerations: []
   # - key: "key1"
   #   operator: "Exists"
