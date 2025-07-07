@@ -3,11 +3,14 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. 
 */}}
 
+
 {{/*
 Create the pull model list
 */}}
 {{- define "ollama.modelPullList" -}}
-{{- with .Values.models -}}
-{{- . | uniq | join " " -}}
-{{- end -}}
+  {{- if and .Values.models.enabled .Values.models.modelPullList }}
+    {{- join " " .Values.models.modelPullList -}}
+  {{- else }}
+    {{- "" -}}
+  {{- end }}
 {{- end -}}

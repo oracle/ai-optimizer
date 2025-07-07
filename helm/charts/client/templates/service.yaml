@@ -1,5 +1,6 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent
 
 apiVersion: v1
 kind: Service
@@ -15,3 +16,4 @@ spec:
       targetPort: 8501
   selector: 
     {{- include "app.selectorLabels" . | nindent 4 }}
+    "app.kubernetes.io/component": "frontend"

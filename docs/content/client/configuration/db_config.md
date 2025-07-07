@@ -16,6 +16,8 @@ To use the Retrieval-Augmented Generation (RAG) functionality of the {{< short_a
 
 The database can either be configured through the [{{< short_app_ref >}} interface](#-short_app_ref--interface) or by using [environment variables](#environment-variables).
 
+---
+
 ### {{< short_app_ref >}} Interface
 
 To configure the Database from the {{< short_app_ref >}}, navigate to `Configuration -> Database`:
@@ -39,6 +41,8 @@ Provide the following input:
 
 Once all fields are set, click the `Save` button.
 
+---
+
 ### Environment Variables
 
 The following environment variables can be set, prior to starting the {{< short_app_ref >}}, to automatically configure the database:
@@ -57,6 +61,8 @@ export DB_DSN="//localhost:1521/OPTIMIZER"
 export DB_WALLET_PASSWORD=MYCOMPLEXWALLETSECRET
 ```
 
+--- 
+
 ## Using a Wallet/TNS_ADMIN Directory
 
 For mTLS database connectivity or, if you prefer to specify a TNS alias instead of a full connect string, you can use the contents of a `TNS_ADMIN` directory.
@@ -66,17 +72,20 @@ If using and ADB-S wallet, unzip the contents into the `TNS_ADMIN` directory. Th
 {{% /notice %}}
 
 
-### Bare-Metal Installation
+### Bare-Metal
 
-For bare-metal installations, set the `TNS_ADMIN` environment variable, or copy the contents of your current TNS_ADMIN to `src/tns_admin` before starting the {{< short_app_ref >}}.
+For bare-metal installations, set the `TNS_ADMIN` environment variable to the location of your unzipped wallet files before starting the {{< short_app_ref >}}.
 
-### Container Installation
+### Container
 
-For container installations, there are a couple of ways to include the contents of your `TNS_ADMIN` in the image:
+When starting the container, volume mount the configuration file to `/app/tns_admin` for it to be used.  
 
-- Before building the image, copy the contents of your `TNS_ADMIN` to `src/tns_admin`. This will include your `TNS_ADMIN` as part of the image build.
-- Mount your `TNS_ADMIN` directory into the container on startup, for example: `podman run -p 8501:8501 -v $TNS_ADMIN:/tns_admin -it --rm ai-optimizer-server`
-- Copy the `TNS_ADMIN` directory into an existing running container, for example: `podman cp $TNS_ADMIN /app/tns_admin ai-optimizer-server`
+For example:
+```bash
+podman run -v $TNS_ADMIN$:/app/tns_admin -p 8501:8501 -it --rm ai-optimizer-aio
+```
+
+---
 
 ## Database User
 

@@ -6,5 +6,7 @@
 **/__pycache__
 **/.pytest_cache
 **/*.sh
+**/tns_admin
+**/.oci
 !client/spring_ai/templates/env.sh
 !entrypoint.sh

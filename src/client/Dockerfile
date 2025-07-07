@@ -10,21 +10,16 @@ FROM container-registry.oracle.com/os/oraclelinux:8-slim AS optimizer_base
 
 ENV RUNUSER=oracleai
 ENV PATH=/opt/.venv/bin:$PATH
-ENV TEMP=/app/tmp
 
-# Combine related commands into a single RUN layer to minimize image layers
 RUN microdnf --nodocs -y update && \
     microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
-    /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
     groupadd $RUNUSER && \
-    useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/tmp && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/client && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/server && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/common && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/.oci
+    useradd -u 10001 -g $RUNUSER -md /app $RUNUSER
+RUN for dir in server client common; do \
+      install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/$dir; \
+    done
 
 COPY pyproject.toml /opt/package/pyproject.toml
 
@@ -35,9 +30,14 @@ RUN /opt/.venv/bin/pip install --no-cache-dir "/opt/package[client]"
 ##################################################
 FROM optimizer_base AS client
 
-COPY . /app
-RUN rm -rf /app/server /app/.oci /app/launch_server.py && \
-    chown -R oracleai:oracleai /app
+ENV TEMP=/app/tmp
+
+# Prep the app directory
+RUN for dir in $TEMP; do \
+      install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
+    done
+COPY --chown=$RUNUSER:$RUNUSER . /app/
+RUN rm -rf /app/server /app/launch_server.py 
 
 # Set user and working directory
 USER $RUNUSER

@@ -320,6 +320,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             )
         except ValueError as ex:
             raise HTTPException(status_code=500, detail=str(ex)) from ex
+        except RuntimeError as ex:
+            raise HTTPException(status_code=500, detail=str(ex)) from ex
         except Exception as ex:
             logger.error("An exception occurred: %s", ex)
             raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
@@ -969,7 +971,9 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             )
         except KeyError as ex:
             if str(ex) == "'correctness'":
-                raise HTTPException(status_code=500, detail="Unable to determine the correctness; please retry.") from ex
+                raise HTTPException(
+                    status_code=500, detail="Unable to determine the correctness; please retry."
+                ) from ex
 
         logger.debug("Ending evaluation with Judge: %s", judge)
 

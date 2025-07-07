@@ -50,7 +50,7 @@ Set the API, API Keys, API URL and other parameters as required.  Parameters suc
 
 #### API
 
-The {{< short_app_ref >}} supports a number of model API's.  When adding a model, choose the most appropriate Model API.  If unsure, or the specific API is not listed, try *CompatOpenAI* or *CompatOpenAIEmbeddings* before [opening an issue](https://github.com/oracle-samples/ai-optimizer/issues/new?template=additional_model_support) requesting an additional model API support.
+The {{< short_app_ref >}} supports a number of model API's.  When adding a model, choose the most appropriate Model API.  If unsure, or the specific API is not listed, try *CompatOpenAI* or *CompatOpenAIEmbeddings* before [opening an issue](https://github.com/oracle-samples/ai-optimizer/issues/new) requesting an additional model API support.
 
 There are a number of local AI Model runners that use OpenAI compatible API's, including:
 - [LM Studio](https://lmstudio.ai)

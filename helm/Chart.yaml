@@ -5,8 +5,8 @@ apiVersion: v2
 name: ai-optimizer
 description: A Helm chart Oracle AI Optimizer and Toolkit
 type: application
-version: 1.0.0
-appVersion: "1.0.0"
+version: 1.1.0
+appVersion: "1.1.0"
 icon: https://github.com/oracle-samples/ai-optimizer/blob/main/src/client/media/logo.png
 maintainers:
   - name: Oracle
@@ -15,14 +15,13 @@ maintainers:
 
 dependencies:
   - name: server
-    version: 1.0.0
+    version: 1.1.0
     repository: file://charts/server
-    condition: server.enabled
   - name: client
-    version: 1.0.0
+    version: 1.1.0
     repository: file://charts/client
-    condition: client.enabled
+    condition: global.enableClient
   - name: ollama
-    version: 1.0.0
+    version: 1.1.0
     repository: file://charts/ollama
-    condition: ollama.enabled
+    condition: global.enableOllama

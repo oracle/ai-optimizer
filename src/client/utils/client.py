@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 
 from typing import AsyncIterator, Optional
+import time
 import httpx
 
 from langchain_core.messages import ChatMessage
@@ -40,15 +41,23 @@ class Client:
             "timeout": timeout,
         }
 
-        def settings_request(method):
-            """Send Settings to Server"""
-            with httpx.Client() as client:
-                return client.request(
-                    method=method,
-                    url=f"{self.server_url}/v1/settings",
-                    json=self.settings,
-                    **self.request_defaults,
-                )
+        def settings_request(method, max_retries=3, backoff_factor=0.5):
+            """Send Settings to Server with retry on failure"""
+            for attempt in range(1, max_retries + 1):
+                try:
+                    with httpx.Client() as client:
+                        return client.request(
+                            method=method,
+                            url=f"{self.server_url}/v1/settings",
+                            json=self.settings,
+                            **self.request_defaults,
+                        )
+                except httpx.HTTPError as ex:
+                    logger.error("Failed settings request %i: %s", attempt, ex)
+                    if attempt == max_retries:
+                        raise  # Raise after final failure
+                    sleep_time = backoff_factor * (2 ** (attempt - 1))  # Exponential backoff
+                    time.sleep(sleep_time)
 
         response = settings_request("PATCH")
         if response.status_code != 200:
