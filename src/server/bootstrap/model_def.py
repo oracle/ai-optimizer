@@ -159,7 +159,7 @@ def main() -> list[Model]:
             "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
             "api_key": "",
             "openai_compat": True,
-            "max_chunk_size": 512,
+            "max_chunk_size": 8192,
         },
     ]
 

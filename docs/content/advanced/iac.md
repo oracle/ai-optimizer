@@ -20,10 +20,12 @@ While the **IaC** can be run from a command-line with prior experience, the step
 
 ## Virtual Machine
 
-The Virtual Machine (VM) deployment provisions both the {{< short_app_ref >}} API Server and GUI Client together in an "All-in-One" configuration for experimentation and development.  As part of the deployment, one local Large Language Model and one Embedding Model is made available out-of-the-box.  There will be an option to deploy on a **GPU**, which will be more expensive then a **CPU** but will perform much better with the pre-deployed Models.  
+The Virtual Machine (VM) deployment provisions both the {{< short_app_ref >}} API Server and GUI Client together in an "All-in-One" configuration for experimentation and development.  
 
-{{% notice style="code" title="Soooo Sloooow..." icon="traffic-light" %}}
-If deploying the VM IaC on a **CPU**, we recommend [configuring additional, external models](/client/configuration/model_config) for better performance. 
+There will be an option to deploy on a **GPU**, which will be more expensive then a **CPU** but will, as part of the deployment, make available one local Large Language Model and one Embedding Model for use out-of-the-box. 
+
+{{% notice style="code" title="Models Needed!" icon="traffic-light" %}}
+If deploying the VM IaC on a **CPU**, you will need to [configure a model](/client/configuration/model_config) for functionality. 
 {{% /notice %}}
 
 ### Configure Variables
