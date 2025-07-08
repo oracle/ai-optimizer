@@ -40,7 +40,7 @@ write_files:
       #!/bin/env bash
       mkdir -p /app
       chown oracleai:oracleai /app
-      if [ ${install_ollama} ]; then
+      if ${install_ollama}; then
         curl -fsSL https://ollama.com/install.sh | sh
         systemctl enable ollama
         systemctl daemon-reload
@@ -87,7 +87,7 @@ write_files:
       unzip -o /tmp/wallet.zip -d /app/tns_admin
 
       # Install Models
-      if [ ${install_ollama} ]; then
+      if ${install_ollama}; then
         ollama pull llama3.1
         ollama pull mxbai-embed-large
       fi
@@ -104,7 +104,7 @@ write_files:
       export DB_PASSWORD='${db_password}'
       export DB_DSN='${db_name}_TP'
       export DB_WALLET_PASSWORD='${db_password}'
-      if [ ${install_ollama} ]; then
+      if ${install_ollama}; then
         export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
       fi
       # Clean Cache
