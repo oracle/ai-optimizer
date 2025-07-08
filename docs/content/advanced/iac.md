@@ -25,7 +25,7 @@ The Virtual Machine (VM) deployment provisions both the {{< short_app_ref >}} AP
 There will be an option to deploy on a **GPU**, which will be more expensive then a **CPU** but will, as part of the deployment, make available one local Large Language Model and one Embedding Model for use out-of-the-box. 
 
 {{% notice style="code" title="Models Needed!" icon="traffic-light" %}}
-If deploying the VM IaC on a **CPU**, you will need to [configuring a model](/client/configuration/model_config) for functionality. 
+If deploying the VM IaC on a **CPU**, you will need to [configure a model](/client/configuration/model_config) for functionality. 
 {{% /notice %}}
 
 ### Configure Variables
