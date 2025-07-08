@@ -89,7 +89,7 @@ jobs:
             git worktree add "$WORKDIR" "$TAG"
 
             # Package Helm chart for this tag
-            helm package "$WORKDIR/helm" -d docs/public/helm
+            helm package "$WORKDIR/helm" -d docs/public/helm --debug
 
             # Clean up
             git worktree remove "$WORKDIR"
@@ -98,7 +98,7 @@ jobs:
       - name: Package Main Helm chart
         run: |
           mkdir -p docs/public/helm
-          helm package helm -d docs/public/helm
+          helm package helm -d docs/public/helm --debug
 
       - name: Index Helm charts
         run: helm repo index docs/public/helm --url "${{ steps.pages.outputs.base_url }}/helm"
