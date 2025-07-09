@@ -7,7 +7,8 @@ description: "Explore the capabilities of AI with the Oracle Database."
 informationalText: "https://oracle-samples.github.io/ai-optimizer/"
 schemaVersion: 1.1.0
 version: "20190304"
-logoUrl: https://github.com/oracle-samples/ai-optimizer/blob/main/src/client/media/logo_130_130.png
+# spell-checker: disable-next-line
+logoUrl: "data:image/png;base64,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"
 locale: "en"
 
 variableGroups:
@@ -29,7 +30,6 @@ variableGroups:
     variables:
       - adb_version
       - k8s_version
-      - compute_gpu_shape
       - compute_os_ver
     visible: false
 
@@ -43,32 +43,40 @@ variableGroups:
       - infrastructure
     visible: true
 
-    #########################################################################
-    # Infrastructure - Kubernetes
-    #########################################################################
+  #########################################################################
+  # Infrastructure - Kubernetes
+  #########################################################################
   - title: "Kubernetes Infrastructure Options"
     variables:
       - k8s_api_is_public
       - k8s_api_endpoint_allowed_cidrs
       - k8s_cpu_node_pool_size
-      - compute_cpu_ocpu
-      - compute_cpu_shape
       - k8s_node_pool_gpu_deploy
       - k8s_gpu_node_pool_size
-      - compute_gpu_shape
     visible:
       eq:
         - infrastructure
         - "Kubernetes"
 
+  #########################################################################
+  # Infrastructure - VM
+  #########################################################################
   - title: "Virtual Machine Infrastructure Options"
     variables:
-      - compute_cpu_ocpu
-      - compute_cpu_shape
+      - vm_is_gpu_shape
     visible:
       eq:
         - infrastructure
         - "VM"
+
+  #########################################################################
+  # Compute Options
+  #########################################################################
+  - title: "Compute Instance Options"
+    variables:
+      - compute_cpu_shape
+      - compute_cpu_ocpu
+      - compute_gpu_shape
 
   #########################################################################
   # Load Balancer
@@ -133,19 +141,50 @@ variables:
 
   k8s_cpu_node_pool_size:
     type: integer
-    title: "CPU Node Pool Workers"
+    title: "CPU Workers"
     required: true
     minimum: 1
     maximum: 80
     multipleOf: 1
 
+  k8s_node_pool_gpu_deploy:
+    type: boolean
+    title: "Deploy GPU Node Pool?"
+    required: true
+
+  vm_is_gpu_shape:
+    type: boolean
+    title: "Use a GPU shape?"
+    required: false
+
+  k8s_gpu_node_pool_size:
+    type: integer
+    title: "GPU Workers"
+    required: true
+    minimum: 1
+    maximum: 80
+    multipleOf: 1
+    visible: k8s_node_pool_gpu_deploy
+
+  #########################################################################
   compute_cpu_shape:
     type: enum
-    title: "CPU Node Pool Worker Shape"
+    title: "CPU Worker Shape"
     required: true
     enum:
       - "VM.Standard.E5.Flex"
       - "VM.Standard.E4.Flex"
+    visible:
+      or:
+        - and:
+            - eq:
+                - infrastructure
+                - "VM"
+            - not:
+                - vm_is_gpu_shape
+        - eq:
+            - infrastructure
+            - "Kubernetes"
 
   compute_cpu_ocpu:
     type: integer
@@ -154,29 +193,38 @@ variables:
     minimum: 1
     maximum: 64
     multipleOf: 1
-
-  k8s_node_pool_gpu_deploy:
-    type: boolean
-    title: "Deploy GPU Node Pool?"
-    required: true
+    visible:
+      or:
+        - and:
+            - eq:
+                - infrastructure
+                - "VM"
+            - not:
+                - vm_is_gpu_shape
+        - eq:
+            - infrastructure
+            - "Kubernetes"
 
   compute_gpu_shape:
     type: enum
-    title: "Node Pool Worker Shape"
+    title: "GPU Worker Shape"
     required: true
     default: "VM.GPU.A10.1"
     enum:
       - "VM.GPU.A10.1"
-    visible: k8s_node_pool_gpu_deploy
-
-  k8s_gpu_node_pool_size:
-    type: integer
-    title: "GPU Node Pool Workers"
-    required: true
-    minimum: 1
-    maximum: 80
-    multipleOf: 1
-    visible: k8s_node_pool_gpu_deploy
+      - "VM.GPU.A10.2"
+    visible:
+      or:
+        - and:
+            - eq:
+                - infrastructure
+                - "VM"
+            - vm_is_gpu_shape
+        - and:
+            - eq:
+                - infrastructure
+                - "Kubernetes"
+            - k8s_node_pool_gpu_deploy
 
   #########################################################################
   lb_min_shape:
@@ -320,20 +368,4 @@ outputs:
 
   kubeconfig_cmd:
     title: "KUBECONFIG command"
-    type: string
-
-  client_repository:
-    title: "Client Image Repository"
-    type: string
-
-  server_repository:
-    title: "Server Image Repository"
-    type: string
-
-  k8s_manifest:
-    title: "Kubernetes Manifest"
-    type: string
-
-  helm_values:
-    title: "Helm Values"
     type: string

@@ -1,0 +1,88 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore FREEPDB SIDB nindent
+
+{{- if .Values.database }}
+  {{- $secretName := include "databaseSecret" . }}
+  {{- if eq .Values.database.type "SIDB-FREE" }}
+  # -----------------------
+  # -- SIDB-FREE database
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "release.name" . }}-sidb
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+    "app.kubernetes.io/component": "database"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+      "app.kubernetes.io/component": "database"
+  template:
+    metadata:
+      labels:
+        {{- include "app.labels" . | nindent 8 }}
+        "app.kubernetes.io/component": "database"
+    spec:
+      securityContext:
+        fsGroup: 54321
+        runAsGroup: 54321
+        runAsUser: 54321
+      containers:
+        - name: sidb-free
+          image: {{ .Values.database.image.repository }}:{{ .Values.database.image.tag }}
+          imagePullPolicy: IfNotPresent
+          ports:
+          - containerPort: 1521
+          readinessProbe:
+            tcpSocket:
+              port: 1521
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          env:
+          - name: ORACLE_PWD
+            valueFrom:
+              secretKeyRef:
+                name: {{ $secretName }}
+                key: password
+          volumeMounts:
+            - name: db-custom-scripts
+              mountPath: "/opt/oracle/scripts/startup"
+      volumes:
+        - name: db-custom-scripts
+          configMap:
+            name:  db-custom-scripts
+  {{- else if eq .Values.database.type "ADB-S" }}
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabase
+metadata:
+  name: {{ include "release.name" . }}-adb-s
+  labels: 
+    {{- include "app.labels" . | nindent 4 }}
+    "app.kubernetes.io/component": "database"
+spec:
+  action: "Sync"
+  details:
+    id: {{ .Values.database.ocid }}
+    adminPassword:
+      k8sSecret:
+        name: place-holder
+  wallet:
+    name: {{ include "release.name" . }}-adb-tns-admin-{{ .Release.Revision }}
+    password:
+      k8sSecret:
+        name: {{ include "release.name" . }}-adb-wallet-pass-{{ .Release.Revision }}
+    {{- if .Values.oci_config }}
+  ociConfig: 
+    configMapName: {{ include "release.name" . }}-oci-config
+      {{- if .Values.oci_config.keySecretName }}
+    secretName: {{ .Values.oci_config.keySecretName }}
+      {{- end -}}
+    {{- end -}}
+  {{- else }}
+  # --- Unknown type ---
+  # Skipping due to unsupported type: {{ .Values.database.type }}
+  {{- end }}
+{{- end }}

@@ -103,7 +103,7 @@ async def main() -> None:
     history = await user_client.get_history()
     st.chat_message("ai").write("Hello, how can I help you?")
     vector_search_refs = []
-    for message in history:
+    for message in history or []:
         if not message["content"]:
             continue
         if message["role"] == "tool" and message["name"] == "oraclevs_tool":

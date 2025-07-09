@@ -9,5 +9,8 @@ locals {
     oci_region     = var.region
     db_name        = var.adb_name
     db_password    = var.adb_password
+    install_ollama = var.vm_is_gpu_shape ? true : false
   })
+
+  vm_compute_shape = var.vm_is_gpu_shape ? var.compute_gpu_shape : var.compute_cpu_shape
 }

@@ -108,4 +108,4 @@ To run the application in a container; download the source code from the {{< lat
 ### Advanced Installation
 
 The {{< short_app_ref >}} is designed to operate within a Microservices Architecture, leveraging Microservices Infrastructure like Kubernetes.
-Review [{{< short_app_ref >}}](client) components and the additional [Microservices](advanced/microservices) documentation for more information.
+Review [{{< short_app_ref >}}](client) components and the additional [Oracle Kubernetes Engine](advanced/iac/#oracle-kubernetes-engine) documentation for more information.

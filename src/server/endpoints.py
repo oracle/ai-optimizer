@@ -29,7 +29,7 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from giskard.rag import evaluate, QATestset
 from giskard.rag.metrics import correctness_metric
-from litellm import APIConnectionError
+import litellm
 
 from fastapi import FastAPI, Header, Query, HTTPException, UploadFile, Response
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -49,6 +49,7 @@ import common.functions as functions
 
 logger = logging_config.logging.getLogger("server.endpoints")
 
+litellm.drop_params = True
 
 # Load Models with Definition Data
 DATABASE_OBJECTS = bootstrap.database_def.main()
@@ -321,6 +322,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 content=json.dumps({"message": f"{len(split_docos)} chunks embedded."}), media_type="application/json"
             )
         except ValueError as ex:
+            raise HTTPException(status_code=500, detail=str(ex)) from ex
+        except RuntimeError as ex:
             raise HTTPException(status_code=500, detail=str(ex)) from ex
         except Exception as ex:
             logger.error("An exception occurred: %s", ex)
@@ -912,7 +915,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                     open(full_testsets, "a", encoding="utf-8") as destination,
                 ):
                     destination.write(source.read())
-            except APIConnectionError as ex:
+            except litellm.APIConnectionError as ex:
                 shutil.rmtree(temp_directory)
                 logger.error("APIConnectionError Exception: %s", str(ex))
                 raise HTTPException(status_code=424, detail=str(ex)) from ex
@@ -967,7 +970,17 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         logger.debug("Starting evaluation with Judge: %s", judge)
         oci_config = get_client_oci(client)
         judge_client = asyncio.run(models.get_client(MODEL_OBJECTS, {"model": judge}, oci_config, True))
-        report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric])
+        try:
+            report = evaluate(
+                get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric]
+            )
+        except KeyError as ex:
+            if str(ex) == "'correctness'":
+                raise HTTPException(
+                    status_code=500, detail="Unable to determine the correctness; please retry."
+                ) from ex
+
+        logger.debug("Ending evaluation with Judge: %s", judge)
 
         eid = testbed.insert_evaluation(
             db_conn=db_conn,

@@ -19,7 +19,7 @@ The following additional components, not delivered with the {{< short_app_ref >}
 - Access to at least one [Large Language Model](#large-language-model)
 - Access to at least one [Embedding Model](#embedding-model) (for Retrieval Augmented Generation)
 
-The {{< short_app_ref >}} is specifically designed to run in container orchestration systems, such as [Kubernetes](https://kubernetes.io/).  For more information on deploying the {{< short_app_ref >}} in Kubernetes, using a Helm Chart, please review the [Advanced - Microservices](/advanced/microservices) documentation.
+The {{< short_app_ref >}} is specifically designed to run in container orchestration systems, such as [Kubernetes](https://kubernetes.io/).  For more information on deploying the {{< short_app_ref >}} in Kubernetes, using a Helm Chart, please review the [Advanced - Helm Chart](/advanced/helm) documentation.
 
 ## API Server (AI Optimizer Server)
 

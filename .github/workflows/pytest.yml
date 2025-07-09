@@ -20,11 +20,13 @@ jobs:
       docker:
         image: docker:latest
         options: --privileged
+    # Block merging if the job fails
+    permissions:
+      pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
         with:
@@ -48,12 +50,7 @@ jobs:
         run: |
           cd src/
           python -m pip install --upgrade pip wheel setuptools
-          pip install torch==2.7.0+cpu -f https://download.pytorch.org/whl/cpu/torch
           pip install -e ".[all-test]"
 
       - name: Run All Tests
         run: pytest
-
-    # Block merging if the job fails
-    permissions:
-      pull-requests: write

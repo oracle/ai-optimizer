@@ -1,7 +1,186 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore ollama
 
-# --Global Configuration
+# fullnameOverride: will override the default naming convention: <release-name>-<chart-name>
+# Use with caution, as it disables Helm's automatic naming and can cause name collisions.
+fullnameOverride: ""
+
+# nameOverride: changes only the chart name portion of resource names but keeps the release name prefix.
+nameOverride: ""
+
+# -----------------------
+# -- Global Configuration
 global:
+  # -- Either provide the 'apiKey' directly or provide a secretName referring to an existing Secret containing the API key.
   api:
-    secretName: "optimizer-api-keys"
+    # -- Key for making API calls to the server.
+    # Recommended to supply at command line or use the secretName to avoid storing in the values file.
+    # Example: "abcd1234opt5678"
+    apiKey: ""
+
+    # -- Name of the Secret that stores the API key.
+    # This allows you to keep the API key out of the values file and manage it securely via Secrets.
+    # Example: "optimizer-api-keys"
+    secretName: ""
+
+    # -- Key name inside the Secret that contains the API key when secretName defined.
+    secretKey: "api-key"
+
+  # -- URL path appended to the host.
+  # Example: "/test" results in URLs like http://hostname/test/...
+  baseUrlPath: "/"
+
+  # -- Deploy Web frontend client
+  enableClient: true
+
+  # -- Deploy Ollama and optionally pull models
+  enableOllama: false
+
+# -----------------------
+# Server Configuration
+server:
+  # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
+  replicaCount: 1
+
+  # -- Secret name containing image pull secrets
+  imagePullSecrets: []
+
+  # image: Image and Tag to pull including pull policy
+  image:
+    # -- Image Repository
+    repository: localhost/ai-optimizer-server
+    # -- Image Tag
+    tag: latest
+
+  # -- Oracle Database Configuration
+  database:
+    # -- Either SIDB-FREE, ADB-FREE, or ADB-S
+    type: ""
+    # image: For SIDB-FREE/ADB-FREE, repository location and tag of the image
+    # Ignored for ADB-S
+    image:
+      # -- For SIDB-FREE/ADB-FREE, repository location of the image
+      repository: ""
+      # -- For SIDB-FREE/ADB-FREE, tag of the image
+      tag: latest
+    # -- For ADB-S, OCID of the Autonomous Database
+    # Exclude for SIDB-FREE/ADB-FREE
+    ocid: ""
+    # -- Authentication/Connection Details
+    authN:
+      # -- Name of Secret containing the authentication/connection details
+      secretName: "db-authn"
+      # -- Key in secretName containing the username
+      usernameKey: "username"
+      # -- Key in secretName containing the password
+      passwordKey: "password"
+      # -- Key in secretName containing the connection service name
+      serviceKey: "service"
+
+  # -- Oracle Cloud Infrastructure Configuration
+  oci_config:
+    # -- Enable Workload Identity Principals (WIP) (must be implemented)
+    oke: false
+    # -- Tenancy OCID.  Required when specifying keySecretName.
+    tenancy: ""
+    # -- User OCID.  Required when specifying keySecretName.
+    user: ""
+    # -- Fingerprint.  Required when specifying keySecretName.
+    fingerprint: ""
+    # -- Region. Required when oke is true.
+    region: ""
+    # -- Secret containing an OCI config file and the key_file(s).
+    # Use the scripts/oci_config.py script to help create the secret based on an existing ~.oci/config file
+    fileSecretName: ""
+    # -- Secret containing a single API key corresponding to above tenancy configuration
+    # This used by OraOperator when not running in OKE
+    keySecretName: ""
+
+  # -- Specify secretName and secretKey to enable 3rd-Party Models
+  models:
+    # -- OpenAI API Key
+    openAI:
+      secretName: ""
+      secretKey: "apiKey"
+    # -- Perplexity API Key
+    perplexity:
+      secretName: ""
+      secretKey: "apiKey"
+    # -- Cohere API Key
+    cohere:
+      secretName: ""
+      secretKey: "apiKey"
+
+# -----------------------
+# Client Configuration
+# Enabled from global.enableClient
+client:
+  # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
+  replicaCount: 1
+
+  # -- Secret name containing image pull secrets
+  imagePullSecrets: []
+
+  # image: Image and Tag to pull including pull policy
+  image:
+    # -- Image Repository
+    repository: localhost/ai-optimizer-client
+    # -- Image Tag
+    tag: latest
+
+  # -- Disable specific client features
+  features:
+    # -- Disable the Test Bed
+    disableTestbed: false
+    # -- Disable the API Server Administration/Monitoring
+    disableApi: false
+    # -- Disable Tools such as Prompt Engineering and Split/Embed
+    disableTools: false
+    # -- Disable Tools Database Configuration
+    disableDbCfg: false
+    # -- Disable Tools Model Configuration
+    disableModelCfg: false
+    # -- Disable OCI Configuration
+    disableOciCfg: false
+    # -- Disable the Import/Export of Settings
+    disableSettings: false
+
+# -----------------------
+# Ollama Configuration
+# Enabled from global.enableOllama
+ollama:
+  # -- Number of desired pod replicas for the Deployment
+  replicaCount: 1
+
+  # image: Image and Tag to pull including pull policy
+  image:
+    # -- Image Repository
+    repository: docker.io/ollama/ollama
+    # -- Image Tag
+    tag: latest
+
+  # models: to automatically deploy if enabled
+  models:
+    # -- Enable automatic pulling of models
+    enabled: true
+    # -- List of models to automatically pull
+    modelPullList:
+      - llama3.1
+      - mxbai-embed-large
+
+  # -- Requests and limits for the container.
+  # Often used to ensure pod is running on a GPU worker
+  resources: {}
+
+  # -- Constrain pods to specific nodes
+  # Often used to ensure pod is running on a GPU worker
+  nodeSelector: {}
+
+  # -- Rules for scheduling pods
+  # Often used to ensure pod is running on a GPU worker
+  affinity: {}
+
+  # -- For scheduling pods on tainted nodes
+  # Often used to ensure pod is running on a GPU worker
+  tolerations: []

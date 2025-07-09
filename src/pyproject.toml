@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-optimizer"
-version = "1.0.0"
+version = "1.1.0"
 description = "Oracle AI Optimizer and Toolkit"
 requires-python = ">=3.11"
 license =  "UPL-1.0"
@@ -14,38 +14,36 @@ authors = [
 
 # Common dependencies that are always needed
 dependencies = [
-    "langchain-core==0.3.65",
+    "langchain-core==0.3.67",
     "httpx==0.28.1",
     "oracledb~=3.1",
-    "plotly==6.1.2",
+    "plotly==6.2.0",
 ]
 
 [project.optional-dependencies]
 # Server component dependencies
-# torch is installed via requirements for platform specifics
 server = [
     "bokeh==3.7.3",
     "evaluate==0.4.3",
-    "fastapi==0.115.12",
+    "fastapi==0.115.14",
     "faiss-cpu==1.11.0",
     "giskard==2.17.0",
     "langchain-cohere==0.4.4",
-    "langchain-community==0.3.25",
+    "langchain-community==0.3.26",
     "langchain-huggingface==0.3.0",
     "langchain-ollama==0.3.3",
-    "langchain-openai==0.3.23",
-    "langgraph==0.4.8",
-    "litellm==1.72.6",
-    "llama_index==0.12.42",
-    "lxml==5.4.0",
+    "langchain-openai==0.3.27",
+    "langgraph==0.5.0",
+    "litellm==1.73.6",
+    "llama-index==0.12.45",
+    "lxml==6.0.0",
     "matplotlib==3.10.3",
     "oci~=2.0",
     "psutil==7.0.0",
     "python-multipart==0.0.20",
     "torch==2.7.1",
-    "transformers==4.52.4",
     "umap-learn==0.5.7",
-    "uvicorn==0.34.3",
+    "uvicorn==0.35.0",
 ]
 
 # GUI component dependencies

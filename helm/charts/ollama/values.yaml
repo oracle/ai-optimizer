@@ -1,52 +1,93 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore mxbai
 
+# -- Number of desired pod replicas for the Deployment
 replicaCount: 1
+
+# imagePullSecrets: Secret name containing image pull secrets
+imagePullSecrets: []
+  # - name: registry_cred
+
+# image: Image and Tag to pull including pull policy
 image:
+  # -- Image Repository
   repository: docker.io/ollama/ollama
-  tag: "latest"
+  # -- Image Tag
+  tag: latest
 imagePullPolicy: IfNotPresent
 
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 100
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
-
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
-
-serviceAccount:
-  create: false
-
+# service: type of Kubernetes service to expose the HTTP port.
 service:
   http:
     type: "ClusterIP"
 
-# -- Additional volumes on the output Deployment definition.
-volumes: []
-# - name: foo
-#   secret:
-#     secretName: mysecret
-#     optional: false
+# models: to automatically deploy if enabled
+models:
+  # -- Enable automatic pulling of models
+  enabled: true
+  # -- List of models to automatically pull
+  modelPullList:
+    - llama3.1
+    - mxbai-embed-large
 
-# -- Additional volumeMounts on the output Deployment definition.
-volumeMounts: []
-# - name: foo
-#   mountPath: "/etc/foo"
-#   readOnly: true
+# livenessProbe: defines settings for the liveness probe.
+# Set `enabled` to false to disable the probe entirely.
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 20       # Time (in seconds) to wait before starting the probe
+  periodSeconds: 20             # Time (in seconds) between probe checks
+  timeoutSeconds: 1             # Time (in seconds) to wait for probe response
+  failureThreshold: 3          # Number of failures before marking the container as unhealthy
+  successThreshold: 1           # Number of successes required to consider the container healthy
 
-# -- Models to deploy.
-models: []
-# - foo
-# - bar
+# readinessProbe: defines settings for the liveness probe.
+# Set `enabled` to false to disable the probe entirely.
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 1
+  failureThreshold: 3
+  successThreshold: 1 
+
+# podLabels: additional key:value labels to add to pods
+podLabels: {}
+  # environment: "production"
+  # team: "devops"
+
+# podAnnotations: additional key:value annotations to add to the Pod template metadata
+podAnnotations: {}
+  # prometheus.io/scrape: "true"
+  # prometheus.io/port: "9102"
+
+# -- Requests and limits for the container.
+# Often used to ensure pod is running on a GPU worker
+resources: {}
+  # limits:
+  #   nvidia.com/gpu: 1
+
+# -- Constrain pods to specific nodes
+# Often used to ensure pod is running on a GPU worker
+nodeSelector: {}
+  # disktype: ssd
+
+# -- Rules for scheduling pods
+# Often used to ensure pod is running on a GPU worker
+affinity: {}
+  # podAntiAffinity:
+  #   requiredDuringSchedulingIgnoredDuringExecution:
+  #     - labelSelector:
+  #         matchExpressions:
+  #           - key: app
+  #             operator: In
+  #             values:
+  #               - my-app
+  #       topologyKey: "kubernetes.io/hostname"
+
+# -- For scheduling pods on tainted nodes
+# Often used to ensure pod is running on a GPU worker
+tolerations: []
+  # - key: "key1"
+  #   operator: "Exists"
+  #   effect: "NoSchedule"

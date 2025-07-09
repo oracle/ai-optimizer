@@ -5,12 +5,14 @@
 global:
   api:
     secretName: "${label}-api-key"
+  enableClient: true
+  enableOllama: ${k8s_node_pool_gpu_deploy}
 
 # -- API Server configuration
 server:
   enabled: true
   image:
-    repository: ${server_repository}
+    repository: ${repository_server}
     tag: "latest"
   imagePullPolicy: Always
 
@@ -26,31 +28,21 @@ server:
     http:
       type: "NodePort"
 
-  # -- Oracle Cloud Infrastructure Configuration
-  oci:
-    tenancy: "${oci_tenancy}"
+  # -- Enable Workload Identity
+  oci_config:
+    oke: true
     region: "${oci_region}"
 
   # -- Oracle Autonomous Database Configuration
-  adb:
-    enabled: true
-    ocid: "${adb_ocid}"
-    mtls:
-      enabled: true
+  database:
+    type: "ADB-S"
+    ocid: "${adb_ocid}"      
     authN:
       secretName: "${adb_name}-authn"
-      usernameKey: "username"
-      passwordKey: "password"
-      serviceKey: "service"
-
-  models:
-    ollama:
-      enabled: ${k8s_node_pool_gpu_deploy}
 
 client:
-  enabled: true
   image:
-    repository: ${client_repository}
+    repository: ${repository_client}
     tag: "latest"
   imagePullPolicy: Always
 
@@ -67,19 +59,20 @@ client:
       type: "NodePort"
 
   features:
-    disableTestbed: "true"
+    disableTestbed: "false"
     disableApi: "false"
     disableTools: "false"
-    disableDbCfg: "true"
-    disableModelCfg: "true"
-    disableOciCfg: "true"
-    disableSettings: "true"
+    disableDbCfg: "false"
+    disableModelCfg: "false"
+    disableOciCfg: "false"
+    disableSettings: "false"
 
 ollama:
-  enabled: ${k8s_node_pool_gpu_deploy}
   models:
-    - llama3.1
-    - mxbai-embed-large
+    enabled: true
+    modelPullList:
+      - llama3.1
+      - mxbai-embed-large
   resources:
     limits:
       nvidia.com/gpu: 1
