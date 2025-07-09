@@ -36,7 +36,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HUGO_VERSION: 0.145.0
+      HUGO_VERSION: 0.148.0
     steps:
       - name: Install Hugo CLI
         run: |
@@ -78,11 +78,30 @@ jobs:
             --source docs \
             --baseURL "${{ steps.pages.outputs.base_url }}/"
 
-      - name: Package Helm chart
+      - name: Package Tags Helm chart
+        run: |
+          TAGS=$(git tag --sort=creatordate)
+          for TAG in $TAGS; do
+            echo "Processing tag: $TAG"
+
+            # Create a temporary worktree to avoid changing the current working directory
+            WORKDIR=$(mktemp -d)
+            git worktree add "$WORKDIR" "$TAG"
+
+            # Package Helm chart for this tag
+            helm package "$WORKDIR/helm" -d docs/public/helm --debug
+
+            # Clean up
+            git worktree remove "$WORKDIR"
+          done          
+
+      - name: Package Main Helm chart
         run: |
           mkdir -p docs/public/helm
-          helm package helm -d docs/public/helm
-          helm repo index docs/public/helm --url "${{ steps.pages.outputs.base_url }}/helm"
+          helm package helm -d docs/public/helm --debug
+
+      - name: Index Helm charts
+        run: helm repo index docs/public/helm --url "${{ steps.pages.outputs.base_url }}/helm"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
