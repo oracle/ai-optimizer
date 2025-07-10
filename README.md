@@ -2,6 +2,8 @@
 
 <!-- spell-checker:ignore streamlit, venv, setuptools -->
 
+![Build Status](https://github.com/oracle-samples/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)
+
 ## Description
 
 The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle Database 23ai** AI VectorSearch and SelectAI, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.

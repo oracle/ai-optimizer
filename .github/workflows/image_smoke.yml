@@ -93,8 +93,8 @@ jobs:
           ignore-unfixed: true
           exit-code: 1
 
-      - name: Upload Trivy Report
-        if: matrix.build.name == 'aio'
+      - name: Upload Trivy Report on Failure
+        if: failure() && matrix.build.name == 'aio'
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report-${{ matrix.build.name }}
