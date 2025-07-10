@@ -176,3 +176,124 @@ if you have any other versions available than the default. It could happen that 
 * restart and test as remote server
 
 
+# Dependency Issues Troubleshooting Guide
+
+## Common Installation and Runtime Issues
+
+### Issue 1: Dependency Version Conflicts During Installation
+
+**Problem**: Getting version conflict errors when running `uv add` with specific package versions.
+
+**Example Error**:
+```
+× No solution found when resolving dependencies:
+╰─▶ Because langchain-community==0.3.26 depends on langchain-core>=0.3.66,<1.0.0 
+    and your project depends on langchain-core==0.3.52, we can conclude that 
+    your project's requirements are unsatisfiable.
+```
+
+**Root Cause**: Package version incompatibilities between dependencies.
+
+**Solution Steps**:
+1. **Update conflicting packages to compatible versions**:
+   ```bash
+   uv add mcp langchain-core==0.3.66 oracledb~=3.1 langchain-community==0.3.26 langchain-huggingface==0.3.0 langchain-openai==0.3.27 langchain-ollama==0.3.3
+   ```
+
+2. **If still failing, let uv resolve versions automatically**:
+   ```bash
+   uv add mcp langchain-core langchain-community langchain-huggingface langchain-openai langchain-ollama oracledb~=3.1
+   ```
+
+### Issue 2: Python Version Compatibility Conflicts
+
+**Problem**: Getting numpy version conflicts related to Python 3.13 support.
+
+**Example Error**:
+```
+× No solution found when resolving dependencies for split (python_full_version >= '3.13'):
+╰─▶ Because ai-optimizer[all] depends on giskard==2.17.0 and giskard==2.17.0 depends on numpy>=1.26.0,<2
+    and langchain-community==0.3.26 depends on numpy>=2.1.0 for Python 3.13
+```
+
+**Root Cause**: Project supports Python 3.13 but dependencies have conflicting numpy requirements for that version.
+
+**Solution Steps**:
+1. **Limit Python version in pyproject.toml** (Recommended):
+   ```toml
+   [project]
+   requires-python = ">=3.11,<3.13"
+   ```
+
+2. **Then retry installation**:
+   ```bash
+   uv add mcp langchain-core==0.3.66 oracledb~=3.1 langchain-community==0.3.26 langchain-huggingface==0.3.0 langchain-openai==0.3.27 langchain-ollama==0.3.3
+   ```
+
+**Alternative Solutions**:
+- Use older package versions that are compatible
+- Use `--frozen` flag to skip dependency resolution (not recommended for production)
+
+### Issue 3: Module Not Found During Runtime
+
+**Problem**: Getting `ModuleNotFoundError` when running the application, even though packages were installed successfully.
+
+**Example Error**:
+```
+ModuleNotFoundError: No module named 'langchain_core'
+```
+
+**Root Cause**: Running the application from system Python instead of the project's virtual environment.
+
+**Solution Steps**:
+
+**Option 1: Use uv run (Recommended)**:
+```bash
+uv run streamlit run launch_client.py --server.port 8501
+```
+
+**Option 2: Manually activate virtual environment**:
+```bash
+source .venv/bin/activate
+streamlit run launch_client.py --server.port 8501
+```
+
+**Option 3: Install missing runtime dependencies**:
+```bash
+uv add streamlit
+```
+
+## Best Practices
+
+1. **Always use `uv run` for executing scripts** - it automatically uses the correct virtual environment
+2. **Pin Python versions** in `pyproject.toml` to avoid compatibility issues
+3. **Let uv resolve versions** when possible instead of pinning specific versions
+4. **Check virtual environment activation** if you get import errors
+
+## Quick Diagnosis
+
+If you encounter dependency issues:
+
+1. **Installation fails**: Check for version conflicts in error message
+2. **Runtime import errors**: Verify you're using the correct Python environment
+3. **Mixed errors**: Try `uv run` instead of manual activation
+
+## Commands Reference
+
+```bash
+# Initialize project
+uv init --python=3.11 --no-workspace
+
+# Create virtual environment
+uv venv --python=3.11
+
+# Install dependencies (let uv resolve versions)
+uv add package1 package2 package3
+
+# Run application (recommended)
+uv run streamlit run launch_client.py --server.port 8501
+
+# Manual activation (alternative)
+source .venv/bin/activate
+streamlit run launch_client.py --server.port 8501
+```
