@@ -40,10 +40,12 @@ write_files:
       #!/bin/env bash
       mkdir -p /app
       chown oracleai:oracleai /app
-      curl -fsSL https://ollama.com/install.sh | sh
-      systemctl enable ollama
-      systemctl daemon-reload
-      systemctl restart ollama
+      if ${install_ollama}; then
+        curl -fsSL https://ollama.com/install.sh | sh
+        systemctl enable ollama
+        systemctl daemon-reload
+        systemctl restart ollama
+      fi
       systemctl stop firewalld.service
       firewall-offline-cmd --zone=public --add-port 8501/tcp
       firewall-offline-cmd --zone=public --add-port 8000/tcp
@@ -85,8 +87,10 @@ write_files:
       unzip -o /tmp/wallet.zip -d /app/tns_admin
 
       # Install Models
-      ollama pull llama3.1
-      ollama pull mxbai-embed-large
+      if ${install_ollama}; then
+        ollama pull llama3.1
+        ollama pull mxbai-embed-large
+      fi
 
       # Wait for python modules to finish
       wait $INSTALL_PID
@@ -100,7 +104,9 @@ write_files:
       export DB_PASSWORD='${db_password}'
       export DB_DSN='${db_name}_TP'
       export DB_WALLET_PASSWORD='${db_password}'
-      export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
+      if ${install_ollama}; then
+        export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
+      fi
       # Clean Cache
       find /app -type d -name "__pycache__" -exec rm -rf {} \;
       find /app -type d -name ".numba_cache" -exec rm -rf {} \;
