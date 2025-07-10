@@ -22,8 +22,10 @@ dependencies = [
 
 [project.optional-dependencies]
 # Server component dependencies
+# Cohere being spec'd until https://github.com/langchain-ai/langchain-cohere/issues/140
 server = [
     "bokeh==3.7.3",
+    "cohere==5.16.1",
     "evaluate==0.4.3",
     "fastapi==0.116.0",
     "faiss-cpu==1.11.0",
