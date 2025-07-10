@@ -68,7 +68,8 @@ jobs:
       - name: Scan Container Image with Trivy
         uses: aquasecurity/trivy-action@0.32.0
         with:
-          image: ${{ matrix.build.name }}:${{ github.sha }}
+          scan-type: 'image'
+          image-ref: '${{ matrix.build.name }}:${{ github.sha }}'
           severity: HIGH,CRITICAL
           format: json
           output: trivy-report.json
