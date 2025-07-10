@@ -1,0 +1,66 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore
+
+{{- if eq .Values.database.type "ADB-FREE" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "release.name" . }}-run-sql
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+    "app.kubernetes.io/component": "database"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: oracle-sqlcl-runner
+        image: container-registry.oracle.com/database/sqlcl:latest
+        env:
+        - name: API_SERVER_HOST
+          value: {{ include "server.serviceName" . }}
+        - name: API_SERVER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "app.apiSecretName" . }}
+              key: {{ include "app.apiSecretKey" . }}
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "databaseSecret" . }}
+              key: {{ default "username" (get (default dict .Values.database.authN) "usernameKey") }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "databaseSecret" . }}
+              key: {{ default "password" (get (default dict .Values.database.authN) "passwordKey") }}
+        - name: DB_DSN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "databaseSecret" . }}
+              key: {{ default "service" (get (default dict .Values.database.authN) "serviceKey") }}
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            attempt=1
+            while [ "$attempt" -lt 360 ]; do
+                sh /opt/oracle/scripts/startup/init.sh
+                if [ $? -eq 0 ]; then
+                exit 0
+                fi
+                echo "Waiting for connectivity to ${DB_DSN} ($attempt/360)"
+                sleep 10
+                attempt=$((attempt + 1))
+            done
+        volumeMounts:
+        - name: db-custom-scripts
+          mountPath: "/opt/oracle/scripts/startup"
+      volumes:
+      - name: db-custom-scripts
+        configMap:
+          name:  db-custom-scripts
+{{- end }}

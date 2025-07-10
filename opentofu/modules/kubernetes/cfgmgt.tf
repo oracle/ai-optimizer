@@ -53,6 +53,7 @@ resource "local_sensitive_file" "k8s_manifest" {
 }
 
 resource "null_resource" "apply" {
+  count = var.k8s_run_cfgmgt ? 1 : 0
   triggers = {
     always_run = "${timestamp()}"
   }

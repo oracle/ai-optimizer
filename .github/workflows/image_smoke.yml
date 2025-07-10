@@ -64,3 +64,21 @@ jobs:
         run: |
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Scan Container Image with Trivy
+        uses: aquasecurity/trivy-action@v0.32.0
+        with:
+          image: ${{ matrix.build.name }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          format: json
+          output: trivy-report.json
+          cache: true
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Upload Trivy Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: trivy-report-${{ matrix.build.name }}
+          path: trivy-report.json
+          retention-days: 7

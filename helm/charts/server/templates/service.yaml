@@ -19,12 +19,12 @@ spec:
     "app.kubernetes.io/component": "api"
 
 {{- if .Values.database }}
-  {{- if eq .Values.database.type "SIDB-FREE" }}
+  {{- if or (eq .Values.database.type "SIDB-FREE") (eq .Values.database.type "ADB-FREE") }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "release.name" . }}-sidb-free
+  name: {{ include "release.name" . }}-db-1521
   labels: 
     {{- include "app.labels" . | nindent 4 }}
 spec:

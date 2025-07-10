@@ -102,3 +102,7 @@ variable "k8s_api_endpoint_allowed_cidrs" {
   type    = string
   default = ""
 }
+
+variable "k8s_run_cfgmgt" {
+  type = bool
+}
