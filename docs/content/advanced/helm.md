@@ -155,7 +155,7 @@ Configure Oracle Cloud Infrastructure used by the {{< short_app_ref >}} API Serv
 | server.oci_config.user | string | `""` | User OCID.  Required when specifying keySecretName. |
 | server.oci_config.fingerprint | string | `""` | Fingerprint.  Required when specifying keySecretName. |
 | server.oci_config.region | string | `""` | Region. Required when oke is true. |
-| server.oci_config.fileSecretName | string | `""` | Secret containing an OCI config file and the key_file(s). Use the scripts/oci_config.py script to help create the secret based on an existing ~.oci/config file |
+| server.oci_config.fileSecretName | string | `""` | Secret containing an OCI config file and the key_file(s). Use the [scripts/oci_config.py](https://github.com/oracle-samples/ai-optimizer/blob/main/helm/scripts/oci_config.py) script to help create the secret based on an existing ~.oci/config file |
 | server.oci_config.keySecretName | string | `""` | Secret containing a single API key corresponding to above tenancy configuration This used by OraOperator when not running in OKE |
 
 ###### Examples
@@ -299,7 +299,7 @@ Give the **Helm Chart** a spin using a locally installed [Kind](https://kind.sig
 
 1. (Optional) Configure for Oracle Cloud Infrastructure
 
-    If you already have an OCI API configuration file, use the `oci_config` helper script to turn it into a secret for OCI connectivity:
+    If you already have an OCI API configuration file, use the [scripts/oci_config.py](https://github.com/oracle-samples/ai-optimizer/blob/main/helm/scripts/oci_config.py) helper script to turn it into a secret for OCI connectivity:
 
     ```sh
     kubectl create namespace ai-optimizer
@@ -336,6 +336,11 @@ Give the **Helm Chart** a spin using a locally installed [Kind](https://kind.sig
       models:
         enabled: true
     ```
+
+1. Add the Helm Repository
+```sh
+helm repo add ai-optimizer https://oracle-samples.github.io/ai-optimizer/helm
+```
 
 1. Deploy the Helm Chart
 

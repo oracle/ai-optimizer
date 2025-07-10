@@ -25,7 +25,7 @@ global:
     secretName: ""
 
     # -- Key name inside the Secret that contains the API key when secretName defined.
-    secretKey: "api-key"
+    secretKey: "apiKey"
 
   # -- URL path appended to the host.
   # Example: "/test" results in URLs like http://hostname/test/...

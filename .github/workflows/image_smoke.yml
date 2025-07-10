@@ -4,17 +4,18 @@ name: Validate Container Images
 on:
   pull_request:
     types:
-      - opened
       - synchronize
       - reopened
       - ready_for_review
+    paths:
+      - "src/**"
+      - ".github/workflows/image_smoke.yml"
 
   # Allows running this workflow manually
   workflow_dispatch:
 
 jobs:
-  docker-build:
-    if: github.event.pull_request.draft == false
+  image-build-test:
     runs-on: ubuntu-latest
     # Block merging if the job fails
     permissions:
@@ -37,30 +38,64 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-
-      - name: Cache Image Layers
+      - name: Restore Cache
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ matrix.build.name }}-${{ github.sha }}
+          key: ${{ runner.os }}-buildx-${{ matrix.build.name }}-${{ github.ref_name }}
           restore-keys: |
             ${{ runner.os }}-buildx-${{ matrix.build.name }}-
+            ${{ runner.os }}-buildx-
+
+      - name: Create Buildx builder
+        run: docker buildx create --use --name mybuilder || docker buildx use mybuilder
 
       - name: Build Container Image with Cache
         run: |
-          docker buildx create --use
-          docker buildx build \
-            --cache-from=type=local,src=/tmp/.buildx-cache \
-            --cache-to=type=local,dest=/tmp/.buildx-cache-new \
-            --file ${{ matrix.build.context }}/${{ matrix.build.dockerfile }} \
-            --output=type=cacheonly \
-            ${{ matrix.build.context }}
+          if [ "${{ matrix.build.name }}" = "aio" ]; then
+            docker buildx build \
+              --cache-from=type=local,src=/tmp/.buildx-cache \
+              --cache-to=type=local,dest=/tmp/.buildx-cache-new \
+              --file ${{ matrix.build.context }}/${{ matrix.build.dockerfile }} \
+              --tag ${{ matrix.build.name }}:${{ github.sha }} \
+              --load \
+              ${{ matrix.build.context }}
+          else
+            docker buildx build \
+              --cache-from=type=local,src=/tmp/.buildx-cache \
+              --cache-to=type=local,dest=/tmp/.buildx-cache-new \
+              --file ${{ matrix.build.context }}/${{ matrix.build.dockerfile }} \
+              --output=type=cacheonly \
+              ${{ matrix.build.context }}
+          fi
 
       - name: Move Cache for Reuse
         run: |
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Save Cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.build.name }}-${{ github.ref_name }}
+
+      - name: Scan with Trivy
+        if: matrix.build.name == 'aio'
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: image
+          image-ref: "aio:${{ github.sha }}"
+          severity: HIGH,CRITICAL
+          format: json
+          output: trivy-report.json
+          cache: true
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Upload Trivy Report on Failure
+        if: failure() && matrix.build.name == 'aio'
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report-${{ matrix.build.name }}
+          path: trivy-report.json
