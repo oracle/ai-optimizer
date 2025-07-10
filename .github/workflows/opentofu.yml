@@ -4,12 +4,11 @@ name: Validate Infrastructure as Code
 on:
   pull_request:
     types:
-      - opened
       - synchronize
       - reopened
       - ready_for_review
-    # Limit runs to only when opentofu changes
     paths:
+      - "tests/**"
       - "opentofu/**"
       - ".github/workflows/opentofu.yml"
 
@@ -17,8 +16,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  check:
-    if: github.event.pull_request.draft == false
+  verify-iac:
     runs-on: ubuntu-latest
     container:
       image: hashicorp/terraform:latest

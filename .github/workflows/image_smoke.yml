@@ -4,17 +4,18 @@ name: Validate Container Images
 on:
   pull_request:
     types:
-      - opened
       - synchronize
       - reopened
       - ready_for_review
+    paths:
+      - "src/**"
+      - ".github/workflows/image_smoke.yml"
 
   # Allows running this workflow manually
   workflow_dispatch:
 
 jobs:
-  docker-build:
-    if: github.event.pull_request.draft == false
+  image-build-test:
     runs-on: ubuntu-latest
     # Block merging if the job fails
     permissions:

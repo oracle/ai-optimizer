@@ -4,17 +4,19 @@ name: Test Suite
 on:
   pull_request:
     types:
-      - opened
       - synchronize
       - reopened
       - ready_for_review
+    paths:
+      - "tests/**"
+      - "src/**"
+      - ".github/workflows/pytest.yml"
 
   # Allows running this workflow manually
   workflow_dispatch:
 
 jobs:
-  check:
-    if: github.event.pull_request.draft == false
+  run-pytests:
     runs-on: ubuntu-latest
     services:
       docker:
