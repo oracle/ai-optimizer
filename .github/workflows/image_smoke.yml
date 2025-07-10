@@ -77,7 +77,7 @@ jobs:
           exit-code: 1
 
       - name: Upload Trivy Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: trivy-report-${{ matrix.build.name }}
           path: trivy-report.json
