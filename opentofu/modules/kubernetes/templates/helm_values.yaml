@@ -5,16 +5,13 @@
 global:
   api:
     secretName: "${label}-api-key"
-  enableClient: true
-  enableOllama: ${k8s_node_pool_gpu_deploy}
 
 # -- API Server configuration
 server:
-  enabled: true
   image:
     repository: ${repository_server}
     tag: "latest"
-  imagePullPolicy: Always
+    pullPolicy: Always
 
   ingress:
     enabled: true
@@ -25,8 +22,7 @@ server:
       oci-native-ingress.oraclecloud.com/protocol: TCP
 
   service:
-    http:
-      type: "NodePort"
+    type: "NodePort"
 
   # -- Enable Workload Identity
   oci_config:
@@ -36,15 +32,19 @@ server:
   # -- Oracle Autonomous Database Configuration
   database:
     type: "ADB-S"
-    ocid: "${adb_ocid}"      
+    oci_db:
+      ocid: "${adb_ocid}"
     authN:
-      secretName: "${adb_name}-authn"
+      secretName: "${adb_name}-db-authn"
+    privAuthN:
+      secretName: "${adb_name}-db-priv-authn"
 
 client:
+  enable: true
   image:
     repository: ${repository_client}
     tag: "latest"
-  imagePullPolicy: Always
+    pullPolicy: Always
 
   ingress:
     enabled: true
@@ -55,8 +55,7 @@ client:
       oci-native-ingress.oraclecloud.com/protocol: TCP
 
   service:
-    http:
-      type: "NodePort"
+    type: "NodePort"
 
   features:
     disableTestbed: "false"
@@ -68,6 +67,7 @@ client:
     disableSettings: "false"
 
 ollama:
+  enabled: ${k8s_node_pool_gpu_deploy}
   models:
     enabled: true
     modelPullList:

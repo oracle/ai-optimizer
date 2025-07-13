@@ -1,0 +1,28 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent  
+
+{{- if .Values.server.oci_config }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-oci-config
+  labels:
+    app.kubernetes.io/component: server    
+    {{- include "global.labels" . | nindent 4 }}
+data:
+  {{- with .Values.server.oci_config }}
+    {{- if .tenancy }}
+  tenancy: {{ .tenancy | quote }}
+    {{- end }}
+    {{- if .user }}
+  user: {{ .user | quote }}
+    {{- end }}
+    {{- if .fingerprint }}
+  fingerprint: {{ .fingerprint | quote }}
+    {{- end }}
+    {{- if .region }}
+  region: {{ .region | quote }}
+    {{- end }}
+  {{- end }}
+{{- end -}}

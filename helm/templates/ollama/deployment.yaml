@@ -2,39 +2,43 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent tolerations ollama
 
+{{- if .Values.ollama.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "app.fullname" . }}
+  name: {{ include "global.fullname" . }}-ollama
   labels:
-    {{- include "app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+    {{- include "global.labels" . | nindent 4}}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.ollama.replicaCount }}
   selector:
     matchLabels:
-      {{- include "app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ollama
+      {{- include "global.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- with .Values.ollama.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "app.labels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
+        app.kubernetes.io/component: ollama
+        {{- include "global.labels" . | nindent 8 }}
+        {{- with .Values.ollama.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
       securityContext:
         fsGroup: 10001
-      {{- with .Values.imagePullSecrets }}
+      {{- with .Values.ollama.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.imagePullPolicy | default "IfNotPresent" }}
+        - name: {{ .Chart.Name }}-ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.ollama.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             capabilities:
               drop:
@@ -43,35 +47,35 @@ spec:
             runAsNonRoot: true
             runAsUser: 10001
           ports:
-            - name: http
+            - name: api
               containerPort: 11434
               protocol: TCP
-          {{- if .Values.livenessProbe.enabled }}
+          {{- if .Values.ollama.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: {{ include "getPath" . }}api/version
-              port: http
-            {{- with omit .Values.livenessProbe "enabled" }}
+              path: {{ include "global.getPath" . }}api/version
+              port: api
+            {{- with omit .Values.ollama.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-          {{- if .Values.readinessProbe.enabled }}
+          {{- if .Values.ollama.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: {{ include "getPath" . }}api/version
-              port: http
-            {{- with omit .Values.readinessProbe "enabled" }}
+              path: {{ include "global.getPath" . }}api/version
+              port: api
+            {{- with omit .Values.ollama.readinessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-          {{- if .Values.resources }}
+          {{- if .Values.ollama.resources }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: key
               mountPath: "/.ollama"
-          {{- if and .Values.models .Values.models.enabled (gt (len .Values.models.modelPullList) 0) }}
+          {{- if and .Values.ollama.models .Values.ollama.models.enabled (gt (len .Values.ollama.models.modelPullList) 0) }}
           lifecycle:
             postStart:
               exec:
@@ -87,15 +91,16 @@ spec:
       volumes:
         - name: key
           emptyDir: {}
-      {{- with .Values.nodeSelector }}
+      {{- with .Values.ollama.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with .Values.ollama.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with .Values.ollama.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{ end -}}

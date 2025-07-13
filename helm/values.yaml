@@ -31,42 +31,64 @@ global:
   # Example: "/test" results in URLs like http://hostname/test/...
   baseUrlPath: "/"
 
-  # -- Deploy Web frontend client
-  enableClient: true
-
-  # -- Deploy Ollama and optionally pull models
-  enableOllama: false
-
 # -----------------------
 # Server Configuration
 server:
   # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
   replicaCount: 1
 
+  # autoscaling: HPA when enabled, requires metrics-server to be installed
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+
   # -- Secret name containing image pull secrets
   imagePullSecrets: []
+    # - name: registry_cred
 
   # image: Image and Tag to pull including pull policy
   image:
     # -- Image Repository
     repository: localhost/ai-optimizer-server
+    pullPolicy: IfNotPresent
     # -- Image Tag
     tag: latest
+
+  # service: type of Kubernetes service to expose server port.
+  service:
+    type: "ClusterIP"
+
+  # ingress: controls the Ingress resource to expose the service.
+  ingress:
+    enabled: false
+    className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
+    tls: []
+      # - hosts:
+      #     - example.com
+      #   secretName: example-tls
 
   # -- Oracle Database Configuration
   database:
     # -- Either SIDB-FREE, ADB-FREE, or ADB-S
     type: ""
-    # image: For SIDB-FREE/ADB-FREE, repository location and tag of the image
-    # Ignored for ADB-S
+    # -- For SIDB-FREE/ADB-FREE, location of the image and its tag
+    # Exclude for ADB-S
     image:
-      # -- For SIDB-FREE/ADB-FREE, repository location of the image
       repository: ""
-      # -- For SIDB-FREE/ADB-FREE, tag of the image
+      pullPolicy: IfNotPresent
       tag: latest
+
     # -- For ADB-S, OCID of the Autonomous Database
     # Exclude for SIDB-FREE/ADB-FREE
-    ocid: ""
+    oci_db:
+      # -- OCID of the DB
+      ocid: ""
     # -- Authentication/Connection Details
     authN:
       # -- Name of Secret containing the authentication/connection details
@@ -77,6 +99,13 @@ server:
       passwordKey: "password"
       # -- Key in secretName containing the connection service name
       serviceKey: "service"
+    # -- (Optional) Privileged User Authentication/Connection Details
+    # If defined, used to create the user defined in the authN secret
+    privAuthN:
+      # -- secretName containing privileged user (i.e. ADMIN/SYSTEM) password
+      secretName: "db-priv-authn"
+      # -- Key in secretName containing the password
+      passwordKey: "password"
 
   # -- Oracle Cloud Infrastructure Configuration
   oci_config:
@@ -112,22 +141,126 @@ server:
       secretName: ""
       secretKey: "apiKey"
 
+  # livenessProbe: defines settings for the liveness probe.
+  # Set `enabled` to false to disable the probe entirely.
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10       # Time (in seconds) to wait before starting the probe
+    periodSeconds: 30             # Time (in seconds) between probe checks
+    timeoutSeconds: 30            # Time (in seconds) to wait for probe response
+    failureThreshold: 10          # Number of failures before marking the container as unhealthy
+    successThreshold: 1           # Number of successes required to consider the container healthy
+
+  # readinessProbe: defines settings for the liveness probe.
+  # Set `enabled` to false to disable the probe entirely.
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 15
+    failureThreshold: 10
+    successThreshold: 1 
+
+  # volumes: user defined additional volumes
+  volumes: []
+  # - name: foo
+  #   secret:
+  #     secretName: mysecret
+  #     optional: false
+
+  # volumeMounts:  user defined additional volumeMounts
+  volumeMounts: []
+  # - name: foo
+  #   mountPath: "/etc/foo"
+  #   readOnly: true
+
+  # podLabels: additional key:value labels to add to pods
+  podLabels: {}
+    # environment: "production"
+    # team: "devops"
+
+  # podAnnotations: additional key:value annotations to add to the Pod template metadata
+  podAnnotations: {}
+    # prometheus.io/scrape: "true"
+    # prometheus.io/port: "9102"
+
+  # resources: requests and limits for the container
+  # Recommended not to specify default resources and to leave this as a conscious choice for the user.
+  # This also increases chances charts run on environments with little resources, such as Kind. 
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  # nodeSelector: to constrain pods to specific nodes
+  nodeSelector: {}
+    # disktype: ssd
+
+  # affinity: rules for scheduling pods
+  affinity: {}
+    # podAntiAffinity:
+    #   requiredDuringSchedulingIgnoredDuringExecution:
+    #     - labelSelector:
+    #         matchExpressions:
+    #           - key: app
+    #             operator: In
+    #             values:
+    #               - my-app
+    #       topologyKey: "kubernetes.io/hostname"
+
+  # tolerations: for scheduling pods on tainted nodes
+  tolerations: []
+    # - key: "key1"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+
+
 # -----------------------
 # Client Configuration
-# Enabled from global.enableClient
 client:
+  # -- Enable frontend client
+  enabled: true
   # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
   replicaCount: 1
 
+  # autoscaling: HPA when enabled, requires metrics-server to be installed
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+
   # -- Secret name containing image pull secrets
   imagePullSecrets: []
+    # - name: registry_cred
 
   # image: Image and Tag to pull including pull policy
   image:
     # -- Image Repository
-    repository: localhost/ai-optimizer-client
+    repository: localhost/ai-optimizer-server
     # -- Image Tag
     tag: latest
+    pullPolicy: IfNotPresent
+
+  # service: type of Kubernetes service to expose the HTTP port.
+  service:
+    type: "ClusterIP"
+
+  # ingress: controls the Ingress resource to expose the service.
+  ingress:
+    enabled: false
+    className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
+    tls: []
+      # - hosts:
+      #     - example.com
+      #   secretName: example-tls
 
   # -- Disable specific client features
   features:
@@ -146,12 +279,94 @@ client:
     # -- Disable the Import/Export of Settings
     disableSettings: false
 
+  # livenessProbe: defines settings for the liveness probe.
+  # Set `enabled` to false to disable the probe entirely.
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 20       # Time (in seconds) to wait before starting the probe
+    periodSeconds: 20             # Time (in seconds) between probe checks
+    timeoutSeconds: 1             # Time (in seconds) to wait for probe response
+    failureThreshold: 3           # Number of failures before marking the container as unhealthy
+    successThreshold: 1           # Number of successes required to consider the container healthy
+
+  # readinessProbe: defines settings for the liveness probe.
+  # Set `enabled` to false to disable the probe entirely.
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 1
+    failureThreshold: 3
+    successThreshold: 1 
+
+  # volumes: user defined additional volumes
+  volumes: []
+  # - name: foo
+  #   secret:
+  #     secretName: mysecret
+  #     optional: false
+
+  # volumeMounts:  user defined additional volumeMounts
+  volumeMounts: []
+  # - name: foo
+  #   mountPath: "/etc/foo"
+  #   readOnly: true
+
+  # podLabels: additional key:value labels to add to pods
+  podLabels: {}
+    # environment: "production"
+    # team: "devops"
+
+  # podAnnotations: additional key:value annotations to add to the Pod template metadata
+  podAnnotations: {}
+    # prometheus.io/scrape: "true"
+    # prometheus.io/port: "9102"
+
+  # resources: requests and limits for the container
+  # Recommended not to specify default resources and to leave this as a conscious choice for the user.
+  # This also increases chances charts run on environments with little resources, such as Kind.
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  # nodeSelector: to constrain pods to specific nodes
+  nodeSelector: {}
+    # disktype: ssd
+
+  # affinity: rules for scheduling pods
+  affinity: {}
+    # podAntiAffinity:
+    #   requiredDuringSchedulingIgnoredDuringExecution:
+    #     - labelSelector:
+    #         matchExpressions:
+    #           - key: app
+    #             operator: In
+    #             values:
+    #               - my-app
+    #       topologyKey: "kubernetes.io/hostname"
+
+  # tolerations: for scheduling pods on tainted nodes
+  tolerations: []
+    # - key: "key1"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+
 # -----------------------
 # Ollama Configuration
-# Enabled from global.enableOllama
 ollama:
+  # -- Enable out-of-box Ollama Models
+  enabled: false
+
   # -- Number of desired pod replicas for the Deployment
   replicaCount: 1
+
+  # imagePullSecrets: Secret name containing image pull secrets
+  imagePullSecrets: []
+    # - name: registry_cred
 
   # image: Image and Tag to pull including pull policy
   image:
@@ -159,6 +374,12 @@ ollama:
     repository: docker.io/ollama/ollama
     # -- Image Tag
     tag: latest
+    pullPolicy: IfNotPresent
+
+  # service: type of Kubernetes service to expose the HTTP port.
+  service:
+    http:
+      type: "ClusterIP"
 
   # models: to automatically deploy if enabled
   models:
@@ -169,18 +390,63 @@ ollama:
       - llama3.1
       - mxbai-embed-large
 
+  # livenessProbe: defines settings for the liveness probe.
+  # Set `enabled` to false to disable the probe entirely.
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 20       # Time (in seconds) to wait before starting the probe
+    periodSeconds: 20             # Time (in seconds) between probe checks
+    timeoutSeconds: 1             # Time (in seconds) to wait for probe response
+    failureThreshold: 3          # Number of failures before marking the container as unhealthy
+    successThreshold: 1           # Number of successes required to consider the container healthy
+
+  # readinessProbe: defines settings for the liveness probe.
+  # Set `enabled` to false to disable the probe entirely.
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 1
+    failureThreshold: 3
+    successThreshold: 1 
+
+  # podLabels: additional key:value labels to add to pods
+  podLabels: {}
+    # environment: "production"
+    # team: "devops"
+
+  # podAnnotations: additional key:value annotations to add to the Pod template metadata
+  podAnnotations: {}
+    # prometheus.io/scrape: "true"
+    # prometheus.io/port: "9102"
+
   # -- Requests and limits for the container.
   # Often used to ensure pod is running on a GPU worker
   resources: {}
+    # limits:
+    #   nvidia.com/gpu: 1
 
   # -- Constrain pods to specific nodes
   # Often used to ensure pod is running on a GPU worker
   nodeSelector: {}
+    # disktype: ssd
 
   # -- Rules for scheduling pods
   # Often used to ensure pod is running on a GPU worker
   affinity: {}
+    # podAntiAffinity:
+    #   requiredDuringSchedulingIgnoredDuringExecution:
+    #     - labelSelector:
+    #         matchExpressions:
+    #           - key: app
+    #             operator: In
+    #             values:
+    #               - my-app
+    #       topologyKey: "kubernetes.io/hostname"
 
   # -- For scheduling pods on tainted nodes
   # Often used to ensure pod is running on a GPU worker
   tolerations: []
+    # - key: "key1"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"

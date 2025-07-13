@@ -1,0 +1,86 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent sidb
+
+{{- if and .Values.server.database }}
+  {{- if (has .Values.server.database.type (list "SIDB-FREE" "ADB-FREE")) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    {{- if eq .Values.server.database.type "SIDB-FREE" }}
+  name: {{ include "global.fullname" . }}-sidb
+    {{- else if eq .Values.server.database.type "ADB-FREE" }}
+  name: {{ include "global.fullname" . }}-adb
+    {{- end }}
+  labels:
+    app.kubernetes.io/component: database
+    {{- include "global.labels" . | nindent 4}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: database
+      {{- include "global.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.server.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/component: database
+        {{- include "global.labels" . | nindent 8 }}
+        {{- with .Values.server.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      securityContext:
+        fsGroup: 54321
+        runAsGroup: 54321
+        runAsUser: 54321
+      containers:
+        - name: db-container
+          image: {{ .Values.server.database.image.repository }}:{{ .Values.server.database.image.tag }}
+          imagePullPolicy: {{ .Values.server.database.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 1521
+          readinessProbe:
+            tcpSocket:
+              port: 1521
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          env:
+            {{- include "server.database.authN" . | nindent 12 }}
+      {{- if eq .Values.server.database.type "SIDB-FREE" }}
+            - name: ORACLE_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "server.databaseSecret" . }}
+                  key: {{ default "password" .Values.server.database.authN.passwordKey }}
+      {{- else if eq .Values.server.database.type "ADB-FREE" }}
+            - name: DATABASE_NAME
+              value: FREEPDB1
+            - name: ENABLE_ARCHIVE_LOG
+              value: "False"
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "server.databasePrivSecret" . }}
+                  key: {{ default "password" .Values.server.database.privAuthN.passwordKey }}
+            - name: WALLET_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "server.databaseSecret" . }}
+                  key: {{ default "password" .Values.server.database.authN.passwordKey }}
+      {{- end }}
+      {{- if eq .Values.server.database.type "SIDB-FREE" }}
+          volumeMounts:
+            - name: db-custom-scripts
+              mountPath: "/opt/oracle/scripts/startup"
+      volumes:
+        - name: db-custom-scripts
+          configMap:
+            name:  db-custom-scripts
+      {{- end }}
+  {{- end }}
+{{- end }}

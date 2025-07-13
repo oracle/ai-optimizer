@@ -7,7 +7,7 @@ weight = 5
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker: ignore Ashburn
+spell-checker: ignore ashburn sidb myadb ocid ollama autonomousdatabase mxbai subcharts tolerations
 -->
 
 The {{< full_app_ref >}} was specifically designed to run on infrastructure supporting microservices architecture, including [Kubernetes](https://kubernetes.io/).  A [Helm](https://helm.sh/) Chart is provided to make the deployment easier.
@@ -312,8 +312,6 @@ Give the **Helm Chart** a spin using a locally installed [Kind](https://kind.sig
     **OCI**: Remove the `server.oci_config` specification if skipping the above optional step.
 
     ```yaml
-    global:
-      enableOllama: true
     server:
       replicaCount: 1
       image:
@@ -324,14 +322,13 @@ Give the **Helm Chart** a spin using a locally installed [Kind](https://kind.sig
         image:
           repository: container-registry.oracle.com/database/free
           tag: latest
-      oci_config:
-        fileSecretName: "oci-config-file"
     client:
       replicaCount: 1
       image:
         repository: localhost/ai-optimizer-client
         tag: latest
     ollama:
+      enabled: true
       replicaCount: 1
       models:
         enabled: true
