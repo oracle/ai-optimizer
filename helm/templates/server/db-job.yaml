@@ -8,8 +8,6 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "global.fullname" . }}-run-sql
-  annotations:
-    "helm.sh/hook": post-install,post-upgrade
   labels:
     app.kubernetes.io/component: database
     {{- include "global.labels" . | nindent 4 }}

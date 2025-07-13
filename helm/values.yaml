@@ -77,11 +77,12 @@ server:
   database:
     # -- Either SIDB-FREE, ADB-FREE, or ADB-S
     type: ""
-    # -- For SIDB-FREE/ADB-FREE, location of the image and its tag
-    # Exclude for ADB-S
+    # -- For SIDB-FREE/ADB-FREE, location of the image and its tag; Exclude for ADB-S
     image:
+      # -- For SIDB-FREE/ADB-FREE, repository location of the image
       repository: ""
       pullPolicy: IfNotPresent
+      # -- For SIDB-FREE/ADB-FREE, tag of the image
       tag: latest
 
     # -- For ADB-S, OCID of the Autonomous Database
@@ -89,7 +90,8 @@ server:
     oci_db:
       # -- OCID of the DB
       ocid: ""
-    # -- Authentication/Connection Details
+
+    # -- Application User Authentication/Connection Details
     authN:
       # -- Name of Secret containing the authentication/connection details
       secretName: "db-authn"

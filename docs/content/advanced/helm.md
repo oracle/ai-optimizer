@@ -73,11 +73,10 @@ The `global:` sections contains values that are shared across the chart and its 
 |-----|------|---------|-------------|
 | global.api | object | | Either provide the 'apiKey' directly or provide a secretName referring to an existing Secret containing the API key. |
 | global.api.apiKey | string | `""` | Key for making API calls to the server. Recommended to supply at command line or use the secretName to avoid storing in the values file. Example: "abcd1234opt5678" |
+| global.api.secretKey | string | `"apiKey"` | Key name inside the Secret that contains the API key when secretName defined. |
 | global.api.secretName | string | `""` | Name of the Secret that stores the API key. This allows you to keep the API key out of the values file and manage it securely via Secrets. Example: "optimizer-api-keys" |
-| global.api.secretKey | string | `"api-key"` | Key name inside the Secret that contains the API key when secretName defined. |
 | global.baseUrlPath | string | `"/"` | URL path appended to the host. Example: "/test" results in URLs like http://hostname/test/... |
-| global.enableClient | bool | `true` | Deploy Web frontend client |
-| global.enableOllama | bool | `false` | Deploy Ollama and optionally pull models |
+
 ---
 
 #### Server Settings
@@ -98,13 +97,20 @@ Configure the Oracle Database used by the {{< short_app_ref >}} API Server.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | server.database.type | string | `""` | Either SIDB-FREE, ADB-FREE, or ADB-S |
+| server.database.image | object | | For SIDB-FREE/ADB-FREE, location of the image and its tag; Exclude for ADB-S |
 | server.database.image.repository | string | `""` | For SIDB-FREE/ADB-FREE, repository location of the image |
 | server.database.image.tag | string | `"latest"` | For SIDB-FREE/ADB-FREE, tag of the image |
-| server.database.ocid | string | `""` | For ADB-S, OCID of the Autonomous Database Exclude for SIDB-FREE/ADB-FREE |
+| server.database.authN | Required |  | Application User Authentication/Connection Details If defined, used to create the user defined in the authN secret |
 | server.database.authN.secretName | string | `"db-authn"` | Name of Secret containing the authentication/connection details |
 | server.database.authN.usernameKey | string | `"username"` | Key in secretName containing the username |
 | server.database.authN.passwordKey | string | `"password"` | Key in secretName containing the password |
 | server.database.authN.serviceKey | string | `"service"` | Key in secretName containing the connection service name |
+| server.database.privAuthN | Optional |  | Privileged User Authentication/Connection Details If defined, used to create the user defined in the authN secret |
+| server.database.privAuthN.secretName | string | `"db-priv-authn"` | secretName containing privileged user (i.e. ADMIN/SYSTEM) password |
+| server.database.privAuthN.passwordKey | string | `"password"` | Key in secretName containing the password |
+| server.database.oci_db | Optional | | For ADB-S, OCID of the Autonomous Database Exclude for SIDB-FREE/ADB-FREE |
+| server.database.oci_db.ocid | string | `""` | OCID of the DB |
+
 
 ###### Examples
 
@@ -119,28 +125,26 @@ A containerized single-instance Oracle Database:
       tag: latest
 ```
 
+**ADB-FREE**
+
+A containerized Autonomous Oracle Database:
+```yaml
+  database:
+    type: "ADB-FREE"
+    image:
+      repository: container-registry.oracle.com/database/adb-free
+      tag: latest-23ai
+```
+
 **ADB-S**
 
 A pre-deployed Oracle Autonomous Database (_requires_ the [OraOperator](https://github.com/oracle/oracle-database-operator) to be installed in the cluster):
 
 ```yaml
-  type: "ADB-S"
-  ocid: "ocid1.autonomousdatabase.oc1..."
-  authN:
-    secretName: "db-authn"
-```
-
-with an existing `db-authn` Secret:
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-authn
-type: Opaque
-stringData:
-  username: ADMIN
-  password: "my-secret-password"
-  service: "MYADB_TP"
+  database:
+    type: "ADB-S"
+    oci_db: 
+      ocid: "ocid1.autonomousdatabase.oc1..."
 ```
 
 ##### Server Oracle Cloud Infrastructure Settings

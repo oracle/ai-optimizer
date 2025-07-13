@@ -194,7 +194,7 @@ Password Generator for Databases
 *********************************************** */}}
 {{- define "server.randomPassword" -}}
   {{- $minLen := 12 -}}
-  {{- $maxLen := 32 -}}
+  {{- $maxLen := 30 -}}
   {{- $one := int 1 -}}
   {{- $two := int 2 -}}
 
@@ -220,8 +220,5 @@ Password Generator for Databases
 
   {{- /* Final password */ -}}
   {{- $password := printf "%s%s%s%s%s%s" $start $special $upper $lower $digit $rest -}}
-
-  {{- /* Base64 encode it */ -}}
   {{- $password -}}
 {{- end }}
-
