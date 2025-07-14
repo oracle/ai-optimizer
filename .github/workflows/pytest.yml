@@ -7,10 +7,6 @@ on:
       - synchronize
       - reopened
       - ready_for_review
-    paths:
-      - "tests/**"
-      - "src/**"
-      - ".github/workflows/pytest.yml"
 
   # Allows running this workflow manually
   workflow_dispatch:
