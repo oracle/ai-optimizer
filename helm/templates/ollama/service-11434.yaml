@@ -7,7 +7,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "ollama.serviceName" . }}
-  labels: 
+  labels:
     app.kubernetes.io/component: ollama
     {{- include "global.labels" . | nindent 4 }}
 spec:
@@ -17,7 +17,7 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
-  selector: 
+  selector:
     app.kubernetes.io/component: ollama
     {{ include "global.selectorLabels" . | nindent 4 }}
 {{ end -}}

@@ -7,7 +7,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "global.fullname" . }}-client-http
-  labels: 
+  labels:
     app.kubernetes.io/component: client
     {{- include "global.labels" . | nindent 4 }}
 spec:
@@ -16,7 +16,7 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8501
-  selector: 
+  selector:
     app.kubernetes.io/component: client
     {{- include "global.selectorLabels" . | nindent 4 }}
 {{ end -}}

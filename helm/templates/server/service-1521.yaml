@@ -21,7 +21,7 @@ spec:
   - protocol: TCP
     port: 1521
     targetPort: 1521
-  selector: 
+  selector:
     app.kubernetes.io/component: database
     {{ include "global.selectorLabels" . | nindent 4 }}
 {{ end -}}

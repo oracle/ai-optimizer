@@ -15,7 +15,7 @@ spec:
   ttlSecondsAfterFinished: 300  # 5 minutes
   template:
     spec:
-      restartPolicy: Never    
+      restartPolicy: Never
       containers:
       - name: oracle-sqlcl-runner
         image: container-registry.oracle.com/database/sqlcl:latest

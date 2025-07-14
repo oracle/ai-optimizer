@@ -161,7 +161,7 @@ server:
     periodSeconds: 15
     timeoutSeconds: 15
     failureThreshold: 10
-    successThreshold: 1 
+    successThreshold: 1
 
   # volumes: user defined additional volumes
   volumes: []
@@ -188,7 +188,7 @@ server:
 
   # resources: requests and limits for the container
   # Recommended not to specify default resources and to leave this as a conscious choice for the user.
-  # This also increases chances charts run on environments with little resources, such as Kind. 
+  # This also increases chances charts run on environments with little resources, such as Kind.
   resources: {}
     # limits:
     #   cpu: 100m
@@ -299,7 +299,7 @@ client:
     periodSeconds: 15
     timeoutSeconds: 1
     failureThreshold: 3
-    successThreshold: 1 
+    successThreshold: 1
 
   # volumes: user defined additional volumes
   volumes: []
@@ -410,7 +410,7 @@ ollama:
     periodSeconds: 15
     timeoutSeconds: 1
     failureThreshold: 3
-    successThreshold: 1 
+    successThreshold: 1
 
   # podLabels: additional key:value labels to add to pods
   podLabels: {}

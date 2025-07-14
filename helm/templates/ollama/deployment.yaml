@@ -87,7 +87,7 @@ spec:
                       sleep 5
                     done
                     echo "{{ include "ollama.modelPullList" . }}" | xargs -n1 /bin/ollama pull
-          {{- end }}         
+          {{- end }}
       volumes:
         - name: key
           emptyDir: {}

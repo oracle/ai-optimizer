@@ -12,10 +12,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "global.fullname" . }}-client-http
-  labels: 
-    app.kubernetes.io/component: client    
+  labels:
+    app.kubernetes.io/component: client
     {{- include "global.labels" . | nindent 4 }}
-  annotations:  
+  annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: 200m
     {{- with .Values.client.ingress.annotations }}
     {{- toYaml . | nindent 4 }}

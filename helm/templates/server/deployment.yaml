@@ -67,7 +67,7 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
                   key: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
-              {{- end }}             
+              {{- end }}
             {{- end }}
             {{- if .Values.ollama.enabled }}
             - name: ON_PREM_OLLAMA_URL
@@ -135,7 +135,7 @@ spec:
         - name: tns-admin
           secret:
             secretName: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}
-        {{- end }}        
+        {{- end }}
         {{- if and .Values.server.oci_config .Values.server.oci_config.fileSecretName }}
         - name: oci-config
           secret:

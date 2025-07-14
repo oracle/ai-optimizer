@@ -58,7 +58,9 @@ write_files:
       export OCI_CLI_AUTH=instance_principal
       mkdir -p /app/tns_admin
       # Wait for Database and Download Wallet
-      while [ $SECONDS -lt $((SECONDS + 600)) ]; do
+      max_attempts=40
+      attempt=1
+      while [ $attempt -le $max_attempts ]; do
         echo "Waiting for Database... ${db_name}"
         ID=$(oci db autonomous-database list --compartment-id ${compartment_id} --display-name ${db_name} \
           --lifecycle-state AVAILABLE --query 'data[0].id' --raw-output)
@@ -68,6 +70,7 @@ write_files:
           break
         fi
         sleep 15
+        ((attempt++))
       done
       unzip -o /app/tns_admin/wallet.zip -d /app/tns_admin
 
