@@ -43,8 +43,8 @@ jobs:
       - name: Install Python & Dependencies
         run: |
           apk add --no-cache python3 py3-pip
-          pip3 install --upgrade pip
-          pip3 install pyyaml jsonschema referencing
+          pip3 install --upgrade pip --break-system-packages
+          pip3 install pyyaml jsonschema referencing --break-system-packages
 
       - name: Validate Oracle Resource Manager Schema
         working-directory: ./tests/opentofu
