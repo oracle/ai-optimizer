@@ -57,7 +57,6 @@ write_files:
     content: |
       #!/bin/bash
       # Setup for Instance Principles
-      export OCI_CLI_AUTH=instance_principal
 
       # Download/Setup Source Code
       # curl -s https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
@@ -82,6 +81,12 @@ write_files:
 
       # Wait for python modules to finish
       wait $INSTALL_PID
+
+  - path: /app/start.sh
+    permissions: '0750'
+    content: |
+      #!/bin/bash
+
 
   - path: /app/start.sh
     permissions: '0750'
