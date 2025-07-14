@@ -3,7 +3,16 @@
 # spell-checker: disable
 
 locals {
-  cloud_init = templatefile("${path.module}/templates/cloudinit-compute.tpl", {
+  cloud_init_compute = templatefile("${path.module}/templates/cloudinit-compute.tpl", {
+    tenancy_id     = var.tenancy_id
+    compartment_id = var.compartment_id
+    oci_region     = var.region
+    db_name        = var.adb_name
+    db_password    = var.adb_password
+    install_ollama = var.vm_is_gpu_shape ? true : false
+  })
+
+  cloud_init_database = templatefile("${path.module}/templates/cloudinit-database.tpl", {
     tenancy_id     = var.tenancy_id
     compartment_id = var.compartment_id
     oci_region     = var.region

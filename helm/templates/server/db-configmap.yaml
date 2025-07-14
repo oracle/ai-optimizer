@@ -1,7 +1,7 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent freepdb1 oserror selectai sidb spfile sqlplus
-# spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace 
+# spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace
 
 {{- if .Values.server.database }}
 apiVersion: v1
@@ -21,7 +21,7 @@ data:
     WHENEVER SQLERROR EXIT 1
     WHENEVER OSERROR EXIT 1
     {{- if (has .Values.server.database.type (list "ADB-S" "ADB-FREE")) }}
-    connect ADMIN/${PRIV_PASSWORD}@${DB_DSN}
+    connect ADMIN/$PRIV_PASSWORD@$DB_DSN
     {{- else if eq .Values.server.database.type "SIDB-FREE" }}
     connect / as sysdba
     ALTER SYSTEM SET VECTOR_MEMORY_SIZE=512M SCOPE=SPFILE;
@@ -34,57 +34,37 @@ data:
     BEGIN
       BEGIN
           SELECT user INTO l_conn_user FROM DUAL;
-          SELECT username INTO l_user FROM DBA_USERS WHERE USERNAME='${DB_USERNAME}';
+          SELECT username INTO l_user FROM DBA_USERS WHERE USERNAME='$DB_USERNAME';
       EXCEPTION WHEN no_data_found THEN
-          EXECUTE IMMEDIATE 'CREATE USER "${DB_USERNAME}" IDENTIFIED BY "${DB_PASSWORD}"';
+          EXECUTE IMMEDIATE 'CREATE USER "$DB_USERNAME" IDENTIFIED BY "$DB_PASSWORD"';
       END;
-      SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = '${DB_USERNAME}';
-      EXECUTE IMMEDIATE 'ALTER USER "${DB_USERNAME}" QUOTA UNLIMITED ON ' || l_tblspace;
-      EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "${DB_USERNAME}"';
+      SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = '$DB_USERNAME';
+      EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" QUOTA UNLIMITED ON ' || l_tblspace;
+      EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "$DB_USERNAME"';
       {{- if (has .Values.server.database.type (list "ADB-S" "ADB-FREE")) }}
-      EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD TO "${DB_USERNAME}"';
-      EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_AI TO "${DB_USERNAME}"';
-      EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO "${DB_USERNAME}"';
+      EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD TO "$DB_USERNAME"';
+      EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_AI TO "$DB_USERNAME"';
+      EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO "$DB_USERNAME"';
       {{- end }}
-      EXECUTE IMMEDIATE 'ALTER USER "${DB_USERNAME}" DEFAULT ROLE ALL';
+      EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" DEFAULT ROLE ALL';
     END;
     /
     {{- if eq .Values.server.database.type "ADB-S" }}
-    BEGIN  
-      DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
-        host => '${API_SERVER_HOST}',
-        ace  => xs\$ace_type(
-          privilege_list => xs\$name_list('http', 'connect', 'resolve'),
-          principal_name => '${DB_USERNAME}',
-          principal_type => xs_acl.ptype_db
-        )
-      );
+    BEGIN
       DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
         host => '*.oraclevcn.com',
         ace  => xs\$ace_type(
           privilege_list => xs\$name_list('http', 'connect', 'resolve'),
-          principal_name => '${DB_USERNAME}',
+          principal_name => '$DB_USERNAME',
           principal_type => xs_acl.ptype_db
         )
       );
-    END;
-    /  
-    BEGIN
-      DBMS_CLOUD.CREATE_CREDENTIAL(
-        credential_name   => '${DB_USERNAME}_CRED', 
-        username          =>  'SELECTAI', 
-        password          =>  '${API_SERVER_KEY}'
-      );
-      EXCEPTION WHEN OTHERS THEN
-        IF SQLCODE = -20022 THEN NULL; -- Already Exists
-        ELSE RAISE;
-        END IF;
     END;
     /
     {{- end }}
     {{- if eq .Values.server.database.type "SIDB-FREE" }}
     STARTUP FORCE;
     ALTER SYSTEM REGISTER;
-    {{- end }}    
+    {{- end }}
     EOF
 {{ end -}}
