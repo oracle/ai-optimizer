@@ -59,11 +59,11 @@ write_files:
       # Setup for Instance Principles
 
       # Download/Setup Source Code
-      # curl -s https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
-      # | grep tarball_url \
-      # | cut -d '"' -f 4 \
-      # | xargs curl -L -o /tmp/source.tar.gz
-      curl -L -o /tmp/source.tar.gz https://github.com/oracle-samples/ai-optimizer/archive/refs/heads/main.tar.gz
+      curl -s https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
+      | grep tarball_url \
+      | cut -d '"' -f 4 \
+      | xargs curl -L -o /tmp/source.tar.gz
+      # curl -L -o /tmp/source.tar.gz https://github.com/oracle-samples/ai-optimizer/archive/refs/heads/main.tar.gz
       tar zxf /tmp/source.tar.gz --strip-components=2 -C /app '*/src'
       cd /app
       python3.11 -m venv .venv
