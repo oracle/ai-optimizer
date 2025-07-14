@@ -17,16 +17,27 @@ type: Opaque
 stringData:
   apiKey: ${api_key}
 ---
+# User will be created by k8s job; secret used for application connectivity
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${adb_name}-authn
+  name: ${adb_name}-db-authn
   namespace: ${label}
 type: Opaque
 stringData:
-  username: ADMIN
+  username: AI_OPTIMIZER
   password: ${adb_password}
   service: ${adb_service}
+---
+# Secret for creating user defined in -db-authN Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${adb_name}-db-priv-authn
+  namespace: ${label}
+type: Opaque
+stringData:
+  password: ${adb_password}
 ---
 apiVersion: "ingress.oraclecloud.com/v1beta1"
 kind: IngressClassParameters

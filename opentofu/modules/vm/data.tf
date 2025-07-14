@@ -58,11 +58,17 @@ data "cloudinit_config" "workers" {
     merge_type = "list(append)+dict(no_replace,recurse_list)+str(append)"
   }
 
-  # Startup Initialisation
+  # Custom Startup Initialisation (compute and database)
   part {
     content_type = "text/x-shellscript"
-    content      = local.cloud_init
-    filename     = "50-custom-init.sh"
+    content      = local.cloud_init_compute
+    filename     = "50-custom-compute-init.sh"
+    merge_type   = "list(append)+dict(no_replace,recurse_list)+str(append)"
+  }
+  part {
+    content_type = "text/x-shellscript"
+    content      = local.cloud_init_database
+    filename     = "50-custom-database-init.sh"
     merge_type   = "list(append)+dict(no_replace,recurse_list)+str(append)"
   }
 }

@@ -1,0 +1,28 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent sidb
+
+{{- if .Values.server.database }}
+  {{- if (has .Values.server.database.type (list "SIDB-FREE" "ADB-FREE")) }}
+apiVersion: v1
+kind: Service
+metadata:
+  {{- if eq .Values.server.database.type "SIDB-FREE" }}
+  name: {{ .Release.Name }}-sidb-1521
+  {{- else if eq .Values.server.database.type "ADB-FREE" }}
+  name: {{ .Release.Name }}-adb-1521
+  {{- end }}
+  labels:
+    app.kubernetes.io/component: database
+    {{- include "global.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - protocol: TCP
+    port: 1521
+    targetPort: 1521
+  selector:
+    app.kubernetes.io/component: database
+    {{ include "global.selectorLabels" . | nindent 4 }}
+{{ end -}}
+{{ end -}}
