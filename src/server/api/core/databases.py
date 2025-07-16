@@ -2,14 +2,17 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai, PRIVS
+# spell-checker:ignore selectai clob nclob
 
+from typing import Optional, Union
 import oracledb
 
-from common.schema import Database, DatabaseAuth
+from server.api.core import bootstrap, embed, selectai, settings
+
+import common.schema as schema
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("server.api.core..database")
+logger = logging_config.logging.getLogger("api.core.database")
 
 
 class DbException(Exception):
@@ -21,10 +24,68 @@ class DbException(Exception):
         super().__init__(detail)
 
 
-def connect(config: Database) -> oracledb.Connection:
+def get_databases(
+    name: Optional[schema.DatabaseNameType] = None,
+) -> Union[list[schema.Database], schema.Database, None]:
+    """
+    Return all Database objects if `name` is not provided,
+    or the single Database if `name` is provided and successfully connected.
+    """
+    database_objects = bootstrap.DATABASE_OBJECTS
+    database_results = []
+
+    for db in database_objects:
+        if name and db.name != name:
+            continue
+        try:
+            db_conn = connect(db)
+        except DbException as ex:
+            logger.debug("Skipping Database %s - exception: %s", db.name, str(ex))
+            if name:
+                return None  # Fail fast if specific DB can't be connected
+            continue
+
+        db.vector_stores = embed.get_vs(db_conn)
+        db.selectai = selectai.enabled(db_conn)
+        if db.selectai:
+            db.selectai_profiles = selectai.get_profiles(db_conn)
+
+        if name:
+            return db  # Return the matched, connected DB immediately
+        database_results.append(db)
+
+    if name:
+        # If we got here, then not found
+        raise ValueError(f"Database '{name}' not found.")
+    if not database_results:
+        raise ValueError("No available databases could be connected.")
+
+    return database_results
+
+
+def get_client_db(client: schema.ClientIdType) -> schema.Database:
+    """Return a Database Object based on client settings"""
+    client_settings = settings.get_client_settings(client)
+
+    # Get database name from client settings, defaulting to "DEFAULT"
+    db_name = "DEFAULT"
+    if (hasattr(client_settings, "vector_search") and client_settings.vector_search) or (
+        hasattr(client_settings, "selectai") and client_settings.selectai
+    ):
+        db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
+
+    # Return the Database Object
+    db = get_databases(db_name)
+    # Ping the Database
+    test(db)
+
+    return db
+
+
+def connect(config: schema.Database) -> oracledb.Connection:
     """Establish a connection to an Oracle Database"""
     logger.info("Connecting to Database: %s", config.dsn)
-    include_fields = set(DatabaseAuth.model_fields.keys())
+    include_fields = set(schema.DatabaseAuth.model_fields.keys())
     db_config = config.model_dump(include=include_fields)
     logger.debug("Database Config: %s", db_config)
     # If a wallet password is provided but no wallet location is set
@@ -50,7 +111,7 @@ def connect(config: Database) -> oracledb.Connection:
     return conn
 
 
-def test(config: Database) -> None:
+def test(config: schema.Database) -> None:
     """Test connection and re-establish if no longer open"""
     try:
         config.connection.ping()

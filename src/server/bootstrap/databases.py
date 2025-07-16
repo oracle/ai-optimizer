@@ -6,9 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import os
 from server.bootstrap.configfile import ConfigStore
-import server.api.core.databases as databases
-import server.api.core.embedding as embedding
-import server.api.core.selectai as selectai
+from server.api.core import databases, embed, selectai
 from common.schema import Database
 import common.logging_config as logging_config
 
@@ -74,7 +72,7 @@ def main() -> list[Database]:
         except databases.DbException:
             db.connected = False
             continue
-        db.vector_stores = embedding.get_vs(conn)
+        db.vector_stores = embed.get_vs(conn)
         db.selectai = selectai.enabled(conn)
         if db.selectai:
             db.selectai_profiles = selectai.get_profiles(conn)

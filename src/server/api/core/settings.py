@@ -11,7 +11,22 @@ from server.api.core import bootstrap
 import common.schema as schema
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("endpoints.core.settings")
+logger = logging_config.logging.getLogger("api.core.settings")
+
+
+def create_client_settings(client: schema.ClientIdType) -> schema.Settings:
+    """Create a new client"""
+    settings_objects = bootstrap.SETTINGS_OBJECTS
+    if any(settings.client == client for settings in settings_objects):
+        raise ValueError(f"Client: {client} already exists.")
+
+    default_settings = next((settings for settings in settings_objects if settings.client == "default"), None)
+    # Copy the default settings
+    client_settings = schema.Settings(**default_settings.model_dump())
+    client_settings.client = client
+    settings_objects.append(client_settings)
+
+    return client_settings
 
 
 def get_client_settings(client: schema.ClientIdType) -> schema.Settings:

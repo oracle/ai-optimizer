@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile, File
 from fastapi.responses import JSONResponse
 
-from server.api.core import bootstrap, settings
+from server.api.core import settings
 
 
 import common.schema as schema
@@ -57,24 +57,20 @@ async def settings_update(payload: schema.Settings, client: schema.ClientIdType)
     try:
         return settings.update_client_settings(payload, client)
     except ValueError as ex:
-        raise HTTPException(status_code=404, detail=str(ex)) from ex
+        raise HTTPException(status_code=404, detail=f"Settings: {str(ex)}.") from ex
 
 
 @auth.post("/", description="Create new client settings", response_model=schema.Settings)
 async def settings_create(client: schema.ClientIdType) -> schema.Settings:
     """Create a new client, initialise client settings"""
-    settings_objects = bootstrap.SETTINGS_OBJECTS
+    logger.debug("Received %s Client create request.", client)
 
-    if any(settings.client == client for settings in settings_objects):
-        raise HTTPException(status_code=409, detail=f"Client: {client} already exists.")
-    default_settings = next((settings for settings in settings_objects if settings.client == "default"), None)
+    try:
+        new_client = settings.create_client_settings(client)
+    except ValueError as ex:
+        raise HTTPException(status_code=409, detail=f"Settings: {str(ex)}.") from ex
 
-    # Copy the default settings
-    client_settings = schema.Settings(**default_settings.model_dump())
-    client_settings.client = client
-    settings_objects.append(client_settings)
-
-    return client_settings
+    return new_client
 
 
 @auth.post("/load", description="Load configuration from file")
@@ -87,7 +83,7 @@ async def load_settings_from_file(
     Otherwise, update "default" and "server" clients.
     """
     if not file.filename.endswith(".json"):
-        raise HTTPException(status_code=400, detail="Only JSON files are supported.")
+        raise HTTPException(status_code=400, detail="Settings: Only JSON files are supported.")
 
     try:
         contents = await file.read()
@@ -95,8 +91,8 @@ async def load_settings_from_file(
         settings.load_config_from_json_data(config_data, client)
         return {"message": "Configuration loaded successfully."}
     except json.JSONDecodeError as ex:
-        raise HTTPException(status_code=400, detail="Invalid JSON file.") from ex
+        raise HTTPException(status_code=400, detail="Settings: Invalid JSON file.") from ex
     except KeyError as ex:
-        raise HTTPException(status_code=400, detail=str(ex)) from ex
+        raise HTTPException(status_code=400, detail=f"Settings: {str(ex)}.") from ex
     except Exception as ex:
-        raise HTTPException(status_code=500, detail=str(ex)) from ex
+        raise HTTPException(status_code=500, detail=f"Settings: {str(ex)}.") from ex

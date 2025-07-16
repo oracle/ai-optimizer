@@ -11,7 +11,7 @@ import common.logging_config as logging_config
 import server.api.core.databases as databases
 
 
-logger = logging_config.logging.getLogger("server.api.core.selectai")
+logger = logging_config.logging.getLogger("api.core.selectai")
 
 
 def enabled(conn: oracledb.Connection) -> bool:

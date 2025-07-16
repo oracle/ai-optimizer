@@ -5,14 +5,15 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore genai, ocids
 
 import os
-from typing import Union
+from typing import Optional, Union
 
 import oci
 
-from common.schema import OracleCloudSettings
+from server.api.core import bootstrap, settings
+from common.schema import OracleCloudSettings, ClientIdType, OCIProfileType
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("server.utils.oci")
+logger = logging_config.logging.getLogger("api.core.oci")
 
 
 class OciException(Exception):
@@ -20,6 +21,47 @@ class OciException(Exception):
 
     def __init__(self, message):
         super().__init__(message)
+
+
+def get_oci(
+    client: Optional[ClientIdType] = None, auth_profile: Optional[OCIProfileType] = None
+) -> Union[list[OracleCloudSettings], OracleCloudSettings]:
+    """
+    Return all OCI Settings if no client or auth_profile is specified.
+    Raises ValueError if both client and auth_profile are provided.
+    If client is provided, derives auth_profile and returns matching OCI settings.
+    If auth_profile is provided, returns matching OCI settings.
+    Raises ValueError if no matching OCI found.
+    """
+    if client is not None and auth_profile is not None:
+        raise ValueError("OCI: Provide either 'client' or 'auth_profile', not both.")
+
+    oci_objects = bootstrap.OCI_OBJECTS
+
+    if client is not None:
+        client_settings = settings.get_client_settings(client)
+        derived_auth_profile = (
+            getattr(client_settings.oci, "auth_profile", "DEFAULT") if client_settings.oci else "DEFAULT"
+        )
+
+        matching_oci = next((oci for oci in oci_objects if oci.auth_profile == derived_auth_profile), None)
+        if matching_oci is None:
+            raise ValueError(
+                f"OCI: No settings found for client '{client}' with auth_profile '{derived_auth_profile}'."
+            )
+        return matching_oci
+
+    if auth_profile is not None:
+        matching_oci = next((oci for oci in oci_objects if oci.auth_profile == auth_profile), None)
+        if matching_oci is None:
+            raise ValueError(f"OCI: No settings found for auth_profile '{auth_profile}'.")
+        return matching_oci
+
+    # No filters, return all
+    if not oci_objects:
+        raise ValueError("OCI: Not configured.")
+
+    return oci_objects
 
 
 def init_client(

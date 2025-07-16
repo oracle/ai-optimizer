@@ -8,8 +8,10 @@ import json
 import copy
 import math
 import os
+from pathlib import Path
+import re
 import time
-from typing import Union
+from typing import Tuple, Union
 
 import bs4
 import oracledb
@@ -25,23 +27,66 @@ from langchain.docstore.document import Document as LangchainDocument
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
 
-import server.utils.databases as databases
+import server.api.core.databases as databases
 
 import common.functions
-from common.schema import DatabaseVectorStorage, VectorStoreTableType, Database
+import common.schema as schema
 
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("server.utils.embedding")
+logger = logging_config.logging.getLogger("api.core.embedding")
 
 
-def drop_vs(conn: oracledb.Connection, vs: VectorStoreTableType) -> None:
+def get_vs_table(
+    model: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    distance_metric: str,
+    index_type: str = "HNSW",
+    alias: str = None,
+) -> Tuple[str, str]:
+    """Return the concatenated VS Table name and comment"""
+    store_table = None
+    store_comment = None
+    try:
+        chunk_overlap_ceil = math.ceil(chunk_overlap)
+        table_string = f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
+        if alias:
+            table_string = f"{alias}_{table_string}"
+        store_table = re.sub(r"\W", "_", table_string.upper())
+        store_comment = (
+            f'{{"alias": "{alias}",'
+            f'"model": "{model}",'
+            f'"chunk_size": {chunk_size},'
+            f'"chunk_overlap": {chunk_overlap_ceil},'
+            f'"distance_metric": "{distance_metric}",'
+            f'"index_type": "{index_type}"}}'
+        )
+        logger.debug("Vector Store Table: %s; Comment: %s", store_table, store_comment)
+    except TypeError:
+        logger.fatal("Not all required values provided to get Vector Store Table name.")
+    return store_table, store_comment
+
+
+def get_temp_directory(client: schema.ClientIdType, function: str) -> Path:
+    """Return the path to store temporary files"""
+    if Path("/app/tmp").exists() and Path("/app/tmp").is_dir():
+        client_folder = Path("/app/tmp") / client / function
+    else:
+        client_folder = Path("/tmp") / client / function
+    client_folder.mkdir(parents=True, exist_ok=True)
+    logger.debug("Created temporary directory: %s", client_folder)
+    return client_folder
+
+
+def drop_vs(client: schema.ClientIdType, vs: schema.VectorStoreTableType) -> None:
     """Drop Vector Storage"""
+    conn = databases.get_client_db(client).connection
     logger.info("Dropping Vector Store: %s", vs)
     LangchainVS.drop_table_purge(conn, vs)
 
 
-def get_vs(conn: oracledb.Connection) -> DatabaseVectorStorage:
+def get_vs(conn: oracledb.Connection) -> schema.DatabaseVectorStorage:
     """Retrieve Vector Storage Tables"""
     logger.info("Looking for Vector Storage Tables")
     vector_stores = []
@@ -53,7 +98,7 @@ def get_vs(conn: oracledb.Connection) -> DatabaseVectorStorage:
     results = databases.execute_sql(conn, sql)
     for table_name, comments in results:
         comments_dict = json.loads(comments)
-        vector_stores.append(DatabaseVectorStorage(vector_store=table_name, **comments_dict))
+        vector_stores.append(schema.DatabaseVectorStorage(vector_store=table_name, **comments_dict))
     logger.debug("Found Vector Stores: %s", vector_stores)
 
     return vector_stores
@@ -262,8 +307,9 @@ def load_and_split_url(
 # Vector Store
 ##########################################
 def populate_vs(
-    vector_store: DatabaseVectorStorage,
-    db_details: Database,
+    client: schema.ClientIdType,
+    vector_store: schema.DatabaseVectorStorage,
+    db_details: schema.Database,
     embed_client: BaseChatModel,
     input_data: Union[list["LangchainDocument"], list] = None,
     rate_limit: int = 0,
@@ -315,7 +361,7 @@ def populate_vs(
     # Establish a dedicated connection to the database
     db_conn = databases.connect(db_details)
     # This is to allow re-using an existing VS; will merge this over later
-    drop_vs(conn=db_conn, vs=vector_store_tmp.vector_store)
+    drop_vs(client=client, vs=vector_store_tmp.vector_store)
     logger.info("Establishing initial vector store")
     vs_tmp = OracleVS(
         client=db_conn,
@@ -364,7 +410,7 @@ def populate_vs(
     """
     logger.info("Merging %s into %s", vector_store_tmp.vector_store, vector_store.vector_store)
     databases.execute_sql(db_conn, merge_sql)
-    drop_vs(conn=db_conn, vs=vector_store_tmp.vector_store)
+    drop_vs(client=client, vs=vector_store_tmp.vector_store)
 
     # Build the Index
     logger.info("Creating index on: %s", vector_store.vector_store)

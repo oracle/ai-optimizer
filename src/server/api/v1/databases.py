@@ -6,8 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from fastapi import APIRouter, HTTPException
 
-from server.api.core import bootstrap
-from server.api.core import databases, embedding, selectai
+from server.api.core import databases
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -21,18 +20,11 @@ auth = APIRouter()
 async def databases_list() -> list[schema.Database]:
     """List all databases"""
     logger.debug("Received databases_list")
-    database_objects = bootstrap.DATABASE_OBJECTS
+    try:
+        database_objects = databases.get_databases()
+    except ValueError as ex:
+        raise HTTPException(status_code=404, detail=f"Databases: {str(ex)}.") from ex
 
-    for db in database_objects:
-        try:
-            db_conn = databases.connect(db)
-        except databases.DbException as ex:
-            logger.debug("Skipping Database %s - exception: %s", db.name, str(ex))
-            continue
-        db.vector_stores = embedding.get_vs(db_conn)
-        db.selectai = selectai.enabled(db_conn)
-        if db.selectai:
-            db.selectai_profiles = selectai.get_profiles(db_conn)
     return database_objects
 
 
@@ -44,18 +36,11 @@ async def databases_list() -> list[schema.Database]:
 async def databases_get(name: schema.DatabaseNameType) -> schema.Database:
     """Get single database"""
     logger.debug("Received databases_get - name: %s", name)
-    database_objects = bootstrap.DATABASE_OBJECTS
-    db = next((db for db in database_objects if db.name == name), None)
-    if not db:
-        raise HTTPException(status_code=404, detail=f"Database: {name} not found.")
     try:
-        db_conn = databases.connect(db)
-        db.vector_stores = embedding.get_vs(db_conn)
-        db.selectai = selectai.enabled(db_conn)
-        if db.selectai:
-            db.selectai_profiles = selectai.get_profiles(db_conn)
-    except databases.DbException as ex:
-        raise HTTPException(status_code=406, detail=f"Database: {name} {str(ex)}.") from ex
+        db = databases.get_databases(name)
+    except ValueError as ex:
+        raise HTTPException(status_code=404, detail=f"Databases: {str(ex)}.") from ex
+
     return db
 
 
@@ -65,12 +50,13 @@ async def databases_get(name: schema.DatabaseNameType) -> schema.Database:
     response_model=schema.Database,
 )
 async def databases_update(name: schema.DatabaseNameType, payload: schema.DatabaseAuth) -> schema.Database:
-    """Update schema.Database"""
+    """Update Database"""
     logger.debug("Received databases_update - name: %s; payload: %s", name, payload)
-    database_objects = bootstrap.DATABASE_OBJECTS
-    db = next((db for db in database_objects if db.name == name), None)
+
+    db = databases.get_databases(name)
     if not db:
         raise HTTPException(status_code=404, detail=f"Database: {name} not found.")
+
     try:
         payload.config_dir = db.config_dir
         payload.wallet_location = db.wallet_location
@@ -84,9 +70,12 @@ async def databases_update(name: schema.DatabaseNameType, payload: schema.Databa
     db.wallet_password = payload.wallet_password
     db.connected = True
     db.set_connection(db_conn)
+
     # Unset and disconnect other databases
+    database_objects = databases.get_databases()
     for other_db in database_objects:
         if other_db.name != name and other_db.connection:
             other_db.set_connection(databases.disconnect(db.connection))
             other_db.connected = False
-    return await databases_get(name)
+
+    return db
