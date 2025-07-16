@@ -5,7 +5,7 @@
 // Loadbalancer
 resource "oci_load_balancer_backend_set" "client_lb_backend_set" {
   load_balancer_id = var.lb_id
-  name             = format("%s-client-lb-backend-set", var.label_prefix)
+  name             = format("%s-client-lbbs", var.label_prefix)
   policy           = "LEAST_CONNECTIONS"
   health_checker {
     port     = var.streamlit_client_port
@@ -16,7 +16,7 @@ resource "oci_load_balancer_backend_set" "client_lb_backend_set" {
 
 resource "oci_load_balancer_backend_set" "server_lb_backend_set" {
   load_balancer_id = var.lb_id
-  name             = format("%s-server-lb-backend-set", var.label_prefix)
+  name             = format("%s-server-lbbs", var.label_prefix)
   policy           = "LEAST_CONNECTIONS"
   health_checker {
     port     = var.fastapi_server_port

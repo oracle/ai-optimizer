@@ -12,6 +12,7 @@ sbin/**
 **/temp/**
 **/chatbot_graph.png
 **/*.sh
+**/etc/*.json
 !opentofu/**/cloudinit-oke.sh
 !src/entrypoint.sh
 !src/client/spring_ai/templates/env.sh

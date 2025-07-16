@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore fastapi, laddr, checkpointer, langgraph, litellm, noauth, apiserver
+# spell-checker:ignore fastapi, laddr, checkpointer, langgraph, litellm, noauth, apiserver, configfile
 # pylint: disable=redefined-outer-name,wrong-import-position
 
 import os
@@ -20,12 +20,14 @@ app_home = os.path.dirname(os.path.abspath(__file__))
 if "TNS_ADMIN" not in os.environ:
     os.environ["TNS_ADMIN"] = os.path.join(app_home, "tns_admin")
 
+import argparse
 import queue
 import secrets
 import socket
 import subprocess
 import threading
 from typing import Annotated
+from pathlib import Path
 import uvicorn
 
 import psutil
@@ -36,8 +38,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 # Logging
 import common.logging_config as logging_config
 
-# Endpoints
-from server.endpoints import register_endpoints
+# Configuration
+import server.bootstrap.configfile as configfile
 
 logger = logging_config.logging.getLogger("launch_server")
 
@@ -120,8 +122,6 @@ def stop_server(pid: int) -> None:
 ##########################################
 # Server App and API Key
 ##########################################
-
-
 def generate_auth_key(length: int = 32) -> str:
     """Generate and return a URL-safe API key."""
     return secrets.token_urlsafe(length)
@@ -146,11 +146,27 @@ def verify_key(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
 
+def register_endpoints(noauth: APIRouter, auth: APIRouter):
+    """Register API Endpoints - Imports to avoid bootstrapping before config file read"""
+    from server.api.v1 import probes, settings, databases  # pylint: disable=import-outside-toplevel
+
+    # No-Authentication (probes only)
+    noauth.include_router(probes.noauth, prefix="/v1", tags=["Probes"])
+
+    # Authenticated
+    auth.include_router(databases.auth, prefix="/v1/databases", tags=["Databases"])
+    auth.include_router(settings.auth, prefix="/v1/settings", tags=["Settings"])
+
 #############################################################################
 # APP FACTORY
 #############################################################################
-def create_app() -> FastAPI:
+def create_app(config: str = None) -> FastAPI:
     """Create and configure the FastAPI app."""
+    if not config:
+        config = configfile.config_file_path()
+    config_file = Path(os.getenv("CONFIG_FILE", config))
+    configfile.ConfigStore.load_from_file(config_file)
+
     app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
         docs_url="/v1/docs",
@@ -173,8 +189,18 @@ def create_app() -> FastAPI:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=configfile.config_file_path(),
+        help="Full path to configuration file (JSON)",
+    )
+    args = parser.parse_args()
+
     PORT = int(os.getenv("API_SERVER_PORT", "8000"))
     logger.info("API Server Using port: %i", PORT)
 
-    app = create_app()
+    app = create_app(args.config)
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
