@@ -17,6 +17,7 @@ logger = logging_config.logging.getLogger("api.core.database")
 
 def get_databases(
     name: Optional[schema.DatabaseNameType] = None,
+    validate: bool = True
 ) -> Union[list[schema.Database], schema.Database, None]:
     """
     Return all Database objects if `name` is not provided,
@@ -28,15 +29,16 @@ def get_databases(
     for db in database_objects:      
         if name and db.name != name:
             continue
-        try:
-            db_conn = databases.connect(db)
-            db.vector_stores = embed.get_vs(db_conn)
-            db.selectai = selectai.enabled(db_conn)
-            if db.selectai:
-                db.selectai_profiles = selectai.get_profiles(db_conn)
-        except databases.DbException as ex:
-            logger.debug("Skipping Database %s - exception: %s", db.name, str(ex))
-            db.connected = False
+        if validate:
+            try:
+                db_conn = databases.connect(db)
+                db.vector_stores = embed.get_vs(db_conn)
+                db.selectai = selectai.enabled(db_conn)
+                if db.selectai:
+                    db.selectai_profiles = selectai.get_profiles(db_conn)
+            except databases.DbException as ex:
+                logger.debug("Skipping Database %s - exception: %s", db.name, str(ex))
+                db.connected = False
         if name:
             return db  # Return the matched, connected DB immediately
 

@@ -74,7 +74,7 @@ async def databases_update(name: schema.DatabaseNameType, payload: schema.Databa
     db.set_connection(db_conn)
 
     # Unset and disconnect other databases
-    database_objects = core_databases.get_databases()
+    database_objects = core_databases.get_databases(validate=False)
     for other_db in database_objects:
         if other_db.name != name and other_db.connection:
             other_db.set_connection(util_databases.disconnect(db.connection))
