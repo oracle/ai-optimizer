@@ -7,11 +7,11 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 import json
 
 from oracledb import Connection
-import server.utils.databases as databases
+import server.api.util.databases as databases
 from common.schema import ClientIdType
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("server.utils.testbed")
+logger = logging_config.logging.getLogger("server.api.util.settings")
 
 
 def create_settings_objects(db_conn: Connection) -> None:

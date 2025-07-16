@@ -18,7 +18,7 @@ def create_client_settings(client: schema.ClientIdType) -> schema.Settings:
     """Create a new client"""
     settings_objects = bootstrap.SETTINGS_OBJECTS
     if any(settings.client == client for settings in settings_objects):
-        raise ValueError(f"Client: {client} already exists.")
+        raise ValueError(f"client {client} already exists")
 
     default_settings = next((settings for settings in settings_objects if settings.client == "default"), None)
     # Copy the default settings
@@ -34,7 +34,7 @@ def get_client_settings(client: schema.ClientIdType) -> schema.Settings:
     settings_objects = bootstrap.SETTINGS_OBJECTS
     client_settings = next((settings for settings in settings_objects if settings.client == client), None)
     if not client_settings:
-        raise ValueError(f"Client: {client} not found.")
+        raise ValueError(f"client {client} not found")
 
     return client_settings
 

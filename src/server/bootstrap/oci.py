@@ -9,7 +9,7 @@ import configparser
 import oci
 
 from server.bootstrap.configfile import ConfigStore
-import server.api.core.oci as server_oci
+import server.api.util.oci as util_oci
 
 import common.logging_config as logging_config
 from common.schema import OracleCloudSettings
@@ -29,18 +29,17 @@ def main() -> list[OracleCloudSettings]:
     config_parser = configparser.ConfigParser()
     try:
         config_parser.read(file)
+        sections = config_parser.sections() + ["DEFAULT"]
+        for section in sections:
+            logger.debug("Evaluating OCI Profile: %s", section)
+            try:
+                profile_data = oci.config.from_file(file_location=file, profile_name=section)
+            except oci.exceptions.InvalidKeyFilePath:
+                continue
+            profile_data["auth_profile"] = section
+            config.append(profile_data)
     except oci.exceptions.ConfigFileNotFound:
         pass  # ignore if missing
-
-    sections = config_parser.sections() + ["DEFAULT"]
-    for section in sections:
-        logger.debug("Evaluating OCI Profile: %s", section)
-        try:
-            profile_data = oci.config.from_file(file_location=file, profile_name=section)
-        except oci.exceptions.InvalidKeyFilePath:
-            continue
-        profile_data["auth_profile"] = section
-        config.append(profile_data)
 
     # Override DEFAULT with ConfigStore OCI configs if available
     configuration = ConfigStore.get()
@@ -114,8 +113,8 @@ def main() -> list[OracleCloudSettings]:
 
         if oci_config.auth_profile == oci.config.DEFAULT_PROFILE:
             try:
-                oci_config.namespace = server_oci.get_namespace(oci_config)
-            except server_oci.OciException:
+                oci_config.namespace = util_oci.get_namespace(oci_config)
+            except util_oci.OciException:
                 logger.warning("Failed to get namespace for DEFAULT OCI profile")
                 continue
 

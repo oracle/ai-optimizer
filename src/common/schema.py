@@ -82,10 +82,10 @@ class Database(DatabaseAuth):
     name: str = Field(default="DEFAULT", description="Name of Database (Alias)")
     connected: bool = Field(default=False, description="Connection Established", readOnly=True)
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
-        default=None, description="Vector Storage (read-only)", readOnly=True
+        default=[], description="Vector Storage (read-only)", readOnly=True
     )
     selectai: bool = Field(default=False, description="SelectAI Possible")
-    selectai_profiles: Optional[list] = Field(default=None, description="SelectAI Profiles (read-only)", readOnly=True)
+    selectai_profiles: Optional[list] = Field(default=[], description="SelectAI Profiles (read-only)", readOnly=True)
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
 

@@ -18,11 +18,11 @@ from giskard.llm import set_llm_model, set_embedding_model
 from giskard.rag import generate_testset, KnowledgeBase, QATestset
 from giskard.rag.question_generators import simple_questions, complex_questions
 
-from server.api.core import databases
+from server.api.util import databases
 import common.schema as schema
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("api.core.testbed")
+logger = logging_config.logging.getLogger("api.util.testbed")
 
 
 def jsonl_to_json_content(content: str) -> json:

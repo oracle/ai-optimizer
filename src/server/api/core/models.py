@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ollama, pplx, huggingface, genai, giskard
 
-from typing import Optional
+from typing import Optional, Union
 
 from openai import OpenAI
 
@@ -18,7 +18,8 @@ from langchain_community.embeddings.oci_generative_ai import OCIGenAIEmbeddings
 
 from giskard.llm.client.openai import OpenAIClient
 
-from server.api.core import bootstrap, oci
+from server.api.core import bootstrap
+from server.api.util import oci
 import common.schema as schema
 import common.logging_config as logging_config
 
@@ -31,28 +32,34 @@ logger = logging_config.logging.getLogger("api.core.models")
 def get_model(
     model_name: Optional[schema.ModelNameType] = None,
     model_type: Optional[schema.ModelTypeType] = None,
-) -> list[schema.Model]:
+) -> Union[list[schema.Model], schema.Model, None]:
     """Used in direct call from list_models and agents.models"""
     model_objects = bootstrap.MODEL_OBJECTS
 
     logger.debug("%i models are defined", len(model_objects))
 
-    model_objects = [
+    model_filtered = [
         model
         for model in model_objects
         if (model_name is None or model.name == model_name) and (model_type is None or model.type == model_type)
     ]
-    logger.debug("%i models after filtering", len(model_objects))
+    logger.debug("%i models after filtering", len(model_filtered))
 
-    if not model_objects:
-        raise ValueError(f"Model: {model_name} not found.")
+    if model_name and not model_filtered:
+        raise ValueError(f"{model_name} not found")
+    if model_type and not model_filtered:
+        raise ValueError(f"{model_type} not found")
 
-    return model_objects
+    if len(model_filtered) == 1:
+        return model_filtered[0]
+
+    return model_filtered
 
 
 def create_model(model: schema.Model) -> schema.Model:
     """Create a new Model definition"""
     model_objects = bootstrap.MODEL_OBJECTS
+
     if any(d.name == model.name for d in model_objects):
         raise ValueError(f"Model: {model.name} already exists.")
 
@@ -64,7 +71,7 @@ def create_model(model: schema.Model) -> schema.Model:
         model.openai_compat = openai_compat
     model_objects.append(model)
 
-    return get_model(model)
+    return get_model(model_name=model.name, model_type=model.type)
 
 
 def delete_model(name: schema.ModelNameType) -> None:
@@ -176,7 +183,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
         else:
             logger.debug("Searching for %s in %s", model_api, model_classes)
             client = model_classes[model_api]()
-            logger.debug("schema.Model Client: %s", client)
+            logger.debug("Model Client: %s", client)
         return client
     except (UnboundLocalError, KeyError):
         logger.error("Unable to find client; expect trouble!")

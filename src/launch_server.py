@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore fastapi, laddr, checkpointer, langgraph, litellm, noauth, apiserver, configfile
+# spell-checker:ignore fastapi, laddr, checkpointer, langgraph, litellm, noauth, apiserver, configfile, selectai
 # pylint: disable=redefined-outer-name,wrong-import-position
 
 import os
@@ -147,15 +147,24 @@ def verify_key(
 
 
 def register_endpoints(noauth: APIRouter, auth: APIRouter):
-    """Register API Endpoints - Imports to avoid bootstrapping before config file read"""
-    from server.api.v1 import probes, settings, databases  # pylint: disable=import-outside-toplevel
+    """Register API Endpoints - Imports to avoid bootstrapping before config file read
+       New endpoints need to be registered in server.api.v1.__init__.py
+    """
+    import server.api.v1 as api_v1 # pylint: disable=import-outside-toplevel
 
     # No-Authentication (probes only)
-    noauth.include_router(probes.noauth, prefix="/v1", tags=["Probes"])
+    noauth.include_router(api_v1.probes.noauth, prefix="/v1", tags=["Probes"])
 
     # Authenticated
-    auth.include_router(databases.auth, prefix="/v1/databases", tags=["Databases"])
-    auth.include_router(settings.auth, prefix="/v1/settings", tags=["Settings"])
+    auth.include_router(api_v1.chat.auth, prefix="/v1/chat", tags=["Chatbot"])
+    auth.include_router(api_v1.databases.auth, prefix="/v1/databases", tags=["Config - Databases"])
+    auth.include_router(api_v1.embed.auth, prefix="/v1/embed", tags=["Embeddings"])
+    auth.include_router(api_v1.settings.auth, prefix="/v1/selectai", tags=["SelectAI"])
+    auth.include_router(api_v1.models.auth, prefix="/v1/models", tags=["Config - Models"])
+    auth.include_router(api_v1.oci.auth, prefix="/v1/oci", tags=["Config - Oracle Cloud Infrastructure"])
+    auth.include_router(api_v1.prompts.auth, prefix="/v1/prompts", tags=["Tools - Prompts"])
+    auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
+    auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Settings"])
 
 #############################################################################
 # APP FACTORY

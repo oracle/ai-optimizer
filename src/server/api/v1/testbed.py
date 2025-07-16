@@ -17,7 +17,8 @@ from fastapi import APIRouter, HTTPException, Header, UploadFile
 from fastapi.responses import JSONResponse
 import litellm
 from langchain_core.messages import ChatMessage
-from server.api.core import settings, databases, testbed, selectai, models, embed, oci
+from server.api.core import settings, databases, models, oci
+from server.api.util import embed, testbed
 from server.api.v1 import chat
 
 
@@ -29,14 +30,14 @@ logger = logging_config.logging.getLogger("endpoints.v1.testbed")
 auth = APIRouter()
 
 
-@auth.get("/v1/testbed/testsets", description="Get Stored TestSets.", response_model=list[schema.TestSets])
+@auth.get("/testsets", description="Get Stored TestSets.", response_model=list[schema.TestSets])
 async def testbed_testsets(client: schema.ClientIdType = Header(default="server")) -> list[schema.TestSets]:
     """Get a list of stored TestSets, create TestSet objects if they don't exist"""
     testsets = testbed.get_testsets(db_conn=databases.get_client_db(client).connection)
     return testsets
 
 
-@auth.get("/v1/testbed/evaluations", description="Get Stored Evaluations.", response_model=list[schema.Evaluation])
+@auth.get("/evaluations", description="Get Stored Evaluations.", response_model=list[schema.Evaluation])
 async def testbed_evaluations(
     tid: schema.TestSetsIdType, client: schema.ClientIdType = Header(default="server")
 ) -> list[schema.Evaluation]:
@@ -46,7 +47,7 @@ async def testbed_evaluations(
 
 
 @auth.get(
-    "/v1/testbed/evaluation",
+    "/evaluation",
     description="Get Stored Single schema.Evaluation.",
     response_model=schema.EvaluationReport,
 )
@@ -58,7 +59,7 @@ async def testbed_evaluation(
     return evaluation
 
 
-@auth.get("/v1/testbed/testset_qa", description="Get Stored schema.TestSets Q&A.", response_model=schema.TestSetQA)
+@auth.get("/testset_qa", description="Get Stored schema.TestSets Q&A.", response_model=schema.TestSetQA)
 async def testbed_testset_qa(
     tid: schema.TestSetsIdType, client: schema.ClientIdType = Header(default="server")
 ) -> schema.TestSetQA:
@@ -66,7 +67,7 @@ async def testbed_testset_qa(
     return testbed.get_testset_qa(db_conn=databases.get_client_db(client).connection, tid=tid.upper())
 
 
-@auth.delete("/v1/testbed/testset_delete/{tid}", description="Delete a TestSet")
+@auth.delete("/testset_delete/{tid}", description="Delete a TestSet")
 async def testbed_delete_testset(
     tid: Optional[schema.TestSetsIdType] = None, client: schema.ClientIdType = Header(default="server")
 ) -> JSONResponse:
@@ -75,7 +76,7 @@ async def testbed_delete_testset(
     return JSONResponse(status_code=200, content={"message": f"TestSet: {tid} deleted."})
 
 
-@auth.post("/v1/testbed/testset_load", description="Upsert TestSets.", response_model=schema.TestSetQA)
+@auth.post("/testset_load", description="Upsert TestSets.", response_model=schema.TestSetQA)
 async def testbed_upsert_testsets(
     files: list[UploadFile],
     name: schema.TestSetsNameType,
@@ -99,7 +100,7 @@ async def testbed_upsert_testsets(
     return testset_qa
 
 
-@auth.post("/v1/testbed/testset_generate", description="Generate Q&A Test Set.", response_model=schema.TestSetQA)
+@auth.post("/testset_generate", description="Generate Q&A Test Set.", response_model=schema.TestSetQA)
 async def testbed_generate_qa(
     files: list[UploadFile],
     name: schema.TestSetsNameType,
@@ -154,7 +155,7 @@ async def testbed_generate_qa(
 
 
 @auth.post(
-    "/v1/testbed/evaluate",
+    "/evaluate",
     description="Evaluate Q&A Test Set.",
     response_model=schema.EvaluationReport,
 )
@@ -211,42 +212,3 @@ def testbed_evaluate_qa(
     shutil.rmtree(temp_directory)
 
     return testbed.process_report(db_conn=db_conn, eid=eid)
-
-
-#################################################
-# selectai Endpoints
-#################################################
-@auth.get(
-    "/v1/selectai/objects",
-    description="Get SelectAI Profile Object List",
-    response_model=list[schema.DatabaseSelectAIObjects],
-)
-async def selectai_get_objects(
-    client: schema.ClientIdType = Header(default="server"),
-) -> list[schema.DatabaseSelectAIObjects]:
-    """Get DatabaseSelectAIObjects"""
-    client_settings = settings.get_client_settings(client)
-    db_conn = databases.get_client_db(client).connection
-    select_ai_objects = selectai.get_objects(db_conn, client_settings.selectai.profile)
-    return select_ai_objects
-
-
-@auth.patch(
-    "/v1/selectai/objects",
-    description="Update SelectAI Profile Object List",
-    response_model=list[schema.DatabaseSelectAIObjects],
-)
-async def selectai_update_objects(
-    payload: list[schema.DatabaseSelectAIObjects],
-    client: schema.ClientIdType = Header(default="server"),
-) -> list[schema.DatabaseSelectAIObjects]:
-    """Update DatabaseSelectAIObjects"""
-    logger.debug("Received selectai_update - payload: %s", payload)
-    client_settings = settings.get_client_settings(client)
-    object_list = json.dumps([obj.model_dump(include={"owner", "name"}) for obj in payload])
-    db_conn = databases.get_client_db(client).connection
-    selectai.set_profile(db_conn, client_settings.selectai.profile, "object_list", object_list)
-    return selectai.get_objects(db_conn, client_settings.selectai.profile)
-
-
-logger.info("Endpoints Loaded.")

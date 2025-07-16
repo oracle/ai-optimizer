@@ -14,7 +14,9 @@ from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 import requests
 
-from server.api.core import embed, oci, databases, models
+from server.api.core import oci, models, databases
+from server.api.util.databases import DbException
+from server.api.util import embed
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -24,18 +26,21 @@ logger = logging_config.logging.getLogger("api.v1.embed")
 auth = APIRouter()
 
 
-@auth.delete("/v1/embed/{vs}", description="Drop Vector Store")
+@auth.delete("/{vs}", description="Drop Vector Store")
 async def embed_drop_vs(
     vs: schema.VectorStoreTableType, client: schema.ClientIdType = Header(default="server")
 ) -> JSONResponse:
     """Drop Vector Storage"""
     logger.debug("Received %s embed_drop_vs: %s", client, vs)
-    embed.drop_vs(client, vs)
+    try:
+        embed.drop_vs(client, vs)
+    except DbException as ex:
+        raise HTTPException(status_code=400, detail=f"Embed: {str(ex)}.") from ex
     return JSONResponse(status_code=200, content={"message": f"Vector Store: {vs} dropped."})
 
 
 @auth.post(
-    "/v1/embed/web/store",
+    "/web/store",
     description="Store Web Files for Embedding.",
 )
 async def store_web_file(request: list[HttpUrl], client: schema.ClientIdType = Header(default="server")) -> Response:
@@ -46,7 +51,9 @@ async def store_web_file(request: list[HttpUrl], client: schema.ClientIdType = H
     # Save the file temporarily
     for url in request:
         filename = Path(urlparse(str(url)).path).name
-        response = requests.get(url, timeout=60)
+        request_timeout = 60
+        logger.debug("Requesting: %s (timeout in %is)", url, request_timeout)
+        response = requests.get(url, timeout=request_timeout)
         content_type = response.headers.get("Content-Type", "").lower()
 
         if "application/pdf" in content_type or "application/octet-stream" in content_type:
@@ -67,7 +74,7 @@ async def store_web_file(request: list[HttpUrl], client: schema.ClientIdType = H
 
 
 @auth.post(
-    "/v1/embed/local/store",
+    "/local/store",
     description="Store Local Files for Embedding.",
 )
 async def store_local_file(
@@ -87,7 +94,7 @@ async def store_local_file(
 
 
 @auth.post(
-    "/v1/embed",
+    "/",
     description="Split and Embed Corpus.",
 )
 async def split_embed(
@@ -106,12 +113,12 @@ async def split_embed(
     except FileNotFoundError as ex:
         raise HTTPException(
             status_code=404,
-            detail=f"Client: {client} documents folder not found.",
+            detail=f"Embed: Client {client} documents folder not found.",
         ) from ex
     if not files:
         raise HTTPException(
             status_code=404,
-            detail=f"Client: {client} no files found in folder.",
+            detail=f"Embed: Client {client} no files found in folder.",
         )
     try:
         split_docos, _ = embed.load_and_split_documents(
@@ -122,7 +129,7 @@ async def split_embed(
             write_json=False,
             output_dir=None,
         )
-        
+
         embed_client = models.get_client({"model": request.model, "enabled": True}, oci_config)
 
         # Calculate and set the vector_store name using get_vs_table

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import TEST_CONFIG
 from langchain_core.embeddings import Embeddings
-from common.functions import get_vs_table
+from server.api.util.embed import get_vs_table
 
 # Common test constants
 DEFAULT_TEST_CONTENT = (
@@ -112,7 +112,7 @@ class TestEndpoints:
         """Create mock embeddings and get_client function"""
         mock_embeddings = self.MockEmbeddings(mock_embedding_model)
 
-        async def mock_get_client(model_objects=None, model_config=None, oci_config=None, giskard=False):
+        async def mock_get_client(model_config=None, oci_config=None, giskard=False):
             return mock_embeddings
 
         return mock_get_client
@@ -290,9 +290,7 @@ class TestEndpoints:
     def test_store_web_file(self, client, auth_headers):
         """Test storing web files for embedding"""
         # Test URL
-        test_url = (
-            "https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/ai-vector-search-users-guide.pdf"
-        )
+        test_url = "https://docs.oracle.com/en/database/oracle/oracle-database/23/jjucp/universal-connection-pool-developers-guide.pdf"
 
         # Make the request
         response = client.post("/v1/embed/web/store", headers=auth_headers["valid_auth"], json=[test_url])
@@ -300,12 +298,12 @@ class TestEndpoints:
         # Verify the response
         assert response.status_code == 200
         stored_files = response.json()
-        assert "ai-vector-search-users-guide.pdf" in stored_files
+        assert "universal-connection-pool-developers-guide.pdf" in stored_files
 
         # Verify the file was actually created in the temporary directory
         client_id = TEST_CONFIG["client"]
         embed_dir = Path("/tmp") / client_id / "embedding"
-        file_path = embed_dir / "ai-vector-search-users-guide.pdf"
+        file_path = embed_dir / "universal-connection-pool-developers-guide.pdf"
         assert file_path.exists(), f"File {file_path} was not created in the temporary directory"
         assert file_path.is_file(), f"Path {file_path} exists but is not a file"
         assert file_path.stat().st_size > 0, f"File {file_path} exists but is empty"
@@ -371,7 +369,7 @@ class TestEndpoints:
         # Test data
         test_data = self.create_embed_params("test_mixed_files")
 
-        with patch("server.utils.models.get_client", side_effect=mock_get_client):
+        with patch("server.api.core.models.get_client", side_effect=mock_get_client):
             # Make request to the split_embed endpoint
             response = client.post("/v1/embed", headers=auth_headers["valid_auth"], json=test_data)
 
@@ -403,7 +401,7 @@ class TestEndpoints:
         # Calculate the expected vector store name
         expected_vector_store_name = self.get_vector_store_name(alias)
 
-        with patch("server.utils.models.get_client", side_effect=mock_get_client):
+        with patch("server.api.core.models.get_client", side_effect=mock_get_client):
             # Step 1: Create the vector store by embedding documents
             response = client.post("/v1/embed", headers=auth_headers["valid_auth"], json=test_data)
             assert response.status_code == 200
@@ -435,7 +433,7 @@ class TestEndpoints:
         # Calculate expected vector store names
         expected_vector_store_names = [self.get_vector_store_name(alias) for alias in aliases]
 
-        with patch("server.utils.models.get_client", side_effect=mock_get_client):
+        with patch("server.api.core.models.get_client", side_effect=mock_get_client):
             # Create multiple vector stores with different aliases
             for alias in aliases:
                 # Create a test file for each request (since previous ones were cleaned up)

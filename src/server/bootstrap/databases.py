@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import os
 from server.bootstrap.configfile import ConfigStore
-from server.api.core import databases, embed, selectai
+from server.api.util import databases, selectai, embed
 from common.schema import Database
 import common.logging_config as logging_config
 
@@ -19,7 +19,7 @@ def main() -> list[Database]:
     configuration = ConfigStore.get()
     db_configs = configuration.database_configs if configuration and configuration.database_configs else []
 
-    # Check for Duplicates
+    # Check for Duplicates from Configfile
     seen = set()
     for db in db_configs:
         db_name_lower = db.name.lower()
@@ -81,6 +81,7 @@ def main() -> list[Database]:
         else:
             db.set_connection(conn)
 
+    logger.debug("Bootstrapped Databases: %s", database_objects)
     logger.debug("*** Bootstrapping Database - End")
     return database_objects
 

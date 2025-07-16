@@ -10,13 +10,14 @@ from typing import Literal, AsyncGenerator
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
-from server.api.core import selectai, settings, oci, models, prompts, databases
+from server.api.core import settings, oci, models, prompts, databases
 
 import common.schema as schema
 import common.logging_config as logging_config
 import server.agents.chatbot as chatbot
+from server.api.util import selectai
 
-logger = logging_config.logging.getLogger("api.core.chat")
+logger = logging_config.logging.getLogger("api.util.chat")
 
 
 async def completion_generator(

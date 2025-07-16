@@ -18,7 +18,7 @@ auth = APIRouter()
 
 
 @auth.get(
-    "/v1/prompts",
+    "/",
     description="Get all prompt configurations",
     response_model=list[schema.Prompt],
 )
@@ -28,8 +28,9 @@ async def prompts_list(
     """List all prompts after applying filters if specified"""
     return prompts.get_prompts(category=category)
 
+
 @auth.get(
-    "/v1/prompts/{category}/{name}",
+    "/{category}/{name}",
     description="Get single prompt configuration",
     response_model=schema.Prompt,
 )
@@ -38,10 +39,11 @@ async def prompts_get(category: schema.PromptCategoryType, name: schema.PromptNa
     try:
         return prompts.get_prompts(category=category, name=name)
     except ValueError as ex:
-        raise HTTPException(status_code=404, detail=str(ex)) from ex
+        raise HTTPException(status_code=404, detail=f"Prompt: {str(ex)}.") from ex
+
 
 @auth.patch(
-    "/v1/prompts/{category}/{name}",
+    "/{category}/{name}",
     description="Update Prompt Configuration",
     response_model=schema.Prompt,
 )

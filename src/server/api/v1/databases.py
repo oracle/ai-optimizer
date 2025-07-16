@@ -6,7 +6,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from fastapi import APIRouter, HTTPException
 
-from server.api.core import databases
+import server.api.util.databases as util_databases
+import server.api.core.databases as core_databases
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -21,25 +22,24 @@ async def databases_list() -> list[schema.Database]:
     """List all databases"""
     logger.debug("Received databases_list")
     try:
-        database_objects = databases.get_databases()
+        database_objects = core_databases.get_databases()
     except ValueError as ex:
-        raise HTTPException(status_code=404, detail=f"Databases: {str(ex)}.") from ex
+        # This is a problem, there should always be a "DEFAULT" database even if not configured
+        raise HTTPException(status_code=404, detail=f"Database: {str(ex)}.") from ex
 
     return database_objects
 
 
 @auth.get(
-    "/{name}",
-    description="Get single database configuration and vector storage",
-    response_model=schema.Database,
+    "/{name}", description="Get single database configuration and vector storage", response_model=schema.Database
 )
 async def databases_get(name: schema.DatabaseNameType) -> schema.Database:
     """Get single database"""
     logger.debug("Received databases_get - name: %s", name)
     try:
-        db = databases.get_databases(name)
+        db = core_databases.get_databases(name)
     except ValueError as ex:
-        raise HTTPException(status_code=404, detail=f"Databases: {str(ex)}.") from ex
+        raise HTTPException(status_code=404, detail=f"Database: {str(ex)}.") from ex
 
     return db
 
@@ -53,15 +53,17 @@ async def databases_update(name: schema.DatabaseNameType, payload: schema.Databa
     """Update Database"""
     logger.debug("Received databases_update - name: %s; payload: %s", name, payload)
 
-    db = databases.get_databases(name)
-    if not db:
-        raise HTTPException(status_code=404, detail=f"Database: {name} not found.")
+    try:
+        db = core_databases.get_databases(name)
+    except ValueError as ex:
+        raise HTTPException(status_code=404, detail=f"Database: {str(ex)}.") from ex
 
     try:
         payload.config_dir = db.config_dir
         payload.wallet_location = db.wallet_location
-        db_conn = databases.connect(payload)
-    except databases.DbException as ex:
+        logger.debug("Testing Payload: %s", payload)
+        db_conn = util_databases.connect(payload)
+    except util_databases.DbException as ex:
         db.connected = False
         raise HTTPException(status_code=ex.status_code, detail=f"Database: {name} {ex.detail}.") from ex
     db.user = payload.user
@@ -72,10 +74,10 @@ async def databases_update(name: schema.DatabaseNameType, payload: schema.Databa
     db.set_connection(db_conn)
 
     # Unset and disconnect other databases
-    database_objects = databases.get_databases()
+    database_objects = core_databases.get_databases()
     for other_db in database_objects:
         if other_db.name != name and other_db.connection:
-            other_db.set_connection(databases.disconnect(db.connection))
+            other_db.set_connection(util_databases.disconnect(db.connection))
             other_db.connected = False
 
     return db

@@ -17,7 +17,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
-from server.api.core import chat
+from server.api.util import chat
 import server.agents.chatbot as chatbot
 
 import common.schema as schema
@@ -29,7 +29,7 @@ auth = APIRouter()
 
 
 @auth.post(
-    "/v1/chat/completions",
+    "/completions",
     description="Submit a message for full completion.",
     response_model=schema.ChatResponse,
 )
@@ -44,7 +44,7 @@ async def chat_post(
 
 
 @auth.post(
-    "/v1/chat/streams",
+    "/streams",
     description="Submit a message for streamed completion.",
     response_class=StreamingResponse,
     include_in_schema=False,
@@ -60,7 +60,7 @@ async def chat_stream(
 
 
 @auth.patch(
-    "/v1/chat/history",
+    "/history",
     description="Delete Chat History",
     response_model=list[schema.ChatMessage],
 )
@@ -82,7 +82,7 @@ async def chat_history_clean(client: schema.ClientIdType = Header(default="serve
 
 
 @auth.get(
-    "/v1/chat/history",
+    "/history",
     description="Get Chat History",
     response_model=list[schema.ChatMessage],
 )

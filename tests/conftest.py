@@ -27,6 +27,7 @@ TEST_CONFIG = {
 }
 
 # Environments for Client/Server
+os.environ["CONFIG_FILE"] = "/non/existant/path/config.json"  # Prevent picking up an exported settings file
 os.environ["OCI_CLI_CONFIG_FILE"] = "/non/existant/path"  # Prevent picking up default OCI config file
 os.environ["API_SERVER_KEY"] = TEST_CONFIG["auth_token"]
 os.environ["API_SERVER_URL"] = "http://localhost"

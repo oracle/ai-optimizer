@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore
 
-from typing import Optional
+from typing import Optional, Union
 from server.api.core import bootstrap
 
 import common.schema as schema
@@ -16,9 +16,9 @@ logger = logging_config.logging.getLogger("api.core.prompts")
 def get_prompts(
     category: Optional[schema.PromptCategoryType] = None,
     name: Optional[schema.PromptNameType] = None
-) -> list[schema.Prompt]:
+) -> Union[list[schema.Prompt], schema.Prompt, None]:
     """
-    Return prompts filtered by category and optionally name.
+    Return prompt filtered by category and optionally name.
     If neither is provided, return all prompts.
     """
     prompt_objects = bootstrap.PROMPT_OBJECTS
@@ -34,8 +34,9 @@ def get_prompts(
 
     if name is not None:
         logger.info("Further filtering prompts by name: %s", name)
-        prompts_filtered = [p for p in prompts_filtered if p.name == name]
-        if not prompts_filtered:
-            raise ValueError(f"Prompt: {name} ({category}) not found.")
+        prompt = next((p for p in prompts_filtered if p.name == name), None)
+        if prompt is None:
+            raise ValueError(f"{name} ({category}) not found")
+        prompts_filtered = prompt
 
     return prompts_filtered
