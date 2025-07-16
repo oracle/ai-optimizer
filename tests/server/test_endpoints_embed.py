@@ -112,7 +112,7 @@ class TestEndpoints:
         """Create mock embeddings and get_client function"""
         mock_embeddings = self.MockEmbeddings(mock_embedding_model)
 
-        async def mock_get_client(model_config=None, oci_config=None, giskard=False):
+        def mock_get_client(model_config=None, oci_config=None, giskard=False):
             return mock_embeddings
 
         return mock_get_client
