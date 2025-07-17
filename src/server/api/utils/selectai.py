@@ -8,10 +8,10 @@ from typing import Union
 import oracledb
 from common.schema import SelectAIProfileType, DatabaseSelectAIObjects
 import common.logging_config as logging_config
-import server.api.util.databases as databases
+import server.api.utils.databases as databases
 
 
-logger = logging_config.logging.getLogger("api.util.selectai")
+logger = logging_config.logging.getLogger("api.utils.selectai")
 
 
 def enabled(conn: oracledb.Connection) -> bool:

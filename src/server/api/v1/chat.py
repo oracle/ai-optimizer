@@ -17,7 +17,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
-from server.api.util import chat
+from server.api.utils import chat
 import server.agents.chatbot as chatbot
 
 import common.schema as schema

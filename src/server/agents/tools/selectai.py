@@ -11,7 +11,7 @@ from langchain_core.tools import BaseTool, tool
 from langchain_core.runnables import RunnableConfig
 
 import common.logging_config as logging_config
-from server.api.util.databases import execute_sql
+from server.api.utils.databases import execute_sql
 
 logger = logging_config.logging.getLogger("server.tools.selectai_executor")
 

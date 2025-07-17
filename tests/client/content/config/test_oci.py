@@ -36,7 +36,7 @@ def _mock_api_call_get():
 @pytest.fixture(name="mock_server_get_namespace", autouse=True)
 def _mock_server_get_namespace():
     """Mock server_oci.get_namespace to always return test_namespace"""
-    with patch("server.api.util.oci.get_namespace", return_value="test_namespace") as mock:
+    with patch("server.api.utils.oci.get_namespace", return_value="test_namespace") as mock:
         yield mock
 
 

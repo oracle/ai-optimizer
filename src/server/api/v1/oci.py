@@ -9,8 +9,8 @@ from fastapi.responses import JSONResponse
 
 from server.api.core import models
 import server.api.core.oci as core_oci
-from server.api.util import embed
-import server.api.util.oci as util_oci
+from server.api.utils import embed
+import server.api.utils.oci as util_oci
 
 import common.schema as schema
 import common.logging_config as logging_config

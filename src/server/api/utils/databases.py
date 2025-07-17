@@ -9,7 +9,7 @@ import oracledb
 import common.schema as schema
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("api.util.database")
+logger = logging_config.logging.getLogger("api.utils.database")
 
 
 class DbException(Exception):

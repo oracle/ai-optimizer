@@ -28,14 +28,14 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
 
 import server.api.core.databases as core_databases
-import server.api.util.databases as util_databases
+import server.api.utils.databases as util_databases
 
 import common.functions
 import common.schema as schema
 
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("api.util.embed")
+logger = logging_config.logging.getLogger("api.utils.embed")
 
 
 def get_vs_table(

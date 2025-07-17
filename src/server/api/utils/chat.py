@@ -15,9 +15,9 @@ from server.api.core import settings, oci, models, prompts, databases
 import common.schema as schema
 import common.logging_config as logging_config
 import server.agents.chatbot as chatbot
-from server.api.util import selectai
+from server.api.utils import selectai
 
-logger = logging_config.logging.getLogger("api.util.chat")
+logger = logging_config.logging.getLogger("api.utils.chat")
 
 
 async def completion_generator(

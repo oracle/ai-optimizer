@@ -4,9 +4,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 
 import json
-from typing import Optional, Union
+from typing import Union
 
-from fastapi import APIRouter, Body, HTTPException, Query, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile
 from fastapi.responses import JSONResponse
 
 from server.api.core import settings

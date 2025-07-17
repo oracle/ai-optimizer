@@ -18,11 +18,11 @@ from giskard.llm import set_llm_model, set_embedding_model
 from giskard.rag import generate_testset, KnowledgeBase, QATestset
 from giskard.rag.question_generators import simple_questions, complex_questions
 
-from server.api.util import databases
+from server.api.utils import databases
 import common.schema as schema
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("api.util.testbed")
+logger = logging_config.logging.getLogger("api.utils.testbed")
 
 
 def jsonl_to_json_content(content: str) -> json:
@@ -234,7 +234,9 @@ def load_and_split(eval_file, chunk_size=2048):
     return text_nodes
 
 
-def build_knowledge_base(text_nodes: str, questions: int, ll_model: schema.Model, embed_model: schema.Model) -> QATestset:
+def build_knowledge_base(
+    text_nodes: str, questions: int, ll_model: schema.Model, embed_model: schema.Model
+) -> QATestset:
     """Establish a temporary Knowledge Base"""
 
     def configure_and_set_model(client_model):

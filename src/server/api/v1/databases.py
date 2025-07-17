@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from fastapi import APIRouter, HTTPException
 
-import server.api.util.databases as util_databases
+import server.api.utils.databases as util_databases
 import server.api.core.databases as core_databases
 
 import common.schema as schema

@@ -19,7 +19,7 @@ from langchain_community.embeddings.oci_generative_ai import OCIGenAIEmbeddings
 from giskard.llm.client.openai import OpenAIClient
 
 from server.api.core import bootstrap
-from server.api.util import oci
+from server.api.utils import oci
 import common.schema as schema
 import common.logging_config as logging_config
 

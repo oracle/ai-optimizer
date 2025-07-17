@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import os
 from server.bootstrap.configfile import ConfigStore
-from server.api.util import databases, selectai, embed
+from server.api.utils import databases, selectai, embed
 from common.schema import Database
 import common.logging_config as logging_config
 

@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 import litellm
 from langchain_core.messages import ChatMessage
 from server.api.core import settings, databases, models, oci
-from server.api.util import embed, testbed
+from server.api.utils import embed, testbed
 from server.api.v1 import chat
 
 

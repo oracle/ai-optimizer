@@ -58,7 +58,7 @@ def _mock_init_client():
     mock_client.get_namespace.return_value.data = "test_namespace"
     mock_client.get_object.return_value.data.raw.stream.return_value = [b"fake-data"]
 
-    with patch("server.api.util.oci.init_client", return_value=mock_client):
+    with patch("server.api.utils.oci.init_client", return_value=mock_client):
         yield mock_client
 
 
@@ -66,7 +66,7 @@ def _mock_init_client():
 def _mock_get_compartments():
     """Mock get_compartments"""
     with patch(
-        "server.api.util.oci.get_compartments",
+        "server.api.utils.oci.get_compartments",
         return_value={
             "compartment1": "ocid1.compartment.oc1..aaaaaaaagq33tv7wzyrjar6m5jbplejbdwnbjqfqvmocvjzsamuaqnkkoubq",
             "compartment1 / test": "ocid1.compartment.oc1..aaaaaaaaut53mlkpxo6vpv7z5qlsmbcc3qpdjvjzylzldtb6g3jia",
@@ -80,7 +80,7 @@ def _mock_get_compartments():
 def _mock_get_buckets():
     """Mock server_oci.get_buckets"""
     with patch(
-        "server.api.util.oci.get_buckets",
+        "server.api.utils.oci.get_buckets",
         return_value=["bucket1", "bucket2", "bucket3"],
     ) as mock:
         yield mock
@@ -90,7 +90,7 @@ def _mock_get_buckets():
 def _mock_get_bucket_objects():
     """Mock server_oci.get_bucket_objects"""
     with patch(
-        "server.api.util.oci.get_bucket_objects",
+        "server.api.utils.oci.get_bucket_objects",
         return_value=["object1.pdf", "object2.md", "object3.txt"],
     ) as mock:
         yield mock
@@ -99,14 +99,14 @@ def _mock_get_bucket_objects():
 @pytest.fixture(name="mock_get_namespace")
 def _mock_get_namespace():
     """Mock server_oci.get_namespace"""
-    with patch("server.api.util.oci.get_namespace", return_value="test_namespace") as mock:
+    with patch("server.api.utils.oci.get_namespace", return_value="test_namespace") as mock:
         yield mock
 
 
 @pytest.fixture(name="mock_get_object")
 def _mock_get_object():
     """Mock get_object to return a fake file path"""
-    with patch("server.api.util.oci.get_object") as mock:
+    with patch("server.api.utils.oci.get_object") as mock:
 
         def side_effect(temp_directory, object_name):
             fake_file = temp_directory / object_name

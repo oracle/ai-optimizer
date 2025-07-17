@@ -9,7 +9,7 @@ import configparser
 import oci
 
 from server.bootstrap.configfile import ConfigStore
-import server.api.util.oci as util_oci
+import server.api.utils.oci as util_oci
 
 import common.logging_config as logging_config
 from common.schema import OracleCloudSettings

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import TEST_CONFIG
 from langchain_core.embeddings import Embeddings
-from server.api.util.embed import get_vs_table
+from server.api.utils.embed import get_vs_table
 
 # Common test constants
 DEFAULT_TEST_CONTENT = (

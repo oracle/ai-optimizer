@@ -15,8 +15,8 @@ from pydantic import HttpUrl
 import requests
 
 from server.api.core import oci, models, databases
-from server.api.util.databases import DbException
-from server.api.util import embed
+from server.api.utils.databases import DbException
+from server.api.utils import embed
 
 import common.schema as schema
 import common.logging_config as logging_config

@@ -7,7 +7,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Optional, Union
 
 from server.api.core import bootstrap, settings
-from server.api.util import databases, embed, selectai
+from server.api.utils import databases, embed, selectai
 
 import common.schema as schema
 import common.logging_config as logging_config

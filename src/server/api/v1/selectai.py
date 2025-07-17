@@ -9,7 +9,7 @@ import json
 from fastapi import APIRouter, Header
 
 from server.api.core import settings, databases
-from server.api.util import selectai
+from server.api.utils import selectai
 
 import common.schema as schema
 import common.logging_config as logging_config
