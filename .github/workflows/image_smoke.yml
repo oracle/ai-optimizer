@@ -4,6 +4,7 @@ name: Validate Container Images
 on:
   pull_request:
     types:
+      - opened
       - synchronize
       - reopened
       - ready_for_review
@@ -16,6 +17,7 @@ on:
 
 jobs:
   image-build-test:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     # Block merging if the job fails
     permissions:
