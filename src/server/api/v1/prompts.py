@@ -18,7 +18,7 @@ auth = APIRouter()
 
 
 @auth.get(
-    "/",
+    "",
     description="Get all prompt configurations",
     response_model=list[schema.Prompt],
 )
@@ -34,7 +34,10 @@ async def prompts_list(
     description="Get single prompt configuration",
     response_model=schema.Prompt,
 )
-async def prompts_get(category: schema.PromptCategoryType, name: schema.PromptNameType) -> schema.Prompt:
+async def prompts_get(
+    category: schema.PromptCategoryType,
+    name: schema.PromptNameType,
+) -> schema.Prompt:
     """Get a single prompt"""
     try:
         return prompts.get_prompts(category=category, name=name)
@@ -48,7 +51,9 @@ async def prompts_get(category: schema.PromptCategoryType, name: schema.PromptNa
     response_model=schema.Prompt,
 )
 async def prompts_update(
-    category: schema.PromptCategoryType, name: schema.PromptNameType, payload: schema.PromptText
+    category: schema.PromptCategoryType,
+    name: schema.PromptNameType,
+    payload: schema.PromptText,
 ) -> schema.Prompt:
     """Update a single Prompt"""
     logger.debug("Received %s (%s) Prompt Payload: %s", name, category, payload)

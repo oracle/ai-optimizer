@@ -5,7 +5,14 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 
 import pytest
-from common.schema import Settings, LargeLanguageSettings, PromptSettings, VectorSearchSettings, SelectAISettings, OciSettings
+from common.schema import (
+    Settings,
+    LargeLanguageSettings,
+    PromptSettings,
+    VectorSearchSettings,
+    SelectAISettings,
+    OciSettings,
+)
 
 
 #############################################################################
@@ -30,7 +37,7 @@ class TestInvalidAuthEndpoints:
         ],
     )
     def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication."""
+        """Test endpoints require valide authentication"""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
 
@@ -49,12 +56,12 @@ class TestEndpoints:
         settings = response.json()
 
         # Verify the response contains the expected structure
-        assert settings["client_settings"]["client"] == "default"
-        assert "ll_model" in settings["client_settings"]
-        assert "prompts" in settings["client_settings"]
-        assert "vector_search" in settings["client_settings"]
-        assert "selectai" in settings["client_settings"]
-        assert "oci" in settings["client_settings"]
+        assert settings["client"] == "default"
+        assert "ll_model" in settings
+        assert "prompts" in settings
+        assert "vector_search" in settings
+        assert "selectai" in settings
+        assert "oci" in settings
 
     def test_settings_get_nonexistent_client(self, client, auth_headers):
         """Test getting settings for a non-existent client"""
@@ -80,11 +87,11 @@ class TestEndpoints:
         response = client.get("/v1/settings", headers=auth_headers["valid_auth"], params={"client": new_client})
         assert response.status_code == 200
         new_client_settings = response.json()
-        assert new_client_settings["client_settings"]["client"] == new_client
+        assert new_client_settings["client"] == new_client
 
         # Remove the client key to compare the rest
-        del default_settings["client_settings"]["client"]
-        del new_client_settings["client_settings"]["client"]
+        del default_settings["client"]
+        del new_client_settings["client"]
         assert default_settings == new_client_settings
 
     def test_settings_create_existing_client(self, client, auth_headers) -> None:
@@ -149,7 +156,7 @@ class TestEndpoints:
         response = client.patch(
             "/v1/settings",
             headers=auth_headers["valid_auth"],
-            json=default_settings["client_settings"],
+            json=default_settings,
             params={"client": "server"},
         )
         assert response.status_code == 200
@@ -157,8 +164,8 @@ class TestEndpoints:
         new_server_settings = response.json()
         assert old_server_settings != new_server_settings
 
-        del new_server_settings["client_settings"]["client"]
-        del default_settings["client_settings"]["client"]
+        del new_server_settings["client"]
+        del default_settings["client"]
         assert new_server_settings == default_settings
 
     def test_settings_update_nonexistent_client(self, client, auth_headers):

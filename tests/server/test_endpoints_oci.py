@@ -34,7 +34,7 @@ class TestInvalidAuthEndpoints:
         ],
     )
     def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication."""
+        """Test endpoints require valide authentication"""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
 
@@ -141,7 +141,7 @@ class TestEndpoints:
         assert data["auth_profile"] == "DEFAULT"
         response = client.get("/v1/oci/TEST", headers=auth_headers["valid_auth"])
         assert response.status_code == 404
-        assert response.json() == {"detail": "OCI: profile 'TEST' not found."}
+        assert response.json() == {"detail": "OCI: profile 'TEST' not found"}
 
     def test_oci_list_compartments(self, client, auth_headers, mock_get_compartments):
         """List OCI Compartments"""
@@ -153,10 +153,10 @@ class TestEndpoints:
 
             # Test TEST profile
             mock_get.return_value.status_code = 404
-            mock_get.return_value.json.return_value = {"detail": "OCI: profile 'TEST' not found."}
+            mock_get.return_value.json.return_value = {"detail": "OCI: profile 'TEST' not found"}
             response = client.get("/v1/oci/compartments/TEST", headers=auth_headers["valid_auth"])
             assert response.status_code == 404
-            assert response.json() == {"detail": "OCI: profile 'TEST' not found."}
+            assert response.json() == {"detail": "OCI: profile 'TEST' not found"}
 
     def test_oci_list_buckets(self, client, auth_headers, mock_get_buckets):
         """List OCI Buckets"""
@@ -169,12 +169,12 @@ class TestEndpoints:
 
             # Test TEST profile
             mock_get.return_value.status_code = 404
-            mock_get.return_value.json.return_value = {"detail": "OCI: profile 'TEST' not found."}
+            mock_get.return_value.json.return_value = {"detail": "OCI: profile 'TEST' not found"}
             response = client.get(
                 "/v1/oci/buckets/ocid1.compartment.oc1..aaaaaaaa/TEST", headers=auth_headers["valid_auth"]
             )
             assert response.status_code == 404
-            assert response.json() == {"detail": "OCI: profile 'TEST' not found."}
+            assert response.json() == {"detail": "OCI: profile 'TEST' not found"}
 
     def test_oci_list_bucket_objects(self, client, auth_headers, mock_get_bucket_objects):
         """List OCI Bucket Objects"""
@@ -185,10 +185,10 @@ class TestEndpoints:
 
             # Test TEST profile
             mock_get.return_value.status_code = 404
-            mock_get.return_value.json.return_value = {"detail": "OCI: profile 'TEST' not found."}
+            mock_get.return_value.json.return_value = {"detail": "OCI: profile 'TEST' not found"}
             response = client.get("/v1/oci/objects/bucket1/TEST", headers=auth_headers["valid_auth"])
             assert response.status_code == 404
-            assert response.json() == {"detail": "OCI: profile 'TEST' not found."}
+            assert response.json() == {"detail": "OCI: profile 'TEST' not found"}
 
     test_cases = [
         pytest.param("DEFAULT", "", 422, id="empty_payload"),

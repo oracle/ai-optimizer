@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 
 import json
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile, File
 from fastapi.responses import JSONResponse
@@ -24,10 +24,16 @@ def _incl_sensitive_param(incl_sensitive: bool = Query(False, include_in_schema=
     return incl_sensitive
 
 
-@auth.get("/", description="Get client settings and configuration", response_model=schema.Configuration)
+@auth.get(
+    "",
+    description="Get client settings and configuration",
+    response_model=Union[schema.Configuration, schema.Settings],
+)
 async def settings_get(
-    client: schema.ClientIdType, full_config: bool = False, incl_sensitive: bool = Depends(_incl_sensitive_param)
-) -> schema.Configuration:
+    client: schema.ClientIdType,
+    full_config: bool = False,
+    incl_sensitive: bool = Depends(_incl_sensitive_param),
+) -> Union[schema.Configuration, schema.Settings]:
     """Get settings for a specific client by name"""
     try:
         client_settings = settings.get_client_settings(client)
@@ -35,8 +41,7 @@ async def settings_get(
         raise HTTPException(status_code=404, detail=str(ex)) from ex
 
     if not full_config:
-        config = schema.Configuration(client_settings=client_settings)
-        return JSONResponse(content=config.model_dump(exclude_none=True))
+        return client_settings
 
     config = settings.get_server_config()
     response = schema.Configuration(
@@ -49,8 +54,14 @@ async def settings_get(
     return JSONResponse(content=response.model_dump_public(incl_sensitive=incl_sensitive))
 
 
-@auth.patch("/", description="Update client settings")
-async def settings_update(payload: schema.Settings, client: schema.ClientIdType) -> schema.Settings:
+@auth.patch(
+    "",
+    description="Update client settings",
+)
+async def settings_update(
+    payload: schema.Settings,
+    client: schema.ClientIdType,
+) -> schema.Settings:
     """Update a single client settings"""
     logger.debug("Received %s Client Payload: %s", client, payload)
 
@@ -60,8 +71,14 @@ async def settings_update(payload: schema.Settings, client: schema.ClientIdType)
         raise HTTPException(status_code=404, detail=f"Settings: {str(ex)}.") from ex
 
 
-@auth.post("/", description="Create new client settings", response_model=schema.Settings)
-async def settings_create(client: schema.ClientIdType) -> schema.Settings:
+@auth.post(
+    "",
+    description="Create new client settings",
+    response_model=schema.Settings,
+)
+async def settings_create(
+    client: schema.ClientIdType,
+) -> schema.Settings:
     """Create a new client, initialise client settings"""
     logger.debug("Received %s Client create request.", client)
 
@@ -73,9 +90,13 @@ async def settings_create(client: schema.ClientIdType) -> schema.Settings:
     return new_client
 
 
-@auth.post("/load", description="Load configuration from file")
+@auth.post(
+    "/load",
+    description="Load configuration from file",
+)
 async def load_settings_from_file(
-    file: UploadFile = File(...), client: Optional[schema.ClientIdType] = Query(None)
+    file: UploadFile = File(...),
+    client: Optional[schema.ClientIdType] = Query(None),
 ) -> JSONResponse:
     """Load settings for a specific client from uploaded JSON file.
 

@@ -20,14 +20,18 @@ logger = logging_config.logging.getLogger("endpoints.v1.oci")
 auth = APIRouter()
 
 
-@auth.get("/", description="View OCI Configuration", response_model=list[schema.OracleCloudSettings])
+@auth.get(
+    "",
+    description="View OCI Configuration",
+    response_model=list[schema.OracleCloudSettings],
+)
 async def oci_list() -> list[schema.OracleCloudSettings]:
     """List OCI Configuration"""
     logger.debug("Received oci_list")
     try:
         return core_oci.get_oci()
     except ValueError as ex:
-        raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}.") from ex
+        raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}") from ex
 
 
 @auth.get(
@@ -35,13 +39,15 @@ async def oci_list() -> list[schema.OracleCloudSettings]:
     description="View OCI Profile Configuration",
     response_model=schema.OracleCloudSettings,
 )
-async def oci_get(auth_profile: schema.OCIProfileType) -> schema.OracleCloudSettings:
+async def oci_get(
+    auth_profile: schema.OCIProfileType,
+) -> schema.OracleCloudSettings:
     """List OCI Configuration"""
     logger.debug("Received oci_get - auth_profile: %s", auth_profile)
     try:
         return core_oci.get_oci(auth_profile=auth_profile)
     except ValueError as ex:
-        raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}.") from ex
+        raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}") from ex
 
 
 @auth.get(
@@ -49,7 +55,9 @@ async def oci_get(auth_profile: schema.OCIProfileType) -> schema.OracleCloudSett
     description="Get OCI Compartments",
     response_model=dict,
 )
-async def oci_list_compartments(auth_profile: schema.OCIProfileType) -> dict:
+async def oci_list_compartments(
+    auth_profile: schema.OCIProfileType,
+) -> dict:
     """Return a list of compartments"""
     logger.debug("Received oci_list_compartments - auth_profile: %s", auth_profile)
     oci_config = await oci_get(auth_profile=auth_profile)
@@ -62,7 +70,10 @@ async def oci_list_compartments(auth_profile: schema.OCIProfileType) -> dict:
     description="Get OCI Object Storage buckets in Compartment OCID",
     response_model=list,
 )
-async def oci_list_buckets(auth_profile: schema.OCIProfileType, compartment_ocid: str) -> list:
+async def oci_list_buckets(
+    auth_profile: schema.OCIProfileType,
+    compartment_ocid: str,
+) -> list:
     """Return a list of buckets; Validate OCID using Pydantic class"""
     logger.debug("Received oci_list_buckets - auth_profile: %s; compartment_ocid: %s", auth_profile, compartment_ocid)
     compartment_obj = schema.OracleResource(ocid=compartment_ocid)
@@ -76,7 +87,10 @@ async def oci_list_buckets(auth_profile: schema.OCIProfileType, compartment_ocid
     description="Get OCI Object Storage buckets objects",
     response_model=list,
 )
-async def oci_list_bucket_objects(auth_profile: schema.OCIProfileType, bucket_name: str) -> list:
+async def oci_list_bucket_objects(
+    auth_profile: schema.OCIProfileType,
+    bucket_name: str,
+) -> list:
     """Return a list of bucket objects; Validate OCID using Pydantic class"""
     logger.debug("Received oci_list_bucket_objects - auth_profile: %s; bucket_name: %s", auth_profile, bucket_name)
     oci_config = await oci_get(auth_profile=auth_profile)
@@ -90,14 +104,15 @@ async def oci_list_bucket_objects(auth_profile: schema.OCIProfileType, bucket_na
     response_model=schema.OracleCloudSettings,
 )
 async def oci_profile_update(
-    auth_profile: schema.OCIProfileType, payload: schema.OracleCloudSettings
+    auth_profile: schema.OCIProfileType,
+    payload: schema.OracleCloudSettings,
 ) -> schema.OracleCloudSettings:
     """Update OCI Configuration"""
     logger.debug("Received oci_update - auth_profile: %s; payload %s", auth_profile, payload)
     try:
         namespace = util_oci.get_namespace(payload)
     except util_oci.OciException as ex:
-        raise HTTPException(status_code=401, detail=f"OCI: {str(ex)}.") from ex
+        raise HTTPException(status_code=401, detail=f"OCI: {str(ex)}") from ex
 
     oci_config = await oci_get(auth_profile=auth_profile)
     try:
@@ -111,7 +126,7 @@ async def oci_profile_update(
             payload.security_token_file if payload.security_token_file else oci_config.security_token_file
         )
     except AttributeError as ex:
-        raise HTTPException(status_code=400, detail="OCI: Invalid Payload.") from ex
+        raise HTTPException(status_code=400, detail="OCI: Invalid Payload") from ex
 
     # OCI GenAI
     try:

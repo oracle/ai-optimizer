@@ -39,7 +39,7 @@ class TestStreamlit:
         assert at.session_state.database_config["DEFAULT"]["config_dir"] is not None
         assert at.session_state.database_config["DEFAULT"]["tcp_connect_timeout"] is not None
         assert at.session_state.database_config["DEFAULT"]["connected"] is False
-        assert at.session_state.database_config["DEFAULT"]["vector_stores"] is None
+        assert at.session_state.database_config["DEFAULT"]["vector_stores"] == []
 
     def test_wrong_details(self, app_server, app_test):
         """Submits with wrong details"""
@@ -60,7 +60,7 @@ class TestStreamlit:
         assert at.session_state.database_config["DEFAULT"]["config_dir"] is not None
         assert at.session_state.database_config["DEFAULT"]["tcp_connect_timeout"] is not None
         assert at.session_state.database_config["DEFAULT"]["connected"] is False
-        assert at.session_state.database_config["DEFAULT"]["vector_stores"] is None
+        assert at.session_state.database_config["DEFAULT"]["vector_stores"] == []
 
     def test_connected(self, app_server, app_test, db_container):
         """Sumbits with good DSN"""

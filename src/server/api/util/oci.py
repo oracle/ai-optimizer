@@ -89,17 +89,17 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
         namespace = client.get_namespace().data
         logger.info("OCI: Namespace = %s", namespace)
     except oci.exceptions.InvalidConfig as ex:
-        raise OciException("OCI: Invalid Config") from ex
+        raise OciException("Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:
-        raise OciException("OCI: AuthN Error") from ex
+        raise OciException("AuthN Error") from ex
     except oci.exceptions.RequestException as ex:
-        raise OciException("OCI: No Network Access") from ex
+        raise OciException("No Network Access") from ex
     except FileNotFoundError as ex:
-        raise OciException("OCI: Invalid Key Path") from ex
+        raise OciException("Invalid Key Path") from ex
     except UnboundLocalError as ex:
-        raise OciException("OCI: No Configuration") from ex
+        raise OciException("No Configuration") from ex
     except Exception as ex:
-        raise OciException(f"OCI: {ex}") from ex
+        raise OciException(ex) from ex
 
     return namespace
 
@@ -155,7 +155,7 @@ def get_buckets(compartment: str, config: OracleCloudSettings = None) -> list:
                 bucket_names.append(bucket.name)
     except oci.exceptions.ServiceError as ex:
         # No Access to Buckets in Compartment
-        raise OciException("OCI: AuthN Error") from ex
+        raise OciException("AuthN Error") from ex
 
     return bucket_names
 

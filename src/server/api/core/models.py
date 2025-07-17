@@ -94,7 +94,7 @@ def get_key_value(
 
 def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giskard: bool = False) -> BaseChatModel:
     """Retrieve model configuration"""
-    logger.debug("schema.Model Config: %s; Giskard: %s", model_config, giskard)
+    logger.debug("Model Config: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
     model_objects = bootstrap.MODEL_OBJECTS
 
     model_name = model_config["model"]
@@ -155,7 +155,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
             ),
         }
     if embedding:
-        logger.debug("Configuring Embed schema.Model")
+        logger.debug("Configuring Embed Model")
         model_classes = {
             "OpenAIEmbeddings": lambda: OpenAIEmbeddings(model=model_name, api_key=model_api_key),
             "CompatOpenAIEmbeddings": lambda: OpenAIEmbeddings(

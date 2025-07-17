@@ -26,9 +26,13 @@ logger = logging_config.logging.getLogger("api.v1.embed")
 auth = APIRouter()
 
 
-@auth.delete("/{vs}", description="Drop Vector Store")
+@auth.delete(
+    "/{vs}",
+    description="Drop Vector Store",
+)
 async def embed_drop_vs(
-    vs: schema.VectorStoreTableType, client: schema.ClientIdType = Header(default="server")
+    vs: schema.VectorStoreTableType,
+    client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Drop Vector Storage"""
     logger.debug("Received %s embed_drop_vs: %s", client, vs)
@@ -43,7 +47,10 @@ async def embed_drop_vs(
     "/web/store",
     description="Store Web Files for Embedding.",
 )
-async def store_web_file(request: list[HttpUrl], client: schema.ClientIdType = Header(default="server")) -> Response:
+async def store_web_file(
+    request: list[HttpUrl],
+    client: schema.ClientIdType = Header(default="server"),
+) -> Response:
     """Store contents from a web URL"""
     logger.debug("Received store_web_file - request: %s", request)
     temp_directory = embed.get_temp_directory(client, "embedding")
@@ -78,7 +85,8 @@ async def store_web_file(request: list[HttpUrl], client: schema.ClientIdType = H
     description="Store Local Files for Embedding.",
 )
 async def store_local_file(
-    files: list[UploadFile], client: schema.ClientIdType = Header(default="server")
+    files: list[UploadFile],
+    client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Store contents from a local file uploaded to streamlit"""
     logger.debug("Received store_local_file - files: %s", files)

@@ -30,16 +30,27 @@ logger = logging_config.logging.getLogger("endpoints.v1.testbed")
 auth = APIRouter()
 
 
-@auth.get("/testsets", description="Get Stored TestSets.", response_model=list[schema.TestSets])
-async def testbed_testsets(client: schema.ClientIdType = Header(default="server")) -> list[schema.TestSets]:
+@auth.get(
+    "/testsets",
+    description="Get Stored TestSets.",
+    response_model=list[schema.TestSets],
+)
+async def testbed_testsets(
+    client: schema.ClientIdType = Header(default="server"),
+) -> list[schema.TestSets]:
     """Get a list of stored TestSets, create TestSet objects if they don't exist"""
     testsets = testbed.get_testsets(db_conn=databases.get_client_db(client).connection)
     return testsets
 
 
-@auth.get("/evaluations", description="Get Stored Evaluations.", response_model=list[schema.Evaluation])
+@auth.get(
+    "/evaluations",
+    description="Get Stored Evaluations.",
+    response_model=list[schema.Evaluation],
+)
 async def testbed_evaluations(
-    tid: schema.TestSetsIdType, client: schema.ClientIdType = Header(default="server")
+    tid: schema.TestSetsIdType,
+    client: schema.ClientIdType = Header(default="server"),
 ) -> list[schema.Evaluation]:
     """Get Evaluations"""
     evaluations = testbed.get_evaluations(db_conn=databases.get_client_db(client).connection, tid=tid.upper())
@@ -52,31 +63,45 @@ async def testbed_evaluations(
     response_model=schema.EvaluationReport,
 )
 async def testbed_evaluation(
-    eid: schema.TestSetsIdType, client: schema.ClientIdType = Header(default="server")
+    eid: schema.TestSetsIdType,
+    client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Get Evaluations"""
     evaluation = testbed.process_report(db_conn=databases.get_client_db(client).connection, eid=eid.upper())
     return evaluation
 
 
-@auth.get("/testset_qa", description="Get Stored schema.TestSets Q&A.", response_model=schema.TestSetQA)
+@auth.get(
+    "/testset_qa",
+    description="Get Stored schema.TestSets Q&A.",
+    response_model=schema.TestSetQA,
+)
 async def testbed_testset_qa(
-    tid: schema.TestSetsIdType, client: schema.ClientIdType = Header(default="server")
+    tid: schema.TestSetsIdType,
+    client: schema.ClientIdType = Header(default="server"),
 ) -> schema.TestSetQA:
     """Get TestSet Q&A"""
     return testbed.get_testset_qa(db_conn=databases.get_client_db(client).connection, tid=tid.upper())
 
 
-@auth.delete("/testset_delete/{tid}", description="Delete a TestSet")
+@auth.delete(
+    "/testset_delete/{tid}",
+    description="Delete a TestSet",
+)
 async def testbed_delete_testset(
-    tid: Optional[schema.TestSetsIdType] = None, client: schema.ClientIdType = Header(default="server")
+    tid: Optional[schema.TestSetsIdType] = None,
+    client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Delete TestSet"""
     testbed.delete_qa(databases.get_client_db(client).connection, tid.upper())
     return JSONResponse(status_code=200, content={"message": f"TestSet: {tid} deleted."})
 
 
-@auth.post("/testset_load", description="Upsert TestSets.", response_model=schema.TestSetQA)
+@auth.post(
+    "/testset_load",
+    description="Upsert TestSets.",
+    response_model=schema.TestSetQA,
+)
 async def testbed_upsert_testsets(
     files: list[UploadFile],
     name: schema.TestSetsNameType,
@@ -100,7 +125,11 @@ async def testbed_upsert_testsets(
     return testset_qa
 
 
-@auth.post("/testset_generate", description="Generate Q&A Test Set.", response_model=schema.TestSetQA)
+@auth.post(
+    "/testset_generate",
+    description="Generate Q&A Test Set.",
+    response_model=schema.TestSetQA,
+)
 async def testbed_generate_qa(
     files: list[UploadFile],
     name: schema.TestSetsNameType,
@@ -160,7 +189,9 @@ async def testbed_generate_qa(
     response_model=schema.EvaluationReport,
 )
 def testbed_evaluate_qa(
-    tid: schema.TestSetsIdType, judge: schema.ModelNameType, client: schema.ClientIdType = Header(default="server")
+    tid: schema.TestSetsIdType,
+    judge: schema.ModelNameType,
+    client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Run evaluate against a testset"""
 

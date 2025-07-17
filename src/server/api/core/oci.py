@@ -23,6 +23,7 @@ def get_oci(
     If auth_profile is provided, returns matching OCI settings.
     Raises ValueError if no matching OCI found.
     """
+    logger.debug("Getting OCI config for client: %s; auth_profile: %s", client, auth_profile)
     if client is not None and auth_profile is not None:
         raise ValueError("provide either 'client' or 'auth_profile', not both")
 

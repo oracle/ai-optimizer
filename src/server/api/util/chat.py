@@ -29,14 +29,14 @@ async def completion_generator(
     logger.debug("Settings: %s", client_settings)
     logger.debug("Request: %s", model)
 
-    # Establish LL schema.Model Params (if the request specs a model, otherwise override from settings)
+    # Establish LL Model Params (if the request specs a model, otherwise override from settings)
     if not model["model"]:
         model = client_settings.ll_model.model_dump()
 
     oci_config = oci.get_oci(client=client)
 
-    # Setup Client schema.Model
-    ll_client = models.get_client({"model": model, "enabled": True}, oci_config)
+    # Setup Client Model
+    ll_client = models.get_client(model, oci_config)
     if not ll_client:
         error_response = {
             "id": "error",

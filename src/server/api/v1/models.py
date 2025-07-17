@@ -17,7 +17,11 @@ logger = logging_config.logging.getLogger("endpoints.v1.models")
 auth = APIRouter()
 
 
-@auth.get("/api", description="Get support model APIs", response_model=list)
+@auth.get(
+    "/api",
+    description="Get support model APIs",
+    response_model=list,
+)
 async def models_list_api(
     model_type: Optional[schema.ModelTypeType] = Query(None),
 ) -> list[schema.Model]:
@@ -31,7 +35,11 @@ async def models_list_api(
         return list()
 
 
-@auth.get("/", description="Get all models", response_model=list[schema.Model])
+@auth.get(
+    "",
+    description="Get all models",
+    response_model=list[schema.Model],
+)
 async def models_list(
     model_type: Optional[schema.ModelTypeType] = Query(None),
 ) -> list[schema.Model]:
@@ -42,8 +50,14 @@ async def models_list(
     return models_ret
 
 
-@auth.get("/{name:path}", description="Get a single model", response_model=schema.Model)
-async def models_get(name: schema.ModelNameType) -> schema.Model:
+@auth.get(
+    "/{name:path}",
+    description="Get a single model",
+    response_model=schema.Model,
+)
+async def models_get(
+    name: schema.ModelNameType,
+) -> schema.Model:
     """List a specific model"""
     logger.debug("Received models_get - name: %s", name)
 
@@ -55,8 +69,15 @@ async def models_get(name: schema.ModelNameType) -> schema.Model:
     return models_ret
 
 
-@auth.patch("/{name:path}", description="Update a model", response_model=schema.Model)
-async def models_update(name: schema.ModelNameType, payload: schema.Model) -> schema.Model:
+@auth.patch(
+    "/{name:path}",
+    description="Update a model",
+    response_model=schema.Model,
+)
+async def models_update(
+    name: schema.ModelNameType,
+    payload: schema.Model,
+) -> schema.Model:
     """Update a model"""
     logger.debug("Received models_update - name: %s; payload: %s", name, payload)
 
@@ -70,8 +91,14 @@ async def models_update(name: schema.ModelNameType, payload: schema.Model) -> sc
     return models.get_model(model_name=name)
 
 
-@auth.post("/", description="Create a model", response_model=schema.Model)
-async def models_create(payload: schema.Model) -> schema.Model:
+@auth.post(
+    "",
+    description="Create a model",
+    response_model=schema.Model,
+)
+async def models_create(
+    payload: schema.Model,
+) -> schema.Model:
     """Update a model"""
     logger.debug("Received model_create - payload: %s", payload)
 
@@ -81,8 +108,13 @@ async def models_create(payload: schema.Model) -> schema.Model:
         raise HTTPException(status_code=409, detail=str(ex)) from ex
 
 
-@auth.delete("/{name:path}", description="Delete a model")
-async def models_delete(name: schema.ModelNameType) -> JSONResponse:
+@auth.delete(
+    "/{name:path}",
+    description="Delete a model",
+)
+async def models_delete(
+    name: schema.ModelNameType,
+) -> JSONResponse:
     """Delete a model"""
     logger.debug("Received models_delete - name: %s", name)
     models.delete_model(name)
