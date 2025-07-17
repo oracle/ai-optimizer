@@ -27,18 +27,6 @@ logger = logging_config.logging.getLogger("client.utils.st_common")
 #############################################################################
 # Common Helpers
 #############################################################################
-def populate_state(client, force=False):
-    """Populate all Streamlit State Configs"""
-    full_config = api_call.get(
-        endpoint="v1/settings",
-        params={"client": client, "full_config": True, "incl_sensitive": True},
-        retries=10,
-        backoff_factor=1.5,
-    )
-    for key, value in full_config.items():
-        if force or key not in st.session_state:
-            state[key] = value
-
 def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
     """Upload Single file from Streamlit to the Server"""
     # If it's a single file, convert it to a list for consistent processing
@@ -79,13 +67,32 @@ def patch_settings() -> None:
 #############################################################################
 # State Helpers
 #############################################################################
+def populate_state(client, force=False):
+    """Populate all Streamlit State Configs"""
+    full_config = api_call.get(
+        endpoint="v1/settings",
+        params={
+            "client": client,
+            "full_config": True,
+            "incl_sensitive": True,
+            "incl_readonly": True,
+        },
+        retries=10,
+        backoff_factor=1.5,
+    )
+    for key, value in full_config.items():
+        if force or key not in state:
+            logger.info("Update state for: %s", key)
+            state[key] = value
+
+
 def clear_state_key(state_key: str) -> None:
     """Generic clear key from state, handles if key isn't in state"""
     state.pop(state_key, None)
     logger.debug("State cleared: %s", state_key)
 
 
-def update_user_settings(user_setting: str) -> None:
+def update_client_settings(user_setting: str) -> None:
     """Update user settings"""
     for setting_key, setting_value in state.client_settings[user_setting].items():
         widget_key = f"selected_{user_setting}_{setting_key}"
@@ -124,7 +131,7 @@ def history_sidebar() -> None:
         "Enable?",
         value=state.client_settings["ll_model"]["chat_history"],
         key="selected_ll_model_chat_history",
-        on_change=update_user_settings("ll_model"),
+        on_change=update_client_settings("ll_model"),
     )
     if button_col.button("Clear", disabled=not chat_history_enable, use_container_width=True):
         # Clean out history
@@ -160,7 +167,7 @@ def ll_sidebar() -> None:
             options=list(state.ll_model_enabled.keys()),
             index=ll_idx,
             key="selected_ll_model_model",
-            on_change=update_user_settings("ll_model"),
+            on_change=update_client_settings("ll_model"),
             disabled=state.client_settings["selectai"]["enabled"],
         )
 
@@ -178,7 +185,7 @@ def ll_sidebar() -> None:
         min_value=0.0,
         max_value=max_value,
         key="selected_ll_model_temperature",
-        on_change=update_user_settings("ll_model"),
+        on_change=update_client_settings("ll_model"),
     )
 
     # Completion Tokens
@@ -195,7 +202,7 @@ def ll_sidebar() -> None:
         min_value=1,
         max_value=max_completion_tokens,
         key="selected_ll_model_max_completion_tokens",
-        on_change=update_user_settings("ll_model"),
+        on_change=update_client_settings("ll_model"),
     )
 
     # Top P
@@ -207,7 +214,7 @@ def ll_sidebar() -> None:
             min_value=0.0,
             max_value=1.0,
             key="selected_ll_model_top_p",
-            on_change=update_user_settings("ll_model"),
+            on_change=update_client_settings("ll_model"),
         )
 
         # Frequency Penalty
@@ -220,7 +227,7 @@ def ll_sidebar() -> None:
             min_value=-2.0,
             max_value=2.0,
             key="selected_ll_model_frequency_penalty",
-            on_change=update_user_settings("ll_model"),
+            on_change=update_client_settings("ll_model"),
         )
 
         # Presence Penalty
@@ -231,7 +238,7 @@ def ll_sidebar() -> None:
             min_value=-2.0,
             max_value=2.0,
             key="selected_ll_model_presence_penalty",
-            on_change=update_user_settings("ll_model"),
+            on_change=update_client_settings("ll_model"),
         )
 
 
@@ -331,7 +338,7 @@ def selectai_sidebar() -> None:
             options=selectai_profiles,
             index=selectai_profiles.index(state.client_settings["selectai"]["profile"]),
             key="selected_selectai_profile",
-            on_change=update_user_settings("selectai"),
+            on_change=update_client_settings("selectai"),
         )
         st.sidebar.selectbox(
             "Action:",
@@ -340,7 +347,7 @@ def selectai_sidebar() -> None:
                 state.client_settings["selectai"]["action"]
             ),
             key="selected_selectai_action",
-            on_change=update_user_settings("selectai"),
+            on_change=update_client_settings("selectai"),
         )
 
 
@@ -365,7 +372,7 @@ def vector_search_sidebar() -> None:
             vector_search_type_list,
             index=vector_search_type_list.index(state.client_settings["vector_search"]["search_type"]),
             key="selected_vector_search_search_type",
-            on_change=update_user_settings("vector_search"),
+            on_change=update_client_settings("vector_search"),
         )
         st.sidebar.number_input(
             "Top K:",
@@ -374,7 +381,7 @@ def vector_search_sidebar() -> None:
             min_value=1,
             max_value=10000,
             key="selected_vector_search_top_k",
-            on_change=update_user_settings("vector_search"),
+            on_change=update_client_settings("vector_search"),
         )
         if vector_search_type == "Similarity Score Threshold":
             st.sidebar.slider(
@@ -385,7 +392,7 @@ def vector_search_sidebar() -> None:
                 max_value=1.0,
                 step=0.1,
                 key="selected_vector_search_score_threshold",
-                on_change=update_user_settings("vector_search"),
+                on_change=update_client_settings("vector_search"),
             )
         if vector_search_type == "Maximal Marginal Relevance":
             st.sidebar.number_input(
@@ -395,7 +402,7 @@ def vector_search_sidebar() -> None:
                 min_value=1,
                 max_value=10000,
                 key="selected_vector_search_fetch_k",
-                on_change=update_user_settings("vector_search"),
+                on_change=update_client_settings("vector_search"),
             )
             st.sidebar.slider(
                 "Degree of Diversity:",
@@ -405,7 +412,7 @@ def vector_search_sidebar() -> None:
                 max_value=1.0,
                 step=0.1,
                 key="selected_vector_search_lambda_mult",
-                on_change=update_user_settings("vector_search"),
+                on_change=update_client_settings("vector_search"),
             )
 
         ##########################

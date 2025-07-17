@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 Session States Set:
-- user_settings: Stores all user settings
+- client_settings: Stores all user settings
 """
 # spell-checker:ignore streamlit, scriptrunner
 
@@ -60,21 +60,22 @@ def main() -> None:
     st.logo("client/media/logo.png")
     # Setup Settings State
     api_down = False
-    if "user_settings" not in state:
+    if "client_settings" not in state:
         try:
             client_id = str(uuid4())
-            state.server_settings = api_call.post(endpoint="v1/settings", params={"client": client_id})
+            _ = api_call.post(endpoint="v1/settings", params={"client": client_id})
             st_common.populate_state(client=client_id, force=True)
         except api_call.ApiError:
             logger.error("Unable to contact API Server; setting as Down!")
             api_down = True
     if not api_down and "server_settings" not in state:
         try:
+            logger.info("Update state for: server_settings")
             state.server_settings = api_call.get(endpoint="v1/settings", params={"client": "server"})
         except api_call.ApiError:
             logger.error("Unable to contact API Server; setting as Down!")
             api_down = True
-    if api_down and "user_settings" not in state:
+    if api_down and "client_settings" not in state:
         st.error(
             "Unable to contact the API Server.  Please check that it is running and refresh your browser.",
             icon="🛑",

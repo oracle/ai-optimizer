@@ -34,7 +34,7 @@ except ImportError:
 #####################################################
 # Functions
 #####################################################
-def copy_user_settings(new_client: ClientIdType) -> None:
+def copy_client_settings(new_client: ClientIdType) -> None:
     """Copy User Setting to a new client (e.g. the Server)"""
     logger.info("Copying user settings to: %s", new_client)
     try:
@@ -97,14 +97,14 @@ async def main() -> None:
              """)
 
     if "server_settings" not in state:
-        copy_user_settings(new_client="server")
+        copy_client_settings(new_client="server")
 
     st.json(state.server_settings, expanded=False)
     st.button(
         "Copy Client Settings",
         key="copy_client_settings",
         type="primary",
-        on_click=copy_user_settings,
+        on_click=copy_client_settings,
         kwargs={"new_client": "server"},
         help="Copy your settings, from the ChatBot, by clicking here.",
     )

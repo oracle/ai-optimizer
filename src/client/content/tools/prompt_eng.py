@@ -83,7 +83,7 @@ def main():
             options=list(sys_dict.keys()),
             index=list(sys_dict.keys()).index(state.client_settings["prompts"]["sys"]),
             key="selected_prompts_sys",
-            on_change=st_common.update_user_settings("prompts"),
+            on_change=st_common.update_client_settings("prompts"),
         )
         prompt_sys_prompt = st.text_area(
             "System Instructions:",
@@ -102,7 +102,7 @@ def main():
             options=list(ctx_dict.keys()),
             index=list(ctx_dict.keys()).index(state.client_settings["prompts"]["ctx"]),
             key="selected_prompts_ctx",
-            on_change=st_common.update_user_settings("prompts"),
+            on_change=st_common.update_client_settings("prompts"),
         )
         prompt_ctx_prompt = st.text_area(
             "Context Instructions:",

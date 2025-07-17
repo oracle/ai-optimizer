@@ -291,12 +291,14 @@ class Configuration(BaseModel):
     oci_configs: Optional[list[OracleCloudSettings]] = None
     prompt_configs: Optional[list[Prompt]] = None
 
-    def model_dump_public(self, incl_sensitive: bool = False) -> dict:
+
+    def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
-        return self._recursive_dump_excluding_marked(self, incl_sensitive)
+        return self.recursive_dump_excluding_marked(self, incl_sensitive, incl_readonly)
+
 
     @classmethod
-    def _recursive_dump_excluding_marked(cls, obj: Any, incl_sensitive: bool) -> Any:
+    def recursive_dump_excluding_marked(cls, obj: Any, incl_sensitive: bool, incl_readonly: bool) -> Any:
         """Recursively include fields, including extras, and exclude marked ones"""
         if isinstance(obj, BaseModel):
             output = {}
@@ -306,19 +308,24 @@ class Configuration(BaseModel):
                 extras = field.json_schema_extra or {}
                 is_readonly = extras.get("readOnly", False)
                 is_sensitive = extras.get("sensitive", False)
-                if is_readonly or (is_sensitive and not incl_sensitive):
+                if (is_readonly and not incl_readonly) or (is_sensitive and not incl_sensitive):
                     continue
                 value = getattr(obj, name)
-                output[name] = cls._recursive_dump_excluding_marked(value, incl_sensitive)
+                output[name] = cls.recursive_dump_excluding_marked(value, incl_sensitive, incl_readonly)
+
             # Handle extra fields
             if obj.__pydantic_extra__:
                 for key, value in obj.__pydantic_extra__.items():
-                    output[key] = cls._recursive_dump_excluding_marked(value, incl_sensitive)
+                    output[key] = cls.recursive_dump_excluding_marked(value, incl_sensitive, incl_readonly)
+
             return output
+
         elif isinstance(obj, list):
-            return [cls._recursive_dump_excluding_marked(item, incl_sensitive) for item in obj]
+            return [cls.recursive_dump_excluding_marked(item, incl_sensitive, incl_readonly) for item in obj]
+
         elif isinstance(obj, dict):
-            return {k: cls._recursive_dump_excluding_marked(v, incl_sensitive) for k, v in obj.items()}
+            return {k: cls.recursive_dump_excluding_marked(v, incl_sensitive, incl_readonly) for k, v in obj.items()}
+
         else:
             return obj
 

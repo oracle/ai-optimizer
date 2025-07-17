@@ -18,7 +18,6 @@ from streamlit import session_state as state
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
 import common.logging_config as logging_config
-from common.schema import SelectAIProfileType
 from client.utils.st_footer import remove_footer
 
 logger = logging_config.logging.getLogger("client.content.config.database")
@@ -83,7 +82,7 @@ def drop_vs(vs: dict) -> None:
 
 def select_ai_profile() -> None:
     """Update the chosen SelectAI Profile"""
-    st_common.update_user_settings("selectai")
+    st_common.update_client_settings("selectai")
     st_common.patch_settings()
     selectai_df.clear()
 

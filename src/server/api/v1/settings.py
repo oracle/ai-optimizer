@@ -24,6 +24,10 @@ def _incl_sensitive_param(incl_sensitive: bool = Query(False, include_in_schema=
     return incl_sensitive
 
 
+def _incl_readonly_param(incl_readonly: bool = Query(False, include_in_schema=False)):
+    return incl_readonly
+
+
 @auth.get(
     "",
     description="Get client settings and configuration",
@@ -33,6 +37,7 @@ async def settings_get(
     client: schema.ClientIdType,
     full_config: bool = False,
     incl_sensitive: bool = Depends(_incl_sensitive_param),
+    incl_readonly: bool = Depends(_incl_readonly_param),
 ) -> Union[schema.Configuration, schema.Settings]:
     """Get settings for a specific client by name"""
     try:
@@ -51,7 +56,7 @@ async def settings_get(
         oci_configs=config.get("oci_configs"),
         prompt_configs=config.get("prompt_configs"),
     )
-    return JSONResponse(content=response.model_dump_public(incl_sensitive=incl_sensitive))
+    return JSONResponse(content=response.model_dump_public(incl_sensitive=incl_sensitive, incl_readonly=incl_readonly))
 
 
 @auth.patch(
