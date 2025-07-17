@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 This script initializes a web interface for setting the chatbot instr using Streamlit (`st`).
 
 Session States Set:
-- prompts_config: Stores all Prompt Examples
+- prompt_configs: Stores all Prompt Examples
 """
 # spell-checker:ignore selectbox
 
@@ -28,13 +28,13 @@ logger = logging_config.logging.getLogger("client.tools.prompt_eng")
 #####################################################
 def get_prompts(force: bool = False) -> dict[str, dict]:
     """Get a dictionary of all Prompts"""
-    if "prompts_config" not in state or state.prompts_config == {} or force:
+    if "prompt_configs" not in state or state.prompt_configs == {} or force:
         try:
-            state.prompts_config = api_call.get(endpoint="v1/prompts")
-            logger.info("State created: state['prompts_config']")
+            state.prompt_configs = api_call.get(endpoint="v1/prompts")
+            logger.info("State created: state['prompt_configs']")
         except api_call.ApiError as ex:
             logger.error("Unable to retrieve prompts: %s", ex)
-            state.prompts_config = {}
+            state.prompt_configs = {}
 
 
 def patch_prompt(category: str, name: str, prompt: str) -> None:
@@ -42,7 +42,7 @@ def patch_prompt(category: str, name: str, prompt: str) -> None:
     get_prompts()
     # Check if the prompt instructions are changed
     configured_prompt = next(
-        item["prompt"] for item in state.prompts_config if item["name"] == name and item["category"] == category
+        item["prompt"] for item in state.prompt_configs if item["name"] == name and item["category"] == category
     )
     if configured_prompt != prompt:
         try:
@@ -53,7 +53,7 @@ def patch_prompt(category: str, name: str, prompt: str) -> None:
             logger.info("Prompt updated: %s (%s)", name, category)
             st_common.clear_state_key(f"selected_prompt_{category}_name")
             st_common.clear_state_key(f"prompt_{category}_prompt")
-            st_common.clear_state_key("prompts_config")
+            st_common.clear_state_key("prompt_configs")
             get_prompts(force=True)  # Refresh the Config
         except api_call.ApiError as ex:
             logger.error("Prompt not updated: %s (%s): %s", name, category, ex)
@@ -76,12 +76,12 @@ def main():
         st.stop()
 
     st.subheader("System Prompt")
-    sys_dict = {item["name"]: item["prompt"] for item in state.prompts_config if item["category"] == "sys"}
+    sys_dict = {item["name"]: item["prompt"] for item in state.prompt_configs if item["category"] == "sys"}
     with st.container(border=True):
         selected_prompt_sys_name = st.selectbox(
             "Current System Prompt: ",
             options=list(sys_dict.keys()),
-            index=list(sys_dict.keys()).index(state.user_settings["prompts"]["sys"]),
+            index=list(sys_dict.keys()).index(state.client_settings["prompts"]["sys"]),
             key="selected_prompts_sys",
             on_change=st_common.update_user_settings("prompts"),
         )
@@ -95,12 +95,12 @@ def main():
             patch_prompt("sys", selected_prompt_sys_name, prompt_sys_prompt)
 
     st.subheader("Context Prompt")
-    ctx_dict = {item["name"]: item["prompt"] for item in state.prompts_config if item["category"] == "ctx"}
+    ctx_dict = {item["name"]: item["prompt"] for item in state.prompt_configs if item["category"] == "ctx"}
     with st.container(border=True):
         selected_prompt_ctx_name = st.selectbox(
             "Current Context Prompt: ",
             options=list(ctx_dict.keys()),
-            index=list(ctx_dict.keys()).index(state.user_settings["prompts"]["ctx"]),
+            index=list(ctx_dict.keys()).index(state.client_settings["prompts"]["ctx"]),
             key="selected_prompts_ctx",
             on_change=st_common.update_user_settings("prompts"),
         )

@@ -27,6 +27,18 @@ logger = logging_config.logging.getLogger("client.utils.st_common")
 #############################################################################
 # Common Helpers
 #############################################################################
+def populate_state(client, force=False):
+    """Populate all Streamlit State Configs"""
+    full_config = api_call.get(
+        endpoint="v1/settings",
+        params={"client": client, "full_config": True, "incl_sensitive": True},
+        retries=10,
+        backoff_factor=1.5,
+    )
+    for key, value in full_config.items():
+        if force or key not in st.session_state:
+            state[key] = value
+
 def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
     """Upload Single file from Streamlit to the Server"""
     # If it's a single file, convert it to a list for consistent processing
@@ -45,9 +57,9 @@ def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
 
 def switch_prompt(prompt_type: PromptPromptType, prompt_name: PromptNameType) -> None:
     """Auto Switch Prompts when not set to Custom"""
-    current_prompt = state.user_settings["prompts"][prompt_type]
+    current_prompt = state.client_settings["prompts"][prompt_type]
     if current_prompt != "Custom" and current_prompt != prompt_name:
-        state.user_settings["prompts"][prompt_type] = prompt_name
+        state.client_settings["prompts"][prompt_type] = prompt_name
         st.info(f"Prompt Engineering - {prompt_name} Prompt has been set.", icon="ℹ️")
 
 
@@ -56,12 +68,12 @@ def patch_settings() -> None:
     try:
         _ = api_call.patch(
             endpoint="v1/settings",
-            payload={"json": state.user_settings},
-            params={"client": state.user_settings["client"]},
+            payload={"json": state.client_settings},
+            params={"client": state.client_settings["client"]},
             toast=False,
         )
     except api_call.ApiError as ex:
-        logger.error("%s Settings Update failed: %s", state.user_settings["client"], ex)
+        logger.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
 
 
 #############################################################################
@@ -75,12 +87,12 @@ def clear_state_key(state_key: str) -> None:
 
 def update_user_settings(user_setting: str) -> None:
     """Update user settings"""
-    for setting_key, setting_value in state.user_settings[user_setting].items():
+    for setting_key, setting_value in state.client_settings[user_setting].items():
         widget_key = f"selected_{user_setting}_{setting_key}"
         widget_value = state.get(widget_key, setting_value)
         if state.get(widget_key, setting_value) != setting_value:
-            logger.info("Updating user_settings['%s']['%s'] to %s", user_setting, setting_key, widget_value)
-            state.user_settings[user_setting][setting_key] = widget_value
+            logger.info("Updating client_settings['%s']['%s'] to %s", user_setting, setting_key, widget_value)
+            state.client_settings[user_setting][setting_key] = widget_value
     # Destroying user Client
     clear_state_key("user_client")
 
@@ -88,7 +100,7 @@ def update_user_settings(user_setting: str) -> None:
 def is_db_configured() -> bool:
     """Verify that a database is configured"""
     get_databases()
-    return state.database_config[state.user_settings["database"]["alias"]].get("connected")
+    return state.database_config[state.client_settings["database"]["alias"]].get("connected")
 
 
 def set_server_state() -> None:
@@ -110,7 +122,7 @@ def history_sidebar() -> None:
     checkbox_col, button_col = st.sidebar.columns(2)
     chat_history_enable = checkbox_col.checkbox(
         "Enable?",
-        value=state.user_settings["ll_model"]["chat_history"],
+        value=state.client_settings["ll_model"]["chat_history"],
         key="selected_ll_model_chat_history",
         on_change=update_user_settings("ll_model"),
     )
@@ -119,7 +131,7 @@ def history_sidebar() -> None:
         try:
             api_call.patch(endpoint="v1/chat/history")
         except api_call.ApiError as ex:
-            logger.error("Clearing Chat History for %s failed: %s", state.user_settings["client"], ex)
+            logger.error("Clearing Chat History for %s failed: %s", state.client_settings["client"], ex)
         clear_state_key("user_client")
 
 
@@ -129,8 +141,8 @@ def history_sidebar() -> None:
 def ll_sidebar() -> None:
     """Language Model Sidebar"""
     st.sidebar.subheader("Language Model Parameters", divider="red")
-    # If no user_settings defined for model, set to the first available_ll_model
-    if state.user_settings["ll_model"].get("model") is None:
+    # If no client_settings defined for model, set to the first available_ll_model
+    if state.client_settings["ll_model"].get("model") is None:
         default_ll_model = list(state.ll_model_enabled.keys())[0]
         defaults = {
             "model": default_ll_model,
@@ -138,25 +150,25 @@ def ll_sidebar() -> None:
             "frequency_penalty": state.ll_model_enabled[default_ll_model]["frequency_penalty"],
             "max_completion_tokens": state.ll_model_enabled[default_ll_model]["max_completion_tokens"],
         }
-        state.user_settings["ll_model"].update(defaults)
+        state.client_settings["ll_model"].update(defaults)
 
-    selected_model = state.user_settings["ll_model"]["model"]
+    selected_model = state.client_settings["ll_model"]["model"]
     ll_idx = list(state.ll_model_enabled.keys()).index(selected_model)
-    if not state.user_settings["selectai"]["enabled"]:
+    if not state.client_settings["selectai"]["enabled"]:
         selected_model = st.sidebar.selectbox(
             "Chat model:",
             options=list(state.ll_model_enabled.keys()),
             index=ll_idx,
             key="selected_ll_model_model",
             on_change=update_user_settings("ll_model"),
-            disabled=state.user_settings["selectai"]["enabled"],
+            disabled=state.client_settings["selectai"]["enabled"],
         )
 
     # Temperature
     temperature = state.ll_model_enabled[selected_model]["temperature"]
-    user_temperature = state.user_settings["ll_model"]["temperature"]
+    user_temperature = state.client_settings["ll_model"]["temperature"]
     max_value = 2.0
-    if state.user_settings["selectai"]["enabled"]:
+    if state.client_settings["selectai"]["enabled"]:
         user_temperature = 1.0
         max_value = 1.0
     st.sidebar.slider(
@@ -171,7 +183,7 @@ def ll_sidebar() -> None:
 
     # Completion Tokens
     max_completion_tokens = state.ll_model_enabled[selected_model]["max_completion_tokens"]
-    user_completion_tokens = state.user_settings["ll_model"]["max_completion_tokens"]
+    user_completion_tokens = state.client_settings["ll_model"]["max_completion_tokens"]
     st.sidebar.slider(
         f"Maximum Tokens (Default: {max_completion_tokens}):",
         help=help_text.help_dict["max_completion_tokens"],
@@ -187,11 +199,11 @@ def ll_sidebar() -> None:
     )
 
     # Top P
-    if not state.user_settings["selectai"]["enabled"]:
+    if not state.client_settings["selectai"]["enabled"]:
         st.sidebar.slider(
             "Top P (Default: 1.0):",
             help=help_text.help_dict["top_p"],
-            value=state.user_settings["ll_model"]["top_p"],
+            value=state.client_settings["ll_model"]["top_p"],
             min_value=0.0,
             max_value=1.0,
             key="selected_ll_model_top_p",
@@ -200,7 +212,7 @@ def ll_sidebar() -> None:
 
         # Frequency Penalty
         frequency_penalty = state.ll_model_enabled[selected_model]["frequency_penalty"]
-        user_frequency_penalty = state.user_settings["ll_model"]["frequency_penalty"]
+        user_frequency_penalty = state.client_settings["ll_model"]["frequency_penalty"]
         st.sidebar.slider(
             f"Frequency penalty (Default: {frequency_penalty}):",
             help=help_text.help_dict["frequency_penalty"],
@@ -215,7 +227,7 @@ def ll_sidebar() -> None:
         st.sidebar.slider(
             "Presence penalty (Default: 0.0):",
             help=help_text.help_dict["presence_penalty"],
-            value=state.user_settings["ll_model"]["presence_penalty"],
+            value=state.client_settings["ll_model"]["presence_penalty"],
             min_value=-2.0,
             max_value=2.0,
             key="selected_ll_model_presence_penalty",
@@ -231,8 +243,8 @@ def tools_sidebar() -> None:
 
     def update_set_tool():
         """Update user settings as to which tool is being used"""
-        state.user_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
-        state.user_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
+        state.client_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
+        state.client_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
     disable_selectai = not is_db_configured()
     disable_vector_search = not is_db_configured()
@@ -240,11 +252,11 @@ def tools_sidebar() -> None:
     if disable_selectai and disable_vector_search:
         logger.debug("Vector Search/SelectAI Disabled (Database not configured)")
         st.warning("Database is not configured. Disabling Vector Search and SelectAI tools.", icon="⚠️")
-        state.user_settings["selectai"]["enabled"] = False
-        state.user_settings["vector_search"]["enabled"] = False
+        state.client_settings["selectai"]["enabled"] = False
+        state.client_settings["vector_search"]["enabled"] = False
         switch_prompt("sys", "Basic Example")
     else:
-        db_alias = state.user_settings["database"]["alias"]
+        db_alias = state.client_settings["database"]["alias"]
         tools = [
             ("LLM Only", "Do not use tools", False),
             ("SelectAI", "Use AI with Structured Data", disable_selectai),
@@ -252,9 +264,9 @@ def tools_sidebar() -> None:
         ]
 
         # SelectAI Requirements
-        if "oci_config" not in state.user_settings:
+        if "oci_config" not in state.client_settings:
             get_oci()
-        oci_auth_profile = state.user_settings["oci"]["auth_profile"]
+        oci_auth_profile = state.client_settings["oci"]["auth_profile"]
         if not state.oci_config[oci_auth_profile]["namespace"]:
             logger.debug("SelectAI Disabled (OCI not configured.)")
             st.warning("OCI is not fully configured.  Disabling SelectAI.", icon="⚠️")
@@ -287,8 +299,8 @@ def tools_sidebar() -> None:
                 (
                     i
                     for i, t in enumerate(tools)
-                    if (t[0] == "SelectAI" and state.user_settings["selectai"]["enabled"])
-                    or (t[0] == "Vector Search" and state.user_settings["vector_search"]["enabled"])
+                    if (t[0] == "SelectAI" and state.client_settings["selectai"]["enabled"])
+                    or (t[0] == "Vector Search" and state.client_settings["vector_search"]["enabled"])
                 ),
                 0,
             )
@@ -309,15 +321,15 @@ def tools_sidebar() -> None:
 #####################################################
 def selectai_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if Database/SelectAI are configured"""
-    if state.user_settings["selectai"]["enabled"]:
+    if state.client_settings["selectai"]["enabled"]:
         st.sidebar.subheader("SelectAI", divider="red")
-        selectai_profiles = state.database_config[state.user_settings["database"]["alias"]]["selectai_profiles"]
-        if not state.user_settings["selectai"]["profile"]:
-            state.user_settings["selectai"]["profile"] = selectai_profiles[0]
+        selectai_profiles = state.database_config[state.client_settings["database"]["alias"]]["selectai_profiles"]
+        if not state.client_settings["selectai"]["profile"]:
+            state.client_settings["selectai"]["profile"] = selectai_profiles[0]
         st.sidebar.selectbox(
             "Profile:",
             options=selectai_profiles,
-            index=selectai_profiles.index(state.user_settings["selectai"]["profile"]),
+            index=selectai_profiles.index(state.client_settings["selectai"]["profile"]),
             key="selected_selectai_profile",
             on_change=update_user_settings("selectai"),
         )
@@ -325,7 +337,7 @@ def selectai_sidebar() -> None:
             "Action:",
             get_args(SelectAISettings.__annotations__["action"]),
             index=get_args(SelectAISettings.__annotations__["action"]).index(
-                state.user_settings["selectai"]["action"]
+                state.client_settings["selectai"]["action"]
             ),
             key="selected_selectai_action",
             on_change=update_user_settings("selectai"),
@@ -337,7 +349,7 @@ def selectai_sidebar() -> None:
 #####################################################
 def vector_search_sidebar() -> None:
     """Vector Search Sidebar Settings, conditional if Database/Embeddings are configured"""
-    if state.user_settings["vector_search"]["enabled"]:
+    if state.client_settings["vector_search"]["enabled"]:
         st.sidebar.subheader("Vector Search", divider="red")
 
         switch_prompt("sys", "Vector Search Example")
@@ -351,14 +363,14 @@ def vector_search_sidebar() -> None:
         vector_search_type = st.sidebar.selectbox(
             "Search Type:",
             vector_search_type_list,
-            index=vector_search_type_list.index(state.user_settings["vector_search"]["search_type"]),
+            index=vector_search_type_list.index(state.client_settings["vector_search"]["search_type"]),
             key="selected_vector_search_search_type",
             on_change=update_user_settings("vector_search"),
         )
         st.sidebar.number_input(
             "Top K:",
             help=help_text.help_dict["top_k"],
-            value=state.user_settings["vector_search"]["top_k"],
+            value=state.client_settings["vector_search"]["top_k"],
             min_value=1,
             max_value=10000,
             key="selected_vector_search_top_k",
@@ -368,7 +380,7 @@ def vector_search_sidebar() -> None:
             st.sidebar.slider(
                 "Minimum Relevance Threshold:",
                 help=help_text.help_dict["score_threshold"],
-                value=state.user_settings["vector_search"]["score_threshold"],
+                value=state.client_settings["vector_search"]["score_threshold"],
                 min_value=0.0,
                 max_value=1.0,
                 step=0.1,
@@ -379,7 +391,7 @@ def vector_search_sidebar() -> None:
             st.sidebar.number_input(
                 "Fetch K:",
                 help=help_text.help_dict["fetch_k"],
-                value=state.user_settings["vector_search"]["fetch_k"],
+                value=state.client_settings["vector_search"]["fetch_k"],
                 min_value=1,
                 max_value=10000,
                 key="selected_vector_search_fetch_k",
@@ -388,7 +400,7 @@ def vector_search_sidebar() -> None:
             st.sidebar.slider(
                 "Degree of Diversity:",
                 help=help_text.help_dict["lambda_mult"],
-                value=state.user_settings["vector_search"]["lambda_mult"],
+                value=state.client_settings["vector_search"]["lambda_mult"],
                 min_value=0.0,
                 max_value=1.0,
                 step=0.1,
@@ -401,11 +413,11 @@ def vector_search_sidebar() -> None:
         ##########################
         st.sidebar.subheader("Vector Store", divider="red")
         # Create a DataFrame of all database vector storage tables
-        vs_df = pd.DataFrame(state.database_config[state.user_settings["database"]["alias"]].get("vector_stores"))
+        vs_df = pd.DataFrame(state.database_config[state.client_settings["database"]["alias"]].get("vector_stores"))
 
         def vs_reset() -> None:
             """Reset Vector Store Selections"""
-            for key in state.user_settings["vector_search"]:
+            for key in state.client_settings["vector_search"]:
                 if key in (
                     "model",
                     "chunk_size",
@@ -416,7 +428,7 @@ def vector_search_sidebar() -> None:
                     "index_type",
                 ):
                     clear_state_key(f"selected_vector_search_{key}")
-                    state.user_settings["vector_search"][key] = ""
+                    state.client_settings["vector_search"][key] = ""
 
         def vs_gen_selectbox(label, options, key):
             """Handle selectbox with auto-setting for a single unique value"""
@@ -431,7 +443,7 @@ def vector_search_sidebar() -> None:
                     logger.debug("Defaulting %s to %s", key, selected_value)
                 else:
                     selected_value = (
-                        state.user_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
+                        state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
                     )
                     logger.debug("User selected %s to %s", key, selected_value)
             return st.sidebar.selectbox(
@@ -490,13 +502,13 @@ def vector_search_sidebar() -> None:
 
         if all([alias, embed_model, chunk_size, chunk_overlap, distance_metric, index_type]):
             vs = filtered_df["vector_store"].iloc[0]
-            state.user_settings["vector_search"]["vector_store"] = vs
-            state.user_settings["vector_search"]["alias"] = alias
-            state.user_settings["vector_search"]["model"] = embed_model
-            state.user_settings["vector_search"]["chunk_size"] = chunk_size
-            state.user_settings["vector_search"]["chunk_overlap"] = chunk_overlap
-            state.user_settings["vector_search"]["distance_metric"] = distance_metric
-            state.user_settings["vector_search"]["index_type"] = index_type
+            state.client_settings["vector_search"]["vector_store"] = vs
+            state.client_settings["vector_search"]["alias"] = alias
+            state.client_settings["vector_search"]["model"] = embed_model
+            state.client_settings["vector_search"]["chunk_size"] = chunk_size
+            state.client_settings["vector_search"]["chunk_overlap"] = chunk_overlap
+            state.client_settings["vector_search"]["distance_metric"] = distance_metric
+            state.client_settings["vector_search"]["index_type"] = index_type
         else:
             st.error("Please select Vector Store options or disable Vector Search to continue.", icon="❌")
             state.enable_client = False

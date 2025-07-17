@@ -34,14 +34,14 @@ logger = logging_config.logging.getLogger("client.tools.split_embed")
 @st.cache_data
 def get_compartments() -> dict:
     """Get OCI Compartments; function for Streamlit caching"""
-    response = api_call.get(endpoint=f"v1/oci/compartments/{state.user_settings['oci']['auth_profile']}")
+    response = api_call.get(endpoint=f"v1/oci/compartments/{state.client_settings['oci']['auth_profile']}")
     return response
 
 
 def get_buckets(compartment: str) -> list:
     """Get OCI Buckets in selected compartment; function for Streamlit caching"""
     try:
-        response = api_call.get(endpoint=f"v1/oci/buckets/{compartment}/{state.user_settings['oci']['auth_profile']}")
+        response = api_call.get(endpoint=f"v1/oci/buckets/{compartment}/{state.client_settings['oci']['auth_profile']}")
     except api_call.ApiError:
         response = ["No Access to Buckets in this Compartment"]
     return response
@@ -49,7 +49,7 @@ def get_buckets(compartment: str) -> list:
 
 def get_bucket_objects(bucket: str) -> list:
     """Get OCI Buckets in selected compartment; function for Streamlit caching"""
-    response = api_call.get(endpoint=f"v1/oci/objects/{bucket}/{state.user_settings['oci']['auth_profile']}")
+    response = api_call.get(endpoint=f"v1/oci/objects/{bucket}/{state.client_settings['oci']['auth_profile']}")
     return response
 
 
@@ -128,9 +128,9 @@ def main() -> None:
     file_sources = ["OCI", "Local", "Web"]
     get_oci()
     try:
-        if not state.oci_config[state.user_settings["oci"]["auth_profile"]].get("namespace"):
+        if not state.oci_config[state.client_settings["oci"]["auth_profile"]].get("namespace"):
             raise KeyError
-        if not state.oci_config[state.user_settings["oci"]["auth_profile"]].get("tenancy"):
+        if not state.oci_config[state.client_settings["oci"]["auth_profile"]].get("tenancy"):
             # Get Compartments requires a tenancy
             raise KeyError
     except (KeyError, TypeError):
@@ -258,7 +258,7 @@ def main() -> None:
             This button is disabled if there are no documents from the source bucket split with
             the current split and embed options.  Please Split and Embed to enable Vector Storage.
         """
-        st.text(f"OCI namespace: {state.oci_config[state.user_settings['oci']['auth_profile']]['namespace']}")
+        st.text(f"OCI namespace: {state.oci_config[state.client_settings['oci']['auth_profile']]['namespace']}")
         oci_compartments = get_compartments()
         src_bucket_list = []
         col2_1, col2_2 = st.columns([0.5, 0.5])
@@ -293,7 +293,7 @@ def main() -> None:
     # Populate Vector Store
     ######################################
     st.header("Populate Vector Store", divider="red")
-    existing_vs = state.database_config[state.user_settings["database"]["alias"]]["vector_stores"]
+    existing_vs = state.database_config[state.client_settings["database"]["alias"]]["vector_stores"]
     # Mandatory Alias
     embed_alias_size, _ = st.columns([0.5, 0.5])
     embed_alias_invalid = False
@@ -369,7 +369,7 @@ def main() -> None:
 
             if file_source == "OCI":
                 # Download OCI Objects for Processing
-                endpoint = f"v1/oci/objects/download/{src_bucket}/{state.user_settings['oci']['auth_profile']}"
+                endpoint = f"v1/oci/objects/download/{src_bucket}/{state.client_settings['oci']['auth_profile']}"
                 process_list = src_files_selected[src_files_selected["Process"]].reset_index(drop=True)
                 api_payload = {"json": process_list["File"].tolist()}
 
@@ -378,7 +378,7 @@ def main() -> None:
 
             # All files are now on Server... Run Embeddings
             embed_params = {
-                "client": state.user_settings["client"],
+                "client": state.client_settings["client"],
                 "rate_limit": rate_limit,
             }
             response = api_call.post(

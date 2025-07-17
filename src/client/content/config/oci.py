@@ -148,7 +148,7 @@ def main() -> None:
         st.stop()
     st.subheader("Configuration")
     # Set Default Profile
-    auth_profile = state.user_settings["oci"]["auth_profile"]
+    auth_profile = state.client_settings["oci"]["auth_profile"]
     avail_profiles = [key for key in state.oci_config.keys() if key != "DEFAULT"]
     avail_profiles = ["DEFAULT"] + avail_profiles
     if len(avail_profiles) > 0:

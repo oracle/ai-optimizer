@@ -209,17 +209,17 @@ def main() -> None:
         st.subheader("SelectAI", divider="red")
         selectai_profiles = state.database_config[name]["selectai_profiles"]
         if state.database_config[name]["selectai"] and len(selectai_profiles) > 0:
-            if not state.user_settings["selectai"]["profile"]:
-                state.user_settings["selectai"]["profile"] = selectai_profiles[0]
+            if not state.client_settings["selectai"]["profile"]:
+                state.client_settings["selectai"]["profile"] = selectai_profiles[0]
             # Select Profile
             st.selectbox(
                 "Profile:",
                 options=selectai_profiles,
-                index=selectai_profiles.index(state.user_settings["selectai"]["profile"]),
+                index=selectai_profiles.index(state.client_settings["selectai"]["profile"]),
                 key="selected_selectai_profile",
                 on_change=select_ai_profile,
             )
-            selectai_objects = selectai_df(state.user_settings["selectai"]["profile"])
+            selectai_objects = selectai_df(state.client_settings["selectai"]["profile"])
             if not selectai_objects.empty:
                 sai_df = st.data_editor(
                     selectai_objects,

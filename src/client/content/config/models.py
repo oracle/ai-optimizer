@@ -106,8 +106,8 @@ def delete_model(model: Model) -> None:
     get_models(model.type, force=True)
 
     # If deleted model is the set model; unset the user settings
-    if state.user_settings["ll_model"]["model"] == model.name:
-        state.user_settings["ll_model"]["model"] = None
+    if state.client_settings["ll_model"]["model"] == model.name:
+        state.client_settings["ll_model"]["model"] = None
 
 
 @st.dialog("Model Configuration", width="large")

@@ -30,7 +30,7 @@ class TestStreamlit:
         prompt = next(
             (
                 prompt
-                for prompt in at.session_state.prompts_config
+                for prompt in at.session_state.prompt_configs
                 if prompt["category"] == "sys" and prompt["name"] == "Custom"
             ),
             None,
@@ -53,7 +53,7 @@ class TestStreamlit:
         prompt = next(
             (
                 prompt
-                for prompt in at.session_state.prompts_config
+                for prompt in at.session_state.prompt_configs
                 if prompt["category"] == "ctx" and prompt["name"] == "Custom"
             ),
             None,

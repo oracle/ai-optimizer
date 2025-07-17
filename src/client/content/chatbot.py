@@ -85,7 +85,7 @@ async def main() -> None:
     if "user_client" not in state:
         state.user_client = client.Client(
             server=state.server,
-            settings=state.user_settings,
+            settings=state.client_settings,
             timeout=1200,
         )
     user_client: client.Client = state.user_client
@@ -116,7 +116,7 @@ async def main() -> None:
                 else:
                     st.write(content)
 
-    sys_prompt = state.user_settings["prompts"]["sys"]
+    sys_prompt = state.client_settings["prompts"]["sys"]
     render_chat_footer()
     if human_request := st.chat_input(
         f"Ask your question here... (current prompt: {sys_prompt})",

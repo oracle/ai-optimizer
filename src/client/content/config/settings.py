@@ -40,7 +40,7 @@ def get_settings(include_sensitive: bool = False):
     settings = api_call.get(
         endpoint="v1/settings",
         params={
-            "client": state.user_settings["client"],
+            "client": state.client_settings["client"],
             "full_config": True,
             "incl_sensitive": include_sensitive,
         },
@@ -133,7 +133,7 @@ def compare_settings(current, uploaded, path=""):
 
 def apply_uploaded_settings(uploaded):
     """Patch configuration to update the server side"""
-    client_id = state.user_settings["client"]
+    client_id = state.client_settings["client"]
     try:
         response = api_call.post(
             endpoint="v1/settings/load/json",
@@ -144,8 +144,8 @@ def apply_uploaded_settings(uploaded):
         st.success(response["message"], icon="✅")
         state.client_settings = api_call.get(endpoint="v1/settings", params={"client": client_id})
     except api_call.ApiError as ex:
-        st.error(f"Settings for {state.user_settings['client']} - Update Failed", icon="❌")
-        logger.error("%s Settings Update failed: %s", state.user_settings["client"], ex)
+        st.error(f"Settings for {state.client_settings['client']} - Update Failed", icon="❌")
+        logger.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
 
 
 def spring_ai_conf_check(ll_model, embed_model) -> str:
@@ -163,13 +163,13 @@ def spring_ai_conf_check(ll_model, embed_model) -> str:
 
     return "hybrid"
 
-
+st.write(state)
 def spring_ai_obaas(src_dir, file_name, provider, ll_model):
     """Get the users CTX Prompt"""
     ctx_prompt = next(
         item["prompt"]
-        for item in state.prompts_config
-        if item["name"] == state.user_settings["prompts"]["ctx"] and item["category"] == "ctx"
+        for item in state.prompt_configs
+        if item["name"] == state.client_settings["prompts"]["ctx"] and item["category"] == "ctx"
     )
 
     with open(src_dir / "templates" / file_name, "r", encoding="utf-8") as template:
@@ -178,9 +178,9 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
     formatted_content = template_content.format(
         provider=provider,
         ctx_prompt=f"{ctx_prompt}",
-        ll_model=state.user_settings["ll_model"] | state.ll_model_enabled[ll_model],
-        vector_search=state.user_settings["vector_search"],
-        database_config=state.database_config[state.user_settings["database"]["alias"]],
+        ll_model=state.client_settings["ll_model"] | state.ll_model_enabled[ll_model],
+        vector_search=state.client_settings["vector_search"],
+        database_config=state.database_config[state.client_settings["database"]["alias"]],
     )
 
     if file_name.endswith(".yaml"):
@@ -189,9 +189,9 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
         formatted_content = template_content.format(
             provider=provider,
             ctx_prompt=ctx_prompt,
-            ll_model=state.user_settings["ll_model"] | state.ll_model_enabled[ll_model],
-            vector_search=state.user_settings["vector_search"],
-            database_config=state.database_config[state.user_settings["database"]["alias"]],
+            ll_model=state.client_settings["ll_model"] | state.ll_model_enabled[ll_model],
+            vector_search=state.client_settings["vector_search"],
+            database_config=state.database_config[state.client_settings["database"]["alias"]],
         )
 
         yaml_data = yaml.safe_load(formatted_content)
@@ -242,7 +242,6 @@ def spring_ai_zip(provider, ll_model):
 def main():
     """Streamlit GUI"""
     remove_footer()
-    st.write(state.user_settings)
     st.header("Client Settings", divider="red")
     if "selected_sensitive_settings" not in state:
         state.selected_sensitive_settings = False
@@ -293,8 +292,8 @@ def main():
             st.info("Please upload a Settings file.")
 
     st.header("SpringAI Settings", divider="red")
-    ll_model = state.user_settings["ll_model"]["model"]
-    embed_model = state.user_settings["vector_search"]["model"]
+    ll_model = state.client_settings["ll_model"]["model"]
+    embed_model = state.client_settings["vector_search"]["model"]
     spring_ai_conf = spring_ai_conf_check(ll_model, embed_model)
 
     if spring_ai_conf == "hybrid":

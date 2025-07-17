@@ -40,7 +40,7 @@ def copy_user_settings(new_client: ClientIdType) -> None:
     try:
         response = api_call.patch(
             endpoint="v1/settings",
-            payload={"json": state.user_settings},
+            payload={"json": state.client_settings},
             params={"client": new_client},
         )
         state[f"{new_client}_settings"] = response
