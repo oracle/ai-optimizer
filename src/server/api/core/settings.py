@@ -16,6 +16,7 @@ logger = logging_config.logging.getLogger("api.core.settings")
 
 def create_client_settings(client: schema.ClientIdType) -> schema.Settings:
     """Create a new client"""
+    logger.debug("Creating client (if non-existent): %s", client)
     settings_objects = bootstrap.SETTINGS_OBJECTS
     if any(settings.client == client for settings in settings_objects):
         raise ValueError(f"client {client} already exists")
@@ -107,6 +108,7 @@ def load_config_from_json_data(config_data: dict, client: schema.ClientIdType = 
 
     # Determine clients to update
     if client:
+        logger.debug("Updating client settings: %s", client)
         update_client_settings(client_settings, client)
     else:
         server_settings = copy.deepcopy(client_settings)

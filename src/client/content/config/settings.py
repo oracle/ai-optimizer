@@ -11,171 +11,142 @@ import time
 import os
 import io
 import json
-import copy
 import tempfile
 import zipfile
 import shutil
 from pathlib import Path
-import yaml
+from datetime import datetime
 
+import yaml
 
 # Streamlit
 import streamlit as st
 from streamlit import session_state as state
 
 # Utilities
-from client.content.config.databases import patch_database, get_databases
-from client.content.config.oci import patch_oci, get_oci
-from client.content.tools.prompt_eng import patch_prompt, get_prompts
-from client.content.config.models import patch_model, get_models
+import client.utils.api_call as api_call
 from client.utils.st_footer import remove_footer
-
-# Schema
-from common.schema import Model
 
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("client.content.config.settings")
 
-# This is set for inclusion so that exported state is intentional
-INCLUDE_KEYS = [
-    "user_settings",
-    "database_config",
-    "oci_config",
-    "prompts_config",
-    "ll_model_config",
-    "embed_model_config",
-]
-
 
 #############################################################################
 # Functions
 #############################################################################
-def save_settings():
-    """Save Settings"""
+def get_settings(include_sensitive: bool = False):
+    """Get Server-Side Settings"""
+    settings = api_call.get(
+        endpoint="v1/settings",
+        params={
+            "client": state.user_settings["client"],
+            "full_config": True,
+            "incl_sensitive": include_sensitive,
+        },
+    )
+    return settings
 
-    def empty_key(obj):
-        """Return a new object with excluded keys set to empty strings"""
-        exclude_keys = ["client", "vector_stores", "connected"]
-        if not state.selected_sensitive_settings:
-            exclude_keys = exclude_keys + ["api_key", "wallet_password", "password"]
+def save_settings(settings):
+    """Save Settings after changing client"""
 
-        if isinstance(obj, dict):
-            # Create a new dictionary to hold the modified keys
-            new_dict = {}
-            for key, value in obj.items():
-                if key in exclude_keys:
-                    new_dict[key] = ""
+    now = datetime.now()
+    saved_time = now.strftime("%d-%b-%YT%H%M").upper()
+
+    if "client_settings" in settings and "client" in settings["client_settings"]:
+        settings["client_settings"]["client"] = saved_time
+
+    return json.dumps(settings, indent=2)
+
+
+def compare_settings(current, uploaded, path=""):
+    """Compare current settings with uploaded settings."""
+    differences = {
+        "Value Mismatch": {},
+        "Missing in Uploaded": {},
+        "Missing in Current": {},
+        "Override on Upload": {}
+    }
+
+    sensitive_keys = {"api_key", "password", "wallet_password"}
+
+    if isinstance(current, dict) and isinstance(uploaded, dict):
+        keys = set(current.keys()) | set(uploaded.keys())
+        for key in keys:
+            new_path = f"{path}.{key}" if path else key
+
+            # Skip specific path
+            if new_path == "client_settings.client":
+                continue
+
+            is_sensitive = key in sensitive_keys
+
+            if key not in current:
+                if is_sensitive:
+                    differences["Override on Upload"][new_path] = "present in uploaded only"
                 else:
-                    # Recursively handle nested dictionaries or lists
-                    new_dict[key] = empty_key(value)
-            return new_dict
+                    differences["Missing in Current"][new_path] = {"uploaded": uploaded[key]}
 
-        elif isinstance(obj, list):
-            # Create a new list to hold the modified items
-            return [empty_key(item) for item in obj]
+            elif key not in uploaded:
+                if is_sensitive:
+                    # Silently update uploaded to match current
+                    uploaded[key] = current[key]
+                else:
+                    differences["Missing in Uploaded"][new_path] = {"current": current[key]}
 
-        # If the object is neither a dict nor a list, return it unchanged
-        return obj
+            else:
+                # Both present — compare
+                if is_sensitive:
+                    if current[key] != uploaded[key]:
+                        differences["Value Mismatch"][new_path] = {
+                            "current": current[key],
+                            "uploaded": uploaded[key]
+                        }
+                else:
+                    child_diff = compare_settings(current[key], uploaded[key], new_path)
+                    for diff_type, diff_dict in differences.items():
+                        diff_dict.update(child_diff[diff_type])
 
-    state_dict = copy.deepcopy(state)
-    state_dict_filter = {key: state_dict[key] for key in INCLUDE_KEYS if key in state_dict}
-    state_dict_filter = empty_key(state_dict_filter)
-    return json.dumps(state_dict_filter, indent=4)
+    elif isinstance(current, list) and isinstance(uploaded, list):
+        min_len = min(len(current), len(uploaded))
+        for i in range(min_len):
+            new_path = f"{path}[{i}]"
+            child_diff = compare_settings(current[i], uploaded[i], new_path)
+            for diff_type, diff_dict in differences.items():
+                diff_dict.update(child_diff[diff_type])
+        for i in range(min_len, len(current)):
+            new_path = f"{path}[{i}]"
+            differences["Missing in Uploaded"][new_path] = {"current": current[i]}
+        for i in range(min_len, len(uploaded)):
+            new_path = f"{path}[{i}]"
+            differences["Missing in Current"][new_path] = {"uploaded": uploaded[i]}
 
+    else:
+        if current != uploaded:
+            differences["Value Mismatch"][path] = {
+                "current": current,
+                "uploaded": uploaded
+            }
 
-def compare_dicts_recursive(current, uploaded):
-    """Recursively Compare the Session State with the Uploaded Settings"""
-    diff = {}
-    all_keys = set(current.keys()).union(set(uploaded.keys()))
-
-    for key in all_keys:
-        if isinstance(current.get(key), dict) and isinstance(uploaded.get(key), dict):
-            # Recursively compare nested dictionaries
-            nested_diff = compare_dicts_recursive(current[key], uploaded[key])
-            if nested_diff:
-                diff[key] = nested_diff
-        elif current.get(key) != uploaded.get(key) and uploaded.get(key) != "":
-            # Report differences for non-dict values
-            diff[key] = {"current": current.get(key), "uploaded": uploaded.get(key)}
-
-    return diff
-
-
-# Function to compare session state with uploaded JSON, ignoring extra keys in session state
-def compare_with_uploaded_json(current_state, uploaded_json):
-    """Compare session state with uploaded JSON, ignoring extra keys in session state"""
-    diff = {}
-
-    for key in uploaded_json:
-        if key in current_state:
-            if isinstance(current_state[key], dict) and isinstance(uploaded_json[key], dict):
-                nested_diff = compare_dicts_recursive(current_state[key], uploaded_json[key])
-                if nested_diff:
-                    diff[key] = nested_diff
-            elif (current_state[key] or "") != (uploaded_json[key] or ""):
-                diff[key] = {"current": current_state[key], "uploaded": uploaded_json[key]}
-
-    return diff
+    return differences
 
 
-def update_session_state_recursive(session_state, updates):
-    """Apply settings to the Session State"""
-    for key, value in updates.items():
-        if value == "" or value is None:
-            # Skip empty string values
-            continue
-
-        if isinstance(value, dict):
-            if key not in session_state:
-                session_state[key] = {}
-            update_session_state_recursive(session_state[key], value)
-        else:
-            # Check if the value is different from the current state before updating
-            if key not in session_state or session_state[key] != value:
-                logger.info("Setting %s to %s", key, value)
-                session_state[key] = value
-
-
-def update_server(updates):
+def apply_uploaded_settings(uploaded):
     """Patch configuration to update the server side"""
-    for key, value in updates.items():
-        if key == "database_config":
-            valid_keys = ["name", "user", "password", "dsn", "wallet_password"]
-            for name, config in value.items():
-                new_config = {"name": name}
-                new_config.update(config)
-                new_config = {key: value for key, value in new_config.items() if key in valid_keys}
-                patch_database(**new_config)
-            continue
+    client_id = state.user_settings["client"]
+    try:
+        response = api_call.post(
+            endpoint="v1/settings/load/json",
+            params={"client": client_id},
+            payload={"json": uploaded},
+            timeout=7200,
+        )
+        st.success(response["message"], icon="✅")
+        state.client_settings = api_call.get(endpoint="v1/settings", params={"client": client_id})
+    except api_call.ApiError as ex:
+        st.error(f"Settings for {state.user_settings['client']} - Update Failed", icon="❌")
+        logger.error("%s Settings Update failed: %s", state.user_settings["client"], ex)
 
-        if key == "oci_config":
-            valid_keys = [
-                "auth_profile",
-                "user",
-                "fingerprint",
-                "tenancy",
-                "region",
-                "key_file",
-                "security_token_file",
-            ]
-            for profile, config in value.items():
-                new_config = {"auth_profile": profile}
-                new_config.update(config)
-                new_config = {key: value for key, value in new_config.items() if key in valid_keys}
-                patch_oci(**new_config)
-            continue
-
-        if key == "prompts_config":
-            for prompt in value:
-                patch_prompt(**prompt)
-            continue
-
-        if key in {"ll_model_config", "embed_model_config"}:
-            for model_name, config in value.items():
-                model = Model(**config, name=model_name)
-                patch_model(model)
-            continue
 
 def spring_ai_conf_check(ll_model, embed_model) -> str:
     """Check if configuration is valid for SpringAI package"""
@@ -272,12 +243,8 @@ def main():
     """Streamlit GUI"""
     remove_footer()
     st.header("Client Settings", divider="red")
-    get_models(model_type="ll", force=True)
-    get_models(model_type="embed", force=True)
-    get_databases(force=True)
-    get_oci(force=True)
-    get_prompts(force=True)
-    state_dict = copy.deepcopy(state)
+    if "selected_sensitive_settings" not in state:
+        state.selected_sensitive_settings = False
     upload_settings = st.toggle(
         "Upload",
         key="selected_upload_settings",
@@ -285,41 +252,38 @@ def main():
         help="Save or Upload Client Settings.",
     )
     if not upload_settings:
-        st.json(state, expanded=False)
+        settings = get_settings(state.selected_sensitive_settings)
+        st.json(settings, expanded=False)
         col_left, col_centre, _ = st.columns([3, 4, 3])
-        # Oder matters (selected_sensitive_settings must be defined)
+        col_left.download_button(
+            label="Download Settings",
+            data=save_settings(settings),
+            file_name="optimizer_settings.json",
+        )
         col_centre.checkbox(
             "Include Sensitive Settings",
             key="selected_sensitive_settings",
             help="Include API Keys and Passwords in Download",
         )
-        col_left.download_button(
-            label="Download Settings",
-            data=save_settings(),
-            file_name="optimizer_settings.json",
-        )
     else:
         uploaded_file = st.file_uploader("Upload the Settings file", type="json")
         if uploaded_file is not None:
-            file_content = uploaded_file.read()
-
+            uploaded_settings = json.loads(uploaded_file.read().decode("utf-8"))
             # Convert the JSON content to a dictionary
             try:
-                uploaded_settings_dict = json.loads(file_content)
-                differences = compare_with_uploaded_json(state_dict, uploaded_settings_dict)
-
+                settings = get_settings(True)
+                logger.info("Comparing Settings between Current and Uploaded")
+                differences = compare_settings(current=settings, uploaded=uploaded_settings)
+                # Remove empty difference groups
+                differences = {k: v for k, v in differences.items() if v}
                 # Show differences
                 if differences:
+                    st.subheader("Differences found:")
+                    st.json(differences, expanded=True)
                     if st.button("Apply New Settings"):
-                        # Update the Server; must be done first to avoid unnecessary API calls
-                        update_server(uploaded_settings_dict)
-                        # Update session state; this is primarily for user_settings
-                        update_session_state_recursive(state, uploaded_settings_dict)
-                        st.success("Configuration has been updated with the uploaded settings.", icon="✅")
+                        apply_uploaded_settings(uploaded_settings)
                         time.sleep(3)
                         st.rerun()
-                    st.subheader("Differences found:")
-                    st.json(differences)
                 else:
                     st.write("No differences found. The current configuration matches the saved settings.")
             except json.JSONDecodeError:

@@ -148,8 +148,8 @@ def patch(
     response = send_request(
         "PATCH",
         endpoint,
-        payload=payload,
         params=params,
+        payload=payload,
         timeout=timeout,
         retries=retries,
         backoff_factor=backoff_factor,

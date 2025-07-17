@@ -17,7 +17,11 @@ logger = logging_config.logging.getLogger("endpoints.v1.databases")
 auth = APIRouter()
 
 
-@auth.get("/", description="Get all database configurations", response_model=list[schema.Database])
+@auth.get(
+    "",
+    description="Get all database configurations",
+    response_model=list[schema.Database],
+)
 async def databases_list() -> list[schema.Database]:
     """List all databases"""
     logger.debug("Received databases_list")
@@ -31,7 +35,9 @@ async def databases_list() -> list[schema.Database]:
 
 
 @auth.get(
-    "/{name}", description="Get single database configuration and vector storage", response_model=schema.Database
+    "/{name}",
+    description="Get single database configuration and vector storage",
+    response_model=schema.Database,
 )
 async def databases_get(name: schema.DatabaseNameType) -> schema.Database:
     """Get single database"""
@@ -49,7 +55,10 @@ async def databases_get(name: schema.DatabaseNameType) -> schema.Database:
     description="Update, Test, Set as default database configuration",
     response_model=schema.Database,
 )
-async def databases_update(name: schema.DatabaseNameType, payload: schema.DatabaseAuth) -> schema.Database:
+async def databases_update(
+    name: schema.DatabaseNameType,
+    payload: schema.DatabaseAuth,
+) -> schema.Database:
     """Update Database"""
     logger.debug("Received databases_update - name: %s; payload: %s", name, payload)
 
