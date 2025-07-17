@@ -242,6 +242,7 @@ def spring_ai_zip(provider, ll_model):
 def main():
     """Streamlit GUI"""
     remove_footer()
+    st.write(state.user_settings)
     st.header("Client Settings", divider="red")
     if "selected_sensitive_settings" not in state:
         state.selected_sensitive_settings = False

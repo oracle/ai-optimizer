@@ -34,6 +34,8 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/settings", "get", id="settings_get"),
             pytest.param("/v1/settings", "patch", id="settings_update"),
             pytest.param("/v1/settings", "post", id="settings_create"),
+            pytest.param("/v1/settings/load/file", "post", id="load_settings_from_file"),
+            pytest.param("/v1/settings/load/json", "post", id="load_settings_from_json"),
         ],
     )
     def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):

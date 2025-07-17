@@ -98,9 +98,7 @@ class TestStreamlit:
             "ll_model": {"model": "gpt-3.5-turbo"},
             "vector_search": {"database": "DEFAULT", "model": "text-embedding-ada-002"},
         }
-        at.session_state.database_config = {
-            "DEFAULT": {"name": "DEFAULT", "user": "test_user", "password": "test_pass"}
-        }
+        at.session_state.database_configs = {"name": "DEFAULT", "user": "old_user"}
 
         # Create uploaded settings with differences
         uploaded_settings = {
@@ -108,28 +106,29 @@ class TestStreamlit:
                 "ll_model": {"model": "gpt-4"},  # Different model
                 "vector_search": {"database": "DEFAULT", "model": "text-embedding-ada-002"},
             },
-            "database_config": {
-                "DEFAULT": {"name": "DEFAULT", "user": "new_user", "password": ""}  # Different user, empty password
+            "database_configs": {
+                "name": "DEFAULT",
+                "user": "new_user",
+                "password": "",  # Different user, empty password
             },
         }
 
         # Import the original function to test directly
-        from client.content.config.settings import compare_with_uploaded_json
+        from client.content.config.settings import compare_settings
 
         # Call the function directly
-        differences = compare_with_uploaded_json(at.session_state, uploaded_settings)
+        differences = compare_settings(at.session_state, uploaded_settings)
 
         # Verify that differences are detected (simplified checks)
-        assert "user_settings" in differences
-        assert "ll_model" in differences["user_settings"]
-        assert differences["user_settings"]["ll_model"] is not None
+        assert "user_settings" in differences["Value Mismatch"][""]["current"]
+        assert "ll_model" in differences["Value Mismatch"][""]["current"]["user_settings"]
+        assert differences["Value Mismatch"][""]["current"]["user_settings"]["ll_model"] is not None
 
-        assert "database_config" in differences
-        assert "DEFAULT" in differences["database_config"]
-        assert "user" in differences["database_config"]["DEFAULT"]
+        assert "database_configs" in differences["Value Mismatch"][""]["current"]
+        assert "user" in differences["Value Mismatch"][""]["current"]["database_configs"]
 
         # Empty strings should be ignored
-        assert "password" not in differences["database_config"]["DEFAULT"]
+        assert "password" not in differences["Value Mismatch"][""]["current"]["database_configs"]
 
     def test_basic_configuration(self, app_server, app_test):
         """Test the basic configuration of the settings page"""
@@ -140,6 +139,8 @@ class TestStreamlit:
         assert hasattr(at, "session_state")
         assert "user_settings" in at.session_state
 
-        # Check that models are loaded
-        assert "ll_model_config" in at.session_state
-        assert "embed_model_config" in at.session_state
+        # Check that settings are loaded
+        assert "ll_model" in at.session_state["user_settings"]
+        assert "prompts" in at.session_state["user_settings"]
+        assert "oci" in at.session_state["user_settings"]
+        assert "database" in at.session_state["user_settings"]
