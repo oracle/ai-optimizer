@@ -3,6 +3,9 @@
 [global]
 disableWidgetStateDuplicationWarning = true
 
+[theme]
+font = "Source Sans Pro"
+
 [browser]
 gatherUsageStats = false
 serverAddress = "localhost"

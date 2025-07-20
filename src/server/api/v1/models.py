@@ -8,7 +8,7 @@ from typing import Optional, get_args
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from server.api.core import models
+import server.api.core.models as core_models
 import common.schema as schema
 import common.logging_config as logging_config
 
@@ -45,7 +45,7 @@ async def models_list(
 ) -> list[schema.Model]:
     """List all models after applying filters if specified"""
     logger.debug("Received models_list - type: %s", model_type)
-    models_ret = models.get_model(model_type=model_type)
+    models_ret = core_models.get_model(model_type=model_type)
 
     return models_ret
 
@@ -62,7 +62,7 @@ async def models_get(
     logger.debug("Received models_get - name: %s", name)
 
     try:
-        models_ret = models.get_model(model_name=name)
+        models_ret = core_models.get_model(model_name=name)
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
 
@@ -81,14 +81,14 @@ async def models_update(
     """Update a model"""
     logger.debug("Received models_update - name: %s; payload: %s", name, payload)
 
-    model_upd = models.get_model(model_name=name)
+    model_upd = core_models.get_model(model_name=name)
     for key, value in payload:
         if hasattr(model_upd, key):
             setattr(model_upd, key, value)
         else:
             raise HTTPException(status_code=404, detail=f"Model: Invalid setting - {key}.")
 
-    return models.get_model(model_name=name)
+    return core_models.get_model(model_name=name)
 
 
 @auth.post(
@@ -103,7 +103,7 @@ async def models_create(
     logger.debug("Received model_create - payload: %s", payload)
 
     try:
-        return models.create_model(payload)
+        return core_models.create_model(payload)
     except ValueError as ex:
         raise HTTPException(status_code=409, detail=str(ex)) from ex
 
@@ -117,5 +117,5 @@ async def models_delete(
 ) -> JSONResponse:
     """Delete a model"""
     logger.debug("Received models_delete - name: %s", name)
-    models.delete_model(name)
+    core_models.delete_model(name)
     return JSONResponse(status_code=200, content={"message": f"Model: {name} deleted."})

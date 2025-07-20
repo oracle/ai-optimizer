@@ -75,10 +75,9 @@ async def databases_update(
     except util_databases.DbException as ex:
         db.connected = False
         raise HTTPException(status_code=ex.status_code, detail=f"Database: {name} {ex.detail}.") from ex
-    db.user = payload.user
-    db.password = payload.password
-    db.dsn = payload.dsn
-    db.wallet_password = payload.wallet_password
+
+    for key, value in payload.model_dump().items():
+        setattr(db, key, value)
     db.connected = True
     db.set_connection(db_conn)
 

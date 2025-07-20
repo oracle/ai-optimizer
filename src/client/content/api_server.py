@@ -14,12 +14,10 @@ import time
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.st_common as st_common
 import client.utils.client as client
 import client.utils.api_call as api_call
 from client.utils.st_footer import remove_footer
 import common.logging_config as logging_config
-from common.schema import ClientIdType
 
 logger = logging_config.logging.getLogger("client.content.api_server")
 
@@ -34,16 +32,15 @@ except ImportError:
 #####################################################
 # Functions
 #####################################################
-def copy_client_settings(new_client: ClientIdType) -> None:
+def copy_client_settings(new_client: str) -> None:
     """Copy User Setting to a new client (e.g. the Server)"""
     logger.info("Copying user settings to: %s", new_client)
     try:
-        response = api_call.patch(
+        state[f"{new_client}_settings"] = api_call.patch(
             endpoint="v1/settings",
             payload={"json": state.client_settings},
             params={"client": new_client},
         )
-        state[f"{new_client}_settings"] = response
     except api_call.ApiError as ex:
         st.error(f"Settings for {new_client} - Update Failed", icon="❌")
         logger.error("%s Settings Update failed: %s", new_client, ex)
@@ -59,7 +56,7 @@ def server_restart() -> None:
     launch_server.stop_server(state.server["pid"])
     state.server["pid"] = launch_server.start_server(state.server["port"])
     time.sleep(10)
-    state.pop("sever_client", None)
+    state.pop("server_client", None)
 
 
 #####################################################
@@ -67,8 +64,8 @@ def server_restart() -> None:
 #####################################################
 async def main() -> None:
     """Streamlit GUI"""
+
     remove_footer()
-    st_common.set_server_state()
     st.header("API Server")
     st.write("Access with your own client.")
     left, right = st.columns([0.2, 0.8])

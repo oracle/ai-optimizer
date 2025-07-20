@@ -146,7 +146,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
             "ChatOCIGenAI": lambda oci_cfg=oci_config: ChatOCIGenAI(
                 model_id=model_name,
                 client=oci.init_genai_client(oci_cfg),
-                compartment_id=oci_cfg.compartment_id,
+                compartment=oci_cfg.compartment,
                 model_kwargs={
                     (k if k != "max_completion_tokens" else "max_tokens"): v
                     for k, v in ll_common_params.items()
@@ -170,7 +170,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
             "OCIGenAIEmbeddings": lambda oci_cfg=oci_config: OCIGenAIEmbeddings(
                 model_id=model_name,
                 client=oci.init_genai_client(oci_cfg),
-                compartment_id=oci_cfg.compartment_id,
+                compartment=oci_cfg.compartment,
             ),
         }
 

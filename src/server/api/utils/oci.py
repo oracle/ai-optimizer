@@ -120,34 +120,34 @@ def get_compartments(config: OracleCloudSettings = None) -> set:
     )
     compartments = response.data
 
-    # Create a dictionary to map compartment ID to compartment details
-    compartment_dict = {compartment.id: compartment for compartment in compartments}
+    # Create a dictionary to map compartment_id ID to compartment_id details
+    compartment_dict = {compartment_id.id: compartment_id for compartment_id in compartments}
 
-    def construct_path(compartment):
-        """Function to construct the full path of a compartment"""
+    def construct_path(compartment_id):
+        """Function to construct the full path of a compartment_id"""
         path = []
-        current = compartment
+        current = compartment_id
         while current:
             path.append(current.name)
             current = compartment_dict.get(current.compartment_id)
         return " / ".join(reversed(path))
 
     # Create a set with full paths as keys and OCIDs as values
-    compartment_paths = {construct_path(compartment): compartment.id for compartment in compartments}
+    compartment_paths = {construct_path(compartment_id): compartment_id.id for compartment_id in compartments}
     logger.info("Returning %i Compartments", len(compartment_paths))
     return compartment_paths
 
 
-def get_buckets(compartment: str, config: OracleCloudSettings = None) -> list:
+def get_buckets(compartment_id: str, config: OracleCloudSettings = None) -> list:
     """Get a list of buckets"""
     client_type = oci.object_storage.ObjectStorageClient
     client = init_client(client_type, config)
 
-    logger.info("Getting Buckets in %s", compartment)
+    logger.info("Getting Buckets in %s", compartment_id)
     client = init_client(client_type, config)
     bucket_names = []
     try:
-        response = client.list_buckets(namespace_name=config.namespace, compartment_id=compartment, fields=["tags"])
+        response = client.list_buckets(namespace_name=config.namespace, compartment_id=compartment_id, fields=["tags"])
         buckets = response.data
         for bucket in buckets:
             freeform_tags = bucket.freeform_tags or {}

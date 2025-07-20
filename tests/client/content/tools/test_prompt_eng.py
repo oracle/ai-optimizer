@@ -21,7 +21,7 @@ class TestStreamlit:
 
         at = app_test(self.ST_FILE).run()
         at.selectbox(key="selected_prompts_sys").set_value("Custom").run()
-        assert at.session_state.user_settings["prompts"]["sys"] == "Custom"
+        assert at.session_state.client_settings["prompts"]["sys"] == "Custom"
         at.button(key="save_sys_prompt").click().run()
         assert at.info[0].value == "Custom (sys) Prompt Instructions - No Changes Detected."
         at.text_area(key="prompt_sys_prompt").set_value("This is my custom, sys prompt.").run()
@@ -44,7 +44,7 @@ class TestStreamlit:
         at = app_test(self.ST_FILE).run()
         print(at.selectbox)
         at.selectbox(key="selected_prompts_ctx").set_value("Custom").run()
-        assert at.session_state.user_settings["prompts"]["ctx"] == "Custom"
+        assert at.session_state.client_settings["prompts"]["ctx"] == "Custom"
         at.button(key="save_ctx_prompt").click().run()
         assert at.info[0].value == "Custom (ctx) Prompt Instructions - No Changes Detected."
         at.text_area(key="prompt_ctx_prompt").set_value("This is my custom, ctx prompt.").run()

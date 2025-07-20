@@ -15,10 +15,13 @@ import base64
 import streamlit as st
 from streamlit import session_state as state
 
+from client.content.config.models import get_models
+
 import client.utils.st_common as st_common
+import client.utils.api_call as api_call
+
 from client.utils.st_footer import render_chat_footer
 import client.utils.client as client
-from client.content.config.models import get_models
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("client.content.chatbot")
@@ -57,14 +60,16 @@ def show_vector_search_refs(context):
 #############################################################################
 async def main() -> None:
     """Streamlit GUI"""
-
+    try:
+        get_models()
+    except api_call.ApiError:
+        st.stop()
     #########################################################################
     # Sidebar Settings
     #########################################################################
     # Get a list of available language models, if none, then stop
-    get_models(model_type="ll", force=True)
-    available_ll_models = list(state.ll_model_enabled.keys())
-    if not available_ll_models:
+    ll_models_enabled = st_common.enabled_models_lookup("ll")
+    if not ll_models_enabled:
         st.error("No language models are configured and/or enabled. Disabling Client.", icon="🛑")
         st.stop()
     # the sidebars will set this to False if not everything is configured.

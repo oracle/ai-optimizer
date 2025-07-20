@@ -15,13 +15,16 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-from client.content.config.oci import get_oci
-from client.content.config.models import get_models
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
 from client.utils.st_footer import remove_footer
+
+from client.content.config.databases import get_databases
+from client.content.config.models import get_models
+from client.content.config.oci import get_oci
+
 from common.schema import DistanceMetrics, IndexTypes, DatabaseVectorStorage
-import common.functions
+import common.functions as functions
 import common.help_text as help_text
 import common.logging_config as logging_config
 
@@ -41,7 +44,9 @@ def get_compartments() -> dict:
 def get_buckets(compartment: str) -> list:
     """Get OCI Buckets in selected compartment; function for Streamlit caching"""
     try:
-        response = api_call.get(endpoint=f"v1/oci/buckets/{compartment}/{state.client_settings['oci']['auth_profile']}")
+        response = api_call.get(
+            endpoint=f"v1/oci/buckets/{compartment}/{state.client_settings['oci']['auth_profile']}"
+        )
     except api_call.ApiError:
         response = ["No Access to Buckets in this Compartment"]
     return response
@@ -110,30 +115,32 @@ def update_chunk_size_input() -> None:
 #############################################################################
 def main() -> None:
     """Streamlit GUI"""
+    try:
+        get_models()
+        get_databases()
+        get_oci()
+    except api_call.ApiError:
+        st.stop()
+
     remove_footer()
     db_avail = st_common.is_db_configured()
     if not db_avail:
         logger.debug("Embedding Disabled (Database not configured)")
         st.error("Database is not configured. Disabling Embedding.", icon="🛑")
 
-    get_models(model_type="embed")
-    available_embed_models = list(state.embed_model_enabled.keys())
-    if not available_embed_models:
+    # Build a lookup
+    embed_models_enabled = st_common.enabled_models_lookup("embed")
+    if not embed_models_enabled:
         logger.debug("Embedding Disabled (no Embedding Models)")
         st.error("No embedding models are configured and/or enabled. Disabling Embedding.", icon="🛑")
 
-    if not db_avail or not available_embed_models:
+    if not db_avail or not embed_models_enabled:
         st.stop()
 
     file_sources = ["OCI", "Local", "Web"]
-    get_oci()
-    try:
-        if not state.oci_config[state.client_settings["oci"]["auth_profile"]].get("namespace"):
-            raise KeyError
-        if not state.oci_config[state.client_settings["oci"]["auth_profile"]].get("tenancy"):
-            # Get Compartments requires a tenancy
-            raise KeyError
-    except (KeyError, TypeError):
+    oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
+    oci_setup = oci_lookup.get(state.client_settings["oci"].get("auth_profile"))
+    if not oci_setup or "namespace" not in oci_setup or "tenancy" not in oci_setup:
         st.warning("OCI is not fully configured, some functionality is disabled", icon="⚠️")
         file_sources.remove("OCI")
 
@@ -146,20 +153,20 @@ def main() -> None:
     populate_button_disabled = True  # Disable the populate button
     embed_request.model = st.selectbox(
         "Embedding models available: ",
-        options=available_embed_models,
+        options=list(embed_models_enabled.keys()),
         index=0,
         key="selected_embed_model",
     )
-    embed_url = state.embed_model_enabled[embed_request.model]["url"]
+    embed_url = embed_models_enabled[embed_request.model]["url"]
     st.write(f"Embedding Server: {embed_url}")
-    is_embed_accessible, embed_err_msg = common.functions.is_url_accessible(embed_url)
+    is_embed_accessible, embed_err_msg = functions.is_url_accessible(embed_url)
     if not is_embed_accessible:
         st.warning(embed_err_msg, icon="⚠️")
         if st.button("Retry"):
             st.rerun()
         st.stop()
 
-    chunk_size_max = state.embed_model_enabled[embed_request.model]["max_chunk_size"]
+    chunk_size_max = embed_models_enabled[embed_request.model]["max_chunk_size"]
     col1_1, col1_2 = st.columns([0.8, 0.2])
     with col1_1:
         st.slider(
@@ -247,7 +254,7 @@ def main() -> None:
         """
         st.subheader("Web Pages", divider=False)
         web_url = st.text_input("URL:", key="selected_web_url")
-        is_web_accessible, _ = common.functions.is_url_accessible(web_url)
+        is_web_accessible, _ = functions.is_url_accessible(web_url)
         populate_button_disabled = not (web_url and is_web_accessible)
 
     ######################################
@@ -258,7 +265,7 @@ def main() -> None:
             This button is disabled if there are no documents from the source bucket split with
             the current split and embed options.  Please Split and Embed to enable Vector Storage.
         """
-        st.text(f"OCI namespace: {state.oci_config[state.client_settings['oci']['auth_profile']]['namespace']}")
+        st.text(f"OCI namespace: {oci_setup['namespace']}")
         oci_compartments = get_compartments()
         src_bucket_list = []
         col2_1, col2_2 = st.columns([0.5, 0.5])
@@ -293,7 +300,11 @@ def main() -> None:
     # Populate Vector Store
     ######################################
     st.header("Populate Vector Store", divider="red")
-    existing_vs = state.database_config[state.client_settings["database"]["alias"]]["vector_stores"]
+    database_lookup = st_common.state_configs_lookup("database_configs", "name")
+    existing_vs = database_lookup.get(state.client_settings.get("database", {}).get("alias"), {}).get(
+        "vector_stores", []
+    )
+
     # Mandatory Alias
     embed_alias_size, _ = st.columns([0.5, 0.5])
     embed_alias_invalid = False
@@ -315,7 +326,7 @@ def main() -> None:
         embed_alias_invalid = True
 
     if not embed_alias_invalid:
-        embed_request.vector_store, _ = common.functions.get_vs_table(
+        embed_request.vector_store, _ = functions.get_vs_table(
             **embed_request.model_dump(exclude={"database", "vector_store"})
         )
     vs_msg = f"{embed_request.vector_store}, will be created."
@@ -351,48 +362,43 @@ def main() -> None:
         help=button_help,
     ):
         try:
-            placeholder = st.empty()
-            with placeholder:
-                st.warning("Populating Vector Store... please be patient.", icon="⚠️")
+            with st.spinner("Populating Vector Store... please be patient.", show_time=True):
+                endpoint = None
+                api_payload = []
+                # Place files on Server for Embedding
+                if file_source == "Local":
+                    endpoint = "v1/embed/local/store"
+                    files = st_common.local_file_payload(state.local_file_uploader)
+                    api_payload = {"files": files}
 
-            endpoint = None
-            api_payload = []
-            # Place files on Server for Embedding
-            if file_source == "Local":
-                endpoint = "v1/embed/local/store"
-                files = st_common.local_file_payload(state.local_file_uploader)
-                api_payload = {"files": files}
+                if file_source == "Web":
+                    endpoint = "v1/embed/web/store"
+                    api_payload = {"json": [web_url]}
 
-            if file_source == "Web":
-                endpoint = "v1/embed/web/store"
-                api_payload = {"json": [web_url]}
+                if file_source == "OCI":
+                    # Download OCI Objects for Processing
+                    endpoint = f"v1/oci/objects/download/{src_bucket}/{state.client_settings['oci']['auth_profile']}"
+                    process_list = src_files_selected[src_files_selected["Process"]].reset_index(drop=True)
+                    api_payload = {"json": process_list["File"].tolist()}
 
-            if file_source == "OCI":
-                # Download OCI Objects for Processing
-                endpoint = f"v1/oci/objects/download/{src_bucket}/{state.client_settings['oci']['auth_profile']}"
-                process_list = src_files_selected[src_files_selected["Process"]].reset_index(drop=True)
-                api_payload = {"json": process_list["File"].tolist()}
+                # Post Files to Server
+                response = api_call.post(endpoint=endpoint, payload=api_payload)
 
-            # Post Files to Server
-            response = api_call.post(endpoint=endpoint, payload=api_payload)
-
-            # All files are now on Server... Run Embeddings
-            embed_params = {
-                "client": state.client_settings["client"],
-                "rate_limit": rate_limit,
-            }
-            response = api_call.post(
-                endpoint="v1/embed",
-                params=embed_params,
-                payload={"json": embed_request.model_dump()},
-                timeout=7200,
-            )
-            placeholder.empty()
+                # All files are now on Server... Run Embeddings
+                embed_params = {
+                    "client": state.client_settings["client"],
+                    "rate_limit": rate_limit,
+                }
+                response = api_call.post(
+                    endpoint="v1/embed",
+                    params=embed_params,
+                    payload={"json": embed_request.model_dump()},
+                    timeout=7200,
+                )
             st.success(f"Vector Store Populated: {response['message']}", icon="✅")
-            # Delete database_config state to reflect new vector stores
-            st_common.clear_state_key("database_config")
+            # Refresh database_configs state to reflect new vector stores
+            get_databases(force="True")
         except api_call.ApiError as ex:
-            placeholder.empty()
             st.error(ex, icon="🚨")
 
 

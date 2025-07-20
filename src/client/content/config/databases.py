@@ -8,7 +8,6 @@ It includes a form to input and test database connection settings.
 # spell-checker:ignore streamlit, selectbox, selectai
 
 import inspect
-import time
 import json
 import pandas as pd
 
@@ -27,52 +26,39 @@ logger = logging_config.logging.getLogger("client.content.config.database")
 # Functions
 #####################################################
 def get_databases(force: bool = False) -> None:
-    """Get a dictionary of all Databases and Store Vector Store Tables"""
-    if "database_config" not in state or state.database_config == {} or force:
+    """Get Databases from API Server"""
+    if force or "database_configs" not in state or not state.database_configs:
         try:
-            response = api_call.get(endpoint="v1/databases")
-            state.database_config = {
-                item["name"]: {k: v for k, v in item.items() if k != "name"} for item in response
-            }
-            logger.info("State created: state['database_config']")
+            logger.info("Refreshing state.database_configs")
+            state.database_configs = api_call.get(endpoint="v1/databases")
         except api_call.ApiError as ex:
-            logger.error("Unable to retrieve databases: %s", ex)
-            state.database_config = {}
+            logger.error("Unable to populate state.database_configs: %s", ex)
+            state.database_configs = {}
 
 
-def patch_database(name: str, user: str, password: str, dsn: str, wallet_password: str) -> None:
+def patch_database(name: str, supplied: dict, connected: bool) -> bool:
     """Update Database"""
-    get_databases()
     # Check if the database configuration is changed, or if not CONNECTED
-    if (
-        state.database_config[name]["user"] != user
-        or state.database_config[name]["password"] != password
-        or state.database_config[name]["dsn"] != dsn
-        or state.database_config[name]["wallet_password"] != wallet_password
-        or not state.database_config[name]["connected"]
-    ):
+    rerun = False
+    existing = next((item for item in state.database_configs if item["name"] == name), None)
+    differences = {key: (existing.get(key), supplied[key]) for key in supplied if existing.get(key) != supplied[key]}
+    if differences or not connected:
+        rerun = True
         try:
-            _ = api_call.patch(
-                endpoint=f"v1/databases/{name}",
-                payload={
-                    "json": {
-                        "user": user,
-                        "password": password,
-                        "dsn": dsn,
-                        "wallet_password": wallet_password,
-                    }
-                },
-            )
+            with st.spinner(text="Updating Database...", show_time=True):
+                _ = api_call.patch(
+                    endpoint=f"v1/databases/{name}",
+                    payload={"json": supplied},
+                )
             logger.info("Database updated: %s", name)
-            state.database_config[name]["connected"] = True
-            get_databases(force=True)
         except api_call.ApiError as ex:
             logger.error("Database not updated: %s (%s)", name, ex)
-            state.database_config[name]["connected"] = False
             state.database_error = str(ex)
+        st_common.clear_state_key("database_configs")
     else:
-        st.info(f"{name} Database Configuration - No Changes Detected.", icon="ℹ️")
-        time.sleep(2)
+        st.toast("No changes detected.", icon="ℹ️")
+
+    return rerun
 
 
 def drop_vs(vs: dict) -> None:
@@ -80,11 +66,13 @@ def drop_vs(vs: dict) -> None:
     api_call.delete(endpoint=f"v1/embed/{vs['vector_store']}")
     get_databases(force=True)
 
+
 def select_ai_profile() -> None:
     """Update the chosen SelectAI Profile"""
     st_common.update_client_settings("selectai")
     st_common.patch_settings()
     selectai_df.clear()
+
 
 @st.cache_data
 def selectai_df(profile):
@@ -124,54 +112,65 @@ def main() -> None:
     st.header("Database", divider="red")
     st.write("Configure the database used for Vector Storage and SelectAI.")
     try:
-        get_databases()  # Create/Rebuild state
+        get_databases()
     except api_call.ApiError:
         st.stop()
 
-    # TODO(gotsysdba) Add select for databases
-    name = "DEFAULT"
     st.subheader("Configuration")
-    with st.form("update_database_config"):
-        user = st.text_input(
+    database_lookup = st_common.state_configs_lookup("database_configs", "name")
+    # Get a list of database names, and allow user to select
+    selected_database_alias = st.selectbox(
+        "Current Database:",
+        options=list(database_lookup.keys()),
+        index=list(database_lookup.keys()).index(state.client_settings["database"]["alias"]),
+        key="selected_database",
+        on_change=st_common.update_client_settings("database"),
+    )
+    # Present updatable options
+    with st.container(border=True):
+        # with st.form("update_database_config"):
+        supplied = {}
+        supplied["user"] = st.text_input(
             "Database User:",
-            value=state.database_config[name]["user"],
+            value=database_lookup[selected_database_alias]["user"],
             key="database_user",
         )
-        password = st.text_input(
+        supplied["password"] = st.text_input(
             "Database Password:",
-            value=state.database_config[name]["password"],
+            value=database_lookup[selected_database_alias]["password"],
             key="database_password",
             type="password",
         )
-        dsn = st.text_input(
+        supplied["dsn"] = st.text_input(
             "Database Connect String:",
-            value=state.database_config[name]["dsn"],
+            value=database_lookup[selected_database_alias]["dsn"],
             key="database_dsn",
         )
-        wallet_password = st.text_input(
+        supplied["wallet_password"] = st.text_input(
             "Wallet Password (Optional):",
-            value=state.database_config[name]["wallet_password"],
+            value=database_lookup[selected_database_alias]["wallet_password"],
             key="database_wallet_password",
             type="password",
         )
-        if state.database_config[name]["connected"]:
+        connected = database_lookup[selected_database_alias]["connected"]
+        if connected:
             st.success("Current Status: Connected")
         else:
             st.error("Current Status: Disconnected")
             if "database_error" in state:
                 st.error(f"Update Failed - {state.database_error}", icon="🚨")
 
-        if st.form_submit_button("Save"):
-            patch_database(name, user, password, dsn, wallet_password)
-            st.rerun()
+        if st.button("Save Database", key="save_database"):
+            if patch_database(selected_database_alias, supplied, connected):
+                st.rerun()
 
-    if state.database_config[name]["connected"]:
+    if connected:
         # Vector Stores
         #############################################
         st.subheader("Database Vector Storage", divider="red")
         st.write("Existing Vector Storage Tables in Database.")
         with st.container(border=True):
-            if state.database_config[name]["vector_stores"]:
+            if database_lookup[selected_database_alias]["vector_stores"]:
                 vs_col_format = st.columns([2, 5, 10, 3, 3, 5, 3])
                 headers = ["\u200b", "Alias", "Model", "Chunk", "Overlap", "Dist. Metric", "Index"]
 
@@ -180,7 +179,7 @@ def main() -> None:
                     col.markdown(f"**<u>{header}</u>**", unsafe_allow_html=True)
 
                 # Vector store rows
-                for vs in state.database_config[name]["vector_stores"]:
+                for vs in database_lookup[selected_database_alias]["vector_stores"]:
                     vector_store = vs["vector_store"].lower()
                     fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
                     # Delete Button in Column1
@@ -206,8 +205,8 @@ def main() -> None:
         # Select AI
         #############################################
         st.subheader("SelectAI", divider="red")
-        selectai_profiles = state.database_config[name]["selectai_profiles"]
-        if state.database_config[name]["selectai"] and len(selectai_profiles) > 0:
+        selectai_profiles = database_lookup[selected_database_alias]["selectai_profiles"]
+        if database_lookup[selected_database_alias]["selectai"] and len(selectai_profiles) > 0:
             if not state.client_settings["selectai"]["profile"]:
                 state.client_settings["selectai"]["profile"] = selectai_profiles[0]
             # Select Profile
@@ -234,7 +233,7 @@ def main() -> None:
             else:
                 st.write("No objects found for SelectAI.")
         else:
-            if not state.database_config[name]["selectai"]:
+            if not database_lookup[selected_database_alias]["selectai"]:
                 st.write("Unable to use SelectAI with Database.")
             elif len(selectai_profiles) == 0:
                 st.write("No SelectAI Profiles Found.")

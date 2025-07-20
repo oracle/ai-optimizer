@@ -10,13 +10,13 @@ Session States Set:
 # spell-checker:ignore selectbox
 
 import inspect
-import time
 
 import streamlit as st
 from streamlit import session_state as state
 
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call
+
 import common.logging_config as logging_config
 from client.utils.st_footer import remove_footer
 
@@ -26,40 +26,40 @@ logger = logging_config.logging.getLogger("client.tools.prompt_eng")
 #####################################################
 # Functions
 #####################################################
-def get_prompts(force: bool = False) -> dict[str, dict]:
-    """Get a dictionary of all Prompts"""
+def get_prompts(force: bool = False) -> None:
+    """Get Prompts from API Server"""
     if "prompt_configs" not in state or state.prompt_configs == {} or force:
         try:
+            logger.info("Refreshing state.prompt_configs")
             state.prompt_configs = api_call.get(endpoint="v1/prompts")
-            logger.info("State created: state['prompt_configs']")
         except api_call.ApiError as ex:
-            logger.error("Unable to retrieve prompts: %s", ex)
+            logger.error("Unable to populate state.prompt_configs: %s", ex)
             state.prompt_configs = {}
 
 
-def patch_prompt(category: str, name: str, prompt: str) -> None:
+def patch_prompt(category: str, name: str, prompt: str) -> bool:
     """Update Prompt Instructions"""
-    get_prompts()
     # Check if the prompt instructions are changed
+    rerun = False
     configured_prompt = next(
         item["prompt"] for item in state.prompt_configs if item["name"] == name and item["category"] == category
     )
     if configured_prompt != prompt:
         try:
-            _ = api_call.patch(
-                endpoint=f"v1/prompts/{category}/{name}",
-                payload={"json": {"prompt": prompt}},
-            )
+            rerun = True
+            with st.spinner(text="Updating Prompt...", show_time=True):
+                _ = api_call.patch(
+                    endpoint=f"v1/prompts/{category}/{name}",
+                    payload={"json": {"prompt": prompt}},
+                )
             logger.info("Prompt updated: %s (%s)", name, category)
-            st_common.clear_state_key(f"selected_prompt_{category}_name")
-            st_common.clear_state_key(f"prompt_{category}_prompt")
-            st_common.clear_state_key("prompt_configs")
-            get_prompts(force=True)  # Refresh the Config
         except api_call.ApiError as ex:
             logger.error("Prompt not updated: %s (%s): %s", name, category, ex)
+        st_common.clear_state_key("prompt_configs")
     else:
         st.info(f"{name} ({category}) Prompt Instructions - No Changes Detected.", icon="ℹ️")
-        time.sleep(2)
+
+    return rerun
 
 
 #############################################################################
@@ -71,7 +71,7 @@ def main():
     st.header("Prompt Engineering")
     st.write("Select which prompts to use and their instructions.  Currently selected prompts are used.")
     try:
-        get_prompts()  # Create/Rebuild state
+        get_prompts()
     except api_call.ApiError:
         st.stop()
 
@@ -92,7 +92,8 @@ def main():
             key="prompt_sys_prompt",
         )
         if st.button("Save Instructions", key="save_sys_prompt"):
-            patch_prompt("sys", selected_prompt_sys_name, prompt_sys_prompt)
+            if patch_prompt("sys", selected_prompt_sys_name, prompt_sys_prompt):
+                st.rerun()
 
     st.subheader("Context Prompt")
     ctx_dict = {item["name"]: item["prompt"] for item in state.prompt_configs if item["category"] == "ctx"}
@@ -111,7 +112,8 @@ def main():
             key="prompt_ctx_prompt",
         )
         if st.button("Save Instructions", key="save_ctx_prompt"):
-            patch_prompt("ctx", selected_prompt_ctx_name, prompt_ctx_prompt)
+            if patch_prompt("ctx", selected_prompt_ctx_name, prompt_ctx_prompt):
+                st.rerun()
 
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:

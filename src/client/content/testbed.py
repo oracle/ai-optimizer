@@ -16,9 +16,11 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.content.config.models import get_models
+
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call
 from client.utils.st_footer import remove_footer
+
 
 import common.logging_config as logging_config
 
@@ -167,12 +169,14 @@ def update_record(direction: int = 0) -> None:
     state.testbed_qa[state.testbed["qa_index"]]["reference_answer"] = state[f"selected_a_{state.testbed['qa_index']}"]
     state.testbed["qa_index"] += direction
 
+
 @st.fragment()
 def delete_record() -> None:
     """Delete record from streamlit state"""
     state.testbed_qa.pop(state.testbed["qa_index"])
     if state.testbed["qa_index"] != 0:
         state.testbed["qa_index"] += -1
+
 
 def qa_update_gui(qa_testset: list) -> None:
     """Update Q&A Records in GUI"""
@@ -235,14 +239,18 @@ def qa_update_gui(qa_testset: list) -> None:
 def main():
     """Streamlit GUI"""
     remove_footer()
+    try:
+        get_models()
+    except api_call.ApiError:
+        st.stop()
     db_avail = st_common.is_db_configured()
     if not db_avail:
         logger.debug("Testbed Disabled (Database not configured)")
         st.error("Database is not configured. Disabling Testbed.", icon="🛑")
 
     # If there is no eligible (OpenAI Compat.) LL Models; then disable ALL functionality
-    get_models(model_type="ll")
-    available_ll_models = [key for key, value in state.ll_model_enabled.items() if value.get("openai_compat")]
+    ll_models_enabled = st_common.enabled_models_lookup("ll")
+    available_ll_models = [key for key, value in ll_models_enabled.items() if value.get("openai_compat")]
     if not available_ll_models:
         st.error(
             "No OpenAI compatible language models are configured and/or enabled. Disabling Testing Framework.",
@@ -252,10 +260,11 @@ def main():
     if not db_avail or not available_ll_models:
         st.stop()
 
+
     # If there is no eligible (OpenAI Compat.) Embedding Model; disable Generate Test Set
     gen_testset_disabled = False
-    get_models(model_type="embed")
-    available_embed_models = [key for key, value in state.embed_model_enabled.items() if value.get("openai_compat")]
+    embed_models_enabled = st_common.enabled_models_lookup("embed")
+    available_embed_models = [key for key, value in embed_models_enabled.items() if value.get("openai_compat")]
     if not available_embed_models:
         st.warning(
             "No OpenAI compatible embedding models are configured and/or enabled. Disabling Test Set Generation.",

@@ -163,7 +163,6 @@ def spring_ai_conf_check(ll_model, embed_model) -> str:
 
     return "hybrid"
 
-st.write(state)
 def spring_ai_obaas(src_dir, file_name, provider, ll_model):
     """Get the users CTX Prompt"""
     ctx_prompt = next(

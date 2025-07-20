@@ -109,32 +109,25 @@ async def oci_profile_update(
 ) -> schema.OracleCloudSettings:
     """Update OCI Configuration"""
     logger.debug("Received oci_update - auth_profile: %s; payload %s", auth_profile, payload)
-    try:
-        namespace = util_oci.get_namespace(payload)
-    except util_oci.OciException as ex:
-        raise HTTPException(status_code=401, detail=f"OCI: {str(ex)}") from ex
 
     oci_config = await oci_get(auth_profile=auth_profile)
+
     try:
+        namespace = util_oci.get_namespace(payload)
         oci_config.namespace = namespace
-        oci_config.tenancy = payload.tenancy if payload.tenancy else oci_config.tenancy
-        oci_config.region = payload.region if payload.region else oci_config.region
-        oci_config.user = payload.user if payload.user else oci_config.user
-        oci_config.fingerprint = payload.fingerprint if payload.fingerprint else oci_config.fingerprint
-        oci_config.key_file = payload.key_file if payload.key_file else oci_config.key_file
-        oci_config.security_token_file = (
-            payload.security_token_file if payload.security_token_file else oci_config.security_token_file
-        )
+        for key, value in payload.model_dump().items():
+            if value not in ("", None):
+                setattr(oci_config, key, value)
+    except util_oci.OciException as ex:
+        oci_config.namespace = None
+        raise HTTPException(status_code=401, detail=f"OCI: {str(ex)}") from ex
     except AttributeError as ex:
+        oci_config.namespace = None
         raise HTTPException(status_code=400, detail="OCI: Invalid Payload") from ex
 
     # OCI GenAI
     try:
-        oci_config.service_endpoint = (
-            payload.service_endpoint if payload.service_endpoint else oci_config.service_endpoint
-        )
-        oci_config.compartment_id = payload.compartment_id if payload.compartment_id else oci_config.compartment_id
-        if oci_config.service_endpoint != "" and oci_config.compartment_id != "":
+        if oci_config.service_endpoint and oci_config.compartment_id:
             model_objects = models.get_model()
             for model in model_objects:
                 if "OCI" in model.api:
@@ -142,6 +135,7 @@ async def oci_profile_update(
                     model.url = oci_config.service_endpoint
     except AttributeError:
         pass
+
     return oci_config
 
 

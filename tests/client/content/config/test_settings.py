@@ -94,7 +94,7 @@ class TestStreamlit:
         at = app_test(self.ST_FILE).run()
 
         # Set up current session state
-        at.session_state.user_settings = {
+        at.session_state.client_settings = {
             "ll_model": {"model": "gpt-3.5-turbo"},
             "vector_search": {"database": "DEFAULT", "model": "text-embedding-ada-002"},
         }
@@ -102,7 +102,7 @@ class TestStreamlit:
 
         # Create uploaded settings with differences
         uploaded_settings = {
-            "user_settings": {
+            "client_settings": {
                 "ll_model": {"model": "gpt-4"},  # Different model
                 "vector_search": {"database": "DEFAULT", "model": "text-embedding-ada-002"},
             },
@@ -120,9 +120,9 @@ class TestStreamlit:
         differences = compare_settings(at.session_state, uploaded_settings)
 
         # Verify that differences are detected (simplified checks)
-        assert "user_settings" in differences["Value Mismatch"][""]["current"]
-        assert "ll_model" in differences["Value Mismatch"][""]["current"]["user_settings"]
-        assert differences["Value Mismatch"][""]["current"]["user_settings"]["ll_model"] is not None
+        assert "client_settings" in differences["Value Mismatch"][""]["current"]
+        assert "ll_model" in differences["Value Mismatch"][""]["current"]["client_settings"]
+        assert differences["Value Mismatch"][""]["current"]["client_settings"]["ll_model"] is not None
 
         assert "database_configs" in differences["Value Mismatch"][""]["current"]
         assert "user" in differences["Value Mismatch"][""]["current"]["database_configs"]
@@ -137,10 +137,10 @@ class TestStreamlit:
 
         # Check that the session state is initialized
         assert hasattr(at, "session_state")
-        assert "user_settings" in at.session_state
+        assert "client_settings" in at.session_state
 
         # Check that settings are loaded
-        assert "ll_model" in at.session_state["user_settings"]
-        assert "prompts" in at.session_state["user_settings"]
-        assert "oci" in at.session_state["user_settings"]
-        assert "database" in at.session_state["user_settings"]
+        assert "ll_model" in at.session_state["client_settings"]
+        assert "prompts" in at.session_state["client_settings"]
+        assert "oci" in at.session_state["client_settings"]
+        assert "database" in at.session_state["client_settings"]

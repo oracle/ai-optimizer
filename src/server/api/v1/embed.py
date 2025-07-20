@@ -18,6 +18,7 @@ from server.api.core import oci, models, databases
 from server.api.utils.databases import DbException
 from server.api.utils import embed
 
+import common.functions as functions
 import common.schema as schema
 import common.logging_config as logging_config
 
@@ -141,7 +142,7 @@ async def split_embed(
         embed_client = models.get_client({"model": request.model, "enabled": True}, oci_config)
 
         # Calculate and set the vector_store name using get_vs_table
-        request.vector_store, _ = embed.get_vs_table(**request.model_dump(exclude={"database", "vector_store"}))
+        request.vector_store, _ = functions.get_vs_table(**request.model_dump(exclude={"database", "vector_store"}))
 
         embed.populate_vs(
             client=client,

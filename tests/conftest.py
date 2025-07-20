@@ -144,7 +144,7 @@ def app_test(auth_headers):
             params={"client": TEST_CONFIG["client"]},
             timeout=120,
         )
-        at.session_state.user_settings = response.json()
+        at.session_state.client_settings = response.json()
         return at
 
     return _app_test

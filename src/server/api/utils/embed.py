@@ -9,9 +9,8 @@ import copy
 import math
 import os
 from pathlib import Path
-import re
 import time
-from typing import Tuple, Union
+from typing import Union
 
 import bs4
 import oracledb
@@ -36,37 +35,6 @@ import common.schema as schema
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.utils.embed")
-
-
-def get_vs_table(
-    model: str,
-    chunk_size: int,
-    chunk_overlap: int,
-    distance_metric: str,
-    index_type: str = "HNSW",
-    alias: str = None,
-) -> Tuple[str, str]:
-    """Return the concatenated VS Table name and comment"""
-    store_table = None
-    store_comment = None
-    try:
-        chunk_overlap_ceil = math.ceil(chunk_overlap)
-        table_string = f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
-        if alias:
-            table_string = f"{alias}_{table_string}"
-        store_table = re.sub(r"\W", "_", table_string.upper())
-        store_comment = (
-            f'{{"alias": "{alias}",'
-            f'"model": "{model}",'
-            f'"chunk_size": {chunk_size},'
-            f'"chunk_overlap": {chunk_overlap_ceil},'
-            f'"distance_metric": "{distance_metric}",'
-            f'"index_type": "{index_type}"}}'
-        )
-        logger.debug("Vector Store Table: %s; Comment: %s", store_table, store_comment)
-    except TypeError:
-        logger.fatal("Not all required values provided to get Vector Store Table name.")
-    return store_table, store_comment
 
 
 def get_temp_directory(client: schema.ClientIdType, function: str) -> Path:

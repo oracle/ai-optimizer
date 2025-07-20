@@ -82,7 +82,6 @@ def send_request(
     except (ValueError, IndexError):
         pass
     logger.info("%s Request: %s", method, log_args)
-
     for attempt in range(retries + 1):
         try:
             response = method_map[method](**args)
@@ -93,8 +92,10 @@ def send_request(
             return response
 
         except requests.exceptions.HTTPError as ex:
+            logger.error(ex)
             failure = ex.response.json()["detail"]
-            st.error(ex, icon="🚨")
+            if ex.response.status_code == 422:
+                failure = "Not all required fields have been supplied."
             raise ApiError(failure) from ex
         except requests.exceptions.RequestException as ex:
             logger.error("Attempt %d: Error: %s", attempt + 1, ex)
@@ -142,7 +143,7 @@ def patch(
     timeout: int = 60,
     retries: int = 5,
     backoff_factor: float = 1.5,
-    toast = True
+    toast=True,
 ) -> None:
     """PATCH Requests"""
     response = send_request(
@@ -159,13 +160,7 @@ def patch(
     return response.json()
 
 
-def delete(
-    endpoint: str,
-    timeout: int = 60,
-    retries: int = 5,
-    backoff_factor: float = 1.5,
-    toast = True
-) -> None:
+def delete(endpoint: str, timeout: int = 60, retries: int = 5, backoff_factor: float = 1.5, toast=True) -> None:
     """DELETE Requests"""
     response = send_request("DELETE", endpoint, timeout=timeout, retries=retries, backoff_factor=backoff_factor)
     success = response.json()["message"]
