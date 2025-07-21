@@ -27,6 +27,7 @@ TEST_CONFIG = {
 }
 
 # Environments for Client/Server
+os.environ["CONFIG_FILE"] = "/non/existant/path/config.json"  # Prevent picking up an exported settings file
 os.environ["OCI_CLI_CONFIG_FILE"] = "/non/existant/path"  # Prevent picking up default OCI config file
 os.environ["API_SERVER_KEY"] = TEST_CONFIG["auth_token"]
 os.environ["API_SERVER_URL"] = "http://localhost"
@@ -143,7 +144,7 @@ def app_test(auth_headers):
             params={"client": TEST_CONFIG["client"]},
             timeout=120,
         )
-        at.session_state.user_settings = response.json()
+        at.session_state.client_settings = response.json()
         return at
 
     return _app_test

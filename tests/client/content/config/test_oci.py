@@ -36,7 +36,7 @@ def _mock_api_call_get():
 @pytest.fixture(name="mock_server_get_namespace", autouse=True)
 def _mock_server_get_namespace():
     """Mock server_oci.get_namespace to always return test_namespace"""
-    with patch("server.utils.oci.get_namespace", return_value="test_namespace") as mock:
+    with patch("server.api.utils.oci.get_namespace", return_value="test_namespace") as mock:
         yield mock
 
 
@@ -52,16 +52,17 @@ class TestStreamlit:
         """Initialisation of streamlit without any OCI environment"""
         assert app_server is not None
         at = app_test(self.ST_FILE).run()
-        user_oci_profile = at.session_state.user_settings["oci"]["auth_profile"]
+        user_oci_profile = at.session_state.client_settings["oci"]["auth_profile"]
         assert user_oci_profile == "DEFAULT"
-        assert at.session_state.oci_config[user_oci_profile]["namespace"] is None
-        assert at.session_state.oci_config[user_oci_profile]["user"] is None
-        assert at.session_state.oci_config[user_oci_profile]["security_token_file"] is None
-        assert at.session_state.oci_config[user_oci_profile]["tenancy"] is None
-        assert at.session_state.oci_config[user_oci_profile]["region"] is None
-        assert at.session_state.oci_config[user_oci_profile]["fingerprint"] is None
-        assert at.session_state.oci_config[user_oci_profile]["key_file"] is None
-        assert at.session_state.oci_config[user_oci_profile]["service_endpoint"] == ""
+        oci_lookup = {config["auth_profile"]: config for config in at.session_state.oci_configs}
+        assert oci_lookup[user_oci_profile]["namespace"] is None
+        assert oci_lookup[user_oci_profile]["user"] is None
+        assert oci_lookup[user_oci_profile]["security_token_file"] is None
+        assert oci_lookup[user_oci_profile]["tenancy"] is None
+        assert oci_lookup[user_oci_profile]["region"] is None
+        assert oci_lookup[user_oci_profile]["fingerprint"] is None
+        assert oci_lookup[user_oci_profile]["key_file"] is None
+        assert oci_lookup[user_oci_profile]["service_endpoint"] == ""
 
     test_cases = [
         pytest.param(
@@ -150,10 +151,9 @@ class TestStreamlit:
         """Update OCI Profile Settings - Error Cases"""
         assert app_server is not None
         at = app_test(self.ST_FILE).run()
-        user_oci_profile = at.session_state.user_settings["oci"]["auth_profile"]
-        assert at.selectbox(key="selected_oci_profile").value == user_oci_profile
+        assert at.session_state.client_settings["oci"]["auth_profile"] == "DEFAULT"
         self.set_patch_oci(at, test_case)
-        at.button[0].click().run()
+        at.button(key="save_oci").click().run()
         assert at.error[0].value == "Current Status: Unverified"
         assert at.error[1].value == test_case["expected_error"]
 
@@ -169,33 +169,22 @@ class TestStreamlit:
         at = app_test(self.ST_FILE)
 
         # Set the namespace directly in the session state before running the app
-        user_oci_profile = at.session_state.user_settings["oci"]["auth_profile"]
+        assert at.session_state.client_settings["oci"]["auth_profile"] == "DEFAULT"
 
-        # Create the oci_config dictionary if it doesn't exist
-        if "oci_config" not in at.session_state:
-            at.session_state.oci_config = {}
-
-        # Create the user_oci_profile dictionary if it doesn't exist
-        if user_oci_profile not in at.session_state.oci_config:
-            at.session_state.oci_config[user_oci_profile] = {
-                "namespace": None,
+        # Create the state before running page to avoid state being init'd
+        at.session_state.oci_configs = [
+            {
+                "auth_profile": "DEFAULT",
                 "user": None,
-                "security_token_file": None,
                 "tenancy": None,
                 "region": None,
-                "fingerprint": None,
-                "key_file": None,
                 "compartment_id": "",
-                "service_endpoint": "",
-                "log_requests": False,
-                "additional_user_agent": "",
-                "pass_phrase": None,
+                "key_file": None,
+                "security_token_file": None,
+                "fingerprint": None,
+                "namespace": "test_namespace",
             }
-
-        # Set the namespace
-        at.session_state.oci_config[user_oci_profile]["namespace"] = "test_namespace"
-
-        # Run the app with the namespace already set
+        ]
         at.run()
 
         # Verify the success message is displayed

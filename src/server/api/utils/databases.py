@@ -2,14 +2,14 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai, PRIVS
+# spell-checker:ignore selectai clob nclob
 
 import oracledb
 
-from common.schema import Database, DatabaseAuth
+import common.schema as schema
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("server.utils.database")
+logger = logging_config.logging.getLogger("api.utils.database")
 
 
 class DbException(Exception):
@@ -21,10 +21,10 @@ class DbException(Exception):
         super().__init__(detail)
 
 
-def connect(config: Database) -> oracledb.Connection:
+def connect(config: schema.Database) -> oracledb.Connection:
     """Establish a connection to an Oracle Database"""
     logger.info("Connecting to Database: %s", config.dsn)
-    include_fields = set(DatabaseAuth.model_fields.keys())
+    include_fields = set(schema.DatabaseAuth.model_fields.keys())
     db_config = config.model_dump(include=include_fields)
     logger.debug("Database Config: %s", db_config)
     # If a wallet password is provided but no wallet location is set
@@ -50,7 +50,7 @@ def connect(config: Database) -> oracledb.Connection:
     return conn
 
 
-def test(config: Database) -> None:
+def test(config: schema.Database) -> None:
     """Test connection and re-establish if no longer open"""
     try:
         config.connection.ping()

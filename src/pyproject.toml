@@ -50,7 +50,7 @@ server = [
 
 # GUI component dependencies
 client = [
-    "streamlit==1.45.1",
+    "streamlit==1.47.0",
 ]
 
 # Test dependencies

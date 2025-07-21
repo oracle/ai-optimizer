@@ -2,16 +2,16 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai, PRIVS, PYQSYS, RMAN, RQSYS, SYSAUX
+# spell-checker:ignore selectai, privs, pyqsys, rman, rqsys, sysaux
 
 from typing import Union
 import oracledb
 from common.schema import SelectAIProfileType, DatabaseSelectAIObjects
 import common.logging_config as logging_config
-import server.utils.databases as databases
+import server.api.utils.databases as databases
 
 
-logger = logging_config.logging.getLogger("server.utils.selectai")
+logger = logging_config.logging.getLogger("api.utils.selectai")
 
 
 def enabled(conn: oracledb.Connection) -> bool:
@@ -60,7 +60,7 @@ def set_profile(
     logger.info("Updating SelectAI Profile (%s) attribute: %s = %s", profile_name, attribute_name, attribute_value)
     # Attribute Names: provider, credential_name, object_list, provider_endpoint, model
     # Attribute Names: temperature, max_tokens
-    
+
     if isinstance(attribute_value, float) or isinstance(attribute_value, int):
         attribute_value = str(attribute_value)
 

@@ -12,7 +12,7 @@ import oci
 from common.schema import OracleCloudSettings
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("server.utils.oci")
+logger = logging_config.logging.getLogger("api.utils.oci")
 
 
 class OciException(Exception):
@@ -89,17 +89,17 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
         namespace = client.get_namespace().data
         logger.info("OCI: Namespace = %s", namespace)
     except oci.exceptions.InvalidConfig as ex:
-        raise OciException("OCI: Invalid Config") from ex
+        raise OciException("Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:
-        raise OciException("OCI: AuthN Error") from ex
+        raise OciException("AuthN Error") from ex
     except oci.exceptions.RequestException as ex:
-        raise OciException("OCI: No Network Access") from ex
+        raise OciException("No Network Access") from ex
     except FileNotFoundError as ex:
-        raise OciException("OCI: Invalid Key Path") from ex
+        raise OciException("Invalid Key Path") from ex
     except UnboundLocalError as ex:
-        raise OciException("OCI: No Configuration") from ex
+        raise OciException("No Configuration") from ex
     except Exception as ex:
-        raise OciException(f"OCI: {ex}") from ex
+        raise OciException(ex) from ex
 
     return namespace
 
@@ -120,34 +120,34 @@ def get_compartments(config: OracleCloudSettings = None) -> set:
     )
     compartments = response.data
 
-    # Create a dictionary to map compartment ID to compartment details
-    compartment_dict = {compartment.id: compartment for compartment in compartments}
+    # Create a dictionary to map compartment_id ID to compartment_id details
+    compartment_dict = {compartment_id.id: compartment_id for compartment_id in compartments}
 
-    def construct_path(compartment):
-        """Function to construct the full path of a compartment"""
+    def construct_path(compartment_id):
+        """Function to construct the full path of a compartment_id"""
         path = []
-        current = compartment
+        current = compartment_id
         while current:
             path.append(current.name)
             current = compartment_dict.get(current.compartment_id)
         return " / ".join(reversed(path))
 
     # Create a set with full paths as keys and OCIDs as values
-    compartment_paths = {construct_path(compartment): compartment.id for compartment in compartments}
+    compartment_paths = {construct_path(compartment_id): compartment_id.id for compartment_id in compartments}
     logger.info("Returning %i Compartments", len(compartment_paths))
     return compartment_paths
 
 
-def get_buckets(compartment: str, config: OracleCloudSettings = None) -> list:
+def get_buckets(compartment_id: str, config: OracleCloudSettings = None) -> list:
     """Get a list of buckets"""
     client_type = oci.object_storage.ObjectStorageClient
     client = init_client(client_type, config)
 
-    logger.info("Getting Buckets in %s", compartment)
+    logger.info("Getting Buckets in %s", compartment_id)
     client = init_client(client_type, config)
     bucket_names = []
     try:
-        response = client.list_buckets(namespace_name=config.namespace, compartment_id=compartment, fields=["tags"])
+        response = client.list_buckets(namespace_name=config.namespace, compartment_id=compartment_id, fields=["tags"])
         buckets = response.data
         for bucket in buckets:
             freeform_tags = bucket.freeform_tags or {}
@@ -155,7 +155,7 @@ def get_buckets(compartment: str, config: OracleCloudSettings = None) -> list:
                 bucket_names.append(bucket.name)
     except oci.exceptions.ServiceError as ex:
         # No Access to Buckets in Compartment
-        raise OciException("OCI: AuthN Error") from ex
+        raise OciException("AuthN Error") from ex
 
     return bucket_names
 

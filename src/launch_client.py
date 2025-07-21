@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 Session States Set:
-- user_settings: Stores all user settings
+- client_settings: Stores all user settings
 """
 # spell-checker:ignore streamlit, scriptrunner
 
@@ -14,7 +14,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import api_call
-from client.utils.st_common import set_server_state
+from common.schema import ClientIdType
 
 import common.logging_config as logging_config
 
@@ -30,6 +30,32 @@ try:
 except ImportError as ex:
     logger.debug("API Server not present: %s", ex)
     REMOTE_SERVER = True
+
+
+#############################################################################
+# Functions
+#############################################################################
+def init_server_state() -> None:
+    """initialize Streamlit State server"""
+    if "server" not in state:
+        logger.info("Initializing state.server")
+        state.server = {"url": os.getenv("API_SERVER_URL", "http://localhost")}
+        state.server["port"] = int(os.getenv("API_SERVER_PORT", "8000"))
+        state.server["key"] = os.getenv("API_SERVER_KEY")
+        logger.debug("Server State: %s", state.server)
+
+
+def init_configs_state(client: ClientIdType) -> None:
+    """initialize all Streamlit State *_configs"""
+    full_config = api_call.get(
+        endpoint="v1/settings",
+        params={"client": client, "full_config": True, "incl_sensitive": True, "incl_readonly": True},
+        retries=10,
+        backoff_factor=1.5,
+    )
+    for key, value in full_config.items():
+        logger.info("Initializing state.%s", key)
+        state[key] = value
 
 
 #############################################################################
@@ -50,7 +76,7 @@ def main() -> None:
     st.html(
         """
         <style>
-        img[data-testid="stLogo"] {
+        img[alt="Logo"] {
             width: 100%;
             height: auto;
         }
@@ -58,23 +84,25 @@ def main() -> None:
         """,
     )
     st.logo("client/media/logo.png")
+
     # Setup Settings State
     api_down = False
-    if "user_settings" not in state:
+    if "client_settings" not in state:
         try:
-            state.user_settings = api_call.post(
-                endpoint="v1/settings", params={"client": str(uuid4())}, retries=10, backoff_factor=1.5
-            )
+            client_id = str(uuid4())
+            _ = api_call.post(endpoint="v1/settings", params={"client": client_id})
+            init_configs_state(client_id)
         except api_call.ApiError:
             logger.error("Unable to contact API Server; setting as Down!")
             api_down = True
     if not api_down and "server_settings" not in state:
         try:
+            logger.info("Initializing state.server_settings")
             state.server_settings = api_call.get(endpoint="v1/settings", params={"client": "server"})
         except api_call.ApiError:
             logger.error("Unable to contact API Server; setting as Down!")
             api_down = True
-    if api_down and "user_settings" not in state:
+    if api_down and "client_settings" not in state:
         st.error(
             "Unable to contact the API Server.  Please check that it is running and refresh your browser.",
             icon="🛑",
@@ -135,8 +163,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    set_server_state()
     # Start Server if not running
+    init_server_state()
     if not REMOTE_SERVER:
         try:
             logger.debug("Server PID: %i", state.server["pid"])

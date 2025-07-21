@@ -2,16 +2,28 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-
+# spell-checker:ignore configfile
 # pylint: disable=line-too-long
+
+from server.bootstrap.configfile import ConfigStore
+
 from common.schema import Prompt
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("server.bootstrap.prompt_eng_def")
+logger = logging_config.logging.getLogger("bootstrap.prompts")
+
+
+def normalize_prompt_text(p: dict) -> dict:
+    """Ensure prompt is a flat string"""
+    text = p.get("prompt")
+    if isinstance(text, tuple):
+        p["prompt"] = "".join(text)
+    return p
 
 
 def main() -> list[Prompt]:
     """Define example Prompts"""
+    logger.debug("*** Bootstrapping Prompts - Start")
     prompt_eng_list = [
         {
             "name": "Basic Example",
@@ -57,15 +69,42 @@ def main() -> list[Prompt]:
         },
     ]
 
-    # Check for Duplicates
+    # Normalize built-in prompts
+    prompt_eng_list = [normalize_prompt_text(p.copy()) for p in prompt_eng_list]
+
+    # Merge in prompts from ConfigStore
+    configuration = ConfigStore.get()
+    if configuration and configuration.prompt_configs:
+        logger.debug("Merging %d prompt(s) from configuration", len(configuration.prompt_configs))
+        existing = {(p["name"], p["category"]): p for p in prompt_eng_list}
+
+        for new_prompt in configuration.prompt_configs:
+            profile_dict = new_prompt.model_dump()
+            profile_dict = normalize_prompt_text(profile_dict)
+            key = (profile_dict["name"], profile_dict["category"])
+
+            if key in existing:
+                if existing[key]["prompt"] != profile_dict["prompt"]:
+                    logger.info("Overriding prompt: %s / %s", key[0], key[1])
+            else:
+                logger.info("Adding new prompt: %s / %s", key[0], key[1])
+
+            existing[key] = profile_dict
+
+        prompt_eng_list = list(existing.values())
+
+    # Check for duplicates
     unique_entries = set()
     for prompt in prompt_eng_list:
-        if (prompt["name"], prompt["category"]) in unique_entries:
+        key = (prompt["name"], prompt["category"])
+        if key in unique_entries:
             raise ValueError(f"Prompt '{prompt['name']}':'{prompt['category']}' already exists.")
-        unique_entries.add((prompt["name"], prompt["category"]))
+        unique_entries.add(key)
 
+    # Convert to Model objects
     prompt_objects = [Prompt(**prompt_dict) for prompt_dict in prompt_eng_list]
-
+    logger.info("Loaded %i Prompts.", len(prompt_objects))
+    logger.debug("*** Bootstrapping Prompts - End")
     return prompt_objects
 
 
