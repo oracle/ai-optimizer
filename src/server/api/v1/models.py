@@ -37,15 +37,16 @@ async def models_list_api(
 
 @auth.get(
     "",
-    description="Get all models",
+    description="Get all models (by default, only enabled)",
     response_model=list[schema.Model],
 )
 async def models_list(
     model_type: Optional[schema.ModelTypeType] = Query(None),
+    include_disabled: schema.ModelEnabledType = Query(False, description="Include disabled models"),
 ) -> list[schema.Model]:
     """List all models after applying filters if specified"""
     logger.debug("Received models_list - type: %s", model_type)
-    models_ret = core_models.get_model(model_type=model_type)
+    models_ret = core_models.get_model(model_type=model_type, include_disabled=include_disabled)
 
     return models_ret
 

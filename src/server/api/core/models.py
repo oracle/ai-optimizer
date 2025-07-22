@@ -32,6 +32,7 @@ logger = logging_config.logging.getLogger("api.core.models")
 def get_model(
     model_id: Optional[schema.ModelIdType] = None,
     model_type: Optional[schema.ModelTypeType] = None,
+    include_disabled: bool = True,
 ) -> Union[list[schema.Model], schema.Model, None]:
     """Used in direct call from list_models and agents.models"""
     model_objects = bootstrap.MODEL_OBJECTS
@@ -41,7 +42,9 @@ def get_model(
     model_filtered = [
         model
         for model in model_objects
-        if (model_id is None or model.id == model_id) and (model_type is None or model.type == model_type)
+        if (model_id is None or model.id == model_id)
+        and (model_type is None or model.type == model_type)
+        and (include_disabled or model.enabled)
     ]
     logger.debug("%i models after filtering", len(model_filtered))
 
