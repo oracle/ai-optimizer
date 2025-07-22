@@ -64,7 +64,7 @@ async def models_get(
 
     try:
         models_ret = core_models.get_model(model_id=model_id)
-    except ValueError as ex:
+    except core_models.UnknownModelError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
 
     return models_ret
@@ -81,21 +81,18 @@ async def models_update(
 ) -> schema.Model:
     """Update a model"""
     logger.debug("Received models_update - model_id: %s; payload: %s", model_id, payload)
-
-    model_upd = core_models.get_model(model_id=model_id)
-    for key, value in payload:
-        if hasattr(model_upd, key):
-            setattr(model_upd, key, value)
-        else:
-            raise HTTPException(status_code=404, detail=f"Model: Invalid setting - {key}.")
-
-    return core_models.get_model(model_id=model_id)
-
+    try:
+        return core_models.update_model(model_id=model_id, payload=payload)
+    except core_models.UnknownModelError as ex:
+        raise HTTPException(status_code=404, detail=str(ex)) from ex
+    except core_models.URLUnreachableError as ex:
+        raise HTTPException(status_code=422, detail=str(ex)) from ex
 
 @auth.post(
     "",
     description="Create a model",
     response_model=schema.Model,
+    status_code=201
 )
 async def models_create(
     payload: schema.Model,
@@ -105,7 +102,7 @@ async def models_create(
 
     try:
         return core_models.create_model(payload)
-    except ValueError as ex:
+    except core_models.ExistsModelError as ex:
         raise HTTPException(status_code=409, detail=str(ex)) from ex
 
 

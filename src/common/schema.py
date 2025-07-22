@@ -15,7 +15,6 @@ import common.help_text as help_text
 #####################################################
 # Literals
 #####################################################
-Statuses = Literal["NOT_CONFIGURED", "UNVERIFIED", "NOT_AUTHORIZED", "UNREACHABLE", "VALID", "CONNECTED", "CUSTOM"]
 DistanceMetrics = Literal["COSINE", "EUCLIDEAN_DISTANCE", "DOT_PRODUCT"]
 IndexTypes = Literal["HNSW", "IVF"]
 
@@ -150,7 +149,6 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
         ..., min_length=1, description="API for Model.", examples=["ChatOllama", "OpenAI", "OpenAIEmbeddings"]
     )
     openai_compat: bool = Field(default=True, description="Is the API OpenAI compatible?")
-    status: Statuses = Field(default="UNVERIFIED", description="Status (read-only)", readOnly=True)
 
     @model_validator(mode="after")
     def check_api_matches_type(self):
