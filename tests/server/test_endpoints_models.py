@@ -29,10 +29,10 @@ class TestInvalidAuthEndpoints:
         [
             pytest.param("/v1/models/api", "get", id="models_list_api"),
             pytest.param("/v1/models", "get", id="models_list"),
-            pytest.param("/v1/models/model_name", "get", id="models_get"),
-            pytest.param("/v1/models/model_name", "patch", id="models_update"),
+            pytest.param("/v1/models/model_id", "get", id="models_get"),
+            pytest.param("/v1/models/model_id", "patch", id="models_update"),
             pytest.param("/v1/models", "post", id="models_create"),
-            pytest.param("/v1/models/model_name", "delete", id="models_delete"),
+            pytest.param("/v1/models/model_id", "delete", id="models_delete"),
         ],
     )
     def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
@@ -64,7 +64,7 @@ class TestEndpoints:
 
     def test_models_get_before(self, client, auth_headers):
         """Retrieve each individual model"""
-        all_models = client.get("/v1/models", headers=auth_headers["valid_auth"])
+        all_models = client.get("/v1/models?include_disabled=true", headers=auth_headers["valid_auth"])
         assert len(all_models.json()) > 0
         for model in all_models.json():
             response = client.get(f"/v1/models/{model['id']}", headers=auth_headers["valid_auth"])
@@ -72,7 +72,7 @@ class TestEndpoints:
 
     def test_models_delete_add(self, client, auth_headers):
         """Delete and Re-Add Models"""
-        all_models = client.get("/v1/models", headers=auth_headers["valid_auth"])
+        all_models = client.get("/v1/models?include_disabled=true", headers=auth_headers["valid_auth"])
         assert len(all_models.json()) > 0
 
         # Delete all models
@@ -81,7 +81,7 @@ class TestEndpoints:
             assert response.status_code == 200
             assert response.json() == {"message": f"Model: {model['id']} deleted."}
         # Check that no models exists
-        deleted_models = client.get("/v1/models", headers=auth_headers["valid_auth"])
+        deleted_models = client.get("/v1/models?include_disabled=true", headers=auth_headers["valid_auth"])
         assert len(deleted_models.json()) == 0
 
         # Delete a non-existent model
@@ -95,12 +95,12 @@ class TestEndpoints:
             response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
             assert response.status_code == 200
             assert response.json() == payload
-        new_models = client.get("/v1/models", headers=auth_headers["valid_auth"])
+        new_models = client.get("/v1/models?include_disabled=true", headers=auth_headers["valid_auth"])
         assert new_models.json() == all_models.json()
 
     def test_models_add_dupl(self, client, auth_headers):
         """Add Duplicate Models"""
-        all_models = client.get("/v1/models", headers=auth_headers["valid_auth"])
+        all_models = client.get("/v1/models?include_disabled=true", headers=auth_headers["valid_auth"])
         assert len(all_models.json()) > 0
         for model in all_models.json():
             payload = model

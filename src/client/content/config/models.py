@@ -39,7 +39,7 @@ def get_models(force: bool = False) -> None:
     if force or "model_configs" not in state or not state.model_configs:
         try:
             logger.info("Refreshing state.model_configs")
-            state.model_configs = api_call.get(endpoint="v1/models")
+            state.model_configs = api_call.get(endpoint="v1/models", params={"include_disabled": True})
         except api_call.ApiError as ex:
             logger.error("Unable to populate state.model_configs: %s", ex)
             state.model_configs = {}
