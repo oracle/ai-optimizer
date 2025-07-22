@@ -1,6 +1,9 @@
 # Oracle AI Optimizer and Toolkit
 
 <!-- spell-checker:ignore streamlit, venv, setuptools -->
+![Test Status](https://github.com/oracle-samples/ai-optimizer/actions/workflows/pytest.yml/badge.svg)
+![IaC Status](https://github.com/oracle-samples/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)
+![Build Status](https://github.com/oracle-samples/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)
 
 ## Description
 

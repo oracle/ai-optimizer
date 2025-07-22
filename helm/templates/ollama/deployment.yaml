@@ -1,0 +1,106 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent tolerations ollama
+
+{{- if .Values.ollama.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "global.fullname" . }}-ollama
+  labels:
+    app.kubernetes.io/component: ollama
+    {{- include "global.labels" . | nindent 4}}
+spec:
+  replicas: {{ .Values.ollama.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: ollama
+      {{- include "global.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.ollama.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/component: ollama
+        {{- include "global.labels" . | nindent 8 }}
+        {{- with .Values.ollama.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      securityContext:
+        fsGroup: 10001
+      {{- with .Values.ollama.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}-ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.ollama.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+          ports:
+            - name: api
+              containerPort: 11434
+              protocol: TCP
+          {{- if .Values.ollama.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ include "global.getPath" . }}api/version
+              port: api
+            {{- with omit .Values.ollama.livenessProbe "enabled" }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.ollama.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ include "global.getPath" . }}api/version
+              port: api
+            {{- with omit .Values.ollama.readinessProbe "enabled" }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.ollama.resources }}
+          resources:
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: key
+              mountPath: "/.ollama"
+          {{- if and .Values.ollama.models .Values.ollama.models.enabled (gt (len .Values.ollama.models.modelPullList) 0) }}
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    while ! /bin/ollama ps > /dev/null 2>&1; do
+                      sleep 5
+                    done
+                    echo "{{ include "ollama.modelPullList" . }}" | xargs -n1 /bin/ollama pull
+          {{- end }}
+      volumes:
+        - name: key
+          emptyDir: {}
+      {{- with .Values.ollama.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ollama.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ollama.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{ end -}}

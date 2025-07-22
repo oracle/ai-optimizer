@@ -1,0 +1,23 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent ollama
+
+{{- if .Values.ollama.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ollama.serviceName" . }}
+  labels:
+    app.kubernetes.io/component: ollama
+    {{- include "global.labels" . | nindent 4 }}
+spec:
+  type: "ClusterIP"
+  ports:
+    - port: 11434
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/component: ollama
+    {{ include "global.selectorLabels" . | nindent 4 }}
+{{ end -}}

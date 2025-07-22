@@ -5,8 +5,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 # pylint: disable=import-error
 
-import pandas as pd
 from unittest.mock import patch
+import pandas as pd
+from client.utils.st_common import state_configs_lookup
 
 
 #############################################################################
@@ -27,7 +28,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -41,85 +42,14 @@ class TestStreamlit:
         # Initialize app_test and run it to bring up the component
         at = app_test(self.ST_FILE)
 
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
-        }
-
-        # Important: add this initialization which maps to what get_models would set
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
-
         # Mock functions that make external calls to avoid failures
         monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Run the app - this is critical to initialize all widgets!
         at = at.run()
 
         # Verify the app renders successfully with no errors
-        assert not at.error
-
-        # Verify that the selectbox and sliders are rendered
-        selectboxes = at.get("selectbox")
-        sliders = at.get("slider")
-
-        assert len(selectboxes) > 0
-        assert len(sliders) > 0
-
-    def test_file_selection_local(self, app_server, app_test, monkeypatch):
-        """Test selection of local files for embedding"""
-        assert app_server is not None
-
-        # Mock the API responses for get_models
-        def mock_get(endpoint=None, **kwargs):
-            if endpoint == "v1/models":
-                return [
-                    {
-                        "name": "test-model",
-                        "type": "embed",
-                        "enabled": True,
-                        "url": "http://test.url",
-                        "max_chunk_size": 1000,
-                    }
-                ]
-            return {}
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        # Mock functions that make external calls
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
-
-        # Initialize app_test
-        at = app_test(self.ST_FILE)
-
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
-        }
-
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
-
-        # Run the app
-        at = at.run()
-
-        # Verify that the app renders without errors
         assert not at.error
 
         # Verify that the radio button is present
@@ -130,116 +60,17 @@ class TestStreamlit:
         uploaders = at.get("file_uploader")
         assert len(uploaders) >= 0  # May not be visible yet depending on default radio selection
 
-    def test_file_selection_oci(self, app_server, app_test, monkeypatch):
-        """Test basic app initialization for OCI view without testing OCI-specific functionality"""
-        assert app_server is not None
+        # Verify that the selectbox and sliders are rendered
+        selectboxes = at.get("selectbox")
+        sliders = at.get("slider")
 
-        # Mock the API responses for get_models
-        def mock_get(endpoint=None, **kwargs):
-            if endpoint == "v1/models":
-                return [
-                    {
-                        "name": "test-model",
-                        "type": "embed",
-                        "enabled": True,
-                        "url": "http://test.url",
-                        "max_chunk_size": 1000,
-                    }
-                ]
-            return {}
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        # Mock functions that make external calls
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
-
-        # Initialize app_test
-        at = app_test(self.ST_FILE)
-
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
-        }
-
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
-        at.session_state.oci_config = {"DEFAULT": {"namespace": "test-namespace"}}
-
-        # Run the app to initialize all widgets
-        at = at.run()
-
-        # Verify that the app renders without errors
-        assert not at.error
-
-        # Verify that radio buttons and text inputs are present
-        radios = at.get("radio")
-        assert len(radios) > 0
+        assert len(selectboxes) > 0
+        assert len(sliders) > 0
 
         # Check for text inputs (may include the alias input)
         text_inputs = at.get("text_input")
         assert len(text_inputs) >= 0
 
-    def test_vector_store_creation(self, app_server, app_test, monkeypatch):
-        """Test vector store alias input and validation"""
-        assert app_server is not None
-
-        # Mock the API responses for get_models
-        def mock_get(endpoint=None, **kwargs):
-            if endpoint == "v1/models":
-                return [
-                    {
-                        "name": "test-model",
-                        "type": "embed",
-                        "enabled": True,
-                        "url": "http://test.url",
-                        "max_chunk_size": 1000,
-                    }
-                ]
-            return {}
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        # Mock functions that make external calls
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
-
-        # Initialize app_test
-        at = app_test(self.ST_FILE)
-
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "database": {"alias": "DEFAULT"},
-        }
-
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
-
-        # Run the app first to initialize widgets
-        at = at.run()
-
-        # Find the text inputs in the app
-        text_inputs = at.get("text_input")
-
-        # Verify there's at least one text input field
-        assert len(text_inputs) > 0
-
-        # Test validation by finding a text input and setting an invalid value
-        # This is a simplified test that doesn't rely on specific keys
         if len(text_inputs) > 0:
             # Set an invalid value with special characters for any text input
             text_inputs[0].set_value("invalid!value").run()
@@ -257,7 +88,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -270,25 +101,10 @@ class TestStreamlit:
 
         # Mock functions that make external calls
         monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Initialize app_test
         at = app_test(self.ST_FILE)
-
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "database": {"alias": "DEFAULT"},
-        }
-
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
 
         # Run the app first to initialize widgets
         at = at.run()
@@ -318,7 +134,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -331,25 +147,10 @@ class TestStreamlit:
 
         # Mock functions that make external calls
         monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Initialize app_test
         at = app_test(self.ST_FILE)
-
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "database": {"alias": "DEFAULT"},
-        }
-
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
 
         # Mock the API post calls
         mock_post.side_effect = [
@@ -390,7 +191,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -403,21 +204,10 @@ class TestStreamlit:
 
         # Mock functions that make external calls
         monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Initialize app_test
         at = app_test(self.ST_FILE)
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "database": {"alias": "DEFAULT"},
-        }
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
 
         # Run the app
         at = at.run()
@@ -445,7 +235,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -458,25 +248,10 @@ class TestStreamlit:
 
         # Mock functions that make external calls
         monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Initialize app_test
         at = app_test(self.ST_FILE)
-
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
-        }
-
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
 
         # Create ApiError exception
         class ApiError(Exception):
@@ -530,7 +305,7 @@ class TestStreamlit:
             elif endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -558,20 +333,7 @@ class TestStreamlit:
         at = app_test(self.ST_FILE)
 
         # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
-        }
-        at.session_state.embed_model_enabled = {
-            "test-model": {"url": "http://test.url", "max_chunk_size": 1000, "enabled": True}
-        }
-        at.session_state.database_config = {"DEFAULT": {"vector_stores": []}}
-        at.session_state.oci_config = {"DEFAULT": {"namespace": "test-namespace"}}
-
-        # Mock cache_data decorators to bypass caching
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
+        # at.session_state.oci_config = {"DEFAULT": {"namespace": "test-namespace"}}
 
         # Mock the API post calls (downloading and embedding)
         mock_post.side_effect = [
@@ -588,7 +350,7 @@ class TestStreamlit:
                 at = at.run()
                 # If the app runs without errors, verify that components are present
                 assert len(at.get("selectbox")) > 0
-            except AssertionError as e:
+            except AssertionError:
                 # In some cases there might be an error in the UI due to OCI configuration
                 # This is expected and we can allow the test to pass anyway
                 # The main purpose of this test is to verify the mocks are set up correctly

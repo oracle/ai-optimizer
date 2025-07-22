@@ -70,7 +70,7 @@ class TestEndpoints:
         """Test getting empty testsets list"""
         self.setup_database(client, auth_headers, db_container)
 
-        with patch("server.utils.testbed.get_testsets", return_value=[]):
+        with patch("server.api.utils.testbed.get_testsets", return_value=[]):
             response = client.get("/v1/testbed/testsets", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             assert response.json() == []
@@ -152,7 +152,7 @@ class TestEndpoints:
         """Test getting empty evaluations list"""
         self.setup_database(client, auth_headers, db_container)
 
-        with patch("server.utils.testbed.get_evaluations", return_value=[]):
+        with patch("server.api.utils.testbed.get_evaluations", return_value=[]):
             response = client.get("/v1/testbed/evaluations?tid=123abc", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             assert response.json() == []
@@ -186,7 +186,7 @@ class TestEndpoints:
             Evaluation(eid="eval2", evaluated="2023-01-02T12:00:00", correctness=0.92),
         ]
 
-        with patch("server.utils.testbed.get_evaluations", return_value=mock_evaluations):
+        with patch("server.api.utils.testbed.get_evaluations", return_value=mock_evaluations):
             response = client.get(f"/v1/testbed/evaluations?tid={tid}", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             evaluations = response.json()
@@ -231,7 +231,7 @@ class TestEndpoints:
             html_report="<html>Test Report</html>",
         )
 
-        with patch("server.utils.testbed.process_report", return_value=mock_report):
+        with patch("server.api.utils.testbed.process_report", return_value=mock_report):
             response = client.get("/v1/testbed/evaluation?eid=eval1", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             report = response.json()

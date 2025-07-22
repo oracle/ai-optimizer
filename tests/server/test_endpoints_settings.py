@@ -5,7 +5,14 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 
 import pytest
-from common.schema import Settings, LargeLanguageSettings, PromptSettings, VectorSearchSettings, SelectAISettings, OciSettings
+from common.schema import (
+    Settings,
+    LargeLanguageSettings,
+    PromptSettings,
+    VectorSearchSettings,
+    SelectAISettings,
+    OciSettings,
+)
 
 
 #############################################################################
@@ -27,10 +34,12 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/settings", "get", id="settings_get"),
             pytest.param("/v1/settings", "patch", id="settings_update"),
             pytest.param("/v1/settings", "post", id="settings_create"),
+            pytest.param("/v1/settings/load/file", "post", id="load_settings_from_file"),
+            pytest.param("/v1/settings/load/json", "post", id="load_settings_from_json"),
         ],
     )
     def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication."""
+        """Test endpoints require valide authentication"""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
 
@@ -91,7 +100,7 @@ class TestEndpoints:
         """Test creating settings for an existing client"""
         response = client.post("/v1/settings", headers=auth_headers["valid_auth"], params={"client": "default"})
         assert response.status_code == 409
-        assert response.json() == {"detail": "Client: default already exists."}
+        assert response.json() == {"detail": "Settings: client default already exists."}
 
     def test_settings_update(self, client, auth_headers):
         """Test updating settings for a client"""
@@ -172,7 +181,7 @@ class TestEndpoints:
             params={"client": "nonexistent_client"},
         )
         assert response.status_code == 404
-        assert response.json() == {"detail": "Client: nonexistent_client not found."}
+        assert response.json() == {"detail": "Settings: client nonexistent_client not found."}
 
     @pytest.mark.parametrize("app_server", ["/tmp/settings.json"], indirect=True)
     def test_user_supplied_settings(self, app_server):

@@ -24,67 +24,63 @@ class TestStreamlit:
         """Submits with missing required inputs"""
         assert app_server is not None
         at = app_test(self.ST_FILE).run()
-        assert at.session_state.database_config is not None
-        at.button[0].click().run()
+        assert at.session_state.database_configs is not None
+        at.button(key="save_database").click().run()
         assert at.error[0].value == "Current Status: Disconnected"
         assert (
             at.error[1].value == "Update Failed - Database: DEFAULT missing connection details."
             and at.error[1].icon == "🚨"
         )
-        assert at.session_state.database_config["DEFAULT"]["user"] is None
-        assert at.session_state.database_config["DEFAULT"]["password"] is None
-        assert at.session_state.database_config["DEFAULT"]["dsn"] is None
-        assert at.session_state.database_config["DEFAULT"]["wallet_password"] is None
-        assert at.session_state.database_config["DEFAULT"]["wallet_location"] is None
-        assert at.session_state.database_config["DEFAULT"]["config_dir"] is not None
-        assert at.session_state.database_config["DEFAULT"]["tcp_connect_timeout"] is not None
-        assert at.session_state.database_config["DEFAULT"]["connected"] is False
-        assert at.session_state.database_config["DEFAULT"]["vector_stores"] is None
+        assert at.text_input(key="database_user").value is None
+        assert at.text_input(key="database_password").value is None
+        assert at.text_input(key="database_dsn").value is None
+        assert at.text_input(key="database_wallet_password").value is None
+
+        # Validate State
+        assert len(at.session_state.database_configs) == 1
+        assert at.session_state.database_configs[0]["name"] == "DEFAULT"
+        assert at.session_state.database_configs[0]["user"] is None
+        assert at.session_state.database_configs[0]["password"] is None
+        assert at.session_state.database_configs[0]["dsn"] is None
+        assert at.session_state.database_configs[0]["wallet_password"] is None
+        assert at.session_state.database_configs[0]["wallet_location"] is None
+        assert at.session_state.database_configs[0]["config_dir"] is not None
+        assert at.session_state.database_configs[0]["tcp_connect_timeout"] is not None
+        assert at.session_state.database_configs[0]["connected"] is False
+        assert at.session_state.database_configs[0]["vector_stores"] == []
 
     def test_wrong_details(self, app_server, app_test):
         """Submits with wrong details"""
         assert app_server is not None
         at = app_test(self.ST_FILE).run()
-        assert at.session_state.database_config is not None
+        assert at.session_state.database_configs is not None
         at.text_input(key="database_user").set_value(TEST_CONFIG["db_username"]).run()
         at.text_input(key="database_password").set_value(TEST_CONFIG["db_password"]).run()
         at.text_input(key="database_dsn").set_value(TEST_CONFIG["db_dsn"]).run()
-        at.button[0].click().run()
+        at.button(key="save_database").click().run()
+
         assert at.error[0].value == "Current Status: Disconnected"
         assert at.error[1].value == "Update Failed - Database: DEFAULT unable to connect." and at.error[1].icon == "🚨"
-        assert at.session_state.database_config["DEFAULT"]["user"] is None
-        assert at.session_state.database_config["DEFAULT"]["password"] is None
-        assert at.session_state.database_config["DEFAULT"]["dsn"] is None
-        assert at.session_state.database_config["DEFAULT"]["wallet_password"] is None
-        assert at.session_state.database_config["DEFAULT"]["wallet_location"] is None
-        assert at.session_state.database_config["DEFAULT"]["config_dir"] is not None
-        assert at.session_state.database_config["DEFAULT"]["tcp_connect_timeout"] is not None
-        assert at.session_state.database_config["DEFAULT"]["connected"] is False
-        assert at.session_state.database_config["DEFAULT"]["vector_stores"] is None
 
     def test_connected(self, app_server, app_test, db_container):
         """Sumbits with good DSN"""
         assert app_server is not None
         assert db_container is not None
         at = app_test(self.ST_FILE).run()
-        assert at.session_state.database_config is not None
+        assert at.session_state.database_configs is not None
         at.text_input(key="database_user").set_value(TEST_CONFIG["db_username"]).run()
         at.text_input(key="database_password").set_value(TEST_CONFIG["db_password"]).run()
         at.text_input(key="database_dsn").set_value(TEST_CONFIG["db_dsn"]).run()
-        at.button[0].click().run()
+
+        at.button(key="save_database").click().run()
         assert at.success[0].value == "Current Status: Connected"
         assert at.toast[0].value == "Update Successful." and at.toast[0].icon == "✅"
-        at.button[0].click().run()
-        assert at.info[0].value == "DEFAULT Database Configuration - No Changes Detected." and at.info[0].icon == "ℹ️"
-        assert at.session_state.database_config["DEFAULT"]["user"] == TEST_CONFIG["db_username"]
-        assert at.session_state.database_config["DEFAULT"]["password"] == TEST_CONFIG["db_password"]
-        assert at.session_state.database_config["DEFAULT"]["dsn"] == TEST_CONFIG["db_dsn"]
-        assert at.session_state.database_config["DEFAULT"]["wallet_password"] is None
-        assert at.session_state.database_config["DEFAULT"]["wallet_location"] is None
-        assert at.session_state.database_config["DEFAULT"]["config_dir"] is not None
-        assert at.session_state.database_config["DEFAULT"]["tcp_connect_timeout"] is not None
-        assert at.session_state.database_config["DEFAULT"]["connected"] is True
-        assert at.session_state.database_config["DEFAULT"]["vector_stores"] == []
+
+        at.button(key="save_database").click().run()
+        assert at.toast[0].value == "No changes detected." and at.toast[0].icon == "ℹ️"
+        assert at.session_state.database_configs[0]["user"] == TEST_CONFIG["db_username"]
+        assert at.session_state.database_configs[0]["password"] == TEST_CONFIG["db_password"]
+        assert at.session_state.database_configs[0]["dsn"] == TEST_CONFIG["db_dsn"]
 
     test_cases = [
         pytest.param(
@@ -145,33 +141,34 @@ class TestStreamlit:
         assert app_server is not None
         assert db_container is not None
         at = app_test(self.ST_FILE).run()
-        assert at.session_state.database_config is not None
+        assert at.session_state.database_configs is not None
         at.text_input(key="database_user").set_value(test_case["username"]).run()
         at.text_input(key="database_password").set_value(test_case["password"]).run()
         at.text_input(key="database_dsn").set_value(test_case["dsn"]).run()
-        at.button[0].click().run()
+        at.button(key="save_database").click().run()
         assert at.error[0].value == "Current Status: Disconnected"
         assert re.match(test_case["expected"], at.error[1].value) and at.error[1].icon == "🚨"
         # Due to the connection error, the settings should NOT be updated and be set
         # to previous successful test connection; connected will be False for error handling
-        assert at.session_state.database_config["DEFAULT"]["user"] == TEST_CONFIG["db_username"]
-        assert at.session_state.database_config["DEFAULT"]["password"] == TEST_CONFIG["db_password"]
-        assert at.session_state.database_config["DEFAULT"]["dsn"] == TEST_CONFIG["db_dsn"]
-        assert at.session_state.database_config["DEFAULT"]["wallet_password"] is None
-        assert at.session_state.database_config["DEFAULT"]["wallet_location"] is None
-        assert at.session_state.database_config["DEFAULT"]["config_dir"] is not None
-        assert at.session_state.database_config["DEFAULT"]["tcp_connect_timeout"] is not None
-        assert at.session_state.database_config["DEFAULT"]["connected"] is False
-        assert at.session_state.database_config["DEFAULT"]["vector_stores"] == []
+        assert at.session_state.database_configs[0]["name"] == "DEFAULT"
+        assert at.session_state.database_configs[0]["user"] == TEST_CONFIG["db_username"]
+        assert at.session_state.database_configs[0]["password"] == TEST_CONFIG["db_password"]
+        assert at.session_state.database_configs[0]["dsn"] == TEST_CONFIG["db_dsn"]
+        assert at.session_state.database_configs[0]["wallet_password"] is None
+        assert at.session_state.database_configs[0]["wallet_location"] is None
+        assert at.session_state.database_configs[0]["config_dir"] is not None
+        assert at.session_state.database_configs[0]["tcp_connect_timeout"] is not None
+        assert at.session_state.database_configs[0]["connected"] is False
+        assert at.session_state.database_configs[0]["vector_stores"] == []
 
     def test_vector_stores(self, app_server, app_test, db_container):
         """Test Vector Storage Form"""
         assert app_server is not None
         assert db_container is not None
         at = app_test(self.ST_FILE).run()
-        assert at.session_state.database_config is not None
+        assert at.session_state.database_configs is not None
         # Populate Vector Storage State
-        at.session_state.database_config["DEFAULT"]["vector_stores"] = [
+        at.session_state.database_configs[0]["vector_stores"] = [
             {
                 "vector_store": "VS_USERS_TEXT_EMBEDDING_3_SMALL_8191_1639_COSINE_HNSW",
                 "alias": "TEST1",
@@ -192,10 +189,10 @@ class TestStreamlit:
             },
         ]
         # Mimic Connected to show additional forms
-        at.session_state.database_config["DEFAULT"]["connected"] = True
+        at.session_state.database_configs[0]["connected"] = True
         # Refresh the Page
         at.run()
-        for vs in at.session_state.database_config["DEFAULT"]["vector_stores"]:
+        for vs in at.session_state.database_configs[0]["vector_stores"]:
             vector_store = vs["vector_store"].lower()
             assert at.button(key=f"vector_stores_{vector_store}").icon == "🗑️"
             fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
@@ -204,5 +201,7 @@ class TestStreamlit:
                 assert at.text_input(key=f"vector_stores_{vector_store}_{field}").value == str(vs[field])
 
         # Drop a Vector Store
-        at.button[1].click().run()
+        at.button(key="vector_stores_vs_users_text_embedding_3_small_510_102_cosine_hnsw").click().run()
         assert "dropped" in at.toast[0].value and at.toast[0].icon == "✅"
+        # There should be no VS as the drop would have re-init'ed the state and removed our mock
+        assert at.session_state.database_configs[0]["vector_stores"] == []

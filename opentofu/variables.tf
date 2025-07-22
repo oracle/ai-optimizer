@@ -222,6 +222,12 @@ variable "k8s_gpu_node_pool_size" {
   default     = 1
 }
 
+variable "k8s_run_cfgmgt" {
+  description = "Run Configuration Management Scripts?"
+  type        = bool
+  default     = true
+}
+
 // LoadBalancer
 variable "lb_min_shape" {
   description = "LoadBalancer minimum bandwidth (Mbps)."

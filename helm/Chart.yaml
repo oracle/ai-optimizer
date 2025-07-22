@@ -1,27 +1,14 @@
-## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-
 apiVersion: v2
 name: ai-optimizer
 description: A Helm chart Oracle AI Optimizer and Toolkit
-type: application
 version: 1.1.0
 appVersion: "1.1.0"
+type: application
+home: https://github.com/oracle-samples/ai-optimizer
+sources:
+  - https://github.com/oracle-samples/ai-optimizer
 icon: https://github.com/oracle-samples/ai-optimizer/blob/main/src/client/media/logo.png
 maintainers:
   - name: Oracle
     email: obaas_ww@oracle.com
     url: https://github.com/oracle-samples/ai-optimizer
-
-dependencies:
-  - name: server
-    version: 1.1.0
-    repository: file://charts/server
-  - name: client
-    version: 1.1.0
-    repository: file://charts/client
-    condition: global.enableClient
-  - name: ollama
-    version: 1.1.0
-    repository: file://charts/ollama
-    condition: global.enableOllama

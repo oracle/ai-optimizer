@@ -7,7 +7,7 @@ env:
   IAC: ${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}-stack.zip
 
 jobs:
-  build:
+  build-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -2,9 +2,10 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql, vector_search
+# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql, vector_search, aioptimizer
 
-from typing import Optional, Literal, Union, get_args
+import time
+from typing import Optional, Literal, Union, get_args, Any
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from langchain_core.messages import ChatMessage
@@ -66,9 +67,11 @@ class DatabaseAuth(BaseModel):
     """Patch'able Database Configuration (sent to oracledb)"""
 
     user: Optional[str] = Field(default=None, description="Username")
-    password: Optional[str] = Field(default=None, description="Password")
+    password: Optional[str] = Field(default=None, description="Password", json_schema_extra={"sensitive": True})
     dsn: Optional[str] = Field(default=None, description="Connect String")
-    wallet_password: Optional[str] = Field(default=None, description="Wallet Password (for mTLS)")
+    wallet_password: Optional[str] = Field(
+        default=None, description="Wallet Password (for mTLS)", json_schema_extra={"sensitive": True}
+    )
     wallet_location: Optional[str] = Field(default=None, description="Wallet Location (for mTLS)")
     config_dir: str = Field(default="tns_admin", description="Location of TNS_ADMIN directory")
     tcp_connect_timeout: int = Field(default=5, description="TCP Timeout in seconds")
@@ -78,9 +81,9 @@ class Database(DatabaseAuth):
     """Database Object"""
 
     name: str = Field(default="DEFAULT", description="Name of Database (Alias)")
-    connected: bool = Field(default=False, description="Connection Established")
+    connected: bool = Field(default=False, description="Connection Established", readOnly=True)
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
-        default=None, description="Vector Storage (read-only)", readOnly=True
+        default=[], description="Vector Storage (read-only)", readOnly=True
     )
     selectai: bool = Field(default=False, description="SelectAI Possible")
     selectai_profiles: Optional[list] = Field(default=[], description="SelectAI Profiles (read-only)", readOnly=True)
@@ -123,13 +126,25 @@ class ModelAccess(BaseModel):
 
     enabled: Optional[bool] = Field(default=False, description="Model is available for use.")
     url: Optional[str] = Field(default=None, description="URL to Model API.")
-    api_key: Optional[str] = Field(default=None, description="Model API Key.")
+    api_key: Optional[str] = Field(default=None, description="Model API Key.", json_schema_extra={"sensitive": True})
 
 
 class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
     """Model Object"""
 
-    name: str = Field(..., min_length=1, description="The model to use")
+    id: str = Field(..., min_length=1, description="The model to use")
+    object: Literal["model"] = Field(
+        default="model",
+        description='The object type, always `"model"`. (OpenAI Compatible Only)',
+    )
+    created: int = Field(
+        default_factory=lambda: int(time.time()),
+        description="The Unix timestamp (in seconds) when the model was created.",
+    )
+    owned_by: Literal["aioptimizer"] = Field(
+        default="aioptimizer",
+        description="OpenAI Compatible Only",
+    )
     type: Literal["ll", "embed", "re-rank"] = Field(..., description="Type of Model.")
     api: str = Field(
         ..., min_length=1, description="API for Model.", examples=["ChatOllama", "OpenAI", "OpenAIEmbeddings"]
@@ -173,10 +188,9 @@ class OracleCloudSettings(BaseModel):
         default="api_key", description="Authentication Method."
     )
 
-    class Config(object):
-        """Allow arbitrary keys for other OCI settings"""
-
-        extra = "allow"
+    model_config = {
+        "extra": "allow"  # enable extra fields
+    }
 
 
 #####################################################
@@ -276,6 +290,55 @@ class Settings(BaseModel):
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
     selectai: Optional[SelectAISettings] = Field(default_factory=SelectAISettings, description="SelectAI Settings")
+
+
+#####################################################
+# Full Configuration
+#####################################################
+class Configuration(BaseModel):
+    """Full Configuration (with client settings)"""
+
+    client_settings: Settings
+    database_configs: Optional[list[Database]] = None
+    model_configs: Optional[list[Model]] = None
+    oci_configs: Optional[list[OracleCloudSettings]] = None
+    prompt_configs: Optional[list[Prompt]] = None
+
+    def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
+        """Remove marked fields for FastAPI Response"""
+        return self.recursive_dump_excluding_marked(self, incl_sensitive, incl_readonly)
+
+    @classmethod
+    def recursive_dump_excluding_marked(cls, obj: Any, incl_sensitive: bool, incl_readonly: bool) -> Any:
+        """Recursively include fields, including extras, and exclude marked ones"""
+        if isinstance(obj, BaseModel):
+            output = {}
+
+            # Get declared fields
+            for name, field in obj.__class__.model_fields.items():
+                extras = field.json_schema_extra or {}
+                is_readonly = extras.get("readOnly", False)
+                is_sensitive = extras.get("sensitive", False)
+                if (is_readonly and not incl_readonly) or (is_sensitive and not incl_sensitive):
+                    continue
+                value = getattr(obj, name)
+                output[name] = cls.recursive_dump_excluding_marked(value, incl_sensitive, incl_readonly)
+
+            # Handle extra fields
+            if obj.__pydantic_extra__:
+                for key, value in obj.__pydantic_extra__.items():
+                    output[key] = cls.recursive_dump_excluding_marked(value, incl_sensitive, incl_readonly)
+
+            return output
+
+        elif isinstance(obj, list):
+            return [cls.recursive_dump_excluding_marked(item, incl_sensitive, incl_readonly) for item in obj]
+
+        elif isinstance(obj, dict):
+            return {k: cls.recursive_dump_excluding_marked(v, incl_sensitive, incl_readonly) for k, v in obj.items()}
+
+        else:
+            return obj
 
 
 #####################################################
@@ -397,7 +460,7 @@ class EvaluationReport(Evaluation):
 ClientIdType = Settings.__annotations__["client"]
 DatabaseNameType = Database.__annotations__["name"]
 VectorStoreTableType = DatabaseVectorStorage.__annotations__["vector_store"]
-ModelNameType = Model.__annotations__["name"]
+ModelIdType = Model.__annotations__["id"]
 ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]

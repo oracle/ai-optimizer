@@ -13,6 +13,7 @@ package_update: false
 packages:
   - python36-oci-cli
   - python3.11
+  - sqlcl
 
 write_files:
   - path: /etc/systemd/system/ai-optimizer.service
@@ -56,35 +57,21 @@ write_files:
     content: |
       #!/bin/bash
       # Setup for Instance Principles
-      export OCI_CLI_AUTH=instance_principal
 
       # Download/Setup Source Code
       curl -s https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
       | grep tarball_url \
       | cut -d '"' -f 4 \
       | xargs curl -L -o /tmp/source.tar.gz
+      # curl -L -o /tmp/source.tar.gz https://github.com/oracle-samples/ai-optimizer/archive/refs/heads/main.tar.gz
       tar zxf /tmp/source.tar.gz --strip-components=2 -C /app '*/src'
       cd /app
       python3.11 -m venv .venv
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools
+      pip3.11 install torch==2.7.1+cpu -f https://download.pytorch.org/whl/cpu/torch
       pip3.11 install -e ".[all]" --quiet --no-input &
       INSTALL_PID=$!
-
-      # Wait for Database and Download Wallet
-      while [ $SECONDS -lt $((SECONDS + 600)) ]; do
-        echo "Waiting for Database... ${db_name}"
-        ID=$(oci db autonomous-database list --compartment-id ${compartment_id} --display-name ${db_name} \
-          --lifecycle-state AVAILABLE --query 'data[0].id' --raw-output)
-        if [ -n "$ID" ]; then
-          echo "Database Found; Downloading Wallet for $ID..."
-          oci db autonomous-database generate-wallet --autonomous-database-id $ID --password '${db_password}' --file /tmp/wallet.zip
-          break
-        fi
-        sleep 15
-      done
-      mkdir -p /app/tns_admin
-      unzip -o /tmp/wallet.zip -d /app/tns_admin
 
       # Install Models
       if ${install_ollama}; then
@@ -99,8 +86,14 @@ write_files:
     permissions: '0750'
     content: |
       #!/bin/bash
+
+
+  - path: /app/start.sh
+    permissions: '0750'
+    content: |
+      #!/bin/bash
       export OCI_CLI_AUTH=instance_principal
-      export DB_USERNAME='ADMIN'
+      export DB_USERNAME='AI_OPTIMIZER'
       export DB_PASSWORD='${db_password}'
       export DB_DSN='${db_name}_TP'
       export DB_WALLET_PASSWORD='${db_password}'
@@ -118,7 +111,7 @@ write_files:
 runcmd:
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
-  - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz /tmp/wallet.zip
+  - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz
   - chown oracleai:oracleai /app/start.sh
   - systemctl daemon-reexec
   - systemctl daemon-reload

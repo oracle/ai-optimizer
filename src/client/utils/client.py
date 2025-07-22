@@ -15,9 +15,9 @@ logger = logging_config.logging.getLogger("client.utils.client")
 
 
 class Client:
-    """Client for interacting with the Server."""
+    """Client for interacting with the Chatbot."""
 
-    logger.debug("Initializing Client")
+    logger.debug("Initializing Chatbot Client")
 
     def __init__(
         self,
@@ -66,7 +66,7 @@ class Client:
             response = settings_request("POST")
             if response.status_code != 200:
                 logger.error("Error updating settings with POST: %i - %s", response.status_code, response.text)
-        logger.info("Established Client")
+        logger.info("Established Chatbot Client: %s", self.settings["client"])
 
     async def stream(self, message: str, image_b64: Optional[str] = None) -> AsyncIterator[str]:
         """Call stream endpoint for completion"""

@@ -1,0 +1,159 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent tolerations ollama pplx
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "global.fullname" . }}-server
+  labels:
+    app.kubernetes.io/component: server
+    {{- include "global.labels" . | nindent 4}}
+spec:
+  {{- if not .Values.server.autoscaling.enabled }}
+  replicas: {{ .Values.server.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      {{- include "global.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.server.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/component: server
+        {{- include "global.labels" . | nindent 8 }}
+        {{- with .Values.server.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      securityContext:
+        fsGroup: 10001
+      {{- with .Values.server.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+          env:
+            - name: API_SERVER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "global.apiSecretName" . }}
+                  key: {{ include "global.apiSecretKey" . }}
+            {{- if (default false .Values.server.oci_config.oke) }}
+            - name: OCI_CLI_REGION
+              value: {{ .Values.server.oci_config.region }}
+            - name: OCI_CLI_AUTH
+              value: "oke_workload_identity"
+            {{- end }}
+            {{- if .Values.server.database }}
+            {{- include "server.database.authN" . | nindent 12 }}
+              {{- if eq .Values.server.database.type "ADB-S" }}
+            - name: DB_WALLET_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
+                  key: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
+              {{- end }}
+            {{- end }}
+            {{- if .Values.ollama.enabled }}
+            - name: ON_PREM_OLLAMA_URL
+              value: {{ include "ollama.serviceUrl" $ }}
+            {{- end }}
+            {{- with .Values.server.models }}
+              {{- $models := . }}
+              {{- $envMap := dict "openAI" "OPENAI_API_KEY" "perplexity" "PPLX_API_KEY" "cohere" "COHERE_API_KEY" }}
+              {{- range $key, $envName := $envMap }}
+                {{- with index $models $key }}
+                  {{- if .secretName }}
+            - name: {{ $envName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: {{ .secretKey | default "apiKey" }}
+                  {{- end }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+          ports:
+            - name: server-port
+              containerPort: 8000
+              protocol: TCP
+          {{- if .Values.server.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ include "global.getPath" . }}v1/liveness
+              port: server-port
+            {{- with omit .Values.server.livenessProbe "enabled" }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.server.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ include "global.getPath" . }}v1/readiness
+              port: server-port
+            {{- with omit .Values.server.readinessProbe "enabled" }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.server.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: "/app/tmp"
+            {{- if and (hasKey .Values.server "database") (eq (default "" .Values.server.database.type) "ADB-S") }}
+            - name: tns-admin
+              mountPath: /app/tns_admin
+            {{- end }}
+            {{- if and .Values.server.oci_config .Values.server.oci_config.fileSecretName }}
+            - name: oci-config
+              mountPath: "/app/runtime/.oci"
+            {{- end }}
+          {{- with .Values.server.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if and (hasKey .Values.server "database") (eq (default "" .Values.server.database.type) "ADB-S") }}
+        - name: tns-admin
+          secret:
+            secretName: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}
+        {{- end }}
+        {{- if and .Values.server.oci_config .Values.server.oci_config.fileSecretName }}
+        - name: oci-config
+          secret:
+            secretName: {{ .Values.server.oci_config.fileSecretName | quote }}
+            optional: true
+        {{- end }}
+      {{- with .Values.server.volumes }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

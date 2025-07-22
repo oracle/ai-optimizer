@@ -13,11 +13,11 @@ import oracledb
 
 def get_llm(data):
     llm={}
-    llm_config = data["ll_model_config"][data["user_settings"]["ll_model"]["model"]]
+    llm_config = data["ll_model_config"][data["client_settings"]["ll_model"]["model"]]
     api=llm_config["api"]
     url=llm_config["url"]
     api_key=llm_config["api_key"]
-    model=data["user_settings"]["ll_model"]["model"]
+    model=data["client_settings"]["ll_model"]["model"]
     print(f"CHAT_MODEL: {model} {api} {url} {api_key}")
     if api == "ChatOllama":
         # Initialize the LLM
@@ -35,7 +35,7 @@ def get_llm(data):
 
 def get_embeddings(data):
     embeddings={}
-    model=data["user_settings"]["rag"]["model"]
+    model=data["client_settings"]["rag"]["model"]
     api=data["embed_model_config"][model]["api"]
     url=data["embed_model_config"][model]["url"]
     api_key=data["embed_model_config"][model]["api_key"]
@@ -56,13 +56,13 @@ def get_embeddings(data):
 
 def get_vectorstore(data,embeddings):
     
-    config=data["database_config"][data["user_settings"]["rag"]["database"]]
+    config=data["database_config"][data["client_settings"]["rag"]["database"]]
    
     conn23c = oracledb.connect(user=config["user"], 
                                password=config["password"], dsn=config["dsn"])
  
     print("DB Connection successful!")
-    metric=data["user_settings"]["rag"]["distance_metric"]
+    metric=data["client_settings"]["rag"]["distance_metric"]
     
     dist_strategy=DistanceStrategy.COSINE
     if metric=="COSINE":
@@ -71,9 +71,9 @@ def get_vectorstore(data,embeddings):
         dist_strategy=DistanceStrategy.EUCLIDEAN
    
     print("1")
-    a=data["user_settings"]["rag"]["vector_store"]
+    a=data["client_settings"]["rag"]["vector_store"]
     print(f"{a}")
     print(f"BEFORE KNOWLEDGE BASE")
     print(embeddings)
-    knowledge_base = OracleVS(conn23c, embeddings, data["user_settings"]["rag"]["vector_store"], dist_strategy)
+    knowledge_base = OracleVS(conn23c, embeddings, data["client_settings"]["rag"]["vector_store"], dist_strategy)
     return knowledge_base

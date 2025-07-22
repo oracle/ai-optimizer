@@ -26,14 +26,14 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-ll-model",
+                        "id": "test-ll-model",
                         "type": "ll",
                         "enabled": True,
                         "url": "http://test.url",
                         "openai_compat": True,
                     },
                     {
-                        "name": "test-embed-model",
+                        "id": "test-embed-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -43,12 +43,6 @@ class TestStreamlit:
             return {}
 
         monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        # Mock the get_testbed_db_testsets function
-        # The cache_data decorator expects a function
-        monkeypatch.setattr("client.content.testbed.get_testbed_db_testsets", lambda: {})
-        # Mock the cache_data decorator itself
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
 
         # Initialize app_test and run it to bring up the component
         at = app_test(self.ST_FILE)
@@ -101,14 +95,14 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-ll-model",
+                        "id": "test-ll-model",
                         "type": "ll",
                         "enabled": True,
                         "url": "http://test.url",
                         "openai_compat": True,
                     },
                     {
-                        "name": "test-embed-model",
+                        "id": "test-embed-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -118,11 +112,6 @@ class TestStreamlit:
             return {}
 
         monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        # Mock the get_testbed_db_testsets function
-        monkeypatch.setattr("client.content.testbed.get_testbed_db_testsets", lambda: {})
-        # Mock the cache_data decorator itself
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
 
         # Mock functions that make external calls
         monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
@@ -171,14 +160,14 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-ll-model",
+                        "id": "test-ll-model",
                         "type": "ll",
                         "enabled": True,
                         "url": "http://test.url",
                         "openai_compat": True,
                     },
                     {
-                        "name": "test-embed-model",
+                        "id": "test-embed-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -188,11 +177,6 @@ class TestStreamlit:
             return {}
 
         monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        # Mock the get_testbed_db_testsets function
-        monkeypatch.setattr("client.content.testbed.get_testbed_db_testsets", lambda: {})
-        # Mock the cache_data decorator itself
-        monkeypatch.setattr("streamlit.cache_data", lambda *args, **kwargs: lambda func: func)
 
         # Mock API post response for evaluation
         mock_post.return_value = {
