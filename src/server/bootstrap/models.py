@@ -22,7 +22,7 @@ def main() -> list[Model]:
 
     models_list = [
         {
-            "name": "command-r",
+            "id": "command-r",
             "enabled": os.getenv("COHERE_API_KEY") is not None,
             "type": "ll",
             "api": "Cohere",
@@ -35,7 +35,7 @@ def main() -> list[Model]:
             "frequency_penalty": 0.0,
         },
         {
-            "name": "gpt-4o-mini",
+            "id": "gpt-4o-mini",
             "enabled": os.getenv("OPENAI_API_KEY") is not None,
             "type": "ll",
             "api": "OpenAI",
@@ -48,7 +48,7 @@ def main() -> list[Model]:
             "frequency_penalty": 0.0,
         },
         {
-            "name": "sonar",
+            "id": "sonar",
             "enabled": os.getenv("PPLX_API_KEY") is not None,
             "type": "ll",
             "api": "Perplexity",
@@ -61,7 +61,7 @@ def main() -> list[Model]:
             "frequency_penalty": 1.0,
         },
         {
-            "name": "phi-4",
+            "id": "phi-4",
             "enabled": False,
             "type": "ll",
             "api": "CompatOpenAI",
@@ -75,7 +75,7 @@ def main() -> list[Model]:
         },
         {
             # OCI GenAI; url and enabled will be determined by OCI config
-            "name": "cohere.command-r-plus-08-2024",
+            "id": "cohere.command-r-plus-08-2024",
             "enabled": os.getenv("OCI_GENAI_COMPARTMENT_ID") is not None
             and os.getenv("OCI_GENAI_SERVICE_ENDPOINT") is not None,
             "type": "ll",
@@ -90,7 +90,7 @@ def main() -> list[Model]:
         },
         {
             # This is intentionally last to line up with docos
-            "name": "llama3.1",
+            "id": "llama3.1",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "ll",
             "api": "ChatOllama",
@@ -103,7 +103,7 @@ def main() -> list[Model]:
             "frequency_penalty": 0.0,
         },
         {
-            "name": "thenlper/gte-base",
+            "id": "thenlper/gte-base",
             "enabled": os.getenv("ON_PREM_HF_URL") is not None,
             "type": "embed",
             "api": "HuggingFaceEndpointEmbeddings",
@@ -113,7 +113,7 @@ def main() -> list[Model]:
             "max_chunk_size": 512,
         },
         {
-            "name": "text-embedding-3-small",
+            "id": "text-embedding-3-small",
             "enabled": os.getenv("OPENAI_API_KEY") is not None,
             "type": "embed",
             "api": "OpenAIEmbeddings",
@@ -123,7 +123,7 @@ def main() -> list[Model]:
             "max_chunk_size": 8191,
         },
         {
-            "name": "embed-english-light-v3.0",
+            "id": "embed-english-light-v3.0",
             "enabled": os.getenv("COHERE_API_KEY") is not None,
             "type": "embed",
             "api": "CohereEmbeddings",
@@ -134,7 +134,7 @@ def main() -> list[Model]:
         },
         {
             # OCI GenAI; url and enabled will be determined by OCI config
-            "name": "cohere.embed-multilingual-v3.0",
+            "id": "cohere.embed-multilingual-v3.0",
             "enabled": os.getenv("OCI_GENAI_COMPARTMENT_ID") is not None
             and os.getenv("OCI_GENAI_SERVICE_ENDPOINT") is not None,
             "type": "embed",
@@ -145,7 +145,7 @@ def main() -> list[Model]:
             "max_chunk_size": 4096,
         },
         {
-            "name": "text-embedding-nomic-embed-text-v1.5",
+            "id": "text-embedding-nomic-embed-text-v1.5",
             "enabled": False,
             "type": "embed",
             "api": "CompatOpenAIEmbeddings",
@@ -156,7 +156,7 @@ def main() -> list[Model]:
         },
         {
             # This is intentionally last to line up with docos
-            "name": "mxbai-embed-large",
+            "id": "mxbai-embed-large",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "embed",
             "api": "OllamaEmbeddings",
@@ -170,16 +170,16 @@ def main() -> list[Model]:
     # Check for duplicates
     unique_entries = set()
     for model in models_list:
-        if model["name"] in unique_entries:
-            raise ValueError(f"Model '{model['name']}' already exists.")
-        unique_entries.add(model["name"])
+        if model["id"] in unique_entries:
+            raise ValueError(f"Model '{model['id']}' already exists.")
+        unique_entries.add(model["id"])
 
     # Merge with configuration if available
     configuration = ConfigStore.get()
     if configuration and configuration.model_configs:
         logger.debug("Merging model configs from ConfigStore")
-        config_model_map = {m.name: m.model_dump() for m in configuration.model_configs}
-        existing = {m["name"]: m for m in models_list}
+        config_model_map = {m.id: m.model_dump() for m in configuration.model_configs}
+        existing = {m["id"]: m for m in models_list}
 
         def values_differ(a, b):
             if isinstance(a, bool) or isinstance(b, bool):
@@ -190,27 +190,27 @@ def main() -> list[Model]:
                 return a.strip() != b.strip()
             return a != b
 
-        for name, override in config_model_map.items():
-            if name in existing:
+        for model_id, override in config_model_map.items():
+            if model_id in existing:
                 for k, v in override.items():
-                    if k not in existing[name]:
+                    if k not in existing[model_id]:
                         continue
-                    if values_differ(existing[name][k], v):
+                    if values_differ(existing[model_id][k], v):
                         log_func = logger.debug if k == "api_key" else logger.info
                         log_func(
-                            "Overriding field '%s' for model '%s' (was: %r → now: %r)", k, name, existing[name][k], v
+                            "Overriding field '%s' for model '%s' (was: %r → now: %r)", k, model_id, existing[model_id][k], v
                         )
-                        existing[name][k] = v
+                        existing[model_id][k] = v
             else:
-                logger.info("Adding new model from ConfigStore: %s", name)
-                existing[name] = override
+                logger.info("Adding new model from ConfigStore: %s", model_id)
+                existing[model_id] = override
 
         models_list = list(existing.values())
 
     # Override with OS env vars (by API type)
     for model in models_list:
         api = model.get("api", "")
-        name = model.get("name", "")
+        model_id = model.get("id", "")
         overridden = False
 
         if api == "Cohere" and os.getenv("COHERE_API_KEY"):
@@ -218,7 +218,7 @@ def main() -> list[Model]:
             new_api_key = os.environ["COHERE_API_KEY"]
             if old_api_key != new_api_key:
                 # Exposes key if in DEBUG
-                logger.debug("Overriding 'api_key' for model '%s' with COHERE_API_KEY environment variable", name)
+                logger.debug("Overriding 'api_key' for model '%s' with COHERE_API_KEY environment variable", model_id)
                 model["api_key"] = new_api_key
                 overridden = True
             model["enabled"] = True
@@ -228,7 +228,7 @@ def main() -> list[Model]:
             new_url = os.environ["OCI_GENAI_SERVICE_ENDPOINT"]
             if old_url != new_url:
                 logger.info(
-                    "Overriding 'url' for model '%s' with OCI_GENAI_SERVICE_ENDPOINT environment variable", name
+                    "Overriding 'url' for model '%s' with OCI_GENAI_SERVICE_ENDPOINT environment variable", model_id
                 )
                 model["url"] = new_url
                 overridden = True
@@ -238,7 +238,7 @@ def main() -> list[Model]:
             old_url = model.get("url", "")
             new_url = os.environ["ON_PREM_OLLAMA_URL"]
             if old_url != new_url:
-                logger.info("Overriding 'url' for model '%s' with ON_PREM_OLLAMA_URL environment variable", name)
+                logger.info("Overriding 'url' for model '%s' with ON_PREM_OLLAMA_URL environment variable", model_id)
                 model["url"] = new_url
                 overridden = True
             model["enabled"] = True
@@ -247,13 +247,13 @@ def main() -> list[Model]:
             old_url = model.get("url", "")
             new_url = os.environ["ON_PREM_HF_URL"]
             if old_url != new_url:
-                logger.info("Overriding 'url' for model '%s' with ON_PREM_HF_URL environment variable", name)
+                logger.info("Overriding 'url' for model '%s' with ON_PREM_HF_URL environment variable", model_id)
                 model["url"] = new_url
                 overridden = True
             model["enabled"] = True
 
         if overridden:
-            logger.debug("Model '%s' updated via environment variable overrides.", name)
+            logger.debug("Model '%s' updated via environment variable overrides.", model_id)
 
     # Convert to Model objects
     model_objects = [Model(**model_dict) for model_dict in models_list]

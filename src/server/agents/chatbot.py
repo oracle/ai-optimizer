@@ -96,7 +96,7 @@ def respond(state: AgentState, config: RunnableConfig) -> ChatResponse:
     """Respond in OpenAI Compatible return"""
     ai_message = state["messages"][-1]
     logger.debug("Formatting Response to OpenAI compatible message: %s", repr(ai_message))
-    model_name = config["metadata"]["model_name"]
+    model_id = config["metadata"]["model_id"]
     if "model" in ai_message.response_metadata:
         ai_metadata = ai_message
     else:
@@ -112,7 +112,7 @@ def respond(state: AgentState, config: RunnableConfig) -> ChatResponse:
     openai_response = ChatResponse(
         id=ai_message.id,
         created=int(datetime.now(timezone.utc).timestamp()),
-        model=model_name,
+        model=model_id,
         usage=ChatUsage(
             prompt_tokens=ai_metadata.response_metadata.get("token_usage", {}).get("prompt_tokens", -1),
             completion_tokens=ai_metadata.response_metadata.get("token_usage", {}).get("completion_tokens", -1),

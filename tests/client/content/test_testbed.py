@@ -26,14 +26,14 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-ll-model",
+                        "id": "test-ll-model",
                         "type": "ll",
                         "enabled": True,
                         "url": "http://test.url",
                         "openai_compat": True,
                     },
                     {
-                        "name": "test-embed-model",
+                        "id": "test-embed-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -95,14 +95,14 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-ll-model",
+                        "id": "test-ll-model",
                         "type": "ll",
                         "enabled": True,
                         "url": "http://test.url",
                         "openai_compat": True,
                     },
                     {
-                        "name": "test-embed-model",
+                        "id": "test-embed-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -160,14 +160,14 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-ll-model",
+                        "id": "test-ll-model",
                         "type": "ll",
                         "enabled": True,
                         "url": "http://test.url",
                         "openai_compat": True,
                     },
                     {
-                        "name": "test-embed-model",
+                        "id": "test-embed-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",

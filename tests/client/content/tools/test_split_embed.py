@@ -28,7 +28,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -88,7 +88,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -134,7 +134,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -191,7 +191,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -235,7 +235,7 @@ class TestStreamlit:
             if endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",
@@ -305,7 +305,7 @@ class TestStreamlit:
             elif endpoint == "v1/models":
                 return [
                     {
-                        "name": "test-model",
+                        "id": "test-model",
                         "type": "embed",
                         "enabled": True,
                         "url": "http://test.url",

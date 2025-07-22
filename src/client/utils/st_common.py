@@ -40,10 +40,10 @@ def state_configs_lookup(state_configs_name: str, key: str) -> dict[str, dict[st
 #############################################################################
 def enabled_models_lookup(model_type: str) -> dict[str, dict[str, Any]]:
     """Create a lookup of enabled `type` models"""
-    all_models = state_configs_lookup("model_configs", "name")
+    all_models = state_configs_lookup("model_configs", "id")
     enabled_models = {
-        name: config
-        for name, config in all_models.items()
+        id: config
+        for id, config in all_models.items()
         if config.get("type") == model_type and config.get("enabled") is True
     }
     return enabled_models
