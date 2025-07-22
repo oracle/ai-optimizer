@@ -2,8 +2,9 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql, vector_search
+# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql, vector_search, aioptimizer
 
+import time
 from typing import Optional, Literal, Union, get_args, Any
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
@@ -131,7 +132,19 @@ class ModelAccess(BaseModel):
 class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
     """Model Object"""
 
-    name: str = Field(..., min_length=1, description="The model to use")
+    id: str = Field(..., min_length=1, description="The model to use")
+    object: Literal["model"] = Field(
+        default="model",
+        description='The object type, always `"model"`. (OpenAI Compatible Only)',
+    )
+    created: int = Field(
+        default_factory=lambda: int(time.time()),
+        description="The Unix timestamp (in seconds) when the model was created.",
+    )
+    owned_by: Literal["aioptimizer"] = Field(
+        default="aioptimizer",
+        description="OpenAI Compatible Only",
+    )
     type: Literal["ll", "embed", "re-rank"] = Field(..., description="Type of Model.")
     api: str = Field(
         ..., min_length=1, description="API for Model.", examples=["ChatOllama", "OpenAI", "OpenAIEmbeddings"]
@@ -291,11 +304,9 @@ class Configuration(BaseModel):
     oci_configs: Optional[list[OracleCloudSettings]] = None
     prompt_configs: Optional[list[Prompt]] = None
 
-
     def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
         return self.recursive_dump_excluding_marked(self, incl_sensitive, incl_readonly)
-
 
     @classmethod
     def recursive_dump_excluding_marked(cls, obj: Any, incl_sensitive: bool, incl_readonly: bool) -> Any:
@@ -449,7 +460,7 @@ class EvaluationReport(Evaluation):
 ClientIdType = Settings.__annotations__["client"]
 DatabaseNameType = Database.__annotations__["name"]
 VectorStoreTableType = DatabaseVectorStorage.__annotations__["vector_store"]
-ModelNameType = Model.__annotations__["name"]
+ModelIdType = Model.__annotations__["id"]
 ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]

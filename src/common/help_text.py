@@ -93,12 +93,12 @@ help_dict = {
         are in a high-dimensional space. These metrics help compare and cluster
         embeddings effectively.
         """,
-    "model_name": """
+    "model_id": """
         The official name of the model as per the model card.
         Misconfigured names will result in an error.
         """,
     "model_api": """
-        API of the model.  If the API of the model is not listed here, try an OpenAI one.
+        API of the model.  If the API of the model is not listed here, try an CompatOpenAI one.
         Open an issue if you'd like to request support for an unlisted model.
         """,
     "model_api_url": """

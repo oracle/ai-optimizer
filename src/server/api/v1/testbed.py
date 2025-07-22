@@ -133,15 +133,15 @@ async def testbed_upsert_testsets(
 async def testbed_generate_qa(
     files: list[UploadFile],
     name: schema.TestSetsNameType,
-    ll_model: schema.ModelNameType = None,
-    embed_model: schema.ModelNameType = None,
+    ll_model: schema.ModelIdType = None,
+    embed_model: schema.ModelIdType = None,
     questions: int = 2,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.TestSetQA:
     """Retrieve contents from a local file uploaded and generate Q&A"""
     # Setup Models
-    giskard_ll_model = models.get_model(model_name=ll_model, model_type="ll")
-    giskard_embed_model = models.get_model(model_name=embed_model, model_type="embed")
+    giskard_ll_model = models.get_model(model_id=ll_model, model_type="ll")
+    giskard_embed_model = models.get_model(model_id=embed_model, model_type="embed")
     temp_directory = embed.get_temp_directory(client, "testbed")
     full_testsets = temp_directory / "all_testsets.jsonl"
 
@@ -190,7 +190,7 @@ async def testbed_generate_qa(
 )
 def testbed_evaluate_qa(
     tid: schema.TestSetsIdType,
-    judge: schema.ModelNameType,
+    judge: schema.ModelIdType,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Run evaluate against a testset"""

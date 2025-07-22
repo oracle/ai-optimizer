@@ -30,7 +30,7 @@ logger = logging_config.logging.getLogger("api.core.models")
 # Functions
 #####################################################
 def get_model(
-    model_name: Optional[schema.ModelNameType] = None,
+    model_id: Optional[schema.ModelIdType] = None,
     model_type: Optional[schema.ModelTypeType] = None,
 ) -> Union[list[schema.Model], schema.Model, None]:
     """Used in direct call from list_models and agents.models"""
@@ -41,12 +41,12 @@ def get_model(
     model_filtered = [
         model
         for model in model_objects
-        if (model_name is None or model.name == model_name) and (model_type is None or model.type == model_type)
+        if (model_id is None or model.id == model_id) and (model_type is None or model.type == model_type)
     ]
     logger.debug("%i models after filtering", len(model_filtered))
 
-    if model_name and not model_filtered:
-        raise ValueError(f"{model_name} not found")
+    if model_id and not model_filtered:
+        raise ValueError(f"{model_id} not found")
     if model_type and not model_filtered:
         raise ValueError(f"{model_type} not found")
 
@@ -60,8 +60,8 @@ def create_model(model: schema.Model) -> schema.Model:
     """Create a new Model definition"""
     model_objects = bootstrap.MODEL_OBJECTS
 
-    if any(d.name == model.name for d in model_objects):
-        raise ValueError(f"Model: {model.name} already exists.")
+    if any(d.id == model.id for d in model_objects):
+        raise ValueError(f"Model: {model.id} already exists.")
 
     if not model.openai_compat:
         openai_compat = next(
@@ -71,23 +71,23 @@ def create_model(model: schema.Model) -> schema.Model:
         model.openai_compat = openai_compat
     model_objects.append(model)
 
-    return get_model(model_name=model.name, model_type=model.type)
+    return get_model(model_id=model.id, model_type=model.type)
 
 
-def delete_model(name: schema.ModelNameType) -> None:
+def delete_model(model_id: schema.ModelIdType) -> None:
     """Remove model from model objects"""
     model_objects = bootstrap.MODEL_OBJECTS
-    bootstrap.MODEL_OBJECTS = [model for model in model_objects if model.name != name]
+    bootstrap.MODEL_OBJECTS = [model for model in model_objects if model.id != model_id]
 
 
 def get_key_value(
     model_objects: list[schema.ModelAccess],
-    model_name: schema.ModelNameType,
+    model_id: schema.ModelIdType,
     model_key: str,
 ) -> str:
     """Return a models key value of its configuration"""
     for model in model_objects:
-        if model.name == model_name:
+        if model.id == model_id:
             return getattr(model, model_key, None)
     return None
 
@@ -97,10 +97,10 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
     logger.debug("Model Config: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
     model_objects = bootstrap.MODEL_OBJECTS
 
-    model_name = model_config["model"]
-    model_api = get_key_value(model_objects, model_name, "api")
-    model_api_key = get_key_value(model_objects, model_name, "api_key")
-    model_url = get_key_value(model_objects, model_name, "url")
+    model_id = model_config["model"]
+    model_api = get_key_value(model_objects, model_id, "api")
+    model_api_key = get_key_value(model_objects, model_id, "api_key")
+    model_url = get_key_value(model_objects, model_id, "url")
 
     # Determine if configuring an embedding model
     try:
@@ -123,28 +123,28 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
         ]:
             try:
                 logger.debug("--> Setting: %s; was sent %s", key, model_config[key])
-                ll_common_params[key] = model_config[key] or get_key_value(model_objects, model_name, key)
+                ll_common_params[key] = model_config[key] or get_key_value(model_objects, model_id, key)
             except KeyError:
                 # Mainly for embeddings
                 continue
         logger.debug("LL schema.Model Parameters: %s", ll_common_params)
         model_classes = {
-            "OpenAI": lambda: ChatOpenAI(model=model_name, api_key=model_api_key, **ll_common_params),
+            "OpenAI": lambda: ChatOpenAI(model=model_id, api_key=model_api_key, **ll_common_params),
             "CompatOpenAI": lambda: ChatOpenAI(
-                model=model_name, base_url=model_url, api_key=model_api_key or "api_compat", **ll_common_params
+                model=model_id, base_url=model_url, api_key=model_api_key or "api_compat", **ll_common_params
             ),
-            "Cohere": lambda: ChatCohere(model=model_name, cohere_api_key=model_api_key, **ll_common_params),
+            "Cohere": lambda: ChatCohere(model=model_id, cohere_api_key=model_api_key, **ll_common_params),
             "ChatOllama": lambda: ChatOllama(
-                model=model_name,
+                model=model_id,
                 base_url=model_url,
                 **ll_common_params,
                 num_predict=ll_common_params["max_completion_tokens"],
             ),
             "Perplexity": lambda: ChatOpenAI(
-                model=model_name, base_url=model_url, api_key=model_api_key, **ll_common_params
+                model=model_id, base_url=model_url, api_key=model_api_key, **ll_common_params
             ),
             "ChatOCIGenAI": lambda oci_cfg=oci_config: ChatOCIGenAI(
-                model_id=model_name,
+                model_id=model_id,
                 client=oci.init_genai_client(oci_cfg),
                 compartment=oci_cfg.compartment,
                 model_kwargs={
@@ -157,18 +157,18 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
     if embedding:
         logger.debug("Configuring Embed Model")
         model_classes = {
-            "OpenAIEmbeddings": lambda: OpenAIEmbeddings(model=model_name, api_key=model_api_key),
+            "OpenAIEmbeddings": lambda: OpenAIEmbeddings(model=model_id, api_key=model_api_key),
             "CompatOpenAIEmbeddings": lambda: OpenAIEmbeddings(
-                model=model_name,
+                model=model_id,
                 base_url=model_url,
                 api_key=model_api_key or "api_compat",
                 check_embedding_ctx_length=False,
             ),
-            "CohereEmbeddings": lambda: CohereEmbeddings(model=model_name, cohere_api_key=model_api_key),
-            "OllamaEmbeddings": lambda: OllamaEmbeddings(model=model_name, base_url=model_url),
+            "CohereEmbeddings": lambda: CohereEmbeddings(model=model_id, cohere_api_key=model_api_key),
+            "OllamaEmbeddings": lambda: OllamaEmbeddings(model=model_id, base_url=model_url),
             "HuggingFaceEndpointEmbeddings": lambda: HuggingFaceEndpointEmbeddings(model=model_url),
             "OCIGenAIEmbeddings": lambda oci_cfg=oci_config: OCIGenAIEmbeddings(
-                model_id=model_name,
+                model_id=model_id,
                 client=oci.init_genai_client(oci_cfg),
                 compartment=oci_cfg.compartment,
             ),
@@ -179,7 +179,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
             logger.debug("Creating Giskard Client for %s in %s", model_api, model_classes)
             giskard_key = model_api_key or "giskard"
             _client = OpenAI(api_key=giskard_key, base_url=f"{model_url}/v1")
-            client = OpenAIClient(model=model_name, client=_client)
+            client = OpenAIClient(model=model_id, client=_client)
         else:
             logger.debug("Searching for %s in %s", model_api, model_classes)
             client = model_classes[model_api]()

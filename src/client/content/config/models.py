@@ -54,8 +54,8 @@ def get_model_apis(model_type: str = None) -> list:
 
 def create_model(model: dict) -> None:
     """Add either Language Model or Embed Model"""
-    api_call.post(endpoint="v1/models", params={"name": model["name"]}, payload={"json": model})
-    st.success(f"Model created: {model['name']}")
+    api_call.post(endpoint="v1/models", params={"id": model["id"]}, payload={"json": model})
+    st.success(f"Model created: {model['id']}")
     sleep(1)
     st_common.clear_state_key("model_configs")
 
@@ -63,42 +63,42 @@ def create_model(model: dict) -> None:
 def patch_model(model: dict) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
     try:
-        _ = api_call.patch(endpoint=f"v1/models/{model['name']}", payload={"json": model})
-        st.success(f"Model updated: {model['name']}")
+        _ = api_call.patch(endpoint=f"v1/models/{model['id']}", payload={"json": model})
+        st.success(f"Model updated: {model['id']}")
         sleep(1)
         st_common.clear_state_key("model_configs")
     except api_call.ApiError:
         create_model(model)
 
 
-def delete_model(model_name: str) -> None:
+def delete_model(model_id: str) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
-    api_call.delete(endpoint=f"v1/models/{model_name}")
-    st.success(f"Model deleted: {model_name}")
+    api_call.delete(endpoint=f"v1/models/{model_id}")
+    st.success(f"Model deleted: {model_id}")
     sleep(1)
     # If deleted model is the set model; unset the user settings
-    if state.client_settings["ll_model"]["model"] == model_name:
+    if state.client_settings["ll_model"]["model"] == model_id:
         state.client_settings["ll_model"]["model"] = None
 
     st_common.clear_state_key("model_configs")
 
 
 @st.dialog("Model Configuration", width="large")
-def edit_model(model_type: str, action: Literal["add", "edit"], model_name: str = None) -> None:
+def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = None) -> None:
     """Model Edit Dialog Box"""
     # Initialize our model request
     if action == "edit":
-        name = urllib.parse.quote(model_name, safe="")
-        model = api_call.get(endpoint=f"v1/models/{name}")
+        model_id = urllib.parse.quote(model_id, safe="")
+        model = api_call.get(endpoint=f"v1/models/{model_id}")
     else:
-        model = {"name": "unset", "type": model_type, "api": "unset", "status": "CUSTOM"}
+        model = {"id": "unset", "type": model_type, "api": "unset", "status": "CUSTOM"}
     with st.form("edit_model"):
         model["enabled"] = st.checkbox("Enabled", value=True if action == "add" else model["enabled"])
-        model["name"] = st.text_input(
-            "Model Name (Required):",
-            help=help_text.help_dict["model_name"],
-            value=None if model["name"] == "unset" else model["name"],
-            key="add_model_name",
+        model["id"] = st.text_input(
+            "Model ID (Required):",
+            help=help_text.help_dict["model_id"],
+            value=None if model["id"] == "unset" else model["id"],
+            key="add_model_id",
             disabled=action == "edit",
         )
         api_values = get_model_apis(model_type)
@@ -180,7 +180,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_name: str 
             if action != "add" and delete_button.form_submit_button(
                 label="Delete", type="secondary", use_container_width=True
             ):
-                delete_model(model_name=model["name"])
+                delete_model(model_id=model["id"])
                 st.rerun()
         except api_call.ApiError as ex:
             st.error(f"Failed to {action} model: {ex}")
@@ -194,44 +194,44 @@ def render_model_rows(model_type):
     table_col_format = st.columns(data_col_widths, vertical_alignment="center")
     col1, col2, col3, col4, col5 = table_col_format
     col1.markdown("&#x200B;", help="Active", unsafe_allow_html=True)
-    col2.markdown("**<u>Model Name</u>**", unsafe_allow_html=True)
+    col2.markdown("**<u>Model ID</u>**", unsafe_allow_html=True)
     col3.markdown("**<u>API</u>**", unsafe_allow_html=True)
     col4.markdown("**<u>API Server</u>**", unsafe_allow_html=True)
     col5.markdown("&#x200B;")
     for model in [m for m in state.model_configs if m.get("type") == model_type]:
-        model_name = model["name"]
+        model_id = model["id"]
         col1.text_input(
             "Enabled",
             value="✅" if model["enabled"] else "⚪",
-            key=f"{model_type}_{model_name}_enabled",
+            key=f"{model_type}_{model_id}_enabled",
             label_visibility="collapsed",
             disabled=True,
         )
         col2.text_input(
             "Model",
-            value=model_name,
+            value=model_id,
             label_visibility="collapsed",
             disabled=True,
         )
         col3.text_input(
             "API",
             value=model["api"],
-            key=f"{model_type}_{model_name}_api",
+            key=f"{model_type}_{model_id}_api",
             label_visibility="collapsed",
             disabled=True,
         )
         col4.text_input(
             "Server",
             value=model["url"],
-            key=f"{model_type}_{model_name}_server",
+            key=f"{model_type}_{model_id}_server",
             label_visibility="collapsed",
             disabled=True,
         )
         col5.button(
             "Edit",
             on_click=edit_model,
-            key=f"{model_type}_{model_name}_edit",
-            kwargs=dict(model_type=model_type, action="edit", model_name=model_name),
+            key=f"{model_type}_{model_id}_edit",
+            kwargs=dict(model_type=model_type, action="edit", model_id=model_id),
         )
 
     if st.button(label="Add", type="primary", key=f"add_{model_type}_model"):

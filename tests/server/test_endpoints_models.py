@@ -67,7 +67,7 @@ class TestEndpoints:
         all_models = client.get("/v1/models", headers=auth_headers["valid_auth"])
         assert len(all_models.json()) > 0
         for model in all_models.json():
-            response = client.get(f"/v1/models/{model['name']}", headers=auth_headers["valid_auth"])
+            response = client.get(f"/v1/models/{model['id']}", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
 
     def test_models_delete_add(self, client, auth_headers):
@@ -77,9 +77,9 @@ class TestEndpoints:
 
         # Delete all models
         for model in all_models.json():
-            response = client.delete(f"/v1/models/{model['name']}", headers=auth_headers["valid_auth"])
+            response = client.delete(f"/v1/models/{model['id']}", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
-            assert response.json() == {"message": f"Model: {model['name']} deleted."}
+            assert response.json() == {"message": f"Model: {model['id']} deleted."}
         # Check that no models exists
         deleted_models = client.get("/v1/models", headers=auth_headers["valid_auth"])
         assert len(deleted_models.json()) == 0
@@ -106,12 +106,12 @@ class TestEndpoints:
             payload = model
             response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
             assert response.status_code == 409
-            assert response.json() == {"detail": f"Model: {model['name']} already exists."}
+            assert response.json() == {"detail": f"Model: {model['id']} already exists."}
 
     test_cases = [
         pytest.param(
             {
-                "name": "valid_ll_model",
+                "id": "valid_ll_model",
                 "enabled": False,
                 "type": "ll",
                 "api": "OpenAI",
@@ -128,7 +128,7 @@ class TestEndpoints:
         ),
         pytest.param(
             {
-                "name": "invalid_ll_model",
+                "id": "invalid_ll_model",
                 "enabled": False,
             },
             422,
@@ -136,7 +136,7 @@ class TestEndpoints:
         ),
         pytest.param(
             {
-                "name": "test_embed_model",
+                "id": "test_embed_model",
                 "enabled": False,
                 "type": "embed",
                 "api": "HuggingFaceEndpointEmbeddings",
@@ -157,11 +157,11 @@ class TestEndpoints:
         if status_code == 200:
             assert response.status_code == 200
             assert all(item in response.json().items() for item in payload.items())
-            response = client.get(f"/v1/models/{payload['name']}", headers=auth_headers["valid_auth"])
+            response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
         else:
             assert response.status_code == status_code
-            response = client.get(f"/v1/models/{payload['name']}", headers=auth_headers["valid_auth"])
+            response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
             assert response.status_code == 404
 
     @pytest.mark.parametrize("payload, status_code", test_cases)
@@ -171,11 +171,11 @@ class TestEndpoints:
             return
 
         _ = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
-        response = client.get(f"/v1/models/{payload['name']}", headers=auth_headers["valid_auth"])
+        response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
         old_enabled = response.json()["enabled"]
         payload["enabled"] = not old_enabled
 
-        response = client.patch(f"/v1/models/{payload['name']}", headers=auth_headers["valid_auth"], json=payload)
+        response = client.patch(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"], json=payload)
         assert response.status_code == 200
         new_enabled = response.json()["enabled"]
         assert new_enabled is not old_enabled

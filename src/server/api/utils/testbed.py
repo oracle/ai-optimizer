@@ -241,29 +241,29 @@ def build_knowledge_base(
 
     def configure_and_set_model(client_model):
         """Configure and set Model for TestSet Generation (uses litellm)"""
-        model_name, disable_structured_output, params = None, False, None
+        model_id, disable_structured_output, params = None, False, None
         if client_model.api in ("CompatOpenAI", "CompatOpenAIEmbeddings"):
-            model_name, params = (
-                f"openai/{client_model.name}",
+            model_id, params = (
+                f"openai/{client_model.id}",
                 {"api_base": client_model.url, "api_key": client_model.api_key or "api_compat"},
             )
         elif client_model.api in ("ChatOllama", "OllamaEmbeddings"):
-            model_name, disable_structured_output, params = (
-                f"ollama/{client_model.name}",
+            model_id, disable_structured_output, params = (
+                f"ollama/{client_model.id}",
                 True,
                 {"api_base": client_model.url},
             )
         elif client_model.api == "Perplexity":
-            model_name, params = f"perplexity/{client_model.name}", {"api_key": client_model.api_key}
+            model_id, params = f"perplexity/{client_model.id}", {"api_key": client_model.api_key}
         else:
-            model_name, params = f"openai/{client_model.name}", {"api_key": client_model.api_key}
+            model_id, params = f"openai/{client_model.id}", {"api_key": client_model.api_key}
 
         if client_model.type == "ll":
-            logger.debug("KnowledgeBase LL: %s (%s)", model_name, params)
-            set_llm_model(model_name, disable_structured_output, **params)
+            logger.debug("KnowledgeBase LL: %s (%s)", model_id, params)
+            set_llm_model(model_id, disable_structured_output, **params)
         else:
-            logger.debug("KnowledgeBase Embed: %s (%s)", model_name, params)
-            set_embedding_model(model_name, **params)
+            logger.debug("KnowledgeBase Embed: %s (%s)", model_id, params)
+            set_embedding_model(model_id, **params)
 
     logger.info("KnowledgeBase creation starting...")
     logger.info("LL Model: %s; Embedding: %s", ll_model, embed_model)

@@ -126,7 +126,7 @@ def split_document(
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap_ceil,
                 is_separator_regex=False,
-                model_name=model,
+                model_id=model,
                 encoding_name=model,
             )
         case _:
