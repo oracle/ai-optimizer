@@ -334,7 +334,8 @@ def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.Ev
         "report": full_report.to_dict(),
         "correct_by_topic": by_topic.to_dict(),
         "failures": failures.to_dict(),
-        "html_report": clean(html_report),
+        #"html_report": clean(html_report), #CDB
+        "html_report": '<html><body></body></html>'
     }
     logger.debug("Evaluation Results: %s", evaluation_results)
     evaluation = schema.EvaluationReport(**evaluation_results)

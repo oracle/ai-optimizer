@@ -127,7 +127,7 @@ def evaluation_report(eid=None, report=None) -> None:
     st.dataframe(full_report, hide_index=True)
 
     # Download Button
-    download_file("Download Report", report["html_report"], "evaluation_report.html", "text/html")
+    # download_file("Download Report", report["html_report"], "evaluation_report.html", "text/html") #CDB
 
 
 @st.cache_data
