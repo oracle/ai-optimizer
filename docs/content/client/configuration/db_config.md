@@ -18,7 +18,7 @@ The database can either be configured through the [{{< short_app_ref >}} interfa
 
 ---
 
-### {{< short_app_ref >}} Interface
+### Interface
 
 To configure the Database from the {{< short_app_ref >}}, navigate to `Configuration -> Database`:
 
