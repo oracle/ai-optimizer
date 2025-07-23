@@ -47,7 +47,6 @@ def main() -> list[Model]:
             "temperature": 1.0,
             "max_completion_tokens": 4096,
             "frequency_penalty": 0.0,
-            "status": "VALID"
         },
         {
             "id": "sonar",
@@ -61,7 +60,6 @@ def main() -> list[Model]:
             "temperature": 0.2,
             "max_completion_tokens": 28000,
             "frequency_penalty": 1.0,
-            "status": "VALID"
         },
         {
             "id": "phi-4",
@@ -124,7 +122,6 @@ def main() -> list[Model]:
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "openai_compat": True,
             "max_chunk_size": 8191,
-            "status": "VALID"
         },
         {
             "id": "embed-english-light-v3.0",
@@ -135,7 +132,6 @@ def main() -> list[Model]:
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "openai_compat": False,
             "max_chunk_size": 512,
-            "status": "VALID"
         },
         {
             # OCI GenAI; url and enabled will be determined by OCI config
