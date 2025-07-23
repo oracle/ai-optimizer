@@ -21,10 +21,26 @@ from giskard.llm.client.openai import OpenAIClient
 from server.api.core import bootstrap
 from server.api.utils import oci
 import common.schema as schema
+from common.functions import is_url_accessible
+
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.core.models")
 
+#####################################################
+# Exceptions
+#####################################################
+class URLUnreachableError(ValueError):
+    """Raised when the submitted URL is unreachable."""
+    
+class InvalidModelError(ValueError):
+    """Raised when the model data is invalid in some other way."""
+
+class UnknownModelError(ValueError):
+    """Raised when the model data doesn't exist."""
+    
+class ExistsModelError(ValueError):
+    """Raised when the model data already exist."""
 
 #####################################################
 # Functions
@@ -49,9 +65,9 @@ def get_model(
     logger.debug("%i models after filtering", len(model_filtered))
 
     if model_id and not model_filtered:
-        raise ValueError(f"{model_id} not found")
+        raise UnknownModelError(f"{model_id} not found")
     if model_type and not model_filtered:
-        raise ValueError(f"{model_type} not found")
+        raise UnknownModelError(f"{model_type} not found")
 
     if len(model_filtered) == 1:
         return model_filtered[0]
@@ -59,12 +75,29 @@ def get_model(
     return model_filtered
 
 
+def update_model(model_id: schema.ModelIdType, payload: schema.Model) -> schema.Model:
+    """Update an existing Model definition"""
+
+    model_upd = get_model(model_id=model_id)
+    if payload.enabled and not is_url_accessible(model_upd.url)[0]:
+        model_upd.enabled = False
+        raise URLUnreachableError("Model: Unable to update.  API URL is inaccessible.")
+
+    for key, value in payload:
+        if hasattr(model_upd, key):
+            setattr(model_upd, key, value)
+        else:
+            raise InvalidModelError(f"Model: Invalid setting - {key}.")
+
+    return model_upd
+
+
 def create_model(model: schema.Model) -> schema.Model:
     """Create a new Model definition"""
     model_objects = bootstrap.MODEL_OBJECTS
 
     if any(d.id == model.id for d in model_objects):
-        raise ValueError(f"Model: {model.id} already exists.")
+        raise ExistsModelError(f"Model: {model.id} already exists.")
 
     if not model.openai_compat:
         openai_compat = next(
@@ -72,6 +105,9 @@ def create_model(model: schema.Model) -> schema.Model:
             False,
         )
         model.openai_compat = openai_compat
+    if model.url and not is_url_accessible(model.url)[0]:
+        model.enabled = False
+
     model_objects.append(model)
 
     return get_model(model_id=model.id, model_type=model.type)

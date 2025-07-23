@@ -54,21 +54,14 @@ def get_model_apis(model_type: str = None) -> list:
 
 def create_model(model: dict) -> None:
     """Add either Language Model or Embed Model"""
-    api_call.post(endpoint="v1/models", params={"id": model["id"]}, payload={"json": model})
+    _ = api_call.post(endpoint="v1/models", params={"id": model["id"]}, payload={"json": model})
     st.success(f"Model created: {model['id']}")
-    sleep(1)
-    st_common.clear_state_key("model_configs")
 
 
 def patch_model(model: dict) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
-    try:
-        _ = api_call.patch(endpoint=f"v1/models/{model['id']}", payload={"json": model})
-        st.success(f"Model updated: {model['id']}")
-        sleep(1)
-        st_common.clear_state_key("model_configs")
-    except api_call.ApiError:
-        create_model(model)
+    _ = api_call.patch(endpoint=f"v1/models/{model['id']}", payload={"json": model})
+    st.success(f"Model updated: {model['id']}")
 
 
 def delete_model(model_id: str) -> None:
@@ -79,8 +72,6 @@ def delete_model(model_id: str) -> None:
     # If deleted model is the set model; unset the user settings
     if state.client_settings["ll_model"]["model"] == model_id:
         state.client_settings["ll_model"]["model"] = None
-
-    st_common.clear_state_key("model_configs")
 
 
 @st.dialog("Model Configuration", width="large")
@@ -93,7 +84,10 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
     else:
         model = {"id": "unset", "type": model_type, "api": "unset", "status": "CUSTOM"}
     with st.form("edit_model"):
-        model["enabled"] = st.checkbox("Enabled", value=True if action == "add" else model["enabled"])
+        if action == "add":
+            model["enabled"] = True  # Server will update based on API URL Accessibility
+        else:
+            model["enabled"] = st.checkbox("Enabled", value=True if action == "add" else model["enabled"])
         model["id"] = st.text_input(
             "Model ID (Required):",
             help=help_text.help_dict["model_id"],
@@ -164,6 +158,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
                 key="add_model_max_chunk_size",
                 value=model.get("chunk_size", 8191),
             )
+        submit = False
         button_col_format = st.columns([1.2, 1.4, 6, 1.4])
         action_button, delete_button, _, cancel_button = button_col_format
         try:
@@ -171,20 +166,25 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
                 label="Add", type="primary", use_container_width=True
             ):
                 create_model(model=model)
-                st.rerun()
+                submit = True
             if action == "edit" and action_button.form_submit_button(
                 label="Save", type="primary", use_container_width=True
             ):
                 patch_model(model=model)
-                st.rerun()
+                submit = True
             if action != "add" and delete_button.form_submit_button(
                 label="Delete", type="secondary", use_container_width=True
             ):
                 delete_model(model_id=model["id"])
+                submit = True
+            if submit:
+                sleep(1)
+                st_common.clear_state_key("model_configs")
                 st.rerun()
         except api_call.ApiError as ex:
             st.error(f"Failed to {action} model: {ex}")
         if cancel_button.form_submit_button(label="Cancel", type="secondary"):
+            st_common.clear_state_key("model_configs")
             st.rerun()
 
 

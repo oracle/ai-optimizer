@@ -94,7 +94,7 @@ def send_request(
         except requests.exceptions.HTTPError as ex:
             logger.error(ex)
             failure = ex.response.json()["detail"]
-            if ex.response.status_code == 422:
+            if not failure and ex.response.status_code == 422:
                 failure = "Not all required fields have been supplied."
             raise ApiError(failure) from ex
         except requests.exceptions.RequestException as ex:

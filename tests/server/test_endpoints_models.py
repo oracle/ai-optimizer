@@ -93,7 +93,7 @@ class TestEndpoints:
         for model in all_models.json():
             payload = model
             response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
-            assert response.status_code == 200
+            assert response.status_code == 201
             assert response.json() == payload
         new_models = client.get("/v1/models?include_disabled=true", headers=auth_headers["valid_auth"])
         assert new_models.json() == all_models.json()
@@ -112,7 +112,7 @@ class TestEndpoints:
         pytest.param(
             {
                 "id": "valid_ll_model",
-                "enabled": False,
+                "enabled": True,
                 "type": "ll",
                 "api": "OpenAI",
                 "api_key": "test-key",
@@ -123,6 +123,7 @@ class TestEndpoints:
                 "max_completion_tokens": 4096,
                 "frequency_penalty": 0.0,
             },
+            201,
             200,
             id="valid_ll_model",
         ),
@@ -131,6 +132,7 @@ class TestEndpoints:
                 "id": "invalid_ll_model",
                 "enabled": False,
             },
+            422,
             422,
             id="invalid_ll_model",
         ),
@@ -145,37 +147,58 @@ class TestEndpoints:
                 "openai_compat": True,
                 "max_chunk_size": 512,
             },
-            200,
+            201,
+            422,
             id="valid_embed_model",
+        ),
+        pytest.param(
+            {
+                "id": "unreachable_url_model",
+                "enabled": True,
+                "type": "embed",
+                "api": "HuggingFaceEndpointEmbeddings",
+                "url": "http://127.0.0.1:112233",
+                "api_key": "",
+                "openai_compat": True,
+                "max_chunk_size": 512,
+            },
+            201,
+            422,
+            id="unreachable_url_model",
         ),
     ]
 
-    @pytest.mark.parametrize("payload, status_code", test_cases)
-    def test_model_create(self, client, auth_headers, payload, status_code):
+    @pytest.mark.parametrize("payload, add_status_code, _", test_cases)
+    def test_model_create(self, client, auth_headers, payload, add_status_code, _, request):
         """Create Models"""
         response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
-        if status_code == 200:
-            assert response.status_code == 200
-            assert all(item in response.json().items() for item in payload.items())
+        assert response.status_code == add_status_code
+        if add_status_code == 201:
+            if request.node.callspec.id == "unreachable_url_model":
+                assert response.json()["enabled"] is False
+            else:
+                assert all(item in response.json().items() for item in payload.items())
+            # Model was added, should get 200 back
             response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
         else:
-            assert response.status_code == status_code
+            # Model wasn't added, should get a 404 back
             response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
             assert response.status_code == 404
 
-    @pytest.mark.parametrize("payload, status_code", test_cases)
-    def test_model_update(self, client, auth_headers, payload, status_code):
-        """Create Models"""
-        if status_code != 200:
-            return
+    @pytest.mark.parametrize("payload, add_status_code, update_status_code", test_cases)
+    def test_model_update(self, client, auth_headers, payload, add_status_code, update_status_code):
+        """Update Models"""
+        if add_status_code == 201:
+            # Create the model when we know it will succeed
+            _ = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
+            response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
+            old_enabled = response.json()["enabled"]
+            # Switch up the enabled for the update
+            payload["enabled"] = not old_enabled
 
-        _ = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
-        response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
-        old_enabled = response.json()["enabled"]
-        payload["enabled"] = not old_enabled
-
-        response = client.patch(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"], json=payload)
-        assert response.status_code == 200
-        new_enabled = response.json()["enabled"]
-        assert new_enabled is not old_enabled
+            response = client.patch(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"], json=payload)
+            assert response.status_code == update_status_code
+            if update_status_code == 200:
+                new_enabled = response.json()["enabled"]
+                assert new_enabled is not old_enabled

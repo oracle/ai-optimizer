@@ -11,6 +11,7 @@ import os
 
 from server.bootstrap.configfile import ConfigStore
 from common.schema import Model
+from common.functions import is_url_accessible
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("bootstrap.models")
@@ -32,7 +33,7 @@ def main() -> list[Model]:
             "context_length": 127072,
             "temperature": 0.3,
             "max_completion_tokens": 4096,
-            "frequency_penalty": 0.0,
+            "frequency_penalty": 0.0
         },
         {
             "id": "gpt-4o-mini",
@@ -198,7 +199,11 @@ def main() -> list[Model]:
                     if values_differ(existing[model_id][k], v):
                         log_func = logger.debug if k == "api_key" else logger.info
                         log_func(
-                            "Overriding field '%s' for model '%s' (was: %r → now: %r)", k, model_id, existing[model_id][k], v
+                            "Overriding field '%s' for model '%s' (was: %r → now: %r)",
+                            k,
+                            model_id,
+                            existing[model_id][k],
+                            v,
                         )
                         existing[model_id][k] = v
             else:
@@ -254,6 +259,20 @@ def main() -> list[Model]:
 
         if overridden:
             logger.debug("Model '%s' updated via environment variable overrides.", model_id)
+
+    # Check URL accessible for enabled models and disable if not:
+    url_access_cache = {}
+
+    for model in models_list:
+        url = model["url"]
+        if model["enabled"]:
+            if url not in url_access_cache:
+                logger.debug("Testing %s URL: %s", model["id"], url)
+                url_access_cache[url] = is_url_accessible(url)[0]
+            else:
+                logger.debug("Reusing cached result for %s for URL: %s", model["id"], url)
+
+            model["enabled"] = url_access_cache[url]
 
     # Convert to Model objects
     model_objects = [Model(**model_dict) for model_dict in models_list]

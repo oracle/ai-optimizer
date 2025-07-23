@@ -77,8 +77,15 @@ def main() -> None:
         """
         <style>
         img[alt="Logo"] {
-            width: 100%;
             height: auto;
+            margin-top: 1.25em;
+            width: auto;
+        }            
+        .stSidebar img[alt="Logo"] {
+            width: 100%;
+        }
+        .stAppHeader img[alt="Logo"] {
+            width: 50%;
         }
         </style>
         """,
