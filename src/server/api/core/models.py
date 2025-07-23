@@ -150,7 +150,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
     # schema.Model Classes
     model_classes = {}
     if not embedding:
-        logger.debug("Configuring LL schema.Model")
+        logger.debug("Configuring LL Model")
         ll_common_params = {}
         for key in [
             "temperature",
@@ -166,7 +166,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
             except KeyError:
                 # Mainly for embeddings
                 continue
-        logger.debug("LL schema.Model Parameters: %s", ll_common_params)
+        logger.debug("LL Model Parameters: %s", ll_common_params)
         model_classes = {
             "OpenAI": lambda: ChatOpenAI(model=model_id, api_key=model_api_key, **ll_common_params),
             "CompatOpenAI": lambda: ChatOpenAI(

@@ -260,7 +260,6 @@ def main():
     if not db_avail or not available_ll_models:
         st.stop()
 
-
     # If there is no eligible (OpenAI Compat.) Embedding Model; disable Generate Test Set
     gen_testset_disabled = False
     embed_models_enabled = st_common.enabled_models_lookup("embed")
@@ -398,49 +397,51 @@ def main():
     # Load TestSets (and Evaluations if from DB)
     if col_left.button(button_text, key="load_tests", use_container_width=True, disabled=state.running):
         placeholder = st.empty()
-        with placeholder:
-            st.info("Processing Q&A... please be patient.", icon="⚠️")
-        if testset_source != "Database":
-            api_params["name"] = (state.testbed["testset_name"],)
-            files = st_common.local_file_payload(state[f"selected_uploader_{state.testbed['uploader_key']}"])
-            api_payload = {"files": files}
-            try:
-                response = api_call.post(endpoint=endpoint, params=api_params, payload=api_payload, timeout=3600)
-                get_testbed_db_testsets.clear()
-                state.testbed_db_testsets = get_testbed_db_testsets()
+        with st.spinner("Processing Q&A... please be patient.", show_time=True):
+            if testset_source != "Database":
+                api_params["name"] = (state.testbed["testset_name"],)
+                files = st_common.local_file_payload(state[f"selected_uploader_{state.testbed['uploader_key']}"])
+                api_payload = {"files": files}
+                try:
+                    response = api_call.post(endpoint=endpoint, params=api_params, payload=api_payload, timeout=3600)
+                    get_testbed_db_testsets.clear()
+                    state.testbed_db_testsets = get_testbed_db_testsets()
+                    state.testbed["testset_id"] = next(
+                        (
+                            d["tid"]
+                            for d in state.testbed_db_testsets
+                            if d.get("name") == state.testbed["testset_name"]
+                        ),
+                        None,
+                    )
+                except api_call.ApiError as ex:
+                    st.error(f"Error Generating TestSet: {ex}", icon="🚨")
+                    st.stop()
+                except Exception as ex:
+                    logger.error("Exception: %s", ex)
+                    st.error(f"Looks like you found a bug: {ex}", icon="🚨")
+                    st.stop()
+            else:
+                # Set required state from splitting selected DB TestSet
+                testset_name, testset_created = state.selected_db_testset.split(" -- Created: ", 1)
+                state.testbed["testset_name"] = testset_name
                 state.testbed["testset_id"] = next(
-                    (d["tid"] for d in state.testbed_db_testsets if d.get("name") == state.testbed["testset_name"]),
+                    (
+                        d["tid"]
+                        for d in state.testbed_db_testsets
+                        if d["name"] == testset_name and d["created"] == testset_created
+                    ),
                     None,
                 )
-            except api_call.ApiError as ex:
-                st.error(f"Error Generating TestSet: {ex}", icon="🚨")
-                st.stop()
-            except Exception as ex:
-                logger.error("Exception: %s", ex)
-                st.error(f"Looks like you found a bug: {ex}", icon="🚨")
-                st.stop()
-        else:
-            # Set required state from splitting selected DB TestSet
-            testset_name, testset_created = state.selected_db_testset.split(" -- Created: ", 1)
-            state.testbed["testset_name"] = testset_name
-            state.testbed["testset_id"] = next(
-                (
-                    d["tid"]
-                    for d in state.testbed_db_testsets
-                    if d["name"] == testset_name and d["created"] == testset_created
-                ),
-                None,
-            )
-            api_params = {"tid": state.testbed["testset_id"]}
-            # Retrieve TestSet Data
-            response = api_call.get(endpoint=endpoint, params=api_params)
+                api_params = {"tid": state.testbed["testset_id"]}
+                # Retrieve TestSet Data
+                response = api_call.get(endpoint=endpoint, params=api_params)
         try:
             state.testbed_qa = response["qa_data"]
             st.success(f"{len(state.testbed_qa)} Q&A Loaded.", icon="✅")
         except UnboundLocalError as ex:
             logger.exception("Failed to load Tests: %s", ex)
             st.error("Unable to process Tests", icon="🚨")
-        placeholder.empty()
     col_center.button(
         "Reset",
         key="reset_test_framework",
@@ -534,16 +535,13 @@ def main():
             help="Evaluation will automatically save the TestSet to the Database",
             on_click=qa_update_db,
         ):
-            st_common.clear_state_key("testbed_evaluations")
-            placeholder = st.empty()
-            with placeholder:
-                st.warning("Starting Q&A evaluation... please be patient.", icon="⚠️")
-            st_common.patch_settings()
-            endpoint = "v1/testbed/evaluate"
-            api_params = {"tid": state.testbed["testset_id"], "judge": state.selected_evaluate_judge}
-            evaluate = api_call.post(endpoint=endpoint, params=api_params, timeout=1200)
+            with st.spinner("Starting Q&A evaluation... please be patient.", show_time=True):
+                st_common.clear_state_key("testbed_evaluations")
+                st_common.patch_settings()
+                endpoint = "v1/testbed/evaluate"
+                api_params = {"tid": state.testbed["testset_id"], "judge": state.selected_evaluate_judge}
+                evaluate = api_call.post(endpoint=endpoint, params=api_params, timeout=1200)
             st.success("Evaluation Complete!", icon="✅")
-            placeholder.empty()
 
             ###################################
             # Results

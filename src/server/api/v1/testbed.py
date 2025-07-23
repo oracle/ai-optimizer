@@ -17,7 +17,8 @@ from fastapi import APIRouter, HTTPException, Header, UploadFile
 from fastapi.responses import JSONResponse
 import litellm
 from langchain_core.messages import ChatMessage
-from server.api.core import settings, databases, models, oci
+import server.api.core.models as core_models
+from server.api.core import settings, databases, oci
 from server.api.utils import embed, testbed
 from server.api.v1 import chat
 
@@ -140,8 +141,8 @@ async def testbed_generate_qa(
 ) -> schema.TestSetQA:
     """Retrieve contents from a local file uploaded and generate Q&A"""
     # Setup Models
-    giskard_ll_model = models.get_model(model_id=ll_model, model_type="ll")
-    giskard_embed_model = models.get_model(model_id=embed_model, model_type="embed")
+    giskard_ll_model = core_models.get_model(model_id=ll_model, model_type="ll")
+    giskard_embed_model = core_models.get_model(model_id=embed_model, model_type="embed")
     temp_directory = embed.get_temp_directory(client, "testbed")
     full_testsets = temp_directory / "all_testsets.jsonl"
 
@@ -156,7 +157,7 @@ async def testbed_generate_qa(
 
             # Process file for knowledge base
             text_nodes = testbed.load_and_split(filename)
-            test_set = testbed.build_knowledge_base(text_nodes, questions, giskard_ll_model[0], giskard_embed_model[0])
+            test_set = testbed.build_knowledge_base(text_nodes, questions, giskard_ll_model, giskard_embed_model)
             # Save test set
             test_set_filename = temp_directory / f"{name}.jsonl"
             test_set.save(test_set_filename)
@@ -222,7 +223,7 @@ def testbed_evaluate_qa(
     # Setup Judge Model
     logger.debug("Starting evaluation with Judge: %s", judge)
     oci_config = oci.get_oci(client)
-    judge_client = asyncio.run(models.get_client({"model": judge}, oci_config, True))
+    judge_client = core_models.get_client({"model": judge}, oci_config, True)
     try:
         report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric])
     except KeyError as ex:
