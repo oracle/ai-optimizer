@@ -19,7 +19,7 @@ The {{< full_app_ref >}} provides a streamlined environment where developers and
 - **RAG**: Enhances **LLM**s by retrieving relevant, real-time information allowing models to provide up-to-date and accurate responses.
 - **Vector Database**: A database, including Oracle Database 23ai, that can natively store and manage vector embeddings and handle the unstructured data they describe, such as documents, images, video, or audio.
 
-## {{< short_app_ref >}} Features
+## Features
 
 - [Configuring Embedding and Chat Models](client/configuration/model_config)
 - [Splitting and Embedding Documentation](client/tools/split_embed)

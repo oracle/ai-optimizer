@@ -125,7 +125,7 @@ To enable the **RAG** functionality, access to an embedding model is required. T
    podman exec -it ollama ollama pull mxbai-embed-large
    ```
 
-### The {{< short_app_ref >}}
+### The AI Optimizer
 
 The {{< short_app_ref >}} provides an easy to use front-end for experimenting with **LLM** parameters and **RAG**.
 
