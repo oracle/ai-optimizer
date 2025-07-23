@@ -97,7 +97,7 @@ def respond(state: AgentState, config: RunnableConfig) -> ChatResponse:
     ai_message = state["messages"][-1]
     logger.debug("Formatting Response to OpenAI compatible message: %s", repr(ai_message))
     model_id = config["metadata"]["model_id"]
-    if "model" in ai_message.response_metadata:
+    if "model_id" in ai_message.response_metadata:
         ai_metadata = ai_message
     else:
         ai_metadata = state["messages"][1]

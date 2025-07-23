@@ -92,7 +92,7 @@ async def completion_generator(
                 "db_conn": db_conn,
             },
             metadata={
-                "model_id": model["id"],
+                "model_id": model["model"],
                 "use_history": client_settings.ll_model.chat_history,
                 "vector_search": client_settings.vector_search,
                 "selectai": client_settings.selectai,
