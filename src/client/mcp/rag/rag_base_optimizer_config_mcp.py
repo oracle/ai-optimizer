@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 from optimizer_utils import rag
 
 
-print("Successfully imported libraries and modules")
+logging.info("Successfully imported libraries and modules")
 
 CHUNKS_DIR = "chunks_temp"
 data = {}
@@ -62,8 +62,8 @@ if __name__ == "__main__":
 
     # Initialize and run the server
     
-    # Set optimizer_settings.json file absolute path
-    rag.set_optimizer_settings_path("/Users/cdebari/Documents/GitHub/ai-optimizer-mcp-export/src/client/mcp/rag/optimizer_settings.json")
+    # Set optimizer_settings.json file ABSOLUTE path
+    rag.set_optimizer_settings_path("optimizer_settings.json")
     
     mcp.run(transport='stdio')
     #mcp.run(transport='sse')
