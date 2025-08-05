@@ -5,9 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 This script initializes a web interface for model configuration using Streamlit (`st`).
 
 Session States Set:
-- ll_model_config: Stores all Language Model Configuration
-- embed_model_config: Stores all Embedding Model Configuration
-
+- model_configs: Stores all Model Configurations
 """
 # spell-checker:ignore selectbox
 
