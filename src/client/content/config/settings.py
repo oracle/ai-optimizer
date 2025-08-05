@@ -25,6 +25,7 @@ from streamlit import session_state as state
 
 # Utilities
 import client.utils.api_call as api_call
+import client.utils.st_common as st_common
 from client.utils.st_footer import remove_footer
 
 import common.logging_config as logging_config
@@ -47,6 +48,7 @@ def get_settings(include_sensitive: bool = False):
     )
     return settings
 
+
 def save_settings(settings):
     """Save Settings after changing client"""
 
@@ -61,12 +63,7 @@ def save_settings(settings):
 
 def compare_settings(current, uploaded, path=""):
     """Compare current settings with uploaded settings."""
-    differences = {
-        "Value Mismatch": {},
-        "Missing in Uploaded": {},
-        "Missing in Current": {},
-        "Override on Upload": {}
-    }
+    differences = {"Value Mismatch": {}, "Missing in Uploaded": {}, "Missing in Current": {}, "Override on Upload": {}}
 
     sensitive_keys = {"api_key", "password", "wallet_password"}
 
@@ -98,10 +95,7 @@ def compare_settings(current, uploaded, path=""):
                 # Both present — compare
                 if is_sensitive:
                     if current[key] != uploaded[key]:
-                        differences["Value Mismatch"][new_path] = {
-                            "current": current[key],
-                            "uploaded": uploaded[key]
-                        }
+                        differences["Value Mismatch"][new_path] = {"current": current[key], "uploaded": uploaded[key]}
                 else:
                     child_diff = compare_settings(current[key], uploaded[key], new_path)
                     for diff_type, diff_dict in differences.items():
@@ -123,10 +117,7 @@ def compare_settings(current, uploaded, path=""):
 
     else:
         if current != uploaded:
-            differences["Value Mismatch"][path] = {
-                "current": current,
-                "uploaded": uploaded
-            }
+            differences["Value Mismatch"][path] = {"current": current, "uploaded": uploaded}
 
     return differences
 
@@ -153,8 +144,8 @@ def spring_ai_conf_check(ll_model, embed_model) -> str:
     if ll_model is None or embed_model is None:
         return "hybrid"
 
-    ll_api = state.ll_model_enabled[ll_model]["api"]
-    embed_api = state.embed_model_enabled[embed_model]["api"]
+    ll_api = ll_model["api"]
+    embed_api = embed_model["api"]
 
     if "OpenAI" in ll_api and "OpenAI" in embed_api:
         return "openai"
@@ -163,7 +154,8 @@ def spring_ai_conf_check(ll_model, embed_model) -> str:
 
     return "hybrid"
 
-def spring_ai_obaas(src_dir, file_name, provider, ll_model):
+
+def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     """Get the users CTX Prompt"""
     ctx_prompt = next(
         item["prompt"]
@@ -174,12 +166,14 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
     with open(src_dir / "templates" / file_name, "r", encoding="utf-8") as template:
         template_content = template.read()
 
+    database_lookup = st_common.state_configs_lookup("database_configs", "name")
+
     formatted_content = template_content.format(
         provider=provider,
         ctx_prompt=f"{ctx_prompt}",
-        ll_model=state.client_settings["ll_model"] | state.ll_model_enabled[ll_model],
-        vector_search=state.client_settings["vector_search"],
-        database_config=state.database_config[state.client_settings["database"]["alias"]],
+        ll_model=ll_config,
+        vector_search=embed_config,
+        database_config=database_lookup[state.client_settings["database"]["alias"]],
     )
 
     if file_name.endswith(".yaml"):
@@ -188,9 +182,9 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
         formatted_content = template_content.format(
             provider=provider,
             ctx_prompt=ctx_prompt,
-            ll_model=state.client_settings["ll_model"] | state.ll_model_enabled[ll_model],
-            vector_search=state.client_settings["vector_search"],
-            database_config=state.database_config[state.client_settings["database"]["alias"]],
+            ll_model=ll_config,
+            vector_search=embed_config,
+            database_config=database_lookup[state.client_settings["database"]["alias"]],
         )
 
         yaml_data = yaml.safe_load(formatted_content)
@@ -203,7 +197,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_model):
     return formatted_content
 
 
-def spring_ai_zip(provider, ll_model):
+def spring_ai_zip(provider, ll_config, embed_config):
     """Create SpringAI Zip File"""
     # Source directory that you want to copy
     files = ["mvnw", "mvnw.cmd", "pom.xml", "README.md"]
@@ -227,8 +221,8 @@ def spring_ai_zip(provider, ll_model):
 
                     arc_name = os.path.relpath(file_path, dst_dir)  # Make the path relative
                     zip_file.write(file_path, arc_name)
-            env_content = spring_ai_obaas(src_dir, "start.sh", provider, ll_model)
-            yaml_content = spring_ai_obaas(src_dir, "obaas.yaml", provider, ll_model)
+            env_content = spring_ai_obaas(src_dir, "start.sh", provider, ll_config, embed_config)
+            yaml_content = spring_ai_obaas(src_dir, "obaas.yaml", provider, ll_config, embed_config)
             zip_file.writestr("start.sh", env_content.encode("utf-8"))
             zip_file.writestr("src/main/resources/application-obaas.yml", yaml_content.encode("utf-8"))
         zip_buffer.seek(0)
@@ -291,21 +285,25 @@ def main():
             st.info("Please upload a Settings file.")
 
     st.header("SpringAI Settings", divider="red")
-    ll_model = state.client_settings["ll_model"]["model"]
-    embed_model = state.client_settings["vector_search"]["model"]
-    spring_ai_conf = spring_ai_conf_check(ll_model, embed_model)
+    # Merge the User Settings into the Model Config
+    model_lookup = st_common.state_configs_lookup("model_configs", "id")
+    ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
+    embed_config = (
+        model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
+    )
+    spring_ai_conf = spring_ai_conf_check(ll_config, embed_config)
 
     if spring_ai_conf == "hybrid":
         st.markdown(f"""
             The current configuration combination of embedding and language models
             is currently **not supported** for SpringAI.
-            - Language Model:  **{ll_model}**
-            - Embedding Model: **{embed_model}**
+            - Language Model:  **{ll_config["model"]}**
+            - Embedding Model: **{embed_config["model"]}**
         """)
     else:
         st.download_button(
             label="Download SpringAI",
-            data=spring_ai_zip(spring_ai_conf, ll_model),  # Generate zip on the fly
+            data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
             file_name="spring_ai.zip",  # Zip file name
             mime="application/zip",  # Mime type for zip file
             disabled=spring_ai_conf == "hybrid",
