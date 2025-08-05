@@ -82,7 +82,7 @@ def main() -> None:
             height: auto;
             margin-top: 1.25em;
             width: auto;
-        }            
+        }
         .stSidebar img[alt="Logo"] {
             width: 100%;
         }

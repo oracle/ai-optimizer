@@ -16,8 +16,7 @@ logger = logging_config.logging.getLogger("api.core.database")
 
 
 def get_databases(
-    name: Optional[schema.DatabaseNameType] = None,
-    validate: bool = True
+    name: Optional[schema.DatabaseNameType] = None, validate: bool = True
 ) -> Union[list[schema.Database], schema.Database, None]:
     """
     Return all Database objects if `name` is not provided,
@@ -26,7 +25,7 @@ def get_databases(
     """
     database_objects = bootstrap.DATABASE_OBJECTS
 
-    for db in database_objects:      
+    for db in database_objects:
         if name and db.name != name:
             continue
         if validate:

@@ -27,20 +27,25 @@ import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.core.models")
 
+
 #####################################################
 # Exceptions
 #####################################################
 class URLUnreachableError(ValueError):
     """Raised when the submitted URL is unreachable."""
-    
+
+
 class InvalidModelError(ValueError):
     """Raised when the model data is invalid in some other way."""
 
+
 class UnknownModelError(ValueError):
     """Raised when the model data doesn't exist."""
-    
+
+
 class ExistsModelError(ValueError):
     """Raised when the model data already exist."""
+
 
 #####################################################
 # Functions

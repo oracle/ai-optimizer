@@ -151,10 +151,9 @@ def main() -> None:
 
     st.subheader("OCI GenAI", divider="red")
     st.write("""
-        Configure the Compartment and Region for OCI GenAI Services.  
+        Configure the Compartment and Region for OCI GenAI Services.
         OCI Authentication must be configured above.
-        """
-    )
+        """)
     with st.container(border=True):
         supplied["compartment_id"] = st.text_input(
             "OCI GenAI Compartment OCID:",
