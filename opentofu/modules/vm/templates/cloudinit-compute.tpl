@@ -59,12 +59,8 @@ write_files:
       # Setup for Instance Principles
 
       # Download/Setup Source Code
-      curl -s https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
-      | grep tarball_url \
-      | cut -d '"' -f 4 \
-      | xargs curl -L -o /tmp/source.tar.gz
-      # curl -L -o /tmp/source.tar.gz https://github.com/oracle-samples/ai-optimizer/archive/refs/heads/main.tar.gz
-      tar zxf /tmp/source.tar.gz --strip-components=2 -C /app '*/src'
+      curl -L https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
+      | tar -xz -C /app
       cd /app
       python3.11 -m venv .venv
       source .venv/bin/activate
@@ -81,12 +77,6 @@ write_files:
 
       # Wait for python modules to finish
       wait $INSTALL_PID
-
-  - path: /app/start.sh
-    permissions: '0750'
-    content: |
-      #!/bin/bash
-
 
   - path: /app/start.sh
     permissions: '0750'

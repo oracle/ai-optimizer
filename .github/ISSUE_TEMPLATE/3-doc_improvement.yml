@@ -1,0 +1,44 @@
+name: 📚 Documentation request
+description: Suggest additional documentation for the AI Optimizer and Toolkit
+labels: ["type:documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest more documentation for the AI Optimizer and Toolkit!
+        We really appreciate the community's efforts to improve the AI Optimizer and Toolkit ❤️
+  - type: textarea
+    attributes:
+      label: Improve existing documentation
+      description: Link to documentation page in question (if any)
+      placeholder: |
+        https://oracle-samples.github.io/ai-optimizer/...
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Anything specific?
+      description: Name of the feature where documentation need improvement
+      placeholder: |
+        This is not really clear...
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Say What!?!
+      description: |
+        Please describe what you think the documentation should say.
+        Don't worry if you don't have a clear idea in mind; any input helps!
+      placeholder: |
+        ...
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: |
+        Links? References? Anything that will give us more context about the documentation request here!
+
+        _Tip: You can attach images by clicking this area to highlight it and then dragging files in._
+    validations:
+      required: false

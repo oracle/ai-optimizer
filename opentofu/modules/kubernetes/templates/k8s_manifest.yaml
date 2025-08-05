@@ -17,7 +17,9 @@ type: Opaque
 stringData:
   apiKey: ${api_key}
 ---
-# User will be created by k8s job; secret used for application connectivity
+# Secret containing non-privileged DB User details.
+# Used for application connectivity to database.
+# User is created during cfgmgt init-containter
 apiVersion: v1
 kind: Secret
 metadata:
@@ -29,7 +31,8 @@ stringData:
   password: ${adb_password}
   service: ${adb_service}
 ---
-# Secret for creating user defined in -db-authN Secret
+# Secret containing privileged DB User details.
+# Used to create user defined in -db-authn in init-container
 apiVersion: v1
 kind: Secret
 metadata:
@@ -72,6 +75,8 @@ spec:
     kind: IngressClassParameters
     name: native-ic-params
 ---
+# Builds and pushes application images to container registry.
+# Uses instance principles.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -105,12 +110,8 @@ spec:
             - sh
             - -c
             - |
-              wget -qO- https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
-                | grep "tarball_url" \
-                | cut -d '"' -f 4 \
-                | xargs -I{} sh -c \
-                  'wget -O /workspace/latest-release.tar.gz "{}" && \
-                   tar -xzf /workspace/latest-release.tar.gz --strip-components=1 -C /workspace'		  	
+              wget -qO- https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
+                | tar -xz -C /workspace	  	
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -133,9 +134,9 @@ spec:
             - --frontend
             - dockerfile.v0
             - --local
-            - context=/workspace/src
+            - context=/workspace
             - --local
-            - dockerfile=/workspace/src/server
+            - dockerfile=/workspace/server
             - --output 
             - type=image,name=${repository_server}:latest,push=true
           securityContext:
@@ -169,9 +170,9 @@ spec:
             - --frontend
             - dockerfile.v0
             - --local
-            - context=/workspace/src
+            - context=/workspace
             - --local
-            - dockerfile=/workspace/src/client
+            - dockerfile=/workspace/client
             - --output 
             - type=image,name=${repository_client}:latest,push=true
           securityContext:

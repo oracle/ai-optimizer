@@ -4,7 +4,8 @@ on:
     types: [published]
 
 env:
-  IAC: ${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}-stack.zip
+  IAC: ${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}-iac
+  SRC: ${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}-src
 
 jobs:
   build-release:
@@ -17,23 +18,55 @@ jobs:
     steps:
       - name: Output Environment
         run: |
-          echo "IaC: ${{ env.IAC }}"
-      
-      - name: Validate Tag Name
-        run: |
-          if [[ ! $GITHUB_REF_NAME =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            echo "Invalid tag name format. Must be in the format vMAJOR.MINOR.PATCH"
-            exit 1
-          fi
+          echo "IAC: ${{ env.IAC }}"
+          echo "SRC: ${{ env.SRC }}"
 
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate and Extract Version from Tag
+        id: version
+        run: |
+          TAG_NAME=${GITHUB_REF_NAME}
+          if [[ ! $TAG_NAME =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            echo "Invalid tag name format: $TAG_NAME"
+            echo "Must be in the format vMAJOR.MINOR.PATCH (e.g. v1.2.3)"
+            exit 1
+          fi
+          VERSION=${TAG_NAME#v}
+          echo "Tag validated: $TAG_NAME"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Inject Static Version into _version.py and version.tf
+        run: |
+          echo "__version__ = \"$VERSION\"" > src/common/_version.py
+          sed -i "s/app_version = \".*\"/app_version = \"$VERSION\"/" opentofu/version.tf
+          echo "Injected version:"
+          cat src/common/_version.py
+          cat opentofu/version.tf
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+
+      - name: Build and Push Source
+        run: |
+          cd src
+          zip -r $RUNNER_TEMP/${{ env.SRC }}.zip .
+          tar -czf "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" .
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.SRC }}.zip" --clobber
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        shell: bash
 
       - name: Build and Push Infrastructure as Code
         run: |
           cd opentofu
-          zip -r ${{ env.IAC }} . -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" "generated/*"
-          gh release upload ${{github.event.release.tag_name}} ${{ env.IAC }} --clobber
+          zip -r $RUNNER_TEMP/${{ env.IAC }}.zip . -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" "cfgmgt/stage/*.*"
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.IAC }}.zip" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNNER_TEMP: ${{ runner.temp }}
         shell: bash
