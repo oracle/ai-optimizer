@@ -22,7 +22,7 @@ You will need to [generate an API Key](https://docs.oracle.com/en-us/iaas/Conten
 
 ---
 
-### {{< short_app_ref >}} Interface
+### Interface
 
 To configure the Database from the {{< short_app_ref >}}, navigate to `Configuration -> OCI`:
 
