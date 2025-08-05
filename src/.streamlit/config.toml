@@ -4,7 +4,14 @@
 disableWidgetStateDuplicationWarning = true
 
 [theme]
-font = "Source Sans Pro"
+font = "sans-serif-pro"
+headingFont = "sans-serif"
+codeFont = "monospace"
+
+[theme.sidebar]
+font = "sans-serif"
+headingFont = "sans-serif"
+codeFont = "monospace"
 
 [browser]
 gatherUsageStats = false

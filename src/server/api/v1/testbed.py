@@ -225,7 +225,9 @@ def testbed_evaluate_qa(
     oci_config = oci.get_oci(client)
     judge_client = core_models.get_client({"model": judge}, oci_config, True)
     try:
-        report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric])
+        #report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric]) #CDB
+        report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=None) #CDB
+
     except KeyError as ex:
         if str(ex) == "'correctness'":
             raise HTTPException(status_code=500, detail="Unable to determine the correctness; please retry.") from ex

@@ -2,7 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore fastapi, laddr, checkpointer, langgraph, litellm, noauth, apiserver, configfile, selectai
+# spell-checker:ignore fastapi laddr checkpointer langgraph litellm
+# spell-checker:ignore noauth apiserver configfile selectai giskard ollama llms
 # pylint: disable=redefined-outer-name,wrong-import-position
 
 import os
@@ -19,6 +20,9 @@ os.environ["USER_AGENT"] = "ai-optimizer"
 app_home = os.path.dirname(os.path.abspath(__file__))
 if "TNS_ADMIN" not in os.environ:
     os.environ["TNS_ADMIN"] = os.path.join(app_home, "tns_admin")
+
+# Patch litellm for Giskard/Ollama issue
+import server.patches.litellm_patch  # pylint: disable=unused-import
 
 import argparse
 import queue
@@ -148,9 +152,9 @@ def verify_key(
 
 def register_endpoints(noauth: APIRouter, auth: APIRouter):
     """Register API Endpoints - Imports to avoid bootstrapping before config file read
-       New endpoints need to be registered in server.api.v1.__init__.py
+    New endpoints need to be registered in server.api.v1.__init__.py
     """
-    import server.api.v1 as api_v1 # pylint: disable=import-outside-toplevel
+    import server.api.v1 as api_v1  # pylint: disable=import-outside-toplevel
 
     # No-Authentication (probes only)
     noauth.include_router(api_v1.probes.noauth, prefix="/v1", tags=["Probes"])
@@ -165,6 +169,7 @@ def register_endpoints(noauth: APIRouter, auth: APIRouter):
     auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
     auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Tools - Settings"])
     auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
+
 
 #############################################################################
 # APP FACTORY
