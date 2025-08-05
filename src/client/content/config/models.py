@@ -8,8 +8,6 @@ Session States Set:
 - ll_model_config: Stores all Language Model Configuration
 - embed_model_config: Stores all Embedding Model Configuration
 
-- ll_model_enabled: Stores all Enabled Language Models
-- embed_model_enabled: Stores all Enabled Embedding Models
 """
 # spell-checker:ignore selectbox
 

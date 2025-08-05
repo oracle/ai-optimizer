@@ -144,12 +144,6 @@ variable "adb_whitelist_cidrs" {
 }
 
 // Compute - Either VM or Node Workers
-variable "compute_os_ver" {
-  description = "Oracle Linux Version for Compute"
-  type        = string
-  default     = "8.10"
-}
-
 variable "compute_cpu_shape" {
   description = "Choose the shape of the CPU Computes."
   type        = string
@@ -183,12 +177,6 @@ variable "vm_is_gpu_shape" {
 }
 
 // Kubernetes
-variable "k8s_version" {
-  description = "The version of Kubernetes to install into the cluster masters."
-  type        = string
-  default     = "1.32.1"
-}
-
 variable "k8s_api_is_public" {
   type    = bool
   default = false
