@@ -2,18 +2,16 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+import sys
 from typing import List
-#from mcp.server.fastmcp import FastMCP
 import os
 from dotenv import load_dotenv
-#from sentence_transformers import CrossEncoder
-#from langchain_community.embeddings import HuggingFaceEmbeddings
 import logging
 logging.basicConfig(level=logging.INFO)
 
 
 
-print("Successfully imported libraries and modules")
+logging.info("Successfully imported libraries and modules")
 
 from optimizer_utils import config
 
@@ -34,7 +32,7 @@ def similarity_search(question: str, max_results: int = 5) -> List[str]:
         List of information related to the question
     """
     
-    print(f"Results provided for question: {question} with top {max_results}")
+    logging.info(f"Results provided for question: {question} with top {max_results}")
     chunks=["first chunk", "second chunk"]
     
     return chunks
@@ -43,10 +41,13 @@ if __name__ == "__main__":
     # Initialize and run the server
     # Load JSON file
     file_path = os.path.join(os.getcwd(), "optimizer_settings.json")
-    print(file_path)
+    logging.info(file_path)
     rag.set_optimizer_settings_path(file_path)
-    
-    #Set your question to check if configuration is working
-    question="Which kind of IDE should be used in this demo?"
-    print(f"Question: {question}")
-    print(f"Answer: {rag.rag_tool_base(question)}")
+
+    if len(sys.argv) > 1:
+        question = sys.argv[1]
+        print(question)
+        logging.info(f"Question: {sys.argv[1]}")
+        logging.info(f"\n\nAnswer: {rag.rag_tool_base(question)}")
+    else:
+        logging.info("No question provided.")

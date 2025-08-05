@@ -39,7 +39,7 @@ In the **AI Optimizer & Toolkit** web interface, after tested a configuration, i
 There is a client that you can run without MCP via commandline to test it:
 
 ```bash
-uv run rag_base_optimizer_config.py   
+uv run rag_base_optimizer_config.py "[YOUR_QUESTION]"
 ```
 
 ## Quick test via MCP "inspector"
@@ -50,7 +50,14 @@ uv run rag_base_optimizer_config.py
 npx @modelcontextprotocol/inspector uv run rag_base_optimizer_config_mcp.py
 ```
 
-* connect to the port `http://localhost:6274/` with your browser
+* connect to the port `http://localhost:6274/` with your browser on the link printed, like in the following example:
+```bash
+..
+Open inspector with token pre-filled:
+http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=cb2ef7521aaf2050ad9620bfb5e5df42dc958889e6e99ce4e9b18003eb93fffd
+..
+```
+
 * setup the `Inspector Proxy Address` with `http://127.0.0.1:6277` 
 * test the tool developed.
 
