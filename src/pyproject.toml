@@ -22,21 +22,19 @@ dependencies = [
 
 [project.optional-dependencies]
 # Server component dependencies
-# Cohere being spec'd until https://github.com/langchain-ai/langchain-cohere/issues/140
 server = [
     "bokeh==3.7.3",
-    "cohere==5.15.0",
     "evaluate==0.4.5",
     "fastapi==0.116.1",
-    "faiss-cpu==1.11.0",
+    "faiss-cpu==1.11.0.post1",
     "giskard==2.17.0",
-    "langchain-cohere==0.4.4",
+    "langchain-cohere==0.4.5",
     "langchain-community==0.3.27",
     "langchain-huggingface==0.3.1",
     "langchain-ollama==0.3.6",
     "langchain-openai==0.3.28",
-    "langgraph==0.6.2",
-    "litellm==1.74.12",
+    "langgraph==0.6.3",
+    "litellm==1.75.0",
     "llama-index==0.13.0",
     "lxml==6.0.0",
     "matplotlib==3.10.5",
@@ -44,13 +42,13 @@ server = [
     "psutil==7.0.0",
     "python-multipart==0.0.20",
     "torch==2.7.1",
-    "umap-learn==0.5.7",
+    "umap-learn==0.5.9.post2",
     "uvicorn==0.35.0",
 ]
 
 # GUI component dependencies
 client = [
-    "streamlit==1.47.1",
+    "streamlit==1.48.0",
 ]
 
 # Test dependencies
