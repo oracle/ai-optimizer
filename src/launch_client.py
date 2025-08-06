@@ -15,6 +15,7 @@ from streamlit import session_state as state
 
 from client.utils import api_call
 from common.schema import ClientIdType
+from common._version import __version__
 
 import common.logging_config as logging_config
 
@@ -71,6 +72,7 @@ def main() -> None:
         menu_items={
             "Get Help": "https://oracle-samples.github.io/ai-optimizer/",
             "Report a bug": "https://github.com/oracle-samples/ai-optimizer/issues/new",
+            "About": f"v{__version__}",
         },
     )
     st.html(
@@ -80,7 +82,7 @@ def main() -> None:
             height: auto;
             margin-top: 1.25em;
             width: auto;
-        }            
+        }
         .stSidebar img[alt="Logo"] {
             width: 100%;
         }

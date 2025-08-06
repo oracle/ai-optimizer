@@ -41,6 +41,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Logging
 import common.logging_config as logging_config
+from common._version import __version__
 
 # Configuration
 import server.bootstrap.configfile as configfile
@@ -183,6 +184,7 @@ def create_app(config: str = None) -> FastAPI:
 
     app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
+        version=__version__,
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
         license_info={
@@ -217,4 +219,4 @@ if __name__ == "__main__":
     logger.info("API Server Using port: %i", PORT)
 
     app = create_app(args.config)
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_config=logging_config.LOGGING_CONFIG)

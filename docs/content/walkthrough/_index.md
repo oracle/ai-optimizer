@@ -132,10 +132,7 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
 1. Download and Unzip the [latest release](https://github.com/oracle-samples/ai-optimizer/releases/latest) of the {{< short_app_ref >}}:
 
    ```bash
-   curl -s https://api.github.com/repos/oracle-samples/ai-optimizer/releases/latest \
-   | grep tarball_url \
-   | cut -d '"' -f 4 \
-   | xargs curl -L -o ai-optimizer.tar.gz
+   curl -LO https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz
    ```
 
    ```bash
@@ -143,13 +140,13 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
    ```
 
    ```bash
-   tar zxf ai-optimizer.tar.gz --strip-components=1 -C ai-optimizer
+   tar zxf ai-optimizer-src.tar.gz -C ai-optimizer
    ```
 
 1. Build the Container Image
 
    ```bash
-   cd ai-optimizer/src
+   cd ai-optimizer
    podman build --arch amd64 -t localhost/ai-optimizer-aio:latest .
    ```
 

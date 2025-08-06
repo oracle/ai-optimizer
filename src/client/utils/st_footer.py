@@ -4,7 +4,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore streamlit, selectbox, mult, iloc, selectai, isin
 
-import streamlit as st
 import streamlit.components.v1 as components
 
 FOOTER_STYLE = """
@@ -31,11 +30,12 @@ FOOTER_STYLE = """
 </style>
 """
 
+
 # --- SHARED LOGIC ---
 def _inject_footer(selector, insertion_method, footer_html, cleanup_styles=True):
     """
     Shared footer injection logic with optional style cleanup.
-    
+
     Args:
         selector: CSS selector to find the injection target
         insertion_method: 'afterend' or 'beforebegin'
@@ -43,9 +43,13 @@ def _inject_footer(selector, insertion_method, footer_html, cleanup_styles=True)
         cleanup_styles: Whether to apply padding/margin cleanup to target element
     """
     js_safe_html = footer_html.replace("`", "\\`").replace("\n", "")
-    cleanup_js = """
+    cleanup_js = (
+        """
             target.style.paddingBottom = '0';
-            target.style.marginBottom = '0';""" if cleanup_styles else ""
+            target.style.marginBottom = '0';"""
+        if cleanup_styles
+        else ""
+    )
     js_code = f"""
     <script>
     const checkReady = setInterval(() => {{
@@ -91,9 +95,7 @@ def render_chat_footer():
     </div>
     """
     _inject_footer(
-        selector='[data-testid="stBottomBlockContainer"]',
-        insertion_method='afterend',
-        footer_html=footer_html
+        selector='[data-testid="stBottomBlockContainer"]', insertion_method="afterend", footer_html=footer_html
     )
 
 
@@ -110,7 +112,7 @@ def render_models_footer():
     """
     _inject_footer(
         selector='[data-testid="stAppIframeResizerAnchor"]',
-        insertion_method='beforebegin',
+        insertion_method="beforebegin",
         footer_html=footer_html,
-        cleanup_styles=False
+        cleanup_styles=False,
     )

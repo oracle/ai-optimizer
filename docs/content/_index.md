@@ -4,7 +4,7 @@ menus = 'main'
 archetype = "home"
 description = './ai-optimizer/docs'
 keywords = 'oracle optimizer toolkit microservices development genai rag'
-+++  
++++
 
 <!--
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
@@ -51,12 +51,22 @@ The [Walkthrough](walkthrough) is a great way to familiarize yourself with the *
 
 ### Bare-Metal Installation
 
-To run the application on bare-metal; download the source code from the {{< latest_release >}} and from the `src/` directory:
+To run the application on bare-metal, download the latest release:
+{{< latest_release >}}
+
+1. Uncompress the release in a new directory.  For example:
+
+   ```bash
+   mkdir ai-optimizer
+   tar zxf ai-optimizer-src.tar.gz -C ai-optimizer
+
+   cd ai-optimizer
+   ```
 
 1. Create and activate a Python Virtual Environment:
 
    ```bash
-   cd src/
+   cd ai-optimizer
    python3.11 -m venv .venv
    source .venv/bin/activate
    pip3.11 install --upgrade pip wheel
@@ -84,14 +94,21 @@ To run the application on bare-metal; download the source code from the {{< late
 References to `podman` commands, if applicable to your environment, can be substituted with `docker`.
 {{% /notice %}}
 
-To run the application in a container; download the source code from the {{< latest_release >}} and from the top-level directory:
+To run the application in a container, download the latest release:
+{{< latest_release >}}
 
-1. Build the image.
-
-   From inside the `src/` directory, build the *ai-optimizer-aio* image:
+1. Uncompress the release in a new directory.  For example:
 
    ```bash
-   cd src/
+   mkdir ai-optimizer
+   tar zxf ai-optimizer-src.tar.gz -C ai-optimizer
+
+   cd ai-optimizer
+   ```
+
+1. Build the *ai-optimizer-aio* image.
+
+   ```bash
    podman build -t ai-optimizer-aio .
    ```
 

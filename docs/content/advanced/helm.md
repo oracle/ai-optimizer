@@ -26,6 +26,18 @@ A full example of running the {{< short_app_ref >}} in a local Kubernetes cluste
 
 You will need to build the {{< short_app_ref >}} container images and stage them in a container registry, such as the [OCI Container Registry](https://docs.oracle.com/en-us/iaas/Content/Registry/Concepts/registryoverview.htm) (**OCIR**).
 
+1. Download the latest release:
+{{< latest_release >}}
+
+1. Uncompress the release in a new directory.  For example:
+
+   ```bash
+   mkdir ai-optimizer
+   tar zxf ai-optimizer-src.tar.gz -C ai-optimizer
+
+   cd ai-optimizer
+   ```
+
 1. Build the {{< short_app_ref >}} images:
 
     From the code source `src/` directory:
