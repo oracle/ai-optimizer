@@ -38,15 +38,32 @@ logger = logging_config.logging.getLogger("client.content.config.settings")
 #############################################################################
 def get_settings(include_sensitive: bool = False):
     """Get Server-Side Settings"""
-    settings = api_call.get(
-        endpoint="v1/settings",
-        params={
-            "client": state.client_settings["client"],
-            "full_config": True,
-            "incl_sensitive": include_sensitive,
-        },
-    )
-    return settings
+    try:
+        settings = api_call.get(
+            endpoint="v1/settings",
+            params={
+                "client": state.client_settings["client"],
+                "full_config": True,
+                "incl_sensitive": include_sensitive,
+            },
+        )
+        return settings
+    except api_call.ApiError as e:
+        if "not found" in str(e):
+            # If client settings not found, create them
+            logger.info("Client settings not found, creating new ones")
+            api_call.post(endpoint="v1/settings", params={"client": state.client_settings["client"]})
+            settings = api_call.get(
+                endpoint="v1/settings",
+                params={
+                    "client": state.client_settings["client"],
+                    "full_config": True,
+                    "incl_sensitive": include_sensitive,
+                },
+            )
+            return settings
+        else:
+            raise
 
 
 def save_settings(settings):
@@ -141,11 +158,11 @@ def apply_uploaded_settings(uploaded):
 
 def spring_ai_conf_check(ll_model, embed_model) -> str:
     """Check if configuration is valid for SpringAI package"""
-    if ll_model is None or embed_model is None:
+    if not ll_model or not embed_model:
         return "hybrid"
 
-    ll_api = ll_model["api"]
-    embed_api = embed_model["api"]
+    ll_api = ll_model.get("api", "")
+    embed_api = embed_model.get("api", "")
 
     if "OpenAI" in ll_api and "OpenAI" in embed_api:
         return "openai"
@@ -287,9 +304,11 @@ def main():
     st.header("SpringAI Settings", divider="red")
     # Merge the User Settings into the Model Config
     model_lookup = st_common.state_configs_lookup("model_configs", "id")
-    ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
+    ll_model_id = state.client_settings["ll_model"].get("model")
+    ll_config = model_lookup.get(ll_model_id, {}) | state.client_settings["ll_model"]
+    embed_model_id = state.client_settings["vector_search"].get("model")
     embed_config = (
-        model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
+        model_lookup.get(embed_model_id, {}) | state.client_settings["vector_search"]
     )
     spring_ai_conf = spring_ai_conf_check(ll_config, embed_config)
 

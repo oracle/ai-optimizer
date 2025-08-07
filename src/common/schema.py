@@ -4,8 +4,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql, vector_search, aioptimizer
 
+from __future__ import annotations
+
 import time
-from typing import Optional, Literal, Union, get_args, Any
+from typing import Optional, Literal, Union, get_args, Any, Dict, List
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from langchain_core.messages import ChatMessage
@@ -301,6 +303,7 @@ class Configuration(BaseModel):
     model_configs: Optional[list[Model]] = None
     oci_configs: Optional[list[OracleCloudSettings]] = None
     prompt_configs: Optional[list[Prompt]] = None
+    mcp_configs: Optional[list[MCPModelConfig]] = Field(default=None, description="List of MCP configurations")
 
     def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
@@ -453,6 +456,37 @@ class EvaluationReport(Evaluation):
 
 
 #####################################################
+# MCP
+#####################################################
+class MCPModelConfig(BaseModel):
+    """MCP Model Configuration"""
+    model_id: str = Field(..., description="Model identifier")
+    service_type: Literal["ollama", "openai"] = Field(..., description="AI service type")
+    base_url: str = Field(default="http://localhost:11434", description="Base URL for API")
+    api_key: Optional[str] = Field(default=None, description="API key", json_schema_extra={"sensitive": True})
+    enabled: bool = Field(default=True, description="Model availability status")
+    streaming: bool = Field(default=False, description="Enable streaming responses")
+    temperature: float = Field(default=1.0, description="Model temperature")
+    max_tokens: int = Field(default=2048, description="Maximum tokens per response")
+
+
+class MCPToolConfig(BaseModel):
+    """MCP Tool Configuration"""
+    name: str = Field(..., description="Tool name")
+    description: str = Field(..., description="Tool description")
+    parameters: Dict[str, Any] = Field(..., description="Tool parameters")
+    enabled: bool = Field(default=True, description="Tool availability status")
+
+
+class MCPSettings(BaseModel):
+    """MCP Global Settings"""
+    models: List[MCPModelConfig] = Field(default_factory=list, description="Available MCP models")
+    tools: List[MCPToolConfig] = Field(default_factory=list, description="Available MCP tools")
+    default_model: Optional[str] = Field(default=None, description="Default model identifier")
+    enabled: bool = Field(default=True, description="Enable or disable MCP functionality")
+
+
+#####################################################
 # Types
 #####################################################
 ClientIdType = Settings.__annotations__["client"]
@@ -469,3 +503,6 @@ SelectAIProfileType = Database.__annotations__["selectai_profiles"]
 TestSetsIdType = TestSets.__annotations__["tid"]
 TestSetsNameType = TestSets.__annotations__["name"]
 TestSetDateType = TestSets.__annotations__["created"]
+MCPModelIdType = MCPModelConfig.__annotations__["model_id"]
+MCPServiceType = MCPModelConfig.__annotations__["service_type"]
+MCPToolNameType = MCPToolConfig.__annotations__["name"]

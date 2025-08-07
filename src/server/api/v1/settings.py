@@ -38,7 +38,7 @@ async def settings_get(
     full_config: bool = False,
     incl_sensitive: bool = Depends(_incl_sensitive_param),
     incl_readonly: bool = Depends(_incl_readonly_param),
-) -> Union[schema.Configuration, schema.Settings]:
+) -> Union[schema.Configuration, schema.Settings, JSONResponse]:
     """Get settings for a specific client by name"""
     try:
         client_settings = settings.get_client_settings(client)
@@ -55,8 +55,11 @@ async def settings_get(
         model_configs=config.get("model_configs"),
         oci_configs=config.get("oci_configs"),
         prompt_configs=config.get("prompt_configs"),
+        mcp_configs=config.get("mcp_configs", None)
     )
-    return JSONResponse(content=response.model_dump_public(incl_sensitive=incl_sensitive, incl_readonly=incl_readonly))
+    if incl_sensitive or incl_readonly:
+        return JSONResponse(content=response.model_dump_public(incl_sensitive=incl_sensitive, incl_readonly=incl_readonly))
+    return response
 
 
 @auth.patch(
@@ -114,12 +117,12 @@ async def load_settings_from_file(
         pass
 
     try:
-        if not file.filename.endswith(".json"):
+        if not file.filename or not file.filename.endswith(".json"):
             raise HTTPException(status_code=400, detail="Settings: Only JSON files are supported.")
         contents = await file.read()
         config_data = json.loads(contents)
         settings.load_config_from_json_data(config_data, client)
-        return {"message": "Configuration loaded successfully."}
+        return JSONResponse(content={"message": "Configuration loaded successfully."})
     except json.JSONDecodeError as ex:
         raise HTTPException(status_code=400, detail="Settings: Invalid JSON file.") from ex
     except KeyError as ex:
@@ -148,7 +151,7 @@ async def load_settings_from_json(
 
     try:
         settings.load_config_from_json_data(payload.model_dump(), client)
-        return {"message": "Configuration loaded successfully."}
+        return JSONResponse(content={"message": "Configuration loaded successfully."})
     except json.JSONDecodeError as ex:
         raise HTTPException(status_code=400, detail="Settings: Invalid JSON file.") from ex
     except KeyError as ex:

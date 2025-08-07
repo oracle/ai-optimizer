@@ -54,11 +54,16 @@ def get_server_config() -> schema.Configuration:
     prompt_objects = bootstrap.PROMPT_OBJECTS
     prompt_configs = [prompt for prompt in prompt_objects]
 
+    # Add MCP configs as a list (similar to other configs)
+    mcp_objects = bootstrap.mcp.MCP_MODELS  # Get list of models from bootstrap
+    mcp_configs = [model for model in mcp_objects]  # Convert to list like other configs
+
     full_config = {
         "database_configs": database_configs,
         "model_configs": model_configs,
         "oci_configs": oci_configs,
         "prompt_configs": prompt_configs,
+        "mcp_configs": mcp_configs,  # Now it's a list like other configs
     }
     return full_config
 
@@ -91,6 +96,11 @@ def update_server_config(config_data: dict) -> None:
 
     if "prompt_configs" in config_data:
         bootstrap.PROMPT_OBJECTS = config.prompt_configs or []
+        
+    # Add MCP config handling (similar to other configs)
+    if "mcp_configs" in config_data:
+        from server.bootstrap import mcp
+        mcp.MCP_MODELS = config.mcp_configs or []  # Store as list like other configs
 
 
 def load_config_from_json_data(config_data: dict, client: schema.ClientIdType = None) -> None:

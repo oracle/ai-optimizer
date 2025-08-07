@@ -25,19 +25,25 @@ if "TNS_ADMIN" not in os.environ:
 import server.patches.litellm_patch  # pylint: disable=unused-import
 
 import argparse
+import json
 import queue
 import secrets
 import socket
 import subprocess
 import threading
-from typing import Annotated
+from typing import Annotated, Any, Dict, Optional
 from pathlib import Path
 import uvicorn
+from contextlib import asynccontextmanager
 
 import psutil
 
-from fastapi import FastAPI, HTTPException, Depends, status, APIRouter
+from client.mcp.client import MCPClient
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
 
 # Logging
 import common.logging_config as logging_config
@@ -45,9 +51,50 @@ from common._version import __version__
 
 # Configuration
 import server.bootstrap.configfile as configfile
+from server.bootstrap import mcp as mcp_bootstrap
 
 logger = logging_config.logging.getLogger("launch_server")
+mcp_engine: Optional[MCPClient] = None
 
+def get_mcp_engine() -> Optional[MCPClient]:
+    """Get the current MCP engine instance."""
+    global mcp_engine
+    logger.debug(f"get_mcp_engine() called, returning: {mcp_engine}")
+    # Additional debugging to check if the variable exists
+    if 'mcp_engine' in globals():
+        print(f"DEBUG: mcp_engine in globals: {globals().get('mcp_engine')}")
+    else:
+        print("DEBUG: mcp_engine not in globals")
+    # Print the module name to see which module this is
+    print(f"DEBUG: This is module: {__name__}")
+    return mcp_engine
+
+async def initialize_mcp_engine_with_model(model_name: str) -> Optional[MCPClient]:
+    """Initialize or reinitialize the MCP engine with a specific model."""
+    global mcp_engine
+    
+    # Clean up existing engine if it exists
+    if mcp_engine:
+        try:
+            await mcp_engine.cleanup()
+        except Exception as e:
+            logger.error(f"Error cleaning up existing MCP engine: {e}")
+    
+    # Initialize new engine with the specified model
+    try:
+        mcp_engine = MCPClient(client_settings={'ll_model': {'model': model_name}})
+        logger.info("MCP Client created with model %s, connecting to servers...", model_name)
+        await mcp_engine.connect_to_servers()
+        logger.info("MCP Engine initialized successfully with model %s", model_name)
+        return mcp_engine
+    except Exception as e:
+        logger.error(f"Failed to initialize MCP Engine with model {model_name}: {e}", exc_info=True)
+        mcp_engine = None
+        return None
+
+class McpToolCallRequest(BaseModel):
+    tool_name: str
+    tool_args: Dict[str, Any]
 
 ##########################################
 # Process Control
@@ -97,8 +144,7 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
         return process
 
     port = port or find_available_port()
-    existing_pid = get_pid_using_port(port)
-    if existing_pid:
+    if existing_pid := get_pid_using_port(port):
         logger.info("API server already running on port: %i (PID: %i)", port, existing_pid)
         return existing_pid
 
@@ -118,10 +164,9 @@ def stop_server(pid: int) -> None:
         proc = psutil.Process(pid)
         proc.terminate()
         proc.wait()
+        logger.info("API server stopped.")
     except (psutil.NoSuchProcess, psutil.AccessDenied) as ex:
         logger.error("Failed to terminate process with PID: %i - %s", pid, ex)
-
-    logger.info("API server stopped.")
 
 
 ##########################################
@@ -170,12 +215,72 @@ def register_endpoints(noauth: APIRouter, auth: APIRouter):
     auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
     auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Tools - Settings"])
     auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
+    auth.include_router(api_v1.mcp.auth, prefix="/v1/mcp", tags=["Config - MCP Servers"])
 
 
 #############################################################################
 # APP FACTORY
 #############################################################################
-def create_app(config: str = None) -> FastAPI:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI startup/shutdown lifecycle for the MCP Engine."""
+    logger.info("Starting API Server...")
+    global mcp_engine
+
+    # Define a single, authoritative path for the configuration file.
+    config_path = Path("server/etc/mcp_config.json")
+
+    # 1. Handle the missing configuration file as a critical error.
+    if not config_path.exists():
+        logger.error(
+            f"CRITICAL: MCP configuration file not found at '{config_path}'. "
+            "MCP Engine cannot be initialized."
+        )
+        # Yield control to allow the server to run, but without the MCP engine.
+        yield
+        return
+
+    # 2. Load the configuration and initialize the engine.
+    try:
+        logger.info(f"Loading MCP configuration from '{config_path}'...")
+        with open(config_path, encoding='utf-8') as f:
+            mcp_config = json.load(f)
+        
+        mcp_bootstrap.load_mcp_settings(mcp_config)
+
+        # 3. Check if MCP is enabled in the loaded configuration.
+        if mcp_bootstrap.MCP_SETTINGS and mcp_bootstrap.MCP_SETTINGS.enabled:
+            logger.info("MCP is enabled. Initializing MCP Engine...")
+            
+            # This structure assumes MCPClient can be initialized with just the default model.
+            client_init_settings = {
+                'll_model': {'model': mcp_bootstrap.MCP_SETTINGS.default_model}
+            }
+            mcp_engine = MCPClient(client_settings=client_init_settings)
+            
+            await mcp_engine.connect_to_servers()
+            logger.info("MCP Engine initialized successfully.")
+        else:
+            logger.warning("MCP is disabled in the configuration file. Skipping initialization.")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize MCP Engine from configuration: {e}", exc_info=True)
+        # Ensure the engine is not set if initialization fails.
+        mcp_engine = None
+    
+    # Yield control to the running application.
+    yield
+
+    # Shutdown the engine if it was successfully initialized.
+    if mcp_engine:
+        logger.info("Shutting down MCP Engine...")
+        try:
+            await mcp_engine.cleanup()
+            logger.info("MCP Engine cleanup completed.")
+        except Exception as e:
+            logger.error(f"Error during MCP Engine cleanup: {e}")
+
+def create_app(config: str = "") -> FastAPI:
     """Create and configure the FastAPI app."""
     if not config:
         config = configfile.config_file_path()
@@ -187,6 +292,7 @@ def create_app(config: str = None) -> FastAPI:
         version=__version__,
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
+        lifespan=lifespan,
         license_info={
             "name": "Universal Permissive License",
             "url": "http://oss.oracle.com/licenses/upl",
