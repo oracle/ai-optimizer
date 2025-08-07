@@ -12,7 +12,6 @@ from datetime import datetime
 import json
 from typing import Optional
 from giskard.rag import evaluate, QATestset
-from giskard.rag.metrics import correctness_metric
 from fastapi import APIRouter, HTTPException, Header, UploadFile
 from fastapi.responses import JSONResponse
 import litellm
@@ -225,8 +224,8 @@ def testbed_evaluate_qa(
     oci_config = oci.get_oci(client)
     judge_client = core_models.get_client({"model": judge}, oci_config, True)
     try:
-        #report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric]) #CDB
-        report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=None) #CDB
+        # report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric]) #CDB
+        report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=None)  # CDB
 
     except KeyError as ex:
         if str(ex) == "'correctness'":

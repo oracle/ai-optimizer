@@ -268,8 +268,16 @@ class DatabaseSettings(BaseModel):
     alias: str = Field(default="DEFAULT", description="Name of Database (Alias)")
 
 
+class TestBedSettings(BaseModel):
+    """TestBed Settings"""
+
+    qa_ll_model: Optional[str] = Field(default=None, description="Q&A Language Model Name")
+    qa_embed_model: Optional[str] = Field(default=None, description="Q&A Embed Model Name")
+    judge_model: Optional[str] = Field(default=None, description="Judge Model Name")
+
+
 class Settings(BaseModel):
-    """Server Settings"""
+    """Client Settings"""
 
     client: str = Field(
         ...,
@@ -288,6 +296,7 @@ class Settings(BaseModel):
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
     selectai: Optional[SelectAISettings] = Field(default_factory=SelectAISettings, description="SelectAI Settings")
+    testbed: Optional[TestBedSettings] = Field(default_factory=TestBedSettings, description="TestBed Settings")
 
 
 #####################################################
