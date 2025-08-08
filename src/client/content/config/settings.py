@@ -228,6 +228,36 @@ def spring_ai_zip(provider, ll_config, embed_config):
         zip_buffer.seek(0)
     return zip_buffer
 
+def langchain_mcp_zip(settings):
+    """Create LangChain MCP Zip File"""
+
+    # Source directory that you want to copy
+    src_dir = Path(__file__).resolve().parents[2] / "mcp/rag"
+
+    # Using TemporaryDirectory
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dst_dir = os.path.join(temp_dir, "langchain_mcp")
+        logger.info("Starting langchain mcp zip processing: %s", dst_dir)
+
+        shutil.copytree(src_dir, dst_dir)
+
+        data=save_settings(settings)
+        settings_path = os.path.join(dst_dir, "optimizer_settings.json")
+        with open(settings_path, "w") as f:
+            f.write(data)
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for foldername, _, filenames in os.walk(dst_dir):
+                for filename in filenames:
+                    file_path = os.path.join(foldername, filename)
+
+                    arc_name = os.path.relpath(file_path, dst_dir)  # Make the path relative
+                    zip_file.write(file_path, arc_name)
+        zip_buffer.seek(0)
+    return zip_buffer
+
+
 
 #####################################################
 # MAIN
@@ -284,7 +314,7 @@ def main():
         else:
             st.info("Please upload a Settings file.")
 
-    st.header("SpringAI Settings", divider="red")
+    st.header("Export source code templates", divider="red")
     # Merge the User Settings into the Model Config
     model_lookup = st_common.state_configs_lookup("model_configs", "id")
     ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
@@ -301,10 +331,20 @@ def main():
             - Embedding Model: **{embed_config["model"]}**
         """)
     else:
-        st.download_button(
+        col_left, col_centre, _ = st.columns([3, 4, 3])
+        with col_left: 
+            st.download_button(
             label="Download SpringAI",
             data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
             file_name="spring_ai.zip",  # Zip file name
+            mime="application/zip",  # Mime type for zip file
+            disabled=spring_ai_conf == "hybrid",
+        )
+        with col_centre:
+            st.download_button(
+            label="Download LangchainMCP",
+            data=langchain_mcp_zip(settings),  # Generate zip on the fly
+            file_name="langchain_mcp.zip",  # Zip file name
             mime="application/zip",  # Mime type for zip file
             disabled=spring_ai_conf == "hybrid",
         )
