@@ -222,7 +222,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
         if giskard:
             logger.debug("Creating Giskard Client for %s in %s", model_api, model_classes)
             giskard_key = model_api_key or "giskard"
-            if (giskard_key=="giskard" and model_api=='CompatOpenAI'):
+            if giskard_key == "giskard" and model_api == "CompatOpenAI":
                 _client = OpenAI(api_key=giskard_key, base_url=f"{model_url}")
             else:
                 _client = OpenAI(api_key=giskard_key, base_url=f"{model_url}/v1")

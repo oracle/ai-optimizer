@@ -33,7 +33,7 @@ def main() -> list[Model]:
             "context_length": 127072,
             "temperature": 0.3,
             "max_completion_tokens": 4096,
-            "frequency_penalty": 0.0
+            "frequency_penalty": 0.0,
         },
         {
             "id": "gpt-4o-mini",
@@ -86,7 +86,7 @@ def main() -> list[Model]:
             "temperature": 1.0,
             "max_completion_tokens": 2048,
             "frequency_penalty": 0.0,
-        },        
+        },
         {
             # This is intentionally last to line up with docos
             "id": "llama3.1",

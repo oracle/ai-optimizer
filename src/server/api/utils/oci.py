@@ -321,7 +321,6 @@ def create_genai_models(config: OracleCloudSettings):
         model_dict["id"] = model["model_name"]
         model_dict["enabled"] = True
         model_dict["url"] = f"https://inference.generativeai.{config.genai_region}.oci.oraclecloud.com"
-        model_dict["api_key"] = model["id"]
         if model["vendor"] == "cohere":
             model_dict["openai_compat"] = False
         # Create the Model
