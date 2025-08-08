@@ -75,21 +75,6 @@ def main() -> list[Model]:
             "frequency_penalty": 0.0,
         },
         {
-            # OCI GenAI; url and enabled will be determined by OCI config
-            "id": "cohere.command-r-plus-08-2024",
-            "enabled": os.getenv("OCI_GENAI_COMPARTMENT_ID") is not None
-            and os.getenv("OCI_GENAI_SERVICE_ENDPOINT") is not None,
-            "type": "ll",
-            "api": "ChatOCIGenAI",
-            "url": os.environ.get("OCI_GENAI_SERVICE_ENDPOINT", None),
-            "api_key": "",
-            "openai_compat": False,
-            "context_length": 131072,
-            "temperature": 0.3,
-            "max_completion_tokens": 4000,
-            "frequency_penalty": 0.0,
-        },
-        {
             "id": "gpt-oss:20b",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "ll",
@@ -145,18 +130,6 @@ def main() -> list[Model]:
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "openai_compat": False,
             "max_chunk_size": 512,
-        },
-        {
-            # OCI GenAI; url and enabled will be determined by OCI config
-            "id": "cohere.embed-multilingual-v3.0",
-            "enabled": os.getenv("OCI_GENAI_COMPARTMENT_ID") is not None
-            and os.getenv("OCI_GENAI_SERVICE_ENDPOINT") is not None,
-            "type": "embed",
-            "api": "OCIGenAIEmbeddings",
-            "url": os.environ.get("OCI_GENAI_SERVICE_ENDPOINT", None),
-            "api_key": "",
-            "openai_compat": False,
-            "max_chunk_size": 4096,
         },
         {
             "id": "text-embedding-nomic-embed-text-v1.5",

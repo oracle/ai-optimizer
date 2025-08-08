@@ -88,11 +88,11 @@ def main() -> list[OracleCloudSettings]:
                     ),
                     "authentication": env.get("OCI_CLI_AUTH")
                     or ("security_token" if profile.get("security_token_file") else "api_key"),
-                    "compartment_id": override(
-                        profile, "compartment_id", "OCI_GENAI_COMPARTMENT_ID", env, overrides, ""
+                    "genai_compartment_id": override(
+                        profile, "genai_compartment_id", "OCI_GENAI_COMPARTMENT_ID", env, overrides, None
                     ),
-                    "service_endpoint": override(
-                        profile, "service_endpoint", "OCI_GENAI_SERVICE_ENDPOINT", env, overrides, ""
+                    "genai_region": override(
+                        profile, "genai_region", "OCI_GENAI_REGION", env, overrides, None
                     ),
                     "log_requests": profile.get("log_requests", False),
                     "additional_user_agent": profile.get("additional_user_agent", ""),

@@ -62,7 +62,8 @@ class TestStreamlit:
         assert oci_lookup[user_oci_profile]["region"] is None
         assert oci_lookup[user_oci_profile]["fingerprint"] is None
         assert oci_lookup[user_oci_profile]["key_file"] is None
-        assert oci_lookup[user_oci_profile]["service_endpoint"] == ""
+        assert oci_lookup[user_oci_profile]["genai_region"] is None
+        assert oci_lookup[user_oci_profile]["genai_compartment_id"] is None
 
     test_cases = [
         pytest.param(
@@ -178,7 +179,8 @@ class TestStreamlit:
                 "user": None,
                 "tenancy": None,
                 "region": None,
-                "compartment_id": "",
+                "genai_compartment_id": "",
+                "genai_region": "",
                 "key_file": None,
                 "security_token_file": None,
                 "fingerprint": None,

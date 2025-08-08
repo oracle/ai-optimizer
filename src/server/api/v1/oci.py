@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai ocid
+# spell-checker:ignore selectai ocid genai
 
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import JSONResponse
@@ -51,6 +51,42 @@ async def oci_get(
 
 
 @auth.get(
+    "/regions/{auth_profile}",
+    description="Get Subscribed OCI Regions",
+    response_model=list,
+)
+async def oci_list_regions(
+    auth_profile: schema.OCIProfileType,
+) -> list:
+    """Return a list of compartments"""
+    logger.debug("Received oci_list_regions - auth_profile: %s", auth_profile)
+    try:
+        oci_config = await oci_get(auth_profile=auth_profile)
+        regions = util_oci.get_regions(oci_config)
+        return regions
+    except util_oci.OciException as ex:
+        raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
+
+
+@auth.get(
+    "/genai/{auth_profile}",
+    description="Get OCI GenAI Services Models",
+    response_model=list,
+)
+async def oci_list_genai(
+    auth_profile: schema.OCIProfileType,
+) -> list:
+    """Return a list of compartments"""
+    logger.debug("Received oci_list_regions - auth_profile: %s", auth_profile)
+    try:
+        oci_config = await oci_get(auth_profile=auth_profile)
+        all_models = util_oci.get_genai_models(oci_config, regional=False)
+        return all_models
+    except util_oci.OciException as ex:
+        raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
+
+
+@auth.get(
     "/compartments/{auth_profile}",
     description="Get OCI Compartments",
     response_model=dict,
@@ -60,9 +96,12 @@ async def oci_list_compartments(
 ) -> dict:
     """Return a list of compartments"""
     logger.debug("Received oci_list_compartments - auth_profile: %s", auth_profile)
-    oci_config = await oci_get(auth_profile=auth_profile)
-    compartments = util_oci.get_compartments(oci_config)
-    return compartments
+    try:
+        oci_config = await oci_get(auth_profile=auth_profile)
+        compartments = util_oci.get_compartments(oci_config)
+        return compartments
+    except util_oci.OciException as ex:
+        raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
 @auth.get(
@@ -76,10 +115,13 @@ async def oci_list_buckets(
 ) -> list:
     """Return a list of buckets; Validate OCID using Pydantic class"""
     logger.debug("Received oci_list_buckets - auth_profile: %s; compartment_ocid: %s", auth_profile, compartment_ocid)
-    compartment_obj = schema.OracleResource(ocid=compartment_ocid)
-    oci_config = await oci_get(auth_profile=auth_profile)
-    buckets = util_oci.get_buckets(compartment_obj.ocid, oci_config)
-    return buckets
+    try:
+        compartment_obj = schema.OracleResource(ocid=compartment_ocid)
+        oci_config = await oci_get(auth_profile=auth_profile)
+        buckets = util_oci.get_buckets(compartment_obj.ocid, oci_config)
+        return buckets
+    except util_oci.OciException as ex:
+        raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
 @auth.get(
@@ -93,9 +135,12 @@ async def oci_list_bucket_objects(
 ) -> list:
     """Return a list of bucket objects; Validate OCID using Pydantic class"""
     logger.debug("Received oci_list_bucket_objects - auth_profile: %s; bucket_name: %s", auth_profile, bucket_name)
-    oci_config = await oci_get(auth_profile=auth_profile)
-    objects = util_oci.get_bucket_objects(bucket_name, oci_config)
-    return objects
+    try:
+        oci_config = await oci_get(auth_profile=auth_profile)
+        objects = util_oci.get_bucket_objects(bucket_name, oci_config)
+        return objects
+    except util_oci.OciException as ex:
+        raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
 @auth.patch(
@@ -120,21 +165,10 @@ async def oci_profile_update(
                 setattr(oci_config, key, value)
     except util_oci.OciException as ex:
         oci_config.namespace = None
-        raise HTTPException(status_code=401, detail=f"OCI: {str(ex)}") from ex
+        raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
     except AttributeError as ex:
         oci_config.namespace = None
-        raise HTTPException(status_code=400, detail="OCI: Invalid Payload") from ex
-
-    # OCI GenAI
-    try:
-        if oci_config.service_endpoint and oci_config.compartment_id:
-            model_objects = models.get_model()
-            for model in model_objects:
-                if "OCI" in model.api:
-                    model.enabled = True
-                    model.url = oci_config.service_endpoint
-    except AttributeError:
-        pass
+        raise HTTPException(status_code=400, detail="OCI: Invalid Payload.") from ex
 
     return oci_config
 
@@ -164,3 +198,21 @@ async def oci_download_objects(
 
     downloaded_files = [f.name for f in temp_directory.iterdir() if f.is_file()]
     return JSONResponse(status_code=200, content=downloaded_files)
+
+
+@auth.post(
+    "/genai/{auth_profile}",
+    description="Enable OCI GenAI models",
+    response_model=list[schema.Model],
+)
+async def oci_create_genai_models(
+    auth_profile: schema.OCIProfileType,
+) -> list[schema.Model]:
+    """Return a list of compartments"""
+    logger.debug("Received oci_create_genai_models - auth_profile: %s", auth_profile)
+    try:
+        oci_config = await oci_get(auth_profile=auth_profile)
+        enabled_models = util_oci.create_genai_models(oci_config)
+        return enabled_models
+    except util_oci.OciException as ex:
+        raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
