@@ -23,7 +23,7 @@ RUN for dir in server client common; do \
 
 COPY pyproject.toml /opt/package/pyproject.toml
 
-RUN /opt/.venv/bin/pip install torch==2.7.1+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+RUN /opt/.venv/bin/pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
     /opt/.venv/bin/pip install --no-cache-dir "/opt/package[server]"
 
 ##################################################

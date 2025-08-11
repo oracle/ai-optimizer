@@ -7,16 +7,16 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Optional, Union
 from server.api.core import bootstrap
 
-import common.schema as schema
+from common.schema import PromptCategoryType, PromptNameType, Prompt
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.core.prompts")
 
 
 def get_prompts(
-    category: Optional[schema.PromptCategoryType] = None,
-    name: Optional[schema.PromptNameType] = None
-) -> Union[list[schema.Prompt], schema.Prompt, None]:
+    category: Optional[PromptCategoryType] = None,
+    name: Optional[PromptNameType] = None
+) -> Union[list[Prompt], Prompt, None]:
     """
     Return prompt filtered by category and optionally name.
     If neither is provided, return all prompts.

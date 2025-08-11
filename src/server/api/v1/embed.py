@@ -14,9 +14,12 @@ from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 import requests
 
-from server.api.core import oci, models, databases
-from server.api.utils.databases import DbException
-from server.api.utils import embed
+import server.api.core.databases as core_databases
+import server.api.core.oci as core_oci
+
+import server.api.utils.databases as util_databases
+import server.api.utils.embed as util_embed
+import server.api.utils.models as util_models
 
 import common.functions as functions
 import common.schema as schema
@@ -38,8 +41,10 @@ async def embed_drop_vs(
     """Drop Vector Storage"""
     logger.debug("Received %s embed_drop_vs: %s", client, vs)
     try:
-        embed.drop_vs(client, vs)
-    except DbException as ex:
+        client_db = util_databases.get_client_db(client)
+        db_conn = core_databases.connect(client_db)
+        util_databases.drop_vs(db_conn, vs)
+    except core_databases.DbException as ex:
         raise HTTPException(status_code=400, detail=f"Embed: {str(ex)}.") from ex
     return JSONResponse(status_code=200, content={"message": f"Vector Store: {vs} dropped."})
 
@@ -54,7 +59,7 @@ async def store_web_file(
 ) -> Response:
     """Store contents from a web URL"""
     logger.debug("Received store_web_file - request: %s", request)
-    temp_directory = embed.get_temp_directory(client, "embedding")
+    temp_directory = util_embed.get_temp_directory(client, "embedding")
 
     # Save the file temporarily
     for url in request:
@@ -91,7 +96,7 @@ async def store_local_file(
 ) -> Response:
     """Store contents from a local file uploaded to streamlit"""
     logger.debug("Received store_local_file - files: %s", files)
-    temp_directory = embed.get_temp_directory(client, "embedding")
+    temp_directory = util_embed.get_temp_directory(client, "embedding")
     for file in files:
         filename = temp_directory / file.filename
         file_content = await file.read()
@@ -113,8 +118,8 @@ async def split_embed(
 ) -> Response:
     """Perform Split and Embed"""
     logger.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
-    oci_config = oci.get_oci(client=client)
-    temp_directory = embed.get_temp_directory(client, "embedding")
+    oci_config = core_oci.get_oci(client=client)
+    temp_directory = util_embed.get_temp_directory(client, "embedding")
 
     try:
         files = [f for f in temp_directory.iterdir() if f.is_file()]
@@ -130,7 +135,7 @@ async def split_embed(
             detail=f"Embed: Client {client} no files found in folder.",
         )
     try:
-        split_docos, _ = embed.load_and_split_documents(
+        split_docos, _ = util_embed.load_and_split_documents(
             files,
             request.model,
             request.chunk_size,
@@ -139,15 +144,14 @@ async def split_embed(
             output_dir=None,
         )
 
-        embed_client = models.get_client({"model": request.model, "enabled": True}, oci_config)
+        embed_client = util_models.get_client({"model": request.model, "enabled": True}, oci_config)
 
         # Calculate and set the vector_store name using get_vs_table
         request.vector_store, _ = functions.get_vs_table(**request.model_dump(exclude={"database", "vector_store"}))
 
-        embed.populate_vs(
-            client=client,
+        util_embed.populate_vs(
             vector_store=request,
-            db_details=databases.get_client_db(client),
+            db_details=util_databases.get_client_db(client),
             embed_client=embed_client,
             input_data=split_docos,
             rate_limit=rate_limit,

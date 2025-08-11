@@ -10,12 +10,18 @@ from typing import Literal, AsyncGenerator
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
-from server.api.core import settings, oci, models, prompts, databases
+
+
+import server.api.core.settings as core_settings
+import server.api.core.oci as core_oci
+import server.api.core.prompts as core_prompts
+import server.api.utils.models as util_models
+import server.api.utils.databases as util_databases
+import server.agents.chatbot as chatbot
+import server.api.utils.selectai as util_selectai
 
 import common.schema as schema
 import common.logging_config as logging_config
-import server.agents.chatbot as chatbot
-from server.api.utils import selectai
 
 logger = logging_config.logging.getLogger("api.utils.chat")
 
@@ -24,7 +30,7 @@ async def completion_generator(
     client: schema.ClientIdType, request: schema.ChatRequest, call: Literal["completions", "streams"]
 ) -> AsyncGenerator[str, None]:
     """Generate a completion from agent, stream the results"""
-    client_settings = settings.get_client_settings(client)
+    client_settings = core_settings.get_client_settings(client)
     model = request.model_dump()
     logger.debug("Settings: %s", client_settings)
     logger.debug("Request: %s", model)
@@ -33,10 +39,10 @@ async def completion_generator(
     if not model["model"]:
         model = client_settings.ll_model.model_dump()
 
-    oci_config = oci.get_oci(client=client)
+    oci_config = core_oci.get_oci(client=client)
 
     # Setup Client Model
-    ll_client = models.get_client(model, oci_config)
+    ll_client = util_models.get_client(model, oci_config)
     if not ll_client:
         error_response = {
             "id": "error",
@@ -60,7 +66,7 @@ async def completion_generator(
     # Get Prompts
     try:
         user_sys_prompt = getattr(client_settings.prompts, "sys", "Basic Example")
-        sys_prompt = prompts.get_prompts(category="sys", name=user_sys_prompt)
+        sys_prompt = core_prompts.get_prompts(category="sys", name=user_sys_prompt)
     except AttributeError as ex:
         # schema.Settings not on server-side
         logger.error("A settings exception occurred: %s", ex)
@@ -69,18 +75,20 @@ async def completion_generator(
     db_conn = None
     # Setup selectai
     if client_settings.selectai.enabled:
-        db_conn = databases.get_client_db(client).connection
-        selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
-        selectai.set_profile(db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"])
+        db_conn = util_databases.get_client_db(client).connection
+        util_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
+        util_selectai.set_profile(
+            db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
+        )
 
     # Setup vector_search
     embed_client, ctx_prompt = None, None
     if client_settings.vector_search.enabled:
-        db_conn = databases.get_client_db(client).connection
-        embed_client = models.get_client(client_settings.vector_search.model_dump(), oci_config)
+        db_conn = util_databases.get_client_db(client).connection
+        embed_client = util_models.get_client(client_settings.vector_search.model_dump(), oci_config)
 
         user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
-        ctx_prompt = prompts.get_prompts(category="ctx", name=user_ctx_prompt)
+        ctx_prompt = core_prompts.get_prompts(category="ctx", name=user_ctx_prompt)
 
     kwargs = {
         "input": {"messages": [HumanMessage(content=request.messages[0].content)]},

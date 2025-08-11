@@ -141,7 +141,7 @@ class TestEndpoints:
         assert data["auth_profile"] == "DEFAULT"
         response = client.get("/v1/oci/TEST", headers=auth_headers["valid_auth"])
         assert response.status_code == 404
-        assert response.json() == {"detail": "OCI: profile 'TEST' not found"}
+        assert response.json() == {"detail": "OCI: profile 'TEST' not found."}
 
     def test_oci_list_compartments(self, client, auth_headers, mock_get_compartments):
         """List OCI Compartments"""

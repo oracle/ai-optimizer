@@ -42,8 +42,8 @@ Depending on the runtime environment, either [Bare Metal](#bare-metal) or [Conta
 
 In addition to the standard configuration file, two additional entries are required to enable OCI GenAI Services:
 
-- **service_endpoint**: the URL endpoint for the OCI GenAI Service
-- **compartment_id**: the compartment OCID of the OCI GenAI Service
+- **genai_region**: the Region for the OCI GenAI Service
+- **genai_compartment_id**: the Compartment OCID of the OCI GenAI Service
 
 #### Bare Metal
 
