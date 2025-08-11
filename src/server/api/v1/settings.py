@@ -9,8 +9,7 @@ from typing import Union
 from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile
 from fastapi.responses import JSONResponse
 
-from server.api.core import settings
-
+import server.api.core.settings as core_settings
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -41,14 +40,14 @@ async def settings_get(
 ) -> Union[schema.Configuration, schema.Settings]:
     """Get settings for a specific client by name"""
     try:
-        client_settings = settings.get_client_settings(client)
+        client_settings = core_settings.get_client_settings(client)
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
 
     if not full_config:
         return client_settings
 
-    config = settings.get_server_config()
+    config = core_settings.get_server_config()
     response = schema.Configuration(
         client_settings=client_settings,
         database_configs=config.get("database_configs"),
@@ -71,7 +70,7 @@ async def settings_update(
     logger.debug("Received %s Client Payload: %s", client, payload)
 
     try:
-        return settings.update_client_settings(payload, client)
+        return core_settings.update_client_settings(payload, client)
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=f"Settings: {str(ex)}.") from ex
 
@@ -88,7 +87,7 @@ async def settings_create(
     logger.debug("Received %s Client create request.", client)
 
     try:
-        new_client = settings.create_client_settings(client)
+        new_client = core_settings.create_client_settings(client)
     except ValueError as ex:
         raise HTTPException(status_code=409, detail=f"Settings: {str(ex)}.") from ex
 
@@ -109,7 +108,7 @@ async def load_settings_from_file(
     """
     logger.debug("Received %s Client File: %s", client, file)
     try:
-        settings.create_client_settings(client)
+        core_settings.create_client_settings(client)
     except ValueError:  # Client already exists
         pass
 
@@ -118,7 +117,7 @@ async def load_settings_from_file(
             raise HTTPException(status_code=400, detail="Settings: Only JSON files are supported.")
         contents = await file.read()
         config_data = json.loads(contents)
-        settings.load_config_from_json_data(config_data, client)
+        core_settings.load_config_from_json_data(config_data, client)
         return {"message": "Configuration loaded successfully."}
     except json.JSONDecodeError as ex:
         raise HTTPException(status_code=400, detail="Settings: Invalid JSON file.") from ex
@@ -142,12 +141,12 @@ async def load_settings_from_json(
     """
     logger.debug("Received %s Client Payload: %s", client, payload)
     try:
-        settings.create_client_settings(client)
+        core_settings.create_client_settings(client)
     except ValueError:  # Client already exists
         pass
 
     try:
-        settings.load_config_from_json_data(payload.model_dump(), client)
+        core_settings.load_config_from_json_data(payload.model_dump(), client)
         return {"message": "Configuration loaded successfully."}
     except json.JSONDecodeError as ex:
         raise HTTPException(status_code=400, detail="Settings: Invalid JSON file.") from ex

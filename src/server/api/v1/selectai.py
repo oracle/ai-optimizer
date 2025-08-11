@@ -8,8 +8,9 @@ import json
 
 from fastapi import APIRouter, Header
 
-from server.api.core import settings, databases
-from server.api.utils import selectai
+import server.api.core.settings as core_settings
+import server.api.utils.databases as util_databases
+import server.api.utils.selectai as util_selectai
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -28,9 +29,9 @@ async def selectai_get_objects(
     client: schema.ClientIdType = Header(default="server"),
 ) -> list[schema.DatabaseSelectAIObjects]:
     """Get DatabaseSelectAIObjects"""
-    client_settings = settings.get_client_settings(client)
-    db_conn = databases.get_client_db(client).connection
-    select_ai_objects = selectai.get_objects(db_conn, client_settings.selectai.profile)
+    client_settings = core_settings.get_client_settings(client)
+    db_conn = util_databases.get_client_db(client).connection
+    select_ai_objects = util_selectai.get_objects(db_conn, client_settings.selectai.profile)
     return select_ai_objects
 
 
@@ -45,8 +46,8 @@ async def selectai_update_objects(
 ) -> list[schema.DatabaseSelectAIObjects]:
     """Update DatabaseSelectAIObjects"""
     logger.debug("Received selectai_update - payload: %s", payload)
-    client_settings = settings.get_client_settings(client)
+    client_settings = core_settings.get_client_settings(client)
     object_list = json.dumps([obj.model_dump(include={"owner", "name"}) for obj in payload])
-    db_conn = databases.get_client_db(client).connection
-    selectai.set_profile(db_conn, client_settings.selectai.profile, "object_list", object_list)
-    return selectai.get_objects(db_conn, client_settings.selectai.profile)
+    db_conn = util_databases.get_client_db(client).connection
+    util_selectai.set_profile(db_conn, client_settings.selectai.profile, "object_list", object_list)
+    return util_selectai.get_objects(db_conn, client_settings.selectai.profile)

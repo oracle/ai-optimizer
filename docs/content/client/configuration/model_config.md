@@ -89,14 +89,14 @@ To use OCI GenAI, the {{< short_app_ref >}} must be configured for [OCI access](
 >[!code]Skip the GUI!
 >You can set the following environment variables to automatically enable OCI GenAI models:
 >```shell
->export OCI_GENAI_SERVICE_ENDPOINT=<OCI GenAI Service Endpoint>
+>export OCI_GENAI_REGION=<OCI GenAI Service Region>
 >export OCI_GENAI_COMPARTMENT_ID=<OCI Compartment OCID of the OCI GenAI Service>
 >```
 >
 >Alternatively, you can specify the following in the `~/.oci/config` configfile under the appropriate OCI profile:
 >```shell
->service_endpoint=<OCI GenAI Service Endpoint>
->compartment_id=<OCI Compartment OCID of the OCI GenAI Service>
+>genai_compartment_id=<OCI Compartment OCID of the OCI GenAI Service>
+>genai_region=<OCI GenAI Region>
 >```
 
 {{% /tab %}}

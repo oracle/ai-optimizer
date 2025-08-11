@@ -10,6 +10,7 @@ import oci
 
 from server.bootstrap.configfile import ConfigStore
 import server.api.utils.oci as util_oci
+import server.api.utils.models as util_models
 
 import common.logging_config as logging_config
 from common.schema import OracleCloudSettings
@@ -88,12 +89,10 @@ def main() -> list[OracleCloudSettings]:
                     ),
                     "authentication": env.get("OCI_CLI_AUTH")
                     or ("security_token" if profile.get("security_token_file") else "api_key"),
-                    "compartment_id": override(
-                        profile, "compartment_id", "OCI_GENAI_COMPARTMENT_ID", env, overrides, ""
+                    "genai_compartment_id": override(
+                        profile, "genai_compartment_id", "OCI_GENAI_COMPARTMENT_ID", env, overrides, None
                     ),
-                    "service_endpoint": override(
-                        profile, "service_endpoint", "OCI_GENAI_SERVICE_ENDPOINT", env, overrides, ""
-                    ),
+                    "genai_region": override(profile, "genai_region", "OCI_GENAI_REGION", env, overrides, None),
                     "log_requests": profile.get("log_requests", False),
                     "additional_user_agent": profile.get("additional_user_agent", ""),
                     "pass_phrase": profile.get("pass_phrase"),
@@ -114,9 +113,17 @@ def main() -> list[OracleCloudSettings]:
         if oci_config.auth_profile == oci.config.DEFAULT_PROFILE:
             try:
                 oci_config.namespace = util_oci.get_namespace(oci_config)
-            except util_oci.OciException:
+            except Exception:
                 logger.warning("Failed to get namespace for DEFAULT OCI profile")
                 continue
+
+    # Attempt to load OCI GenAI Models after OCI and MODELs are Bootstrapped
+    try:
+        oci_config = [o for o in oci_objects if o.auth_profile == "DEFAULT"]
+        if oci_config:
+            util_models.create_genai_models(oci_config[0])
+    except Exception as ex:
+        logger.info("Unable to bootstrap OCI GenAI Models: %s", str(ex))
 
     logger.debug("*** Bootstrapping OCI - End")
     return oci_objects

@@ -2,27 +2,13 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, pplx, huggingface, genai, giskard
 
 from typing import Optional, Union
 
-from openai import OpenAI
-
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_cohere import ChatCohere, CohereEmbeddings
-from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_huggingface import HuggingFaceEndpointEmbeddings
-from langchain_community.chat_models.oci_generative_ai import ChatOCIGenAI
-from langchain_community.embeddings.oci_generative_ai import OCIGenAIEmbeddings
-
-from giskard.llm.client.openai import OpenAIClient
-
 from server.api.core import bootstrap
-from server.api.utils import oci
-import common.schema as schema
-from common.functions import is_url_accessible
 
+from common.schema import Model, ModelIdType, ModelTypeType
+from common.functions import is_url_accessible
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.core.models")
@@ -39,22 +25,22 @@ class InvalidModelError(ValueError):
     """Raised when the model data is invalid in some other way."""
 
 
-class UnknownModelError(ValueError):
-    """Raised when the model data doesn't exist."""
-
-
 class ExistsModelError(ValueError):
     """Raised when the model data already exist."""
+
+
+class UnknownModelError(ValueError):
+    """Raised when the model data doesn't exist."""
 
 
 #####################################################
 # Functions
 #####################################################
 def get_model(
-    model_id: Optional[schema.ModelIdType] = None,
-    model_type: Optional[schema.ModelTypeType] = None,
+    model_id: Optional[ModelIdType] = None,
+    model_type: Optional[ModelTypeType] = None,
     include_disabled: bool = True,
-) -> Union[list[schema.Model], schema.Model, None]:
+) -> Union[list[Model], Model, None]:
     """Used in direct call from list_models and agents.models"""
     model_objects = bootstrap.MODEL_OBJECTS
 
@@ -80,24 +66,7 @@ def get_model(
     return model_filtered
 
 
-def update_model(model_id: schema.ModelIdType, payload: schema.Model) -> schema.Model:
-    """Update an existing Model definition"""
-
-    model_upd = get_model(model_id=model_id)
-    if payload.enabled and not is_url_accessible(model_upd.url)[0]:
-        model_upd.enabled = False
-        raise URLUnreachableError("Model: Unable to update.  API URL is inaccessible.")
-
-    for key, value in payload:
-        if hasattr(model_upd, key):
-            setattr(model_upd, key, value)
-        else:
-            raise InvalidModelError(f"Model: Invalid setting - {key}.")
-
-    return model_upd
-
-
-def create_model(model: schema.Model) -> schema.Model:
+def create_model(model: Model, check_url: bool = True) -> Model:
     """Create a new Model definition"""
     model_objects = bootstrap.MODEL_OBJECTS
 
@@ -110,7 +79,7 @@ def create_model(model: schema.Model) -> schema.Model:
             False,
         )
         model.openai_compat = openai_compat
-    if model.url and not is_url_accessible(model.url)[0]:
+    if check_url and model.url and not is_url_accessible(model.url)[0]:
         model.enabled = False
 
     model_objects.append(model)
@@ -118,120 +87,7 @@ def create_model(model: schema.Model) -> schema.Model:
     return get_model(model_id=model.id, model_type=model.type)
 
 
-def delete_model(model_id: schema.ModelIdType) -> None:
+def delete_model(model_id: ModelIdType) -> None:
     """Remove model from model objects"""
     model_objects = bootstrap.MODEL_OBJECTS
     bootstrap.MODEL_OBJECTS = [model for model in model_objects if model.id != model_id]
-
-
-def get_key_value(
-    model_objects: list[schema.ModelAccess],
-    model_id: schema.ModelIdType,
-    model_key: str,
-) -> str:
-    """Return a models key value of its configuration"""
-    for model in model_objects:
-        if model.id == model_id:
-            return getattr(model, model_key, None)
-    return None
-
-
-def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giskard: bool = False) -> BaseChatModel:
-    """Retrieve model configuration"""
-    logger.debug("Model Config: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
-    model_objects = bootstrap.MODEL_OBJECTS
-
-    model_id = model_config["model"]
-    model_api = get_key_value(model_objects, model_id, "api")
-    model_api_key = get_key_value(model_objects, model_id, "api_key")
-    model_url = get_key_value(model_objects, model_id, "url")
-
-    # Determine if configuring an embedding model
-    try:
-        embedding = model_config["enabled"]
-    except (AttributeError, KeyError):
-        embedding = False
-
-    # schema.Model Classes
-    model_classes = {}
-    if not embedding:
-        logger.debug("Configuring LL Model")
-        ll_common_params = {}
-        for key in [
-            "temperature",
-            "top_p",
-            "frequency_penalty",
-            "presence_penalty",
-            "max_completion_tokens",
-            "streaming",
-        ]:
-            try:
-                logger.debug("--> Setting: %s; was sent %s", key, model_config[key])
-                ll_common_params[key] = model_config[key] or get_key_value(model_objects, model_id, key)
-            except KeyError:
-                # Mainly for embeddings
-                continue
-        logger.debug("LL Model Parameters: %s", ll_common_params)
-        model_classes = {
-            "OpenAI": lambda: ChatOpenAI(model=model_id, api_key=model_api_key, **ll_common_params),
-            "CompatOpenAI": lambda: ChatOpenAI(
-                model=model_id, base_url=model_url, api_key=model_api_key or "api_compat", **ll_common_params
-            ),
-            "Cohere": lambda: ChatCohere(model=model_id, cohere_api_key=model_api_key, **ll_common_params),
-            "ChatOllama": lambda: ChatOllama(
-                model=model_id,
-                base_url=model_url,
-                **ll_common_params,
-                num_predict=ll_common_params["max_completion_tokens"],
-            ),
-            "Perplexity": lambda: ChatOpenAI(
-                model=model_id, base_url=model_url, api_key=model_api_key, **ll_common_params
-            ),
-            "ChatOCIGenAI": lambda oci_cfg=oci_config: ChatOCIGenAI(
-                model_id=model_id,
-                client=oci.init_genai_client(oci_cfg),
-                compartment_id=oci_cfg.compartment_id,
-                model_kwargs={
-                    (k if k != "max_completion_tokens" else "max_tokens"): v
-                    for k, v in ll_common_params.items()
-                    if k not in {"streaming"}
-                },
-            ),
-        }
-    if embedding:
-        logger.debug("Configuring Embed Model")
-        model_classes = {
-            "OpenAIEmbeddings": lambda: OpenAIEmbeddings(model=model_id, api_key=model_api_key),
-            "CompatOpenAIEmbeddings": lambda: OpenAIEmbeddings(
-                model=model_id,
-                base_url=model_url,
-                api_key=model_api_key or "api_compat",
-                check_embedding_ctx_length=False,
-            ),
-            "CohereEmbeddings": lambda: CohereEmbeddings(model=model_id, cohere_api_key=model_api_key),
-            "OllamaEmbeddings": lambda: OllamaEmbeddings(model=model_id, base_url=model_url),
-            "HuggingFaceEndpointEmbeddings": lambda: HuggingFaceEndpointEmbeddings(model=model_url),
-            "OCIGenAIEmbeddings": lambda oci_cfg=oci_config: OCIGenAIEmbeddings(
-                model_id=model_id,
-                client=oci.init_genai_client(oci_cfg),
-                compartment=oci_cfg.compartment,
-            ),
-        }
-
-    try:
-        if giskard:
-            logger.debug("Creating Giskard Client for %s in %s", model_api, model_classes)
-            giskard_key = model_api_key or "giskard"
-            if (giskard_key=="giskard" and model_api=='CompatOpenAI'):
-                _client = OpenAI(api_key=giskard_key, base_url=f"{model_url}")
-            else:
-                _client = OpenAI(api_key=giskard_key, base_url=f"{model_url}/v1")
-            client = OpenAIClient(model=model_id, client=_client)
-        else:
-            logger.debug("Searching for %s in %s", model_api, model_classes)
-            client = model_classes[model_api]()
-            logger.debug("Model Client: %s", client)
-        return client
-    except (UnboundLocalError, KeyError):
-        logger.error("Unable to find client; expect trouble!")
-        return None
