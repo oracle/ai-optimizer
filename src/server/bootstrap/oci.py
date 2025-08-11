@@ -91,9 +91,7 @@ def main() -> list[OracleCloudSettings]:
                     "genai_compartment_id": override(
                         profile, "genai_compartment_id", "OCI_GENAI_COMPARTMENT_ID", env, overrides, None
                     ),
-                    "genai_region": override(
-                        profile, "genai_region", "OCI_GENAI_REGION", env, overrides, None
-                    ),
+                    "genai_region": override(profile, "genai_region", "OCI_GENAI_REGION", env, overrides, None),
                     "log_requests": profile.get("log_requests", False),
                     "additional_user_agent": profile.get("additional_user_agent", ""),
                     "pass_phrase": profile.get("pass_phrase"),
@@ -114,8 +112,8 @@ def main() -> list[OracleCloudSettings]:
         if oci_config.auth_profile == oci.config.DEFAULT_PROFILE:
             try:
                 oci_config.namespace = util_oci.get_namespace(oci_config)
-            except util_oci.OciException:
-                logger.warning("Failed to get namespace for DEFAULT OCI profile")
+            except util_oci.OciException as ex:
+                logger.warning("Failed to get namespace for DEFAULT OCI profile: %s", str(ex))
                 continue
 
     logger.debug("*** Bootstrapping OCI - End")

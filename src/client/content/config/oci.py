@@ -42,13 +42,15 @@ def get_genai_models() -> list[dict]:
     genai_models = api_call.get(endpoint=endpoint)
     return genai_models
 
+
 def create_genai_models() -> list[dict]:
     """Create OCI GenAI Models"""
     endpoint = f"v1/oci/genai/{state.client_settings['oci']['auth_profile']}"
     genai_models = api_call.post(endpoint=endpoint)
     return genai_models
 
-def patch_oci(auth_profile: str, supplied: dict, namespace: str) -> bool:
+
+def patch_oci(auth_profile: str, supplied: dict, namespace: str, toast: bool = True) -> bool:
     """Update OCI"""
     rerun = False
     # Check if the OIC configuration is changed, or no namespace
@@ -61,17 +63,15 @@ def patch_oci(auth_profile: str, supplied: dict, namespace: str) -> bool:
                 supplied["authentication"] = "security_token"
 
             with st.spinner(text="Updating OCI Profile...", show_time=True):
-                _ = api_call.patch(
-                    endpoint=f"v1/oci/{auth_profile}",
-                    payload={"json": supplied},
-                )
+                _ = api_call.patch(endpoint=f"v1/oci/{auth_profile}", payload={"json": supplied}, toast=toast)
             logger.info("OCI Profile updated: %s", auth_profile)
         except api_call.ApiError as ex:
             logger.error("OCI Update failed: %s", ex)
             state.oci_error = ex
         st_common.clear_state_key("oci_configs")
     else:
-        st.toast("No Changes Detected.", icon="ℹ️")
+        if toast:
+            st.toast("No Changes Detected.", icon="ℹ️")
 
     return rerun
 
@@ -179,7 +179,7 @@ def main() -> None:
                 st.error("OCI GenAI Compartment OCID is required.", icon="🛑")
                 st.stop()
             with st.spinner("Looking for OCI GenAI Models... please be patient.", show_time=True):
-                patch_oci(selected_oci_auth_profile, supplied, namespace)
+                patch_oci(selected_oci_auth_profile, supplied, namespace, toast=False)
                 state.genai_models = get_genai_models()
         if state.genai_models:
             regions = list({item["region"] for item in state.genai_models if "region" in item})
@@ -208,10 +208,12 @@ def main() -> None:
             df = pd.DataFrame(table_data)
             st.dataframe(df, hide_index=True)
             if st.button("Enable Region Models", key="enable_oci_region_models", type="primary"):
-                 with st.spinner("Enabling OCI GenAI Models... please be patient.", show_time=True):
-                    patch_oci(selected_oci_auth_profile, supplied, namespace)
+                with st.spinner("Enabling OCI GenAI Models... please be patient.", show_time=True):
+                    patch_oci(selected_oci_auth_profile, supplied, namespace, toast=False)
                     _ = create_genai_models()
                     st_common.clear_state_key("model_configs")
+                st.success("Oracle GenAI models - Enabled.", icon="✅")
+
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
     main()

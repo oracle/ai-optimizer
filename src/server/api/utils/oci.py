@@ -103,12 +103,12 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
         raise OciException(status_code=400, detail="Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:
         raise OciException(status_code=401, detail="AuthN Error") from ex
-    except oci.exceptions.RequestException as ex:
-        raise OciException(status_code=503, detail="No Network Access") from ex
     except FileNotFoundError as ex:
         raise OciException(status_code=400, detail="Invalid Key Path") from ex
     except UnboundLocalError as ex:
         raise OciException(status_code=500, detail="No Configuration") from ex
+    except oci.exceptions.RequestException as ex:
+        raise OciException(status_code=503, detail=ex) from ex
     except Exception as ex:
         raise OciException(status_code=500, detail=str(ex)) from ex
 
@@ -169,20 +169,13 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
             # Identify all display_names that have been deprecated
             excluded_display_names = set()
             for model in response.data.items:
-                if (
-                    model.time_deprecated
-                    or model.time_dedicated_retired
-                    or model.time_on_demand_retired
-                ):
+                if model.time_deprecated or model.time_dedicated_retired or model.time_on_demand_retired:
                     excluded_display_names.add(model.display_name)
-                    
+
             # Build our list of models
             for model in response.data.items:
                 # note that langchain_community.llms.oci_generative_ai only supports meta/cohere models
-                if (
-                    model.display_name not in excluded_display_names
-                    and model.vendor in ["meta", "cohere"]
-                ):
+                if model.display_name not in excluded_display_names and model.vendor in ["meta", "cohere"]:
                     genai_models.append(
                         {
                             "region": region["region_name"],
@@ -295,7 +288,7 @@ def get_object(directory: str, object_name: str, bucket_name: str, config: Oracl
     return file_path
 
 
-def create_genai_models(config: OracleCloudSettings):
+def create_genai_models(config: OracleCloudSettings) -> list[Model]:
     """Create and enable all GenAI models in the configured region"""
     region_models = get_genai_models(config, regional=True)
     if region_models:
@@ -305,6 +298,7 @@ def create_genai_models(config: OracleCloudSettings):
             if any(x in model.api for x in ("ChatOCIGenAI", "OCIGenAIEmbeddings")):
                 core_models.delete_model(model.id)
 
+    genai_models = []
     for model in region_models:
         model_dict = {}
         if "CHAT" in model["capabilities"]:
@@ -321,13 +315,13 @@ def create_genai_models(config: OracleCloudSettings):
         model_dict["id"] = model["model_name"]
         model_dict["enabled"] = True
         model_dict["url"] = f"https://inference.generativeai.{config.genai_region}.oci.oraclecloud.com"
-        if model["vendor"] == "cohere":
-            model_dict["openai_compat"] = False
+        # if model["vendor"] == "cohere":
+        model_dict["openai_compat"] = False
         # Create the Model
         try:
             new_model = Model(**model_dict)
-            core_models.create_model(new_model)
+            genai_models.append(core_models.create_model(new_model, check_url=False))
         except core_models.ExistsModelError:
             logger.info("Model: %s already configured", new_model.id)
 
-    return []
+    return genai_models

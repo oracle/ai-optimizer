@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, pplx, huggingface, genai, giskard
+# spell-checker:ignore ollama pplx huggingface genai giskard litellm
 
 from typing import Optional, Union
 
@@ -97,7 +97,7 @@ def update_model(model_id: schema.ModelIdType, payload: schema.Model) -> schema.
     return model_upd
 
 
-def create_model(model: schema.Model) -> schema.Model:
+def create_model(model: schema.Model, check_url: bool = True) -> schema.Model:
     """Create a new Model definition"""
     model_objects = bootstrap.MODEL_OBJECTS
 
@@ -110,7 +110,7 @@ def create_model(model: schema.Model) -> schema.Model:
             False,
         )
         model.openai_compat = openai_compat
-    if model.url and not is_url_accessible(model.url)[0]:
+    if check_url and model.url and not is_url_accessible(model.url)[0]:
         model.enabled = False
 
     model_objects.append(model)
