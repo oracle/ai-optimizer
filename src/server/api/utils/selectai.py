@@ -6,48 +6,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from typing import Union
 import oracledb
+
+import server.api.core.databases as core_databases
+
 from common.schema import SelectAIProfileType, DatabaseSelectAIObjects
 import common.logging_config as logging_config
-import server.api.utils.databases as databases
-
 
 logger = logging_config.logging.getLogger("api.utils.selectai")
-
-
-def enabled(conn: oracledb.Connection) -> bool:
-    """Determine if SelectAI can be used"""
-    logger.debug("Checking %s for SelectAI", conn)
-    is_enabled = False
-    sql = """
-          SELECT COUNT(*)
-            FROM ALL_TAB_PRIVS
-           WHERE TYPE = 'PACKAGE'
-             AND PRIVILEGE = 'EXECUTE'
-             AND GRANTEE = USER
-             AND TABLE_NAME IN ('DBMS_CLOUD','DBMS_CLOUD_AI','DBMS_CLOUD_PIPELINE')
-          """
-    result = databases.execute_sql(conn, sql)
-    if result[0][0] == 3:
-        is_enabled = True
-    logger.debug("SelectAI enabled (results: %s): %s", result[0][0], enabled)
-
-    return is_enabled
-
-
-def get_profiles(conn: oracledb.Connection) -> SelectAIProfileType:
-    """Retrieve SelectAI Profiles"""
-    logger.info("Looking for SelectAI Profiles")
-    selectai_profiles = []
-    sql = """
-            SELECT  profile_name
-            FROM USER_CLOUD_AI_PROFILES
-          """
-    results = databases.execute_sql(conn, sql)
-    if results:
-        selectai_profiles = [row[0] for row in results]
-    logger.debug("Found SelectAI Profiles: %s", selectai_profiles)
-
-    return selectai_profiles
 
 
 def set_profile(
@@ -74,7 +39,7 @@ def set_profile(
                 );
             END;
           """
-    _ = databases.execute_sql(conn, sql, binds)
+    _ = core_databases.execute_sql(conn, sql, binds)
 
 
 def get_objects(conn: oracledb.Connection, profile_name: SelectAIProfileType) -> DatabaseSelectAIObjects:
@@ -102,7 +67,7 @@ def get_objects(conn: oracledb.Connection, profile_name: SelectAIProfileType) ->
                 'RMAN$CATALOG','ADMIN','ODI_REPO_USER','C##CLOUD$SERVICE')
             ORDER BY owner, table_name
           """
-    results = databases.execute_sql(conn, sql, binds)
+    results = core_databases.execute_sql(conn, sql, binds)
     for owner, table_name, object_enabled in results:
         selectai_objects.append(DatabaseSelectAIObjects(owner=owner, name=table_name, enabled=object_enabled))
     logger.debug("Found SelectAI Objects: %s", selectai_objects)

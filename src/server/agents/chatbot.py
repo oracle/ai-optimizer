@@ -23,7 +23,7 @@ from langgraph.graph import MessagesState, StateGraph, START, END
 
 from pydantic import BaseModel, Field
 
-from server.api.utils.databases import execute_sql
+from server.api.core.databases import execute_sql
 from common.schema import ChatResponse, ChatUsage, ChatChoices, ChatMessage
 from common import logging_config
 

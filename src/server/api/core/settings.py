@@ -8,13 +8,13 @@ import copy
 import json
 from server.api.core import bootstrap
 
-import common.schema as schema
+from common.schema import Settings, Configuration, ClientIdType
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.core.settings")
 
 
-def create_client_settings(client: schema.ClientIdType) -> schema.Settings:
+def create_client_settings(client: ClientIdType) -> Settings:
     """Create a new client"""
     logger.debug("Creating client (if non-existent): %s", client)
     settings_objects = bootstrap.SETTINGS_OBJECTS
@@ -23,14 +23,14 @@ def create_client_settings(client: schema.ClientIdType) -> schema.Settings:
 
     default_settings = next((settings for settings in settings_objects if settings.client == "default"), None)
     # Copy the default settings
-    client_settings = schema.Settings(**default_settings.model_dump())
+    client_settings = Settings(**default_settings.model_dump())
     client_settings.client = client
     settings_objects.append(client_settings)
 
     return client_settings
 
 
-def get_client_settings(client: schema.ClientIdType) -> schema.Settings:
+def get_client_settings(client: ClientIdType) -> Settings:
     """Return client settings"""
     settings_objects = bootstrap.SETTINGS_OBJECTS
     client_settings = next((settings for settings in settings_objects if settings.client == client), None)
@@ -40,7 +40,7 @@ def get_client_settings(client: schema.ClientIdType) -> schema.Settings:
     return client_settings
 
 
-def get_server_config() -> schema.Configuration:
+def get_server_config() -> Configuration:
     """Return server configuration"""
     database_objects = bootstrap.DATABASE_OBJECTS
     database_configs = [db for db in database_objects]
@@ -68,7 +68,7 @@ def get_server_config() -> schema.Configuration:
     return full_config
 
 
-def update_client_settings(payload: schema.Settings, client: schema.ClientIdType) -> schema.Settings:
+def update_client_settings(payload: Settings, client: ClientIdType) -> Settings:
     """Update a single client settings"""
     settings_objects = bootstrap.SETTINGS_OBJECTS
 
@@ -83,7 +83,7 @@ def update_client_settings(payload: schema.Settings, client: schema.ClientIdType
 
 def update_server_config(config_data: dict) -> None:
     """Update server configuration"""
-    config = schema.Configuration(**config_data)
+    config = Configuration(**config_data)
 
     if "database_configs" in config_data:
         bootstrap.DATABASE_OBJECTS = config.database_configs or []
@@ -103,7 +103,7 @@ def update_server_config(config_data: dict) -> None:
         mcp.MCP_MODELS = config.mcp_configs or []  # Store as list like other configs
 
 
-def load_config_from_json_data(config_data: dict, client: schema.ClientIdType = None) -> None:
+def load_config_from_json_data(config_data: dict, client: ClientIdType = None) -> None:
     """Shared logic for loading settings from JSON data."""
 
     # Load server config parts into state
@@ -114,7 +114,7 @@ def load_config_from_json_data(config_data: dict, client: schema.ClientIdType = 
     if not client_settings_data:
         raise KeyError("Missing client_settings in config file")
 
-    client_settings = schema.Settings(**client_settings_data)
+    client_settings = Settings(**client_settings_data)
 
     # Determine clients to update
     if client:
@@ -127,7 +127,7 @@ def load_config_from_json_data(config_data: dict, client: schema.ClientIdType = 
         update_client_settings(default_settings, "default")
 
 
-def read_config_from_json_file() -> schema.Configuration:
+def read_config_from_json_file() -> Configuration:
     """Load configuration file if it exists"""
     config = os.getenv("CONFIG_FILE")
 
@@ -140,6 +140,6 @@ def read_config_from_json_file() -> schema.Configuration:
     with open(config, "r", encoding="utf-8") as f:
         config_data = json.load(f)
 
-    full_configuration = schema.Configuration(**config_data)
+    full_configuration = Configuration(**config_data)
 
     return full_configuration

@@ -30,6 +30,19 @@ logger = logging_config.logging.getLogger("client.content.config.models")
 ###################################
 # Functions
 ###################################
+def clear_client_models(model_id: str) -> None:
+    """Clear selected models from client settings if modified"""
+    model_keys = [
+        ("ll_model", "model"),
+        ("testbed", "judge_model"),
+        ("testbed", "qa_ll_model"),
+        ("testbed", "qa_embed_model"),
+    ]
+    for section, key in model_keys:
+        if state.client_settings[section][key] == model_id:
+            state.client_settings[section][key] = None
+
+
 def get_models(force: bool = False) -> None:
     """Get Models from API Server"""
     if force or "model_configs" not in state or not state.model_configs:
@@ -58,6 +71,9 @@ def patch_model(model: dict) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
     _ = api_call.patch(endpoint=f"v1/models/{model['id']}", payload={"json": model})
     st.success(f"Model updated: {model['id']}")
+    # If updated model is the set model and not enabled: unset the user settings
+    if not model["enabled"]:
+        clear_client_models(model["id"])
 
 
 def delete_model(model_id: str) -> None:
@@ -66,8 +82,7 @@ def delete_model(model_id: str) -> None:
     st.success(f"Model deleted: {model_id}")
     sleep(1)
     # If deleted model is the set model; unset the user settings
-    if state.client_settings["ll_model"]["model"] == model_id:
-        state.client_settings["ll_model"]["model"] = None
+    clear_client_models(model_id)
 
 
 @st.dialog("Model Configuration", width="large")
@@ -93,6 +108,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
         )
         api_values = get_model_apis(model_type)
         api_index = next((i for i, item in enumerate(api_values) if item == model["api"]), None)
+        disable_for_oci = model["api"] in ["ChatOCIGenAI", "OCIGenAIEmbeddings"]
         model["api"] = st.selectbox(
             "API (Required):",
             help=help_text.help_dict["model_api"],
@@ -107,6 +123,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             help=help_text.help_dict["model_api_url"],
             key="add_model_api_url",
             value=model.get("url", ""),
+            disabled=disable_for_oci
         )
         model["api_key"] = st.text_input(
             "API Key:",
@@ -114,6 +131,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             key="add_model_api_key",
             type="password",
             value=model.get("api_key", ""),
+            disabled=disable_for_oci
         )
         if model_type == "ll":
             model["context_length"] = st.number_input(
@@ -186,7 +204,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
 
 def render_model_rows(model_type):
     """Render rows of the models"""
-    data_col_widths = [0.05, 0.25, 0.2, 0.28, 0.12]
+    data_col_widths = [0.07, 0.23, 0.2, 0.28, 0.12]
     table_col_format = st.columns(data_col_widths, vertical_alignment="center")
     col1, col2, col3, col4, col5 = table_col_format
     col1.markdown("&#x200B;", help="Active", unsafe_allow_html=True)
@@ -198,7 +216,7 @@ def render_model_rows(model_type):
         model_id = model["id"]
         col1.text_input(
             "Enabled",
-            value="✅" if model["enabled"] else "⚪",
+            value=st_common.bool_to_emoji(model["enabled"]),
             key=f"{model_type}_{model_id}_enabled",
             label_visibility="collapsed",
             disabled=True,

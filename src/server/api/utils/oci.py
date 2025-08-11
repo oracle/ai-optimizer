@@ -2,24 +2,20 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore genai, ocids
+# spell-checker:ignore genai ocids ocid
 
 import os
 from typing import Union
+import urllib3.exceptions
 
 import oci
+
+from server.api.core.oci import OciException
 
 from common.schema import OracleCloudSettings
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.utils.oci")
-
-
-class OciException(Exception):
-    """Custom OCI Exception"""
-
-    def __init__(self, message):
-        super().__init__(message)
 
 
 def init_client(
@@ -43,33 +39,40 @@ def init_client(
     }
 
     # OCI GenAI
-    if client_type == oci.generative_ai_inference.GenerativeAiInferenceClient and config.service_endpoint:
-        client_kwargs["service_endpoint"] = config.service_endpoint
+    if (
+        client_type == oci.generative_ai_inference.GenerativeAiInferenceClient
+        and config.genai_compartment_id
+        and config.genai_region
+    ):
+        client_kwargs["service_endpoint"] = f"https://inference.generativeai.{config.genai_region}.oci.oraclecloud.com"
 
     # Initialize Client (Workload Identity, Token and API)
     config_json = config.model_dump(exclude_none=False)
     client = None
-    if config_json["authentication"] == "instance_principal":
-        logger.info("OCI Authentication with Instance Principal")
-        instance_signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-        client = client_type(config={}, signer=instance_signer, **client_kwargs)
-        if not config.tenancy:
-            config.tenancy = instance_signer.tenancy_id
-    elif config_json["authentication"] == "oke_workload_identity":
-        logger.info("OCI Authentication with Workload Identity")
-        oke_workload_signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
-        client = client_type(config={"region": config_json["region"]}, signer=oke_workload_signer)
-    elif config_json["authentication"] == "security_token" and config_json["security_token_file"]:
-        logger.info("OCI Authentication with Security Token")
-        token = None
-        with open(config_json["security_token_file"], "r", encoding="utf-8") as f:
-            token = f.read()
-        private_key = oci.signer.load_private_key_from_file(config_json["key_file"])
-        signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
-        client = client_type(config={"region": config_json["region"]}, signer=signer, **client_kwargs)
-    else:
-        logger.info("OCI Authentication as Standard")
-        client = client_type(config_json, **client_kwargs)
+    try:
+        if config_json["authentication"] == "instance_principal":
+            logger.info("OCI Authentication with Instance Principal")
+            instance_signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            client = client_type(config={}, signer=instance_signer, **client_kwargs)
+            if not config.tenancy:
+                config.tenancy = instance_signer.tenancy_id
+        elif config_json["authentication"] == "oke_workload_identity":
+            logger.info("OCI Authentication with Workload Identity")
+            oke_workload_signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
+            client = client_type(config={"region": config_json["region"]}, signer=oke_workload_signer)
+        elif config_json["authentication"] == "security_token" and config_json["security_token_file"]:
+            logger.info("OCI Authentication with Security Token")
+            token = None
+            with open(config_json["security_token_file"], "r", encoding="utf-8") as f:
+                token = f.read()
+            private_key = oci.signer.load_private_key_from_file(config_json["key_file"])
+            signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
+            client = client_type(config={"region": config_json["region"]}, signer=signer, **client_kwargs)
+        else:
+            logger.info("OCI Authentication as Standard")
+            client = client_type(config_json, **client_kwargs)
+    except oci.exceptions.InvalidConfig as ex:
+        raise OciException(status_code=400, detail=f"Invalid Config: {str(ex)}") from ex
 
     return client
 
@@ -89,19 +92,98 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
         namespace = client.get_namespace().data
         logger.info("OCI: Namespace = %s", namespace)
     except oci.exceptions.InvalidConfig as ex:
-        raise OciException("Invalid Config") from ex
+        raise OciException(status_code=400, detail=f"Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:
-        raise OciException("AuthN Error") from ex
-    except oci.exceptions.RequestException as ex:
-        raise OciException("No Network Access") from ex
+        raise OciException(status_code=401, detail="AuthN Error") from ex
     except FileNotFoundError as ex:
-        raise OciException("Invalid Key Path") from ex
+        raise OciException(status_code=400, detail="Invalid Key Path") from ex
     except UnboundLocalError as ex:
-        raise OciException("No Configuration") from ex
+        raise OciException(status_code=500, detail="No Configuration") from ex
+    except oci.exceptions.RequestException as ex:
+        raise OciException(status_code=503, detail=ex) from ex
     except Exception as ex:
-        raise OciException(ex) from ex
+        raise OciException(status_code=500, detail=str(ex)) from ex
 
     return namespace
+
+
+def get_regions(config: OracleCloudSettings = None) -> list[dict]:
+    """Retrieve a list of subscribed regions"""
+    client_type = oci.identity.IdentityClient
+    client = init_client(client_type, config)
+
+    tenancy_id = config.tenancy
+    response = client.list_region_subscriptions(tenancy_id).data
+    return [
+        {
+            "is_home_region": region.is_home_region,
+            "region_key": region.region_key,
+            "region_name": region.region_name,
+            "status": region.status,
+        }
+        for region in response
+    ]
+
+
+def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> list:
+    """Get a list of GenAI models in a regions compartment"""
+    if not hasattr(config, "genai_compartment_id") or not config.genai_compartment_id:
+        raise OciException(status_code=400, detail="Missing genai_compartment_id")
+
+    genai_models = []
+    if regional:
+        # Limit models to configured region
+        if not hasattr(config, "genai_region") or not config.genai_region:
+            raise OciException(status_code=400, detail="Missing genai_region")
+        regions = [{"region_name": config.genai_region}]
+    else:
+        # Limit models to subscribed regions
+        regions = get_regions(config)
+
+    for region in regions:
+        region_config = dict(config)
+        region_config["region"] = region["region_name"]
+        client = oci.generative_ai.GenerativeAiClient(region_config)
+        logger.info(
+            "Checking Region: %s; Compartment: %s for GenAI services",
+            region["region_name"],
+            config.genai_compartment_id,
+        )
+        try:
+            response = client.list_models(
+                compartment_id=config.genai_compartment_id,
+                capability=["TEXT_EMBEDDINGS", "CHAT"],
+                lifecycle_state="ACTIVE",
+                sort_order="ASC",
+                sort_by="displayName",
+                retry_strategy=oci.retry.NoneRetryStrategy(),
+            )
+            # Identify all display_names that have been deprecated
+            excluded_display_names = set()
+            for model in response.data.items:
+                if model.time_deprecated or model.time_dedicated_retired or model.time_on_demand_retired:
+                    excluded_display_names.add(model.display_name)
+
+            # Build our list of models
+            for model in response.data.items:
+                # note that langchain_community.llms.oci_generative_ai only supports meta/cohere models
+                if model.display_name not in excluded_display_names and model.vendor in ["meta", "cohere"]:
+                    genai_models.append(
+                        {
+                            "region": region["region_name"],
+                            "compartment_id": config.genai_compartment_id,
+                            "model_name": model.display_name,
+                            "capabilities": model.capabilities,
+                            "vendor": model.vendor,
+                            "id": model.id,
+                        }
+                    )
+        except oci.exceptions.ServiceError:
+            logger.info("Region: %s has no GenAI services", region["region_name"])
+        except (oci.exceptions.RequestException, urllib3.exceptions.MaxRetryError):
+            logger.error("Timeout: Error querying GenAI services in %s", region["region_name"])
+
+    return genai_models
 
 
 def get_compartments(config: OracleCloudSettings = None) -> set:
@@ -155,7 +237,7 @@ def get_buckets(compartment_id: str, config: OracleCloudSettings = None) -> list
                 bucket_names.append(bucket.name)
     except oci.exceptions.ServiceError as ex:
         # No Access to Buckets in Compartment
-        raise OciException("AuthN Error") from ex
+        raise OciException(status_code=401, detail="AuthN Error") from ex
 
     return bucket_names
 

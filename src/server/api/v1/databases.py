@@ -6,7 +6,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from fastapi import APIRouter, HTTPException
 
-import server.api.utils.databases as util_databases
 import server.api.core.databases as core_databases
 
 import common.schema as schema
@@ -71,8 +70,8 @@ async def databases_update(
         payload.config_dir = db.config_dir
         payload.wallet_location = db.wallet_location
         logger.debug("Testing Payload: %s", payload)
-        db_conn = util_databases.connect(payload)
-    except util_databases.DbException as ex:
+        db_conn = core_databases.connect(payload)
+    except core_databases.DbException as ex:
         db.connected = False
         raise HTTPException(status_code=ex.status_code, detail=f"Database: {name} {ex.detail}.") from ex
 
@@ -85,7 +84,7 @@ async def databases_update(
     database_objects = core_databases.get_databases(validate=False)
     for other_db in database_objects:
         if other_db.name != name and other_db.connection:
-            other_db.set_connection(util_databases.disconnect(db.connection))
+            other_db.set_connection(core_databases.disconnect(db.connection))
             other_db.connected = False
 
     return db

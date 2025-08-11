@@ -58,6 +58,9 @@ def enabled_models_lookup(model_type: str) -> dict[str, dict[str, Any]]:
 #############################################################################
 # Common Helpers
 #############################################################################
+def bool_to_emoji(value):
+    "Return an Emoji for Bools"
+    return "✅" if value else "⚪"
 def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
     """Upload Single file from Streamlit to the Server"""
     # If it's a single file, convert it to a list for consistent processing

@@ -8,7 +8,7 @@ It includes a form to input and test OCI API Access.
 # spell-checker:ignore streamlit, ocid, selectbox, genai, oraclecloud
 
 import inspect
-import re
+import pandas as pd
 
 import streamlit as st
 from streamlit import session_state as state
@@ -36,7 +36,21 @@ def get_oci(force: bool = False) -> None:
             state.oci_configs = {}
 
 
-def patch_oci(auth_profile: str, supplied: dict, namespace: str) -> bool:
+def get_genai_models() -> list[dict]:
+    """Get Subscribed OCI Regions"""
+    endpoint = f"v1/oci/genai/{state.client_settings['oci']['auth_profile']}"
+    genai_models = api_call.get(endpoint=endpoint)
+    return genai_models
+
+
+def create_genai_models() -> list[dict]:
+    """Create OCI GenAI Models"""
+    endpoint = f"v1/oci/genai/{state.client_settings['oci']['auth_profile']}"
+    genai_models = api_call.post(endpoint=endpoint)
+    return genai_models
+
+
+def patch_oci(auth_profile: str, supplied: dict, namespace: str, toast: bool = True) -> bool:
     """Update OCI"""
     rerun = False
     # Check if the OIC configuration is changed, or no namespace
@@ -49,19 +63,15 @@ def patch_oci(auth_profile: str, supplied: dict, namespace: str) -> bool:
                 supplied["authentication"] = "security_token"
 
             with st.spinner(text="Updating OCI Profile...", show_time=True):
-                _ = api_call.patch(
-                    endpoint=f"v1/oci/{auth_profile}",
-                    payload={"json": supplied},
-                )
+                _ = api_call.patch(endpoint=f"v1/oci/{auth_profile}", payload={"json": supplied}, toast=toast)
             logger.info("OCI Profile updated: %s", auth_profile)
         except api_call.ApiError as ex:
             logger.error("OCI Update failed: %s", ex)
             state.oci_error = ex
         st_common.clear_state_key("oci_configs")
-        if supplied.get("service_endpoint"):
-            st_common.clear_state_key("model_configs")
     else:
-        st.toast("No Changes Detected.", icon="ℹ️")
+        if toast:
+            st.toast("No Changes Detected.", icon="ℹ️")
 
     return rerun
 
@@ -155,31 +165,54 @@ def main() -> None:
         OCI Authentication must be configured above.
         """)
     with st.container(border=True):
-        supplied["compartment_id"] = st.text_input(
+        if "genai_models" not in state:
+            state.genai_models = []
+        supplied["genai_compartment_id"] = st.text_input(
             "OCI GenAI Compartment OCID:",
-            value=oci_lookup[selected_oci_auth_profile]["compartment_id"],
+            value=oci_lookup[selected_oci_auth_profile]["genai_compartment_id"],
             placeholder="Compartment OCID for GenAI Services",
             key="oci_genai_compartment_id",
             disabled=not namespace,
         )
-        match = re.search(
-            r"\.([a-zA-Z\-0-9]+)\.oci\.oraclecloud\.com", oci_lookup[selected_oci_auth_profile]["service_endpoint"]
-        )
-        supplied["service_endpoint"] = match.group(1) if match else None
-        supplied["service_endpoint"] = st.text_input(
-            "OCI GenAI Region:",
-            value=oci_lookup[selected_oci_auth_profile]["service_endpoint"],
-            help="Region of GenAI Service",
-            key="oci_genai_region",
-            disabled=not namespace,
-        )
-
-        if st.button("Save OCI GenAI", key="save_oci_genai", disabled=not namespace):
-            if not (supplied["compartment_id"] and supplied["service_endpoint"]):
-                st.error("All fields are required.", icon="🛑")
+        if st.button("Check for OCI GenAI Models", key="check_oci_genai", disabled=not namespace):
+            if not supplied["genai_compartment_id"]:
+                st.error("OCI GenAI Compartment OCID is required.", icon="🛑")
                 st.stop()
-            if patch_oci(selected_oci_auth_profile, supplied, namespace):
-                st.rerun()
+            with st.spinner("Looking for OCI GenAI Models... please be patient.", show_time=True):
+                patch_oci(selected_oci_auth_profile, supplied, namespace, toast=False)
+                state.genai_models = get_genai_models()
+        if state.genai_models:
+            regions = list({item["region"] for item in state.genai_models if "region" in item})
+            supplied["genai_region"] = st.selectbox(
+                "Region:",
+                regions,
+                key="selected_genai_region",
+            )
+            filtered_models = [
+                m
+                for m in state.genai_models
+                if m["region"] == supplied["genai_region"]
+                and ("CHAT" in m["capabilities"] or "TEXT_EMBEDDINGS" in m["capabilities"])
+            ]
+            table_data = []
+            for m in filtered_models:
+                table_data.append(
+                    {
+                        "Model Name": m["model_name"],
+                        "Large Language": st_common.bool_to_emoji("CHAT" in m["capabilities"]),
+                        "Embedding": st_common.bool_to_emoji("TEXT_EMBEDDINGS" in m["capabilities"]),
+                    }
+                )
+
+            # Convert to DataFrame and display
+            df = pd.DataFrame(table_data)
+            st.dataframe(df, hide_index=True)
+            if st.button("Enable Region Models", key="enable_oci_region_models", type="primary"):
+                with st.spinner("Enabling OCI GenAI Models... please be patient.", show_time=True):
+                    patch_oci(selected_oci_auth_profile, supplied, namespace, toast=False)
+                    _ = create_genai_models()
+                    st_common.clear_state_key("model_configs")
+                st.success("Oracle GenAI models - Enabled.", icon="✅")
 
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:

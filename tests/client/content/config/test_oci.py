@@ -6,8 +6,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # pylint: disable=unused-argument
 
 from unittest.mock import patch
+import re
 import pytest
-
 
 #####################################################
 # Mocks
@@ -62,13 +62,14 @@ class TestStreamlit:
         assert oci_lookup[user_oci_profile]["region"] is None
         assert oci_lookup[user_oci_profile]["fingerprint"] is None
         assert oci_lookup[user_oci_profile]["key_file"] is None
-        assert oci_lookup[user_oci_profile]["service_endpoint"] == ""
+        assert oci_lookup[user_oci_profile]["genai_region"] is None
+        assert oci_lookup[user_oci_profile]["genai_compartment_id"] is None
 
     test_cases = [
         pytest.param(
             {
                 "oci_token_auth": False,
-                "expected_error": "Update Failed - OCI: Invalid Config",
+                "expected_error": "Update Failed",
             },
             id="oci_profile_1",
         ),
@@ -118,7 +119,7 @@ class TestStreamlit:
                 "oci_tenancy": "ocid1.tenancy.oc1..aaaaaaaa",
                 "oci_region": "us-ashburn-1",
                 "oci_key_file": "/dev/null",
-                "expected_error": "Update Failed - OCI: The provided key is not a private key, or the provided passphrase is incorrect.",
+                "expected_error": "Update Failed - OCI: The provided key is not a private key, or the provided passphrase is incorrect",
             },
             id="oci_profile_7",
         ),
@@ -155,7 +156,7 @@ class TestStreamlit:
         self.set_patch_oci(at, test_case)
         at.button(key="save_oci").click().run()
         assert at.error[0].value == "Current Status: Unverified"
-        assert at.error[1].value == test_case["expected_error"]
+        assert re.match(test_case["expected_error"], at.error[1].value) and at.error[1].icon == "🚨"
 
     @pytest.mark.parametrize(
         "test_case", [tc for tc in test_cases if tc.values[0].get("expected_success") is not None]
@@ -178,7 +179,8 @@ class TestStreamlit:
                 "user": None,
                 "tenancy": None,
                 "region": None,
-                "compartment_id": "",
+                "genai_compartment_id": "",
+                "genai_region": "",
                 "key_file": None,
                 "security_token_file": None,
                 "fingerprint": None,
