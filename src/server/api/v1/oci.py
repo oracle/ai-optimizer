@@ -7,10 +7,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import JSONResponse
 
-from server.api.core import models
 import server.api.core.oci as core_oci
-from server.api.utils import embed
+import server.api.utils.embed as util_embed
 import server.api.utils.oci as util_oci
+import server.api.utils.models as util_models
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -31,7 +31,7 @@ async def oci_list() -> list[schema.OracleCloudSettings]:
     try:
         return core_oci.get_oci()
     except ValueError as ex:
-        raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}") from ex
+        raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}.") from ex
 
 
 @auth.get(
@@ -47,7 +47,7 @@ async def oci_get(
     try:
         return core_oci.get_oci(auth_profile=auth_profile)
     except ValueError as ex:
-        raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}") from ex
+        raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}.") from ex
 
 
 @auth.get(
@@ -64,7 +64,7 @@ async def oci_list_regions(
         oci_config = await oci_get(auth_profile=auth_profile)
         regions = util_oci.get_regions(oci_config)
         return regions
-    except util_oci.OciException as ex:
+    except core_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -82,7 +82,7 @@ async def oci_list_genai(
         oci_config = await oci_get(auth_profile=auth_profile)
         all_models = util_oci.get_genai_models(oci_config, regional=False)
         return all_models
-    except util_oci.OciException as ex:
+    except core_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -100,7 +100,7 @@ async def oci_list_compartments(
         oci_config = await oci_get(auth_profile=auth_profile)
         compartments = util_oci.get_compartments(oci_config)
         return compartments
-    except util_oci.OciException as ex:
+    except core_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -120,7 +120,7 @@ async def oci_list_buckets(
         oci_config = await oci_get(auth_profile=auth_profile)
         buckets = util_oci.get_buckets(compartment_obj.ocid, oci_config)
         return buckets
-    except util_oci.OciException as ex:
+    except core_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -139,7 +139,7 @@ async def oci_list_bucket_objects(
         oci_config = await oci_get(auth_profile=auth_profile)
         objects = util_oci.get_bucket_objects(bucket_name, oci_config)
         return objects
-    except util_oci.OciException as ex:
+    except core_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -163,7 +163,7 @@ async def oci_profile_update(
         for key, value in payload.model_dump().items():
             if value not in ("", None):
                 setattr(oci_config, key, value)
-    except util_oci.OciException as ex:
+    except core_oci.OciException as ex:
         oci_config.namespace = None
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
     except AttributeError as ex:
@@ -192,7 +192,7 @@ async def oci_download_objects(
     )
     oci_config = await oci_get(auth_profile=auth_profile)
     # Files should be placed in the embedding folder
-    temp_directory = embed.get_temp_directory(client, "embedding")
+    temp_directory = util_embed.get_temp_directory(client, "embedding")
     for object_name in request:
         util_oci.get_object(temp_directory, object_name, bucket_name, oci_config)
 
@@ -212,7 +212,7 @@ async def oci_create_genai_models(
     logger.debug("Received oci_create_genai_models - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
-        enabled_models = util_oci.create_genai_models(oci_config)
+        enabled_models = util_models.create_genai_models(oci_config)
         return enabled_models
-    except util_oci.OciException as ex:
+    except core_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex

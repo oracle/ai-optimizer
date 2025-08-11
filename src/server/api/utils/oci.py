@@ -10,20 +10,12 @@ import urllib3.exceptions
 
 import oci
 
-import server.api.core.models as core_models
-from common.schema import OracleCloudSettings, Model
+from server.api.core.oci import OciException
+
+from common.schema import OracleCloudSettings
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.utils.oci")
-
-
-class OciException(Exception):
-    """Custom OCI Exceptions to be passed to HTTPException"""
-
-    def __init__(self, status_code: int, detail: str):
-        self.status_code = status_code
-        self.detail = detail
-        super().__init__(detail)
 
 
 def init_client(
@@ -100,7 +92,7 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
         namespace = client.get_namespace().data
         logger.info("OCI: Namespace = %s", namespace)
     except oci.exceptions.InvalidConfig as ex:
-        raise OciException(status_code=400, detail="Invalid Config") from ex
+        raise OciException(status_code=400, detail=f"Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:
         raise OciException(status_code=401, detail="AuthN Error") from ex
     except FileNotFoundError as ex:
@@ -286,42 +278,3 @@ def get_object(directory: str, object_name: str, bucket_name: str, config: Oracl
     logger.info("Downloaded %s to %s (%i bytes)", file_name, file_path, file_size)
 
     return file_path
-
-
-def create_genai_models(config: OracleCloudSettings) -> list[Model]:
-    """Create and enable all GenAI models in the configured region"""
-    region_models = get_genai_models(config, regional=True)
-    if region_models:
-        # Delete previously configured GenAI Models
-        all_models = core_models.get_model()
-        for model in all_models:
-            if any(x in model.api for x in ("ChatOCIGenAI", "OCIGenAIEmbeddings")):
-                core_models.delete_model(model.id)
-
-    genai_models = []
-    for model in region_models:
-        model_dict = {}
-        if "CHAT" in model["capabilities"]:
-            model_dict["type"] = "ll"
-            model_dict["api"] = "ChatOCIGenAI"
-            model_dict["context_length"] = 131072
-        elif "TEXT_EMBEDDINGS" in model["capabilities"]:
-            model_dict["type"] = "embed"
-            model_dict["api"] = "OCIGenAIEmbeddings"
-            model_dict["max_chunk_size"] = 8192
-        else:
-            continue
-
-        model_dict["id"] = model["model_name"]
-        model_dict["enabled"] = True
-        model_dict["url"] = f"https://inference.generativeai.{config.genai_region}.oci.oraclecloud.com"
-        # if model["vendor"] == "cohere":
-        model_dict["openai_compat"] = False
-        # Create the Model
-        try:
-            new_model = Model(**model_dict)
-            genai_models.append(core_models.create_model(new_model, check_url=False))
-        except core_models.ExistsModelError:
-            logger.info("Model: %s already configured", new_model.id)
-
-    return genai_models
