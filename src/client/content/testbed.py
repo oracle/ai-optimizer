@@ -81,13 +81,14 @@ def evaluation_report(eid=None, report=None) -> None:
     # Get the Report
     if eid:
         report = api_call.get(endpoint="v1/testbed/evaluation", params={"eid": eid})
-
     # Settings
     st.subheader("Evaluation Settings")
     ll_settings = pd.DataFrame(report["settings"]["ll_model"], index=[0])
-    ll_settings.drop(["streaming", "chat_history"], axis=1, inplace=True)
+    ll_settings.drop(["streaming", "chat_history", "context_length"], axis=1, inplace=True)
     ll_settings_reversed = ll_settings.iloc[:, ::-1]
     st.dataframe(ll_settings_reversed, hide_index=True)
+    if report["settings"]["testbed"]["judge_model"]:
+        st.markdown(f"**Judge Model**: {report['settings']['testbed']['judge_model']}")
     if report["settings"]["vector_search"]["enabled"]:
         st.subheader("Vector Search Settings")
         st.markdown(f"""**Database**: {report["settings"]["database"]["alias"]};
@@ -364,18 +365,29 @@ def main():
             max_value=100,
             value=2,
         )
+        if state.client_settings["testbed"].get("qa_ll_model") is None:
+            state.client_settings["testbed"]["qa_ll_model"] = available_embed_models[0]
+        selected_qa_ll_model = state.client_settings["testbed"]["qa_ll_model"]
+        qa_ll_model_idx = available_embed_models.index(selected_qa_ll_model)
         test_gen_llm = col_center.selectbox(
             "Q&A Language Model:",
             key="selected_test_gen_llm",
             options=available_ll_models,
-            index=0,
+            index=qa_ll_model_idx,
+            on_change=st_common.update_client_settings("testbed"),
             help="Don't see your model? Unfortunately it is not currently supported by the testing framework.",
         )
+
+        if state.client_settings["testbed"].get("qa_embed_model") is None:
+            state.client_settings["testbed"]["qa_embed_model"] = available_embed_models[0]
+        selected_qa_embed_model = state.client_settings["testbed"]["qa_embed_model"]
+        qa_embed_model_idx = available_embed_models.index(selected_qa_embed_model)
         test_gen_embed = col_right.selectbox(
             "Q&A Embedding Model:",
             key="selected_test_gen_embed",
             options=available_embed_models,
-            index=0,
+            index=qa_embed_model_idx,
+            on_change=st_common.update_client_settings("testbed"),
             help="Don't see your model? Unfortunately it is not currently supported by the testing framework.",
         )
         api_params = {
@@ -396,7 +408,6 @@ def main():
 
     # Load TestSets (and Evaluations if from DB)
     if col_left.button(button_text, key="load_tests", use_container_width=True, disabled=state.running):
-        placeholder = st.empty()
         with st.spinner("Processing Q&A... please be patient.", show_time=True):
             if testset_source != "Database":
                 api_params["name"] = (state.testbed["testset_name"],)
@@ -521,12 +532,17 @@ def main():
         st_common.vector_search_sidebar()
         st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
         col_left, col_center, _ = st.columns([3, 3, 4])
+        if state.client_settings["testbed"].get("judge_model") is None:
+            state.client_settings["testbed"]["judge_model"] = available_ll_models[0]
+        selected_judge = state.client_settings["testbed"]["judge_model"]
+        judge_idx = available_ll_models.index(selected_judge)
         col_left.selectbox(
             "Judge Language Model:",
-            key="selected_evaluate_judge",
+            key="selected_testbed_judge_model",
             options=available_ll_models,
-            index=0,
+            index=judge_idx,
             label_visibility="collapsed",
+            on_change=st_common.update_client_settings("testbed"),
         )
         if col_center.button(
             "Start Evaluation",
@@ -539,7 +555,7 @@ def main():
                 st_common.clear_state_key("testbed_evaluations")
                 st_common.patch_settings()
                 endpoint = "v1/testbed/evaluate"
-                api_params = {"tid": state.testbed["testset_id"], "judge": state.selected_evaluate_judge}
+                api_params = {"tid": state.testbed["testset_id"], "judge": state.selected_testbed_judge_model}
                 evaluate = api_call.post(endpoint=endpoint, params=api_params, timeout=1200)
             st.success("Evaluation Complete!", icon="✅")
 

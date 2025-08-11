@@ -30,6 +30,19 @@ logger = logging_config.logging.getLogger("client.content.config.models")
 ###################################
 # Functions
 ###################################
+def clear_client_models(model_id: str) -> None:
+    """Clear selected models from client settings if modified"""
+    model_keys = [
+        ("ll_model", "model"),
+        ("testbed", "judge_model"),
+        ("testbed", "qa_ll_model"),
+        ("testbed", "qa_embed_model"),
+    ]
+    for section, key in model_keys:
+        if state.client_settings[section][key] == model_id:
+            state.client_settings[section][key] = None
+
+
 def get_models(force: bool = False) -> None:
     """Get Models from API Server"""
     if force or "model_configs" not in state or not state.model_configs:
@@ -58,6 +71,9 @@ def patch_model(model: dict) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
     _ = api_call.patch(endpoint=f"v1/models/{model['id']}", payload={"json": model})
     st.success(f"Model updated: {model['id']}")
+    # If updated model is the set model and not enabled: unset the user settings
+    if not model["enabled"]:
+        clear_client_models(model["id"])
 
 
 def delete_model(model_id: str) -> None:
@@ -66,8 +82,7 @@ def delete_model(model_id: str) -> None:
     st.success(f"Model deleted: {model_id}")
     sleep(1)
     # If deleted model is the set model; unset the user settings
-    if state.client_settings["ll_model"]["model"] == model_id:
-        state.client_settings["ll_model"]["model"] = None
+    clear_client_models(model_id)
 
 
 @st.dialog("Model Configuration", width="large")
