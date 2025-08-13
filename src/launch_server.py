@@ -2,10 +2,11 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore fastapi laddr checkpointer langgraph litellm
+# spell-checker:ignore fastapi laddr checkpointer langgraph litellm fastmcp getpid procs
 # spell-checker:ignore noauth apiserver configfile selectai giskard ollama llms
 # pylint: disable=redefined-outer-name,wrong-import-position
 
+from contextlib import asynccontextmanager
 import os
 
 # Set OS Environment (Don't move their position to reflect on imports)
@@ -25,25 +26,25 @@ if "TNS_ADMIN" not in os.environ:
 import server.patches.litellm_patch  # pylint: disable=unused-import
 
 import argparse
-import json
+
+# import json
 import queue
 import secrets
 import socket
 import subprocess
 import threading
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated
 from pathlib import Path
 import uvicorn
-from contextlib import asynccontextmanager
+
 
 import psutil
 
-from client.mcp.client import MCPClient
+# from client.mcp.client import MCPClient
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
-from fastapi.openapi.utils import get_openapi
-from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from fastmcp import FastMCP, settings
+from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 
 # Logging
 import common.logging_config as logging_config
@@ -51,50 +52,10 @@ from common._version import __version__
 
 # Configuration
 import server.bootstrap.configfile as configfile
-from server.bootstrap import mcp as mcp_bootstrap
+# from server.bootstrap import mcp as mcp_bootstrap
 
 logger = logging_config.logging.getLogger("launch_server")
-mcp_engine: Optional[MCPClient] = None
 
-def get_mcp_engine() -> Optional[MCPClient]:
-    """Get the current MCP engine instance."""
-    global mcp_engine
-    logger.debug(f"get_mcp_engine() called, returning: {mcp_engine}")
-    # Additional debugging to check if the variable exists
-    if 'mcp_engine' in globals():
-        print(f"DEBUG: mcp_engine in globals: {globals().get('mcp_engine')}")
-    else:
-        print("DEBUG: mcp_engine not in globals")
-    # Print the module name to see which module this is
-    print(f"DEBUG: This is module: {__name__}")
-    return mcp_engine
-
-async def initialize_mcp_engine_with_model(model_name: str) -> Optional[MCPClient]:
-    """Initialize or reinitialize the MCP engine with a specific model."""
-    global mcp_engine
-    
-    # Clean up existing engine if it exists
-    if mcp_engine:
-        try:
-            await mcp_engine.cleanup()
-        except Exception as e:
-            logger.error(f"Error cleaning up existing MCP engine: {e}")
-    
-    # Initialize new engine with the specified model
-    try:
-        mcp_engine = MCPClient(client_settings={'ll_model': {'model': model_name}})
-        logger.info("MCP Client created with model %s, connecting to servers...", model_name)
-        await mcp_engine.connect_to_servers()
-        logger.info("MCP Engine initialized successfully with model %s", model_name)
-        return mcp_engine
-    except Exception as e:
-        logger.error(f"Failed to initialize MCP Engine with model {model_name}: {e}", exc_info=True)
-        mcp_engine = None
-        return None
-
-class McpToolCallRequest(BaseModel):
-    tool_name: str
-    tool_args: Dict[str, Any]
 
 ##########################################
 # Process Control
@@ -123,7 +84,7 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
         return None
 
     def start_subprocess(port: int, logfile: bool) -> subprocess.Popen:
-        """Start the uvicorn server as a subprocess."""
+        """Start the uvicorn server as a subprocess when started via the client."""
         logger.info("API server starting on port: %i", port)
         log_file = open(f"apiserver_{port}.log", "a", encoding="utf-8") if logfile else None
         stdout = stderr = log_file if logfile else subprocess.PIPE
@@ -159,7 +120,7 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
 
 
 def stop_server(pid: int) -> None:
-    """Stop the uvicorn server for FastAPI."""
+    """Stop the uvicorn server for FastAPI when started via the client"""
     try:
         proc = psutil.Process(pid)
         proc.terminate()
@@ -196,11 +157,13 @@ def verify_key(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
 
-def register_endpoints(noauth: APIRouter, auth: APIRouter):
+def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     """Register API Endpoints - Imports to avoid bootstrapping before config file read
     New endpoints need to be registered in server.api.v1.__init__.py
     """
-    import server.api.v1 as api_v1  # pylint: disable=import-outside-toplevel
+    # pylint: disable=import-outside-toplevel
+    import server.api.v1 as api_v1
+    from server.mcp import register_all_mcp
 
     # No-Authentication (probes only)
     noauth.include_router(api_v1.probes.noauth, prefix="/v1", tags=["Probes"])
@@ -217,69 +180,15 @@ def register_endpoints(noauth: APIRouter, auth: APIRouter):
     auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
     auth.include_router(api_v1.mcp.auth, prefix="/v1/mcp", tags=["Config - MCP Servers"])
 
+    # Auto-discover all MCP tools and register HTTP + MCP endpoints
+    mcp_router = APIRouter(prefix="/mcp", tags=["MCP Tools"])
+    register_all_mcp(mcp, auth)
+    auth.include_router(mcp_router)
+
 
 #############################################################################
 # APP FACTORY
 #############################################################################
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """FastAPI startup/shutdown lifecycle for the MCP Engine."""
-    logger.info("Starting API Server...")
-    global mcp_engine
-
-    # Define a single, authoritative path for the configuration file.
-    config_path = Path("server/etc/mcp_config.json")
-
-    # 1. Handle the missing configuration file as a critical error.
-    if not config_path.exists():
-        logger.error(
-            f"CRITICAL: MCP configuration file not found at '{config_path}'. "
-            "MCP Engine cannot be initialized."
-        )
-        # Yield control to allow the server to run, but without the MCP engine.
-        yield
-        return
-
-    # 2. Load the configuration and initialize the engine.
-    try:
-        logger.info(f"Loading MCP configuration from '{config_path}'...")
-        with open(config_path, encoding='utf-8') as f:
-            mcp_config = json.load(f)
-        
-        mcp_bootstrap.load_mcp_settings(mcp_config)
-
-        # 3. Check if MCP is enabled in the loaded configuration.
-        if mcp_bootstrap.MCP_SETTINGS and mcp_bootstrap.MCP_SETTINGS.enabled:
-            logger.info("MCP is enabled. Initializing MCP Engine...")
-            
-            # This structure assumes MCPClient can be initialized with just the default model.
-            client_init_settings = {
-                'll_model': {'model': mcp_bootstrap.MCP_SETTINGS.default_model}
-            }
-            mcp_engine = MCPClient(client_settings=client_init_settings)
-            
-            await mcp_engine.connect_to_servers()
-            logger.info("MCP Engine initialized successfully.")
-        else:
-            logger.warning("MCP is disabled in the configuration file. Skipping initialization.")
-
-    except Exception as e:
-        logger.error(f"Failed to initialize MCP Engine from configuration: {e}", exc_info=True)
-        # Ensure the engine is not set if initialization fails.
-        mcp_engine = None
-    
-    # Yield control to the running application.
-    yield
-
-    # Shutdown the engine if it was successfully initialized.
-    if mcp_engine:
-        logger.info("Shutting down MCP Engine...")
-        try:
-            await mcp_engine.cleanup()
-            logger.info("MCP Engine cleanup completed.")
-        except Exception as e:
-            logger.error(f"Error during MCP Engine cleanup: {e}")
-
 def create_app(config: str = "") -> FastAPI:
     """Create and configure the FastAPI app."""
     if not config:
@@ -287,23 +196,60 @@ def create_app(config: str = "") -> FastAPI:
     config_file = Path(os.getenv("CONFIG_FILE", config))
     configfile.ConfigStore.load_from_file(config_file)
 
+    verifier = StaticTokenVerifier(
+        tokens={get_api_key(): {"client_id": "optimizer", "scopes": ["read:data", "write:data", "admin:users"]}},
+        required_scopes=["read:data"],
+    )
+    # MCP Server
+    settings.stateless_http = True
+    mcp = FastMCP(name="Optimizer MCP Server", auth=verifier)
+    mcp_app = mcp.http_app(path="/mcp")
+
+    @asynccontextmanager
+    async def combined_lifespan(app):
+        async with mcp_app.lifespan(app):
+            yield
+        # Shutdown cleanup
+        logger.info("Cleaning up leftover processes...")
+        parent = psutil.Process(os.getpid())
+        children = parent.children(recursive=True)
+        for p in children:
+            try:
+                p.terminate()
+            except psutil.NoSuchProcess:
+                continue
+        # Wait synchronously, outside the event loop
+        _, still_alive = psutil.wait_procs(children, timeout=3)
+        for p in still_alive:
+            try:
+                p.kill()
+            except psutil.NoSuchProcess:
+                continue
+
+    # API Server
     app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
         version=__version__,
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
-        lifespan=lifespan,
+        lifespan=combined_lifespan,
         license_info={
             "name": "Universal Permissive License",
             "url": "http://oss.oracle.com/licenses/upl",
         },
     )
+    # Store MCP in the app state
+    app.state.mcp = mcp
 
+    # Setup Routes and Register non-MCP endpoints
     noauth = APIRouter()
     auth = APIRouter(dependencies=[Depends(verify_key)])
 
-    # Register Endpoints
-    register_endpoints(noauth, auth)
+    register_endpoints(mcp, auth, noauth)
+
+    # Register MCP Server into FastAPI
+    app.mount("/mcp_tools", mcp_app)
+
     app.include_router(noauth)
     app.include_router(auth)
 

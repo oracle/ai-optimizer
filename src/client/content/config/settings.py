@@ -48,8 +48,8 @@ def get_settings(include_sensitive: bool = False):
             },
         )
         return settings
-    except api_call.ApiError as e:
-        if "not found" in str(e):
+    except api_call.ApiError as ex:
+        if "not found" in str(ex):
             # If client settings not found, create them
             logger.info("Client settings not found, creating new ones")
             api_call.post(endpoint="v1/settings", params={"client": state.client_settings["client"]})
