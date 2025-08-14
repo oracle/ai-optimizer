@@ -7,6 +7,7 @@ Default Logging Configuration
 # spell-checker:ignore levelname inotify openai httpcore fsevents litellm
 
 import os
+import asyncio
 import logging
 from logging.config import dictConfig
 from common._version import __version__
@@ -17,6 +18,30 @@ class VersionFilter(logging.Filter):
 
     def filter(self, record):
         record.__version__ = __version__
+        return True
+
+
+class PrettifyCancelledError(logging.Filter):
+    """Filter that keeps the log but removes the traceback and replaces the message."""
+
+    def _contains_cancelled(self, exc: BaseException) -> bool:
+        if isinstance(exc, asyncio.CancelledError):
+            return True
+        if hasattr(exc, "exceptions") and isinstance(exc, BaseExceptionGroup):  # type: ignore[name-defined]
+            return any(self._contains_cancelled(e) for e in exc.exceptions)  # type: ignore[attr-defined]
+        return False
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc_info = record.__dict__.get("exc_info")
+        if not exc_info:
+            return True
+        _, exc, _ = exc_info
+        if exc and self._contains_cancelled(exc):
+            # Strip the traceback and make it pretty
+            record.exc_info = None
+            record.msg = "Shutdown cancelled — graceful timeout exceeded."
+            record.levelno = logging.WARNING
+            record.levelname = logging.getLevelName(logging.WARNING)
         return True
 
 
@@ -33,9 +58,8 @@ LOGGING_CONFIG = {
         "standard": FORMATTER,
     },
     "filters": {
-        "version_filter": {
-            "()": VersionFilter,
-        },
+        "version_filter": {"()": VersionFilter},
+        "prettify_cancelled": {"()": PrettifyCancelledError},
     },
     "handlers": {
         "default": {
@@ -56,13 +80,19 @@ LOGGING_CONFIG = {
             "level": LOG_LEVEL,
             "handlers": ["default"],
             "propagate": False,
+            "filters": ["prettify_cancelled"],
         },
         "uvicorn.access": {
             "level": LOG_LEVEL,
             "handlers": ["default"],
             "propagate": False,
         },
-        "asyncio": {"level": LOG_LEVEL, "handlers": ["default"], "propagate": False},
+        "asyncio": {
+            "level": LOG_LEVEL,
+            "handlers": ["default"],
+            "propagate": False,
+            "filters": ["prettify_cancelled"],
+        },
         "watchdog.observers.inotify_buffer": {"level": "INFO", "handlers": ["default"], "propagate": False},
         "PIL": {"level": "INFO", "handlers": ["default"], "propagate": False},
         "fsevents": {"level": "INFO", "handlers": ["default"], "propagate": False},

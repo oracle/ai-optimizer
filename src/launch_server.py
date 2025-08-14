@@ -44,7 +44,7 @@ import psutil
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastmcp import FastMCP, settings
-from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+from fastmcp.server.auth import StaticTokenVerifier
 
 # Logging
 import common.logging_config as logging_config
@@ -97,6 +97,8 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
                 "0.0.0.0",
                 "--port",
                 str(port),
+                "--timeout-graceful-shutdown",
+                "5",
             ],
             stdout=stdout,
             stderr=stderr,
@@ -146,17 +148,6 @@ def get_api_key() -> str:
     return os.getenv("API_SERVER_KEY")
 
 
-def verify_key(
-    http_auth: Annotated[
-        HTTPAuthorizationCredentials,
-        Depends(HTTPBearer(description="Please provide API_SERVER_KEY.")),
-    ],
-) -> None:
-    """Verify that the provided API key is correct."""
-    if http_auth.credentials != get_api_key():
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
-
-
 def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     """Register API Endpoints - Imports to avoid bootstrapping before config file read
     New endpoints need to be registered in server.api.v1.__init__.py
@@ -191,19 +182,31 @@ def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
 #############################################################################
 def create_app(config: str = "") -> FastAPI:
     """Create and configure the FastAPI app."""
+
+    def fastapi_verify_key(
+        http_auth: Annotated[
+            HTTPAuthorizationCredentials,
+            Depends(HTTPBearer(description="Please provide API_SERVER_KEY.")),
+        ],
+    ) -> None:
+        """FastAPI: Verify that the provided API key is correct."""
+        if http_auth.credentials != get_api_key():
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    ### Start
     if not config:
         config = configfile.config_file_path()
     config_file = Path(os.getenv("CONFIG_FILE", config))
     configfile.ConfigStore.load_from_file(config_file)
 
-    verifier = StaticTokenVerifier(
-        tokens={get_api_key(): {"client_id": "optimizer", "scopes": ["read:data", "write:data", "admin:users"]}},
-        required_scopes=["read:data"],
+    fastmcp_verifier = StaticTokenVerifier(
+        tokens={get_api_key(): {"client_id": "optimizer", "scopes": ["read", "write"]}}
     )
+
     # MCP Server
     settings.stateless_http = True
-    mcp = FastMCP(name="Optimizer MCP Server", auth=verifier)
-    mcp_app = mcp.http_app(path="/mcp")
+    mcp = FastMCP(name="Optimizer MCP Server", auth=fastmcp_verifier)
+    mcp_app = mcp.http_app(path="/")
 
     @asynccontextmanager
     async def combined_lifespan(app):
@@ -243,12 +246,12 @@ def create_app(config: str = "") -> FastAPI:
 
     # Setup Routes and Register non-MCP endpoints
     noauth = APIRouter()
-    auth = APIRouter(dependencies=[Depends(verify_key)])
+    auth = APIRouter(dependencies=[Depends(fastapi_verify_key)])
 
     register_endpoints(mcp, auth, noauth)
 
     # Register MCP Server into FastAPI
-    app.mount("/mcp_tools", mcp_app)
+    app.mount("/mcp", mcp_app)
 
     app.include_router(noauth)
     app.include_router(auth)
@@ -271,4 +274,13 @@ if __name__ == "__main__":
     logger.info("API Server Using port: %i", PORT)
 
     app = create_app(args.config)
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_config=logging_config.LOGGING_CONFIG)
+    try:
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=PORT,
+            timeout_graceful_shutdown=5,
+            log_config=logging_config.LOGGING_CONFIG,
+        )
+    except Exception as ex:
+        logger.info("Forced Shutdown: %s", ex)
