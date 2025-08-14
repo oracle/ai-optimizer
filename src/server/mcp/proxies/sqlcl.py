@@ -18,19 +18,20 @@ def register(mcp):
     """Register the SQLcl MCP Server as Local (via Proxy)"""
     sqlcl_binary = shutil.which("sql")
     if sqlcl_binary:
+        env_vars = os.environ.copy()
+        env_vars["TNS_ADMIN"] = os.getenv("TNS_ADMIN", "tns_admin")
         config = {
             "mcpServers": {
                 "sqlcl": {
                     "command": f"{sqlcl_binary}",
                     "args": ["-mcp", "-daemon", "-thin", "-noupdates"],
+                    "env": env_vars
                 }
             }
         }
+
         databases = core_databases.get_databases()
         for database in databases:
-            env_vars = os.environ.copy()
-            if database.config_dir:
-                env_vars["TNS_ADMIN"] = database.config_dir
             # Start sql in no-login mode
             try:
                 proc = subprocess.Popen(
@@ -44,8 +45,8 @@ def register(mcp):
 
                 # Prepare commands: connect, then exit
                 commands = [
-                    f"connmgr delete -conn optimizer_{database.name}",
-                    f"conn -savepwd -save optimizer_{database.name} -user {database.user} -password {database.password} -url {database.dsn}",
+                    f"connmgr delete -conn OPTIMIZER_{database.name}",
+                    f"conn -savepwd -save OPTIMIZER_{database.name} -user {database.user} -password {database.password} -url {database.dsn}",
                     "exit",
                 ]
 
