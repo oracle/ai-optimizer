@@ -6,7 +6,6 @@ This script allows importing/exporting configurations using Streamlit (`st`).
 """
 # spell-checker:ignore streamlit, mvnw, obaas, ollama
 
-import inspect
 import time
 import os
 import io
@@ -26,11 +25,10 @@ from streamlit import session_state as state
 # Utilities
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
-from client.utils.st_footer import remove_footer
 
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("client.content.config.settings")
+logger = logging_config.logging.getLogger("client.content.config.tabs.settings")
 
 
 #############################################################################
@@ -249,9 +247,8 @@ def spring_ai_zip(provider, ll_config, embed_config):
 #####################################################
 # MAIN
 #####################################################
-def main():
+def display_settings():
     """Streamlit GUI"""
-    remove_footer()
     st.header("Client Settings", divider="red")
     if "selected_sensitive_settings" not in state:
         state.selected_sensitive_settings = False
@@ -331,7 +328,3 @@ def main():
             mime="application/zip",  # Mime type for zip file
             disabled=spring_ai_conf == "hybrid",
         )
-
-
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()

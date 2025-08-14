@@ -15,7 +15,7 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-from client.content.config.models import get_models
+from client.content.config.tabs.models import get_models
 
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call
@@ -237,8 +237,9 @@ def qa_update_gui(qa_testset: list) -> None:
 #############################################################################
 # MAIN
 #############################################################################
-def main():
+def main() -> None:
     """Streamlit GUI"""
+    st_common.style()
     remove_footer()
     try:
         get_models()

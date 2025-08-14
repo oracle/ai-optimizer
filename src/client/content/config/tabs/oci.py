@@ -7,7 +7,6 @@ It includes a form to input and test OCI API Access.
 """
 # spell-checker:ignore streamlit, ocid, selectbox, genai, oraclecloud
 
-import inspect
 import pandas as pd
 
 import streamlit as st
@@ -15,11 +14,10 @@ from streamlit import session_state as state
 
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
-from client.utils.st_footer import remove_footer
 
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("client.content.config.oci")
+logger = logging_config.logging.getLogger("client.content.config.tabs.oci")
 
 
 #####################################################
@@ -79,9 +77,8 @@ def patch_oci(auth_profile: str, supplied: dict, namespace: str, toast: bool = T
 #####################################################
 # MAIN
 #####################################################
-def main() -> None:
+def display_oci() -> None:
     """Streamlit GUI"""
-    remove_footer()
     st.header("Oracle Cloud Infrastructure", divider="red")
     st.write("Configure OCI for Object Storage Access and OCI GenAI Services.")
     try:
@@ -213,7 +210,3 @@ def main() -> None:
                     _ = create_genai_models()
                     st_common.clear_state_key("model_configs")
                 st.success("Oracle GenAI models - Enabled.", icon="✅")
-
-
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()

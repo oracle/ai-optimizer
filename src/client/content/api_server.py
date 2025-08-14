@@ -16,6 +16,7 @@ from streamlit import session_state as state
 
 import client.utils.client as client
 import client.utils.api_call as api_call
+from client.utils.st_common import style
 from client.utils.st_footer import remove_footer
 import common.logging_config as logging_config
 
@@ -64,7 +65,7 @@ def server_restart() -> None:
 #####################################################
 async def main() -> None:
     """Streamlit GUI"""
-
+    style()
     remove_footer()
     st.header("API Server")
     st.write("Access with your own client.")

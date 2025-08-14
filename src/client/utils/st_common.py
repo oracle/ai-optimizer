@@ -25,6 +25,20 @@ except ImportError:
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
+#############################################################################
+# GUI Helper
+#############################################################################
+def style():
+    """Beautify"""
+    return st.html(
+        """
+        <style>
+        div[data-testid="stMainBlockContainer"] {
+            padding-top: 1em !important;
+        }        
+        </style>
+        """,
+    )
 
 #############################################################################
 # State Helpers

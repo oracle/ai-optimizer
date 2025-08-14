@@ -9,14 +9,12 @@ Session States Set:
 """
 # spell-checker:ignore selectbox
 
-import inspect
 from time import sleep
 from typing import Literal
 import urllib.parse
 
 import streamlit as st
 from streamlit import session_state as state
-from client.utils.st_footer import render_models_footer
 
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
@@ -24,7 +22,7 @@ import client.utils.st_common as st_common
 import common.help_text as help_text
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("client.content.config.models")
+logger = logging_config.logging.getLogger("client.content.config.tabs.models")
 
 
 ###################################
@@ -123,7 +121,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             help=help_text.help_dict["model_api_url"],
             key="add_model_api_url",
             value=model.get("url", ""),
-            disabled=disable_for_oci
+            disabled=disable_for_oci,
         )
         model["api_key"] = st.text_input(
             "API Key:",
@@ -131,7 +129,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             key="add_model_api_key",
             type="password",
             value=model.get("api_key", ""),
-            disabled=disable_for_oci
+            disabled=disable_for_oci,
         )
         if model_type == "ll":
             model["context_length"] = st.number_input(
@@ -255,7 +253,7 @@ def render_model_rows(model_type):
 #############################################################################
 # MAIN
 #############################################################################
-def main() -> None:
+def display_models() -> None:
     """Streamlit GUI"""
     st.header("Models", divider="red")
     st.write("Update, Add, or Delete model configuration parameters.")
@@ -273,9 +271,3 @@ def main() -> None:
     st.divider()
     st.subheader("Embedding Models")
     render_model_rows("embed")
-
-    render_models_footer()
-
-
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()

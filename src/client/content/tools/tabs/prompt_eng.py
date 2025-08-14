@@ -9,8 +9,6 @@ Session States Set:
 """
 # spell-checker:ignore selectbox
 
-import inspect
-
 import streamlit as st
 from streamlit import session_state as state
 
@@ -18,9 +16,8 @@ import client.utils.st_common as st_common
 import client.utils.api_call as api_call
 
 import common.logging_config as logging_config
-from client.utils.st_footer import remove_footer
 
-logger = logging_config.logging.getLogger("client.tools.prompt_eng")
+logger = logging_config.logging.getLogger("client.tools.tabs.prompt_eng")
 
 
 #####################################################
@@ -65,9 +62,8 @@ def patch_prompt(category: str, name: str, prompt: str) -> bool:
 #############################################################################
 # MAIN
 #############################################################################
-def main():
+def display_prompt_eng():
     """Streamlit GUI"""
-    remove_footer()
     st.header("Prompt Engineering")
     st.write("Select which prompts to use and their instructions.  Currently selected prompts are used.")
     try:
@@ -114,7 +110,3 @@ def main():
         if st.button("Save Instructions", key="save_ctx_prompt"):
             if patch_prompt("ctx", selected_prompt_ctx_name, prompt_ctx_prompt):
                 st.rerun()
-
-
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()

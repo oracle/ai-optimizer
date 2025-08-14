@@ -7,7 +7,6 @@ It includes a form to input and test database connection settings.
 """
 # spell-checker:ignore streamlit, selectbox, selectai
 
-import inspect
 import json
 import pandas as pd
 
@@ -16,10 +15,10 @@ from streamlit import session_state as state
 
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
-import common.logging_config as logging_config
-from client.utils.st_footer import remove_footer
 
-logger = logging_config.logging.getLogger("client.content.config.database")
+import common.logging_config as logging_config
+
+logger = logging_config.logging.getLogger("client.content.config.tabs.database")
 
 
 #####################################################
@@ -106,9 +105,8 @@ def update_selectai(sai_new_df: pd.DataFrame, sai_old_df: pd.DataFrame) -> None:
 #####################################################
 # MAIN
 #####################################################
-def main() -> None:
+def display_databases() -> None:
     """Streamlit GUI"""
-    remove_footer()
     st.header("Database", divider="red")
     st.write("Configure the database used for Vector Storage and SelectAI.")
     try:
@@ -237,7 +235,3 @@ def main() -> None:
                 st.write("Unable to use SelectAI with Database.")
             elif len(selectai_profiles) == 0:
                 st.write("No SelectAI Profiles Found.")
-
-
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()
