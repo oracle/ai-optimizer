@@ -37,10 +37,6 @@ variable "vm_is_gpu_shape" {
   type = bool
 }
 
-variable compute_cpu_arch  {
-  type = string
-}
-
 variable "compute_os_ver" {
   type = string
 }
