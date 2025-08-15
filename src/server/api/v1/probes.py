@@ -33,9 +33,12 @@ def mcp_healthz(mcp_engine: FastMCP = Depends(get_mcp)):
     """Check if MCP server is ready."""
     if mcp_engine is None:
         return {"status": "not ready"}
-    return {
-        "status": "ready",
-        "engine_type": str(type(mcp_engine)) if mcp_engine else None,
-        "available_tools": len(getattr(mcp_engine, "available_tools", [])) if mcp_engine else 0,
-        "timestamp": datetime.now().isoformat(),
-    }
+    else:
+        server = mcp_engine.__dict__["_mcp_server"].__dict__
+        return {
+            "status": "ready",
+            "name": server["name"],
+            "version": server["version"],
+            "available_tools": len(getattr(mcp_engine, "available_tools", [])) if mcp_engine else 0,
+            "timestamp": datetime.now().isoformat(),
+        }

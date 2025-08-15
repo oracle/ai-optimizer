@@ -13,41 +13,7 @@ def set_page():
 def get_fastapi_base_url():
     return os.getenv("FASTAPI_BASE_URL", "http://127.0.0.1:8000")
 
-@st.cache_data(show_spinner="Connecting to MCP Backend...", ttl=60)
-def get_server_capabilities(fastapi_base_url):
-    """Fetches the lists of tools and resources from the FastAPI backend."""
-    try:
-        # Get API key from environment or generate one
-        api_key = os.getenv("API_SERVER_KEY")
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        
-        # First check if MCP is enabled and initialized
-        status_response = requests.get(f"{fastapi_base_url}/v1/mcp/status", headers=headers)
-        if status_response.status_code == 200:
-            status = status_response.json()
-            if not status.get("enabled", False):
-                st.warning("MCP is not enabled. Please enable it in the configuration.")
-                return {"error": "MCP not enabled"}, {"error": "MCP not enabled"}, {"error": "MCP not enabled"}
-            if not status.get("initialized", False):
-                st.info("MCP is enabled but not yet initialized. Please select a model first.")
-                return {"tools": []}, {"static": [], "dynamic": []}, {"prompts": []}
-        
-        tools_response = requests.get(f"{fastapi_base_url}/v1/mcp/tools", headers=headers)
-        tools_response.raise_for_status()
-        tools = tools_response.json()
-        
-        resources_response = requests.get(f"{fastapi_base_url}/v1/mcp/resources", headers=headers)
-        resources_response.raise_for_status()
-        resources = resources_response.json()
 
-        prompts_response = requests.get(f"{fastapi_base_url}/v1/mcp/prompts", headers=headers)
-        prompts_response.raise_for_status()
-        prompts = prompts_response.json()
-        
-        return tools, resources, prompts
-    except requests.exceptions.RequestException as e:
-        st.error(f"Could not connect to the MCP backend at {fastapi_base_url}. Is it running? Error: {e}")
-        return {"tools": []}, {"static": [], "dynamic": []}, {"prompts": []}
 
 def get_server_files():
     files = ["server/mcp/server_config.json"]

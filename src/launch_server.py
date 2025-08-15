@@ -161,14 +161,14 @@ def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
 
     # Authenticated
     auth.include_router(api_v1.chat.auth, prefix="/v1/chat", tags=["Chatbot"])
-    auth.include_router(api_v1.databases.auth, prefix="/v1/databases", tags=["Config - Databases"])
     auth.include_router(api_v1.embed.auth, prefix="/v1/embed", tags=["Embeddings"])
+    auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
+    auth.include_router(api_v1.prompts.auth, prefix="/v1/prompts", tags=["Tools - Prompts"])
+    auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
+    auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Config - Settings"])
+    auth.include_router(api_v1.databases.auth, prefix="/v1/databases", tags=["Config - Databases"])
     auth.include_router(api_v1.models.auth, prefix="/v1/models", tags=["Config - Models"])
     auth.include_router(api_v1.oci.auth, prefix="/v1/oci", tags=["Config - Oracle Cloud Infrastructure"])
-    auth.include_router(api_v1.prompts.auth, prefix="/v1/prompts", tags=["Tools - Prompts"])
-    auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
-    auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Tools - Settings"])
-    auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
     auth.include_router(api_v1.mcp.auth, prefix="/v1/mcp", tags=["Config - MCP Servers"])
 
     # Auto-discover all MCP tools and register HTTP + MCP endpoints
@@ -205,7 +205,12 @@ def create_app(config: str = "") -> FastAPI:
 
     # MCP Server
     settings.stateless_http = True
-    mcp = FastMCP(name="Optimizer MCP Server", auth=fastmcp_verifier)
+    mcp = FastMCP(
+        name="Oracle AI Optimizer and Toolkit MCP Server",
+        version=__version__,
+        auth=fastmcp_verifier,
+        include_fastmcp_meta=False,
+    )
     mcp_app = mcp.http_app(path="/")
 
     @asynccontextmanager

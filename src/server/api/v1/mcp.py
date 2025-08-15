@@ -23,28 +23,23 @@ def get_mcp(request: Request) -> FastMCP:
 @auth.get(
     "/tools",
     description="List available MCP tools",
-    response_model=dict,
+    response_model=list[dict],
 )
-async def mcp_get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> dict:
+async def mcp_get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
     """List MCP tools"""
     tools_info = []
     try:
+        print(await mcp_engine.get_tools())
         client = Client(mcp_engine)
         async with client:
-            tools = await client.list_tools()
+            tools = await client.list_tools_mcp()
             logger.debug("MCP Tools: %s", tools)
             for tool_object in tools:
-                tools_info.append(
-                    {
-                        "name": tool_object.name,
-                        "description": tool_object.description,
-                        "input_schema": getattr(tool_object, "inputSchema", None),
-                    }
-                )
+                tools_info.append(tool_object.model_dump())
     finally:
         await client.close()
 
-    return {"tools": tools_info}
+    return tools_info
 
 
 @auth.get(

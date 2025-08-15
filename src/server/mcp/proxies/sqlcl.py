@@ -16,16 +16,18 @@ logger = logging_config.logging.getLogger("mcp.proxies.sqlcl")
 
 def register(mcp):
     """Register the SQLcl MCP Server as Local (via Proxy)"""
+    tool_name = "SQLclProxy"
     sqlcl_binary = shutil.which("sql")
     if sqlcl_binary:
         env_vars = os.environ.copy()
         env_vars["TNS_ADMIN"] = os.getenv("TNS_ADMIN", "tns_admin")
         config = {
             "mcpServers": {
-                "sqlcl": {
+                tool_name: {
+                    "name": tool_name,
                     "command": f"{sqlcl_binary}",
                     "args": ["-mcp", "-daemon", "-thin", "-noupdates"],
-                    "env": env_vars
+                    "env": env_vars,
                 }
             }
         }
@@ -58,7 +60,7 @@ def register(mcp):
             except Exception as ex:
                 logger.error("Unexpected error creating connection store: %s", ex)
         # Create a proxy to the configured server (auto-creates ProxyClient)
-        mcp_proxy = mcp.as_proxy(config, name="SQLclProxy")
+        mcp_proxy = mcp.as_proxy(config, name=tool_name)
         mcp.mount(mcp_proxy)
     else:
         logger.warning("Not enabling SQLcl MCP server, sqlcl not found in PATH.")
