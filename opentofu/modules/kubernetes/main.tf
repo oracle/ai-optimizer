@@ -104,11 +104,11 @@ resource "oci_containerengine_addon" "ingress_addon" {
   }
 }
 
-resource "oci_containerengine_node_pool" "default_node_pool_details" {
+resource "oci_containerengine_node_pool" "cpu_node_pool_details" {
   cluster_id         = oci_containerengine_cluster.default_cluster.id
   compartment_id     = var.compartment_id
   kubernetes_version = format("v%s", var.k8s_version)
-  name               = format("%s-np-default", var.label_prefix)
+  name               = format("%s-np-cpu", var.label_prefix)
   initial_node_labels {
     key   = "name"
     value = local.k8s_cluster_name

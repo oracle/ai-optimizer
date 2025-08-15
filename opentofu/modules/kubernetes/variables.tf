@@ -82,7 +82,12 @@ variable "k8s_gpu_node_pool_size" {
 variable "compute_gpu_shape" {
   type = string
 }
+
 variable "compute_os_ver" {
+  type = string
+}
+
+variable compute_cpu_arch  {
   type = string
 }
 

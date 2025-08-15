@@ -32,7 +32,7 @@ locals {
   oke_worker_cpu_image = length(local.oke_worker_images) > 0 ? [
     for key, value in local.oke_worker_images : key if
     value["image_type"] == "oke" &&
-    value["arch"] == "x86_64" &&
+    value["arch"] == var.compute_cpu_arch &&
     value["os_version"] == var.compute_os_ver &&
     value["k8s_version"] == var.k8s_version &&
     !value["is_gpu"]

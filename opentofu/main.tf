@@ -93,6 +93,7 @@ module "vm" {
   streamlit_client_port = local.streamlit_client_port
   fastapi_server_port   = local.fastapi_server_port
   vm_is_gpu_shape       = var.vm_is_gpu_shape
+  compute_cpu_arch      = local.compute_cpu_arch
   compute_os_ver        = local.compute_os_ver
   compute_cpu_ocpu      = var.compute_cpu_ocpu
   compute_cpu_shape     = var.compute_cpu_shape
@@ -124,6 +125,7 @@ module "kubernetes" {
   k8s_cpu_node_pool_size         = var.k8s_cpu_node_pool_size
   k8s_api_endpoint_allowed_cidrs = var.k8s_api_endpoint_allowed_cidrs
   k8s_run_cfgmgt                 = var.k8s_run_cfgmgt
+  compute_cpu_arch               = local.compute_cpu_arch
   compute_os_ver                 = local.compute_os_ver
   compute_cpu_ocpu               = var.compute_cpu_ocpu
   compute_gpu_shape              = var.compute_gpu_shape

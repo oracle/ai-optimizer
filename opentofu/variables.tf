@@ -149,8 +149,8 @@ variable "compute_cpu_shape" {
   type        = string
   default     = "VM.Standard.E5.Flex"
   validation {
-    condition     = contains(["VM.Standard.E5.Flex", "VM.Standard.E4.Flex", "VM.Standard3.Flex"], var.compute_cpu_shape)
-    error_message = "Must be either VM.Standard.E5.Flex, VM.Standard.E4.Flex, or VM.Standard3.Flex."
+    condition     = contains(["VM.Standard.E5.Flex", "VM.Standard.E4.Flex", "VM.Standard.A1.Flex", "VM.Standard.A2.Flex", ], var.compute_cpu_shape)
+    error_message = "Must be either VM.Standard.E5.Flex, VM.Standard.E4.Flex, VM.Standard.A1.Flex, or VM.Standard.A2.Flex"
   }
 }
 
