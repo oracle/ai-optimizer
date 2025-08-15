@@ -87,7 +87,7 @@ variable "compute_os_ver" {
   type = string
 }
 
-variable compute_cpu_arch  {
+variable "compute_cpu_arch" {
   type = string
 }
 
