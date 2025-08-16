@@ -170,9 +170,12 @@ variables:
     type: enum
     title: "CPU Worker Shape"
     required: true
+    default: "VM.Standard.E5.Flex"
     enum:
-      - "VM.Standard.E5.Flex"
       - "VM.Standard.E4.Flex"
+      - "VM.Standard.E5.Flex"
+      - "VM.Standard.A1.Flex"
+      - "VM.Standard.A2.Flex"
     visible:
       or:
         - and:

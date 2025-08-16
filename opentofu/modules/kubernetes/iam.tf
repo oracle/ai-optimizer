@@ -8,7 +8,7 @@ resource "oci_identity_dynamic_group" "workers_dynamic_group" {
   description    = format("%s Workers Dynamic Group", var.label_prefix)
   matching_rule = format(
     "ALL {instance.compartment.id = '%s', tag.Oracle-Tags.CreatedBy.value = '%s'}",
-  var.compartment_id, oci_containerengine_node_pool.default_node_pool_details.id)
+  var.compartment_id, oci_containerengine_node_pool.cpu_node_pool_details.id)
   provider = oci.home_region
 }
 
