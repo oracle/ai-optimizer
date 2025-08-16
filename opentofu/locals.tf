@@ -8,16 +8,6 @@ locals {
   label_prefix     = var.label_prefix != "" ? lower(var.label_prefix) : lower(random_pet.label.id)
 }
 
-// Autonomous Database
-locals {
-  adb_name = format("%sDB", upper(local.label_prefix))
-  adb_whitelist_cidrs = concat(
-    var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
-    [module.network.vcn_ocid]
-  )
-  adb_password = sensitive(format("%s%s", random_password.adb_char.result, random_password.adb_rest.result))
-}
-
 // Availability Domains
 locals {
   ads = data.oci_identity_availability_domains.all.availability_domains
@@ -35,6 +25,25 @@ locals {
   availability_domains = compact([for ad_number in tolist(local.ad_numbers) :
     lookup(local.ad_numbers_to_names, ad_number, null)
   ])
+}
+
+// Autonomous Database
+locals {
+  adb_name = format("%sDB", upper(local.label_prefix))
+  adb_whitelist_cidrs = concat(
+    var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
+    [module.network.vcn_ocid]
+  )
+  adb_password = sensitive(format("%s%s", random_password.adb_char.result, random_password.adb_rest.result))
+}
+
+// Compute
+locals {
+  compute_cpu_arch = (
+    can(regex("^VM\\.Standard\\.A[0-9]+\\.Flex$", var.compute_cpu_shape))
+    ? "aarch64"
+    : "x86_64"
+  )
 }
 
 // Network
