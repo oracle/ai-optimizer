@@ -19,8 +19,6 @@ from client.content.config.tabs.models import get_models
 
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call
-from client.utils.st_footer import remove_footer
-
 
 import common.logging_config as logging_config
 
@@ -239,8 +237,6 @@ def qa_update_gui(qa_testset: list) -> None:
 #############################################################################
 def main() -> None:
     """Streamlit GUI"""
-    st_common.style()
-    remove_footer()
     try:
         get_models()
     except api_call.ApiError:

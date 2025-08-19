@@ -262,8 +262,6 @@ def display_models() -> None:
     except api_call.ApiError:
         st.stop()
 
-    # Table Dimensions
-
     st.divider()
     st.subheader("Language Models")
     render_model_rows("ll")
@@ -271,3 +269,7 @@ def display_models() -> None:
     st.divider()
     st.subheader("Embedding Models")
     render_model_rows("embed")
+
+
+if __name__ == "__main__":
+    display_models()

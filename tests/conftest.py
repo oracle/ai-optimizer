@@ -8,6 +8,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # pylint: disable=import-outside-toplevel
 
 import os
+import asyncio
 
 # This contains all the environment variables we consume on startup (add as required)
 # Used to clear testing environment from users env; Do before any additional imports
@@ -72,7 +73,7 @@ def client():
     # Lazy Load
     from launch_server import create_app
 
-    app = create_app()
+    app = asyncio.run(create_app())
     return TestClient(app)
 
 

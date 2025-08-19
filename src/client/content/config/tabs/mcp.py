@@ -25,6 +25,7 @@ def get_mcp_status() -> dict:
         logger.error("Unable to get MCP Status: %s", ex)
         return {}
 
+
 def get_mcp_tools(force: bool = False) -> list[dict]:
     """Get MCP Tools from API Server"""
     if force or "mcp_tools" not in state or not state.mcp_tools:
@@ -87,3 +88,7 @@ def display_mcp() -> None:
     if mcp_status.get("status") == "ready":
         st.write(f"The {mcp_status['name']} is running.  Version: {mcp_status['version']}")
     st.write(state.mcp_tools)
+
+
+if __name__ == "__main__":
+    display_mcp()

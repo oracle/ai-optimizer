@@ -110,3 +110,7 @@ def display_prompt_eng():
         if st.button("Save Instructions", key="save_ctx_prompt"):
             if patch_prompt("ctx", selected_prompt_ctx_name, prompt_ctx_prompt):
                 st.rerun()
+
+
+if __name__ == "__main__":
+    display_prompt_eng()

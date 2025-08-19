@@ -12,7 +12,7 @@ class TestStreamlit:
     """Test the Streamlit UI"""
 
     # Streamlit File
-    ST_FILE = "../src/client/content/config/models.py"
+    ST_FILE = "../src/client/content/config/tabs/models.py"
 
     def test_model_tables(self, app_server, app_test):
         """Test that the model tables are setup"""

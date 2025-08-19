@@ -2,8 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# spell-checker:ignore sqlcl fastmcp connmgr noupdates savepwd
 
-# spell-checker:ignore sqlcl fastmcp
 import os
 import shutil
 import subprocess
@@ -14,7 +14,7 @@ import common.logging_config as logging_config
 logger = logging_config.logging.getLogger("mcp.proxies.sqlcl")
 
 
-def register(mcp):
+async def register(mcp):
     """Register the SQLcl MCP Server as Local (via Proxy)"""
     tool_name = "SQLclProxy"
     sqlcl_binary = shutil.which("sql")
@@ -31,8 +31,7 @@ def register(mcp):
                 }
             }
         }
-
-        databases = core_databases.get_databases()
+        databases = core_databases.get_databases(validate=False)
         for database in databases:
             # Start sql in no-login mode
             try:
@@ -59,8 +58,9 @@ def register(mcp):
                 logger.error("Failed to create connection store: %s", ex)
             except Exception as ex:
                 logger.error("Unexpected error creating connection store: %s", ex)
+
         # Create a proxy to the configured server (auto-creates ProxyClient)
-        mcp_proxy = mcp.as_proxy(config, name=tool_name)
-        mcp.mount(mcp_proxy)
+        proxy = mcp.as_proxy(config, name=tool_name)
+        mcp.mount(proxy)
     else:
         logger.warning("Not enabling SQLcl MCP server, sqlcl not found in PATH.")

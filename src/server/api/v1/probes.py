@@ -13,7 +13,7 @@ noauth = APIRouter()
 
 def get_mcp(request: Request) -> FastMCP:
     """Get the MCP engine from the app state"""
-    return request.app.state.mcp
+    return request.app.state.fastmcp_app
 
 
 @noauth.get("/liveness")

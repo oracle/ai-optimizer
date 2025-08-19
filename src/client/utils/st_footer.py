@@ -65,25 +65,7 @@ def _inject_footer(selector, insertion_method, footer_html, cleanup_styles=True)
     """
     components.html(js_code, height=0)
 
-
-# --- FUNCTION 1: The Cleanup Crew ---
-def remove_footer():
-    """
-    Injects simple JavaScript to find and remove any existing footer.
-    This MUST be called at the TOP of every page in your app.
-    """
-    js_code = """
-    <script>
-        const footer = parent.document.getElementById('page-footer');
-        if (footer) {
-            footer.remove();
-        }
-    </script>
-    """
-    components.html(js_code, height=0)
-
-
-# --- FUNCTION 2: The Chat Page Footer ---
+# --- The Chat Page Footer ---
 def render_chat_footer():
     """
     Standardized footer for chat pages.
@@ -96,23 +78,4 @@ def render_chat_footer():
     """
     _inject_footer(
         selector='[data-testid="stBottomBlockContainer"]', insertion_method="afterend", footer_html=footer_html
-    )
-
-
-# --- FUNCTION 3: The Models Page Footer ---
-def render_models_footer():
-    """
-    Standardized footer for models pages.
-    """
-    footer_html = f"""
-    {FOOTER_STYLE}
-    <div class="footer" id="page-footer">
-        <p>LLMs can make mistakes. Always verify important information.</p>
-    </div>
-    """
-    _inject_footer(
-        selector='[data-testid="stAppIframeResizerAnchor"]',
-        insertion_method="beforebegin",
-        footer_html=footer_html,
-        cleanup_styles=False,
     )

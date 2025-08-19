@@ -84,7 +84,7 @@ async def main() -> None:
     #########################################################################
     # Chatty-Bot Centre
     #########################################################################
-    
+
     if "messages" not in state:
         state.messages = []
 
@@ -101,19 +101,19 @@ async def main() -> None:
             display_role = "assistant"
         else:
             continue
-        
+
         with st.chat_message(display_role):
             if "tool_trace" in message and message["tool_trace"]:
                 for tool_call in message["tool_trace"]:
                     with st.expander(f"🛠️ **Tool Call:** `{tool_call['name']}`", expanded=False):
                         st.text("Arguments:")
-                        st.code(json.dumps(tool_call.get('args', {}), indent=2), language="json")
+                        st.code(json.dumps(tool_call.get("args", {}), indent=2), language="json")
                         if "error" in tool_call:
                             st.text("Error:")
-                            st.error(tool_call['error'])
+                            st.error(tool_call["error"])
                         else:
                             st.text("Result:")
-                            st.code(tool_call.get('result', ''), language="json")
+                            st.code(tool_call.get("result", ""), language="json")
             if message.get("content"):
                 # Display file attachments if present
                 if "attachments" in message and message["attachments"]:
@@ -121,14 +121,14 @@ async def main() -> None:
                         # Show appropriate icon based on file type
                         if file["type"].startswith("image/"):
                             st.image(file["preview"], use_container_width=True)
-                            st.markdown(f"🖼️ **{file['name']}** ({file['size']//1024} KB)")
+                            st.markdown(f"🖼️ **{file['name']}** ({file['size'] // 1024} KB)")
                         elif file["type"] == "application/pdf":
-                            st.markdown(f"📄 **{file['name']}** ({file['size']//1024} KB)")
+                            st.markdown(f"📄 **{file['name']}** ({file['size'] // 1024} KB)")
                         elif file["type"] in ("text/plain", "text/markdown"):
-                            st.markdown(f"📝 **{file['name']}** ({file['size']//1024} KB)")
+                            st.markdown(f"📝 **{file['name']}** ({file['size'] // 1024} KB)")
                         else:
-                            st.markdown(f"📎 **{file['name']}** ({file['size']//1024} KB)")
-                
+                            st.markdown(f"📎 **{file['name']}** ({file['size'] // 1024} KB)")
+
                 # Display message content - handle both string and list formats
                 content = message.get("content")
                 if isinstance(content, list):
@@ -140,7 +140,7 @@ async def main() -> None:
 
     sys_prompt = state.client_settings["prompts"]["sys"]
     render_chat_footer()
-    
+
     if human_request := st.chat_input(
         f"Ask your question here... (current prompt: {sys_prompt})",
         accept_file=True,
@@ -149,7 +149,7 @@ async def main() -> None:
     ):
         # Process message with potential file attachments
         message = {"role": "user", "content": human_request.text}
-        
+
         # Handle file attachments
         if hasattr(human_request, "files") and human_request.files:
             # Store file information separately from content
@@ -157,14 +157,16 @@ async def main() -> None:
             for file in human_request.files:
                 file_bytes = file.read()
                 file_b64 = base64.b64encode(file_bytes).decode("utf-8")
-                message["attachments"].append({
-                    "name": file.name,
-                    "type": file.type,
-                    "size": len(file_bytes),
-                    "data": file_b64,
-                    "preview": f"data:{file.type};base64,{file_b64}" if file.type.startswith("image/") else None
-                })
-        
+                message["attachments"].append(
+                    {
+                        "name": file.name,
+                        "type": file.type,
+                        "size": len(file_bytes),
+                        "data": file_b64,
+                        "preview": f"data:{file.type};base64,{file_b64}" if file.type.startswith("image/") else None,
+                    }
+                )
+
         state.messages.append(message)
         st.rerun()
     if state.messages and state.messages[-1]["role"] == "user":
@@ -172,34 +174,34 @@ async def main() -> None:
             with st.chat_message("ai"):
                 with st.spinner("Thinking..."):
                     client_settings_for_request = state.client_settings.copy()
-                    model_id = client_settings_for_request.get('ll_model', {}).get('model')
+                    model_id = client_settings_for_request.get("ll_model", {}).get("model")
                     if model_id:
                         all_model_configs = st_common.enabled_models_lookup("ll")
                         model_config = all_model_configs.get(model_id, {})
-                        if 'api_key' in model_config:
-                            if 'll_model' not in client_settings_for_request:
-                                client_settings_for_request['ll_model'] = {}
-                            client_settings_for_request['ll_model']['api_key'] = model_config['api_key']
+                        if "api_key" in model_config:
+                            if "ll_model" not in client_settings_for_request:
+                                client_settings_for_request["ll_model"] = {}
+                            client_settings_for_request["ll_model"]["api_key"] = model_config["api_key"]
 
                     # Prepare message history for backend
                     message_history = []
                     for msg in state.messages:
                         # Create a copy of the message
                         processed_msg = msg.copy()
-                        
+
                         # If there are attachments, include them in the content
                         if "attachments" in msg and msg["attachments"]:
                             # Start with the text content
                             text_content = msg["content"]
-                            
+
                             # Handle list content format (from OpenAI API)
                             if isinstance(text_content, list):
                                 text_parts = [part["text"] for part in text_content if part["type"] == "text"]
                                 text_content = "\n".join(text_parts)
-                            
+
                             # Create a list to hold structured content parts
                             content_list = [{"type": "text", "text": text_content}]
-                            
+
                             non_image_references = []
                             for attachment in msg["attachments"]:
                                 if attachment["type"].startswith("image/"):
@@ -209,22 +211,26 @@ async def main() -> None:
                                         mime_type = attachment["type"]
                                         if mime_type == "image/jpg":
                                             mime_type = "image/jpeg"
-                                        
-                                        content_list.append({
-                                            "type": "image_url",
-                                            "image_url": {
-                                                "url": f"data:{mime_type};base64,{attachment['data']}",
-                                                "detail": "low"
+
+                                        content_list.append(
+                                            {
+                                                "type": "image_url",
+                                                "image_url": {
+                                                    "url": f"data:{mime_type};base64,{attachment['data']}",
+                                                    "detail": "low",
+                                                },
                                             }
-                                        })
+                                        )
                                 else:
                                     # Handle non-image files as text references
-                                    non_image_references.append(f"\n[File: {attachment['name']} ({attachment['size']//1024} KB)]")
-                            
+                                    non_image_references.append(
+                                        f"\n[File: {attachment['name']} ({attachment['size'] // 1024} KB)]"
+                                    )
+
                             # If there were non-image files, append their references to the main text part
                             if non_image_references:
-                                content_list[0]['text'] += "".join(non_image_references)
-                                
+                                content_list[0]["text"] += "".join(non_image_references)
+
                             processed_msg["content"] = content_list
                         # Convert list content to string format
                         elif isinstance(msg.get("content"), list):
@@ -233,14 +239,12 @@ async def main() -> None:
                         # Otherwise, ensure content is a string
                         else:
                             processed_msg["content"] = str(msg.get("content", ""))
-                            
+
                         message_history.append(processed_msg)
 
                     async with MCPClient(client_settings=client_settings_for_request) as mcp_client:
-                        final_text, tool_trace, new_history = await mcp_client.invoke(
-                            message_history=message_history
-                        )
-                        
+                        final_text, tool_trace, new_history = await mcp_client.invoke(message_history=message_history)
+
                         # Update the history for display.
                         # Keep the original message structure with attachments
                         for i in range(len(new_history) - 1, -1, -1):
@@ -249,11 +253,11 @@ async def main() -> None:
                                 user_message = state.messages[-1]
                                 if "attachments" in user_message:
                                     new_history[-1]["attachments"] = user_message["attachments"]
-                                
+
                                 new_history[i]["content"] = final_text
                                 new_history[i]["tool_trace"] = tool_trace
                                 break
-                        
+
                         state.messages = new_history
                         st.rerun()
 
@@ -261,11 +265,11 @@ async def main() -> None:
             logger.error("Exception during invoke call:", exc_info=True)
             # Extract just the error message
             error_msg = str(e)
-            
+
             # Check if it's a file-related error
             if "file" in error_msg.lower() or "image" in error_msg.lower() or "content" in error_msg.lower():
                 st.error(f"Error: {error_msg}")
-                
+
                 # Add a button to remove files and retry
                 if st.button("Remove files and retry", key="remove_files_retry"):
                     # Remove attachments from the latest message
@@ -274,7 +278,7 @@ async def main() -> None:
                     st.rerun()
             else:
                 st.error(f"Error: {error_msg}")
-            
+
             if st.button("Retry", key="reload_chatbot_error"):
                 if state.messages and state.messages[-1]["role"] == "user":
                     state.messages.pop()

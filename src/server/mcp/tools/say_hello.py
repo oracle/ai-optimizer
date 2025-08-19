@@ -1,4 +1,4 @@
-def register(mcp, auth):
+async def register(mcp, auth):
     @mcp.tool()
     @auth.get("/hello", operation_id="say_hello")
     def greet(name: str = "World") -> str:

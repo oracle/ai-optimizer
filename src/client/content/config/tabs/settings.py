@@ -328,3 +328,7 @@ def display_settings():
             mime="application/zip",  # Mime type for zip file
             disabled=spring_ai_conf == "hybrid",
         )
+
+
+if __name__ == "__main__":
+    display_settings()

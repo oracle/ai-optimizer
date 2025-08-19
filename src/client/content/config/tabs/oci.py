@@ -210,3 +210,7 @@ def display_oci() -> None:
                     _ = create_genai_models()
                     st_common.clear_state_key("model_configs")
                 st.success("Oracle GenAI models - Enabled.", icon="✅")
+
+
+if __name__ == "__main__":
+    display_oci()

@@ -397,3 +397,7 @@ def display_split_embed() -> None:
             get_databases(force="True")
         except api_call.ApiError as ex:
             st.error(ex, icon="🚨")
+
+
+if __name__ == "__main__":
+    display_split_embed()

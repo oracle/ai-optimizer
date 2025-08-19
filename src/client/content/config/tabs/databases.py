@@ -113,7 +113,6 @@ def display_databases() -> None:
         get_databases()
     except api_call.ApiError:
         st.stop()
-
     st.subheader("Configuration")
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
     # Get a list of database names, and allow user to select
@@ -235,3 +234,7 @@ def display_databases() -> None:
                 st.write("Unable to use SelectAI with Database.")
             elif len(selectai_profiles) == 0:
                 st.write("No SelectAI Profiles Found.")
+
+
+if __name__ == "__main__":
+    display_databases()

@@ -15,7 +15,7 @@ import common.logging_config as logging_config
 logger = logging_config.logging.getLogger("mcp.__init__.py")
 
 
-def _discover_and_register(
+async def _discover_and_register(
     package: str,
     mcp: FastMCP = None,
     auth: APIRouter = None,
@@ -41,9 +41,11 @@ def _discover_and_register(
         if hasattr(module, "register"):
             logger.info("Registering via %s.register()", module_info.name)
             if ".tools." in module.__name__:
-                module.register(mcp, auth)
+                await module.register(mcp, auth)
             if ".proxies." in module.__name__:
-                module.register(mcp)
+                await module.register(mcp)
+            if ".prompts." in module.__name__:
+                await module.register(mcp)
         # elif hasattr(module, "register_tool"):
         #     logger.info("Registering tool via %s.register_tool()", module_info.name)
         #     module.register_tool(mcp, auth)
@@ -60,16 +62,12 @@ def _discover_and_register(
             logger.debug("No register function in %s, skipping.", module_info.name)
 
 
-def register_all_mcp(mcp: FastMCP, auth: APIRouter):
+async def register_all_mcp(mcp: FastMCP, auth: APIRouter):
     """
     Auto-discover and register all MCP tools, prompts, resources, and proxies.
-
-    Each module should have one of:
-      - register_tool(mcp, auth)
-      - register_prompt(mcp)
-      - register_resource(mcp)
-      - register_proxies(mcp, auth)
-      - register(mcp, auth)  # generic
     """
-    _discover_and_register("server.mcp.tools", mcp=mcp, auth=auth)
-    _discover_and_register("server.mcp.proxies", mcp=mcp)
+    logger.info("Starting Registering MCP Components")
+    #await _discover_and_register("server.mcp.tools", mcp=mcp, auth=auth)
+    await _discover_and_register("server.mcp.proxies", mcp=mcp)
+    # await _discover_and_register("server.mcp.prompts", mcp=mcp)
+    logger.info("Finished Registering MCP Components")

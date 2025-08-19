@@ -13,7 +13,7 @@ class TestStreamlit:
     """Test the Streamlit UI"""
 
     # Streamlit File
-    ST_FILE = "../src/client/content/config/settings.py"
+    ST_FILE = "../src/client/content/config/tabs/settings.py"
 
     def test_settings_display(self, app_server, app_test):
         """Test that settings are displayed correctly"""
@@ -114,7 +114,7 @@ class TestStreamlit:
         }
 
         # Import the original function to test directly
-        from client.content.config.settings import compare_settings
+        from client.content.config.tabs.settings import compare_settings
 
         # Call the function directly
         differences = compare_settings(at.session_state, uploaded_settings)

@@ -17,7 +17,7 @@ auth = APIRouter()
 
 def get_mcp(request: Request) -> FastMCP:
     """Get the MCP engine from the app state"""
-    return request.app.state.mcp
+    return request.app.state.fastmcp_app
 
 
 @auth.get(
@@ -29,10 +29,9 @@ async def mcp_get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
     """List MCP tools"""
     tools_info = []
     try:
-        print(await mcp_engine.get_tools())
         client = Client(mcp_engine)
         async with client:
-            tools = await client.list_tools_mcp()
+            tools = await client.list_tools()
             logger.debug("MCP Tools: %s", tools)
             for tool_object in tools:
                 tools_info.append(tool_object.model_dump())
@@ -44,29 +43,44 @@ async def mcp_get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
 
 @auth.get(
     "/resources",
-    description="Get MCP resources",
-    response_model=dict,
+    description="List MCP resources",
+    response_model=list[dict],
 )
-async def mcp_get_resources(mcp_engine: FastMCP = Depends(get_mcp)) -> dict:
-    """Get MCP Resources"""
-    resources = await mcp_engine.get_resources()
-    logger.debug("MCP Resources: %s", resources)
-    return {
-        "static": list(getattr(mcp_engine, "static_resources", {}).keys()),
-        "dynamic": getattr(mcp_engine, "dynamic_resources", []),
-    }
+async def mcp_list_resources(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
+    """List MCP Resources"""
+    resources_info = []
+    try:
+        client = Client(mcp_engine)
+        async with client:
+            resources = await client.list_resources()
+            logger.debug("MCP Resources: %s", resources)
+            for resources_object in resources:
+                resources_info.append(resources_object.model_dump())
+    finally:
+        await client.close()
+
+    return resources_info
 
 
 @auth.get(
     "/prompts",
-    description="Get MCP prompts",
-    response_model=dict,
+    description="List MCP prompts",
+    response_model=list[dict],
 )
-async def mcp_get_prompts(mcp_engine: FastMCP = Depends(get_mcp)) -> dict:
-    """Get MCP prompts"""
-    prompts = await mcp_engine.get_prompts()
-    logger.debug("MCP Prompts: %s", prompts)
-    return {"prompts": list(getattr(mcp_engine, "available_prompts", {}).keys())}
+async def mcp_list_prompts(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
+    """List MCP Prompts"""
+    prompts_info = []
+    try:
+        client = Client(mcp_engine)
+        async with client:
+            prompts = await client.list_prompts()
+            logger.debug("MCP Resources: %s", prompts)
+            for prompts_object in prompts:
+                prompts_info.append(prompts_object.model_dump())
+    finally:
+        await client.close()
+
+    return prompts_info
 
 
 # @auth.post("/execute", description="Execute an MCP tool", response_model=dict)

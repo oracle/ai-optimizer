@@ -26,21 +26,6 @@ except ImportError:
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
 #############################################################################
-# GUI Helper
-#############################################################################
-def style():
-    """Beautify"""
-    return st.html(
-        """
-        <style>
-        div[data-testid="stMainBlockContainer"] {
-            padding-top: 1em !important;
-        }        
-        </style>
-        """,
-    )
-
-#############################################################################
 # State Helpers
 #############################################################################
 def clear_state_key(state_key: str) -> None:
@@ -75,6 +60,8 @@ def enabled_models_lookup(model_type: str) -> dict[str, dict[str, Any]]:
 def bool_to_emoji(value):
     "Return an Emoji for Bools"
     return "✅" if value else "⚪"
+
+
 def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
     """Upload Single file from Streamlit to the Server"""
     # If it's a single file, convert it to a list for consistent processing
@@ -194,7 +181,7 @@ def ll_sidebar() -> None:
             on_change=update_client_settings("ll_model"),
             disabled=state.client_settings["selectai"]["enabled"],
         )
-        
+
         # If the model has changed, reinitialize the MCP engine
         if selected_model != previous_model and initialize_mcp_engine_with_model:
             try:
@@ -463,6 +450,7 @@ def vector_search_sidebar() -> None:
         database_lookup = state_configs_lookup("database_configs", "name")
 
         vs_df = pd.DataFrame(database_lookup[db_alias].get("vector_stores"))
+
         def vs_reset() -> None:
             """Reset Vector Store Selections"""
             for key in state.client_settings["vector_search"]:

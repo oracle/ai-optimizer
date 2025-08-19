@@ -6,20 +6,16 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import inspect
 import streamlit as st
 from streamlit import session_state as state
-from client.utils.st_common import style
-from client.utils.st_footer import remove_footer
 
-from client.content.config.tabs.settings import display_settings
-from client.content.config.tabs.oci import display_oci
-from client.content.config.tabs.databases import display_databases
-from client.content.config.tabs.models import display_models
-from client.content.config.tabs.mcp import display_mcp
+from client.content.config.tabs.settings import get_settings, display_settings
+from client.content.config.tabs.oci import get_oci, display_oci
+from client.content.config.tabs.databases import get_databases, display_databases
+from client.content.config.tabs.models import get_models, display_models
+from client.content.config.tabs.mcp import get_mcp_tools, display_mcp
 
 
 def main() -> None:
     """Streamlit GUI"""
-    style()
-    remove_footer()
     tabs_list = []
     if not state.disabled["settings"]:
         tabs_list.append("💾 Settings")
@@ -39,22 +35,27 @@ def main() -> None:
 
         # Map tab objects to content conditionally
         if not state.disabled["settings"]:
+            get_settings()
             with tabs[tab_index]:
                 display_settings()
             tab_index += 1
         if not state.disabled["db_cfg"]:
+            get_databases()
             with tabs[tab_index]:
                 display_databases()
             tab_index += 1
         if not state.disabled["model_cfg"]:
+            get_models()
             with tabs[tab_index]:
                 display_models()
             tab_index += 1
         if not state.disabled["oci_cfg"]:
+            get_oci()
             with tabs[tab_index]:
                 display_oci()
             tab_index += 1
         if not state.disabled["mcp_cfg"]:
+            get_mcp_tools()
             with tabs[tab_index]:
                 display_mcp()
             tab_index += 1
