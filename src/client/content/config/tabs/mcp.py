@@ -2,11 +2,13 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# spell-checker:ignore selectbox healthz
 
 import streamlit as st
 from streamlit import session_state as state
 
 import client.utils.api_call as api_call
+import client.utils.st_common as st_common
 
 import common.logging_config as logging_config
 
@@ -26,52 +28,99 @@ def get_mcp_status() -> dict:
         return {}
 
 
-def get_mcp_tools(force: bool = False) -> list[dict]:
-    """Get MCP Tools from API Server"""
-    if force or "mcp_tools" not in state or not state.mcp_tools:
-        try:
-            logger.info("Refreshing state.mcp_tools")
-            state.mcp_tools = api_call.get(endpoint="v1/mcp/tools")
-        except api_call.ApiError as ex:
-            logger.error("Unable to populate state.mcp_tools: %s", ex)
-            state.mcp_tools = {}
+def get_mcp(force: bool = False) -> list[dict]:
+    """Get MCP configs from API Server"""
+    if force or "mcp_configs" not in state or not state.mcp_configs:
+        logger.info("Refreshing state.mcp_configs")
+        endpoints = {
+            "tools": "v1/mcp/tools",
+            "prompts": "v1/mcp/prompts",
+            "resources": "v1/mcp/resources",
+        }
+        results = {}
+
+        for key, endpoint in endpoints.items():
+            try:
+                results[key] = api_call.get(endpoint=endpoint)
+            except api_call.ApiError as ex:
+                logger.error("Unable to get %s: %s", key, ex)
+                results[key] = {}
+
+        state.mcp_configs = results
 
 
-# @st.cache_data(show_spinner="Connecting to MCP Backend...", ttl=60)
-# def get_server_capabilities(fastapi_base_url):
-#     """Fetches the lists of tools and resources from the FastAPI backend."""
-#     try:
-#         # Get API key from environment or generate one
-#         api_key = os.getenv("API_SERVER_KEY")
-#         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+def extract_servers() -> list:
+    """Get a list of distinct MCP servers (by prefix)"""
+    prefixes = set()
 
-#         # First check if MCP is enabled and initialized
-#         status_response = requests.get(f"{fastapi_base_url}/v1/mcp/status", headers=headers)
-#         if status_response.status_code == 200:
-#             status = status_response.json()
-#             if not status.get("enabled", False):
-#                 st.warning("MCP is not enabled. Please enable it in the configuration.")
-#                 return {"error": "MCP not enabled"}, {"error": "MCP not enabled"}, {"error": "MCP not enabled"}
-#             if not status.get("initialized", False):
-#                 st.info("MCP is enabled but not yet initialized. Please select a model first.")
-#                 return {"tools": []}, {"static": [], "dynamic": []}, {"prompts": []}
+    for _, items in state.mcp_configs.items():
+        for item in items or []:  # handle None safely
+            name = item.get("name")
+            if name and "_" in name:
+                prefix = name.split("_", 1)[0]
+                prefixes.add(prefix)
 
-#         tools_response = requests.get(f"{fastapi_base_url}/v1/mcp/tools", headers=headers)
-#         tools_response.raise_for_status()
-#         tools = tools_response.json()
+    mcp_servers = sorted(prefixes)
 
-#         resources_response = requests.get(f"{fastapi_base_url}/v1/mcp/resources", headers=headers)
-#         resources_response.raise_for_status()
-#         resources = resources_response.json()
+    if "optimizer" in mcp_servers:
+        mcp_servers.remove("optimizer")
+        mcp_servers.insert(0, "optimizer")
 
-#         prompts_response = requests.get(f"{fastapi_base_url}/v1/mcp/prompts", headers=headers)
-#         prompts_response.raise_for_status()
-#         prompts = prompts_response.json()
+    return mcp_servers
 
-#         return tools, resources, prompts
-#     except requests.exceptions.RequestException as e:
-#         st.error(f"Could not connect to the MCP backend at {fastapi_base_url}. Is it running? Error: {e}")
-#         return {"tools": []}, {"static": [], "dynamic": []}, {"prompts": []}
+
+@st.dialog(title="Details", width="large")
+def mcp_details(mcp_server: str, mcp_type: str, mcp_name: str) -> None:
+    """MCP Dialog Box"""
+    st.header(f"{mcp_name} - MCP server: {mcp_server}")
+    config = next((t for t in state.mcp_configs[mcp_type] if t.get("name") == f"{mcp_server}_{mcp_name}"), None)
+    if config.get("description"):
+        st.code(config["description"], wrap_lines=True, height="content")
+    if config.get("inputSchema"):
+        st.subheader("inputSchema", divider="red")
+        properties = config["inputSchema"].get("properties", {})
+        required_fields = set(config["inputSchema"].get("required", []))
+        for name, prop in properties.items():
+            req = '<span style="color: red;">(required)</span>' if name in required_fields else ""
+            html = f"""
+            <h3 style="margin-bottom: 4px;">{name} {req}</h3>
+            <ul style="margin: 0 0 8px 20px; padding: 0;">
+                <li><b>Description:</b> {prop.get("description", "")}</li>
+                <li><b>Type:</b> {prop.get("type", "any")}</li>
+                <li><b>Default:</b> {prop.get("default", "None")}</li>
+            </ul>
+            """
+            st.html(html)
+    if config.get("outputSchema"):
+        st.subheader("outputSchema", divider="red")
+    if config.get("arguments"):
+        st.subheader("arguments", divider="red")
+    if config.get("annotations"):
+        st.subheader("annotations", divider="red")
+    if config.get("meta"):
+        st.subheader("meta", divider="red")
+
+
+def render_configs(mcp_server: str, mcp_type: str, configs: list) -> None:
+    """Render rows of the MCP type"""
+    data_col_widths = [0.8, 0.2]
+    table_col_format = st.columns(data_col_widths, vertical_alignment="center")
+    col1, col2 = table_col_format
+    col1.markdown("Name", unsafe_allow_html=True)
+    col2.markdown("&#x200B;")
+    for mcp_name in configs:
+        col1.text_input(
+            "Name",
+            value=mcp_name,
+            label_visibility="collapsed",
+            disabled=True,
+        )
+        col2.button(
+            "Details",
+            on_click=mcp_details,
+            key=f"{mcp_server}_{mcp_name}_details",
+            kwargs=dict(mcp_server=mcp_server, mcp_type=mcp_type, mcp_name=mcp_name),
+        )
 
 
 #############################################################################
@@ -81,13 +130,39 @@ def display_mcp() -> None:
     """Streamlit GUI"""
     st.header("Model Context Protocol", divider="red")
     try:
-        get_mcp_tools()
+        get_mcp()
     except api_call.ApiError:
         st.stop()
     mcp_status = get_mcp_status()
     if mcp_status.get("status") == "ready":
         st.write(f"The {mcp_status['name']} is running.  Version: {mcp_status['version']}")
-    st.write(state.mcp_tools)
+
+    selected_mcp_server = st.selectbox(
+        "MCP Server:",
+        options=extract_servers(),
+        # index=list(database_lookup.keys()).index(state.client_settings["database"]["alias"]),
+        key="selected_mcp_server",
+        # on_change=st_common.update_client_settings("database"),
+    )
+    if state.mcp_configs["tools"]:
+        tools_lookup = st_common.state_configs_lookup("mcp_configs", "name", "tools")
+        mcp_tools = [key.split("_", 1)[1] for key in tools_lookup if key.startswith(f"{selected_mcp_server}_")]
+        if mcp_tools:
+            st.subheader("Tools", divider="red")
+            render_configs(selected_mcp_server, "tools", mcp_tools)
+    if state.mcp_configs["prompts"]:
+        prompts_lookup = st_common.state_configs_lookup("mcp_configs", "name", "prompts")
+        mcp_prompts = [key.split("_", 1)[1] for key in prompts_lookup if key.startswith(f"{selected_mcp_server}_")]
+        if mcp_prompts:
+            st.subheader("Prompts", divider="red")
+            render_configs(selected_mcp_server, "prompts", mcp_prompts)
+    if state.mcp_configs["resources"]:
+        st.subheader("Resources", divider="red")
+        resources_lookup = st_common.state_configs_lookup("mcp_configs", "name", "resources")
+        mcp_resources = [key.split("_", 1)[1] for key in resources_lookup if key.startswith(f"{selected_mcp_server}_")]
+        if mcp_resources:
+            st.subheader("Resources", divider="red")
+            render_configs(selected_mcp_server, "resources", mcp_resources)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ from client.content.config.tabs.settings import get_settings, display_settings
 from client.content.config.tabs.oci import get_oci, display_oci
 from client.content.config.tabs.databases import get_databases, display_databases
 from client.content.config.tabs.models import get_models, display_models
-from client.content.config.tabs.mcp import get_mcp_tools, display_mcp
+from client.content.config.tabs.mcp import get_mcp, display_mcp
 
 
 def main() -> None:
@@ -55,7 +55,7 @@ def main() -> None:
                 display_oci()
             tab_index += 1
         if not state.disabled["mcp_cfg"]:
-            get_mcp_tools()
+            get_mcp()
             with tabs[tab_index]:
                 display_mcp()
             tab_index += 1

@@ -67,7 +67,7 @@ async def register_all_mcp(mcp: FastMCP, auth: APIRouter):
     Auto-discover and register all MCP tools, prompts, resources, and proxies.
     """
     logger.info("Starting Registering MCP Components")
-    #await _discover_and_register("server.mcp.tools", mcp=mcp, auth=auth)
+    await _discover_and_register("server.mcp.tools", mcp=mcp, auth=auth)
     await _discover_and_register("server.mcp.proxies", mcp=mcp)
     # await _discover_and_register("server.mcp.prompts", mcp=mcp)
     logger.info("Finished Registering MCP Components")

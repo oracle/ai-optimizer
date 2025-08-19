@@ -200,7 +200,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             st.rerun()
 
 
-def render_model_rows(model_type):
+def render_model_rows(model_type: str) -> None:
     """Render rows of the models"""
     data_col_widths = [0.07, 0.23, 0.2, 0.28, 0.12]
     table_col_format = st.columns(data_col_widths, vertical_alignment="center")

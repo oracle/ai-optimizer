@@ -8,6 +8,8 @@ import os
 import shutil
 import subprocess
 
+from fastmcp.server.proxy import ProxyToolManager
+
 import server.api.core.databases as core_databases
 import common.logging_config as logging_config
 
@@ -17,6 +19,7 @@ logger = logging_config.logging.getLogger("mcp.proxies.sqlcl")
 async def register(mcp):
     """Register the SQLcl MCP Server as Local (via Proxy)"""
     tool_name = "SQLclProxy"
+
     sqlcl_binary = shutil.which("sql")
     if sqlcl_binary:
         env_vars = os.environ.copy()
@@ -61,6 +64,6 @@ async def register(mcp):
 
         # Create a proxy to the configured server (auto-creates ProxyClient)
         proxy = mcp.as_proxy(config, name=tool_name)
-        mcp.mount(proxy)
+        mcp.mount(proxy, as_proxy=False, prefix="sqlcl")
     else:
         logger.warning("Not enabling SQLcl MCP server, sqlcl not found in PATH.")

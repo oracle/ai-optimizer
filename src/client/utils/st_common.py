@@ -25,6 +25,7 @@ except ImportError:
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
+
 #############################################################################
 # State Helpers
 #############################################################################
@@ -34,9 +35,11 @@ def clear_state_key(state_key: str) -> None:
     logger.debug("State cleared: %s", state_key)
 
 
-def state_configs_lookup(state_configs_name: str, key: str) -> dict[str, dict[str, Any]]:
+def state_configs_lookup(state_configs_name: str, key: str, section: str = None) -> dict[str, dict[str, Any]]:
     """Convert state.<state_configs_name> into a lookup based on key"""
     configs = getattr(state, state_configs_name)
+    if section:
+        configs = configs.get(section, [])
     return {config[key]: config for config in configs if key in config}
 
 
