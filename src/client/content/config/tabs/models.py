@@ -52,7 +52,7 @@ def get_models(force: bool = False) -> None:
             state.model_configs = {}
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Retrieving Model APIs")
 def get_model_apis(model_type: str = None) -> list:
     """Get list of valid APIs; function for Streamlit caching"""
     response = api_call.get(endpoint="v1/models/api", params={"model_type": model_type})

@@ -16,6 +16,13 @@ from client.content.config.tabs.mcp import get_mcp, display_mcp
 
 def main() -> None:
     """Streamlit GUI"""
+    # Ensure all our configs exist
+    get_settings()
+    get_databases()
+    get_models()
+    get_oci()
+    get_mcp()
+
     tabs_list = []
     if not state.disabled["settings"]:
         tabs_list.append("💾 Settings")
@@ -35,27 +42,22 @@ def main() -> None:
 
         # Map tab objects to content conditionally
         if not state.disabled["settings"]:
-            get_settings()
             with tabs[tab_index]:
                 display_settings()
             tab_index += 1
         if not state.disabled["db_cfg"]:
-            get_databases()
             with tabs[tab_index]:
                 display_databases()
             tab_index += 1
         if not state.disabled["model_cfg"]:
-            get_models()
             with tabs[tab_index]:
                 display_models()
             tab_index += 1
         if not state.disabled["oci_cfg"]:
-            get_oci()
             with tabs[tab_index]:
                 display_oci()
             tab_index += 1
         if not state.disabled["mcp_cfg"]:
-            get_mcp()
             with tabs[tab_index]:
                 display_mcp()
             tab_index += 1

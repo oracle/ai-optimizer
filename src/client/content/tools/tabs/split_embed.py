@@ -32,7 +32,7 @@ logger = logging_config.logging.getLogger("client.tools.tabs.split_embed")
 #####################################################
 # Functions
 #####################################################
-@st.cache_data
+@st.cache_data(show_spinner="Retrieving OCI Compartments")
 def get_compartments() -> dict:
     """Get OCI Compartments; function for Streamlit caching"""
     response = api_call.get(endpoint=f"v1/oci/compartments/{state.client_settings['oci']['auth_profile']}")

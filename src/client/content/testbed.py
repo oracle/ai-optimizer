@@ -129,7 +129,7 @@ def evaluation_report(eid=None, report=None) -> None:
     # download_file("Download Report", report["html_report"], "evaluation_report.html", "text/html") #CDB
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Retrieving TestSets")
 def get_testbed_db_testsets() -> dict:
     """Get Database TestSets; this is cached"""
     return api_call.get(endpoint="v1/testbed/testsets")

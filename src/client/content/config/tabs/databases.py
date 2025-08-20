@@ -73,7 +73,7 @@ def select_ai_profile() -> None:
     selectai_df.clear()
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Retrieving SelectAI Objects")
 def selectai_df(profile):
     """Get SelectAI Object List and produce Dataframe"""
     logger.info("Retrieving objects from SelectAI Profile: %s", profile)
