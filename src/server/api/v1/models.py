@@ -20,21 +20,14 @@ auth = APIRouter()
 
 
 @auth.get(
-    "/api",
-    description="Get support model APIs",
+    "/provider",
+    description="Get support model providers",
     response_model=list,
 )
-async def models_list_api(
-    model_type: Optional[schema.ModelTypeType] = Query(None),
-) -> list[schema.Model]:
+async def models_list_provider() -> list[schema.Model]:
     """List all models APIs after applying filters if specified"""
-    logger.debug("Received models_list_api - type: %s", model_type)
-    if model_type == "ll":
-        return list(get_args(schema.LlAPI))
-    elif model_type == "embed":
-        return list(get_args(schema.EmbedAPI))
-    else:
-        return list()
+    logger.debug("Received models_list_provider")
+    return list(get_args(schema.ModelProviders))
 
 
 @auth.get(

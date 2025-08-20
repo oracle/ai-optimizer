@@ -55,7 +55,7 @@ class TestStreamlit:
         assert app_server is not None
         at = app_test(self.ST_FILE).run()
 
-        # Check for SpringAI across all text elements - could be in title, header, markdown, etc.
+        # Check for Export source code templates across all text elements - could be in title, header, markdown, etc.
         page_text = []
 
         # Check in markdown elements
@@ -85,8 +85,8 @@ class TestStreamlit:
                 if hasattr(div, "label"):
                     page_text.append(div.label)
 
-        # Assert that SpringAI is mentioned somewhere in the page
-        assert any("SpringAI" in text for text in page_text), "SpringAI section not found in page"
+        # Assert that Export source code templates is mentioned somewhere in the page
+        assert any("Export source code templates" in text for text in page_text), "Export source code templates section not found in page"
 
     def test_compare_with_uploaded_json(self, app_server, app_test):
         """Test the compare_with_uploaded_json function for finding differences in settings"""

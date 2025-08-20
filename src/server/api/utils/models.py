@@ -2,15 +2,14 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama pplx huggingface genai giskard litellm
+# spell-checker:ignore ollama pplx huggingface genai giskard litellm ocigenai
 
 from openai import OpenAI
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_cohere import ChatCohere, CohereEmbeddings
-from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_huggingface import HuggingFaceEndpointEmbeddings
+from langchain.chat_models import init_chat_model
+from langchain.embeddings import init_embeddings
+
 from langchain_community.chat_models.oci_generative_ai import ChatOCIGenAI
 from langchain_community.embeddings.oci_generative_ai import OCIGenAIEmbeddings
 
@@ -50,19 +49,18 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
         # Delete previously configured GenAI Models
         all_models = core_models.get_model()
         for model in all_models:
-            if any(x in model.api for x in ("ChatOCIGenAI", "OCIGenAIEmbeddings")):
+            if model.provider == "oci":
                 core_models.delete_model(model.id)
 
     genai_models = []
     for model in region_models:
         model_dict = {}
+        model_dict["provider"] = "oci"
         if "CHAT" in model["capabilities"]:
             model_dict["type"] = "ll"
-            model_dict["api"] = "ChatOCIGenAI"
             model_dict["context_length"] = 131072
         elif "TEXT_EMBEDDINGS" in model["capabilities"]:
             model_dict["type"] = "embed"
-            model_dict["api"] = "OCIGenAIEmbeddings"
             model_dict["max_chunk_size"] = 8192
         else:
             continue
@@ -84,112 +82,64 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
 
 def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giskard: bool = False) -> BaseChatModel:
     """Retrieve model configuration"""
-
-    def get_key_value(
-        models: list[schema.ModelAccess],
-        model_id: schema.ModelIdType,
-        model_key: str,
-    ) -> str:
-        """Return a models key value of its configuration"""
-        for model in models:
-            if model.id == model_id:
-                return getattr(model, model_key, None)
+    logger.debug("Model Client: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
+    try:
+        defined_model = core_models.get_model(
+            model_id=model_config["model"],
+            include_disabled=False,
+        ).model_dump()
+    except core_models.UnknownModelError:
         return None
 
-    logger.debug("Model Config: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
-    all_models = core_models.get_model()
-
-    model_id = model_config["model"]
-    model_api = get_key_value(all_models, model_id, "api")
-    model_api_key = get_key_value(all_models, model_id, "api_key")
-    model_url = get_key_value(all_models, model_id, "url")
-
-    # Determine if configuring an embedding model
-    try:
-        embedding = model_config["enabled"]
-    except (AttributeError, KeyError):
-        embedding = False
-
-    # schema.Model Classes
-    model_classes = {}
-    if not embedding:
-        logger.debug("Configuring LL Model")
-        ll_common_params = {}
-        for key in [
-            "temperature",
-            "top_p",
-            "frequency_penalty",
-            "presence_penalty",
-            "max_completion_tokens",
-            "streaming",
-        ]:
-            try:
-                logger.debug("--> Setting: %s; was sent %s", key, model_config[key])
-                ll_common_params[key] = model_config[key] or get_key_value(all_models, model_id, key)
-            except KeyError:
-                # Mainly for embeddings
-                continue
-        logger.debug("LL Model Parameters: %s", ll_common_params)
-        model_classes = {
-            "OpenAI": lambda: ChatOpenAI(model=model_id, api_key=model_api_key, **ll_common_params),
-            "CompatOpenAI": lambda: ChatOpenAI(
-                model=model_id, base_url=model_url, api_key=model_api_key or "api_compat", **ll_common_params
-            ),
-            "Cohere": lambda: ChatCohere(model=model_id, cohere_api_key=model_api_key, **ll_common_params),
-            "ChatOllama": lambda: ChatOllama(
-                model=model_id,
-                base_url=model_url,
-                **ll_common_params,
-                num_predict=ll_common_params["max_completion_tokens"],
-            ),
-            "Perplexity": lambda: ChatOpenAI(
-                model=model_id, base_url=model_url, api_key=model_api_key, **ll_common_params
-            ),
-            "ChatOCIGenAI": lambda oci_cfg=oci_config: ChatOCIGenAI(
-                model_id=model_id,
-                client=util_oci.init_genai_client(oci_cfg),
-                compartment_id=oci_cfg.genai_compartment_id,
+    full_model_config = {**defined_model, **{k: v for k, v in model_config.items() if v is not None}}
+    client = None
+    provider = full_model_config["provider"]
+    if full_model_config["type"] == "ll" and not giskard:
+        common_params = {
+            k: full_model_config.get(k) for k in ["frequency_penalty", "presence_penalty", "top_p", "streaming"]
+        }
+        if provider != "oci":
+            client = init_chat_model(
+                model_provider="openai" if provider == "openai_compatible" else provider,
+                model=full_model_config["id"],
+                base_url=full_model_config["url"],
+                api_key=full_model_config["api_key"] or "not_required",
+                temperature=full_model_config["temperature"],
+                max_tokens=full_model_config["max_completion_tokens"],
+                **common_params,
+            )
+        else:
+            client = ChatOCIGenAI(
+                model_id=full_model_config["id"],
+                client=util_oci.init_genai_client(oci_config),
+                compartment_id=oci_config.genai_compartment_id,
                 model_kwargs={
                     (k if k != "max_completion_tokens" else "max_tokens"): v
-                    for k, v in ll_common_params.items()
+                    for k, v in common_params.items()
                     if k not in {"streaming"}
                 },
-            ),
-        }
-    if embedding:
-        logger.debug("Configuring Embed Model")
-        model_classes = {
-            "OpenAIEmbeddings": lambda: OpenAIEmbeddings(model=model_id, api_key=model_api_key),
-            "CompatOpenAIEmbeddings": lambda: OpenAIEmbeddings(
-                model=model_id,
-                base_url=model_url,
-                api_key=model_api_key or "api_compat",
-                check_embedding_ctx_length=False,
-            ),
-            "CohereEmbeddings": lambda: CohereEmbeddings(model=model_id, cohere_api_key=model_api_key),
-            "OllamaEmbeddings": lambda: OllamaEmbeddings(model=model_id, base_url=model_url),
-            "HuggingFaceEndpointEmbeddings": lambda: HuggingFaceEndpointEmbeddings(model=model_url),
-            "OCIGenAIEmbeddings": lambda oci_cfg=oci_config: OCIGenAIEmbeddings(
-                model_id=model_id,
-                client=util_oci.init_genai_client(oci_cfg),
-                compartment=oci_cfg.compartment,
-            ),
-        }
+            )
 
-    try:
-        if giskard:
-            logger.debug("Creating Giskard Client for %s in %s", model_api, model_classes)
-            giskard_key = model_api_key or "giskard"
-            if giskard_key == "giskard" and model_api == "CompatOpenAI":
-                _client = OpenAI(api_key=giskard_key, base_url=f"{model_url}")
-            else:
-                _client = OpenAI(api_key=giskard_key, base_url=f"{model_url}/v1")
-            client = OpenAIClient(model=model_id, client=_client)
+    if full_model_config["type"] == "embed" and not giskard:
+        if provider != "oci":
+            client = init_embeddings(
+                provider="openai" if provider == "openai_compatible" else provider,
+                model=full_model_config["id"],
+                base_url=full_model_config["url"],
+                api_key=full_model_config["api_key"] or "not_required",
+            )
         else:
-            logger.debug("Searching for %s in %s", model_api, model_classes)
-            client = model_classes[model_api]()
-            logger.debug("Model Client: %s", client)
-        return client
-    except (UnboundLocalError, KeyError):
-        logger.error("Unable to find client; expect trouble!")
-        return None
+            client = OCIGenAIEmbeddings(
+                model_id=full_model_config["id"],
+                client=util_oci.init_genai_client(oci_config),
+                compartment_id=oci_config.genai_compartment_id,
+            )
+
+    if giskard:
+        logger.debug("Creating Giskard Client")
+        giskard_key = full_model_config["api_key"] or "giskard"
+        _client = OpenAI(api_key=giskard_key, base_url=full_model_config["url"])
+        client = OpenAIClient(model=full_model_config["id"], client=_client)
+
+    logger.debug("Configured Client: %s", vars(client))
+    return client

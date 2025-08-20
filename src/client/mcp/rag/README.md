@@ -120,7 +120,7 @@ rag.set_optimizer_settings_path("/Users/cdebari/Documents/GitHub/ai-optimizer-mc
 * Substitute `Local` with `Remote client` line:
 
 ```python
-#mcp = FastMCP("rag", port=8001) #Remote client
+#mcp = FastMCP("rag", port=9001) #Remote client
 mcp = FastMCP("rag") #Local
 ```
 
@@ -148,7 +148,7 @@ npx @modelcontextprotocol/inspector
 
 * set the Transport Type to `SSE`
 
-* set the `URL` to `http://localhost:8001/sse`
+* set the `URL` to `http://localhost:9001/sse`
 
 * test the tool developed.
 
@@ -166,7 +166,7 @@ If you have already installed Node.js v20.17.0+, it should work:
 			"command": "npx",
 			"args": [
 				"mcp-remote",
-				"http://127.0.0.1:8001/sse"
+				"http://127.0.0.1:9001/sse"
 			]
 		}
   }
