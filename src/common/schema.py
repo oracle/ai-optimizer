@@ -19,6 +19,32 @@ DistanceMetrics = Literal["COSINE", "EUCLIDEAN_DISTANCE", "DOT_PRODUCT"]
 IndexTypes = Literal["HNSW", "IVF"]
 
 # ModelAPIs
+# https://python.langchain.com/api_reference/langchain/chat_models/langchain.chat_models.base.init_chat_model.html
+ModelProviders = Literal[
+    "openai",
+    "anthropic",
+    "azure_openai",
+    "azure_ai",
+    "google_vertexai",
+    "google_genai",
+    "bedrock",
+    "bedrock_converse",
+    "cohere",
+    "fireworks",
+    "together",
+    "mistralai",
+    "huggingface",
+    "groq",
+    "ollama",
+    "google_anthropic_vertex",
+    "deepseek",
+    "ibm",
+    "nvidia",
+    "xai",
+    "perplexity",
+]
+
+
 EmbedAPI = Literal[
     "OllamaEmbeddings",
     "OCIGenAIEmbeddings",
@@ -44,7 +70,9 @@ class DatabaseVectorStorage(BaseModel):
     """Database Vector Storage Tables"""
 
     vector_store: Optional[str] = Field(
-        default=None, description="Vector Store Table Name (auto-generated, do not set)", json_schema_extra={"readOnly": True}
+        default=None,
+        description="Vector Store Table Name (auto-generated, do not set)",
+        json_schema_extra={"readOnly": True},
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
     model: Optional[str] = Field(default=None, description="Embedding Model")
@@ -85,7 +113,9 @@ class Database(DatabaseAuth):
         default=[], description="Vector Storage (read-only)", json_schema_extra={"readOnly": True}
     )
     selectai: bool = Field(default=False, description="SelectAI Possible")
-    selectai_profiles: Optional[list] = Field(default=[], description="SelectAI Profiles (read-only)", json_schema_extra={"readOnly": True})
+    selectai_profiles: Optional[list] = Field(
+        default=[], description="SelectAI Profiles (read-only)", json_schema_extra={"readOnly": True}
+    )
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
 
@@ -182,6 +212,7 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
     api: str = Field(
         ..., min_length=1, description="API for Model.", examples=["ChatOllama", "OpenAI", "OpenAIEmbeddings"]
     )
+    provider: str = Field(..., min_length=1, description="Model Provider", examples=["openai", "anthropic"])
     openai_compat: bool = Field(default=True, description="Is the API OpenAI compatible?")
 
     @model_validator(mode="after")
@@ -199,6 +230,16 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
             raise ValueError(f"API '{self.api}' is not valid for type 'embed'. Must be one of: {embed_apis}")
         return self
 
+    def check_provider_matches_type(self):
+        """Validate valid API"""
+        providers = get_args(ModelProviders)
+        if not self.provider or self.provider == "unset":
+            return self
+
+        if self.provider not in providers:
+            raise ValueError(f"Provider '{self.provider}' is not valid. Must be one of: {providers}")
+        return self
+
 
 #####################################################
 # Oracle Cloud Infrastructure
@@ -213,7 +254,9 @@ class OracleCloudSettings(BaseModel):
     """Store Oracle Cloud Infrastructure Settings"""
 
     auth_profile: str = Field(default="DEFAULT", description="Config File Profile")
-    namespace: Optional[str] = Field(default=None, description="Object Store Namespace", json_schema_extra={"readOnly": True})
+    namespace: Optional[str] = Field(
+        default=None, description="Object Store Namespace", json_schema_extra={"readOnly": True}
+    )
     user: Optional[str] = Field(
         default=None,
         description="Optional if using Auth Token",
