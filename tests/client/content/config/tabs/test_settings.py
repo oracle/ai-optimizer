@@ -13,7 +13,7 @@ class TestStreamlit:
     """Test the Streamlit UI"""
 
     # Streamlit File
-    ST_FILE = "../src/client/content/config/settings.py"
+    ST_FILE = "../src/client/content/config/tabs/settings.py"
 
     def test_settings_display(self, app_server, app_test):
         """Test that settings are displayed correctly"""
@@ -86,7 +86,9 @@ class TestStreamlit:
                     page_text.append(div.label)
 
         # Assert that Export source code templates is mentioned somewhere in the page
-        assert any("Export source code templates" in text for text in page_text), "Export source code templates section not found in page"
+        assert any("Source Code Templates" in text for text in page_text), (
+            "Export source code templates section not found in page"
+        )
 
     def test_compare_with_uploaded_json(self, app_server, app_test):
         """Test the compare_with_uploaded_json function for finding differences in settings"""
@@ -114,7 +116,7 @@ class TestStreamlit:
         }
 
         # Import the original function to test directly
-        from client.content.config.settings import compare_settings
+        from client.content.config.tabs.settings import compare_settings
 
         # Call the function directly
         differences = compare_settings(at.session_state, uploaded_settings)
