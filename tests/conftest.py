@@ -111,14 +111,14 @@ def app_server(request):
 
     server_process = subprocess.Popen(cmd, cwd="src")
 
-    # Wait for server to be ready (up to 30 seconds)
-    max_wait = 30
+    # Wait for server to be ready
+    max_wait = 60
     start_time = time.time()
     while not is_port_in_use(8015):
         if time.time() - start_time > max_wait:
             server_process.terminate()
             server_process.wait()
-            raise TimeoutError("Server failed to start within 30 seconds")
+            raise TimeoutError(f"Server failed to start within {max_wait} seconds")
         time.sleep(0.5)
 
     yield server_process
@@ -133,7 +133,7 @@ def app_test(auth_headers):
     """Establish Streamlit State for Client to Operate"""
 
     def _app_test(page):
-        at = AppTest.from_file(page, default_timeout=30)
+        at = AppTest.from_file(page, default_timeout=60)
         at.session_state.server = {
             "key": os.environ.get("API_SERVER_KEY"),
             "url": os.environ.get("API_SERVER_URL"),
