@@ -7,7 +7,6 @@ Session States Set:
 """
 # spell-checker:ignore streamlit, scriptrunner
 
-import asyncio
 import os
 from uuid import uuid4
 
@@ -150,6 +149,7 @@ def main() -> None:
 
     pg_sidebar = st.navigation(sidebar_navigation, position="sidebar", expanded=False)
     pg_sidebar.run()
+
 
 if __name__ == "__main__":
     # Start Server if not running

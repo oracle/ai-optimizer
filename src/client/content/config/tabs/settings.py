@@ -159,12 +159,12 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
     if not ll_model or not embed_model:
         return "hybrid"
 
-    ll_provider = ll_model["provider"]
-    embed_provider = embed_model["provider"]
+    ll_provider = ll_model.get("provider", "")
+    embed_provider = embed_model.get("provider", "")
 
-    if "openai" in ll_provider and "openai" in ll_provider:
+    if all("openai" in p for p in (ll_provider, embed_provider)):
         return "openai"
-    elif ll_provider == "ollama" and "ollama" in embed_provider:
+    if all("ollama" in p for p in (ll_provider, embed_provider)):
         return "ollama"
 
     return "hybrid"
@@ -217,7 +217,7 @@ def spring_ai_zip(provider, ll_config, embed_config):
     # Source directory that you want to copy
     files = ["mvnw", "mvnw.cmd", "pom.xml", "README.md"]
 
-    src_dir = Path(__file__).resolve().parents[2] / "spring_ai"
+    src_dir = Path(__file__).resolve().parents[3] / "spring_ai"
 
     # Using TemporaryDirectory
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -248,7 +248,7 @@ def langchain_mcp_zip(settings):
     """Create LangChain MCP Zip File"""
 
     # Source directory that you want to copy
-    src_dir = Path(__file__).resolve().parents[2] / "mcp/rag"
+    src_dir = Path(__file__).resolve().parents[3] / "mcp/rag"
 
     # Using TemporaryDirectory
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -328,7 +328,7 @@ def display_settings():
         else:
             st.info("Please upload a Settings file.")
 
-    st.header("Export source code templates", divider="red")
+    st.header("Source Code Templates", divider="red")
     # Merge the User Settings into the Model Config
     model_lookup = st_common.state_configs_lookup("model_configs", "id")
     try:

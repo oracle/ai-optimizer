@@ -7,7 +7,7 @@ This script initializes a web interface for model configuration using Streamlit 
 Session States Set:
 - model_configs: Stores all Model Configurations
 """
-# spell-checker:ignore selectbox ocigenai
+# spell-checker:ignore selectbox
 
 from time import sleep
 from typing import Literal
