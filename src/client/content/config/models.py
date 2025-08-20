@@ -7,7 +7,7 @@ This script initializes a web interface for model configuration using Streamlit 
 Session States Set:
 - model_configs: Stores all Model Configurations
 """
-# spell-checker:ignore selectbox
+# spell-checker:ignore selectbox ocigenai
 
 import inspect
 from time import sleep
@@ -55,9 +55,9 @@ def get_models(force: bool = False) -> None:
 
 
 @st.cache_data
-def get_model_apis(model_type: str = None) -> list:
-    """Get list of valid APIs; function for Streamlit caching"""
-    response = api_call.get(endpoint="v1/models/api", params={"model_type": model_type})
+def get_model_providers() -> list:
+    """Get list of valid Providers; function for Streamlit caching"""
+    response = api_call.get(endpoint="v1/models/provider")
     return response
 
 
@@ -93,7 +93,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
         model_id = urllib.parse.quote(model_id, safe="")
         model = api_call.get(endpoint=f"v1/models/{model_id}")
     else:
-        model = {"id": "unset", "type": model_type, "api": "unset", "status": "CUSTOM"}
+        model = {"id": "unset", "type": model_type, "provider": "unset", "status": "CUSTOM"}
     with st.form("edit_model"):
         if action == "add":
             model["enabled"] = True  # Server will update based on API URL Accessibility
@@ -106,22 +106,22 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             key="add_model_id",
             disabled=action == "edit",
         )
-        api_values = get_model_apis(model_type)
-        api_index = next((i for i, item in enumerate(api_values) if item == model["api"]), None)
-        disable_for_oci = model["api"] in ["ChatOCIGenAI", "OCIGenAIEmbeddings"]
-        model["api"] = st.selectbox(
-            "API (Required):",
-            help=help_text.help_dict["model_api"],
-            placeholder="-- Choose the Model's API --",
-            index=api_index,
-            options=api_values,
-            key="add_model_api",
+        providers = get_model_providers()
+        provider_index = next((i for i, item in enumerate(providers) if item == model["provider"]), None)
+        disable_for_oci = model["provider"] == "ocigenai"
+        model["provider"] = st.selectbox(
+            "Provider (Required):",
+            help=help_text.help_dict["model_provider"],
+            placeholder="-- Choose the Model's Provider --",
+            index=provider_index,
+            options=providers,
+            key="add_model_provider",
             disabled=action == "edit",
         )
         model["url"] = st.text_input(
-            "API URL:",
-            help=help_text.help_dict["model_api_url"],
-            key="add_model_api_url",
+            "Provider URL:",
+            help=help_text.help_dict["model_url"],
+            key="add_model_url",
             value=model.get("url", ""),
             disabled=disable_for_oci
         )
@@ -209,8 +209,8 @@ def render_model_rows(model_type):
     col1, col2, col3, col4, col5 = table_col_format
     col1.markdown("&#x200B;", help="Active", unsafe_allow_html=True)
     col2.markdown("**<u>Model ID</u>**", unsafe_allow_html=True)
-    col3.markdown("**<u>API</u>**", unsafe_allow_html=True)
-    col4.markdown("**<u>API Server</u>**", unsafe_allow_html=True)
+    col3.markdown("**<u>Provider</u>**", unsafe_allow_html=True)
+    col4.markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
     col5.markdown("&#x200B;")
     for model in [m for m in state.model_configs if m.get("type") == model_type]:
         model_id = model["id"]
@@ -228,9 +228,9 @@ def render_model_rows(model_type):
             disabled=True,
         )
         col3.text_input(
-            "API",
-            value=model["api"],
-            key=f"{model_type}_{model_id}_api",
+            "Provider",
+            value=model["provider"],
+            key=f"{model_type}_{model_id}_provider",
             label_visibility="collapsed",
             disabled=True,
         )

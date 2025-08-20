@@ -6,6 +6,7 @@ NOTE: Provide only one example per API to populate supported API lists; addition
 added via the APIs
 """
 # spell-checker:ignore configfile genai ollama pplx docos mxbai nomic thenlper
+# spell-checker:ignore huggingface
 
 import os
 
@@ -26,7 +27,7 @@ def main() -> list[Model]:
             "id": "command-r",
             "enabled": os.getenv("COHERE_API_KEY") is not None,
             "type": "ll",
-            "api": "Cohere",
+            "provider": "cohere",
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "openai_compat": False,
             "url": "https://api.cohere.ai",
@@ -39,10 +40,10 @@ def main() -> list[Model]:
             "id": "gpt-4o-mini",
             "enabled": os.getenv("OPENAI_API_KEY") is not None,
             "type": "ll",
-            "api": "OpenAI",
+            "provider": "openai",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "openai_compat": True,
-            "url": "https://api.openai.com",
+            "url": "https://api.openai.com/v1",
             "context_length": 127072,
             "temperature": 1.0,
             "max_completion_tokens": 4096,
@@ -52,7 +53,7 @@ def main() -> list[Model]:
             "id": "sonar",
             "enabled": os.getenv("PPLX_API_KEY") is not None,
             "type": "ll",
-            "api": "Perplexity",
+            "provider": "perplexity",
             "api_key": os.environ.get("PPLX_API_KEY", default=""),
             "openai_compat": True,
             "url": "https://api.perplexity.ai",
@@ -65,7 +66,7 @@ def main() -> list[Model]:
             "id": "phi-4",
             "enabled": False,
             "type": "ll",
-            "api": "CompatOpenAI",
+            "provider": "openai_compatible",
             "api_key": "",
             "openai_compat": True,
             "url": "http://localhost:1234/v1",
@@ -78,7 +79,7 @@ def main() -> list[Model]:
             "id": "gpt-oss:20b",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "ll",
-            "api": "ChatOllama",
+            "provider": "ollama",
             "api_key": "",
             "openai_compat": True,
             "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
@@ -92,7 +93,7 @@ def main() -> list[Model]:
             "id": "llama3.1",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "ll",
-            "api": "ChatOllama",
+            "provider": "ollama",
             "api_key": "",
             "openai_compat": True,
             "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
@@ -105,7 +106,7 @@ def main() -> list[Model]:
             "id": "thenlper/gte-base",
             "enabled": os.getenv("ON_PREM_HF_URL") is not None,
             "type": "embed",
-            "api": "HuggingFaceEndpointEmbeddings",
+            "provider": "huggingface",
             "url": os.environ.get("ON_PREM_HF_URL", default="http://127.0.0.1:8080"),
             "api_key": "",
             "openai_compat": True,
@@ -115,8 +116,8 @@ def main() -> list[Model]:
             "id": "text-embedding-3-small",
             "enabled": os.getenv("OPENAI_API_KEY") is not None,
             "type": "embed",
-            "api": "OpenAIEmbeddings",
-            "url": "https://api.openai.com",
+            "provider": "openai_compatible",
+            "url": "https://api.openai.com/v1",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "openai_compat": True,
             "max_chunk_size": 8191,
@@ -125,7 +126,7 @@ def main() -> list[Model]:
             "id": "embed-english-light-v3.0",
             "enabled": os.getenv("COHERE_API_KEY") is not None,
             "type": "embed",
-            "api": "CohereEmbeddings",
+            "provider": "cohere",
             "url": "https://api.cohere.ai",
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "openai_compat": False,
@@ -135,7 +136,7 @@ def main() -> list[Model]:
             "id": "text-embedding-nomic-embed-text-v1.5",
             "enabled": False,
             "type": "embed",
-            "api": "CompatOpenAIEmbeddings",
+            "provider": "openai_compatible",
             "url": "http://localhost:1234/v1",
             "api_key": "",
             "openai_compat": True,
@@ -146,7 +147,7 @@ def main() -> list[Model]:
             "id": "mxbai-embed-large",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "embed",
-            "api": "OllamaEmbeddings",
+            "provider": "ollama",
             "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
             "api_key": "",
             "openai_compat": True,
@@ -200,11 +201,11 @@ def main() -> list[Model]:
 
     # Override with OS env vars (by API type)
     for model in models_list:
-        api = model.get("api", "")
+        provider = model.get("provider", "")
         model_id = model.get("id", "")
         overridden = False
 
-        if api == "Cohere" and os.getenv("COHERE_API_KEY"):
+        if provider == "cohere" and os.getenv("COHERE_API_KEY"):
             old_api_key = model.get("api_key", "")
             new_api_key = os.environ["COHERE_API_KEY"]
             if old_api_key != new_api_key:
@@ -214,7 +215,7 @@ def main() -> list[Model]:
                 overridden = True
             model["enabled"] = True
 
-        elif api == "ChatOCIGenAI" and os.getenv("OCI_GENAI_SERVICE_ENDPOINT"):
+        elif provider == "oci" and os.getenv("OCI_GENAI_SERVICE_ENDPOINT"):
             old_url = model.get("url", "")
             new_url = os.environ["OCI_GENAI_SERVICE_ENDPOINT"]
             if old_url != new_url:
@@ -225,7 +226,7 @@ def main() -> list[Model]:
                 overridden = True
             model["enabled"] = True
 
-        elif api == "ChatOllama" and os.getenv("ON_PREM_OLLAMA_URL"):
+        elif provider == "ollama" and os.getenv("ON_PREM_OLLAMA_URL"):
             old_url = model.get("url", "")
             new_url = os.environ["ON_PREM_OLLAMA_URL"]
             if old_url != new_url:
@@ -234,7 +235,7 @@ def main() -> list[Model]:
                 overridden = True
             model["enabled"] = True
 
-        elif api == "HuggingFaceEndpointEmbeddings" and os.getenv("ON_PREM_HF_URL"):
+        elif provider == "huggingface" and os.getenv("ON_PREM_HF_URL"):
             old_url = model.get("url", "")
             new_url = os.environ["ON_PREM_HF_URL"]
             if old_url != new_url:

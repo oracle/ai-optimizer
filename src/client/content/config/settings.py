@@ -144,12 +144,12 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
     if not ll_model or not embed_model:
         return "hybrid"
 
-    ll_api = ll_model["api"]
-    embed_api = embed_model["api"]
+    ll_provider = ll_model["provider"]
+    embed_provider = embed_model["provider"]
 
-    if "OpenAI" in ll_api and "OpenAI" in embed_api:
+    if "openai" in ll_provider and "openai" in ll_provider:
         return "openai"
-    elif ll_api == "ChatOllama" and "Ollama" in embed_api:
+    elif ll_provider == "ollama" and "ollama" in embed_provider:
         return "ollama"
 
     return "hybrid"

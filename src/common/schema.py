@@ -3,6 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore ollama hnsw mult ocid testset selectai explainsql showsql vector_search aioptimizer genai
+# spell-checker:ignore deepseek groq huggingface mistralai ocigenai vertexai
 
 import time
 from typing import Optional, Literal, Union, get_args, Any
@@ -18,22 +19,27 @@ import common.help_text as help_text
 DistanceMetrics = Literal["COSINE", "EUCLIDEAN_DISTANCE", "DOT_PRODUCT"]
 IndexTypes = Literal["HNSW", "IVF"]
 
-# ModelAPIs
-EmbedAPI = Literal[
-    "OllamaEmbeddings",
-    "OCIGenAIEmbeddings",
-    "CompatOpenAIEmbeddings",
-    "OpenAIEmbeddings",
-    "CohereEmbeddings",
-    "HuggingFaceEndpointEmbeddings",
-]
-LlAPI = Literal[
-    "ChatOllama",
-    "ChatOCIGenAI",
-    "CompatOpenAI",
-    "Perplexity",
-    "OpenAI",
-    "Cohere",
+# Model Providers
+ModelProviders = Literal[
+    "oci",
+    "openai",
+    "openai_compatible",
+    "anthropic",
+    "azure_openai",
+    "azure_ai",
+    "google_vertexai",
+    "google_genai",
+    "bedrock",
+    "bedrock_converse",
+    "cohere",
+    "mistralai",
+    "huggingface",
+    "groq",
+    "ollama",
+    "google_anthropic_vertex",
+    "deepseek",
+    "xai",
+    "perplexity",
 ]
 
 
@@ -145,24 +151,19 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
         description="OpenAI Compatible Only",
     )
     type: Literal["ll", "embed", "re-rank"] = Field(..., description="Type of Model.")
-    api: str = Field(
-        ..., min_length=1, description="API for Model.", examples=["ChatOllama", "OpenAI", "OpenAIEmbeddings"]
-    )
+    provider: str = Field(..., min_length=1, description="Model Provider.", examples=["openai", "anthropic", "ollama"])
     openai_compat: bool = Field(default=True, description="Is the API OpenAI compatible?")
 
     @model_validator(mode="after")
-    def check_api_matches_type(self):
-        """Validate valid API"""
-        ll_apis = get_args(LlAPI)
-        embed_apis = get_args(EmbedAPI)
+    def check_provider(self):
+        """Validate valid provider"""
+        providers = get_args(ModelProviders)
 
-        if not self.api or self.api == "unset":
+        if not self.provider or self.provider == "unset":
             return self
 
-        if self.type == "ll" and self.api not in ll_apis:
-            raise ValueError(f"API '{self.api}' is not valid for type 'll'. Must be one of: {ll_apis}")
-        if self.type == "embed" and self.api not in embed_apis:
-            raise ValueError(f"API '{self.api}' is not valid for type 'embed'. Must be one of: {embed_apis}")
+        if self.provider not in providers:
+            raise ValueError(f"Provider '{self.provider}' is not valid. Must be one of: {providers}")
         return self
 
 

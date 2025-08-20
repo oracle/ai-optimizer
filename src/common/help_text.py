@@ -97,11 +97,11 @@ help_dict = {
         The official name of the model as per the model card.
         Misconfigured names will result in an error.
         """,
-    "model_api": """
-        API of the model.  If the API of the model is not listed here, try an CompatOpenAI one.
-        Open an issue if you'd like to request support for an unlisted model.
+    "model_provider": """
+        Provider of the model.  If the Provider of the model is not listed here, try openai_compat.
+        Open an issue if you'd like to request support for an unlisted model provider.
         """,
-    "model_api_url": """
+    "model_url": """
         API URL for accessing the model.
         """,
     "model_api_key": """
