@@ -7,16 +7,14 @@ This script initializes a web interface for model configuration using Streamlit 
 Session States Set:
 - model_configs: Stores all Model Configurations
 """
-# spell-checker:ignore selectbox ocigenai
+# spell-checker:ignore selectbox
 
-import inspect
 from time import sleep
 from typing import Literal
 import urllib.parse
 
 import streamlit as st
 from streamlit import session_state as state
-from client.utils.st_footer import render_models_footer
 
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
@@ -24,7 +22,7 @@ import client.utils.st_common as st_common
 import common.help_text as help_text
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("client.content.config.models")
+logger = logging_config.logging.getLogger("client.content.config.tabs.models")
 
 
 ###################################
@@ -54,7 +52,7 @@ def get_models(force: bool = False) -> None:
             state.model_configs = {}
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Retrieving Model Providers")
 def get_model_providers() -> list:
     """Get list of valid Providers; function for Streamlit caching"""
     response = api_call.get(endpoint="v1/models/provider")
@@ -131,7 +129,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             key="add_model_api_key",
             type="password",
             value=model.get("api_key", ""),
-            disabled=disable_for_oci
+            disabled=disable_for_oci,
         )
         if model_type == "ll":
             model["context_length"] = st.number_input(
@@ -202,7 +200,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             st.rerun()
 
 
-def render_model_rows(model_type):
+def render_model_rows(model_type: str) -> None:
     """Render rows of the models"""
     data_col_widths = [0.07, 0.23, 0.2, 0.28, 0.12]
     table_col_format = st.columns(data_col_widths, vertical_alignment="center")
@@ -255,7 +253,7 @@ def render_model_rows(model_type):
 #############################################################################
 # MAIN
 #############################################################################
-def main() -> None:
+def display_models() -> None:
     """Streamlit GUI"""
     st.header("Models", divider="red")
     st.write("Update, Add, or Delete model configuration parameters.")
@@ -263,8 +261,6 @@ def main() -> None:
         get_models()
     except api_call.ApiError:
         st.stop()
-
-    # Table Dimensions
 
     st.divider()
     st.subheader("Language Models")
@@ -274,8 +270,6 @@ def main() -> None:
     st.subheader("Embedding Models")
     render_model_rows("embed")
 
-    render_models_footer()
 
-
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()
+if __name__ == "__main__":
+    display_models()

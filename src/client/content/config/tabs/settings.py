@@ -6,7 +6,6 @@ This script allows importing/exporting configurations using Streamlit (`st`).
 """
 # spell-checker:ignore streamlit, mvnw, obaas, ollama
 
-import inspect
 import time
 import os
 import io
@@ -26,11 +25,10 @@ from streamlit import session_state as state
 # Utilities
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
-from client.utils.st_footer import remove_footer
 
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("client.content.config.settings")
+logger = logging_config.logging.getLogger("client.content.config.tabs.settings")
 
 
 #############################################################################
@@ -38,15 +36,32 @@ logger = logging_config.logging.getLogger("client.content.config.settings")
 #############################################################################
 def get_settings(include_sensitive: bool = False):
     """Get Server-Side Settings"""
-    settings = api_call.get(
-        endpoint="v1/settings",
-        params={
-            "client": state.client_settings["client"],
-            "full_config": True,
-            "incl_sensitive": include_sensitive,
-        },
-    )
-    return settings
+    try:
+        settings = api_call.get(
+            endpoint="v1/settings",
+            params={
+                "client": state.client_settings["client"],
+                "full_config": True,
+                "incl_sensitive": include_sensitive,
+            },
+        )
+        return settings
+    except api_call.ApiError as ex:
+        if "not found" in str(ex):
+            # If client settings not found, create them
+            logger.info("Client settings not found, creating new ones")
+            api_call.post(endpoint="v1/settings", params={"client": state.client_settings["client"]})
+            settings = api_call.get(
+                endpoint="v1/settings",
+                params={
+                    "client": state.client_settings["client"],
+                    "full_config": True,
+                    "incl_sensitive": include_sensitive,
+                },
+            )
+            return settings
+        else:
+            raise
 
 
 def save_settings(settings):
@@ -144,12 +159,12 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
     if not ll_model or not embed_model:
         return "hybrid"
 
-    ll_provider = ll_model["provider"]
-    embed_provider = embed_model["provider"]
+    ll_provider = ll_model.get("provider", "")
+    embed_provider = embed_model.get("provider", "")
 
-    if "openai" in ll_provider and "openai" in ll_provider:
+    if all("openai" in p for p in (ll_provider, embed_provider)):
         return "openai"
-    elif ll_provider == "ollama" and "ollama" in embed_provider:
+    if all("ollama" in p for p in (ll_provider, embed_provider)):
         return "ollama"
 
     return "hybrid"
@@ -202,7 +217,7 @@ def spring_ai_zip(provider, ll_config, embed_config):
     # Source directory that you want to copy
     files = ["mvnw", "mvnw.cmd", "pom.xml", "README.md"]
 
-    src_dir = Path(__file__).resolve().parents[2] / "spring_ai"
+    src_dir = Path(__file__).resolve().parents[3] / "spring_ai"
 
     # Using TemporaryDirectory
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -228,11 +243,12 @@ def spring_ai_zip(provider, ll_config, embed_config):
         zip_buffer.seek(0)
     return zip_buffer
 
+
 def langchain_mcp_zip(settings):
     """Create LangChain MCP Zip File"""
 
     # Source directory that you want to copy
-    src_dir = Path(__file__).resolve().parents[2] / "mcp/rag"
+    src_dir = Path(__file__).resolve().parents[3] / "mcp/rag"
 
     # Using TemporaryDirectory
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -241,7 +257,7 @@ def langchain_mcp_zip(settings):
 
         shutil.copytree(src_dir, dst_dir)
 
-        data=save_settings(settings)
+        data = save_settings(settings)
         settings_path = os.path.join(dst_dir, "optimizer_settings.json")
         with open(settings_path, "w") as f:
             f.write(data)
@@ -258,13 +274,11 @@ def langchain_mcp_zip(settings):
     return zip_buffer
 
 
-
 #####################################################
 # MAIN
 #####################################################
-def main():
+def display_settings():
     """Streamlit GUI"""
-    remove_footer()
     st.header("Client Settings", divider="red")
     if "selected_sensitive_settings" not in state:
         state.selected_sensitive_settings = False
@@ -314,7 +328,7 @@ def main():
         else:
             st.info("Please upload a Settings file.")
 
-    st.header("Export source code templates", divider="red")
+    st.header("Source Code Templates", divider="red")
     # Merge the User Settings into the Model Config
     model_lookup = st_common.state_configs_lookup("model_configs", "id")
     try:
@@ -338,23 +352,23 @@ def main():
         """)
     else:
         col_left, col_centre, _ = st.columns([3, 4, 3])
-        with col_left: 
+        with col_left:
             st.download_button(
-            label="Download SpringAI",
-            data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
-            file_name="spring_ai.zip",  # Zip file name
-            mime="application/zip",  # Mime type for zip file
-            disabled=spring_ai_conf == "hybrid",
-        )
+                label="Download SpringAI",
+                data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
+                file_name="spring_ai.zip",  # Zip file name
+                mime="application/zip",  # Mime type for zip file
+                disabled=spring_ai_conf == "hybrid",
+            )
         with col_centre:
             st.download_button(
-            label="Download LangchainMCP",
-            data=langchain_mcp_zip(settings),  # Generate zip on the fly
-            file_name="langchain_mcp.zip",  # Zip file name
-            mime="application/zip",  # Mime type for zip file
-            disabled=spring_ai_conf == "hybrid",
-        )
+                label="Download LangchainMCP",
+                data=langchain_mcp_zip(settings),  # Generate zip on the fly
+                file_name="langchain_mcp.zip",  # Zip file name
+                mime="application/zip",  # Mime type for zip file
+                disabled=spring_ai_conf == "hybrid",
+            )
 
 
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()
+if __name__ == "__main__":
+    display_settings()

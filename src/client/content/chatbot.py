@@ -15,7 +15,7 @@ import base64
 import streamlit as st
 from streamlit import session_state as state
 
-from client.content.config.models import get_models
+from client.content.config.tabs.models import get_models
 
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call

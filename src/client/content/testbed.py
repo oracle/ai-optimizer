@@ -15,12 +15,10 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-from client.content.config.models import get_models
+from client.content.config.tabs.models import get_models
 
 import client.utils.st_common as st_common
 import client.utils.api_call as api_call
-from client.utils.st_footer import remove_footer
-
 
 import common.logging_config as logging_config
 
@@ -131,7 +129,7 @@ def evaluation_report(eid=None, report=None) -> None:
     # download_file("Download Report", report["html_report"], "evaluation_report.html", "text/html") #CDB
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Retrieving TestSets")
 def get_testbed_db_testsets() -> dict:
     """Get Database TestSets; this is cached"""
     return api_call.get(endpoint="v1/testbed/testsets")
@@ -237,9 +235,8 @@ def qa_update_gui(qa_testset: list) -> None:
 #############################################################################
 # MAIN
 #############################################################################
-def main():
+def main() -> None:
     """Streamlit GUI"""
-    remove_footer()
     try:
         get_models()
     except api_call.ApiError:
