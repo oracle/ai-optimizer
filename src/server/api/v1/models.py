@@ -9,6 +9,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 import server.api.core.models as core_models
+import server.api.utils.models as util_models
+
 import common.schema as schema
 import common.logging_config as logging_config
 
@@ -82,18 +84,14 @@ async def models_update(
     """Update a model"""
     logger.debug("Received models_update - model_id: %s; payload: %s", model_id, payload)
     try:
-        return core_models.update_model(model_id=model_id, payload=payload)
+        return util_models.update_model(model_id=model_id, payload=payload)
     except core_models.UnknownModelError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
     except core_models.URLUnreachableError as ex:
         raise HTTPException(status_code=422, detail=str(ex)) from ex
 
-@auth.post(
-    "",
-    description="Create a model",
-    response_model=schema.Model,
-    status_code=201
-)
+
+@auth.post("", description="Create a model", response_model=schema.Model, status_code=201)
 async def models_create(
     payload: schema.Model,
 ) -> schema.Model:

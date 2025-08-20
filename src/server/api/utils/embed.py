@@ -13,7 +13,6 @@ import time
 from typing import Union
 
 import bs4
-import oracledb
 
 # Langchain
 import langchain_community.document_loaders as document_loaders
@@ -26,8 +25,8 @@ from langchain.docstore.document import Document as LangchainDocument
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
 
-import server.api.core.databases as core_databases
 import server.api.utils.databases as util_databases
+import server.api.core.databases as core_databases
 
 import common.functions
 import common.schema as schema
@@ -46,31 +45,6 @@ def get_temp_directory(client: schema.ClientIdType, function: str) -> Path:
     client_folder.mkdir(parents=True, exist_ok=True)
     logger.debug("Created temporary directory: %s", client_folder)
     return client_folder
-
-
-def drop_vs(client: schema.ClientIdType, vs: schema.VectorStoreTableType) -> None:
-    """Drop Vector Storage"""
-    conn = core_databases.get_client_db(client).connection
-    logger.info("Dropping Vector Store: %s", vs)
-    LangchainVS.drop_table_purge(conn, vs)
-
-
-def get_vs(conn: oracledb.Connection) -> schema.DatabaseVectorStorage:
-    """Retrieve Vector Storage Tables"""
-    logger.info("Looking for Vector Storage Tables")
-    vector_stores = []
-    sql = """SELECT ut.table_name,
-                    REPLACE(utc.comments, 'GENAI: ', '') AS comments
-                FROM all_tab_comments utc, all_tables ut
-                WHERE utc.table_name = ut.table_name
-                AND utc.comments LIKE 'GENAI:%'"""
-    results = util_databases.execute_sql(conn, sql)
-    for table_name, comments in results:
-        comments_dict = json.loads(comments)
-        vector_stores.append(schema.DatabaseVectorStorage(vector_store=table_name, **comments_dict))
-    logger.debug("Found Vector Stores: %s", vector_stores)
-
-    return vector_stores
 
 
 def doc_to_json(document: LangchainDocument, file: str, output_dir: str = None) -> list:
@@ -276,7 +250,6 @@ def load_and_split_url(
 # Vector Store
 ##########################################
 def populate_vs(
-    client: schema.ClientIdType,
     vector_store: schema.DatabaseVectorStorage,
     db_details: schema.Database,
     embed_client: BaseChatModel,
@@ -328,9 +301,9 @@ def populate_vs(
 
     # Creates a TEMP Vector Store Table; which may already exist
     # Establish a dedicated connection to the database
-    db_conn = util_databases.connect(db_details)
+    db_conn = core_databases.connect(db_details)
     # This is to allow re-using an existing VS; will merge this over later
-    drop_vs(client=client, vs=vector_store_tmp.vector_store)
+    util_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
     logger.info("Establishing initial vector store")
     logger.debug("Embed Client: %s", embed_client)
     vs_tmp = OracleVS(
@@ -379,8 +352,8 @@ def populate_vs(
          WHERE NOT EXISTS (SELECT 1 FROM {vector_store.vector_store} tgt WHERE tgt.ID = src.ID)
     """
     logger.info("Merging %s into %s", vector_store_tmp.vector_store, vector_store.vector_store)
-    util_databases.execute_sql(db_conn, merge_sql)
-    drop_vs(client=client, vs=vector_store_tmp.vector_store)
+    core_databases.execute_sql(db_conn, merge_sql)
+    util_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
 
     # Build the Index
     logger.info("Creating index on: %s", vector_store.vector_store)
@@ -394,5 +367,5 @@ def populate_vs(
     # Comment the VS table
     _, store_comment = common.functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
     comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
-    util_databases.execute_sql(db_conn, comment)
-    util_databases.disconnect(db_conn)
+    core_databases.execute_sql(db_conn, comment)
+    core_databases.disconnect(db_conn)

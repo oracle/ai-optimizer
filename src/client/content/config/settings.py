@@ -139,9 +139,9 @@ def apply_uploaded_settings(uploaded):
         logger.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
 
 
-def spring_ai_conf_check(ll_model, embed_model) -> str:
+def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
     """Check if configuration is valid for SpringAI package"""
-    if ll_model is None or embed_model is None:
+    if not ll_model or not embed_model:
         return "hybrid"
 
     ll_api = ll_model["api"]
@@ -317,18 +317,24 @@ def main():
     st.header("Export source code templates", divider="red")
     # Merge the User Settings into the Model Config
     model_lookup = st_common.state_configs_lookup("model_configs", "id")
-    ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
-    embed_config = (
-        model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
-    )
+    try:
+        ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
+    except KeyError:
+        ll_config = {}
+    try:
+        embed_config = (
+            model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
+        )
+    except KeyError:
+        embed_config = {}
     spring_ai_conf = spring_ai_conf_check(ll_config, embed_config)
 
     if spring_ai_conf == "hybrid":
         st.markdown(f"""
             The current configuration combination of embedding and language models
             is currently **not supported** for SpringAI.
-            - Language Model:  **{ll_config["model"]}**
-            - Embedding Model: **{embed_config["model"]}**
+            - Language Model:  **{ll_config.get("model", "Unset")}**
+            - Embedding Model: **{embed_config.get("model", "Unset")}**
         """)
     else:
         col_left, col_centre, _ = st.columns([3, 4, 3])

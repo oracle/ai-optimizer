@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama, hnsw, mult, ocid, testset, selectai, explainsql, showsql, vector_search, aioptimizer
+# spell-checker:ignore ollama hnsw mult ocid testset selectai explainsql showsql vector_search aioptimizer genai
 
 import time
 from typing import Optional, Literal, Union, get_args, Any
@@ -180,11 +180,21 @@ class OracleCloudSettings(BaseModel):
 
     auth_profile: str = Field(default="DEFAULT", description="Config File Profile")
     namespace: Optional[str] = Field(default=None, description="Object Store Namespace", readOnly=True)
-    user: Optional[str] = Field(default=None, description="Optional if using Auth Token")
+    user: Optional[str] = Field(
+        default=None,
+        description="Optional if using Auth Token",
+        pattern=r"^([0-9a-zA-Z-_]+[.:])([0-9a-zA-Z-_]*[.:]){3,}([0-9a-zA-Z-_]+)$",
+    )
     security_token_file: Optional[str] = Field(default=None, description="Security Key File for Auth Token")
     authentication: Literal["api_key", "instance_principal", "oke_workload_identity", "security_token"] = Field(
         default="api_key", description="Authentication Method."
     )
+    genai_compartment_id: Optional[str] = Field(
+        default=None,
+        description="Optional Compartment OCID of OCI GenAI services",
+        pattern=r"^([0-9a-zA-Z-_]+[.:])([0-9a-zA-Z-_]*[.:]){3,}([0-9a-zA-Z-_]+)$",
+    )
+    genai_region: Optional[str] = Field(default=None, description="Optional Region OCID of OCI GenAI services")
 
     model_config = {
         "extra": "allow"  # enable extra fields
@@ -268,8 +278,16 @@ class DatabaseSettings(BaseModel):
     alias: str = Field(default="DEFAULT", description="Name of Database (Alias)")
 
 
+class TestBedSettings(BaseModel):
+    """TestBed Settings"""
+
+    qa_ll_model: Optional[str] = Field(default=None, description="Q&A Language Model Name")
+    qa_embed_model: Optional[str] = Field(default=None, description="Q&A Embed Model Name")
+    judge_model: Optional[str] = Field(default=None, description="Judge Model Name")
+
+
 class Settings(BaseModel):
-    """Server Settings"""
+    """Client Settings"""
 
     client: str = Field(
         ...,
@@ -288,6 +306,7 @@ class Settings(BaseModel):
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
     selectai: Optional[SelectAISettings] = Field(default_factory=SelectAISettings, description="SelectAI Settings")
+    testbed: Optional[TestBedSettings] = Field(default_factory=TestBedSettings, description="TestBed Settings")
 
 
 #####################################################
@@ -462,6 +481,7 @@ ModelIdType = Model.__annotations__["id"]
 ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]
+OCIResourceOCID = OracleResource.__annotations__["ocid"]
 PromptNameType = Prompt.__annotations__["name"]
 PromptCategoryType = Prompt.__annotations__["category"]
 PromptPromptType = PromptText.__annotations__["prompt"]

@@ -13,6 +13,21 @@ import common.logging_config as logging_config
 logger = logging_config.logging.getLogger("api.core.oci")
 
 
+#####################################################
+# Exceptions
+#####################################################
+class OciException(Exception):
+    """Custom OCI Exceptions to be passed to HTTPException"""
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
+
+#####################################################
+# Functions
+#####################################################
 def get_oci(
     client: Optional[ClientIdType] = None, auth_profile: Optional[OCIProfileType] = None
 ) -> Union[list[OracleCloudSettings], OracleCloudSettings]:
@@ -37,9 +52,7 @@ def get_oci(
 
         matching_oci = next((oci for oci in oci_objects if oci.auth_profile == derived_auth_profile), None)
         if matching_oci is None:
-            raise ValueError(
-                f"No settings found for client '{client}' with auth_profile '{derived_auth_profile}'"
-            )
+            raise ValueError(f"No settings found for client '{client}' with auth_profile '{derived_auth_profile}'")
         return matching_oci
 
     if auth_profile is not None:

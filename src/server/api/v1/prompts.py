@@ -7,7 +7,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 
-from server.api.core import prompts
+import server.api.core.prompts as core_prompts
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -26,7 +26,7 @@ async def prompts_list(
     category: Optional[schema.PromptCategoryType] = None,
 ) -> list[schema.Prompt]:
     """List all prompts after applying filters if specified"""
-    return prompts.get_prompts(category=category)
+    return core_prompts.get_prompts(category=category)
 
 
 @auth.get(
@@ -40,7 +40,7 @@ async def prompts_get(
 ) -> schema.Prompt:
     """Get a single prompt"""
     try:
-        return prompts.get_prompts(category=category, name=name)
+        return core_prompts.get_prompts(category=category, name=name)
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=f"Prompt: {str(ex)}.") from ex
 

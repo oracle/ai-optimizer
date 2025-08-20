@@ -369,7 +369,7 @@ class TestEndpoints:
         # Test data
         test_data = self.create_embed_params("test_mixed_files")
 
-        with patch("server.api.core.models.get_client", side_effect=mock_get_client):
+        with patch("server.api.utils.models.get_client", side_effect=mock_get_client):
             # Make request to the split_embed endpoint
             response = client.post("/v1/embed", headers=auth_headers["valid_auth"], json=test_data)
 
@@ -401,7 +401,7 @@ class TestEndpoints:
         # Calculate the expected vector store name
         expected_vector_store_name = self.get_vector_store_name(alias)
 
-        with patch("server.api.core.models.get_client", side_effect=mock_get_client):
+        with patch("server.api.utils.models.get_client", side_effect=mock_get_client):
             # Step 1: Create the vector store by embedding documents
             response = client.post("/v1/embed", headers=auth_headers["valid_auth"], json=test_data)
             assert response.status_code == 200
@@ -433,7 +433,7 @@ class TestEndpoints:
         # Calculate expected vector store names
         expected_vector_store_names = [self.get_vector_store_name(alias) for alias in aliases]
 
-        with patch("server.api.core.models.get_client", side_effect=mock_get_client):
+        with patch("server.api.utils.models.get_client", side_effect=mock_get_client):
             # Create multiple vector stores with different aliases
             for alias in aliases:
                 # Create a test file for each request (since previous ones were cleaned up)

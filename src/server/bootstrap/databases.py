@@ -6,7 +6,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import os
 from server.bootstrap.configfile import ConfigStore
-from server.api.utils import databases, selectai, embed
+
+import server.api.core.databases as core_databases
 from common.schema import Database
 import common.logging_config as logging_config
 
@@ -33,13 +34,15 @@ def main() -> list[Database]:
     for db in db_configs:
         if db.name.upper() == "DEFAULT":
             default_found = True
-            updated = db.model_copy(update={
-                "user": os.getenv("DB_USERNAME", db.user),
-                "password": os.getenv("DB_PASSWORD", db.password),
-                "dsn": os.getenv("DB_DSN", db.dsn),
-                "wallet_password": os.getenv("DB_WALLET_PASSWORD", db.wallet_password),
-                "config_dir": os.getenv("TNS_ADMIN", db.config_dir or "tns_admin"),
-            })
+            updated = db.model_copy(
+                update={
+                    "user": os.getenv("DB_USERNAME", db.user),
+                    "password": os.getenv("DB_PASSWORD", db.password),
+                    "dsn": os.getenv("DB_DSN", db.dsn),
+                    "wallet_password": os.getenv("DB_WALLET_PASSWORD", db.wallet_password),
+                    "config_dir": os.getenv("TNS_ADMIN", db.config_dir or "tns_admin"),
+                }
+            )
             if updated.wallet_password:
                 updated.wallet_location = updated.config_dir
                 logger.info("Setting WALLET_LOCATION: %s", updated.config_dir)
@@ -67,17 +70,17 @@ def main() -> list[Database]:
     for db in db_objects:
         database_objects.append(db)
         try:
-            conn = databases.connect(db)
+            conn = core_databases.connect(db)
             db.connected = True
-        except databases.DbException:
+        except core_databases.DbException:
             db.connected = False
             continue
-        db.vector_stores = embed.get_vs(conn)
-        db.selectai = selectai.enabled(conn)
+        db.vector_stores = core_databases.get_vs(conn)
+        db.selectai = core_databases.selectai_enabled(conn)
         if db.selectai:
-            db.selectai_profiles = selectai.get_profiles(conn)
+            db.selectai_profiles = core_databases.get_selectai_profiles(conn)
         if not db.connection and len(database_objects) > 1:
-            db.set_connection = databases.disconnect(conn)
+            db.set_connection = core_databases.disconnect(conn)
         else:
             db.set_connection(conn)
 
