@@ -75,7 +75,7 @@ def create_model(model: Model, check_url: bool = True) -> Model:
 
     if not model.openai_compat:
         openai_compat = next(
-            (model_config.openai_compat for model_config in model_objects if model_config.api == model.api),
+            (model_config.openai_compat for model_config in model_objects if model_config.provider == model.provider),
             False,
         )
         model.openai_compat = openai_compat

@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from typing import get_args
 import pytest
-from common.schema import LlAPI, EmbedAPI
+from common.schema import ModelProviders
 
 
 #############################################################################
@@ -47,20 +47,11 @@ class TestInvalidAuthEndpoints:
 class TestEndpoints:
     """Test Endpoints"""
 
-    @pytest.mark.parametrize(
-        "model_type,models_list",
-        [
-            pytest.param("ll", list(get_args(LlAPI)), id="list_ll_models"),
-            pytest.param("embed", list(get_args(EmbedAPI)), id="list_embed_models"),
-            pytest.param(None, [], id="list_no_models"),
-        ],
-    )
-    def test_models_list_api(self, client, auth_headers, model_type, models_list):
+    def test_models_list_api(self, client, auth_headers):
         """Get a list of model APIs to use with tests"""
-        params = {"model_type": model_type} if model_type else {}
-        response = client.get("/v1/models/api", headers=auth_headers["valid_auth"], params=params)
+        response = client.get("/v1/models/provider", headers=auth_headers["valid_auth"])
         assert response.status_code == 200
-        assert sorted(response.json()) == sorted(models_list)
+        assert sorted(response.json()) == sorted(list(get_args(ModelProviders)))
 
     def test_models_get_before(self, client, auth_headers):
         """Retrieve each individual model"""
@@ -114,10 +105,10 @@ class TestEndpoints:
                 "id": "valid_ll_model",
                 "enabled": True,
                 "type": "ll",
-                "api": "OpenAI",
+                "provider": "openai",
                 "api_key": "test-key",
                 "openai_compat": True,
-                "url": "https://api.openai.com",
+                "url": "https://api.openai.com/v1",
                 "context_length": 127072,
                 "temperature": 1.0,
                 "max_completion_tokens": 4096,
@@ -141,7 +132,7 @@ class TestEndpoints:
                 "id": "test_embed_model",
                 "enabled": False,
                 "type": "embed",
-                "api": "HuggingFaceEndpointEmbeddings",
+                "provider": "huggingface",
                 "url": "http://127.0.0.1:8080",
                 "api_key": "",
                 "openai_compat": True,
@@ -156,7 +147,7 @@ class TestEndpoints:
                 "id": "unreachable_url_model",
                 "enabled": True,
                 "type": "embed",
-                "api": "HuggingFaceEndpointEmbeddings",
+                "provider": "huggingface",
                 "url": "http://127.0.0.1:112233",
                 "api_key": "",
                 "openai_compat": True,
