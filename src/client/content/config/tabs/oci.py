@@ -207,7 +207,8 @@ def display_oci() -> None:
             if st.button("Enable Region Models", key="enable_oci_region_models", type="primary"):
                 with st.spinner("Enabling OCI GenAI Models... please be patient.", show_time=True):
                     patch_oci(selected_oci_auth_profile, supplied, namespace, toast=False)
-                    _ = create_genai_models()
+                    get_oci()
+                    create_genai_models()
                     st_common.clear_state_key("model_configs")
                 st.success("Oracle GenAI models - Enabled.", icon="✅")
 

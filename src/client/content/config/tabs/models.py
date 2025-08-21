@@ -106,7 +106,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
         )
         providers = get_model_providers()
         provider_index = next((i for i, item in enumerate(providers) if item == model["provider"]), None)
-        disable_for_oci = model["provider"] == "ocigenai"
+        disable_for_oci = model["provider"] == "oci"
         model["provider"] = st.selectbox(
             "Provider (Required):",
             help=help_text.help_dict["model_provider"],
