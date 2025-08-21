@@ -3,6 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore selectbox healthz
+import json
 
 import streamlit as st
 from streamlit import session_state as state
@@ -21,12 +22,20 @@ logger = logging_config.logging.getLogger("client.content.config.tabs.mcp")
 def get_mcp_status() -> dict:
     """Get MCP Status"""
     try:
-        logger.info("Checking MCP Status")
         return api_call.get(endpoint="v1/mcp/healthz")
     except api_call.ApiError as ex:
         logger.error("Unable to get MCP Status: %s", ex)
         return {}
 
+def get_mcp_client() -> dict:
+    """Get MCP Client Configuration"""
+    try:
+        params = {"server": {state.server['url']} , "port": {state.server['port']}}
+        mcp_client =  api_call.get(endpoint="v1/mcp/client", params=params)
+        return json.dumps(mcp_client, indent=2)
+    except api_call.ApiError as ex:
+        logger.error("Unable to get MCP Status: %s", ex)
+        return {}
 
 def get_mcp(force: bool = False) -> list[dict]:
     """Get MCP configs from API Server"""
@@ -135,10 +144,18 @@ def display_mcp() -> None:
         st.stop()
     mcp_status = get_mcp_status()
     if mcp_status.get("status") == "ready":
-        st.write(f"The {mcp_status['name']} is running.  Version: {mcp_status['version']}")
+        st.markdown(f"""
+                    The {mcp_status['name']} is running.  
+                    **Version**: {mcp_status['version']}
+                    """)
+        with st.expander("Client Configuration"):
+            st.code(get_mcp_client(), language="json")
+    else:
+        st.error("MCP Server is not running!", icon="🛑")
+        st.stop()
 
     selected_mcp_server = st.selectbox(
-        "MCP Server:",
+        "Configured MCP Server(s):",
         options=extract_servers(),
         # index=list(database_lookup.keys()).index(state.client_settings["database"]["alias"]),
         key="selected_mcp_server",
