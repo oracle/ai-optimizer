@@ -107,8 +107,8 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
                 "max_tokens": full_model_config["max_completion_tokens"],
                 **common_params,
             }
-
-            if full_model_config.get("api_key"):  # only add if present
+            # Only add the api_key if it is set
+            if full_model_config.get("api_key"):
                 kwargs["api_key"] = full_model_config["api_key"]
 
             client = init_chat_model(**kwargs)
@@ -131,8 +131,10 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
                 "model": full_model_config["id"],
                 "base_url": full_model_config["url"],
             }
-            if full_model_config.get("api_key"):  # only add if set
+            # Only add the api_key if it is set
+            if full_model_config.get("api_key"):
                 kwargs["api_key"] = full_model_config["api_key"]
+
             client = init_embeddings(**kwargs)
         else:
             client = OCIGenAIEmbeddings(
