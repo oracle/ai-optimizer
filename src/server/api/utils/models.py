@@ -99,15 +99,19 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
             k: full_model_config.get(k) for k in ["frequency_penalty", "presence_penalty", "top_p", "streaming"]
         }
         if provider != "oci":
-            client = init_chat_model(
-                model_provider="openai" if provider == "openai_compatible" else provider,
-                model=full_model_config["id"],
-                base_url=full_model_config["url"],
-                api_key=full_model_config["api_key"] or "not_required",
-                temperature=full_model_config["temperature"],
-                max_tokens=full_model_config["max_completion_tokens"],
+            kwargs = {
+                "model_provider": "openai" if provider == "openai_compatible" else provider,
+                "model": full_model_config["id"],
+                "base_url": full_model_config["url"],
+                "temperature": full_model_config["temperature"],
+                "max_tokens": full_model_config["max_completion_tokens"],
                 **common_params,
-            )
+            }
+
+            if full_model_config.get("api_key"):  # only add if present
+                kwargs["api_key"] = full_model_config["api_key"]
+
+            client = init_chat_model(**kwargs)
         else:
             client = ChatOCIGenAI(
                 model_id=full_model_config["id"],
@@ -122,12 +126,14 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
 
     if full_model_config["type"] == "embed" and not giskard:
         if provider != "oci":
-            client = init_embeddings(
-                provider="openai" if provider == "openai_compatible" else provider,
-                model=full_model_config["id"],
-                base_url=full_model_config["url"],
-                api_key=full_model_config["api_key"] or "not_required",
-            )
+            kwargs = {
+                "provider": "openai" if provider == "openai_compatible" else provider,
+                "model": full_model_config["id"],
+                "base_url": full_model_config["url"],
+            }
+            if full_model_config.get("api_key"):  # only add if set
+                kwargs["api_key"] = full_model_config["api_key"]
+            client = init_embeddings(**kwargs)
         else:
             client = OCIGenAIEmbeddings(
                 model_id=full_model_config["id"],
