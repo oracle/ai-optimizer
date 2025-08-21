@@ -4,9 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 This script initializes is used for the splitting and chunking process using Streamlit (`st`).
 """
-# spell-checker:ignore selectbox, hnsw, ivf, ocids,iterrows
 
-import inspect
+# spell-checker:ignore selectbox, hnsw, ivf, ocids,iterrows
 import math
 import re
 
@@ -17,24 +16,23 @@ from streamlit import session_state as state
 
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
-from client.utils.st_footer import remove_footer
 
-from client.content.config.databases import get_databases
-from client.content.config.models import get_models
-from client.content.config.oci import get_oci
+from client.content.config.tabs.databases import get_databases
+from client.content.config.tabs.models import get_models
+from client.content.config.tabs.oci import get_oci
 
 from common.schema import DistanceMetrics, IndexTypes, DatabaseVectorStorage
 import common.functions as functions
 import common.help_text as help_text
 import common.logging_config as logging_config
 
-logger = logging_config.logging.getLogger("client.tools.split_embed")
+logger = logging_config.logging.getLogger("client.tools.tabs.split_embed")
 
 
 #####################################################
 # Functions
 #####################################################
-@st.cache_data
+@st.cache_data(show_spinner="Retrieving OCI Compartments")
 def get_compartments() -> dict:
     """Get OCI Compartments; function for Streamlit caching"""
     response = api_call.get(endpoint=f"v1/oci/compartments/{state.client_settings['oci']['auth_profile']}")
@@ -113,7 +111,7 @@ def update_chunk_size_input() -> None:
 #############################################################################
 # MAIN
 #############################################################################
-def main() -> None:
+def display_split_embed() -> None:
     """Streamlit GUI"""
     try:
         get_models()
@@ -122,7 +120,6 @@ def main() -> None:
     except api_call.ApiError:
         st.stop()
 
-    remove_footer()
     db_avail = st_common.is_db_configured()
     if not db_avail:
         logger.debug("Embedding Disabled (Database not configured)")
@@ -402,5 +399,5 @@ def main() -> None:
             st.error(ex, icon="🚨")
 
 
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()
+if __name__ == "__main__":
+    display_split_embed()

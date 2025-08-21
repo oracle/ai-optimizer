@@ -7,7 +7,6 @@ It includes a form to input and test database connection settings.
 """
 # spell-checker:ignore streamlit, selectbox, selectai
 
-import inspect
 import json
 import pandas as pd
 
@@ -16,10 +15,10 @@ from streamlit import session_state as state
 
 import client.utils.api_call as api_call
 import client.utils.st_common as st_common
-import common.logging_config as logging_config
-from client.utils.st_footer import remove_footer
 
-logger = logging_config.logging.getLogger("client.content.config.database")
+import common.logging_config as logging_config
+
+logger = logging_config.logging.getLogger("client.content.config.tabs.database")
 
 
 #####################################################
@@ -74,7 +73,7 @@ def select_ai_profile() -> None:
     selectai_df.clear()
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Retrieving SelectAI Objects")
 def selectai_df(profile):
     """Get SelectAI Object List and produce Dataframe"""
     logger.info("Retrieving objects from SelectAI Profile: %s", profile)
@@ -106,16 +105,14 @@ def update_selectai(sai_new_df: pd.DataFrame, sai_old_df: pd.DataFrame) -> None:
 #####################################################
 # MAIN
 #####################################################
-def main() -> None:
+def display_databases() -> None:
     """Streamlit GUI"""
-    remove_footer()
     st.header("Database", divider="red")
     st.write("Configure the database used for Vector Storage and SelectAI.")
     try:
         get_databases()
     except api_call.ApiError:
         st.stop()
-
     st.subheader("Configuration")
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
     # Get a list of database names, and allow user to select
@@ -239,5 +236,5 @@ def main() -> None:
                 st.write("No SelectAI Profiles Found.")
 
 
-if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
-    main()
+if __name__ == "__main__":
+    display_databases()

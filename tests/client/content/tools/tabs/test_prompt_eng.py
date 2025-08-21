@@ -13,7 +13,7 @@ class TestStreamlit:
     """Test the Streamlit UI"""
 
     # Streamlit File
-    ST_FILE = "../src/client/content/tools/prompt_eng.py"
+    ST_FILE = "../src/client/content/tools/tabs/prompt_eng.py"
 
     def test_change_sys(self, app_server, app_test):
         """Change the Current System Prompt"""

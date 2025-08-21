@@ -7,7 +7,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from unittest.mock import patch
 import pandas as pd
-from client.utils.st_common import state_configs_lookup
 
 
 #############################################################################
@@ -17,7 +16,7 @@ class TestStreamlit:
     """Test the Streamlit UI"""
 
     # Streamlit File path
-    ST_FILE = "../src/client/content/tools/split_embed.py"
+    ST_FILE = "../src/client/content/tools/tabs/split_embed.py"
 
     def test_initialization(self, app_server, app_test, monkeypatch):
         """Test initialization of the split_embed component"""
@@ -324,10 +323,10 @@ class TestStreamlit:
             data = {"File": objects, "Process": [process] * len(objects)}
             return pd.DataFrame(data)
 
-        monkeypatch.setattr("client.content.tools.split_embed.files_data_frame", mock_files_data_frame)
+        monkeypatch.setattr("client.content.tools.tabs.split_embed.files_data_frame", mock_files_data_frame)
 
         # Mock get_compartments function
-        monkeypatch.setattr("client.content.tools.split_embed.get_compartments", lambda: mock_compartments)
+        monkeypatch.setattr("client.content.tools.tabs.split_embed.get_compartments", lambda: mock_compartments)
 
         # Initialize app_test
         at = app_test(self.ST_FILE)

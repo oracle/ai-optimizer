@@ -46,7 +46,7 @@ def _mock_server_get_namespace():
 class TestStreamlit:
     """Test the Streamlit UI"""
 
-    ST_FILE = "../src/client/content/config/oci.py"
+    ST_FILE = "../src/client/content/config/tabs/oci.py"
 
     def test_initialise_streamlit_no_env(self, app_server, app_test):
         """Initialisation of streamlit without any OCI environment"""

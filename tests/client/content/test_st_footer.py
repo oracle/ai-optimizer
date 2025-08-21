@@ -5,8 +5,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 # pylint: disable=import-error
 
-from client.utils.st_footer import render_chat_footer, render_models_footer
 import streamlit.components.v1 as components
+from client.utils.st_footer import render_chat_footer
 
 
 #############################################################################
@@ -34,23 +34,6 @@ class TestStreamlit:
 
         # Run the footer rendering
         render_chat_footer()
-
-    def test_models_page_disclaimer(self, app_server, app_test, monkeypatch):
-        """Verify disclaimer appears on models page"""
-        assert app_server is not None
-
-        # Mock components.html to capture rendered content
-        def mock_html(html, height):
-            assert "LLMs can make mistakes. Always verify important information." in html
-
-        monkeypatch.setattr(components, "html", mock_html)
-
-        # Initialize app_test and run component
-        at = app_test(self.ST_FILE)
-        at = at.run()
-
-        # Run the models footer rendering
-        render_models_footer()
 
     def test_disclaimer_absence_on_other_pages(self, app_server, app_test, monkeypatch):
         """Verify disclaimer doesn't appear on non-chat/non-models pages"""

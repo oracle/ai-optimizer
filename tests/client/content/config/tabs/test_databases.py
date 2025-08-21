@@ -18,7 +18,7 @@ class TestStreamlit:
     """Test the Streamlit UI"""
 
     # Streamlit File
-    ST_FILE = "../src/client/content/config/databases.py"
+    ST_FILE = "../src/client/content/config/tabs/databases.py"
 
     def test_missing_details(self, app_server, app_test):
         """Submits with missing required inputs"""

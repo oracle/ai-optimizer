@@ -7,6 +7,7 @@ Session States Set:
 """
 # spell-checker:ignore streamlit, scriptrunner
 
+import asyncio
 import os
 from uuid import uuid4
 
@@ -131,44 +132,23 @@ def main() -> None:
 
     # Left Hand Side - Navigation
     chatbot = st.Page("client/content/chatbot.py", title="ChatBot", icon="💬", default=True)
-    navigation = {
+    sidebar_navigation = {
         "": [chatbot],
     }
     if not state.disabled["tests"]:
         testbed = st.Page("client/content/testbed.py", title="Testbed", icon="🧪")
-        navigation[""].append(testbed)
+        sidebar_navigation[""].append(testbed)
     if not state.disabled["api"]:
         api_server = st.Page("client/content/api_server.py", title="API Server", icon="📡")
-        navigation[""].append(api_server)
-
-    # Tools
+        sidebar_navigation[""].append(api_server)
     if not state.disabled["tools"]:
-        split_embed = st.Page("client/content/tools/split_embed.py", title="Split/Embed", icon="📚")
-        navigation["Tools"] = [split_embed]
-        prompt_eng = st.Page("client/content/tools/prompt_eng.py", title="Prompts", icon="🎤")
-        navigation["Tools"].append(prompt_eng)
+        tools = st.Page("client/content/tools/tools.py", title="Tools", icon="🧰")
+        sidebar_navigation[""].append(tools)
+        config = st.Page("client/content/config/config.py", title="Configuration", icon="⚙️")
+        sidebar_navigation[""].append(config)
 
-    # Administration
-    if not state.disabled["tools"]:
-        navigation["Configuration"] = []
-        if not state.disabled["db_cfg"]:
-            db_config = st.Page("client/content/config/databases.py", title="Databases", icon="🗄️")
-            navigation["Configuration"].append(db_config)
-        if not state.disabled["model_cfg"]:
-            model_config = st.Page("client/content/config/models.py", title="Models", icon="🤖")
-            navigation["Configuration"].append(model_config)
-        if not state.disabled["oci_cfg"]:
-            oci_config = st.Page("client/content/config/oci.py", title="OCI", icon="☁️")
-            navigation["Configuration"].append(oci_config)
-        if not state.disabled["settings"]:
-            settings = st.Page("client/content/config/settings.py", title="Settings", icon="💾")
-            navigation["Configuration"].append(settings)
-        # When we get here, if there's nothing in "Configuration" delete it
-        if not navigation["Configuration"]:
-            del navigation["Configuration"]
-
-    pg = st.navigation(navigation, position="sidebar", expanded=False)
-    pg.run()
+    pg_sidebar = st.navigation(sidebar_navigation, position="sidebar", expanded=False)
+    pg_sidebar.run()
 
 
 if __name__ == "__main__":
