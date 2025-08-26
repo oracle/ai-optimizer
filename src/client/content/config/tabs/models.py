@@ -163,12 +163,12 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
                 key="add_model_frequency_penalty",
             )
         else:
-            model["chunk_size"] = st.number_input(
+            model["max_chunk_size"] = st.number_input(
                 "Max Chunk Size:",
                 help=help_text.help_dict["chunk_size"],
                 min_value=0,
                 key="add_model_max_chunk_size",
-                value=model.get("chunk_size", 8191),
+                value=model.get("max_chunk_size", 8191),
             )
         submit = False
         button_col_format = st.columns([1.2, 1.4, 6, 1.4])
