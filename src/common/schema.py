@@ -123,7 +123,7 @@ class LanguageModelParameters(BaseModel):
 class EmbeddingModelParameters(BaseModel):
     """Embedding Model Parameters (also used by settings.py)"""
 
-    max_chunk_size: Optional[int] = Field(default=None, description="Max Chunk Size for Embedding Models.")
+    max_chunk_size: Optional[int] = Field(default=8192, description="Max Chunk Size for Embedding Models.")
 
 
 class ModelAccess(BaseModel):
