@@ -1,9 +1,9 @@
 # Oracle AI Optimizer and Toolkit
 
 <!-- spell-checker:ignore streamlit, venv, setuptools -->
-![Test Status](https://github.com/oracle-samples/ai-optimizer/actions/workflows/pytest.yml/badge.svg)
-![IaC Status](https://github.com/oracle-samples/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)
-![Build Status](https://github.com/oracle-samples/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)
+![Test Status](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml/badge.svg)
+![IaC Status](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)
+![Build Status](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)
 
 ## Description
 
@@ -11,17 +11,17 @@ The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a stream
 
 ## AI Optimizer Features
 
-- [Configuring Embedding and Chat Models](https://oracle-samples.github.io/ai-optimizer/client/configuration/model_config)
-- [Splitting and Embedding Documentation](https://oracle-samples.github.io/ai-optimizer/client/tools/split_embed)
-- [Modifying System Prompts (Prompt Engineering)](https://oracle-samples.github.io/ai-optimizer/client/tools/prompt_eng)
-- [Experimenting with **LLM** Parameters](https://oracle-samples.github.io/ai-optimizer/client/chatbot)
-- [Testbed for auto-generated or existing Q&A datasets](https://oracle-samples.github.io/ai-optimizer/client/testbed)
+- [Configuring Embedding and Chat Models](https://oracle.github.io/ai-optimizer/client/configuration/model_config)
+- [Splitting and Embedding Documentation](https://oracle.github.io/ai-optimizer/client/tools/split_embed)
+- [Modifying System Prompts (Prompt Engineering)](https://oracle.github.io/ai-optimizer/client/tools/prompt_eng)
+- [Experimenting with **LLM** Parameters](https://oracle.github.io/ai-optimizer/client/chatbot)
+- [Testbed for auto-generated or existing Q&A datasets](https://oracle.github.io/ai-optimizer/client/testbed)
 
 ## Getting Started
 
 The **AI Optimizer** is available to install in your own environment, which may be a developer's desktop, on-premises data center environment, or a cloud provider. It can be run either on bare-metal, within a container, or in a Kubernetes Cluster.
 
-For more information, including more details on **Setup and Configuration** please visit the [documentation](https://oracle-samples.github.io/ai-optimizer).
+For more information, including more details on **Setup and Configuration** please visit the [documentation](https://oracle.github.io/ai-optimizer).
 
 ### Prerequisites
 
@@ -32,11 +32,11 @@ For more information, including more details on **Setup and Configuration** plea
   - API Keys for Third-Party Models
   - On-Premises Models<sub>\*</sub>
 
-<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [Infrastructure](https://oracle-samples.github.io/ai-optimizer/infrastructure) documentation.</sub>
+<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [Infrastructure](https://oracle.github.io/ai-optimizer/infrastructure) documentation.</sub>
 
 #### Bare-Metal Installation
 
-To run the application on bare-metal; download the [source](https://github.com/oracle-samples/ai-optimizer) and from `src/`:
+To run the application on bare-metal; download the [source](https://github.com/oracle/ai-optimizer) and from `src/`:
 
 1. Create and activate a Python Virtual Environment:
 
@@ -62,11 +62,11 @@ To run the application on bare-metal; download the [source](https://github.com/o
 
 1. Navigate to `http://localhost:8501`.
 
-1. [Configure](https://oracle-samples.github.io/ai-optimizer/client/configuration) the **AI Optimizer**.
+1. [Configure](https://oracle.github.io/ai-optimizer/client/configuration) the **AI Optimizer**.
 
 #### Container Installation
 
-To run the application in a container; download the [source](https://github.com/oracle-samples/ai-optimizer):
+To run the application in a container; download the [source](https://github.com/oracle/ai-optimizer):
 
 1. Build the all-in-one image.
 
@@ -85,7 +85,7 @@ To run the application in a container; download the [source](https://github.com/
 
 1. Navigate to `http://localhost:8501`.
 
-1. [Configure](https://oracle-samples.github.io/ai-optimizer/client/configuration/index.html) the **AI Optimizer**.
+1. [Configure](https://oracle.github.io/ai-optimizer/client/configuration/index.html) the **AI Optimizer**.
 
 #### Got OCI?
 
@@ -94,7 +94,7 @@ The **AI Optimizer** can be deployed in Oracle Cloud Infrastructure (OCI) using 
 Choose either a light-weight Virtual Machine or robust Oracle Kubernetes Engine deployment, both with an Oracle Autonomous Database 23ai:  
 [![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
 
-For more information, please visit the [IaC Documentation](https://oracle-samples.github.io/ai-optimizer/advanced/iac/index.html).
+For more information, please visit the [IaC Documentation](https://oracle.github.io/ai-optimizer/advanced/iac/index.html).
 
 ## Contributing
 
@@ -113,4 +113,4 @@ See [LICENSE](./LICENSE.txt) for more details.
 
 
 [magic_button]: https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg
-[magic_arch_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-iac.zip
+[magic_arch_stack]: https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-iac.zip

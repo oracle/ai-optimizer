@@ -4,7 +4,7 @@
 
 title: "Oracle AI Optimizer and Toolkit"
 description: "Explore the capabilities of AI with the Oracle Database."
-informationalText: "https://oracle-samples.github.io/ai-optimizer/"
+informationalText: "https://oracle.github.io/ai-optimizer/"
 schemaVersion: 1.1.0
 version: "20190304"
 # spell-checker: disable-next-line

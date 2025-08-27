@@ -14,7 +14,7 @@ The {{< full_app_ref >}} was specifically designed to run on infrastructure supp
 
 To use the {{< short_app_ref >}} Helm Chart:
   1. [Build, Tag, and Push](#images) the {{< short_app_ref >}} Images
-  1. [Configure](#configure-valuesyaml) the [values.yaml](https://github.com/oracle-samples/ai-optimizer/blob/main/helm/values.yaml)
+  1. [Configure](#configure-valuesyaml) the [values.yaml](https://github.com/oracle/ai-optimizer/blob/main/helm/values.yaml)
   1. [Deploy!](#deploy)
 
 {{% notice style="code" title="Go Local" icon="laptop" %}}
@@ -68,12 +68,12 @@ You will need to build the {{< short_app_ref >}} container images and stage them
     podman push iad.ocir.io/testing/ai-optimizer-server:latest
     ```
 
-    You will use the URL for the pushed images when [configuring](#configure-valuesyaml) the [values.yaml](https://github.com/oracle-samples/ai-optimizer/blob/main/helm/values.yaml).
+    You will use the URL for the pushed images when [configuring](#configure-valuesyaml) the [values.yaml](https://github.com/oracle/ai-optimizer/blob/main/helm/values.yaml).
 
 
 ### Configure values.yaml
 
-The [values.yaml](https://github.com/oracle-samples/ai-optimizer/blob/main/helm/values.yaml) allows you to customize the deployment by overriding settings such as image versions, resource requests, service configurations, and more. You can modify this file directly or supply your own overrides during installation using the -f or --set flags.
+The [values.yaml](https://github.com/oracle/ai-optimizer/blob/main/helm/values.yaml) allows you to customize the deployment by overriding settings such as image versions, resource requests, service configurations, and more. You can modify this file directly or supply your own overrides during installation using the -f or --set flags.
 
 Only a subset of the most important settings are documented here, review the `values.yaml` file for more configuration options.
 
@@ -171,7 +171,7 @@ Configure Oracle Cloud Infrastructure used by the {{< short_app_ref >}} API Serv
 | server.oci_config.user | string | `""` | User OCID.  Required when specifying keySecretName. |
 | server.oci_config.fingerprint | string | `""` | Fingerprint.  Required when specifying keySecretName. |
 | server.oci_config.region | string | `""` | Region. Required when oke is true. |
-| server.oci_config.fileSecretName | string | `""` | Secret containing an OCI config file and the key_file(s). Use the [scripts/oci_config.py](https://github.com/oracle-samples/ai-optimizer/blob/main/helm/scripts/oci_config.py) script to help create the secret based on an existing ~.oci/config file |
+| server.oci_config.fileSecretName | string | `""` | Secret containing an OCI config file and the key_file(s). Use the [scripts/oci_config.py](https://github.com/oracle/ai-optimizer/blob/main/helm/scripts/oci_config.py) script to help create the secret based on an existing ~.oci/config file |
 | server.oci_config.keySecretName | string | `""` | Secret containing a single API key corresponding to above tenancy configuration This used by OraOperator when not running in OKE |
 
 ###### Examples
@@ -264,7 +264,7 @@ Once your `values.yaml` has been configured and you have a Kubernetes cluster av
 
 1. Add the Helm Repository
 ```sh
-helm repo add ai-optimizer https://oracle-samples.github.io/ai-optimizer/helm
+helm repo add ai-optimizer https://oracle.github.io/ai-optimizer/helm
 ```
 
 2. Apply the `values.yaml` file:
@@ -315,7 +315,7 @@ Give the **Helm Chart** a spin using a locally installed [Kind](https://kind.sig
 
 1. (Optional) Configure for Oracle Cloud Infrastructure
 
-    If you already have an OCI API configuration file, use the [scripts/oci_config.py](https://github.com/oracle-samples/ai-optimizer/blob/main/helm/scripts/oci_config.py) helper script to turn it into a secret for OCI connectivity:
+    If you already have an OCI API configuration file, use the [scripts/oci_config.py](https://github.com/oracle/ai-optimizer/blob/main/helm/scripts/oci_config.py) helper script to turn it into a secret for OCI connectivity:
 
     ```sh
     kubectl create namespace ai-optimizer
@@ -352,7 +352,7 @@ Give the **Helm Chart** a spin using a locally installed [Kind](https://kind.sig
 
 1. Add the Helm Repository
 ```sh
-helm repo add ai-optimizer https://oracle-samples.github.io/ai-optimizer/helm
+helm repo add ai-optimizer https://oracle.github.io/ai-optimizer/helm
 ```
 
 1. Deploy the Helm Chart

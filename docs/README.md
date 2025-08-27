@@ -2,7 +2,7 @@
 
 ## Description
 
-This directory contains the documentation for the the [**Oracle AI Optimizer & Toolkit**](https://github.com/oracle-samples/ai-optimizer).
+This directory contains the documentation for the the [**Oracle AI Optimizer & Toolkit**](https://github.com/oracle/ai-optimizer).
 
 ## Getting Started - Documentation
 

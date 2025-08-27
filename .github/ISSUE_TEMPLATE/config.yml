@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: 📖 Documentation
-    url: https://oracle-samples.github.io/ai-optimizer/
+    url: https://oracle.github.io/ai-optimizer/
     about: Learn more about how to use the AI Optimizer and Toolkit
   - name: ❓ Anything else?
     url: https://oracledevs.slack.com/archives/C089NPXG8AU
