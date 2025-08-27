@@ -130,7 +130,7 @@ class ModelAccess(BaseModel):
     """Patch'able Model Parameters"""
 
     enabled: Optional[bool] = Field(default=False, description="Model is available for use.")
-    url: Optional[str] = Field(default=None, description="URL to Model API.")
+    api_base: Optional[str] = Field(default=None, description="Model API Base URL.")
     api_key: Optional[str] = Field(default=None, description="Model API Key.", json_schema_extra={"sensitive": True})
 
 

@@ -154,7 +154,7 @@ def display_split_embed() -> None:
         index=0,
         key="selected_embed_model",
     )
-    embed_url = embed_models_enabled[embed_request.model]["url"]
+    embed_url = embed_models_enabled[embed_request.model]["api_base"]
     st.write(f"Embedding Server: {embed_url}")
     is_embed_accessible, embed_err_msg = functions.is_url_accessible(embed_url)
     if not is_embed_accessible:

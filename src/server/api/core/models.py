@@ -79,7 +79,7 @@ def create_model(model: Model, check_url: bool = True) -> Model:
             False,
         )
         model.openai_compat = openai_compat
-    if check_url and model.url and not is_url_accessible(model.url)[0]:
+    if check_url and model.api_base and not is_url_accessible(model.api_base)[0]:
         model.enabled = False
 
     model_objects.append(model)

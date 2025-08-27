@@ -22,7 +22,7 @@ class TestStreamlit:
         for model in at.session_state.model_configs:
             assert at.text_input(key=f"{model['type']}_{model['id']}_enabled").value == "⚪"
             assert at.text_input(key=f"{model['type']}_{model['id']}_provider").value == model["provider"]
-            assert at.text_input(key=f"{model['type']}_{model['id']}_server").value == model["url"]
+            assert at.text_input(key=f"{model['type']}_{model['id']}_server").value == model["api_base"]
             assert at.button(key=f"{model['type']}_{model['id']}_edit") is not None
 
         for model_type in {item["type"] for item in at.session_state.model_configs}:

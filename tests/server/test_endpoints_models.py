@@ -107,8 +107,8 @@ class TestEndpoints:
                 "type": "ll",
                 "provider": "openai",
                 "api_key": "test-key",
+                "api_base": "https://api.openai.com/v1",
                 "openai_compat": True,
-                "url": "https://api.openai.com/v1",
                 "context_length": 127072,
                 "temperature": 1.0,
                 "max_completion_tokens": 4096,
@@ -133,7 +133,7 @@ class TestEndpoints:
                 "enabled": False,
                 "type": "embed",
                 "provider": "huggingface",
-                "url": "http://127.0.0.1:8080",
+                "api_base": "http://127.0.0.1:8080",
                 "api_key": "",
                 "openai_compat": True,
                 "max_chunk_size": 512,
@@ -144,18 +144,18 @@ class TestEndpoints:
         ),
         pytest.param(
             {
-                "id": "unreachable_url_model",
+                "id": "unreachable_api_base_model",
                 "enabled": True,
                 "type": "embed",
                 "provider": "huggingface",
-                "url": "http://127.0.0.1:112233",
+                "api_base": "http://127.0.0.1:112233",
                 "api_key": "",
                 "openai_compat": True,
                 "max_chunk_size": 512,
             },
             201,
             422,
-            id="unreachable_url_model",
+            id="unreachable_api_base_model",
         ),
     ]
 
@@ -165,7 +165,7 @@ class TestEndpoints:
         response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
         assert response.status_code == add_status_code
         if add_status_code == 201:
-            if request.node.callspec.id == "unreachable_url_model":
+            if request.node.callspec.id == "unreachable_api_base_model":
                 assert response.json()["enabled"] is False
             else:
                 assert all(item in response.json().items() for item in payload.items())

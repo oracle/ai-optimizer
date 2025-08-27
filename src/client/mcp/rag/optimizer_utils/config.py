@@ -26,7 +26,7 @@ def get_llm(data):
     llm = {}
     llm_config = data["ll_model_config"][data["user_settings"]["ll_model"]["model"]]
     provider = llm_config["provider"]
-    url = llm_config["url"]
+    url = llm_config["api_base"]
     api_key = llm_config["api_key"]
     model = data["user_settings"]["ll_model"]["model"]
     logging.info(f"CHAT_MODEL: {model} {provider} {url} {api_key}")
@@ -42,7 +42,7 @@ def get_embeddings(data):
     embeddings = {}
     model = data["user_settings"]["vector_search"]["model"]
     provider = data["embed_model_config"][model]["provider"]
-    url = data["embed_model_config"][model]["url"]
+    url = data["embed_model_config"][model]["api_base"]
     api_key = data["embed_model_config"][model]["api_key"]
     logging.info(f"EMBEDDINGS: {model} {provider} {url} {api_key}")
     embeddings = {}

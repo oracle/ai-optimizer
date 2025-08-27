@@ -116,7 +116,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             key="add_model_provider",
             disabled=action == "edit",
         )
-        model["url"] = st.text_input(
+        model["api_base"] = st.text_input(
             "Provider URL:",
             help=help_text.help_dict["model_url"],
             key="add_model_url",
@@ -234,7 +234,7 @@ def render_model_rows(model_type: str) -> None:
         )
         col4.text_input(
             "Server",
-            value=model["url"],
+            value=model["api_base"],
             key=f"{model_type}_{model_id}_server",
             label_visibility="collapsed",
             disabled=True,

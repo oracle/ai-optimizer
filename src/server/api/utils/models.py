@@ -29,7 +29,7 @@ def update_model(model_id: schema.ModelIdType, payload: schema.Model) -> schema.
     """Update an existing Model definition"""
 
     model_upd = core_models.get_model(model_id=model_id)
-    if payload.enabled and not is_url_accessible(model_upd.url)[0]:
+    if payload.enabled and not is_url_accessible(model_upd.api_base)[0]:
         model_upd.enabled = False
         raise core_models.URLUnreachableError("Model: Unable to update.  API URL is inaccessible.")
 
@@ -67,7 +67,7 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
 
         model_dict["id"] = model["model_name"]
         model_dict["enabled"] = True
-        model_dict["url"] = f"https://inference.generativeai.{config.genai_region}.oci.oraclecloud.com"
+        model_dict["api_base"] = f"https://inference.generativeai.{config.genai_region}.oci.oraclecloud.com"
         # if model["vendor"] == "cohere":
         model_dict["openai_compat"] = False
         # Create the Model
@@ -102,7 +102,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
             kwargs = {
                 "model_provider": "openai" if provider == "openai_compatible" else provider,
                 "model": full_model_config["id"],
-                "base_url": full_model_config["url"],
+                "base_url": full_model_config["api_base"],
                 "temperature": full_model_config["temperature"],
                 "max_tokens": full_model_config["max_completion_tokens"],
                 **common_params,
@@ -129,7 +129,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
             kwargs = {
                 "provider": "openai" if provider == "openai_compatible" else provider,
                 "model": full_model_config["id"],
-                "base_url": full_model_config["url"],
+                "base_url": full_model_config["api_base"],
             }
             if full_model_config.get("api_key"):  # only add if set
                 kwargs["api_key"] = full_model_config["api_key"]
@@ -144,7 +144,7 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
     if giskard:
         logger.debug("Creating Giskard Client")
         giskard_key = full_model_config["api_key"] or "giskard"
-        _client = OpenAI(api_key=giskard_key, base_url=full_model_config["url"])
+        _client = OpenAI(api_key=giskard_key, base_url=full_model_config["api_base"])
         client = OpenAIClient(model=full_model_config["id"], client=_client)
 
     logger.debug("Configured Client: %s", vars(client))

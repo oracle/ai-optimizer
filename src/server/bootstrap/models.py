@@ -30,7 +30,7 @@ def main() -> list[Model]:
             "provider": "cohere",
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "openai_compat": False,
-            "url": "https://api.cohere.ai",
+            "api_base": "https://api.cohere.ai",
             "context_length": 127072,
             "temperature": 0.3,
             "max_completion_tokens": 4096,
@@ -43,7 +43,7 @@ def main() -> list[Model]:
             "provider": "openai",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "openai_compat": True,
-            "url": "https://api.openai.com/v1",
+            "api_base": "https://api.openai.com/v1",
             "context_length": 127072,
             "temperature": 1.0,
             "max_completion_tokens": 4096,
@@ -56,7 +56,7 @@ def main() -> list[Model]:
             "provider": "perplexity",
             "api_key": os.environ.get("PPLX_API_KEY", default=""),
             "openai_compat": True,
-            "url": "https://api.perplexity.ai",
+            "api_base": "https://api.perplexity.ai",
             "context_length": 127072,
             "temperature": 0.2,
             "max_completion_tokens": 28000,
@@ -69,7 +69,7 @@ def main() -> list[Model]:
             "provider": "openai_compatible",
             "api_key": "",
             "openai_compat": True,
-            "url": "http://localhost:1234/v1",
+            "api_base": "http://localhost:1234/v1",
             "context_length": 131072,
             "temperature": 1.0,
             "max_completion_tokens": 4096,
@@ -82,7 +82,7 @@ def main() -> list[Model]:
             "provider": "ollama",
             "api_key": "",
             "openai_compat": True,
-            "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
             "context_length": 131072,
             "temperature": 1.0,
             "max_completion_tokens": 2048,
@@ -96,7 +96,7 @@ def main() -> list[Model]:
             "provider": "ollama",
             "api_key": "",
             "openai_compat": True,
-            "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
             "context_length": 131072,
             "temperature": 1.0,
             "max_completion_tokens": 2048,
@@ -107,7 +107,7 @@ def main() -> list[Model]:
             "enabled": os.getenv("ON_PREM_HF_URL") is not None,
             "type": "embed",
             "provider": "huggingface",
-            "url": os.environ.get("ON_PREM_HF_URL", default="http://127.0.0.1:8080"),
+            "api_base": os.environ.get("ON_PREM_HF_URL", default="http://127.0.0.1:8080"),
             "api_key": "",
             "openai_compat": True,
             "max_chunk_size": 512,
@@ -117,7 +117,7 @@ def main() -> list[Model]:
             "enabled": os.getenv("OPENAI_API_KEY") is not None,
             "type": "embed",
             "provider": "openai_compatible",
-            "url": "https://api.openai.com/v1",
+            "api_base": "https://api.openai.com/v1",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "openai_compat": True,
             "max_chunk_size": 8191,
@@ -127,7 +127,7 @@ def main() -> list[Model]:
             "enabled": os.getenv("COHERE_API_KEY") is not None,
             "type": "embed",
             "provider": "cohere",
-            "url": "https://api.cohere.ai",
+            "api_base": "https://api.cohere.ai",
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "openai_compat": False,
             "max_chunk_size": 512,
@@ -137,7 +137,7 @@ def main() -> list[Model]:
             "enabled": False,
             "type": "embed",
             "provider": "openai_compatible",
-            "url": "http://localhost:1234/v1",
+            "api_base": "http://localhost:1234/v1",
             "api_key": "",
             "openai_compat": True,
             "max_chunk_size": 8192,
@@ -148,7 +148,7 @@ def main() -> list[Model]:
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "embed",
             "provider": "ollama",
-            "url": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
             "api_key": "",
             "openai_compat": True,
             "max_chunk_size": 8192,
@@ -216,31 +216,31 @@ def main() -> list[Model]:
             model["enabled"] = True
 
         elif provider == "oci" and os.getenv("OCI_GENAI_SERVICE_ENDPOINT"):
-            old_url = model.get("url", "")
+            old_url = model.get("api_base", "")
             new_url = os.environ["OCI_GENAI_SERVICE_ENDPOINT"]
             if old_url != new_url:
                 logger.info(
                     "Overriding 'url' for model '%s' with OCI_GENAI_SERVICE_ENDPOINT environment variable", model_id
                 )
-                model["url"] = new_url
+                model["api_base"] = new_url
                 overridden = True
             model["enabled"] = True
 
         elif provider == "ollama" and os.getenv("ON_PREM_OLLAMA_URL"):
-            old_url = model.get("url", "")
+            old_url = model.get("api_base", "")
             new_url = os.environ["ON_PREM_OLLAMA_URL"]
             if old_url != new_url:
                 logger.info("Overriding 'url' for model '%s' with ON_PREM_OLLAMA_URL environment variable", model_id)
-                model["url"] = new_url
+                model["api_base"] = new_url
                 overridden = True
             model["enabled"] = True
 
         elif provider == "huggingface" and os.getenv("ON_PREM_HF_URL"):
-            old_url = model.get("url", "")
+            old_url = model.get("api_base", "")
             new_url = os.environ["ON_PREM_HF_URL"]
             if old_url != new_url:
                 logger.info("Overriding 'url' for model '%s' with ON_PREM_HF_URL environment variable", model_id)
-                model["url"] = new_url
+                model["api_base"] = new_url
                 overridden = True
             model["enabled"] = True
 
@@ -251,7 +251,7 @@ def main() -> list[Model]:
     url_access_cache = {}
 
     for model in models_list:
-        url = model["url"]
+        url = model["api_base"]
         if model["enabled"]:
             if url not in url_access_cache:
                 logger.debug("Testing %s URL: %s", model["id"], url)
