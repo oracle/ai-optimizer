@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ollama pplx huggingface genai giskard litellm ocigenai
 
+from litellm import get_supported_openai_params
 from openai import OpenAI
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -79,6 +80,34 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
 
     return genai_models
 
+def get_litellm_client(
+    model_config: dict, oci_config: schema.OracleCloudSettings = None, giskard: bool = False
+) -> BaseChatModel:
+    """Establish client"""
+    logger.debug("Model Client: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
+
+    try:
+        defined_model = core_models.get_model(
+            model_id=model_config["id"],
+            include_disabled=False,
+        ).model_dump()
+    except core_models.UnknownModelError:
+        return None
+
+    # Merge configurations, skipping None values
+    full_model_config = {**defined_model, **{k: v for k, v in model_config.items() if v is not None}}
+    print(f"*********** {full_model_config}")
+    
+    # Determine provider and model name
+    provider = "openai" if model_config["provider"] == "openai_compatible" else model_config["provider"]
+    model_name = f"{provider}/{model_config['id']}"
+
+    # Get supported parameters and initialize config
+    supported_params = get_supported_openai_params(model=model_name)
+    litellm_config = {k: full_model_config[k] for k in supported_params if k in full_model_config and full_model_config[k] is not None}
+    litellm_config["model"] = model_name
+    litellm_config["api_base"] = full_model_config["api_base"]
+    print(f"*********** {litellm_config}")
 
 def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giskard: bool = False) -> BaseChatModel:
     """Retrieve model configuration"""
