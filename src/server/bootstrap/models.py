@@ -22,6 +22,20 @@ def main() -> list[Model]:
     """Define example Model Support"""
     logger.debug("*** Bootstrapping Models - Start")
 
+    def update_env_var(model: Model, provider: str, model_key: str, env_var: str):
+        if model.get("provider") != provider:
+            return
+
+        new_value = os.environ.get(env_var)
+        if not new_value:
+            return
+
+        old_value = model.get(model_key)
+        if old_value != new_value:
+            logger.debug("Overriding '%s' for model '%s' with %s environment variable", model_key, model.id, env_var)
+            model[model_key] = new_value
+            logger.debug("Model '%s' updated via environment variable overrides.", model.id)
+
     models_list = [
         {
             "id": "command-r",
@@ -201,51 +215,10 @@ def main() -> list[Model]:
 
     # Override with OS env vars (by API type)
     for model in models_list:
-        provider = model.get("provider", "")
-        model_id = model.get("id", "")
-        overridden = False
-
-        if provider == "cohere" and os.getenv("COHERE_API_KEY"):
-            old_api_key = model.get("api_key", "")
-            new_api_key = os.environ["COHERE_API_KEY"]
-            if old_api_key != new_api_key:
-                # Exposes key if in DEBUG
-                logger.debug("Overriding 'api_key' for model '%s' with COHERE_API_KEY environment variable", model_id)
-                model["api_key"] = new_api_key
-                overridden = True
-            model["enabled"] = True
-
-        elif provider == "oci" and os.getenv("OCI_GENAI_SERVICE_ENDPOINT"):
-            old_url = model.get("api_base", "")
-            new_url = os.environ["OCI_GENAI_SERVICE_ENDPOINT"]
-            if old_url != new_url:
-                logger.info(
-                    "Overriding 'url' for model '%s' with OCI_GENAI_SERVICE_ENDPOINT environment variable", model_id
-                )
-                model["api_base"] = new_url
-                overridden = True
-            model["enabled"] = True
-
-        elif provider == "ollama" and os.getenv("ON_PREM_OLLAMA_URL"):
-            old_url = model.get("api_base", "")
-            new_url = os.environ["ON_PREM_OLLAMA_URL"]
-            if old_url != new_url:
-                logger.info("Overriding 'url' for model '%s' with ON_PREM_OLLAMA_URL environment variable", model_id)
-                model["api_base"] = new_url
-                overridden = True
-            model["enabled"] = True
-
-        elif provider == "huggingface" and os.getenv("ON_PREM_HF_URL"):
-            old_url = model.get("api_base", "")
-            new_url = os.environ["ON_PREM_HF_URL"]
-            if old_url != new_url:
-                logger.info("Overriding 'url' for model '%s' with ON_PREM_HF_URL environment variable", model_id)
-                model["api_base"] = new_url
-                overridden = True
-            model["enabled"] = True
-
-        if overridden:
-            logger.debug("Model '%s' updated via environment variable overrides.", model_id)
+        update_env_var(model, "cohere", "api_key", "COHERE_API_KEY")
+        update_env_var(model, "oci", "api_base", "OCI_GENAI_SERVICE_ENDPOINT")
+        update_env_var(model, "ollama", "api_base", "ON_PREM_OLLAMA_URL")
+        update_env_var(model, "huggingface", "api_base", "ON_PREM_HF_URL")
 
     # Check URL accessible for enabled models and disable if not:
     url_access_cache = {}
