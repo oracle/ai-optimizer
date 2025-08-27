@@ -7,7 +7,6 @@ Session States Set:
 """
 # spell-checker:ignore streamlit, scriptrunner
 
-import asyncio
 import os
 from uuid import uuid4
 
