@@ -12,7 +12,7 @@ body:
       label: Improve existing documentation
       description: Link to documentation page in question (if any)
       placeholder: |
-        https://oracle-samples.github.io/ai-optimizer/...
+        https://oracle.github.io/ai-optimizer/...
     validations:
       required: false
   - type: textarea

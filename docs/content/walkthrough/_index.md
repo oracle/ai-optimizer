@@ -129,10 +129,10 @@ To enable the **RAG** functionality, access to an embedding model is required. T
 
 The {{< short_app_ref >}} provides an easy to use front-end for experimenting with **LLM** parameters and **RAG**.
 
-1. Download and Unzip the [latest release](https://github.com/oracle-samples/ai-optimizer/releases/latest) of the {{< short_app_ref >}}:
+1. Download and Unzip the [latest release](https://github.com/oracle/ai-optimizer/releases/latest) of the {{< short_app_ref >}}:
 
    ```bash
-   curl -LO https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz
+   curl -LO https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz
    ```
 
    ```bash
