@@ -7,7 +7,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, START, END, MessagesState
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, SystemMessage
 
 from langchain_core.runnables import RunnableConfig
 from litellm import acompletion
@@ -20,6 +20,7 @@ logger = logging_config.logging.getLogger("server.agents.chatbot")
 class OptimizerState(MessagesState):
     """Establish our Agent State Machine"""
 
+    cleaned_messages: list  # Messages w/o VS Results
     final_response: dict  # OpenAI Response
 
 
@@ -37,6 +38,12 @@ def get_messages(state: OptimizerState, config: RunnableConfig) -> list:
         # If user decided for no history, only take the last message
         state_messages = state_messages if use_history else state_messages[-1:]
 
+        # Remove SystemMessage (prompts)
+        state_messages = [msg for msg in state_messages if not isinstance(msg, SystemMessage)]
+
+    # Add our new prompt
+    state_messages.insert(0, SystemMessage(content=config["metadata"]["sys_prompt"].prompt))
+
     prompt_messages = [{"role": "user", "content": m.content} for m in state_messages]
 
     return prompt_messages
@@ -45,6 +52,13 @@ def get_messages(state: OptimizerState, config: RunnableConfig) -> list:
 #############################################################################
 # NODES and EDGES
 #############################################################################
+async def initialise(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
+    """Initialise our chatbot"""
+    logger.debug("Initializing Chatbot")
+    messages = get_messages(state, config)
+    return {"cleaned_messages": messages}
+
+
 async def stream_completion(state: OptimizerState, config: RunnableConfig | None = None):
     """LiteLLM streaming wrapper"""
     writer = get_stream_writer()
@@ -54,11 +68,8 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig | None
     try:
         # Await the asynchronous completion with streaming enabled
         logger.info("Streaming completion...")
-        prompt_messages = get_messages(state, config)
-
-        # ll_raw holds either a dict(litellm) or an object(client)
         ll_raw = config["configurable"].get("ll_config", {})
-        response = await acompletion(messages=prompt_messages, stream=True, **ll_raw)
+        response = await acompletion(messages=state["cleaned_messages"], stream=True, **ll_raw)
         async for chunk in response:
             content = chunk.choices[0].delta.content
             if content is not None:
@@ -86,9 +97,12 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig | None
 
 # Build the state graph
 workflow = StateGraph(OptimizerState)
+workflow.add_node("initialise", initialise)
 workflow.add_node("stream_completion", stream_completion)
 
-workflow.add_edge(START, "stream_completion")
+# Start the chatbot with clean messages
+workflow.add_edge(START, "initialise")
+workflow.add_edge("initialise", "stream_completion")
 workflow.add_edge("stream_completion", END)
 
 # Compile the graph
