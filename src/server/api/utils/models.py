@@ -7,16 +7,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from urllib.parse import urlparse
 
 from litellm import get_supported_openai_params
-from openai import OpenAI
-
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain.chat_models import init_chat_model
-from langchain.embeddings import init_embeddings
-
-from langchain_community.chat_models.oci_generative_ai import ChatOCIGenAI
-from langchain_community.embeddings.oci_generative_ai import OCIGenAIEmbeddings
-
-from giskard.llm.client.openai import OpenAIClient
 
 import server.api.utils.oci as util_oci
 import server.api.core.models as core_models
@@ -86,7 +76,7 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
     return genai_models
 
 
-def get_litellm_client(
+def get_litellm_config(
     model_config: dict, oci_config: schema.OracleCloudSettings = None, giskard: bool = False
 ) -> dict:
     """Establish client"""
