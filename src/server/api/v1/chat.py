@@ -2,10 +2,11 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai
+# spell-checker:ignore selectai litellm
 
 from fastapi import APIRouter, Header
 from fastapi.responses import StreamingResponse
+from litellm import ModelResponse
 
 from langchain_core.messages import (
     AnyMessage,
@@ -31,11 +32,11 @@ auth = APIRouter()
 @auth.post(
     "/completions",
     description="Submit a message for full completion.",
-    response_model=schema.ChatResponse,
+    response_model=ModelResponse,
 )
 async def chat_post(
     request: schema.ChatRequest, client: schema.ClientIdType = Header(default="server")
-) -> schema.ChatResponse:
+) -> ModelResponse:
     """Full Completion Requests"""
     last_message = None
     async for chunk in chat.completion_generator(client, request, "completions"):

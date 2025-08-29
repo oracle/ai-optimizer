@@ -73,12 +73,6 @@ def create_model(model: Model, check_url: bool = True) -> Model:
     if any(d.id == model.id for d in model_objects):
         raise ExistsModelError(f"Model: {model.id} already exists.")
 
-    if not model.openai_compat:
-        openai_compat = next(
-            (model_config.openai_compat for model_config in model_objects if model_config.provider == model.provider),
-            False,
-        )
-        model.openai_compat = openai_compat
     if check_url and model.api_base and not is_url_accessible(model.api_base)[0]:
         model.enabled = False
 

@@ -9,7 +9,6 @@ from typing import Union
 import urllib3.exceptions
 
 import oci
-
 from server.api.core.oci import OciException
 
 from common.schema import OracleCloudSettings
@@ -66,8 +65,8 @@ def init_client(
             with open(config_json["security_token_file"], "r", encoding="utf-8") as f:
                 token = f.read()
             private_key = oci.signer.load_private_key_from_file(config_json["key_file"])
-            signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
-            client = client_type(config={"region": config_json["region"]}, signer=signer, **client_kwargs)
+            sec_token_signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
+            client = client_type(config={"region": config_json["region"]}, signer=sec_token_signer, **client_kwargs)
         else:
             logger.info("OCI Authentication as Standard")
             client = client_type(config_json, **client_kwargs)

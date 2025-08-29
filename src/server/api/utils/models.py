@@ -4,6 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ollama pplx huggingface genai giskard litellm ocigenai
 
+from urllib.parse import urlparse
+
 from litellm import get_supported_openai_params
 from openai import OpenAI
 
@@ -55,6 +57,11 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
 
     genai_models = []
     for model in region_models:
+        if model["vendor"] == "cohere":
+            # Note that we can enable this if the GenAI endpoint supports OpenAI compat
+            # https://docs.cohere.com/docs/compatibility-api
+            logger.info("Skipping %s; no support for OCI GenAI cohere models", model["model_name"])
+            continue
         model_dict = {}
         model_dict["provider"] = "oci"
         if "CHAT" in model["capabilities"]:
@@ -69,8 +76,6 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
         model_dict["id"] = model["model_name"]
         model_dict["enabled"] = True
         model_dict["api_base"] = f"https://inference.generativeai.{config.genai_region}.oci.oraclecloud.com"
-        # if model["vendor"] == "cohere":
-        model_dict["openai_compat"] = False
         # Create the Model
         try:
             new_model = schema.Model(**model_dict)
@@ -80,38 +85,13 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
 
     return genai_models
 
+
 def get_litellm_client(
     model_config: dict, oci_config: schema.OracleCloudSettings = None, giskard: bool = False
-) -> BaseChatModel:
+) -> dict:
     """Establish client"""
     logger.debug("Model Client: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
 
-    try:
-        defined_model = core_models.get_model(
-            model_id=model_config["id"],
-            include_disabled=False,
-        ).model_dump()
-    except core_models.UnknownModelError:
-        return None
-
-    # Merge configurations, skipping None values
-    full_model_config = {**defined_model, **{k: v for k, v in model_config.items() if v is not None}}
-    print(f"*********** {full_model_config}")
-    
-    # Determine provider and model name
-    provider = "openai" if model_config["provider"] == "openai_compatible" else model_config["provider"]
-    model_name = f"{provider}/{model_config['id']}"
-
-    # Get supported parameters and initialize config
-    supported_params = get_supported_openai_params(model=model_name)
-    litellm_config = {k: full_model_config[k] for k in supported_params if k in full_model_config and full_model_config[k] is not None}
-    litellm_config["model"] = model_name
-    litellm_config["api_base"] = full_model_config["api_base"]
-    print(f"*********** {litellm_config}")
-
-def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giskard: bool = False) -> BaseChatModel:
-    """Retrieve model configuration"""
-    logger.debug("Model Client: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
     try:
         defined_model = core_models.get_model(
             model_id=model_config["model"],
@@ -120,61 +100,41 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
     except core_models.UnknownModelError:
         return None
 
+    # Merge configurations, skipping None values
     full_model_config = {**defined_model, **{k: v for k, v in model_config.items() if v is not None}}
-    client = None
-    provider = full_model_config["provider"]
-    if full_model_config["type"] == "ll" and not giskard:
-        common_params = {
-            k: full_model_config.get(k) for k in ["frequency_penalty", "presence_penalty", "top_p", "streaming"]
-        }
-        if provider != "oci":
-            kwargs = {
-                "model_provider": "openai" if provider == "openai_compatible" else provider,
-                "model": full_model_config["id"],
-                "base_url": full_model_config["api_base"],
-                "temperature": full_model_config["temperature"],
-                "max_tokens": full_model_config["max_completion_tokens"],
-                **common_params,
+
+    # Determine provider and model name
+    provider = "openai" if full_model_config["provider"] == "openai_compatible" else full_model_config["provider"]
+    model_name = f"{provider}/{full_model_config['id']}"
+
+    # Get supported parameters and initialize config
+    supported_params = get_supported_openai_params(model=model_name)
+    litellm_config = {
+        k: full_model_config[k]
+        for k in supported_params
+        if k in full_model_config and full_model_config[k] is not None
+    }
+    if "cohere" in model_name:
+        # Ensure we use the OpenAI compatible endpoint
+        parsed = urlparse(full_model_config.get("api_base"))
+        scheme = parsed.scheme or "https"
+        netloc = "api.cohere.ai"
+        # Always force the path
+        path = "/compatibility/v1"
+        full_model_config["api_base"] = f"{scheme}://{netloc}{path}"
+
+    litellm_config.update({"model": model_name, "api_base": full_model_config.get("api_base")})
+
+    if provider == "oci":
+        litellm_config.update(
+            {
+                "oci_user": oci_config.user,
+                "oci_fingerprint": oci_config.fingerprint,
+                "oci_tenancy": oci_config.tenancy,
+                "oci_region": oci_config.genai_region,
+                "oci_key_file": oci_config.key_file,
+                "oci_compartment_id": oci_config.genai_compartment_id,
             }
+        )
 
-            if full_model_config.get("api_key"):  # only add if present
-                kwargs["api_key"] = full_model_config["api_key"]
-
-            client = init_chat_model(**kwargs)
-        else:
-            client = ChatOCIGenAI(
-                model_id=full_model_config["id"],
-                client=util_oci.init_genai_client(oci_config),
-                compartment_id=oci_config.genai_compartment_id,
-                model_kwargs={
-                    (k if k != "max_completion_tokens" else "max_tokens"): v
-                    for k, v in common_params.items()
-                    if k not in {"streaming"}
-                },
-            )
-
-    if full_model_config["type"] == "embed" and not giskard:
-        if provider != "oci":
-            kwargs = {
-                "provider": "openai" if provider == "openai_compatible" else provider,
-                "model": full_model_config["id"],
-                "base_url": full_model_config["api_base"],
-            }
-            if full_model_config.get("api_key"):  # only add if set
-                kwargs["api_key"] = full_model_config["api_key"]
-            client = init_embeddings(**kwargs)
-        else:
-            client = OCIGenAIEmbeddings(
-                model_id=full_model_config["id"],
-                client=util_oci.init_genai_client(oci_config),
-                compartment_id=oci_config.genai_compartment_id,
-            )
-
-    if giskard:
-        logger.debug("Creating Giskard Client")
-        giskard_key = full_model_config["api_key"] or "giskard"
-        _client = OpenAI(api_key=giskard_key, base_url=full_model_config["api_base"])
-        client = OpenAIClient(model=full_model_config["id"], client=_client)
-
-    logger.debug("Configured Client: %s", vars(client))
-    return client
+    return litellm_config

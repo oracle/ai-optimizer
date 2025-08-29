@@ -248,7 +248,7 @@ def main() -> None:
 
     # If there is no eligible (OpenAI Compat.) LL Models; then disable ALL functionality
     ll_models_enabled = st_common.enabled_models_lookup("ll")
-    available_ll_models = [key for key, value in ll_models_enabled.items() if value.get("openai_compat")]
+    available_ll_models = [key for key, value in ll_models_enabled.items()]
     if not available_ll_models:
         st.error(
             "No OpenAI compatible language models are configured and/or enabled. Disabling Testing Framework.",
@@ -261,7 +261,7 @@ def main() -> None:
     # If there is no eligible (OpenAI Compat.) Embedding Model; disable Generate Test Set
     gen_testset_disabled = False
     embed_models_enabled = st_common.enabled_models_lookup("embed")
-    available_embed_models = [key for key, value in embed_models_enabled.items() if value.get("openai_compat")]
+    available_embed_models = [key for key, value in embed_models_enabled.items()]
     if not available_embed_models:
         st.warning(
             "No OpenAI compatible embedding models are configured and/or enabled. Disabling Test Set Generation.",
