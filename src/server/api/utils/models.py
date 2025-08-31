@@ -8,6 +8,11 @@ from urllib.parse import urlparse
 
 from litellm import get_supported_openai_params
 
+from langchain.embeddings import init_embeddings
+from langchain_litellm import ChatLiteLLM
+from langchain_community.embeddings.oci_generative_ai import OCIGenAIEmbeddings
+from langchain_core.embeddings.embeddings import Embeddings
+
 import server.api.utils.oci as util_oci
 import server.api.core.models as core_models
 
@@ -76,11 +81,8 @@ def create_genai_models(config: schema.OracleCloudSettings) -> list[schema.Model
     return genai_models
 
 
-def get_litellm_config(
-    model_config: dict, oci_config: schema.OracleCloudSettings = None, giskard: bool = False
-) -> dict:
-    """Establish client"""
-    logger.debug("Model Client: %s; OCI Config: %s; Giskard: %s", model_config, oci_config, giskard)
+def _get_full_config(model_config: dict, oci_config: schema.OracleCloudSettings = None) -> tuple[dict, str]:
+    logger.debug("Model Client: %s; OCI Config: %s", model_config, oci_config)
 
     try:
         defined_model = core_models.get_model(
@@ -92,9 +94,15 @@ def get_litellm_config(
 
     # Merge configurations, skipping None values
     full_model_config = {**defined_model, **{k: v for k, v in model_config.items() if v is not None}}
+    provider = full_model_config.pop("provider")
+    provider = "openai" if provider == "openai_compatible" else provider
 
-    # Determine provider and model name
-    provider = "openai" if full_model_config["provider"] == "openai_compatible" else full_model_config["provider"]
+    return full_model_config, provider
+
+
+def get_litellm_config(model_config: dict, oci_config: schema.OracleCloudSettings = None) -> dict:
+    """Establish client"""
+    full_model_config, provider = _get_full_config(model_config, oci_config)
     model_name = f"{provider}/{full_model_config['id']}"
 
     # Get supported parameters and initialize config
@@ -128,3 +136,26 @@ def get_litellm_config(
         )
 
     return litellm_config
+
+
+def get_embed_client(model_config: dict, oci_config: schema.OracleCloudSettings) -> Embeddings:
+    """Retrieve embedding model client"""
+    full_model_config, provider = _get_full_config(model_config, oci_config)
+    client = None
+
+    if provider != "oci":
+        kwargs = {
+            "provider": "openai" if provider == "openai_compatible" else provider,
+            "model": full_model_config["id"],
+            "base_url": full_model_config.get("api_base"),
+        }
+        if full_model_config.get("api_key"):  # only add if set
+            kwargs["api_key"] = full_model_config["api_key"]
+        client = init_embeddings(**kwargs)
+    else:
+        client = OCIGenAIEmbeddings(
+            model_id=full_model_config["id"],
+            client=util_oci.init_genai_client(oci_config),
+            compartment_id=oci_config.genai_compartment_id,
+        )
+    return client

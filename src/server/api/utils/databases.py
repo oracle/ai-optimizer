@@ -35,7 +35,7 @@ def drop_vs(conn: oracledb.Connection, vs: schema.VectorStoreTableType) -> None:
     LangchainVS.drop_table_purge(conn, vs)
 
 
-def get_client_db(client: schema.ClientIdType) -> schema.Database:
+def get_client_db(client: schema.ClientIdType, validate: bool = True) -> schema.Database:
     """Return a Database Object based on client settings"""
     client_settings = core_settings.get_client_settings(client)
 
@@ -47,7 +47,7 @@ def get_client_db(client: schema.ClientIdType) -> schema.Database:
         db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
 
     # Return the Database Object
-    db = core_databases.get_databases(db_name)
+    db = core_databases.get_databases(name=db_name, validate=validate)
     # Ping the Database
     test(db)
 

@@ -48,13 +48,27 @@ async def completion_generator(
         "input": {"messages": [HumanMessage(content=request.messages[0].content)]},
         "config": RunnableConfig(
             configurable={"thread_id": client, "ll_config": ll_config},
-            metadata={"use_history": client_settings.ll_model.chat_history},
+            metadata={
+                "use_history": client_settings.ll_model.chat_history,
+                "vector_search": client_settings.vector_search,
+                "selectai": client_settings.selectai,
+            },
         ),
     }
 
     # Get System Prompt
     user_sys_prompt = getattr(client_settings.prompts, "sys", "Basic Example")
     kwargs["config"]["metadata"]["sys_prompt"] = core_prompts.get_prompts(category="sys", name=user_sys_prompt)
+
+    # Setup Vector Search
+    if client_settings.vector_search.enabled:
+        kwargs["config"]["configurable"]["db_conn"] = util_databases.get_client_db(client, False).connection
+        kwargs["config"]["configurable"]["embed_client"] = util_models.get_embed_client(
+            client_settings.vector_search.model_dump(), oci_config
+        )
+        # Get Context Prompt
+        user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
+        kwargs["config"]["metadata"]["ctx_prompt"] = core_prompts.get_prompts(category="ctx", name=user_ctx_prompt)
 
     # db_conn = None
     # # Setup selectai
