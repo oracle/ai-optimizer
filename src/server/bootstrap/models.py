@@ -77,7 +77,7 @@ def main() -> list[Model]:
             "id": "phi-4",
             "enabled": False,
             "type": "ll",
-            "provider": "openai_compatible",
+            "provider": "huggingface",
             "api_key": "",
             "api_base": "http://localhost:1234/v1",
             "context_length": 131072,
@@ -123,7 +123,7 @@ def main() -> list[Model]:
             "id": "text-embedding-3-small",
             "enabled": os.getenv("OPENAI_API_KEY") is not None,
             "type": "embed",
-            "provider": "openai_compatible",
+            "provider": "openai",
             "api_base": "https://api.openai.com/v1",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "max_chunk_size": 8191,
@@ -141,7 +141,7 @@ def main() -> list[Model]:
             "id": "text-embedding-nomic-embed-text-v1.5",
             "enabled": False,
             "type": "embed",
-            "provider": "openai_compatible",
+            "provider": "huggingface",
             "api_base": "http://localhost:1234/v1",
             "api_key": "",
             "max_chunk_size": 8192,
@@ -161,16 +161,19 @@ def main() -> list[Model]:
     # Check for duplicates
     unique_entries = set()
     for model in models_list:
-        if model["id"] in unique_entries:
-            raise ValueError(f"Model '{model['id']}' already exists.")
-        unique_entries.add(model["id"])
+        key = (model["provider"], model["id"])
+        if key in unique_entries:
+            raise ValueError(f"Model '{model['provider']}/{model['id']}' already exists.")
+        unique_entries.add(key)
 
     # Merge with configuration if available
     configuration = ConfigStore.get()
     if configuration and configuration.model_configs:
         logger.debug("Merging model configs from ConfigStore")
-        config_model_map = {m.id: m.model_dump() for m in configuration.model_configs}
-        existing = {m["id"]: m for m in models_list}
+        
+        # Use (provider, id) tuple as key
+        config_model_map = {(m.provider, m.id): m.model_dump() for m in configuration.model_configs}
+        existing = {(m["provider"], m["id"]): m for m in models_list}
 
         def values_differ(a, b):
             if isinstance(a, bool) or isinstance(b, bool):
@@ -181,24 +184,25 @@ def main() -> list[Model]:
                 return a.strip() != b.strip()
             return a != b
 
-        for model_id, override in config_model_map.items():
-            if model_id in existing:
+        for key, override in config_model_map.items():
+            if key in existing:
                 for k, v in override.items():
-                    if k not in existing[model_id]:
+                    if k not in existing[key]:
                         continue
-                    if values_differ(existing[model_id][k], v):
+                    if values_differ(existing[key][k], v):
                         log_func = logger.debug if k == "api_key" else logger.info
                         log_func(
-                            "Overriding field '%s' for model '%s' (was: %r → now: %r)",
+                            "Overriding field '%s' for model '%s/%s' (was: %r → now: %r)",
                             k,
-                            model_id,
-                            existing[model_id][k],
+                            key[0],  # provider
+                            key[1],  # id
+                            existing[key][k],
                             v,
                         )
-                        existing[model_id][k] = v
+                        existing[key][k] = v
             else:
-                logger.info("Adding new model from ConfigStore: %s", model_id)
-                existing[model_id] = override
+                logger.info("Adding new model from ConfigStore: %s/%s", key[0], key[1])
+                existing[key] = override
 
         models_list = list(existing.values())
 

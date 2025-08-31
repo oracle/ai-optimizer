@@ -154,6 +154,7 @@ async def vs_grade(state: OptimizerState, config: RunnableConfig) -> OptimizerSt
     logger.info("Grading Vector Search Response using %i retrieved documents", len(state["documents"]))
     # Initialise documents as relevant
     relevant = "yes"
+    documents_dict = document_formatter(state["documents"])
     if config["metadata"]["vector_search"].grading and state.get("documents"):
         grade_template = """
         You are a Grader assessing the relevance of retrieved text to the user's input.
@@ -172,7 +173,6 @@ async def vs_grade(state: OptimizerState, config: RunnableConfig) -> OptimizerSt
             template=grade_template,
             input_variables=["question", "documents"],
         )
-        documents_dict = document_formatter(state["documents"])
         question = state["context_input"]
         formatted_prompt = grade_template.format(question=question, documents=documents_dict)
         logger.debug("Grading Prompt: %s", formatted_prompt)
@@ -337,9 +337,12 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
             final_response = last_chunk.model_dump()
 
             writer({"completion": final_response})
+    except APIConnectionError as ex:
+        logger.error(ex)
+        full_text = "I'm not able to contact the model API; please validate its configuration/availability."
     except Exception as ex:
         logger.error(ex)
-        full_text = f"I'm sorry, a completion problem occurred: {str(ex).split('Traceback', 1)[0]}"
+        full_text = f"I'm sorry, an unknown completion problem occurred: {str(ex).split('Traceback', 1)[0]}"
     return {"messages": [AIMessage(content=full_text)]}
 
 

@@ -221,7 +221,7 @@ def display_databases() -> None:
                     column_config={
                         "enabled": st.column_config.CheckboxColumn(label="Enabled", help="Toggle to enable or disable")
                     },
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
                 if st.button("Apply SelectAI Changes", type="secondary"):

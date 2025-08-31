@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore selectai litellm
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from litellm import ModelResponse
 
@@ -58,7 +58,6 @@ async def chat_stream(
         chat.completion_generator(client, request, "streams"),
         media_type="application/octet-stream",
     )
-
 
 @auth.patch(
     "/history",

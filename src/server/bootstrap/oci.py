@@ -9,8 +9,8 @@ import configparser
 import oci
 
 from server.bootstrap.configfile import ConfigStore
-import server.api.utils.oci as util_oci
-import server.api.utils.models as util_models
+import server.api.utils.oci as utils_oci
+import server.api.utils.models as utils_models
 
 import common.logging_config as logging_config
 from common.schema import OracleCloudSettings
@@ -112,7 +112,7 @@ def main() -> list[OracleCloudSettings]:
 
         if oci_config.auth_profile == oci.config.DEFAULT_PROFILE:
             try:
-                oci_config.namespace = util_oci.get_namespace(oci_config)
+                oci_config.namespace = utils_oci.get_namespace(oci_config)
             except Exception:
                 logger.warning("Failed to get namespace for DEFAULT OCI profile")
                 continue
@@ -121,7 +121,7 @@ def main() -> list[OracleCloudSettings]:
     try:
         oci_config = [o for o in oci_objects if o.auth_profile == "DEFAULT"]
         if oci_config:
-            util_models.create_genai_models(oci_config[0])
+            utils_models.create_genai(oci_config[0])
     except Exception as ex:
         logger.info("Unable to bootstrap OCI GenAI Models: %s", str(ex))
 

@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 import server.api.core.models as core_models
-import server.api.utils.models as util_models
+import server.api.utils.models as utils_models
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -47,18 +47,19 @@ async def models_list(
 
 
 @auth.get(
-    "/{model_id:path}",
-    description="Get a single model",
+    "/{model_provider}/{model_id:path}",
+    description="Get a single model (provider/name)",
     response_model=schema.Model,
 )
 async def models_get(
+    model_provider: schema.ModelProviderType,
     model_id: schema.ModelIdType,
 ) -> schema.Model:
     """List a specific model"""
-    logger.debug("Received models_get - model_id: %s", model_id)
+    logger.debug("Received models_get - model: %s/%s", model_provider, model_id)
 
     try:
-        models_ret = core_models.get_model(model_id=model_id)
+        models_ret = core_models.get_model(model_provider=model_provider, model_id=model_id)
     except core_models.UnknownModelError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
 
@@ -66,18 +67,15 @@ async def models_get(
 
 
 @auth.patch(
-    "/{model_id:path}",
+    "/{model_provider}/{model_id:path}",
     description="Update a model",
     response_model=schema.Model,
 )
-async def models_update(
-    model_id: schema.ModelIdType,
-    payload: schema.Model,
-) -> schema.Model:
+async def models_update(payload: schema.Model) -> schema.Model:
     """Update a model"""
-    logger.debug("Received models_update - model_id: %s; payload: %s", model_id, payload)
+    logger.debug("Received models_update - payload: %s", payload)
     try:
-        return util_models.update_model(model_id=model_id, payload=payload)
+        return utils_models.update(payload=payload)
     except core_models.UnknownModelError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
     except core_models.URLUnreachableError as ex:
@@ -98,13 +96,14 @@ async def models_create(
 
 
 @auth.delete(
-    "/{model_id:path}",
+    "/{model_provider}/{model_id:path}",
     description="Delete a model",
 )
 async def models_delete(
+    model_provider: schema.ModelProviderType,
     model_id: schema.ModelIdType,
 ) -> JSONResponse:
     """Delete a model"""
-    logger.debug("Received models_delete - model_id: %s", model_id)
-    core_models.delete_model(model_id)
-    return JSONResponse(status_code=200, content={"message": f"Model: {model_id} deleted."})
+    logger.debug("Received models_delete - model: %s/%s", model_provider, model_id)
+    core_models.delete_model(model_provider=model_provider, model_id=model_id)
+    return JSONResponse(status_code=200, content={"message": f"Model: {model_provider}/{model_id} deleted."})

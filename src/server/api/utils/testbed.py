@@ -19,6 +19,7 @@ from giskard.rag import generate_testset, KnowledgeBase, QATestset
 from giskard.rag.question_generators import simple_questions, complex_questions
 
 import server.api.core.databases as core_databases
+import server.api.utils.models as utils_models
 import common.schema as schema
 import common.logging_config as logging_config
 
@@ -235,40 +236,19 @@ def load_and_split(eval_file, chunk_size=2048):
 
 
 def build_knowledge_base(
-    text_nodes: str, questions: int, ll_model: schema.Model, embed_model: schema.Model
+    text_nodes: str, questions: int, ll_model: str, embed_model: str, oci_config: schema.OciSettings
 ) -> QATestset:
     """Establish a temporary Knowledge Base"""
-
-    def configure_and_set_model(client_model):
-        """Configure and set Model for TestSet Generation (uses litellm)"""
-        model_id, disable_structured_output, params = None, False, None
-        if client_model.provider == "openai_compatible":
-            model_id, params = (
-                f"openai/{client_model.id}",
-                {"api_base": client_model.url, "api_key": client_model.api_key or "api_compat"},
-            )
-        elif client_model.provider == "ollama":
-            model_id, disable_structured_output, params = (
-                f"ollama/{client_model.id}",
-                True,
-                {"api_base": client_model.url},
-            )
-        elif client_model.provider == "perplexity":
-            model_id, params = f"perplexity/{client_model.id}", {"api_key": client_model.api_key}
-        else:
-            model_id, params = f"openai/{client_model.id}", {"api_key": client_model.api_key}
-
-        if client_model.type == "ll":
-            logger.debug("KnowledgeBase LL: %s (%s)", model_id, params)
-            set_llm_model(model_id, disable_structured_output, **params)
-        else:
-            logger.debug("KnowledgeBase Embed: %s (%s)", model_id, params)
-            set_embedding_model(model_id, **params)
-
     logger.info("KnowledgeBase creation starting...")
     logger.info("LL Model: %s; Embedding: %s", ll_model, embed_model)
-    configure_and_set_model(ll_model)
-    configure_and_set_model(embed_model)
+
+    # Setup models, uses LiteLLM
+    ll_model_config = utils_models.get_litellm_config(
+        model_config={"model": ll_model}, oci_config=oci_config, giskard=True
+    )
+    set_llm_model(llm_model=ll_model, **ll_model_config)
+    embed_model_config = utils_models.get_litellm_config(model_config={"model": embed_model}, giskard=True)
+    set_embedding_model(model=embed_model, **embed_model_config)
 
     knowledge_base_df = pd.DataFrame([node.text for node in text_nodes], columns=["text"])
     knowledge_base = KnowledgeBase(data=knowledge_base_df)
@@ -334,8 +314,8 @@ def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.Ev
         "report": full_report.to_dict(),
         "correct_by_topic": by_topic.to_dict(),
         "failures": failures.to_dict(),
-        #"html_report": clean(html_report), #CDB
-        "html_report": '<html><body></body></html>'
+        # "html_report": clean(html_report), #CDB
+        "html_report": "<html><body></body></html>",
     }
     logger.debug("Evaluation Results: %s", evaluation_results)
     evaluation = schema.EvaluationReport(**evaluation_results)

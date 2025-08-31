@@ -75,7 +75,7 @@ def files_data_editor(files, key):
     return st.data_editor(
         files,
         key=key,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "to process": st.column_config.CheckboxColumn(
                 "in",

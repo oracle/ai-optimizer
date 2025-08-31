@@ -37,7 +37,6 @@ ModelProviders = Literal[
     "mistralai",
     "ollama",
     "openai",
-    "openai_compatible",
     "perplexity",
     "xai",
 ]
@@ -377,7 +376,7 @@ class ChatRequest(LanguageModelParameters):
         "json_schema_extra": {
             "examples": [
                 {
-                    "model": "gpt-4o-mini",
+                    "model": "openai/gpt-4o-mini",
                     "messages": [{"role": "user", "content": "Hello, how are you?"}],
                     "response_format": {"type": "text"},
                     "temperature": 1,
@@ -433,6 +432,7 @@ ClientIdType = Settings.__annotations__["client"]
 DatabaseNameType = Database.__annotations__["name"]
 VectorStoreTableType = DatabaseVectorStorage.__annotations__["vector_store"]
 ModelIdType = Model.__annotations__["id"]
+ModelProviderType = Model.__annotations__["provider"]
 ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]

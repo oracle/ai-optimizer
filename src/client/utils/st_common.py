@@ -42,7 +42,7 @@ def enabled_models_lookup(model_type: str) -> dict[str, dict[str, Any]]:
     """Create a lookup of enabled `type` models"""
     all_models = state_configs_lookup("model_configs", "id")
     enabled_models = {
-        id: config
+        f"{config.get('provider')}/{id}": config
         for id, config in all_models.items()
         if config.get("type") == model_type and config.get("enabled") is True
     }
@@ -136,7 +136,7 @@ def history_sidebar() -> None:
         key="selected_ll_model_chat_history",
         on_change=update_client_settings("ll_model"),
     )
-    if button_col.button("Clear", disabled=not chat_history_enable, use_container_width=True):
+    if button_col.button("Clear", disabled=not chat_history_enable, width="stretch"):
         # Clean out history
         try:
             api_call.patch(endpoint="v1/chat/history")

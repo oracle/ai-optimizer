@@ -25,7 +25,7 @@ from langchain.docstore.document import Document as LangchainDocument
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
 
-import server.api.utils.databases as util_databases
+import server.api.utils.databases as utils_databases
 import server.api.core.databases as core_databases
 
 import common.functions
@@ -303,7 +303,7 @@ def populate_vs(
     # Establish a dedicated connection to the database
     db_conn = core_databases.connect(db_details)
     # This is to allow re-using an existing VS; will merge this over later
-    util_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
+    utils_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
     logger.info("Establishing initial vector store")
     logger.debug("Embed Client: %s", embed_client)
     vs_tmp = OracleVS(
@@ -353,7 +353,7 @@ def populate_vs(
     """
     logger.info("Merging %s into %s", vector_store_tmp.vector_store, vector_store.vector_store)
     core_databases.execute_sql(db_conn, merge_sql)
-    util_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
+    utils_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
 
     # Build the Index
     logger.info("Creating index on: %s", vector_store.vector_store)

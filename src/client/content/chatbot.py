@@ -11,6 +11,7 @@ import asyncio
 import inspect
 import json
 import base64
+from httpx import RemoteProtocolError
 
 import streamlit as st
 from streamlit import session_state as state
@@ -143,13 +144,7 @@ async def main() -> None:
             # Stream until we hit the end then refresh to replace with history
             st.rerun()
         except Exception:
-            logger.error("Exception:", exc_info=1)
-            st.chat_message("ai").write(
-                """
-                I'm sorry, something's gone wrong.  Please try again.
-                If the problem persists, please raise an issue.
-                """
-            )
+            message_placeholder.markdown("An unexpected error occurred, please retry your request.")
             if st.button("Retry", key="reload_chatbot"):
                 st_common.clear_state_key("user_client")
                 st.rerun()

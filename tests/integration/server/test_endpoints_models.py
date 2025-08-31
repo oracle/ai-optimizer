@@ -102,13 +102,12 @@ class TestEndpoints:
     test_cases = [
         pytest.param(
             {
-                "id": "valid_ll_model",
+                "id": "gpt-3.5-turbo",
                 "enabled": True,
                 "type": "ll",
                 "provider": "openai",
                 "api_key": "test-key",
                 "api_base": "https://api.openai.com/v1",
-                "openai_compat": True,
                 "context_length": 127072,
                 "temperature": 1.0,
                 "max_completion_tokens": 4096,
@@ -135,7 +134,6 @@ class TestEndpoints:
                 "provider": "huggingface",
                 "api_base": "http://127.0.0.1:8080",
                 "api_key": "",
-                "openai_compat": True,
                 "max_chunk_size": 512,
             },
             201,
@@ -150,7 +148,6 @@ class TestEndpoints:
                 "provider": "huggingface",
                 "api_base": "http://127.0.0.1:112233",
                 "api_key": "",
-                "openai_compat": True,
                 "max_chunk_size": 512,
             },
             201,
@@ -168,6 +165,7 @@ class TestEndpoints:
             if request.node.callspec.id == "unreachable_api_base_model":
                 assert response.json()["enabled"] is False
             else:
+                print(response.json())
                 assert all(item in response.json().items() for item in payload.items())
             # Model was added, should get 200 back
             response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])

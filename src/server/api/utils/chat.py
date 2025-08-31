@@ -2,9 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore astream selectai
+# spell-checker:ignore astream selectai litellm
 
-import time
 from typing import Literal, AsyncGenerator
 
 from langchain_core.messages import HumanMessage
@@ -13,10 +12,10 @@ from langchain_core.runnables import RunnableConfig
 import server.api.core.settings as core_settings
 import server.api.core.oci as core_oci
 import server.api.core.prompts as core_prompts
-import server.api.utils.models as util_models
-import server.api.utils.databases as util_databases
+import server.api.utils.models as utils_models
+import server.api.utils.databases as utils_databases
 from server.agents.chatbot import chatbot_graph
-import server.api.utils.selectai as util_selectai
+import server.api.utils.selectai as utils_selectai
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -28,6 +27,7 @@ async def completion_generator(
     client: schema.ClientIdType, request: schema.ChatRequest, call: Literal["completions", "streams"]
 ) -> AsyncGenerator[str, None]:
     """Generate a completion from agent, stream the results"""
+
     client_settings = core_settings.get_client_settings(client)
     model = request.model_dump()
     logger.debug("Settings: %s", client_settings)
@@ -40,7 +40,7 @@ async def completion_generator(
     oci_config = core_oci.get_oci(client=client)
 
     # Setup Client Model
-    ll_config = util_models.get_litellm_config(model, oci_config)
+    ll_config = utils_models.get_litellm_config(model, oci_config)
 
     # Start to establish our LangGraph Args
     kwargs = {
@@ -62,12 +62,12 @@ async def completion_generator(
 
     # Add DB Conn to KWargs when needed
     if client_settings.vector_search.enabled or client_settings.selectai.enabled:
-        db_conn = util_databases.get_client_db(client, False).connection
+        db_conn = utils_databases.get_client_db(client, False).connection
         kwargs["config"]["configurable"]["db_conn"] = db_conn
 
     # Setup Vector Search
     if client_settings.vector_search.enabled:
-        kwargs["config"]["configurable"]["embed_client"] = util_models.get_embed_client(
+        kwargs["config"]["configurable"]["embed_client"] = utils_models.get_client_embed(
             client_settings.vector_search.model_dump(), oci_config
         )
         # Get Context Prompt
@@ -75,8 +75,8 @@ async def completion_generator(
         kwargs["config"]["metadata"]["ctx_prompt"] = core_prompts.get_prompts(category="ctx", name=user_ctx_prompt)
 
     if client_settings.selectai.enabled:
-        util_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
-        util_selectai.set_profile(
+        utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
+        utils_selectai.set_profile(
             db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
         )
 

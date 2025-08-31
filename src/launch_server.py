@@ -10,10 +10,6 @@ import os
 
 # Set OS Environment (Don't move their position to reflect on imports)
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
-os.environ["LITELLM_DISABLE_SPEND_LOGS"] = "True"
-os.environ["LITELLM_DISABLE_SPEND_UPDATES"] = "True"
-os.environ["LITELLM_DISABLE_END_USER_COST_TRACKING"] = "True"
-os.environ["LITELLM_DROP_PARAMS"] = "True"
 os.environ["GSK_DISABLE_SENTRY"] = "true"
 os.environ["GSK_DISABLE_ANALYTICS"] = "true"
 os.environ["USER_AGENT"] = "ai-optimizer"

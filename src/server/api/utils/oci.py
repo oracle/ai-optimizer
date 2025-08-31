@@ -165,6 +165,8 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
 
             # Build our list of models
             for model in response.data.items:
+                if model.vendor == "cohere" and "TEXT_EMBEDDINGS" not in model.capabilities:
+                    continue
                 genai_models.append(
                     {
                         "region": region["region_name"],
