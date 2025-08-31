@@ -12,8 +12,8 @@ import server.api.utils.embed as utils_embed
 import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.oci")
 

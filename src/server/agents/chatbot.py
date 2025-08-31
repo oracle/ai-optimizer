@@ -207,8 +207,8 @@ async def vs_grade(state: OptimizerState, config: RunnableConfig) -> OptimizerSt
         )
         logger.debug("ToolMessage Created")
         return {"documents": documents_dict}
-    else:
-        return {"documents": dict()}
+
+    return {"documents": {}}
 
 
 async def vs_retrieve(state: OptimizerState, config: RunnableConfig) -> OptimizerState:

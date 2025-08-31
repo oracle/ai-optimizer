@@ -16,11 +16,8 @@ import urllib.parse
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.api_call as api_call
-import client.utils.st_common as st_common
-
-import common.help_text as help_text
-import common.logging_config as logging_config
+from client.utils import api_call, st_common
+from common import logging_config, help_text
 
 logger = logging_config.logging.getLogger("client.content.config.tabs.models")
 
@@ -198,14 +195,14 @@ def edit_model(
 
 def render_model_rows(model_type: str) -> None:
     """Render rows of the models"""
-    data_col_widths = [0.07, 0.23, 0.2, 0.28, 0.12]
+    data_col_widths = [0.08, 0.42, 0.28, 0.12]
     table_col_format = st.columns(data_col_widths, vertical_alignment="center")
-    col1, col2, col3, col4, col5 = table_col_format
+    col1, col2, col3, col4 = table_col_format
     col1.markdown("&#x200B;", help="Active", unsafe_allow_html=True)
-    col2.markdown("**<u>Model ID</u>**", unsafe_allow_html=True)
-    col3.markdown("**<u>Provider</u>**", unsafe_allow_html=True)
-    col4.markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
-    col5.markdown("&#x200B;")
+    col2.markdown("**<u>Model</u>**", unsafe_allow_html=True)
+    col3.markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
+    col4.markdown("&#x200B;")
+    st.write(state.model_configs)
     for model in [m for m in state.model_configs if m.get("type") == model_type]:
         model_id = model["id"]
         model_provider = model["provider"]
@@ -218,29 +215,22 @@ def render_model_rows(model_type: str) -> None:
         )
         col2.text_input(
             "Model",
-            value=model_id,
+            value=f"{model_provider}/{model_id}",
             label_visibility="collapsed",
             disabled=True,
         )
         col3.text_input(
-            "Provider",
-            value=model["provider"],
-            key=f"{model_type}_{model_id}_provider",
-            label_visibility="collapsed",
-            disabled=True,
-        )
-        col4.text_input(
             "Server",
             value=model["api_base"],
             key=f"{model_type}_{model_id}_server",
             label_visibility="collapsed",
             disabled=True,
         )
-        col5.button(
+        col4.button(
             "Edit",
             on_click=edit_model,
             key=f"{model_type}_{model_id}_edit",
-            kwargs=dict(model_type=model_type, action="edit", model_id=model_id, model_provider=model_provider),
+            kwargs={"model_type": model_type, "action": "edit", "model_id": model_id, "model_provider": model_provider},
         )
 
     if st.button(label="Add", type="primary", key=f"add_{model_type}_model"):

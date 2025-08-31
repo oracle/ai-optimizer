@@ -16,8 +16,8 @@ import server.api.utils.oci as utils_oci
 import server.api.core.models as core_models
 
 from common.functions import is_url_accessible
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.models")
 

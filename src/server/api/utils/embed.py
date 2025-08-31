@@ -15,7 +15,7 @@ from typing import Union
 import bs4
 
 # Langchain
-import langchain_community.document_loaders as document_loaders
+from langchain_community import document_loaders
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.document_loaders.image import UnstructuredImageLoader
 from langchain_community.vectorstores import oraclevs as LangchainVS
@@ -28,10 +28,9 @@ from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitt
 import server.api.utils.databases as utils_databases
 import server.api.core.databases as core_databases
 
-import common.functions
-import common.schema as schema
+from common import schema, functions
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.embed")
 
@@ -224,7 +223,7 @@ def load_and_split_url(
     logger.info("Loading %s", url)
     loader = WebBaseLoader(
         web_paths=(f"{url}",),
-        bs_kwargs=dict(parse_only=bs4.SoupStrainer()),
+        bs_kwargs={"parse_only": bs4.SoupStrainer()},
     )
 
     loaded_doc = loader.load()
@@ -365,7 +364,7 @@ def populate_vs(
         logger.error("Unable to create vector index: %s", ex)
 
     # Comment the VS table
-    _, store_comment = common.functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
+    _, store_comment = functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
     comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
     core_databases.execute_sql(db_conn, comment)
     core_databases.disconnect(db_conn)

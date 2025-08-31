@@ -11,11 +11,9 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.api_call as api_call
-
-import common.help_text as help_text
-import common.logging_config as logging_config
-from common.schema import PromptPromptType, PromptNameType, SelectAISettings, ClientIdType
+from client.utils import api_call
+from common import logging_config, help_text
+from common.schema import PromptPromptType, PromptNameType, SelectAISettings
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
@@ -76,7 +74,7 @@ def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
 def switch_prompt(prompt_type: PromptPromptType, prompt_name: PromptNameType) -> None:
     """Auto Switch Prompts when not set to Custom"""
     current_prompt = state.client_settings["prompts"][prompt_type]
-    if current_prompt != "Custom" and current_prompt != prompt_name:
+    if current_prompt not in ("Custom", prompt_name):
         state.client_settings["prompts"][prompt_type] = prompt_name
         st.info(f"Prompt Engineering - {prompt_name} Prompt has been set.", icon="ℹ️")
 

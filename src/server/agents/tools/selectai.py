@@ -10,7 +10,7 @@ maintained here for future capabilities.  DO NOT DELETE (gotsysdba - 11-Feb-2025
 from langchain_core.tools import BaseTool, tool
 from langchain_core.runnables import RunnableConfig
 
-import common.logging_config as logging_config
+from common import logging_config
 from server.api.core.databases import execute_sql
 
 logger = logging_config.logging.getLogger("server.tools.selectai_executor")

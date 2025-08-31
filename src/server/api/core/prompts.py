@@ -8,7 +8,7 @@ from typing import Optional, Union
 from server.api.core import bootstrap
 
 from common.schema import PromptCategoryType, PromptNameType, Prompt
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.core.prompts")
 

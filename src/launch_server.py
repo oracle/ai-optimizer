@@ -36,11 +36,11 @@ from fastapi import FastAPI, HTTPException, Depends, status, APIRouter
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Logging
-import common.logging_config as logging_config
+from common import logging_config
 from common._version import __version__
 
 # Configuration
-import server.bootstrap.configfile as configfile
+from server.bootstrap import configfile
 
 logger = logging_config.logging.getLogger("launch_server")
 

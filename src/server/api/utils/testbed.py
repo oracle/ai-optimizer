@@ -20,8 +20,8 @@ from giskard.rag.question_generators import simple_questions, complex_questions
 
 import server.api.core.databases as core_databases
 import server.api.utils.models as utils_models
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.testbed")
 

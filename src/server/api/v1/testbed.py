@@ -27,8 +27,8 @@ import server.api.utils.models as utils_models
 
 from server.api.v1 import chat
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.testbed")
 
@@ -238,9 +238,7 @@ def testbed_evaluate(
     judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
     set_llm_model(llm_model=judge, **judge_config)
     try:
-        # report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric]) #CDB
-        report = evaluate(get_answer, testset=loaded_testset, metrics=None)  # CDB
-
+        report = evaluate(get_answer, testset=loaded_testset, metrics=None)
     except KeyError as ex:
         if str(ex) == "'correctness'":
             raise HTTPException(status_code=500, detail="Unable to determine the correctness; please retry.") from ex

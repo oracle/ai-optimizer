@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore genai
 
 from server.bootstrap import databases, models, oci, prompts, settings
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.core.bootstrap")
 

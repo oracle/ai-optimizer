@@ -11,7 +11,7 @@ import requests
 
 import streamlit as st
 from streamlit import session_state as state
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.utils.api_call")
 
@@ -37,7 +37,7 @@ def sanitize_sensitive_data(data):
             else sanitize_sensitive_data(v)
             for k, v in data.items()
         }
-    elif isinstance(data, list):
+    if isinstance(data, list):
         return [sanitize_sensitive_data(i) for i in data]
     return data
 

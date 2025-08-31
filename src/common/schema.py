@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from langchain_core.messages import ChatMessage
 import oracledb
-import common.help_text as help_text
+from common import help_text
 
 #####################################################
 # Literals
@@ -349,14 +349,13 @@ class Configuration(BaseModel):
 
             return output
 
-        elif isinstance(obj, list):
+        if isinstance(obj, list):
             return [cls.recursive_dump_excluding_marked(item, incl_sensitive, incl_readonly) for item in obj]
 
-        elif isinstance(obj, dict):
+        if isinstance(obj, dict):
             return {k: cls.recursive_dump_excluding_marked(v, incl_sensitive, incl_readonly) for k, v in obj.items()}
 
-        else:
-            return obj
+        return obj
 
 
 #####################################################

@@ -9,7 +9,7 @@ from server.bootstrap.configfile import ConfigStore
 
 import server.api.core.databases as core_databases
 from common.schema import Database
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("bootstrap.databases")
 

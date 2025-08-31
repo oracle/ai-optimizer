@@ -9,7 +9,7 @@ import json
 from server.api.core import bootstrap
 
 from common.schema import Settings, Configuration, ClientIdType
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.core.settings")
 

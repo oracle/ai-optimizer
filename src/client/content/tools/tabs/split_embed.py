@@ -14,17 +14,14 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.api_call as api_call
-import client.utils.st_common as st_common
+from client.utils import api_call, st_common
 
 from client.content.config.tabs.databases import get_databases
 from client.content.config.tabs.models import get_models
 from client.content.config.tabs.oci import get_oci
 
 from common.schema import DistanceMetrics, IndexTypes, DatabaseVectorStorage
-import common.functions as functions
-import common.help_text as help_text
-import common.logging_config as logging_config
+from common import logging_config, help_text, functions
 
 logger = logging_config.logging.getLogger("client.tools.tabs.split_embed")
 

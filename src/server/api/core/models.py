@@ -9,7 +9,7 @@ from server.api.core import bootstrap
 
 from common.schema import Model, ModelIdType, ModelProviderType, ModelTypeType
 from common.functions import is_url_accessible
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.core.models")
 

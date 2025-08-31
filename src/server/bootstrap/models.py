@@ -13,7 +13,7 @@ import os
 from server.bootstrap.configfile import ConfigStore
 from common.schema import Model
 from common.functions import is_url_accessible
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("bootstrap.models")
 
@@ -170,7 +170,7 @@ def main() -> list[Model]:
     configuration = ConfigStore.get()
     if configuration and configuration.model_configs:
         logger.debug("Merging model configs from ConfigStore")
-        
+
         # Use (provider, id) tuple as key
         config_model_map = {(m.provider, m.id): m.model_dump() for m in configuration.model_configs}
         existing = {(m["provider"], m["id"]): m for m in models_list}

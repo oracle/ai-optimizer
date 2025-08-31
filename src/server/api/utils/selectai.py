@@ -10,7 +10,7 @@ import oracledb
 import server.api.core.databases as core_databases
 
 from common.schema import SelectAIProfileType, DatabaseSelectAIObjects
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.selectai")
 

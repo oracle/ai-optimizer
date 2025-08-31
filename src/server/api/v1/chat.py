@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore selectai litellm
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header
 from fastapi.responses import StreamingResponse
 from litellm import ModelResponse
 
@@ -19,10 +19,10 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from server.api.utils import chat
-import server.agents.chatbot as chatbot
+from server.agents import chatbot
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.chat")
 
@@ -58,6 +58,7 @@ async def chat_stream(
         chat.completion_generator(client, request, "streams"),
         media_type="application/octet-stream",
     )
+
 
 @auth.patch(
     "/history",

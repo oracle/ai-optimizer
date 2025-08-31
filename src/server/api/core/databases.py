@@ -12,7 +12,7 @@ import oracledb
 from server.api.core import bootstrap
 
 from common.schema import Database, DatabaseAuth, DatabaseNameType, DatabaseVectorStorage, SelectAIProfileType
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.core.database")
 
@@ -55,8 +55,7 @@ def connect(config: Database) -> oracledb.Connection:
             raise DbException(status_code=401, detail="invalid credentials") from ex
         if "DPY-6005" in str(ex):
             raise DbException(status_code=503, detail="unable to connect") from ex
-        else:
-            raise DbException(status_code=500, detail=str(ex)) from ex
+        raise DbException(status_code=500, detail=str(ex)) from ex
     logger.debug("Connected to Databases: %s", config.dsn)
     return conn
 

@@ -10,8 +10,8 @@ from langchain_community.vectorstores import oraclevs as LangchainVS
 import server.api.core.databases as core_databases
 import server.api.core.settings as core_settings
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.database")
 

@@ -8,7 +8,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from server.bootstrap.configfile import ConfigStore
 
 from common.schema import Prompt
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("bootstrap.prompts")
 

@@ -17,8 +17,8 @@ import server.api.utils.databases as utils_databases
 from server.agents.chatbot import chatbot_graph
 import server.api.utils.selectai as utils_selectai
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.chat")
 

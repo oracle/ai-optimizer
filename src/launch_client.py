@@ -17,7 +17,7 @@ from client.utils import api_call
 from common.schema import ClientIdType
 from common._version import __version__
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("launch_client")
 

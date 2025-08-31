@@ -12,7 +12,7 @@ from server.bootstrap.configfile import ConfigStore
 import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
 
-import common.logging_config as logging_config
+from common import logging_config
 from common.schema import OracleCloudSettings
 
 logger = logging_config.logging.getLogger("bootstrap.oci")

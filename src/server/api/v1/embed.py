@@ -21,9 +21,7 @@ import server.api.utils.databases as utils_databases
 import server.api.utils.embed as utils_embed
 import server.api.utils.models as utils_models
 
-import common.functions as functions
-import common.schema as schema
-import common.logging_config as logging_config
+from common import functions, schema, logging_config
 
 logger = logging_config.logging.getLogger("api.v1.embed")
 

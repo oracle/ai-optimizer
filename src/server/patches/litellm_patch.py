@@ -13,7 +13,7 @@ from litellm.types.llms.openai import AllMessageValues
 from litellm.types.utils import ModelResponse
 from httpx._models import Response
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("patches.litellm_patch")
 

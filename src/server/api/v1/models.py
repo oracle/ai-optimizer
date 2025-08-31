@@ -11,8 +11,7 @@ from fastapi.responses import JSONResponse
 import server.api.core.models as core_models
 import server.api.utils.models as utils_models
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema, logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.models")
 
