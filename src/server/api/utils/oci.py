@@ -91,7 +91,7 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
         namespace = client.get_namespace().data
         logger.info("OCI: Namespace = %s", namespace)
     except oci.exceptions.InvalidConfig as ex:
-        raise OciException(status_code=400, detail=f"Invalid Config") from ex
+        raise OciException(status_code=400, detail="Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:
         raise OciException(status_code=401, detail="AuthN Error") from ex
     except FileNotFoundError as ex:
@@ -165,18 +165,16 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
 
             # Build our list of models
             for model in response.data.items:
-                # note that langchain_community.llms.oci_generative_ai only supports meta/cohere models
-                if model.display_name not in excluded_display_names and model.vendor in ["meta", "cohere"]:
-                    genai_models.append(
-                        {
-                            "region": region["region_name"],
-                            "compartment_id": config.genai_compartment_id,
-                            "model_name": model.display_name,
-                            "capabilities": model.capabilities,
-                            "vendor": model.vendor,
-                            "id": model.id,
-                        }
-                    )
+                genai_models.append(
+                    {
+                        "region": region["region_name"],
+                        "compartment_id": config.genai_compartment_id,
+                        "model_name": model.display_name,
+                        "capabilities": model.capabilities,
+                        "vendor": model.vendor,
+                        "id": model.id,
+                    }
+                )
         except oci.exceptions.ServiceError:
             logger.info("Region: %s has no GenAI services", region["region_name"])
         except (oci.exceptions.RequestException, urllib3.exceptions.MaxRetryError):

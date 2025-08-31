@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 from litellm import get_supported_openai_params
 
 from langchain.embeddings import init_embeddings
-from langchain_litellm import ChatLiteLLM
 from langchain_community.embeddings.oci_generative_ai import OCIGenAIEmbeddings
 from langchain_core.embeddings.embeddings import Embeddings
 
@@ -120,8 +119,11 @@ def get_litellm_config(model_config: dict, oci_config: schema.OracleCloudSetting
         # Always force the path
         path = "/compatibility/v1"
         full_model_config["api_base"] = f"{scheme}://{netloc}{path}"
+    if "xai" in model_name:
+        litellm_config.pop("presence_penalty", None)
+        litellm_config.pop("frequency_penalty", None)
 
-    litellm_config.update({"model": model_name, "api_base": full_model_config.get("api_base")})
+    litellm_config.update({"model": model_name, "api_base": full_model_config.get("api_base"), "drop_params": True})
 
     if provider == "oci":
         litellm_config.update(
@@ -134,6 +136,7 @@ def get_litellm_config(model_config: dict, oci_config: schema.OracleCloudSetting
                 "oci_compartment_id": oci_config.genai_compartment_id,
             }
         )
+    logger.debug("LiteLLM Config: %s", litellm_config)
 
     return litellm_config
 
