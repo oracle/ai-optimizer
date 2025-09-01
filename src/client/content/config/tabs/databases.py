@@ -22,11 +22,16 @@ logger = logging_config.logging.getLogger("client.content.config.tabs.database")
 #####################################################
 # Functions
 #####################################################
-def get_databases(force: bool = False) -> None:
+def get_databases(validate: bool = False, force: bool = False) -> None:
     """Get Databases from API Server"""
     if force or "database_configs" not in state or not state.database_configs:
         try:
             logger.info("Refreshing state.database_configs")
+            # Validation will be done on currently configured client database
+            # validation includes new vector_stores, etc.
+            if validate:
+                client_database = state.client_settings.get("database", {}).get("alias", {})
+                _ = api_call.get(endpoint=f"v1/databases/{client_database}")
             state.database_configs = api_call.get(endpoint="v1/databases")
         except api_call.ApiError as ex:
             logger.error("Unable to populate state.database_configs: %s", ex)
@@ -61,7 +66,7 @@ def patch_database(name: str, supplied: dict, connected: bool) -> bool:
 def drop_vs(vs: dict) -> None:
     """Drop a Vector Storage Table"""
     api_call.delete(endpoint=f"v1/embed/{vs['vector_store']}")
-    get_databases(force=True)
+    get_databases(validate=True, force=True)
 
 
 def select_ai_profile() -> None:

@@ -328,12 +328,13 @@ def display_settings():
 
     st.header("Source Code Templates", divider="red")
     # Merge the User Settings into the Model Config
-    model_lookup = st_common.state_configs_lookup("model_configs", "id")
     try:
+        model_lookup = st_common.enabled_models_lookup(model_type="ll")
         ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
     except KeyError:
         ll_config = {}
     try:
+        model_lookup = st_common.enabled_models_lookup(model_type="embed")
         embed_config = (
             model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
         )
