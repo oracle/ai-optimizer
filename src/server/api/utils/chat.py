@@ -2,10 +2,11 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore astream selectai litellm
 
+# spell-checker:ignore astream selectai litellm
 from typing import Literal, AsyncGenerator
 
+from litellm import completion
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
@@ -14,8 +15,11 @@ import server.api.core.oci as core_oci
 import server.api.core.prompts as core_prompts
 import server.api.utils.models as utils_models
 import server.api.utils.databases as utils_databases
-from server.agents.chatbot import chatbot_graph
 import server.api.utils.selectai as utils_selectai
+
+from server.agents.chatbot import chatbot_graph
+
+from server.api.core.models import UnknownModelError
 
 from common import schema
 from common import logging_config
@@ -40,7 +44,18 @@ async def completion_generator(
     oci_config = core_oci.get_oci(client=client)
 
     # Setup Client Model
-    ll_config = utils_models.get_litellm_config(model, oci_config)
+    try:
+        ll_config = utils_models.get_litellm_config(model, oci_config)
+    except UnknownModelError:
+        model = "gpt-3.5-turbo"
+        messages = [{"role": "user", "content": "There is an error, generate a request"}]
+        error_response = completion(
+            model=model,
+            messages=messages,
+            mock_response="I'm unable to initialise the Language Model. Please refresh the application.",
+        )
+        yield error_response
+        return
 
     # Start to establish our LangGraph Args
     kwargs = {

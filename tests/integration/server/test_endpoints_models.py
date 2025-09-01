@@ -2,6 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# pylint: disable=too-many-arguments,too-many-positional-arguments,too-few-public-methods
 # spell-checker: disable
 
 from typing import get_args
@@ -29,10 +30,10 @@ class TestInvalidAuthEndpoints:
         [
             pytest.param("/v1/models/api", "get", id="models_list_api"),
             pytest.param("/v1/models", "get", id="models_list"),
-            pytest.param("/v1/models/model_id", "get", id="models_get"),
-            pytest.param("/v1/models/model_id", "patch", id="models_update"),
+            pytest.param("/v1/models/model_provider/model_id", "get", id="models_get"),
+            pytest.param("/v1/models/model_provider/model_id", "patch", id="models_update"),
             pytest.param("/v1/models", "post", id="models_create"),
-            pytest.param("/v1/models/model_id", "delete", id="models_delete"),
+            pytest.param("/v1/models/model_provider/model_id", "delete", id="models_delete"),
         ],
     )
     def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
@@ -58,7 +59,7 @@ class TestEndpoints:
         all_models = client.get("/v1/models?include_disabled=true", headers=auth_headers["valid_auth"])
         assert len(all_models.json()) > 0
         for model in all_models.json():
-            response = client.get(f"/v1/models/{model['id']}", headers=auth_headers["valid_auth"])
+            response = client.get(f"/v1/models/{model['provider']}/{model['id']}", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
 
     def test_models_delete_add(self, client, auth_headers):
@@ -68,17 +69,19 @@ class TestEndpoints:
 
         # Delete all models
         for model in all_models.json():
-            response = client.delete(f"/v1/models/{model['id']}", headers=auth_headers["valid_auth"])
+            response = client.delete(
+                f"/v1/models/{model['provider']}/{model['id']}", headers=auth_headers["valid_auth"]
+            )
             assert response.status_code == 200
-            assert response.json() == {"message": f"Model: {model['id']} deleted."}
+            assert response.json() == {"message": f"Model: {model['provider']}/{model['id']} deleted."}
         # Check that no models exists
         deleted_models = client.get("/v1/models?include_disabled=true", headers=auth_headers["valid_auth"])
         assert len(deleted_models.json()) == 0
 
         # Delete a non-existent model
-        response = client.delete("/v1/models/test_model", headers=auth_headers["valid_auth"])
+        response = client.delete("/v1/models/test_provider/test_model", headers=auth_headers["valid_auth"])
         assert response.status_code == 200
-        assert response.json() == {"message": "Model: test_model deleted."}
+        assert response.json() == {"message": "Model: test_provider/test_model deleted."}
 
         # Add all models back
         for model in all_models.json():
@@ -97,7 +100,7 @@ class TestEndpoints:
             payload = model
             response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
             assert response.status_code == 409
-            assert response.json() == {"detail": f"Model: {model['id']} already exists."}
+            assert response.json() == {"detail": f"Model: {model['provider']}/{model['id']} already exists."}
 
     test_cases = [
         pytest.param(
@@ -120,6 +123,7 @@ class TestEndpoints:
         pytest.param(
             {
                 "id": "invalid_ll_model",
+                "provider": "invalid_ll_model",
                 "enabled": False,
             },
             422,
@@ -168,11 +172,15 @@ class TestEndpoints:
                 print(response.json())
                 assert all(item in response.json().items() for item in payload.items())
             # Model was added, should get 200 back
-            response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
+            response = client.get(
+                f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"]
+            )
             assert response.status_code == 200
         else:
             # Model wasn't added, should get a 404 back
-            response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
+            response = client.get(
+                f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"]
+            )
             assert response.status_code == 404
 
     @pytest.mark.parametrize("payload, add_status_code, update_status_code", test_cases)
@@ -181,12 +189,16 @@ class TestEndpoints:
         if add_status_code == 201:
             # Create the model when we know it will succeed
             _ = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
-            response = client.get(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"])
+            response = client.get(
+                f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"]
+            )
             old_enabled = response.json()["enabled"]
             # Switch up the enabled for the update
             payload["enabled"] = not old_enabled
 
-            response = client.patch(f"/v1/models/{payload['id']}", headers=auth_headers["valid_auth"], json=payload)
+            response = client.patch(
+                f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"], json=payload
+            )
             assert response.status_code == update_status_code
             if update_status_code == 200:
                 new_enabled = response.json()["enabled"]

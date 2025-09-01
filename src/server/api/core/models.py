@@ -74,7 +74,7 @@ def create_model(model: Model, check_url: bool = True) -> Model:
 
     try:
         _ = get_model(model_id=model.id, model_provider=model.provider, model_type=model.type)
-        raise ExistsModelError(f"Model: {model.id} already exists.")
+        raise ExistsModelError(f"Model: {model.provider}/{model.id} already exists.")
     except UnknownModelError:
         pass
 

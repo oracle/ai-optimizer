@@ -202,35 +202,40 @@ def render_model_rows(model_type: str) -> None:
     col2.markdown("**<u>Model</u>**", unsafe_allow_html=True)
     col3.markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
     col4.markdown("&#x200B;")
-    st.write(state.model_configs)
     for model in [m for m in state.model_configs if m.get("type") == model_type]:
         model_id = model["id"]
         model_provider = model["provider"]
         col1.text_input(
             "Enabled",
             value=st_common.bool_to_emoji(model["enabled"]),
-            key=f"{model_type}_{model_id}_enabled",
+            key=f"{model_type}_{model_provider}_{model_id}_enabled",
             label_visibility="collapsed",
             disabled=True,
         )
         col2.text_input(
             "Model",
             value=f"{model_provider}/{model_id}",
+            key=f"{model_type}_{model_provider}_{model_id}",
             label_visibility="collapsed",
             disabled=True,
         )
         col3.text_input(
             "Server",
             value=model["api_base"],
-            key=f"{model_type}_{model_id}_server",
+            key=f"{model_type}_{model_provider}_{model_id}_api_base",
             label_visibility="collapsed",
             disabled=True,
         )
         col4.button(
             "Edit",
             on_click=edit_model,
-            key=f"{model_type}_{model_id}_edit",
-            kwargs={"model_type": model_type, "action": "edit", "model_id": model_id, "model_provider": model_provider},
+            key=f"{model_type}_{model_provider}_{model_id}_edit",
+            kwargs={
+                "model_type": model_type,
+                "action": "edit",
+                "model_id": model_id,
+                "model_provider": model_provider,
+            },
         )
 
     if st.button(label="Add", type="primary", key=f"add_{model_type}_model"):
@@ -242,7 +247,7 @@ def render_model_rows(model_type: str) -> None:
 #############################################################################
 def display_models() -> None:
     """Streamlit GUI"""
-    st.header("Models", divider="red")
+    st.title("Models")
     st.write("Update, Add, or Delete model configuration parameters.")
     try:
         get_models()
@@ -250,11 +255,11 @@ def display_models() -> None:
         st.stop()
 
     st.divider()
-    st.subheader("Language Models")
+    st.header("Language Models")
     render_model_rows("ll")
 
     st.divider()
-    st.subheader("Embedding Models")
+    st.header("Embedding Models")
     render_model_rows("embed")
 
 
