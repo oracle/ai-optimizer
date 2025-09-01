@@ -7,11 +7,15 @@ from typing import List
 import os
 from dotenv import load_dotenv
 import logging
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(name)s - %(levelname)s - %(message)s"
+)
 
 
-
-logging.info("Successfully imported libraries and modules")
+logger.info("Successfully imported libraries and modules")
 
 from optimizer_utils import config
 
@@ -32,7 +36,7 @@ def similarity_search(question: str, max_results: int = 5) -> List[str]:
         List of information related to the question
     """
     
-    logging.info(f"Results provided for question: {question} with top {max_results}")
+    logger.info(f"Results provided for question: {question} with top {max_results}")
     chunks=["first chunk", "second chunk"]
     
     return chunks
@@ -41,13 +45,13 @@ if __name__ == "__main__":
     # Initialize and run the server
     # Load JSON file
     file_path = os.path.join(os.getcwd(), "optimizer_settings.json")
-    logging.info(file_path)
+    logger.info(file_path)
     rag.set_optimizer_settings_path(file_path)
 
     if len(sys.argv) > 1:
         question = sys.argv[1]
         print(question)
-        logging.info(f"Question: {sys.argv[1]}")
-        logging.info(f"\n\nAnswer: {rag.rag_tool_base(question)}")
+        logger.info(f"Question: {sys.argv[1]}")
+        logger.info(f"\n\nAnswer: {rag.rag_tool_base(question)}")
     else:
-        logging.info("No question provided.")
+        logger.info("No question provided.")
