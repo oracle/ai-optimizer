@@ -129,7 +129,7 @@ class TestStreamlit:
                 "username": TEST_CONFIG["db_username"],
                 "password": TEST_CONFIG["db_password"],
                 "dsn": "WRONG_TP",
-                "expected": "Update Failed - Database: DEFAULT DPY-*",
+                "expected": "Update Failed - Database: DEFAULT not resolvable.",
             },
             id="bad_dsn",
         ),

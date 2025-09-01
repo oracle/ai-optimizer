@@ -24,7 +24,7 @@ from langchain_community.vectorstores.oraclevs import OracleVS
 from litellm import acompletion, completion
 from litellm.exceptions import APIConnectionError
 
-from server.api.core.databases import execute_sql
+from server.api.utils.databases import execute_sql
 
 from common import logging_config
 

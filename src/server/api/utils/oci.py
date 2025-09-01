@@ -9,14 +9,26 @@ from typing import Union
 import urllib3.exceptions
 
 import oci
-from server.api.core.oci import OciException
 
 from common.schema import OracleCloudSettings
 from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.oci")
 
+#####################################################
+# Exceptions
+#####################################################
+class OciException(Exception):
+    """Custom OCI Exceptions to be passed to HTTPException"""
 
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
+#####################################################
+# Functions
+#####################################################
 def init_client(
     client_type: Union[
         oci.object_storage.ObjectStorageClient,

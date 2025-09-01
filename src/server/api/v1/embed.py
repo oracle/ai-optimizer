@@ -14,7 +14,6 @@ from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 import requests
 
-import server.api.core.databases as core_databases
 import server.api.core.oci as core_oci
 
 import server.api.utils.databases as utils_databases
@@ -39,10 +38,10 @@ async def embed_drop_vs(
     """Drop Vector Storage"""
     logger.debug("Received %s embed_drop_vs: %s", client, vs)
     try:
-        client_db = utils_databases.get_client_db(client)
-        db_conn = core_databases.connect(client_db)
+        client_db = utils_databases.get_client_database(client)
+        db_conn = utils_databases.connect(client_db)
         utils_databases.drop_vs(db_conn, vs)
-    except core_databases.DbException as ex:
+    except utils_databases.DbException as ex:
         raise HTTPException(status_code=400, detail=f"Embed: {str(ex)}.") from ex
     return JSONResponse(status_code=200, content={"message": f"Vector Store: {vs} dropped."})
 
@@ -149,7 +148,7 @@ async def split_embed(
 
         utils_embed.populate_vs(
             vector_store=request,
-            db_details=utils_databases.get_client_db(client),
+            db_details=utils_databases.get_client_database(client),
             embed_client=embed_client,
             input_data=split_docos,
             rate_limit=rate_limit,

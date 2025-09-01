@@ -77,7 +77,7 @@ async def completion_generator(
 
     # Add DB Conn to KWargs when needed
     if client_settings.vector_search.enabled or client_settings.selectai.enabled:
-        db_conn = utils_databases.get_client_db(client, False).connection
+        db_conn = utils_databases.get_client_database(client, False).connection
         kwargs["config"]["configurable"]["db_conn"] = db_conn
 
     # Setup Vector Search

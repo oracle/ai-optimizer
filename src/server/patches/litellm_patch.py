@@ -40,7 +40,10 @@ if not getattr(OllamaConfig.transform_response, "_is_custom_patch", False):
         api_key: Optional[str] = None,
         json_mode: Optional[bool] = None,
     ):
-        """Custom transform response from .venv/lib/python3.11/site-packages/litellm/llms/ollama/completion/transformation.py"""
+        """
+        Custom transform response from
+        .venv/lib/python3.11/site-packages/litellm/llms/ollama/completion/transformation.py
+        """
         logger.info("Custom transform_response is running")
         response_json = raw_response.json()
 

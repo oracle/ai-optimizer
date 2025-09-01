@@ -29,8 +29,8 @@ async def selectai_get_objects(
 ) -> list[schema.DatabaseSelectAIObjects]:
     """Get DatabaseSelectAIObjects"""
     client_settings = core_settings.get_client_settings(client)
-    db_conn = utils_databases.get_client_db(client).connection
-    select_ai_objects = utils_selectai.get_objects(db_conn, client_settings.selectai.profile)
+    database = utils_databases.get_client_database(client=client, validate=False)
+    select_ai_objects = utils_selectai.get_objects(database.connection, client_settings.selectai.profile)
     return select_ai_objects
 
 
@@ -47,6 +47,6 @@ async def selectai_update_objects(
     logger.debug("Received selectai_update - payload: %s", payload)
     client_settings = core_settings.get_client_settings(client)
     object_list = json.dumps([obj.model_dump(include={"owner", "name"}) for obj in payload])
-    db_conn = utils_databases.get_client_db(client).connection
+    db_conn = utils_databases.get_client_database(client).connection
     utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "object_list", object_list)
     return utils_selectai.get_objects(db_conn, client_settings.selectai.profile)

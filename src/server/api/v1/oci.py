@@ -64,7 +64,7 @@ async def oci_list_regions(
         oci_config = await oci_get(auth_profile=auth_profile)
         regions = utils_oci.get_regions(oci_config)
         return regions
-    except core_oci.OciException as ex:
+    except utils_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -82,7 +82,7 @@ async def oci_list_genai(
         oci_config = await oci_get(auth_profile=auth_profile)
         all_models = utils_oci.get_genai_models(oci_config, regional=False)
         return all_models
-    except core_oci.OciException as ex:
+    except utils_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -100,7 +100,7 @@ async def oci_list_compartments(
         oci_config = await oci_get(auth_profile=auth_profile)
         compartments = utils_oci.get_compartments(oci_config)
         return compartments
-    except core_oci.OciException as ex:
+    except utils_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -120,7 +120,7 @@ async def oci_list_buckets(
         oci_config = await oci_get(auth_profile=auth_profile)
         buckets = utils_oci.get_buckets(compartment_obj.ocid, oci_config)
         return buckets
-    except core_oci.OciException as ex:
+    except utils_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -139,7 +139,7 @@ async def oci_list_bucket_objects(
         oci_config = await oci_get(auth_profile=auth_profile)
         objects = utils_oci.get_bucket_objects(bucket_name, oci_config)
         return objects
-    except core_oci.OciException as ex:
+    except utils_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
 
 
@@ -163,7 +163,7 @@ async def oci_profile_update(
         for key, value in payload.model_dump().items():
             if value not in ("", None):
                 setattr(oci_config, key, value)
-    except core_oci.OciException as ex:
+    except utils_oci.OciException as ex:
         oci_config.namespace = None
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex
     except AttributeError as ex:
@@ -214,5 +214,5 @@ async def oci_create_genai_models(
         oci_config = await oci_get(auth_profile=auth_profile)
         enabled_models = utils_models.create_genai(oci_config)
         return enabled_models
-    except core_oci.OciException as ex:
+    except utils_oci.OciException as ex:
         raise HTTPException(status_code=ex.status_code, detail=f"OCI: {ex.detail}.") from ex

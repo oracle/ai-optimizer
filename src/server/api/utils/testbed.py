@@ -18,7 +18,7 @@ from giskard.llm import set_llm_model, set_embedding_model
 from giskard.rag import generate_testset, KnowledgeBase, QATestset
 from giskard.rag.question_generators import simple_questions, complex_questions
 
-import server.api.core.databases as core_databases
+import server.api.utils.databases as utils_databases
 import server.api.utils.models as utils_models
 from common import schema
 from common import logging_config
@@ -82,11 +82,11 @@ def create_testset_objects(db_conn: Connection) -> None:
             )
         """
     logger.info("Creating testsets Table")
-    _ = core_databases.execute_sql(db_conn, testsets_tbl)
+    _ = utils_databases.execute_sql(db_conn, testsets_tbl)
     logger.info("Creating testset_qa Table")
-    _ = core_databases.execute_sql(db_conn, testset_qa_tbl)
+    _ = utils_databases.execute_sql(db_conn, testset_qa_tbl)
     logger.info("Creating evaluations Table")
-    _ = core_databases.execute_sql(db_conn, evaluation_tbl)
+    _ = utils_databases.execute_sql(db_conn, evaluation_tbl)
 
 
 def get_testsets(db_conn: Connection) -> list:
@@ -94,7 +94,7 @@ def get_testsets(db_conn: Connection) -> list:
     logger.info("Getting All TestSets")
     testsets = []
     sql = "SELECT tid, name, to_char(created) FROM oai_testsets ORDER BY created"
-    results = core_databases.execute_sql(db_conn, sql)
+    results = utils_databases.execute_sql(db_conn, sql)
     try:
         testsets = [schema.TestSets(tid=tid.hex(), name=name, created=created) for tid, name, created in results]
     except TypeError:
@@ -108,7 +108,7 @@ def get_testset_qa(db_conn: Connection, tid: schema.TestSetsIdType) -> schema.Te
     logger.info("Getting TestSet Q&A for TID: %s", tid)
     binds = {"tid": tid}
     sql = "SELECT qa_data FROM oai_testset_qa where tid=:tid"
-    results = core_databases.execute_sql(db_conn, sql, binds)
+    results = utils_databases.execute_sql(db_conn, sql, binds)
     qa_data = [qa_data[0] for qa_data in results]
 
     return schema.TestSetQA(qa_data=qa_data)
@@ -120,7 +120,7 @@ def get_evaluations(db_conn: Connection, tid: schema.TestSetsIdType) -> list[sch
     evaluations = []
     binds = {"tid": tid}
     sql = "SELECT eid, to_char(evaluated), correctness FROM oai_evaluations WHERE tid=:tid ORDER BY evaluated DESC"
-    results = core_databases.execute_sql(db_conn, sql, binds)
+    results = utils_databases.execute_sql(db_conn, sql, binds)
     try:
         evaluations = [
             schema.Evaluation(eid=eid.hex(), evaluated=evaluated, correctness=correctness)
@@ -139,7 +139,7 @@ def delete_qa(
     """Delete Q&A"""
     binds = {"tid": tid}
     sql = "DELETE FROM oai_testsets WHERE TID = :tid"
-    core_databases.execute_sql(db_conn, sql, binds)
+    utils_databases.execute_sql(db_conn, sql, binds)
     db_conn.commit()
 
 
@@ -191,7 +191,7 @@ def upsert_qa(
         END;
     """
     logger.debug("Upsert PLSQL: %s", plsql)
-    return core_databases.execute_sql(db_conn, plsql, binds)
+    return utils_databases.execute_sql(db_conn, plsql, binds)
 
 
 def insert_evaluation(db_conn, tid, evaluated, correctness, settings, rag_report):
@@ -218,7 +218,7 @@ def insert_evaluation(db_conn, tid, evaluated, correctness, settings, rag_report
         END;
     """
     logger.debug("Insert PLSQL: %s", plsql)
-    return core_databases.execute_sql(db_conn, plsql, binds)
+    return utils_databases.execute_sql(db_conn, plsql, binds)
 
 
 def load_and_split(eval_file, chunk_size=2048):
@@ -299,7 +299,7 @@ def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.Ev
           FROM oai_evaluations WHERE eid=:eid
          ORDER BY evaluated
         """
-    results = core_databases.execute_sql(db_conn, sql, binds)
+    results = utils_databases.execute_sql(db_conn, sql, binds)
     report = pickle.loads(results[0]["RAG_REPORT"])
     full_report = report.to_pandas()
     html_report = report.to_html()

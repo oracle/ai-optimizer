@@ -44,7 +44,7 @@ async def testbed_testsets(
     client: schema.ClientIdType = Header(default="server"),
 ) -> list[schema.TestSets]:
     """Get a list of stored TestSets, create TestSet objects if they don't exist"""
-    testsets = utils_testbed.get_testsets(db_conn=utils_databases.get_client_db(client).connection)
+    testsets = utils_testbed.get_testsets(db_conn=utils_databases.get_client_database(client).connection)
     return testsets
 
 
@@ -59,7 +59,7 @@ async def testbed_evaluations(
 ) -> list[schema.Evaluation]:
     """Get Evaluations"""
     evaluations = utils_testbed.get_evaluations(
-        db_conn=utils_databases.get_client_db(client).connection, tid=tid.upper()
+        db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper()
     )
     return evaluations
 
@@ -75,7 +75,7 @@ async def testbed_evaluation(
 ) -> schema.EvaluationReport:
     """Get Evaluations"""
     evaluation = utils_testbed.process_report(
-        db_conn=utils_databases.get_client_db(client).connection, eid=eid.upper()
+        db_conn=utils_databases.get_client_database(client).connection, eid=eid.upper()
     )
     return evaluation
 
@@ -90,7 +90,7 @@ async def testbed_testset_qa(
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.TestSetQA:
     """Get TestSet Q&A"""
-    return utils_testbed.get_testset_qa(db_conn=utils_databases.get_client_db(client).connection, tid=tid.upper())
+    return utils_testbed.get_testset_qa(db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper())
 
 
 @auth.delete(
@@ -102,7 +102,7 @@ async def testbed_delete_testset(
     client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Delete TestSet"""
-    utils_testbed.delete_qa(utils_databases.get_client_db(client).connection, tid.upper())
+    utils_testbed.delete_qa(utils_databases.get_client_database(client).connection, tid.upper())
     return JSONResponse(status_code=200, content={"message": f"TestSet: {tid} deleted."})
 
 
@@ -119,7 +119,7 @@ async def testbed_upsert_testsets(
 ) -> schema.TestSetQA:
     """Update stored TestSet data"""
     created = datetime.now().isoformat()
-    db_conn = utils_databases.get_client_db(client).connection
+    db_conn = utils_databases.get_client_database(client).connection
     try:
         for file in files:
             file_content = await file.read()
@@ -222,7 +222,7 @@ def testbed_evaluate(
     # Change Grade vector_search
     client_settings.vector_search.grading = False
 
-    db_conn = utils_databases.get_client_db(client).connection
+    db_conn = utils_databases.get_client_database(client).connection
     testset = utils_testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())
     qa_test = "\n".join(json.dumps(item) for item in testset.qa_data)
     temp_directory = utils_embed.get_temp_directory(client, "testbed")

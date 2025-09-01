@@ -7,7 +7,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import os
 from server.bootstrap.configfile import ConfigStore
 
-import server.api.core.databases as core_databases
 from common.schema import Database
 from common import logging_config
 
@@ -28,7 +27,7 @@ def main() -> list[Database]:
             raise ValueError(f"Duplicate database name found in config: '{db.name}'")
         seen.add(db_name_lower)
 
-    db_objects = []
+    database_objects = []
     default_found = False
 
     for db in db_configs:
@@ -46,9 +45,9 @@ def main() -> list[Database]:
             if updated.wallet_password:
                 updated.wallet_location = updated.config_dir
                 logger.info("Setting WALLET_LOCATION: %s", updated.config_dir)
-            db_objects.append(updated)
+            database_objects.append(updated)
         else:
-            db_objects.append(db)
+            database_objects.append(db)
 
     # If DEFAULT wasn't in config, create it from env vars
     if not default_found:
@@ -63,26 +62,7 @@ def main() -> list[Database]:
         if data["wallet_password"]:
             data["wallet_location"] = data["config_dir"]
             logger.info("Setting WALLET_LOCATION: %s", data["config_dir"])
-        db_objects.append(Database(**data))
-
-    # Validate Configuration and set vector_stores/status
-    database_objects = []
-    for db in db_objects:
-        database_objects.append(db)
-        try:
-            conn = core_databases.connect(db)
-            db.connected = True
-        except core_databases.DbException:
-            db.connected = False
-            continue
-        db.vector_stores = core_databases.get_vs(conn)
-        db.selectai = core_databases.selectai_enabled(conn)
-        if db.selectai:
-            db.selectai_profiles = core_databases.get_selectai_profiles(conn)
-        if not db.connection and len(database_objects) > 1:
-            db.set_connection = core_databases.disconnect(conn)
-        else:
-            db.set_connection(conn)
+        database_objects.append(Database(**data))
 
     logger.debug("Bootstrapped Databases: %s", database_objects)
     logger.debug("*** Bootstrapping Database - End")
