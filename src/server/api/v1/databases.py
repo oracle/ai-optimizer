@@ -16,6 +16,7 @@ logger = logging_config.logging.getLogger("endpoints.v1.databases")
 # Validate the DEFAULT Databases
 _ = utils_databases.get_databases(db_name="DEFAULT", validate=True)
 
+
 auth = APIRouter()
 
 

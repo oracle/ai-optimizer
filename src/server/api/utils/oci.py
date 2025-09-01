@@ -15,6 +15,7 @@ from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.oci")
 
+
 #####################################################
 # Exceptions
 #####################################################
@@ -25,6 +26,7 @@ class OciException(Exception):
         self.status_code = status_code
         self.detail = detail
         super().__init__(detail)
+
 
 #####################################################
 # Functions
@@ -94,14 +96,14 @@ def init_genai_client(config: OracleCloudSettings) -> oci.generative_ai_inferenc
     return init_client(client_type, config)
 
 
-def get_namespace(config: OracleCloudSettings = None) -> str:
+def get_namespace(config: OracleCloudSettings) -> str:
     """Get the Object Storage Namespace.  Also used for testing AuthN"""
     logger.info("Getting Object Storage Namespace")
     client_type = oci.object_storage.ObjectStorageClient
     try:
         client = init_client(client_type, config)
-        namespace = client.get_namespace().data
-        logger.info("OCI: Namespace = %s", namespace)
+        config.namespace = client.get_namespace().data
+        logger.info("OCI: Namespace = %s", config.namespace)
     except oci.exceptions.InvalidConfig as ex:
         raise OciException(status_code=400, detail="Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:
@@ -115,7 +117,7 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
     except Exception as ex:
         raise OciException(status_code=500, detail=str(ex)) from ex
 
-    return namespace
+    return config.namespace
 
 
 def get_regions(config: OracleCloudSettings = None) -> list[dict]:

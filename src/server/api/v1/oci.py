@@ -17,6 +17,14 @@ from common import logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.oci")
 
+# Validate the DEFAULT OCI Profile and get models
+try:
+    default_config = core_oci.get_oci(auth_profile="DEFAULT")
+    _ = utils_oci.get_namespace(config=default_config)
+    _ = utils_models.create_genai(default_config)
+except utils_oci.OciException:
+    pass
+
 auth = APIRouter()
 
 
