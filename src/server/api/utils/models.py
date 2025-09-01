@@ -126,11 +126,19 @@ def get_client(model_config: dict, oci_config: schema.OracleCloudSettings, giska
 
     if full_model_config["type"] == "embed" and not giskard:
         if provider != "oci":
-            kwargs = {
-                "provider": "openai" if provider == "openai_compatible" else provider,
-                "model": full_model_config["id"],
-                "base_url": full_model_config["url"],
-            }
+            if provider == "openai_compatible":
+                 kwargs = {
+                    "provider": "openai",
+                    "model": full_model_config["id"],
+                    "base_url": full_model_config["url"],
+                    "check_embedding_ctx_length":False #To avoid Tiktoken pre-transform on not OpenAI provided server
+                }
+            else:
+                kwargs = {
+                    "provider": "openai" if provider == "openai_compatible" else provider,
+                    "model": full_model_config["id"],
+                    "base_url": full_model_config["url"],
+                }
             if full_model_config.get("api_key"):  # only add if set
                 kwargs["api_key"] = full_model_config["api_key"]
             client = init_embeddings(**kwargs)
