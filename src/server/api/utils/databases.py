@@ -141,7 +141,7 @@ def connect(config: Database) -> oracledb.Connection:
             raise PermissionError("invalid credentials") from ex
         if "DPY-6005" in str(ex):
             raise ConnectionError("unable to connect") from ex
-        if "DPY-4000" in str(ex):
+        if any(code in str(ex) for code in ("DPY-4000", "DPY-4026")):
             raise LookupError("not resolvable") from ex
         raise
     logger.debug("Connected to Databases: %s", config.dsn)
