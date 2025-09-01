@@ -344,7 +344,7 @@ def display_settings():
     if spring_ai_conf == "hybrid":
         st.markdown(f"""
             The current configuration combination of embedding and language models
-            is currently **not supported** for SpringAI.
+            is currently **not supported** for Spring AI and LangChain MCP templates.
             - Language Model:  **{ll_config.get("model", "Unset")}**
             - Embedding Model: **{embed_config.get("model", "Unset")}**
         """)

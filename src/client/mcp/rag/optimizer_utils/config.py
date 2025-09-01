@@ -16,65 +16,91 @@ from langchain_community.vectorstores.oraclevs import OracleVS
 import oracledb
 
 import logging
-
-logging.basicConfig(level=logging.INFO)
-
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(name)s - %(levelname)s - %(message)s"
+)
 
 def get_llm(data):
-    logging.info("llm data:")
-    logging.info(data["user_settings"]["ll_model"]["model"])
+    logger.info("llm data:")
+    logger.info(data["client_settings"]["ll_model"]["model"])
     llm = {}
-    llm_config = data["ll_model_config"][data["user_settings"]["ll_model"]["model"]]
+    models_by_id = {m["id"]: m for m in data.get("model_configs", [])}
+    llm_config= models_by_id.get(data["client_settings"]["ll_model"]["model"])
+    logger.info(llm_config)
     provider = llm_config["provider"]
     url = llm_config["api_base"]
     api_key = llm_config["api_key"]
-    model = data["user_settings"]["ll_model"]["model"]
-    logging.info(f"CHAT_MODEL: {model} {provider} {url} {api_key}")
+    model = data["client_settings"]["ll_model"]["model"]
+    logger.info(f"CHAT_MODEL: {model} {provider} {url} {api_key}")
     if provider == "ollama":
         # Initialize the LLM
         llm = OllamaLLM(model=model, base_url=url)
+        logger.info("Ollama LLM created")
     elif provider == "openai":
         llm = llm = ChatOpenAI(model=model, api_key=api_key)
+        logger.info("OpenAI LLM created")
     return llm
 
 
 def get_embeddings(data):
     embeddings = {}
-    model = data["user_settings"]["vector_search"]["model"]
-    provider = data["embed_model_config"][model]["provider"]
-    url = data["embed_model_config"][model]["api_base"]
-    api_key = data["embed_model_config"][model]["api_key"]
-    logging.info(f"EMBEDDINGS: {model} {provider} {url} {api_key}")
+    logger.info("getting embeddings..")
+    model = data["client_settings"]["vector_search"]["model"]
+    logger.info(f"embedding model: {model}")
+    models_by_id = {m["id"]: m for m in data.get("model_configs", [])}
+    model_params= models_by_id.get(model)
+    provider = model_params["provider"]
+    url = model_params["url"]
+    api_key = model_params["api_key"]
+
+    logger.info(f"Embeddings Model: {model} {provider} {url} {api_key}")
     embeddings = {}
     if provider == "ollama":
         embeddings = OllamaEmbeddings(model=model, base_url=url)
-    elif provider == "openai":
-        logging.info("BEFORE create embbedding")
+        logger.info("Ollama Embeddings connection successful")
+    elif (provider == "openai") or (provider == "openai_compatible"):
         embeddings = OpenAIEmbeddings(model=model, api_key=api_key)
-        logging.info("AFTER create emebdding")
+        logger.info("OpenAI embeddings connection successful")
     return embeddings
 
 
 def get_vectorstore(data, embeddings):
-    config = data["database_config"][data["user_settings"]["database"]["alias"]]
-    logging.info(config)
+    db_alias=data["client_settings"]["database"]["alias"]
 
-    conn23c = oracledb.connect(user=config["user"], password=config["password"], dsn=config["dsn"])
 
-    logging.info("DB Connection successful!")
-    metric = data["user_settings"]["vector_search"]["distance_metric"]
+    db_by_name = {m["name"]: m for m in data.get("database_configs", [])}
+    db_config= db_by_name.get(db_alias)
+ 
+    table_alias=data["client_settings"]["vector_search"]["alias"]
+    model=data["client_settings"]["vector_search"]["model"]
+    chunk_size=str(data["client_settings"]["vector_search"]["chunk_size"])
+    chunk_overlap=str(data["client_settings"]["vector_search"]["chunk_overlap"])
+    distance_metric=data["client_settings"]["vector_search"]["distance_metric"]
+    index_type=data["client_settings"]["vector_search"]["index_type"]
+
+    db_table=(table_alias+"_"+model+"_"+chunk_size+"_"+chunk_overlap+"_"+distance_metric+"_"+index_type).upper().replace("-", "_")
+    logger.info(f"db_table:{db_table}")
+
+
+    user=db_config["user"]
+    password=db_config["password"]
+    dsn=db_config["dsn"]
+   
+    logger.info(f"{db_table}: {user}/{password} - {dsn}")
+    conn23c = oracledb.connect(user=user, password=password, dsn=dsn)
+
+    logger.info("DB Connection successful!")
+    metric = data["client_settings"]["vector_search"]["distance_metric"]
 
     dist_strategy = DistanceStrategy.COSINE
     if metric == "COSINE":
         dist_strategy = DistanceStrategy.COSINE
     elif metric == "EUCLIDEAN":
         dist_strategy = DistanceStrategy.EUCLIDEAN
-
-    a = data["user_settings"]["vector_search"]["vector_store"]
-    logging.info(f"{a}")
-    logging.info(f"BEFORE KNOWLEDGE BASE")
-    logging.info(embeddings)
-    knowledge_base = OracleVS(
-        conn23c, embeddings, data["user_settings"]["vector_search"]["vector_store"], dist_strategy
-    )
+    
+    logger.info(embeddings)
+    knowledge_base = OracleVS(client=conn23c,table_name=db_table, embedding_function=embeddings, distance_strategy=dist_strategy)
+    
     return knowledge_base

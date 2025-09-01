@@ -13,7 +13,12 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 import json
 import logging
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(name)s - %(levelname)s - %(message)s"
+)
 
 from optimizer_utils import rag
 
@@ -24,8 +29,8 @@ CHUNKS_DIR = "chunks_temp"
 data = {}
 
 # Initialize FastMCP server
-#mcp = FastMCP("rag", port=9001) #Remote client
-mcp = FastMCP("rag") #Local
+mcp = FastMCP("rag", port=9090) #Remote client
+#mcp = FastMCP("rag") #Local
 
 
 @mcp.tool()
@@ -65,5 +70,5 @@ if __name__ == "__main__":
     # Set optimizer_settings.json file ABSOLUTE path
     rag.set_optimizer_settings_path("optimizer_settings.json")
     
-    mcp.run(transport='stdio')
-    #mcp.run(transport='sse')
+    #mcp.run(transport='stdio')
+    mcp.run(transport='sse')
