@@ -43,11 +43,11 @@ server = [
     "langchain-openai==0.3.32",
     "langchain-perplexity==0.1.2",
     "langchain-xai==0.2.5",
-    "langgraph==0.6.4",
+    "langgraph==0.6.6",
     "litellm==1.76.1",
-    "llama-index==0.13.1",
+    "llama-index==0.13.3",
     "lxml==6.0.0",
-    "matplotlib==3.10.5",
+    "matplotlib==3.10.6",
     "oci~=2.0",
     "psutil==7.0.0",
     "python-multipart==0.0.20",
@@ -63,6 +63,7 @@ client = [
 
 # Test dependencies
 test = [
+    "pylint",
     "pytest",
     "pytest-asyncio",
     "docker",
