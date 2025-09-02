@@ -161,7 +161,9 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
 
     ll_provider = ll_model.get("provider", "")
     embed_provider = embed_model.get("provider", "")
-
+    logger.info(f"llm chat:{ll_provider} - embeddings:{embed_provider}")
+    if all("openai_compatible" in p for p in (ll_provider, embed_provider)):
+        return "openai_compatible"
     if all("openai" in p for p in (ll_provider, embed_provider)):
         return "openai"
     if all("ollama" in p for p in (ll_provider, embed_provider)):
@@ -343,6 +345,8 @@ def display_settings():
         embed_config = {}
     spring_ai_conf = spring_ai_conf_check(ll_config, embed_config)
 
+    logger.info(f"config found:{spring_ai_conf}")
+    
     if spring_ai_conf == "hybrid":
         st.markdown(f"""
             The current configuration combination of embedding and language models
@@ -354,20 +358,22 @@ def display_settings():
         col_left, col_centre, _ = st.columns([3, 4, 3])
         with col_left:
             st.download_button(
-                label="Download SpringAI",
-                data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
-                file_name="spring_ai.zip",  # Zip file name
-                mime="application/zip",  # Mime type for zip file
-                disabled=spring_ai_conf == "hybrid",
-            )
-        with col_centre:
-            st.download_button(
                 label="Download LangchainMCP",
                 data=langchain_mcp_zip(settings),  # Generate zip on the fly
                 file_name="langchain_mcp.zip",  # Zip file name
                 mime="application/zip",  # Mime type for zip file
                 disabled=spring_ai_conf == "hybrid",
             )
+        with col_centre:
+            if (spring_ai_conf != "openai_compatible"):
+                st.download_button(
+                    label="Download SpringAI",
+                    data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
+                    file_name="spring_ai.zip",  # Zip file name
+                    mime="application/zip",  # Mime type for zip file
+                    disabled=spring_ai_conf == "hybrid",
+                )
+            
 
 
 if __name__ == "__main__":

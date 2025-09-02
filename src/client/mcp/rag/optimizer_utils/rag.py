@@ -54,7 +54,7 @@ def rag_tool_base(question: str) -> str:
 
             logger.info("rag_prompt:")
             logger.info(rag_prompt)
-            template = """DOCUMENTS: {context} \n"""+rag_prompt+"""\nQuestion: {question} """
+            template = rag_prompt+"""\n# DOCUMENTS :\n {context} \n"""+"""\n # Question: {question} """
             logger.info(template)
             logger.info(f"user_question: {user_question}")
             prompt = PromptTemplate.from_template(template)

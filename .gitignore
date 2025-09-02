@@ -67,4 +67,4 @@ spring_ai/drop.sql
 src/client/spring_ai/target/classes/*
 api_server_key
 .env
-testEmbeddings.py
+
