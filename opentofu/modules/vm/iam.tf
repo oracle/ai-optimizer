@@ -36,7 +36,7 @@ resource "oci_identity_policy" "identity_node_policies" {
     ),
     format(
       "allow dynamic-group %s to use generative-ai-family in compartment id %s",
-      oci_identity_dynamic_group.workers_dynamic_group.name, var.compartment_id
+      oci_identity_dynamic_group.compute_dynamic_group.name, var.compartment_id
     ),
   ]
   provider = oci.home_region

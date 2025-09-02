@@ -60,8 +60,13 @@ write_files:
       # Setup for Instance Principles
 
       # Download/Setup Source Code
-      curl -L https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
-      | tar -xz -C /app
+      if [ "${optimizer_version}" = "main" ]; then
+          URL="https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz"
+      else
+          URL="https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz"
+      fi
+      # Download and extract
+      curl -L "$URL" | tar -xz -C /app
       cd /app
       python3.11 -m venv .venv
       source .venv/bin/activate

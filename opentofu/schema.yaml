@@ -28,6 +28,7 @@ variableGroups:
 
   - title: "Hidden (Defaults)"
     variables:
+      - optimizer_version
       - adb_version
       - k8s_run_cfgmgt
     visible: false
