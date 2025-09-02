@@ -160,8 +160,8 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
     ll_provider = ll_model.get("provider", "")
     embed_provider = embed_model.get("provider", "")
     logger.info(f"llm chat:{ll_provider} - embeddings:{embed_provider}")
-    if all("openai_compatible" in p for p in (ll_provider, embed_provider)):
-        return "openai_compatible"
+    if all("hosted_vllm" in p for p in (ll_provider, embed_provider)):
+        return "hosted_vllm"
     if all("openai" in p for p in (ll_provider, embed_provider)):
         return "openai"
     if all("ollama" in p for p in (ll_provider, embed_provider)):
@@ -364,7 +364,7 @@ def display_settings():
                 disabled=spring_ai_conf == "hybrid",
             )
         with col_centre:
-            if (spring_ai_conf != "openai_compatible"):
+            if (spring_ai_conf != "hosted_vllm"):
                 st.download_button(
                     label="Download SpringAI",
                     data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly

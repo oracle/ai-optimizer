@@ -25,14 +25,16 @@ logging.basicConfig(
 def get_llm(data):
     logger.info("llm data:")
     logger.info(data["client_settings"]["ll_model"]["model"])
+    model_full = data["client_settings"]["ll_model"]["model"]
+    _, prefix, model = model_full.partition('/')
     llm = {}
     models_by_id = {m["id"]: m for m in data.get("model_configs", [])}
-    llm_config= models_by_id.get(data["client_settings"]["ll_model"]["model"])
+    llm_config= models_by_id.get(model)
     logger.info(llm_config)
     provider = llm_config["provider"]
     url = llm_config["api_base"]
-    api_key = llm_config["api_key"]
-    model = data["client_settings"]["ll_model"]["model"]
+    api_key = llm_config["api_key"]    
+
     logger.info(f"CHAT_MODEL: {model} {provider} {url} {api_key}")
     if provider == "ollama":
         # Initialize the LLM
@@ -41,21 +43,22 @@ def get_llm(data):
     elif provider == "openai":
         llm = ChatOpenAI(model=model, api_key=api_key)
         logger.info("OpenAI LLM created")
-    elif provider =="openai_compatible":
+    elif provider =="hosted_vllm":
         llm = ChatOpenAI(model=model, api_key=api_key,base_url=url)
-        logger.info("OpenAI compatible LLM created")
+        logger.info("hosted_vllm compatible LLM created")
     return llm
 
 
 def get_embeddings(data):
     embeddings = {}
     logger.info("getting embeddings..")
-    model = data["client_settings"]["vector_search"]["model"]
+    model_full = data["client_settings"]["vector_search"]["model"]
+    _, prefix, model = model_full.partition('/')
     logger.info(f"embedding model: {model}")
     models_by_id = {m["id"]: m for m in data.get("model_configs", [])}
     model_params= models_by_id.get(model)
     provider = model_params["provider"]
-    url = model_params["url"]
+    url = model_params["api_base"]
     api_key = model_params["api_key"]
 
     logger.info(f"Embeddings Model: {model} {provider} {url} {api_key}")
@@ -68,7 +71,7 @@ def get_embeddings(data):
         logger.info("OpenAI embeddings connection successful")
     elif (provider == "hosted_vllm"):
         embeddings = OpenAIEmbeddings(model=model, api_key=api_key,base_url=url,check_embedding_ctx_length=False)
-        logger.info("OpenAI compatible embeddings connection successful")
+        logger.info("hosted_vllm compatible embeddings connection successful")
 
     return embeddings
 
