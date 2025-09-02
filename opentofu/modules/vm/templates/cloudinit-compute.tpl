@@ -87,6 +87,7 @@ write_files:
     content: |
       #!/bin/bash
       export OCI_CLI_AUTH=instance_principal
+      export API_SERVER_CONTROL="True"
       export DB_USERNAME='AI_OPTIMIZER'
       export DB_PASSWORD='${db_password}'
       export DB_DSN='${db_name}_TP'

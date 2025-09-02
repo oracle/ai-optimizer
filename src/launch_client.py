@@ -30,6 +30,7 @@ try:
     logger.debug("Imported API Server.")
 except ImportError as ex:
     logger.debug("API Server not present: %s", ex)
+    os.environ.pop("API_SERVER_CONTROL", None)
     LAUNCH_SERVER_EXISTS = False
 
 
@@ -40,10 +41,11 @@ def init_server_state() -> None:
     """initialize Streamlit State server"""
     if "server" not in state:
         logger.info("Initializing state.server")
+        api_server_control: bool = os.getenv("API_SERVER_CONTROL") is not None
         state.server = {"url": os.getenv("API_SERVER_URL", "http://localhost")}
         state.server["port"] = int(os.getenv("API_SERVER_PORT", "8000"))
         state.server["key"] = os.getenv("API_SERVER_KEY")
-        state.server["remote"] = True
+        state.server["control"] = api_server_control
         logger.debug("Server State: %s", state.server)
 
 
@@ -158,7 +160,5 @@ if __name__ == "__main__":
         try:
             logger.debug("Server PID: %i", state.server["pid"])
         except KeyError:
-            server_state, pid = start_server(logfile=True)
-            state.server["pid"] = pid
-            state.server["remote"] = server_state != "started"
+            state.server["pid"] = start_server(logfile=True)
     main()
