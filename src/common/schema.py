@@ -40,6 +40,7 @@ ModelProviders = Literal[
     "openai",
     "perplexity",
     "xai",
+    "hosted_vllm"
 ]
 
 

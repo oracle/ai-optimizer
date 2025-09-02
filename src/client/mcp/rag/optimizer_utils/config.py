@@ -66,7 +66,7 @@ def get_embeddings(data):
     elif (provider == "openai"):
         embeddings = OpenAIEmbeddings(model=model, api_key=api_key)
         logger.info("OpenAI embeddings connection successful")
-    elif (provider == "openai_compatible"):
+    elif (provider == "hosted_vllm"):
         embeddings = OpenAIEmbeddings(model=model, api_key=api_key,base_url=url,check_embedding_ctx_length=False)
         logger.info("OpenAI compatible embeddings connection successful")
 
