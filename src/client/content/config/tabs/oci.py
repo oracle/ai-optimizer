@@ -98,12 +98,13 @@ def display_oci() -> None:
     disable_config = False
     oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
     # Handle instance_principal and oke_workload_identity
-    if len(oci_lookup) == 1 and state.oci_configs[0]["authentication"] in (
+    oci_auth = state.oci_configs[0].get("authentication")
+    if len(oci_lookup) == 1 and oci_auth in (
         "instance_principal",
         "oke_workload_identity",
     ):
         st.info("Using OCI Authentication Principals", icon="ℹ️")
-        supplied["authentication"] = state.oci_configs[0]["authentication"]
+        supplied["authentication"] = oci_auth
         supplied["tenancy"] = state.oci_configs[0]["tenancy"]
         disable_config = True
     if len(oci_lookup) > 0:
