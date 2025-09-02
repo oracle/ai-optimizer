@@ -137,12 +137,17 @@ def connect(config: Database) -> oracledb.Connection:
         logger.debug("Attempting Database Connection...")
         conn = oracledb.connect(**db_authn)
     except oracledb.DatabaseError as ex:
-        if "ORA-01017" in str(ex):
-            raise PermissionError("invalid credentials") from ex
-        if "DPY-6005" in str(ex):
-            raise ConnectionError("unable to connect") from ex
-        if any(code in str(ex) for code in ("DPY-4000", "DPY-4026")):
-            raise LookupError("not resolvable") from ex
+        error = ex.args[0] if ex.args else None
+        code = getattr(error, "full_code", None)
+        mapping = {
+            "ORA-01017": PermissionError,
+            "DPY-6005": ConnectionError,
+            "DPY-4000": LookupError,
+            "DPY-4026": LookupError,
+        }
+        if code in mapping:
+            raise mapping[code](f"- {error.message}") from ex
+        # If not recognized, re-raise untouched
         raise
     logger.debug("Connected to Databases: %s", config.dsn)
 
@@ -206,6 +211,7 @@ def execute_sql(conn: oracledb.Connection, run_sql: str, binds: dict = None) -> 
         raise
 
     return rows
+
 
 def drop_vs(conn: oracledb.Connection, vs: VectorStoreTableType) -> None:
     """Drop Vector Storage"""
