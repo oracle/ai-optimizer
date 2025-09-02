@@ -103,7 +103,7 @@ def main() -> list[Model]:
             "type": "ll",
             "provider": "meta-llama",
             "api_key": "",
-            "url": os.environ.get("ON_PREM_VLLM_URL", default="http://gpu:8000/v1"),
+            "api_base": os.environ.get("ON_PREM_VLLM_URL", default="http://gpu:8000/v1"),
             "context_length": 131072,
             "temperature": 1.0,
             "max_completion_tokens": 2048,

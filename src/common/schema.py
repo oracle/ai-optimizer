@@ -34,6 +34,7 @@ ModelProviders = Literal[
     "google_vertexai",
     "groq",
     "huggingface",
+    "meta-llama",
     "mistralai",
     "ollama",
     "openai",
