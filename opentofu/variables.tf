@@ -3,6 +3,16 @@
 # spell-checker: disable
 
 // Standard Default Vars
+variable "optimizer_version" {
+  description = "Determines if latest release or main is used"
+  type        = string
+  default     = "latest"
+  validation {
+    condition     = var.optimizer_version == "latest" || var.optimizer_version == "main"
+    error_message = "optimizer_version must be either 'latest' or 'main'."
+  }
+}
+
 variable "tenancy_ocid" {
   description = "The Tenancy ID of the OCI Cloud Account in which to create the resources."
   type        = string

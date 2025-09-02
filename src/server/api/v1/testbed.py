@@ -12,23 +12,23 @@ from datetime import datetime
 import json
 from typing import Optional
 from giskard.rag import evaluate, QATestset
+from giskard.llm import set_llm_model
 from fastapi import APIRouter, HTTPException, Header, UploadFile
 from fastapi.responses import JSONResponse
 import litellm
 from langchain_core.messages import ChatMessage
 
-import server.api.core.models as core_models
 import server.api.core.settings as core_settings
 import server.api.core.oci as core_oci
-import server.api.utils.embed as util_embed
-import server.api.utils.testbed as util_testbed
-import server.api.utils.databases as util_databases
-import server.api.utils.models as util_models
+import server.api.utils.embed as utils_embed
+import server.api.utils.testbed as utils_testbed
+import server.api.utils.databases as utils_databases
+import server.api.utils.models as utils_models
 
 from server.api.v1 import chat
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.testbed")
 
@@ -44,7 +44,7 @@ async def testbed_testsets(
     client: schema.ClientIdType = Header(default="server"),
 ) -> list[schema.TestSets]:
     """Get a list of stored TestSets, create TestSet objects if they don't exist"""
-    testsets = util_testbed.get_testsets(db_conn=util_databases.get_client_db(client).connection)
+    testsets = utils_testbed.get_testsets(db_conn=utils_databases.get_client_database(client).connection)
     return testsets
 
 
@@ -58,8 +58,8 @@ async def testbed_evaluations(
     client: schema.ClientIdType = Header(default="server"),
 ) -> list[schema.Evaluation]:
     """Get Evaluations"""
-    evaluations = util_testbed.get_evaluations(
-        db_conn=util_databases.get_client_db(client).connection, tid=tid.upper()
+    evaluations = utils_testbed.get_evaluations(
+        db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper()
     )
     return evaluations
 
@@ -74,7 +74,9 @@ async def testbed_evaluation(
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Get Evaluations"""
-    evaluation = util_testbed.process_report(db_conn=util_databases.get_client_db(client).connection, eid=eid.upper())
+    evaluation = utils_testbed.process_report(
+        db_conn=utils_databases.get_client_database(client).connection, eid=eid.upper()
+    )
     return evaluation
 
 
@@ -88,7 +90,7 @@ async def testbed_testset_qa(
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.TestSetQA:
     """Get TestSet Q&A"""
-    return util_testbed.get_testset_qa(db_conn=util_databases.get_client_db(client).connection, tid=tid.upper())
+    return utils_testbed.get_testset_qa(db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper())
 
 
 @auth.delete(
@@ -100,7 +102,7 @@ async def testbed_delete_testset(
     client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Delete TestSet"""
-    util_testbed.delete_qa(util_databases.get_client_db(client).connection, tid.upper())
+    utils_testbed.delete_qa(utils_databases.get_client_database(client).connection, tid.upper())
     return JSONResponse(status_code=200, content={"message": f"TestSet: {tid} deleted."})
 
 
@@ -117,12 +119,12 @@ async def testbed_upsert_testsets(
 ) -> schema.TestSetQA:
     """Update stored TestSet data"""
     created = datetime.now().isoformat()
-    db_conn = util_databases.get_client_db(client).connection
+    db_conn = utils_databases.get_client_database(client).connection
     try:
         for file in files:
             file_content = await file.read()
-            content = util_testbed.jsonl_to_json_content(file_content)
-            db_id = util_testbed.upsert_qa(db_conn, name, created, content, tid)
+            content = utils_testbed.jsonl_to_json_content(file_content)
+            db_id = utils_testbed.upsert_qa(db_conn, name, created, content, tid)
         db_conn.commit()
     except Exception as ex:
         logger.error("An exception occurred: %s", ex)
@@ -140,16 +142,19 @@ async def testbed_upsert_testsets(
 async def testbed_generate_qa(
     files: list[UploadFile],
     name: schema.TestSetsNameType,
-    ll_model: schema.ModelIdType = None,
-    embed_model: schema.ModelIdType = None,
+    ll_model: str,
+    embed_model: str,
     questions: int = 2,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.TestSetQA:
     """Retrieve contents from a local file uploaded and generate Q&A"""
-    # Setup Models
-    giskard_ll_model = core_models.get_model(model_id=ll_model, model_type="ll")
-    giskard_embed_model = core_models.get_model(model_id=embed_model, model_type="embed")
-    temp_directory = util_embed.get_temp_directory(client, "testbed")
+    # Get the Model Configuration
+    try:
+        oci_config = core_oci.get_oci(client)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
+
+    temp_directory = utils_embed.get_temp_directory(client, "testbed")
     full_testsets = temp_directory / "all_testsets.jsonl"
 
     for file in files:
@@ -162,8 +167,8 @@ async def testbed_generate_qa(
                 file.write(file_content)
 
             # Process file for knowledge base
-            text_nodes = util_testbed.load_and_split(filename)
-            test_set = util_testbed.build_knowledge_base(text_nodes, questions, giskard_ll_model, giskard_embed_model)
+            text_nodes = utils_testbed.load_and_split(filename)
+            test_set = utils_testbed.build_knowledge_base(text_nodes, questions, ll_model, embed_model, oci_config)
             # Save test set
             test_set_filename = temp_directory / f"{name}.jsonl"
             test_set.save(test_set_filename)
@@ -195,9 +200,9 @@ async def testbed_generate_qa(
     description="Evaluate Q&A Test Set.",
     response_model=schema.EvaluationReport,
 )
-def testbed_evaluate_qa(
+def testbed_evaluate(
     tid: schema.TestSetsIdType,
-    judge: schema.ModelIdType,
+    judge: str,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Run evaluate against a testset"""
@@ -208,7 +213,7 @@ def testbed_evaluate_qa(
             messages=[ChatMessage(role="human", content=question)],
         )
         ai_response = asyncio.run(chat.chat_post(client=client, request=request))
-        return ai_response.choices[0].message.content
+        return ai_response["choices"][0]["message"]["content"]
 
     evaluated = datetime.now().isoformat()
     client_settings = core_settings.get_client_settings(client)
@@ -217,10 +222,10 @@ def testbed_evaluate_qa(
     # Change Grade vector_search
     client_settings.vector_search.grading = False
 
-    db_conn = util_databases.get_client_db(client).connection
-    testset = util_testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())
+    db_conn = utils_databases.get_client_database(client).connection
+    testset = utils_testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())
     qa_test = "\n".join(json.dumps(item) for item in testset.qa_data)
-    temp_directory = util_embed.get_temp_directory(client, "testbed")
+    temp_directory = utils_embed.get_temp_directory(client, "testbed")
 
     with open(temp_directory / f"{tid}_output.txt", "w", encoding="utf-8") as file:
         file.write(qa_test)
@@ -229,18 +234,18 @@ def testbed_evaluate_qa(
     # Setup Judge Model
     logger.debug("Starting evaluation with Judge: %s", judge)
     oci_config = core_oci.get_oci(client)
-    judge_client = util_models.get_client({"model": judge}, oci_config, True)
-    try:
-        # report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=[correctness_metric]) #CDB
-        report = evaluate(get_answer, testset=loaded_testset, llm_client=judge_client, metrics=None)  # CDB
 
+    judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
+    set_llm_model(llm_model=judge, **judge_config)
+    try:
+        report = evaluate(get_answer, testset=loaded_testset, metrics=None)
     except KeyError as ex:
         if str(ex) == "'correctness'":
             raise HTTPException(status_code=500, detail="Unable to determine the correctness; please retry.") from ex
 
     logger.debug("Ending evaluation with Judge: %s", judge)
 
-    eid = util_testbed.insert_evaluation(
+    eid = utils_testbed.insert_evaluation(
         db_conn=db_conn,
         tid=tid,
         evaluated=evaluated,
@@ -251,4 +256,4 @@ def testbed_evaluate_qa(
     db_conn.commit()
     shutil.rmtree(temp_directory)
 
-    return util_testbed.process_report(db_conn=db_conn, eid=eid)
+    return utils_testbed.process_report(db_conn=db_conn, eid=eid)

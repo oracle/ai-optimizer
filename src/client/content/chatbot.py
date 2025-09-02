@@ -16,13 +16,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.content.config.tabs.models import get_models
-
-import client.utils.st_common as st_common
-import client.utils.api_call as api_call
-
+from client.utils import st_common, api_call, client
 from client.utils.st_footer import render_chat_footer
-import client.utils.client as client
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.content.chatbot")
 
@@ -143,13 +139,7 @@ async def main() -> None:
             # Stream until we hit the end then refresh to replace with history
             st.rerun()
         except Exception:
-            logger.error("Exception:", exc_info=1)
-            st.chat_message("ai").write(
-                """
-                I'm sorry, something's gone wrong.  Please try again.
-                If the problem persists, please raise an issue.
-                """
-            )
+            message_placeholder.markdown("An unexpected error occurred, please retry your request.")
             if st.button("Retry", key="reload_chatbot"):
                 st_common.clear_state_key("user_client")
                 st.rerun()

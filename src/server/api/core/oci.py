@@ -8,21 +8,9 @@ from typing import Optional, Union
 
 from server.api.core import bootstrap, settings
 from common.schema import OracleCloudSettings, ClientIdType, OCIProfileType
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.core.oci")
-
-
-#####################################################
-# Exceptions
-#####################################################
-class OciException(Exception):
-    """Custom OCI Exceptions to be passed to HTTPException"""
-
-    def __init__(self, status_code: int, detail: str):
-        self.status_code = status_code
-        self.detail = detail
-        super().__init__(detail)
 
 
 #####################################################
@@ -43,7 +31,6 @@ def get_oci(
         raise ValueError("provide either 'client' or 'auth_profile', not both")
 
     oci_objects = bootstrap.OCI_OBJECTS
-
     if client is not None:
         client_settings = settings.get_client_settings(client)
         derived_auth_profile = (

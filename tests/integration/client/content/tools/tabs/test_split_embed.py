@@ -30,7 +30,7 @@ class TestStreamlit:
                         "id": "test-model",
                         "type": "embed",
                         "enabled": True,
-                        "url": "http://test.url",
+                        "api_base": "http://test.url",
                         "max_chunk_size": 1000,
                     }
                 ]
@@ -42,7 +42,7 @@ class TestStreamlit:
         at = app_test(self.ST_FILE)
 
         # Mock functions that make external calls to avoid failures
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Run the app - this is critical to initialize all widgets!
@@ -90,7 +90,7 @@ class TestStreamlit:
                         "id": "test-model",
                         "type": "embed",
                         "enabled": True,
-                        "url": "http://test.url",
+                        "api_base": "http://test.url",
                         "max_chunk_size": 1000,
                     }
                 ]
@@ -99,7 +99,7 @@ class TestStreamlit:
         monkeypatch.setattr("client.utils.api_call.get", mock_get)
 
         # Mock functions that make external calls
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Initialize app_test
@@ -136,7 +136,7 @@ class TestStreamlit:
                         "id": "test-model",
                         "type": "embed",
                         "enabled": True,
-                        "url": "http://test.url",
+                        "api_base": "http://test.url",
                         "max_chunk_size": 1000,
                     }
                 ]
@@ -145,7 +145,7 @@ class TestStreamlit:
         monkeypatch.setattr("client.utils.api_call.get", mock_get)
 
         # Mock functions that make external calls
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Initialize app_test
@@ -181,7 +181,7 @@ class TestStreamlit:
         # Test successful
         assert True
 
-    def test_web_url_validation(self, app_server, app_test, monkeypatch):
+    def test_web_api_base_validation(self, app_server, app_test, monkeypatch):
         """Test web URL validation"""
         assert app_server is not None
 
@@ -193,7 +193,7 @@ class TestStreamlit:
                         "id": "test-model",
                         "type": "embed",
                         "enabled": True,
-                        "url": "http://test.url",
+                        "api_base": "http://test.url",
                         "max_chunk_size": 1000,
                     }
                 ]
@@ -202,7 +202,7 @@ class TestStreamlit:
         monkeypatch.setattr("client.utils.api_call.get", mock_get)
 
         # Mock functions that make external calls
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Initialize app_test
@@ -237,7 +237,7 @@ class TestStreamlit:
                         "id": "test-model",
                         "type": "embed",
                         "enabled": True,
-                        "url": "http://test.url",
+                        "api_base": "http://test.url",
                         "max_chunk_size": 1000,
                     }
                 ]
@@ -246,7 +246,7 @@ class TestStreamlit:
         monkeypatch.setattr("client.utils.api_call.get", mock_get)
 
         # Mock functions that make external calls
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
         # Initialize app_test
@@ -307,7 +307,7 @@ class TestStreamlit:
                         "id": "test-model",
                         "type": "embed",
                         "enabled": True,
-                        "url": "http://test.url",
+                        "api_base": "http://test.url",
                         "max_chunk_size": 1000,
                     }
                 ]

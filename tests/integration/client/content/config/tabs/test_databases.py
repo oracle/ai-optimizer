@@ -60,7 +60,7 @@ class TestStreamlit:
         at.button(key="save_database").click().run()
 
         assert at.error[0].value == "Current Status: Disconnected"
-        assert at.error[1].value == "Update Failed - Database: DEFAULT unable to connect." and at.error[1].icon == "🚨"
+        assert "cannot connect to database" in at.error[1].value and at.error[1].icon == "🚨"
 
     def test_connected(self, app_server, app_test, db_container):
         """Sumbits with good DSN"""
@@ -99,7 +99,7 @@ class TestStreamlit:
                 "username": "ADMIN",
                 "password": TEST_CONFIG["db_password"],
                 "dsn": TEST_CONFIG["db_dsn"],
-                "expected": "Update Failed - Database: DEFAULT invalid credentials.",
+                "expected": "invalid credential or not authorized",
             },
             id="bad_user",
         ),
@@ -109,7 +109,7 @@ class TestStreamlit:
                 "username": TEST_CONFIG["db_username"],
                 "password": "Wr0ng_P4ssW0rd",
                 "dsn": TEST_CONFIG["db_dsn"],
-                "expected": "Update Failed - Database: DEFAULT invalid credentials.",
+                "expected": "invalid credential or not authorized",
             },
             id="bad_password",
         ),
@@ -119,7 +119,7 @@ class TestStreamlit:
                 "username": TEST_CONFIG["db_username"],
                 "password": TEST_CONFIG["db_password"],
                 "dsn": "//localhost:1521/WRONG_TP",
-                "expected": "Update Failed - Database: DEFAULT unable to connect.",
+                "expected": "cannot connect to database",
             },
             id="bad_dsn_easy",
         ),
@@ -129,7 +129,7 @@ class TestStreamlit:
                 "username": TEST_CONFIG["db_username"],
                 "password": TEST_CONFIG["db_password"],
                 "dsn": "WRONG_TP",
-                "expected": "Update Failed - Database: DEFAULT DPY-*",
+                "expected": "DPY-4026",
             },
             id="bad_dsn",
         ),
@@ -147,7 +147,7 @@ class TestStreamlit:
         at.text_input(key="database_dsn").set_value(test_case["dsn"]).run()
         at.button(key="save_database").click().run()
         assert at.error[0].value == "Current Status: Disconnected"
-        assert re.match(test_case["expected"], at.error[1].value) and at.error[1].icon == "🚨"
+        assert test_case["expected"] in at.error[1].value and at.error[1].icon == "🚨"
         # Due to the connection error, the settings should NOT be updated and be set
         # to previous successful test connection; connected will be False for error handling
         assert at.session_state.database_configs[0]["name"] == "DEFAULT"

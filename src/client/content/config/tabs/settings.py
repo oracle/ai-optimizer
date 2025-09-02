@@ -23,10 +23,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 # Utilities
-import client.utils.api_call as api_call
-import client.utils.st_common as st_common
+from client.utils import api_call, st_common
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.content.config.tabs.settings")
 
@@ -60,8 +59,7 @@ def get_settings(include_sensitive: bool = False):
                 },
             )
             return settings
-        else:
-            raise
+        raise
 
 
 def save_settings(settings):
@@ -162,8 +160,8 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
     ll_provider = ll_model.get("provider", "")
     embed_provider = embed_model.get("provider", "")
     logger.info(f"llm chat:{ll_provider} - embeddings:{embed_provider}")
-    if all("openai_compatible" in p for p in (ll_provider, embed_provider)):
-        return "openai_compatible"
+    if all("hosted_vllm" in p for p in (ll_provider, embed_provider)):
+        return "hosted_vllm"
     if all("openai" in p for p in (ll_provider, embed_provider)):
         return "openai"
     if all("ollama" in p for p in (ll_provider, embed_provider)):
@@ -261,7 +259,7 @@ def langchain_mcp_zip(settings):
 
         data = save_settings(settings)
         settings_path = os.path.join(dst_dir, "optimizer_settings.json")
-        with open(settings_path, "w") as f:
+        with open(settings_path, "w", encoding="utf-8") as f:
             f.write(data)
 
         zip_buffer = io.BytesIO()
@@ -332,12 +330,13 @@ def display_settings():
 
     st.header("Source Code Templates", divider="red")
     # Merge the User Settings into the Model Config
-    model_lookup = st_common.state_configs_lookup("model_configs", "id")
     try:
+        model_lookup = st_common.enabled_models_lookup(model_type="ll")
         ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
     except KeyError:
         ll_config = {}
     try:
+        model_lookup = st_common.enabled_models_lookup(model_type="embed")
         embed_config = (
             model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
         )
@@ -365,7 +364,7 @@ def display_settings():
                 disabled=spring_ai_conf == "hybrid",
             )
         with col_centre:
-            if (spring_ai_conf != "openai_compatible"):
+            if (spring_ai_conf != "hosted_vllm"):
                 st.download_button(
                     label="Download SpringAI",
                     data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly

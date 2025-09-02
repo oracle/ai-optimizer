@@ -14,7 +14,7 @@ spring:
         initialize-schema: True
         index-type: {vector_search[index_type]}
     openai:
-      base-url: \"{ll_model[url]}\"
+      base-url: \"{ll_model[api_base]}\"
       api-key:  \"{ll_model[api_key]}\"
       chat:
         options:

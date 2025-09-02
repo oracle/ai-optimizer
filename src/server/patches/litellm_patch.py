@@ -13,7 +13,7 @@ from litellm.types.llms.openai import AllMessageValues
 from litellm.types.utils import ModelResponse
 from httpx._models import Response
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("patches.litellm_patch")
 
@@ -40,7 +40,10 @@ if not getattr(OllamaConfig.transform_response, "_is_custom_patch", False):
         api_key: Optional[str] = None,
         json_mode: Optional[bool] = None,
     ):
-        """Custom transform response from .venv/lib/python3.11/site-packages/litellm/llms/ollama/completion/transformation.py"""
+        """
+        Custom transform response from
+        .venv/lib/python3.11/site-packages/litellm/llms/ollama/completion/transformation.py
+        """
         logger.info("Custom transform_response is running")
         response_json = raw_response.json()
 

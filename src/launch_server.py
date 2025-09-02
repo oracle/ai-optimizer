@@ -10,10 +10,6 @@ import os
 
 # Set OS Environment (Don't move their position to reflect on imports)
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
-os.environ["LITELLM_DISABLE_SPEND_LOGS"] = "True"
-os.environ["LITELLM_DISABLE_SPEND_UPDATES"] = "True"
-os.environ["LITELLM_DISABLE_END_USER_COST_TRACKING"] = "True"
-os.environ["LITELLM_DROP_PARAMS"] = "True"
 os.environ["GSK_DISABLE_SENTRY"] = "true"
 os.environ["GSK_DISABLE_ANALYTICS"] = "true"
 os.environ["USER_AGENT"] = "ai-optimizer"
@@ -40,11 +36,11 @@ from fastapi import FastAPI, HTTPException, Depends, status, APIRouter
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Logging
-import common.logging_config as logging_config
+from common import logging_config
 from common._version import __version__
 
 # Configuration
-import server.bootstrap.configfile as configfile
+from server.bootstrap import configfile
 
 logger = logging_config.logging.getLogger("launch_server")
 

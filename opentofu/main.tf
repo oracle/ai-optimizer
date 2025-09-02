@@ -80,6 +80,7 @@ resource "oci_database_autonomous_database" "default_adb" {
 module "vm" {
   count                 = var.infrastructure == "VM" ? 1 : 0
   source                = "./modules/vm"
+  optimizer_version     = var.optimizer_version
   label_prefix          = local.label_prefix
   tenancy_id            = var.tenancy_ocid
   compartment_id        = local.compartment_ocid

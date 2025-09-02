@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException
 
 import server.api.core.prompts as core_prompts
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.prompts")
 

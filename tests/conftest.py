@@ -137,6 +137,7 @@ def app_test(auth_headers):
             "key": os.environ.get("API_SERVER_KEY"),
             "url": os.environ.get("API_SERVER_URL"),
             "port": int(os.environ.get("API_SERVER_PORT")),
+            "control": True 
         }
         response = requests.get(
             url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",

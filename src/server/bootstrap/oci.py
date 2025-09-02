@@ -9,10 +9,8 @@ import configparser
 import oci
 
 from server.bootstrap.configfile import ConfigStore
-import server.api.utils.oci as util_oci
-import server.api.utils.models as util_models
 
-import common.logging_config as logging_config
+from common import logging_config
 from common.schema import OracleCloudSettings
 
 logger = logging_config.logging.getLogger("bootstrap.oci")
@@ -109,21 +107,6 @@ def main() -> list[OracleCloudSettings]:
     for profile_data in config:
         oci_config = OracleCloudSettings(**profile_data)
         oci_objects.append(oci_config)
-
-        if oci_config.auth_profile == oci.config.DEFAULT_PROFILE:
-            try:
-                oci_config.namespace = util_oci.get_namespace(oci_config)
-            except Exception:
-                logger.warning("Failed to get namespace for DEFAULT OCI profile")
-                continue
-
-    # Attempt to load OCI GenAI Models after OCI and MODELs are Bootstrapped
-    try:
-        oci_config = [o for o in oci_objects if o.auth_profile == "DEFAULT"]
-        if oci_config:
-            util_models.create_genai_models(oci_config[0])
-    except Exception as ex:
-        logger.info("Unable to bootstrap OCI GenAI Models: %s", str(ex))
 
     logger.debug("*** Bootstrapping OCI - End")
     return oci_objects

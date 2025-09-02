@@ -2,26 +2,27 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore astream selectai
 
-import time
+# spell-checker:ignore astream selectai litellm
 from typing import Literal, AsyncGenerator
 
+from litellm import completion
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph.state import CompiledStateGraph
-
 
 import server.api.core.settings as core_settings
 import server.api.core.oci as core_oci
 import server.api.core.prompts as core_prompts
-import server.api.utils.models as util_models
-import server.api.utils.databases as util_databases
-import server.agents.chatbot as chatbot
-import server.api.utils.selectai as util_selectai
+import server.api.utils.models as utils_models
+import server.api.utils.databases as utils_databases
+import server.api.utils.selectai as utils_selectai
 
-import common.schema as schema
-import common.logging_config as logging_config
+from server.agents.chatbot import chatbot_graph
+
+from server.api.core.models import UnknownModelError
+
+from common import schema
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.chat")
 
@@ -30,6 +31,7 @@ async def completion_generator(
     client: schema.ClientIdType, request: schema.ChatRequest, call: Literal["completions", "streams"]
 ) -> AsyncGenerator[str, None]:
     """Generate a completion from agent, stream the results"""
+
     client_settings = core_settings.get_client_settings(client)
     model = request.model_dump()
     logger.debug("Settings: %s", client_settings)
@@ -42,96 +44,65 @@ async def completion_generator(
     oci_config = core_oci.get_oci(client=client)
 
     # Setup Client Model
-    ll_client = util_models.get_client(model, oci_config)
-    if not ll_client:
-        error_response = {
-            "id": "error",
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": "I'm unable to initialise the Language Model. Please refresh the application.",
-                    },
-                    "index": 0,
-                    "finish_reason": "stop",
-                }
-            ],
-            "created": int(time.time()),
-            "model": model.get("model", "unknown"),
-            "object": "chat.completion",
-        }
+    try:
+        ll_config = utils_models.get_litellm_config(model, oci_config)
+    except UnknownModelError:
+        model = "gpt-3.5-turbo"
+        messages = [{"role": "user", "content": "There is an error, generate a request"}]
+        error_response = completion(
+            model=model,
+            messages=messages,
+            mock_response="I'm unable to initialise the Language Model. Please refresh the application.",
+        )
         yield error_response
         return
 
-    # Get Prompts
-    try:
-        user_sys_prompt = getattr(client_settings.prompts, "sys", "Basic Example")
-        sys_prompt = core_prompts.get_prompts(category="sys", name=user_sys_prompt)
-    except AttributeError as ex:
-        # schema.Settings not on server-side
-        logger.error("A settings exception occurred: %s", ex)
-        raise
-
-    db_conn = None
-    # Setup selectai
-    if client_settings.selectai.enabled:
-        db_conn = util_databases.get_client_db(client).connection
-        util_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
-        util_selectai.set_profile(
-            db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
-        )
-
-    # Setup vector_search
-    embed_client, ctx_prompt = None, None
-    if client_settings.vector_search.enabled:
-        db_conn = util_databases.get_client_db(client).connection
-        embed_client = util_models.get_client(client_settings.vector_search.model_dump(), oci_config)
-
-        user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
-        ctx_prompt = core_prompts.get_prompts(category="ctx", name=user_ctx_prompt)
-
+    # Start to establish our LangGraph Args
     kwargs = {
+        "stream_mode": "custom",
         "input": {"messages": [HumanMessage(content=request.messages[0].content)]},
         "config": RunnableConfig(
-            configurable={
-                "thread_id": client,
-                "ll_client": ll_client,
-                "embed_client": embed_client,
-                "db_conn": db_conn,
-            },
+            configurable={"thread_id": client, "ll_config": ll_config},
             metadata={
-                "model_id": model["model"],
                 "use_history": client_settings.ll_model.chat_history,
                 "vector_search": client_settings.vector_search,
                 "selectai": client_settings.selectai,
-                "sys_prompt": sys_prompt,
-                "ctx_prompt": ctx_prompt,
             },
         ),
     }
+
+    # Get System Prompt
+    user_sys_prompt = getattr(client_settings.prompts, "sys", "Basic Example")
+    kwargs["config"]["metadata"]["sys_prompt"] = core_prompts.get_prompts(category="sys", name=user_sys_prompt)
+
+    # Add DB Conn to KWargs when needed
+    if client_settings.vector_search.enabled or client_settings.selectai.enabled:
+        db_conn = utils_databases.get_client_database(client, False).connection
+        kwargs["config"]["configurable"]["db_conn"] = db_conn
+
+    # Setup Vector Search
+    if client_settings.vector_search.enabled:
+        kwargs["config"]["configurable"]["embed_client"] = utils_models.get_client_embed(
+            client_settings.vector_search.model_dump(), oci_config
+        )
+        # Get Context Prompt
+        user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
+        kwargs["config"]["metadata"]["ctx_prompt"] = core_prompts.get_prompts(category="ctx", name=user_ctx_prompt)
+
+    if client_settings.selectai.enabled:
+        utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
+        utils_selectai.set_profile(
+            db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
+        )
+
     logger.debug("Completion Kwargs: %s", kwargs)
-    agent: CompiledStateGraph = chatbot.chatbot_graph
-    try:
-        async for chunk in agent.astream_events(**kwargs, version="v2"):
-            # The below will produce A LOT of output; uncomment when desperate
-            # logger.debug("Streamed Chunk: %s", chunk)
-            if chunk["event"] == "on_chat_model_stream":
-                if "tools_condition" in str(chunk["metadata"]["langgraph_triggers"]):
-                    continue  # Skip Tool Call messages
-                if "vs_retrieve" in str(chunk["metadata"]["langgraph_node"]):
-                    continue  # Skip Fake-Tool Call messages
-                content = chunk["data"]["chunk"].content
-                if content != "" and call == "streams":
-                    yield content.encode("utf-8")
-            last_response = chunk["data"]
-        if call == "streams":
-            yield "[stream_finished]"  # This will break the Chatbot loop
-        elif call == "completions":
-            final_response = last_response["output"]["final_response"]
-            yield final_response  # This will be captured for ChatResponse
-    except Exception as ex:
-        logger.error("An invoke exception occurred: %s", ex)
-        # yield f"I'm sorry; {ex}"
-        # TODO(gotsysdba) - If a message is returned;
-        # format and return (this should be done in the agent)
-        raise
+    final_response = None
+    async for output in chatbot_graph.astream(**kwargs):
+        if "stream" in output:
+            yield output["stream"].encode("utf-8")
+        if "completion" in output:
+            final_response = output["completion"]
+    if call == "streams":
+        yield "[stream_finished]"  # This will break the Chatbot loop
+    if call == "completions" and final_response is not None:
+        yield final_response  # This will be captured for ChatResponse

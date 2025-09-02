@@ -2,10 +2,12 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# pylint: disable=too-many-arguments,too-many-positional-arguments,too-few-public-methods, import-error
 # spell-checker: disable
-# pylint: disable=import-error
 
 from unittest.mock import patch, MagicMock
+import warnings
+
 import pytest
 from langchain_core.messages import ChatMessage
 from common.schema import ChatRequest
@@ -47,14 +49,19 @@ class TestEndpoints:
 
     def test_chat_completion_no_model(self, client, auth_headers):
         """Test no model chat completion request"""
-        request = ChatRequest(
-            messages=[ChatMessage(content="Hello", role="user")],
-            model="test-model",
-            temperature=1.0,
-            max_completion_tokens=256,
-        )
+        with warnings.catch_warnings():
+            # Enable the catch_warnings context
+            warnings.simplefilter("ignore", category=UserWarning)
+            request = ChatRequest(
+                messages=[ChatMessage(content="Hello", role="user")],
+                model="test-provider/test-model",
+                temperature=1.0,
+                max_completion_tokens=256,
+            )
+            response = client.post(
+                "/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump()
+            )
 
-        response = client.post("/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump())
         assert response.status_code == 200
         assert "choices" in response.json()
         assert (
@@ -75,7 +82,7 @@ class TestEndpoints:
                 }
             ],
             "created": 1234567890,
-            "model": "test-model",
+            "model": "test-provider/test-model",
             "object": "chat.completion",
             "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
         }
@@ -90,7 +97,7 @@ class TestEndpoints:
 
             request = ChatRequest(
                 messages=[ChatMessage(content="Hello", role="user")],
-                model="test-model",
+                model="test-provider/test-model",
                 temperature=1.0,
                 max_completion_tokens=256,
             )
@@ -115,7 +122,7 @@ class TestEndpoints:
 
             request = ChatRequest(
                 messages=[ChatMessage(content="Hello", role="user")],
-                model="test-model",
+                model="test-provider/test-model",
                 temperature=1.0,
                 max_completion_tokens=256,
                 streaming=True,

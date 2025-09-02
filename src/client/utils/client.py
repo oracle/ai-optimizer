@@ -9,7 +9,7 @@ import httpx
 
 from langchain_core.messages import ChatMessage
 from common.schema import ChatRequest
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.utils.client")
 
