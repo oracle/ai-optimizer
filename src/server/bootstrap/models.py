@@ -6,7 +6,7 @@ NOTE: Provide only one example per API to populate supported API lists; addition
 added via the APIs
 """
 # spell-checker:ignore configfile genai ollama pplx docos mxbai nomic thenlper
-# spell-checker:ignore huggingface
+# spell-checker:ignore huggingface vllm
 
 import os
 
@@ -98,6 +98,18 @@ def main() -> list[Model]:
             "frequency_penalty": 0.0,
         },
         {
+            "id": "Llama-3.2-1B-Instruct",
+            "enabled": os.getenv("ON_PREM_VLLM_URL") is not None,
+            "type": "ll",
+            "provider": "meta-llama",
+            "api_key": "",
+            "url": os.environ.get("ON_PREM_VLLM_URL", default="http://gpu:8000/v1"),
+            "context_length": 131072,
+            "temperature": 1.0,
+            "max_completion_tokens": 2048,
+            "frequency_penalty": 0.0,
+        },
+        {
             # This is intentionally last to line up with docos
             "id": "llama3.1",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
@@ -138,7 +150,7 @@ def main() -> list[Model]:
             "max_chunk_size": 512,
         },
         {
-            "id": "text-embedding-nomic-embed-text-v1.5",
+            "id": "nomic-ai/nomic-embed-text-v1",
             "enabled": False,
             "type": "embed",
             "provider": "huggingface",
@@ -212,6 +224,7 @@ def main() -> list[Model]:
         update_env_var(model, "oci", "api_base", "OCI_GENAI_SERVICE_ENDPOINT")
         update_env_var(model, "ollama", "api_base", "ON_PREM_OLLAMA_URL")
         update_env_var(model, "huggingface", "api_base", "ON_PREM_HF_URL")
+        update_env_var(model, "meta-llama", "api_base", "ON_PREM_VLLM_URL")
 
     # Check URL accessible for enabled models and disable if not:
     url_access_cache = {}
