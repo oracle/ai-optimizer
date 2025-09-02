@@ -39,8 +39,11 @@ def get_llm(data):
         llm = OllamaLLM(model=model, base_url=url)
         logger.info("Ollama LLM created")
     elif provider == "openai":
-        llm = llm = ChatOpenAI(model=model, api_key=api_key)
+        llm = ChatOpenAI(model=model, api_key=api_key)
         logger.info("OpenAI LLM created")
+    elif provider =="openai_compatible":
+        llm = ChatOpenAI(model=model, api_key=api_key,base_url=url)
+        logger.info("OpenAI compatible LLM created")
     return llm
 
 
@@ -60,9 +63,13 @@ def get_embeddings(data):
     if provider == "ollama":
         embeddings = OllamaEmbeddings(model=model, base_url=url)
         logger.info("Ollama Embeddings connection successful")
-    elif (provider == "openai") or (provider == "openai_compatible"):
+    elif (provider == "openai"):
         embeddings = OpenAIEmbeddings(model=model, api_key=api_key)
         logger.info("OpenAI embeddings connection successful")
+    elif (provider == "openai_compatible"):
+        embeddings = OpenAIEmbeddings(model=model, api_key=api_key,base_url=url,check_embedding_ctx_length=False)
+        logger.info("OpenAI compatible embeddings connection successful")
+
     return embeddings
 
 
@@ -80,7 +87,7 @@ def get_vectorstore(data, embeddings):
     distance_metric=data["client_settings"]["vector_search"]["distance_metric"]
     index_type=data["client_settings"]["vector_search"]["index_type"]
 
-    db_table=(table_alias+"_"+model+"_"+chunk_size+"_"+chunk_overlap+"_"+distance_metric+"_"+index_type).upper().replace("-", "_")
+    db_table=(table_alias+"_"+model+"_"+chunk_size+"_"+chunk_overlap+"_"+distance_metric+"_"+index_type).upper().replace("-", "_").replace("/", "_")
     logger.info(f"db_table:{db_table}")
 
 

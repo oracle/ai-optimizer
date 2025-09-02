@@ -90,6 +90,20 @@ def main() -> list[Model]:
         },
         {
             # This is intentionally last to line up with docos
+            "id": "meta-llama/Llama-3.2-1B-Instruct",
+            "enabled": os.getenv("ON_PREM_VLLM_URL") is not None,
+            "type": "ll",
+            "provider": "openai_compatible",
+            "api_key": "",
+            "openai_compat": True,
+            "url": os.environ.get("ON_PREM_VLLM_URL", default="http://gpu:8000/v1"),
+            "context_length": 131072,
+            "temperature": 1.0,
+            "max_completion_tokens": 2048,
+            "frequency_penalty": 0.0,
+        },
+        {
+            # This is intentionally last to line up with docos
             "id": "llama3.1",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "ll",
@@ -133,7 +147,7 @@ def main() -> list[Model]:
             "max_chunk_size": 512,
         },
         {
-            "id": "text-embedding-nomic-embed-text-v1.5",
+            "id": "nomic-ai/nomic-embed-text-v1",
             "enabled": False,
             "type": "embed",
             "provider": "openai_compatible",
