@@ -55,7 +55,14 @@ def patch_oci(auth_profile: str, supplied: dict, namespace: str, toast: bool = T
     if differences or not namespace:
         rerun = True
         try:
-            if supplied["security_token_file"]:
+            if (
+                supplied.get("authentication")
+                not in (
+                    "instance_principal",
+                    "oke_workload_identity",
+                )
+                and supplied["security_token_file"]
+            ):
                 supplied["authentication"] = "security_token"
 
             with st.spinner(text="Updating OCI Profile...", show_time=True):
@@ -85,7 +92,20 @@ def display_oci() -> None:
         st.stop()
 
     st.subheader("Configuration")
+    # Store supplied values in dictionary
+    supplied = {}
+
+    disable_config = False
     oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
+    # Handle instance_principal and oke_workload_identity
+    if len(oci_lookup) == 1 and state.oci_configs[0]["authentication"] in (
+        "instance_principal",
+        "oke_workload_identity",
+    ):
+        st.info("Using OCI Authentication Principals", icon="ℹ️")
+        supplied["authentication"] = state.oci_configs[0]["authentication"]
+        supplied["tenancy"] = state.oci_configs[0]["tenancy"]
+        disable_config = True
     if len(oci_lookup) > 0:
         selected_oci_auth_profile = st.selectbox(
             "Profile:",
@@ -93,52 +113,49 @@ def display_oci() -> None:
             index=list(oci_lookup.keys()).index(state.client_settings["oci"]["auth_profile"]),
             key="selected_oci",
             on_change=st_common.update_client_settings("oci"),
+            disabled=disable_config,
         )
     else:
         selected_oci_auth_profile = "DEFAULT"
 
-    token_auth = st.checkbox(
-        "Use token authentication?",
-        key="oci_token_auth",
-        value=False,
-    )
+    token_auth = st.checkbox("Use token authentication?", key="oci_token_auth", value=False, disabled=disable_config)
     namespace = oci_lookup[selected_oci_auth_profile]["namespace"]
-    # Store supplied values in dictionary
-    supplied = {}
     with st.container(border=True):
-        supplied["user"] = st.text_input(
-            "User OCID:",
-            value=oci_lookup[selected_oci_auth_profile]["user"],
-            disabled=token_auth,
-            key="oci_user",
-        )
-        supplied["security_token_file"] = st.text_input(
-            "Security Token File:",
-            value=oci_lookup[selected_oci_auth_profile]["security_token_file"],
-            disabled=not token_auth,
-            key="oci_security_token_file",
-        )
-        supplied["fingerprint"] = st.text_input(
-            "Fingerprint:",
-            value=oci_lookup[selected_oci_auth_profile]["fingerprint"],
-            key="oci_fingerprint",
-        )
-        supplied["tenancy"] = st.text_input(
-            "Tenancy OCID:",
-            value=oci_lookup[selected_oci_auth_profile]["tenancy"],
-            key="oci_tenancy",
-        )
+        if not disable_config:
+            supplied["user"] = st.text_input(
+                "User OCID:",
+                value=oci_lookup[selected_oci_auth_profile]["user"],
+                disabled=token_auth,
+                key="oci_user",
+            )
+            supplied["security_token_file"] = st.text_input(
+                "Security Token File:",
+                value=oci_lookup[selected_oci_auth_profile]["security_token_file"],
+                disabled=not token_auth,
+                key="oci_security_token_file",
+            )
+            supplied["key_file"] = st.text_input(
+                "Key File:",
+                value=oci_lookup[selected_oci_auth_profile]["key_file"],
+                key="oci_key_file",
+            )
+            supplied["fingerprint"] = st.text_input(
+                "Fingerprint:",
+                value=oci_lookup[selected_oci_auth_profile]["fingerprint"],
+                key="oci_fingerprint",
+            )
+            supplied["tenancy"] = st.text_input(
+                "Tenancy OCID:",
+                value=oci_lookup[selected_oci_auth_profile]["tenancy"],
+                key="oci_tenancy",
+            )
         supplied["region"] = st.text_input(
             "Region:",
             value=oci_lookup[selected_oci_auth_profile]["region"],
             help="Region of Source Bucket",
             key="oci_region",
         )
-        supplied["key_file"] = st.text_input(
-            "Key File:",
-            value=oci_lookup[selected_oci_auth_profile]["key_file"],
-            key="oci_key_file",
-        )
+
         if namespace:
             st.success(f"Current Status: Validated - Namespace: {namespace}")
         else:
@@ -148,8 +165,9 @@ def display_oci() -> None:
 
         if st.button("Save Configuration", key="save_oci"):
             # Modify based on token usage
-            supplied["security_token_file"] = None if not token_auth else supplied["security_token_file"]
-            supplied["user"] = None if token_auth else supplied["user"]
+            if not disable_config:
+                supplied["security_token_file"] = None if not token_auth else supplied["security_token_file"]
+                supplied["user"] = None if token_auth else supplied["user"]
 
             if patch_oci(selected_oci_auth_profile, supplied, namespace):
                 st.rerun()

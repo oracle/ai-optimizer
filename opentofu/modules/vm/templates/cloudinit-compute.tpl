@@ -57,16 +57,14 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/bash
-      # Setup for Instance Principles
-
       # Download/Setup Source Code
       if [ "${optimizer_version}" = "main" ]; then
           URL="https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz"
+          curl -L "$URL" | tar -xz -C /app --strip-components=2 ai-optimizer-main/src
       else
           URL="https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz"
+          curl -L "$URL" | tar -xz -C /app
       fi
-      # Download and extract
-      curl -L "$URL" | tar -xz -C /app
       cd /app
       python3.11 -m venv .venv
       source .venv/bin/activate

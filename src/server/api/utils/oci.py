@@ -36,12 +36,14 @@ def init_client(
         oci.object_storage.ObjectStorageClient,
         oci.identity.IdentityClient,
         oci.generative_ai_inference.GenerativeAiInferenceClient,
+        oci.generative_ai.GenerativeAiClient,
     ],
     config: OracleCloudSettings = None,
 ) -> Union[
     oci.object_storage.ObjectStorageClient,
     oci.identity.IdentityClient,
     oci.generative_ai_inference.GenerativeAiInferenceClient,
+    oci.generative_ai.GenerativeAiClient,
 ]:
     """Initialize OCI Client with either user or Token"""
     # connection timeout to 1 seconds and the read timeout to 60 seconds
@@ -51,7 +53,7 @@ def init_client(
         "timeout": (1, 180),
     }
 
-    # OCI GenAI
+    # OCI GenAI (for model calling)
     if (
         client_type == oci.generative_ai_inference.GenerativeAiInferenceClient
         and config.genai_compartment_id
@@ -91,7 +93,7 @@ def init_client(
 
 
 def init_genai_client(config: OracleCloudSettings) -> oci.generative_ai_inference.GenerativeAiInferenceClient:
-    """Initialise OCI GenAI Client"""
+    """Initialise OCI GenAI Client; used by models"""
     client_type = oci.generative_ai_inference.GenerativeAiInferenceClient
     return init_client(client_type, config)
 
@@ -154,9 +156,10 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
         regions = get_regions(config)
 
     for region in regions:
-        region_config = dict(config)
-        region_config["region"] = region["region_name"]
-        client = oci.generative_ai.GenerativeAiClient(region_config)
+        region_config = config
+        region_config.region = region["region_name"]
+        client_type = oci.generative_ai.GenerativeAiClient
+        client = init_client(client_type, region_config)
         logger.info(
             "Checking Region: %s; Compartment: %s for GenAI services",
             region["region_name"],

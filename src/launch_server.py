@@ -48,7 +48,7 @@ logger = logging_config.logging.getLogger("launch_server")
 ##########################################
 # Process Control
 ##########################################
-def start_server(port: int = 8000, logfile: bool = False) -> int:
+def start_server(port: int = 8000, logfile: bool = False) -> tuple[str, int]:
     """Start the uvicorn server for FastAPI"""
     logger.info("Starting Oracle AI Optimizer and Toolkit")
 
@@ -96,7 +96,7 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
     existing_pid = get_pid_using_port(port)
     if existing_pid:
         logger.info("API server already running on port: %i (PID: %i)", port, existing_pid)
-        return existing_pid
+        return ("existing", existing_pid)
 
     popen_queue = queue.Queue()
     thread = threading.Thread(
@@ -105,7 +105,7 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
     )
     thread.start()
 
-    return popen_queue.get().pid
+    return ("started", popen_queue.get().pid)
 
 
 def stop_server(pid: int) -> None:

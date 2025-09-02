@@ -21,10 +21,8 @@ logger = logging_config.logging.getLogger("client.content.api_server")
 
 try:
     import launch_server
-
-    REMOTE_SERVER = False
 except ImportError:
-    REMOTE_SERVER = True
+    pass
 
 
 #####################################################
@@ -52,7 +50,7 @@ def server_restart() -> None:
     state.server["key"] = os.getenv("API_SERVER_KEY")
 
     launch_server.stop_server(state.server["pid"])
-    state.server["pid"] = launch_server.start_server(state.server["port"])
+    _, state.server["pid"] = launch_server.start_server(state.server["port"])
     time.sleep(10)
     state.pop("server_client", None)
 
@@ -71,16 +69,16 @@ async def main() -> None:
         key="user_server_port",
         min_value=1,
         max_value=65535,
-        disabled=REMOTE_SERVER,
+        disabled=state.server["remote"],
     )
     right.text_input(
         "API Server Key:",
         value=state.server["key"],
         key="user_server_key",
         type="password",
-        disabled=REMOTE_SERVER,
+        disabled=state.server["remote"],
     )
-    if not REMOTE_SERVER:
+    if not state.server["remote"]:
         st.button("Restart Server", type="primary", on_click=server_restart)
 
     st.header("Server Settings", divider="red")

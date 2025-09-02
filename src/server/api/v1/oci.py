@@ -21,7 +21,7 @@ logger = logging_config.logging.getLogger("endpoints.v1.oci")
 try:
     default_config = core_oci.get_oci(auth_profile="DEFAULT")
     _ = utils_oci.get_namespace(config=default_config)
-    _ = utils_models.create_genai(default_config)
+    _ = utils_models.create_genai(config=default_config)
 except utils_oci.OciException:
     pass
 
@@ -85,7 +85,7 @@ async def oci_list_genai(
     auth_profile: schema.OCIProfileType,
 ) -> list:
     """Return a list of compartments"""
-    logger.debug("Received oci_list_regions - auth_profile: %s", auth_profile)
+    logger.debug("Received oci_list_genai - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
         all_models = utils_oci.get_genai_models(oci_config, regional=False)
