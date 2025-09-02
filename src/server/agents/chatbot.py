@@ -117,8 +117,6 @@ def rephrase(state: OptimizerState, config: RunnableConfig) -> str:
         ll_raw = config["configurable"]["ll_config"]
         try:
             response = completion(messages=[{"role": "system", "content": formatted_prompt}], stream=False, **ll_raw)
-            print(f"************ {response}")
-
             context_question = response.choices[0].message.content
         except APIConnectionError as ex:
             logger.error("Failed to rephrase: %s", str(ex))
@@ -183,7 +181,6 @@ async def vs_grade(state: OptimizerState, config: RunnableConfig) -> OptimizerSt
             response = await acompletion(
                 messages=[{"role": "system", "content": formatted_prompt}], stream=False, **ll_raw
             )
-            print(f"************ {response}")
             relevant = response["choices"][0]["message"]["content"]
             logger.info("Grading completed. Relevant: %s", relevant)
             if relevant not in ("yes", "no"):

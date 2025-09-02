@@ -194,8 +194,8 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
                         "id": model.id,
                     }
                 )
-        except oci.exceptions.ServiceError:
-            logger.info("Region: %s has no GenAI services", region["region_name"])
+        except oci.exceptions.ServiceError as ex:
+            logger.info("Unable to get GenAI Models in Region: %s (%s)", region["region_name"], ex.message)
         except (oci.exceptions.RequestException, urllib3.exceptions.MaxRetryError):
             logger.error("Timeout: Error querying GenAI services in %s", region["region_name"])
 

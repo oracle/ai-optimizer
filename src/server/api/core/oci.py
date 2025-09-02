@@ -31,7 +31,6 @@ def get_oci(
         raise ValueError("provide either 'client' or 'auth_profile', not both")
 
     oci_objects = bootstrap.OCI_OBJECTS
-    print(f"********** {oci_objects}")
     if client is not None:
         client_settings = settings.get_client_settings(client)
         derived_auth_profile = (
