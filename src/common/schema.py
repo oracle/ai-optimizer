@@ -2,8 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama hnsw mult ocid testset selectai explainsql showsql vector_search aioptimizer genai
-# spell-checker:ignore deepseek groq huggingface mistralai ocigenai vertexai
+# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql
 
 import time
 from typing import Optional, Literal, get_args, Any
@@ -20,28 +19,74 @@ DistanceMetrics = Literal["COSINE", "EUCLIDEAN_DISTANCE", "DOT_PRODUCT"]
 IndexTypes = Literal["HNSW", "IVF"]
 
 # Model Providers
+# spell-checker:disable
 ModelProviders = Literal[
-    "oci",
+    "ai21",
+    "aiohttp_openai",
     "anthropic",
+    "azure",
     "azure_ai",
-    "azure_openai",
+    "base_llm",
     "bedrock",
-    "bedrock_converse",
-    "cohere",
+    "baseten",
+    "bytez",
+    "cloudflare",
+    "clarifai",
+    "codestral",
+    "databricks",
+    "datarobot",
+    "deepgram",
+    "deepinfra",
     "deepseek",
-    "google_anthropic_vertex",
-    "google_genai",
-    "google_vertexai",
+    "empower",
+    "fireworks_ai",
+    "featherless_ai",
+    "galadriel",
+    "gemini",
+    "github",
+    "github_copilot",
     "groq",
+    "hosted_vllm",
     "huggingface",
-    "meta-llama",
-    "mistralai",
-    "ollama",
+    "hyperbolic",
+    "infinity",
+    "jina_ai",
+    "lambda_ai",
+    "litellm_proxy",
+    "lm_studio",
+    "llamafile",
+    "maritalk",
+    "meta_llama",
+    "moonshot",
+    "mistral",
+    "morph",
+    "nebius",
+    "nlp_cloud",
+    "nscale",
+    "nvidia_nim",
+    "novita",
+    "oci",
     "openai",
+    "openrouter",
+    "ollama",
     "perplexity",
+    "petals",
+    "pg_vector",
+    "predibase",
+    "recraft",
+    "sambanova",
+    "sagemaker",
+    "snowflake",
+    "together_ai",
+    "topaz",
+    "triton",
+    "vertex_ai",
+    "vllm",
+    "voyage",
+    "watsonx",
     "xai",
-    "hosted_vllm"
 ]
+# spell-checker:enable
 
 
 #####################################################
