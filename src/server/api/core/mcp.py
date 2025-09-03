@@ -10,12 +10,12 @@ import os
 # from typing import Optional, List, Dict, Any
 # from common.schema import MCPModelConfig, MCPToolConfig, MCPSettings
 # from server.bootstrap import mcp as mcp_bootstrap
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.core.mcp")
 
 
-def get_client(server: str = "http://127.0.0.1", port: int = 8000) -> dict:
+def get_client(server: str = "http://127.0.0.1", port: int = 8000, client: str = None) -> dict:
     """Get the MCP Client Configuration"""
     mcp_client = {
         "mcpServers": {
@@ -27,8 +27,8 @@ def get_client(server: str = "http://127.0.0.1", port: int = 8000) -> dict:
             }
         }
     }
-
-    return mcp_client
+    if client == "langgraph":
+        del mcp_client["mcpServers"]["optimizer"]["type"]
 
 
 # def get_mcp_model(model_id: str) -> Optional[MCPModelConfig]:

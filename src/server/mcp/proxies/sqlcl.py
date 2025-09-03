@@ -8,10 +8,9 @@ import os
 import shutil
 import subprocess
 
-from fastmcp.server.proxy import ProxyToolManager
+import server.api.utils.databases as utils_databases
 
-import server.api.core.databases as core_databases
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("mcp.proxies.sqlcl")
 
@@ -34,7 +33,7 @@ async def register(mcp):
                 }
             }
         }
-        databases = core_databases.get_databases(validate=False)
+        databases = utils_databases.get_databases(validate=False)
         for database in databases:
             # Start sql in no-login mode
             try:
@@ -50,7 +49,11 @@ async def register(mcp):
                 # Prepare commands: connect, then exit
                 commands = [
                     f"connmgr delete -conn OPTIMIZER_{database.name}",
-                    f"conn -savepwd -save OPTIMIZER_{database.name} -user {database.user} -password {database.password} -url {database.dsn}",
+                    (
+                        f"conn -savepwd -save OPTIMIZER_{database.name} "
+                        f"-user {database.user} -password {database.password} "
+                        f"-url {database.dsn}"
+                    ),
                     "exit",
                 ]
 

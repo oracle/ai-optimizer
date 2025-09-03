@@ -43,27 +43,26 @@ def get_client_settings(client: ClientIdType) -> Settings:
 def get_server_config() -> Configuration:
     """Return server configuration"""
     database_objects = bootstrap.DATABASE_OBJECTS
-    database_configs = [db for db in database_objects]
+    database_configs = list(database_objects)
 
     model_objects = bootstrap.MODEL_OBJECTS
-    model_configs = [model for model in model_objects]
+    model_configs = list(model_objects)
 
     oci_objects = bootstrap.OCI_OBJECTS
-    oci_configs = [oci for oci in oci_objects]
+    oci_configs = list(oci_objects)
 
     prompt_objects = bootstrap.PROMPT_OBJECTS
-    prompt_configs = [prompt for prompt in prompt_objects]
+    prompt_configs = list(prompt_objects)
 
-    # Add MCP configs as a list (similar to other configs)
-    mcp_objects = bootstrap.mcp.MCP_MODELS  # Get list of models from bootstrap
-    mcp_configs = [model for model in mcp_objects]  # Convert to list like other configs
+    # mcp_objects = bootstrap.MCP_OBJECTS
+    # mcp_configs = list(mcp_objects)
 
     full_config = {
         "database_configs": database_configs,
         "model_configs": model_configs,
         "oci_configs": oci_configs,
         "prompt_configs": prompt_configs,
-        "mcp_configs": mcp_configs,  # Now it's a list like other configs
+        # "mcp_configs": mcp_configs,
     }
     return full_config
 
@@ -96,11 +95,9 @@ def update_server_config(config_data: dict) -> None:
 
     if "prompt_configs" in config_data:
         bootstrap.PROMPT_OBJECTS = config.prompt_configs or []
-        
-    # Add MCP config handling (similar to other configs)
+
     if "mcp_configs" in config_data:
-        from server.bootstrap import mcp
-        mcp.MCP_MODELS = config.mcp_configs or []  # Store as list like other configs
+        bootstrap.MCP_OBJECTS = config.mcp_configs or []
 
 
 def load_config_from_json_data(config_data: dict, client: ClientIdType = None) -> None:

@@ -18,8 +18,8 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
-from server.api.utils import chat
-from server.agents import chatbot
+import server.api.utils.mcp as utils_mcp
+import server.mcp.graph as graph
 
 from common import schema, logging_config
 
@@ -38,7 +38,7 @@ async def chat_post(
 ) -> ModelResponse:
     """Full Completion Requests"""
     last_message = None
-    async for chunk in chat.completion_generator(client, request, "completions"):
+    async for chunk in utils_mcp.completion_generator(client, request, "completions"):
         last_message = chunk
     return last_message
 
@@ -54,7 +54,7 @@ async def chat_stream(
 ) -> StreamingResponse:
     """Completion Requests"""
     return StreamingResponse(
-        chat.completion_generator(client, request, "streams"),
+        utils_mcp.completion_generator(client, request, "streams"),
         media_type="application/octet-stream",
     )
 
@@ -66,7 +66,8 @@ async def chat_stream(
 )
 async def chat_history_clean(client: schema.ClientIdType = Header(default="server")) -> list[ChatMessage]:
     """Delete all Chat History"""
-    agent: CompiledStateGraph = chatbot.chatbot_graph
+    agent: CompiledStateGraph = graph.main(list())
+    # agent: CompiledStateGraph = chatbot.chatbot_graph
     try:
         _ = agent.update_state(
             config=RunnableConfig(
@@ -88,7 +89,8 @@ async def chat_history_clean(client: schema.ClientIdType = Header(default="serve
 )
 async def chat_history_return(client: schema.ClientIdType = Header(default="server")) -> list[ChatMessage]:
     """Return Chat History"""
-    agent: CompiledStateGraph = chatbot.chatbot_graph
+    agent: CompiledStateGraph = graph.main(list())
+    # agent: CompiledStateGraph = chatbot.chatbot_graph
     try:
         state_snapshot = agent.get_state(
             config=RunnableConfig(

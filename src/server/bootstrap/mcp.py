@@ -2,12 +2,13 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+
 from typing import List, Optional
 import os
 
 from server.bootstrap.configfile import ConfigStore
 from common.schema import MCPSettings, MCPModelConfig, MCPToolConfig
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("bootstrap.mcp")
 
@@ -16,24 +17,26 @@ MCP_SETTINGS: Optional[MCPSettings] = None
 MCP_MODELS: List[MCPModelConfig] = []
 MCP_TOOLS: List[MCPToolConfig] = []
 
+
 def load_mcp_settings(config: dict) -> None:
     """Load MCP configuration from config file"""
     global MCP_SETTINGS, MCP_MODELS, MCP_TOOLS
-    
+
     # Convert to settings object first
     mcp_settings = MCPSettings(
         models=[MCPModelConfig(**model) for model in config.get("models", [])],
         tools=[MCPToolConfig(**tool) for tool in config.get("tools", [])],
         default_model=config.get("default_model"),
-        enabled=config.get("enabled", True)
+        enabled=config.get("enabled", True),
     )
-    
+
     # Set globals
     MCP_SETTINGS = mcp_settings
     MCP_MODELS = mcp_settings.models
     MCP_TOOLS = mcp_settings.tools
 
     logger.info("Loaded %i MCP Models and %i Tools", len(MCP_MODELS), len(MCP_TOOLS))
+
 
 def main() -> MCPSettings:
     """Bootstrap MCP Configuration"""
@@ -48,7 +51,7 @@ def main() -> MCPSettings:
             models=configuration.mcp_configs,
             tools=[],  # No tools in the current schema
             default_model=configuration.mcp_configs[0].model_id if configuration.mcp_configs else None,
-            enabled=True
+            enabled=True,
         )
     else:
         # Default MCP configuration
@@ -61,22 +64,19 @@ def main() -> MCPSettings:
                     enabled=True,
                     streaming=False,
                     temperature=1.0,
-                    max_tokens=2048
+                    max_tokens=2048,
                 )
             ],
             tools=[
                 MCPToolConfig(
                     name="file_reader",
                     description="Read contents of files",
-                    parameters={
-                        "path": "string",
-                        "encoding": "string"
-                    },
-                    enabled=True
+                    parameters={"path": "string", "encoding": "string"},
+                    enabled=True,
                 )
             ],
             default_model=None,
-            enabled=True
+            enabled=True,
         )
 
     logger.info("Loaded %i MCP Models and %i Tools", len(mcp_settings.models), len(mcp_settings.tools))

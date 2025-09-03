@@ -2,16 +2,16 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+
 # spell-checker:ignore selectbox healthz
 import json
 
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.api_call as api_call
-import client.utils.st_common as st_common
+from client.utils import api_call, st_common
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.content.config.tabs.mcp")
 
@@ -27,15 +27,17 @@ def get_mcp_status() -> dict:
         logger.error("Unable to get MCP Status: %s", ex)
         return {}
 
+
 def get_mcp_client() -> dict:
     """Get MCP Client Configuration"""
     try:
-        params = {"server": {state.server['url']} , "port": {state.server['port']}}
-        mcp_client =  api_call.get(endpoint="v1/mcp/client", params=params)
+        params = {"server": {state.server["url"]}, "port": {state.server["port"]}}
+        mcp_client = api_call.get(endpoint="v1/mcp/client", params=params)
         return json.dumps(mcp_client, indent=2)
     except api_call.ApiError as ex:
-        logger.error("Unable to get MCP Status: %s", ex)
+        logger.error("Unable to get MCP Client: %s", ex)
         return {}
+
 
 def get_mcp(force: bool = False) -> list[dict]:
     """Get MCP configs from API Server"""
@@ -145,8 +147,8 @@ def display_mcp() -> None:
     mcp_status = get_mcp_status()
     if mcp_status.get("status") == "ready":
         st.markdown(f"""
-                    The {mcp_status['name']} is running.  
-                    **Version**: {mcp_status['version']}
+                    The {mcp_status["name"]} is running.  
+                    **Version**: {mcp_status["version"]}
                     """)
         with st.expander("Client Configuration"):
             st.code(get_mcp_client(), language="json")

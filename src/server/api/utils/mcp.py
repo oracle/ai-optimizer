@@ -4,8 +4,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore astream selectai
 
+import os
 import time
 from typing import Literal, AsyncGenerator
+import json
+import oci
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -21,21 +24,37 @@ import server.api.utils.selectai as util_selectai
 import server.api.core.mcp as core_mcp
 import server.mcp.graph as graph
 
-import common.schema as schema
-import common.logging_config as logging_config
+from common import logging_config, schema
 
 logger = logging_config.logging.getLogger("api.utils.mcp")
 
-
-def error_response(message: str, model: str) -> dict:
-    """Send the error as a response"""
-    response = {
-        "id": "error",
-        "choices": [{"message": {"role": "assistant", "content": message}, "index": 0, "finish_reason": "stop"}],
-        "created": int(time.time()),
-        "model": model,
-        "object": "chat.completion",
+def get_client(server: str = "http://127.0.0.1", port: int = 8000) -> dict:
+    """Get the MCP Client Configuration"""
+    mcp_client = {
+        "mcpServers": {
+            "optimizer": {
+                "type": "streamableHttp",
+                "transport": "streamable_http",
+                "url": f"{server}:{port}/mcp/",
+                "headers": {"Authorization": f"Bearer {os.getenv('API_SERVER_KEY')}"},
+            }
+        }
     }
+
+    return mcp_client
+
+def error_response(call: str, message: str, model: dict) -> dict:
+    """Send the error as a response"""
+    response = message
+    if call != "streams":
+        response = {
+            "id": "error",
+            "choices": [{"message": {"role": "assistant", "content": message}, "index": 0, "finish_reason": "stop"}],
+            "created": int(time.time()),
+            "model": model["model"],
+            "object": "chat.completion",
+        }
+    logger.debug("Returning Error Response: %s", response)
     return response
 
 
@@ -69,66 +88,53 @@ async def completion_generator(
     # Build our Graph
     graph.set_node("tools_node", ToolNode(tools))
     agent: CompiledStateGraph = graph.mcp_graph
+    # Setup MCP and bind tools
+    mcp_client = MultiServerMCPClient(
+        {"optimizer": core_mcp.get_client(client="langgraph")["mcpServers"]["optimizer"]}
+    )
+    tools = await mcp_client.get_tools()
+    try:
+        ll_model_with_tools = ll_model.bind_tools(tools)
+    except NotImplementedError as ex:
+        yield error_response(call, str(ex), model)
+        raise
+
+    # Build our Graph
+    agent: CompiledStateGraph = graph.main(tools)
 
     kwargs = {
         "input": {"messages": [HumanMessage(content=request.messages[0].content)]},
         "config": RunnableConfig(
             configurable={"thread_id": client, "ll_model": ll_model_with_tools, "tools": tools},
+
             metadata={"use_history": client_settings.ll_model.chat_history},
         ),
     }
 
     yield "End"
 
-    # # Get Prompts
-    # try:
-    #     user_sys_prompt = getattr(client_settings.prompts, "sys", "Basic Example")
-    #     sys_prompt = core_prompts.get_prompts(category="sys", name=user_sys_prompt)
-    # except AttributeError as ex:
-    #     # schema.Settings not on server-side
-    #     logger.error("A settings exception occurred: %s", ex)
-    #     raise
 
-    # db_conn = None
-    # # Setup selectai
-    # if client_settings.selectai.enabled:
-    #     db_conn = util_databases.get_client_db(client).connection
-    #     util_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
-    #     util_selectai.set_profile(
-    #         db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
-    #     )
+    try:
+        async for chunk in agent.astream_events(**kwargs, version="v2"):
+            # The below will produce A LOT of output; uncomment when desperate
+            # logger.debug("Streamed Chunk: %s", chunk)
+            if chunk["event"] == "on_chat_model_stream":
+                if "tools_condition" in str(chunk["metadata"]["langgraph_triggers"]):
+                    continue  # Skip Tool Call messages
+                if "vs_retrieve" in str(chunk["metadata"]["langgraph_node"]):
+                    continue  # Skip Fake-Tool Call messages
+                content = chunk["data"]["chunk"].content
+                if content != "" and call == "streams":
+                    yield content.encode("utf-8")
+            last_response = chunk["data"]
+    except oci.exceptions.ServiceError as ex:
+        error_details = json.loads(ex.message).get("message", "")
+        yield error_response(call, error_details, model)
+        raise
 
-    # # Setup vector_search
-    # embed_client, ctx_prompt = None, None
-    # if client_settings.vector_search.enabled:
-    #     db_conn = util_databases.get_client_db(client).connection
-    #     embed_client = util_models.get_client(client_settings.vector_search.model_dump(), oci_config)
-
-    #     user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
-    #     ctx_prompt = core_prompts.get_prompts(category="ctx", name=user_ctx_prompt)
-
-
-    # try:
-    #     async for chunk in agent.astream_events(**kwargs, version="v2"):
-    #         # The below will produce A LOT of output; uncomment when desperate
-    #         # logger.debug("Streamed Chunk: %s", chunk)
-    #         if chunk["event"] == "on_chat_model_stream":
-    #             if "tools_condition" in str(chunk["metadata"]["langgraph_triggers"]):
-    #                 continue  # Skip Tool Call messages
-    #             if "vs_retrieve" in str(chunk["metadata"]["langgraph_node"]):
-    #                 continue  # Skip Fake-Tool Call messages
-    #             content = chunk["data"]["chunk"].content
-    #             if content != "" and call == "streams":
-    #                 yield content.encode("utf-8")
-    #         last_response = chunk["data"]
-    #     if call == "streams":
-    #         yield "[stream_finished]"  # This will break the Chatbot loop
-    #     elif call == "completions":
-    #         final_response = last_response["output"]["final_response"]
-    #         yield final_response  # This will be captured for ChatResponse
-    # except Exception as ex:
-    #     logger.error("An invoke exception occurred: %s", ex)
-    #     # yield f"I'm sorry; {ex}"
-    #     # TODO(gotsysdba) - If a message is returned;
-    #     # format and return (this should be done in the agent)
-    #     raise
+    # Clean Up
+    if call == "streams":
+        yield "[stream_finished]"  # This will break the Chatbot loop
+    elif call == "completions":
+        final_response = last_response["output"]["final_response"]
+        yield final_response  # This will be captured for ChatResponse

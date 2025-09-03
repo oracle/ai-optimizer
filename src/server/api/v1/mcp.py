@@ -8,6 +8,14 @@ This file is being used in APIs, and not the backend.py file.
 from fastapi import APIRouter, Request, Depends
 from fastmcp import FastMCP, Client
 
+import server.api.utils.mcp as utils_mcp
+
+from common import logging_config
+from fastapi import APIRouter, Request, Depends
+from fastmcp import FastMCP, Client
+
+import server.api.core.mcp as core_mcp
+
 import common.logging_config as logging_config
 
 logger = logging_config.logging.getLogger("api.v1.mcp")
@@ -21,11 +29,22 @@ def get_mcp(request: Request) -> FastMCP:
 
 
 @auth.get(
+    "/client",
+    description="Get MCP Client Configuration",
+    response_model=dict,
+)
+async def get_client(server: str = None, port: int = None) -> dict:
+    "Get MCP Client Configuration"
+    return utils_mcp.get_client(server, port)
+
+
+
+@auth.get(
     "/tools",
     description="List available MCP tools",
     response_model=list[dict],
 )
-async def mcp_get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
+async def get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
     """List MCP tools"""
     tools_info = []
     try:

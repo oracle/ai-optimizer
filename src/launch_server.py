@@ -31,6 +31,15 @@ import socket
 import subprocess
 import sys
 from typing import Annotated
+from pathlib import Path
+import uvicorn
+
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastmcp import FastMCP, settings
+from fastmcp.server.auth import StaticTokenVerifier
+from langgraph.checkpoint.memory import InMemorySaver
+
 
 # Third Party
 import psutil
@@ -49,6 +58,8 @@ from common._version import __version__
 
 logger = logging_config.logging.getLogger("launch_server")
 
+# Establish LangGraph Short-Term Memory (thread-level persistence)
+graph_memory = InMemorySaver()
 
 ##########################################
 # Client Process Control
