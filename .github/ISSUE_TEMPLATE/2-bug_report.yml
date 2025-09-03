@@ -14,7 +14,7 @@ body:
       label: Checklist
       description: Please confirm and check all the following options.
       options:
-        - label: I have searched the [existing issues](https://github.com/oracle-samples/ai-optimizer/issues) for similar issues.
+        - label: I have searched the [existing issues](https://github.com/oracle/ai-optimizer/issues) for similar issues.
           required: true
         - label: I added a very descriptive title to this issue.
           required: true

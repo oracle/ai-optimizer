@@ -57,11 +57,14 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/bash
-      # Setup for Instance Principles
-
       # Download/Setup Source Code
-      curl -L https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
-      | tar -xz -C /app
+      if [ "${optimizer_version}" = "main" ]; then
+          URL="https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz"
+          curl -L "$URL" | tar -xz -C /app --strip-components=2 ai-optimizer-main/src
+      else
+          URL="https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz"
+          curl -L "$URL" | tar -xz -C /app
+      fi
       cd /app
       python3.11 -m venv .venv
       source .venv/bin/activate
@@ -84,6 +87,7 @@ write_files:
     content: |
       #!/bin/bash
       export OCI_CLI_AUTH=instance_principal
+      export API_SERVER_CONTROL="True"
       export DB_USERNAME='AI_OPTIMIZER'
       export DB_PASSWORD='${db_password}'
       export DB_DSN='${db_name}_TP'

@@ -2,6 +2,10 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
+variable "optimizer_version" {
+  type = string
+}
+
 variable "tenancy_id" {
   type = string
 }

@@ -12,7 +12,7 @@ body:
       label: Checklist
       description: Please confirm and check all the following options.
       options:
-        - label: I have searched the [existing issues](https://github.com/oracle-samples/ai-optimizer/issues) for similar feature requests.
+        - label: I have searched the [existing issues](https://github.com/oracle/ai-optimizer/issues) for similar feature requests.
           required: true
         - label: I added a descriptive title and summary to this issue.
           required: true

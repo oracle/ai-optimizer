@@ -10,13 +10,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore opentofu ollama imagelink kubeconfig
 -->
 
-The {{< full_app_ref >}} can easily be deployed in Oracle Cloud Infrastructure (**OCI**) using Infrastructure as Code (**IaC**) provided in the source [opentofu](https://github.com/oracle-samples/ai-optimizer/tree/main/opentofu) directory.
+The {{< full_app_ref >}} can easily be deployed in Oracle Cloud Infrastructure (**OCI**) using Infrastructure as Code (**IaC**) provided in the source [opentofu](https://github.com/oracle/ai-optimizer/tree/main/opentofu) directory.
 
 Choose between deploying a light-weight [Virtual Machine](#virtual-machine) or robust [Oracle Kubernetes Engine (**OKE**)](#oracle-kubernetes-engine) along with the **Oracle Autonomous Database** for a fully configured {{< short_app_ref >}} environment, ready to use.  
 
 While the **IaC** can be run from a command-line with prior experience, the steps outlined here use [Oracle Cloud Resource Manager](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/resourcemanager.htm) to simplify the process.  To get started:
 
-{{< imagelink url="https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-iac.zip" src="https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg" alt="Deploy to Oracle Cloud" >}}
+{{< imagelink url="https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-iac.zip" src="https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg" alt="Deploy to Oracle Cloud" >}}
 
 ## Virtual Machine
 

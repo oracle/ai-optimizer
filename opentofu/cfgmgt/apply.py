@@ -12,7 +12,7 @@ import time
 
 # --- Constants ---
 HELM_NAME = "ai-optimizer"
-HELM_REPO = "https://oracle-samples.github.io/ai-optimizer/helm"
+HELM_REPO = "https://oracle.github.io/ai-optimizer/helm"
 STAGE_PATH = os.path.join(os.path.dirname(__file__), "stage")
 os.environ["KUBECONFIG"] = os.path.join(STAGE_PATH, "kubeconfig")
 

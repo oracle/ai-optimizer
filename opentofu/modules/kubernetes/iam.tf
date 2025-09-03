@@ -42,8 +42,8 @@ resource "oci_identity_policy" "workers_policies" {
     format("allow any-user to read objects in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = '%s', request.principal.cluster_id = '%s'}", var.compartment_id, var.label_prefix, oci_containerengine_cluster.default_cluster.id),
     format("allow any-user to manage repos in compartment id %s where all {request.principal.type = 'workload', request.principal.namespace = '%s', request.principal.cluster_id = '%s'}", var.compartment_id, var.label_prefix, oci_containerengine_cluster.default_cluster.id),
     # Instance Principles
-    format("allow dynamic-group %s to use generative-ai-family in compartment id %s", oci_identity_dynamic_group.workers_dynamic_group.name, var.compartment_id),
     format("allow dynamic-group %s to manage repos in compartment id %s", oci_identity_dynamic_group.workers_dynamic_group.name, var.compartment_id),
+    format("allow dynamic-group %s to use generative-ai-family in tenancy", oci_identity_dynamic_group.workers_dynamic_group.name),
   ]
   provider = oci.home_region
 }

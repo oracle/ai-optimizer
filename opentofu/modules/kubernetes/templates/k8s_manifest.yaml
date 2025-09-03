@@ -110,7 +110,7 @@ spec:
             - sh
             - -c
             - |
-              wget -qO- https://github.com/oracle-samples/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
+              wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
                 | tar -xz -C /workspace	  	
           securityContext:
             runAsUser: 1000
