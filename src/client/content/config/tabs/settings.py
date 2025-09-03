@@ -23,10 +23,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 # Utilities
-import client.utils.api_call as api_call
-import client.utils.st_common as st_common
+from client.utils import api_call, st_common
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.content.config.tabs.settings")
 
@@ -60,8 +59,7 @@ def get_settings(include_sensitive: bool = False):
                 },
             )
             return settings
-        else:
-            raise
+        raise
 
 
 def save_settings(settings):
@@ -161,7 +159,9 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
 
     ll_provider = ll_model.get("provider", "")
     embed_provider = embed_model.get("provider", "")
-
+    logger.info("llm chat: %s - embeddings: %s", ll_provider, embed_provider)
+    if all("hosted_vllm" in p for p in (ll_provider, embed_provider)):
+        return "hosted_vllm"
     if all("openai" in p for p in (ll_provider, embed_provider)):
         return "openai"
     if all("ollama" in p for p in (ll_provider, embed_provider)):
@@ -330,12 +330,13 @@ def display_settings():
 
     st.header("Source Code Templates", divider="red")
     # Merge the User Settings into the Model Config
-    model_lookup = st_common.state_configs_lookup("model_configs", "id")
     try:
+        model_lookup = st_common.enabled_models_lookup(model_type="ll")
         ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
     except KeyError:
         ll_config = {}
     try:
+        model_lookup = st_common.enabled_models_lookup(model_type="embed")
         embed_config = (
             model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
         )
@@ -343,10 +344,12 @@ def display_settings():
         embed_config = {}
     spring_ai_conf = spring_ai_conf_check(ll_config, embed_config)
 
+    logger.info("config found: %s", spring_ai_conf)
+
     if spring_ai_conf == "hybrid":
         st.markdown(f"""
             The current configuration combination of embedding and language models
-            is currently **not supported** for SpringAI.
+            is currently **not supported** for Spring AI and LangChain MCP templates.
             - Language Model:  **{ll_config.get("model", "Unset")}**
             - Embedding Model: **{embed_config.get("model", "Unset")}**
         """)
@@ -354,20 +357,21 @@ def display_settings():
         col_left, col_centre, _ = st.columns([3, 4, 3])
         with col_left:
             st.download_button(
-                label="Download SpringAI",
-                data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
-                file_name="spring_ai.zip",  # Zip file name
-                mime="application/zip",  # Mime type for zip file
-                disabled=spring_ai_conf == "hybrid",
-            )
-        with col_centre:
-            st.download_button(
                 label="Download LangchainMCP",
                 data=langchain_mcp_zip(settings),  # Generate zip on the fly
                 file_name="langchain_mcp.zip",  # Zip file name
                 mime="application/zip",  # Mime type for zip file
                 disabled=spring_ai_conf == "hybrid",
             )
+        with col_centre:
+            if spring_ai_conf != "hosted_vllm":
+                st.download_button(
+                    label="Download SpringAI",
+                    data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
+                    file_name="spring_ai.zip",  # Zip file name
+                    mime="application/zip",  # Mime type for zip file
+                    disabled=spring_ai_conf == "hybrid",
+                )
 
 
 if __name__ == "__main__":

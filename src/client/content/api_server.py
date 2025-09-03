@@ -14,18 +14,15 @@ import time
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.client as client
-import client.utils.api_call as api_call
-import common.logging_config as logging_config
+from client.utils import client, api_call
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.content.api_server")
 
 try:
     import launch_server
-
-    REMOTE_SERVER = False
 except ImportError:
-    REMOTE_SERVER = True
+    pass
 
 
 #####################################################
@@ -72,16 +69,16 @@ async def main() -> None:
         key="user_server_port",
         min_value=1,
         max_value=65535,
-        disabled=REMOTE_SERVER,
+        disabled=not state.server["control"],
     )
     right.text_input(
         "API Server Key:",
         value=state.server["key"],
         key="user_server_key",
         type="password",
-        disabled=REMOTE_SERVER,
+        disabled=not state.server["control"],
     )
-    if not REMOTE_SERVER:
+    if state.server["control"]:
         st.button("Restart Server", type="primary", on_click=server_restart)
 
     st.header("Server Settings", divider="red")

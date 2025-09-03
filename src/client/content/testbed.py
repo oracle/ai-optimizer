@@ -17,10 +17,9 @@ from streamlit import session_state as state
 
 from client.content.config.tabs.models import get_models
 
-import client.utils.st_common as st_common
-import client.utils.api_call as api_call
+from client.utils import st_common, api_call
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.content.testbed")
 
@@ -195,14 +194,14 @@ def qa_update_gui(qa_testset: list) -> None:
     prev_col.button(
         "← Previous",
         disabled=prev_disabled,
-        use_container_width=True,
+        width="stretch",
         on_click=update_record,
         kwargs={"direction": -1},
     )
     next_col.button(
         "Next →",
         disabled=next_disabled,
-        use_container_width=True,
+        width="stretch",
         on_click=update_record,
         kwargs={"direction": 1},
     )
@@ -210,7 +209,7 @@ def qa_update_gui(qa_testset: list) -> None:
         "⚠ Delete Q&A",
         type="tertiary",
         disabled=delete_disabled,
-        use_container_width=True,
+        width="stretch",
         on_click=delete_record,
     )
     st.text_area(
@@ -248,7 +247,7 @@ def main() -> None:
 
     # If there is no eligible (OpenAI Compat.) LL Models; then disable ALL functionality
     ll_models_enabled = st_common.enabled_models_lookup("ll")
-    available_ll_models = [key for key, value in ll_models_enabled.items() if value.get("openai_compat")]
+    available_ll_models = [key for key, value in ll_models_enabled.items()]
     if not available_ll_models:
         st.error(
             "No OpenAI compatible language models are configured and/or enabled. Disabling Testing Framework.",
@@ -261,7 +260,12 @@ def main() -> None:
     # If there is no eligible (OpenAI Compat.) Embedding Model; disable Generate Test Set
     gen_testset_disabled = False
     embed_models_enabled = st_common.enabled_models_lookup("embed")
-    available_embed_models = [key for key, value in embed_models_enabled.items() if value.get("openai_compat")]
+    # Remove oci/cohere* models as not supported by LiteLLM
+    available_embed_models = [
+        key
+        for key, value in embed_models_enabled.items()
+        if not (value.get("provider") == "oci" and "cohere" in value.get("id", ""))
+    ]
     if not available_embed_models:
         st.warning(
             "No OpenAI compatible embedding models are configured and/or enabled. Disabling Test Set Generation.",
@@ -404,7 +408,7 @@ def main() -> None:
         state.running = True
 
     # Load TestSets (and Evaluations if from DB)
-    if col_left.button(button_text, key="load_tests", use_container_width=True, disabled=state.running):
+    if col_left.button(button_text, key="load_tests", width="stretch", disabled=state.running):
         with st.spinner("Processing Q&A... please be patient.", show_time=True):
             if testset_source != "Database":
                 api_params["name"] = (state.testbed["testset_name"],)
@@ -454,7 +458,7 @@ def main() -> None:
         "Reset",
         key="reset_test_framework",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         on_click=reset_testset,
         kwargs={"cache": True},
     )
@@ -462,7 +466,7 @@ def main() -> None:
         "⚠ Delete Test Set",
         key="delete_test_set",
         type="tertiary",
-        use_container_width=True,
+        width="stretch",
         disabled=not state.testbed["testset_id"],
         on_click=qa_delete,
     )
@@ -515,7 +519,7 @@ def main() -> None:
             view.button(
                 "View",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 on_click=evaluation_report,
                 kwargs={"eid": evaluation_eid},
                 disabled=evaluation_eid is None,
@@ -528,7 +532,7 @@ def main() -> None:
         st_common.selectai_sidebar()
         st_common.vector_search_sidebar()
         st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
-        col_left, col_center, _ = st.columns([3, 3, 4])
+        col_left, col_center, _ = st.columns([4, 3, 3])
         if state.client_settings["testbed"].get("judge_model") is None:
             state.client_settings["testbed"]["judge_model"] = available_ll_models[0]
         selected_judge = state.client_settings["testbed"]["judge_model"]

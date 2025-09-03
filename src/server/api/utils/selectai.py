@@ -7,10 +7,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Union
 import oracledb
 
-import server.api.core.databases as core_databases
+import server.api.utils.databases as utils_databases
 
 from common.schema import SelectAIProfileType, DatabaseSelectAIObjects
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.selectai")
 
@@ -39,7 +39,7 @@ def set_profile(
                 );
             END;
           """
-    _ = core_databases.execute_sql(conn, sql, binds)
+    _ = utils_databases.execute_sql(conn, sql, binds)
 
 
 def get_objects(conn: oracledb.Connection, profile_name: SelectAIProfileType) -> DatabaseSelectAIObjects:
@@ -67,7 +67,7 @@ def get_objects(conn: oracledb.Connection, profile_name: SelectAIProfileType) ->
                 'RMAN$CATALOG','ADMIN','ODI_REPO_USER','C##CLOUD$SERVICE')
             ORDER BY owner, table_name
           """
-    results = core_databases.execute_sql(conn, sql, binds)
+    results = utils_databases.execute_sql(conn, sql, binds)
     for owner, table_name, object_enabled in results:
         selectai_objects.append(DatabaseSelectAIObjects(owner=owner, name=table_name, enabled=object_enabled))
     logger.debug("Found SelectAI Objects: %s", selectai_objects)

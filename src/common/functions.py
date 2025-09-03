@@ -10,7 +10,7 @@ import re
 
 import requests
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("common.functions")
 

@@ -2,16 +2,15 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama hnsw mult ocid testset selectai explainsql showsql vector_search aioptimizer genai
-# spell-checker:ignore deepseek groq huggingface mistralai ocigenai vertexai
+# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql
 
 import time
-from typing import Optional, Literal, Union, get_args, Any
+from typing import Optional, Literal, get_args, Any
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from langchain_core.messages import ChatMessage
 import oracledb
-import common.help_text as help_text
+from common import help_text
 
 #####################################################
 # Literals
@@ -20,27 +19,86 @@ DistanceMetrics = Literal["COSINE", "EUCLIDEAN_DISTANCE", "DOT_PRODUCT"]
 IndexTypes = Literal["HNSW", "IVF"]
 
 # Model Providers
+# spell-checker:disable
 ModelProviders = Literal[
-    "oci",
+    "ai21",
+    "aiml",
+    "aiohttp_openai",
     "anthropic",
+    "azure",
     "azure_ai",
-    "azure_openai",
+    "base_llm",
+    "base.py",
+    "baseten",
     "bedrock",
-    "bedrock_converse",
+    "bytez",
+    "cerebras",
+    "clarifai",
+    "cloudflare",
+    "codestral",
     "cohere",
+    "cometapi",
+    "dashscope",
+    "databricks",
+    "datarobot",
+    "deepgram",
+    "deepinfra",
     "deepseek",
-    "google_anthropic_vertex",
-    "google_genai",
-    "google_vertexai",
+    "elevenlabs",
+    "empower",
+    "featherless_ai",
+    "fireworks_ai",
+    "friendliai",
+    "galadriel",
+    "gemini",
+    "github",
+    "github_copilot",
+    "gradient_ai",
     "groq",
+    "hosted_vllm",
     "huggingface",
-    "mistralai",
+    "hyperbolic",
+    "infinity",
+    "jina_ai",
+    "lambda_ai",
+    "litellm_proxy",
+    "llamafile",
+    "lm_studio",
+    "meta_llama",
+    "mistral",
+    "moonshot",
+    "morph",
+    "nebius",
+    "nlp_cloud",
+    "novita",
+    "nscale",
+    "nvidia_nim",
+    "oci",
     "ollama",
+    "oobabooga",
     "openai",
-    "openai_compatible",
+    "openrouter",
     "perplexity",
+    "petals",
+    "pg_vector",
+    "predibase",
+    "recraft",
+    "replicate",
+    "sagemaker",
+    "sambanova",
+    "snowflake",
+    "together_ai",
+    "topaz",
+    "triton",
+    "v0",
+    "vercel_ai_gateway,vertex_ai",
+    "vllm",
+    "voyage",
+    "watsonx",
     "xai",
+    "xinference",
 ]
+# spell-checker:enable
 
 
 #####################################################
@@ -151,7 +209,9 @@ class LanguageModelParameters(BaseModel):
 
     context_length: Optional[int] = Field(default=None, description="The context window for Language Model.")
     frequency_penalty: Optional[float] = Field(description=help_text.help_dict["frequency_penalty"], default=0.00)
-    max_completion_tokens: Optional[int] = Field(description=help_text.help_dict["max_completion_tokens"], default=256)
+    max_completion_tokens: Optional[int] = Field(
+        description=help_text.help_dict["max_completion_tokens"], default=4096
+    )
     presence_penalty: Optional[float] = Field(description=help_text.help_dict["presence_penalty"], default=0.00)
     temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=1.00)
     top_p: Optional[float] = Field(description=help_text.help_dict["top_p"], default=1.00)
@@ -168,7 +228,7 @@ class ModelAccess(BaseModel):
     """Patch'able Model Parameters"""
 
     enabled: Optional[bool] = Field(default=False, description="Model is available for use.")
-    url: Optional[str] = Field(default=None, description="URL to Model API.")
+    api_base: Optional[str] = Field(default=None, description="Model API Base URL.")
     api_key: Optional[str] = Field(default=None, description="Model API Key.", json_schema_extra={"sensitive": True})
 
 
@@ -190,7 +250,6 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
     )
     type: Literal["ll", "embed", "re-rank"] = Field(..., description="Type of Model.")
     provider: str = Field(..., min_length=1, description="Model Provider.", examples=["openai", "anthropic", "ollama"])
-    openai_compat: bool = Field(default=True, description="Is the API OpenAI compatible?")
 
     @model_validator(mode="after")
     def check_provider(self):
@@ -400,66 +459,18 @@ class Configuration(BaseModel):
 
             return output
 
-        elif isinstance(obj, list):
+        if isinstance(obj, list):
             return [cls.recursive_dump_excluding_marked(item, incl_sensitive, incl_readonly) for item in obj]
 
-        elif isinstance(obj, dict):
+        if isinstance(obj, dict):
             return {k: cls.recursive_dump_excluding_marked(v, incl_sensitive, incl_readonly) for k, v in obj.items()}
 
-        else:
-            return obj
+        return obj
 
 
 #####################################################
 # Completions
 #####################################################
-class ChatLogprobs(BaseModel):
-    """Log probability information for the choice."""
-
-    content: Optional[dict[str, Union[str, int, dict]]] = Field(
-        default=None, description="A list of message content tokens with log probability information."
-    )
-    refusal: Optional[dict[str, Union[str, int, dict]]] = Field(
-        default=None, description="A list of message refusal tokens with log probability information."
-    )
-
-
-class ChatChoices(BaseModel):
-    """A list of chat completion choices."""
-
-    index: int = Field(description="The index of the choice in the list of choices.")
-    message: ChatMessage = Field(description="A chat completion message generated by the model.")
-    finish_reason: Literal["stop", "length", "content_filter", "tool_calls"] = Field(
-        description=(
-            "The reason the model stopped generating tokens. "
-            "This will be stop if the model hit a natural stop point or a provided stop sequence, "
-            "length if the maximum number of tokens specified in the request was reached, "
-            "content_filter if content was omitted due to a flag from our content filters, "
-            "tool_calls if the model called a tool."
-        )
-    )
-    logprobs: Optional[ChatLogprobs] = Field(default=None, description="Log probability information for the choice.")
-
-
-class ChatUsage(BaseModel):
-    """Usage statistics for the completion request."""
-
-    prompt_tokens: int = Field(description="Number of tokens in the prompt.")
-    completion_tokens: int = Field(description="Number of tokens in the generated completion.")
-    total_tokens: int = Field(description="Total number of tokens used in the request (prompt + completion).")
-
-
-class ChatResponse(BaseModel):
-    """Represents a chat completion response returned by model, based on the provided input."""
-
-    id: str = Field(description="A unique identifier for the chat completion.")
-    choices: list[ChatChoices] = Field(description="A list of chat completion choices.")
-    created: int = Field(description="The Unix timestamp (in seconds) of when the chat completion was created.")
-    model: str = Field(description="The model used for the chat completion.")
-    object: str = Field(default="chat.completion", description="The model used for the chat completion.")
-    usage: Optional[ChatUsage] = Field(default=None, description="Usage statistics for the completion request.")
-
-
 class ChatRequest(LanguageModelParameters):
     """
     Request Body (inherits LanguageModelParameters)
@@ -474,7 +485,7 @@ class ChatRequest(LanguageModelParameters):
         "json_schema_extra": {
             "examples": [
                 {
-                    "model": "gpt-4o-mini",
+                    "model": "openai/gpt-4o-mini",
                     "messages": [{"role": "user", "content": "Hello, how are you?"}],
                     "response_format": {"type": "text"},
                     "temperature": 1,
@@ -530,6 +541,7 @@ ClientIdType = Settings.__annotations__["client"]
 DatabaseNameType = Database.__annotations__["name"]
 VectorStoreTableType = DatabaseVectorStorage.__annotations__["vector_store"]
 ModelIdType = Model.__annotations__["id"]
+ModelProviderType = Model.__annotations__["provider"]
 ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]

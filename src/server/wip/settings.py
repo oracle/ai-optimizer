@@ -9,7 +9,7 @@ import json
 from oracledb import Connection
 import server.api.utils.databases as databases
 from common.schema import ClientIdType
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("server.api.utils.settings")
 

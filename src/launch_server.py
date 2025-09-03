@@ -14,10 +14,6 @@ import server.patches.litellm_patch  # pylint: disable=unused-import, wrong-impo
 import os
 
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
-os.environ["LITELLM_DISABLE_SPEND_LOGS"] = "True"
-os.environ["LITELLM_DISABLE_SPEND_UPDATES"] = "True"
-os.environ["LITELLM_DISABLE_END_USER_COST_TRACKING"] = "True"
-os.environ["LITELLM_DROP_PARAMS"] = "True"
 os.environ["GSK_DISABLE_SENTRY"] = "true"
 os.environ["GSK_DISABLE_ANALYTICS"] = "true"
 os.environ["USER_AGENT"] = "ai-optimizer"
@@ -45,10 +41,10 @@ from fastmcp import FastMCP, settings
 from fastmcp.server.auth import StaticTokenVerifier
 
 # Configuration
-import server.bootstrap.configfile as configfile  # pylint: disable=ungrouped-imports
+from server.bootstrap import configfile  # pylint: disable=ungrouped-imports
 
 # Logging
-import common.logging_config as logging_config
+from common import logging_config
 from common._version import __version__
 
 logger = logging_config.logging.getLogger("launch_server")

@@ -11,11 +11,9 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.api_call as api_call
-
-import common.help_text as help_text
-import common.logging_config as logging_config
-from common.schema import PromptPromptType, PromptNameType, SelectAISettings, ClientIdType
+from client.utils import api_call
+from common import logging_config, help_text
+from common.schema import PromptPromptType, PromptNameType, SelectAISettings
 
 # Import the MCP initialization function
 try:
@@ -50,7 +48,7 @@ def enabled_models_lookup(model_type: str) -> dict[str, dict[str, Any]]:
     """Create a lookup of enabled `type` models"""
     all_models = state_configs_lookup("model_configs", "id")
     enabled_models = {
-        id: config
+        f"{config.get('provider')}/{id}": config
         for id, config in all_models.items()
         if config.get("type") == model_type and config.get("enabled") is True
     }
@@ -84,7 +82,7 @@ def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
 def switch_prompt(prompt_type: PromptPromptType, prompt_name: PromptNameType) -> None:
     """Auto Switch Prompts when not set to Custom"""
     current_prompt = state.client_settings["prompts"][prompt_type]
-    if current_prompt != "Custom" and current_prompt != prompt_name:
+    if current_prompt not in ("Custom", prompt_name):
         state.client_settings["prompts"][prompt_type] = prompt_name
         st.info(f"Prompt Engineering - {prompt_name} Prompt has been set.", icon="ℹ️")
 
@@ -144,7 +142,7 @@ def history_sidebar() -> None:
         key="selected_ll_model_chat_history",
         on_change=update_client_settings("ll_model"),
     )
-    if button_col.button("Clear", disabled=not chat_history_enable, use_container_width=True):
+    if button_col.button("Clear", disabled=not chat_history_enable, width="stretch"):
         # Clean out history
         try:
             api_call.patch(endpoint="v1/chat/history")
@@ -191,9 +189,11 @@ def ll_sidebar() -> None:
                 # Instead of creating a new event loop, we'll set a flag to indicate
                 # that the MCP engine needs to be reinitialized
                 state.mcp_needs_reinit = selected_model
-                logger.info(f"MCP engine marked for reinitialization with model: {selected_model}")
-            except Exception as e:
-                logger.error(f"Failed to mark MCP engine for reinitialization with model {selected_model}: {e}")
+                logger.info("MCP engine marked for reinitialization with model: %s", selected_model)
+            except Exception as ex:
+                logger.error(
+                    "Failed to mark MCP engine for reinitialization with model %s: %s", selected_model, str(ex)
+                )
 
     # Temperature
     temperature = ll_models_enabled[selected_model]["temperature"]
@@ -229,8 +229,8 @@ def ll_sidebar() -> None:
         on_change=update_client_settings("ll_model"),
     )
 
-    # Top P
     if not state.client_settings["selectai"]["enabled"]:
+        # Top P
         st.sidebar.slider(
             "Top P (Default: 1.0):",
             help=help_text.help_dict["top_p"],
@@ -242,28 +242,29 @@ def ll_sidebar() -> None:
         )
 
         # Frequency Penalty
-        frequency_penalty = ll_models_enabled[selected_model]["frequency_penalty"]
-        user_frequency_penalty = state.client_settings["ll_model"]["frequency_penalty"]
-        st.sidebar.slider(
-            f"Frequency penalty (Default: {frequency_penalty}):",
-            help=help_text.help_dict["frequency_penalty"],
-            value=user_frequency_penalty if user_frequency_penalty is not None else frequency_penalty,
-            min_value=-2.0,
-            max_value=2.0,
-            key="selected_ll_model_frequency_penalty",
-            on_change=update_client_settings("ll_model"),
-        )
+        if "xai" not in state.client_settings["ll_model"]["model"]:
+            frequency_penalty = ll_models_enabled[selected_model]["frequency_penalty"]
+            user_frequency_penalty = state.client_settings["ll_model"]["frequency_penalty"]
+            st.sidebar.slider(
+                f"Frequency penalty (Default: {frequency_penalty}):",
+                help=help_text.help_dict["frequency_penalty"],
+                value=user_frequency_penalty if user_frequency_penalty is not None else frequency_penalty,
+                min_value=-2.0,
+                max_value=2.0,
+                key="selected_ll_model_frequency_penalty",
+                on_change=update_client_settings("ll_model"),
+            )
 
-        # Presence Penalty
-        st.sidebar.slider(
-            "Presence penalty (Default: 0.0):",
-            help=help_text.help_dict["presence_penalty"],
-            value=state.client_settings["ll_model"]["presence_penalty"],
-            min_value=-2.0,
-            max_value=2.0,
-            key="selected_ll_model_presence_penalty",
-            on_change=update_client_settings("ll_model"),
-        )
+            # Presence Penalty
+            st.sidebar.slider(
+                "Presence penalty (Default: 0.0):",
+                help=help_text.help_dict["presence_penalty"],
+                value=state.client_settings["ll_model"]["presence_penalty"],
+                min_value=-2.0,
+                max_value=2.0,
+                key="selected_ll_model_presence_penalty",
+                on_change=update_client_settings("ll_model"),
+            )
 
 
 #####################################################

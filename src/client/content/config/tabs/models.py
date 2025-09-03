@@ -16,11 +16,8 @@ import urllib.parse
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.api_call as api_call
-import client.utils.st_common as st_common
-
-import common.help_text as help_text
-import common.logging_config as logging_config
+from client.utils import api_call, st_common
+from common import logging_config, help_text
 
 logger = logging_config.logging.getLogger("client.content.config.tabs.models")
 
@@ -28,7 +25,7 @@ logger = logging_config.logging.getLogger("client.content.config.tabs.models")
 ###################################
 # Functions
 ###################################
-def clear_client_models(model_id: str) -> None:
+def clear_client_models(model_provider: str, model_id: str) -> None:
     """Clear selected models from client settings if modified"""
     model_keys = [
         ("ll_model", "model"),
@@ -37,7 +34,7 @@ def clear_client_models(model_id: str) -> None:
         ("testbed", "qa_embed_model"),
     ]
     for section, key in model_keys:
-        if state.client_settings[section][key] == model_id:
+        if state.client_settings[section][key] == f"{model_provider}/{model_id}":
             state.client_settings[section][key] = None
 
 
@@ -61,35 +58,37 @@ def get_model_providers() -> list:
 
 def create_model(model: dict) -> None:
     """Add either Language Model or Embed Model"""
-    _ = api_call.post(endpoint="v1/models", params={"id": model["id"]}, payload={"json": model})
-    st.success(f"Model created: {model['id']}")
+    _ = api_call.post(endpoint="v1/models", payload={"json": model})
+    st.success(f"Model created: {model['provider']}/{model['id']}")
 
 
 def patch_model(model: dict) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
-    _ = api_call.patch(endpoint=f"v1/models/{model['id']}", payload={"json": model})
+    _ = api_call.patch(endpoint=f"v1/models/{model['provider']}/{model['id']}", payload={"json": model})
     st.success(f"Model updated: {model['id']}")
     # If updated model is the set model and not enabled: unset the user settings
     if not model["enabled"]:
-        clear_client_models(model["id"])
+        clear_client_models(model["provider"], model["id"])
 
 
-def delete_model(model_id: str) -> None:
+def delete_model(model_provider: str, model_id: str) -> None:
     """Update Model Configuration for either Language Models or Embed Models"""
-    api_call.delete(endpoint=f"v1/models/{model_id}")
-    st.success(f"Model deleted: {model_id}")
+    api_call.delete(endpoint=f"v1/models/{model_provider}/{model_id}")
+    st.success(f"Model deleted: {model_provider}/{model_id}")
     sleep(1)
     # If deleted model is the set model; unset the user settings
-    clear_client_models(model_id)
+    clear_client_models(model_provider, model_id)
 
 
 @st.dialog("Model Configuration", width="large")
-def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = None) -> None:
+def edit_model(
+    model_type: str, action: Literal["add", "edit"], model_id: str = None, model_provider: str = None
+) -> None:
     """Model Edit Dialog Box"""
     # Initialize our model request
     if action == "edit":
         model_id = urllib.parse.quote(model_id, safe="")
-        model = api_call.get(endpoint=f"v1/models/{model_id}")
+        model = api_call.get(endpoint=f"v1/models/{model_provider}/{model_id}")
     else:
         model = {"id": "unset", "type": model_type, "provider": "unset", "status": "CUSTOM"}
     with st.form("edit_model"):
@@ -116,11 +115,11 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             key="add_model_provider",
             disabled=action == "edit",
         )
-        model["url"] = st.text_input(
+        model["api_base"] = st.text_input(
             "Provider URL:",
             help=help_text.help_dict["model_url"],
             key="add_model_url",
-            value=model.get("url", ""),
+            value=model.get("api_base", ""),
             disabled=disable_for_oci,
         )
         model["api_key"] = st.text_input(
@@ -174,20 +173,14 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
         button_col_format = st.columns([1.2, 1.4, 6, 1.4])
         action_button, delete_button, _, cancel_button = button_col_format
         try:
-            if action == "add" and action_button.form_submit_button(
-                label="Add", type="primary", use_container_width=True
-            ):
+            if action == "add" and action_button.form_submit_button(label="Add", type="primary", width="stretch"):
                 create_model(model=model)
                 submit = True
-            if action == "edit" and action_button.form_submit_button(
-                label="Save", type="primary", use_container_width=True
-            ):
+            if action == "edit" and action_button.form_submit_button(label="Save", type="primary", width="stretch"):
                 patch_model(model=model)
                 submit = True
-            if action != "add" and delete_button.form_submit_button(
-                label="Delete", type="secondary", use_container_width=True
-            ):
-                delete_model(model_id=model["id"])
+            if action != "add" and delete_button.form_submit_button(label="Delete", type="secondary", width="stretch"):
+                delete_model(model_provider=model["provider"], model_id=model["id"])
                 submit = True
             if submit:
                 sleep(1)
@@ -202,48 +195,47 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
 
 def render_model_rows(model_type: str) -> None:
     """Render rows of the models"""
-    data_col_widths = [0.07, 0.23, 0.2, 0.28, 0.12]
+    data_col_widths = [0.08, 0.42, 0.28, 0.12]
     table_col_format = st.columns(data_col_widths, vertical_alignment="center")
-    col1, col2, col3, col4, col5 = table_col_format
+    col1, col2, col3, col4 = table_col_format
     col1.markdown("&#x200B;", help="Active", unsafe_allow_html=True)
-    col2.markdown("**<u>Model ID</u>**", unsafe_allow_html=True)
-    col3.markdown("**<u>Provider</u>**", unsafe_allow_html=True)
-    col4.markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
-    col5.markdown("&#x200B;")
+    col2.markdown("**<u>Model</u>**", unsafe_allow_html=True)
+    col3.markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
+    col4.markdown("&#x200B;")
     for model in [m for m in state.model_configs if m.get("type") == model_type]:
         model_id = model["id"]
+        model_provider = model["provider"]
         col1.text_input(
             "Enabled",
             value=st_common.bool_to_emoji(model["enabled"]),
-            key=f"{model_type}_{model_id}_enabled",
+            key=f"{model_type}_{model_provider}_{model_id}_enabled",
             label_visibility="collapsed",
             disabled=True,
         )
         col2.text_input(
             "Model",
-            value=model_id,
+            value=f"{model_provider}/{model_id}",
+            key=f"{model_type}_{model_provider}_{model_id}",
             label_visibility="collapsed",
             disabled=True,
         )
         col3.text_input(
-            "Provider",
-            value=model["provider"],
-            key=f"{model_type}_{model_id}_provider",
-            label_visibility="collapsed",
-            disabled=True,
-        )
-        col4.text_input(
             "Server",
-            value=model["url"],
-            key=f"{model_type}_{model_id}_server",
+            value=model["api_base"],
+            key=f"{model_type}_{model_provider}_{model_id}_api_base",
             label_visibility="collapsed",
             disabled=True,
         )
-        col5.button(
+        col4.button(
             "Edit",
             on_click=edit_model,
-            key=f"{model_type}_{model_id}_edit",
-            kwargs=dict(model_type=model_type, action="edit", model_id=model_id),
+            key=f"{model_type}_{model_provider}_{model_id}_edit",
+            kwargs={
+                "model_type": model_type,
+                "action": "edit",
+                "model_id": model_id,
+                "model_provider": model_provider,
+            },
         )
 
     if st.button(label="Add", type="primary", key=f"add_{model_type}_model"):
@@ -255,7 +247,7 @@ def render_model_rows(model_type: str) -> None:
 #############################################################################
 def display_models() -> None:
     """Streamlit GUI"""
-    st.header("Models", divider="red")
+    st.title("Models")
     st.write("Update, Add, or Delete model configuration parameters.")
     try:
         get_models()
@@ -263,11 +255,11 @@ def display_models() -> None:
         st.stop()
 
     st.divider()
-    st.subheader("Language Models")
+    st.header("Language Models")
     render_model_rows("ll")
 
     st.divider()
-    st.subheader("Embedding Models")
+    st.header("Embedding Models")
     render_model_rows("embed")
 
 

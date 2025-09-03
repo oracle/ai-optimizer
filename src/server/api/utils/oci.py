@@ -10,25 +10,40 @@ import urllib3.exceptions
 
 import oci
 
-from server.api.core.oci import OciException
-
 from common.schema import OracleCloudSettings
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.oci")
 
 
+#####################################################
+# Exceptions
+#####################################################
+class OciException(Exception):
+    """Custom OCI Exceptions to be passed to HTTPException"""
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
+
+#####################################################
+# Functions
+#####################################################
 def init_client(
     client_type: Union[
         oci.object_storage.ObjectStorageClient,
         oci.identity.IdentityClient,
         oci.generative_ai_inference.GenerativeAiInferenceClient,
+        oci.generative_ai.GenerativeAiClient,
     ],
     config: OracleCloudSettings = None,
 ) -> Union[
     oci.object_storage.ObjectStorageClient,
     oci.identity.IdentityClient,
     oci.generative_ai_inference.GenerativeAiInferenceClient,
+    oci.generative_ai.GenerativeAiClient,
 ]:
     """Initialize OCI Client with either user or Token"""
     # connection timeout to 1 seconds and the read timeout to 60 seconds
@@ -38,7 +53,7 @@ def init_client(
         "timeout": (1, 180),
     }
 
-    # OCI GenAI
+    # OCI GenAI (for model calling)
     if (
         client_type == oci.generative_ai_inference.GenerativeAiInferenceClient
         and config.genai_compartment_id
@@ -66,8 +81,8 @@ def init_client(
             with open(config_json["security_token_file"], "r", encoding="utf-8") as f:
                 token = f.read()
             private_key = oci.signer.load_private_key_from_file(config_json["key_file"])
-            signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
-            client = client_type(config={"region": config_json["region"]}, signer=signer, **client_kwargs)
+            sec_token_signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
+            client = client_type(config={"region": config_json["region"]}, signer=sec_token_signer, **client_kwargs)
         else:
             logger.info("OCI Authentication as Standard")
             client = client_type(config_json, **client_kwargs)
@@ -78,21 +93,21 @@ def init_client(
 
 
 def init_genai_client(config: OracleCloudSettings) -> oci.generative_ai_inference.GenerativeAiInferenceClient:
-    """Initialise OCI GenAI Client"""
+    """Initialise OCI GenAI Client; used by models"""
     client_type = oci.generative_ai_inference.GenerativeAiInferenceClient
     return init_client(client_type, config)
 
 
-def get_namespace(config: OracleCloudSettings = None) -> str:
+def get_namespace(config: OracleCloudSettings) -> str:
     """Get the Object Storage Namespace.  Also used for testing AuthN"""
     logger.info("Getting Object Storage Namespace")
     client_type = oci.object_storage.ObjectStorageClient
     try:
         client = init_client(client_type, config)
-        namespace = client.get_namespace().data
-        logger.info("OCI: Namespace = %s", namespace)
+        config.namespace = client.get_namespace().data
+        logger.info("OCI: Namespace = %s", config.namespace)
     except oci.exceptions.InvalidConfig as ex:
-        raise OciException(status_code=400, detail=f"Invalid Config") from ex
+        raise OciException(status_code=400, detail="Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:
         raise OciException(status_code=401, detail="AuthN Error") from ex
     except FileNotFoundError as ex:
@@ -104,7 +119,7 @@ def get_namespace(config: OracleCloudSettings = None) -> str:
     except Exception as ex:
         raise OciException(status_code=500, detail=str(ex)) from ex
 
-    return namespace
+    return config.namespace
 
 
 def get_regions(config: OracleCloudSettings = None) -> list[dict]:
@@ -141,9 +156,10 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
         regions = get_regions(config)
 
     for region in regions:
-        region_config = dict(config)
-        region_config["region"] = region["region_name"]
-        client = oci.generative_ai.GenerativeAiClient(region_config)
+        region_config = config
+        region_config.region = region["region_name"]
+        client_type = oci.generative_ai.GenerativeAiClient
+        client = init_client(client_type, region_config)
         logger.info(
             "Checking Region: %s; Compartment: %s for GenAI services",
             region["region_name"],
@@ -166,20 +182,20 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
 
             # Build our list of models
             for model in response.data.items:
-                # note that langchain_community.llms.oci_generative_ai only supports meta/cohere models
-                if model.display_name not in excluded_display_names and model.vendor in ["meta", "cohere"]:
-                    genai_models.append(
-                        {
-                            "region": region["region_name"],
-                            "compartment_id": config.genai_compartment_id,
-                            "model_name": model.display_name,
-                            "capabilities": model.capabilities,
-                            "vendor": model.vendor,
-                            "id": model.id,
-                        }
-                    )
-        except oci.exceptions.ServiceError:
-            logger.info("Region: %s has no GenAI services", region["region_name"])
+                if model.vendor == "cohere" and "TEXT_EMBEDDINGS" not in model.capabilities:
+                    continue
+                genai_models.append(
+                    {
+                        "region": region["region_name"],
+                        "compartment_id": config.genai_compartment_id,
+                        "model_name": model.display_name,
+                        "capabilities": model.capabilities,
+                        "vendor": model.vendor,
+                        "id": model.id,
+                    }
+                )
+        except oci.exceptions.ServiceError as ex:
+            logger.info("Unable to get GenAI Models in Region: %s (%s)", region["region_name"], ex.message)
         except (oci.exceptions.RequestException, urllib3.exceptions.MaxRetryError):
             logger.error("Timeout: Error querying GenAI services in %s", region["region_name"])
 

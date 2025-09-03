@@ -16,7 +16,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langgraph.prebuilt import InjectedState
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("server.tools.oraclevs_retriever")
 

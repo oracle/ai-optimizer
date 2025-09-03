@@ -17,12 +17,12 @@ from client.utils import api_call
 from common.schema import ClientIdType
 from common._version import __version__
 
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("launch_client")
 
 # Import launch_server if it exists
-REMOTE_SERVER = False
+LAUNCH_SERVER_EXISTS = True
 try:
     from launch_server import start_server, get_api_key
 
@@ -30,7 +30,8 @@ try:
     logger.debug("Imported API Server.")
 except ImportError as ex:
     logger.debug("API Server not present: %s", ex)
-    REMOTE_SERVER = True
+    os.environ.pop("API_SERVER_CONTROL", None)
+    LAUNCH_SERVER_EXISTS = False
 
 
 #############################################################################
@@ -40,9 +41,11 @@ def init_server_state() -> None:
     """initialize Streamlit State server"""
     if "server" not in state:
         logger.info("Initializing state.server")
+        api_server_control: bool = os.getenv("API_SERVER_CONTROL") is not None
         state.server = {"url": os.getenv("API_SERVER_URL", "http://localhost")}
         state.server["port"] = int(os.getenv("API_SERVER_PORT", "8000"))
         state.server["key"] = os.getenv("API_SERVER_KEY")
+        state.server["control"] = api_server_control
         logger.debug("Server State: %s", state.server)
 
 
@@ -70,8 +73,8 @@ def main() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
         menu_items={
-            "Get Help": "https://oracle-samples.github.io/ai-optimizer/",
-            "Report a bug": "https://github.com/oracle-samples/ai-optimizer/issues/new",
+            "Get Help": "https://oracle.github.io/ai-optimizer/",
+            "Report a bug": "https://github.com/oracle/ai-optimizer/issues/new",
             "About": f"v{__version__}",
         },
     )
@@ -154,7 +157,7 @@ def main() -> None:
 if __name__ == "__main__":
     # Start Server if not running
     init_server_state()
-    if not REMOTE_SERVER:
+    if LAUNCH_SERVER_EXISTS:
         try:
             logger.debug("Server PID: %i", state.server["pid"])
         except KeyError:

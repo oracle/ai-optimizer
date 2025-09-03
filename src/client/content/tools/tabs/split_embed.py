@@ -14,17 +14,14 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.api_call as api_call
-import client.utils.st_common as st_common
+from client.utils import api_call, st_common
 
 from client.content.config.tabs.databases import get_databases
 from client.content.config.tabs.models import get_models
 from client.content.config.tabs.oci import get_oci
 
 from common.schema import DistanceMetrics, IndexTypes, DatabaseVectorStorage
-import common.functions as functions
-import common.help_text as help_text
-import common.logging_config as logging_config
+from common import logging_config, help_text, functions
 
 logger = logging_config.logging.getLogger("client.tools.tabs.split_embed")
 
@@ -75,7 +72,7 @@ def files_data_editor(files, key):
     return st.data_editor(
         files,
         key=key,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "to process": st.column_config.CheckboxColumn(
                 "in",
@@ -154,7 +151,7 @@ def display_split_embed() -> None:
         index=0,
         key="selected_embed_model",
     )
-    embed_url = embed_models_enabled[embed_request.model]["url"]
+    embed_url = embed_models_enabled[embed_request.model]["api_base"]
     st.write(f"Embedding Server: {embed_url}")
     is_embed_accessible, embed_err_msg = functions.is_url_accessible(embed_url)
     if not is_embed_accessible:
@@ -394,7 +391,7 @@ def display_split_embed() -> None:
                 )
             st.success(f"Vector Store Populated: {response['message']}", icon="✅")
             # Refresh database_configs state to reflect new vector stores
-            get_databases(force="True")
+            get_databases(validate=True, force=True)
         except api_call.ApiError as ex:
             st.error(ex, icon="🚨")
 

@@ -12,10 +12,8 @@ Session States Set:
 import streamlit as st
 from streamlit import session_state as state
 
-import client.utils.st_common as st_common
-import client.utils.api_call as api_call
-
-import common.logging_config as logging_config
+from client.utils import st_common, api_call
+from common import logging_config
 
 logger = logging_config.logging.getLogger("client.tools.tabs.prompt_eng")
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Lock
 
 from common.schema import Configuration
-import common.logging_config as logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("bootstrap.configfile")
 

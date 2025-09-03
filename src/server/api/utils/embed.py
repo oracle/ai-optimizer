@@ -15,7 +15,7 @@ from typing import Union
 import bs4
 
 # Langchain
-import langchain_community.document_loaders as document_loaders
+from langchain_community import document_loaders
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.document_loaders.image import UnstructuredImageLoader
 from langchain_community.vectorstores import oraclevs as LangchainVS
@@ -25,13 +25,9 @@ from langchain.docstore.document import Document as LangchainDocument
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
 
-import server.api.utils.databases as util_databases
-import server.api.core.databases as core_databases
+import server.api.utils.databases as utils_databases
 
-import common.functions
-import common.schema as schema
-
-import common.logging_config as logging_config
+from common import schema, functions, logging_config
 
 logger = logging_config.logging.getLogger("api.utils.embed")
 
@@ -224,7 +220,7 @@ def load_and_split_url(
     logger.info("Loading %s", url)
     loader = WebBaseLoader(
         web_paths=(f"{url}",),
-        bs_kwargs=dict(parse_only=bs4.SoupStrainer()),
+        bs_kwargs={"parse_only": bs4.SoupStrainer()},
     )
 
     loaded_doc = loader.load()
@@ -301,9 +297,9 @@ def populate_vs(
 
     # Creates a TEMP Vector Store Table; which may already exist
     # Establish a dedicated connection to the database
-    db_conn = core_databases.connect(db_details)
+    db_conn = utils_databases.connect(db_details)
     # This is to allow re-using an existing VS; will merge this over later
-    util_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
+    utils_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
     logger.info("Establishing initial vector store")
     logger.debug("Embed Client: %s", embed_client)
     vs_tmp = OracleVS(
@@ -352,8 +348,8 @@ def populate_vs(
          WHERE NOT EXISTS (SELECT 1 FROM {vector_store.vector_store} tgt WHERE tgt.ID = src.ID)
     """
     logger.info("Merging %s into %s", vector_store_tmp.vector_store, vector_store.vector_store)
-    core_databases.execute_sql(db_conn, merge_sql)
-    util_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
+    utils_databases.execute_sql(db_conn, merge_sql)
+    utils_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
 
     # Build the Index
     logger.info("Creating index on: %s", vector_store.vector_store)
@@ -365,7 +361,7 @@ def populate_vs(
         logger.error("Unable to create vector index: %s", ex)
 
     # Comment the VS table
-    _, store_comment = common.functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
+    _, store_comment = functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
     comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
-    core_databases.execute_sql(db_conn, comment)
-    core_databases.disconnect(db_conn)
+    utils_databases.execute_sql(db_conn, comment)
+    utils_databases.disconnect(db_conn)
