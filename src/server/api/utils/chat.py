@@ -17,7 +17,7 @@ import server.api.utils.models as utils_models
 import server.api.utils.databases as utils_databases
 import server.api.utils.selectai as utils_selectai
 
-from server.agents.chatbot import chatbot_graph
+from server.mcp import graph
 
 from server.api.core.models import UnknownModelError
 
@@ -97,7 +97,7 @@ async def completion_generator(
 
     logger.debug("Completion Kwargs: %s", kwargs)
     final_response = None
-    async for output in chatbot_graph.astream(**kwargs):
+    async for output in graph.astream(**kwargs):
         if "stream" in output:
             yield output["stream"].encode("utf-8")
         if "completion" in output:
