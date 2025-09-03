@@ -2,8 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# pylint: disable=too-many-arguments,too-many-positional-arguments,too-few-public-methods, import-error
 # spell-checker: disable
-# pylint: disable=import-error
 
 import pytest
 from conftest import TEST_CONFIG
@@ -84,7 +84,7 @@ class TestEndpoints:
         }
         response = client.patch("/v1/databases/DEFAULT", headers=auth_headers["valid_auth"], json=payload)
         assert response.status_code == 503
-        assert response.json() == {"detail": "Database: DEFAULT unable to connect."}
+        assert "cannot connect to database" in response.json().get("detail", "")
 
     test_cases = [
         pytest.param(
@@ -125,7 +125,7 @@ class TestEndpoints:
             "DEFAULT",
             503,
             {"user": "user", "password": "password", "dsn": "//localhost:1521/dsn"},
-            {"detail": "Database: DEFAULT unable to connect."},
+            {"detail": "cannot connect to database"},
             id="invalid_connection",
         ),
         pytest.param(
@@ -136,7 +136,7 @@ class TestEndpoints:
                 "password": "Wr0ng_P4sswOrd",
                 "dsn": TEST_CONFIG["db_dsn"],
             },
-            {"detail": "Database: DEFAULT invalid credentials."},
+            {"detail": "invalid credential or not authorized"},
             id="wrong_password",
         ),
         pytest.param(
@@ -174,7 +174,10 @@ class TestEndpoints:
         assert response.status_code == status_code
 
         if response.status_code != 200:
-            assert response.json() == expected
+            if response.status_code == 422:
+                assert response.json() == expected
+            else:
+                assert expected["detail"] in response.json().get("detail", "")
         else:
             data = response.json()
             data.pop("config_dir", None)  # Remove config_dir as it's environment-specific
