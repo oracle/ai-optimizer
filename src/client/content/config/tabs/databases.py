@@ -29,10 +29,9 @@ def get_databases(force: bool = False) -> None:
             # Validation will be done on currently configured client database
             # validation includes new vector_stores, etc.
             client_database = state.client_settings.get("database", {}).get("alias", {})
-            logger.info("Validating Database: %s", client_database)
             _ = api_call.get(endpoint=f"v1/databases/{client_database}")
-            # Update the state
-            logger.info("Refreshing state.database_configs")
+
+            # Update state
             state.database_configs = api_call.get(endpoint="v1/databases")
         except api_call.ApiError as ex:
             logger.error("Unable to populate state.database_configs: %s", ex)
@@ -54,10 +53,11 @@ def patch_database(name: str, supplied: dict, connected: bool) -> bool:
                     payload={"json": supplied},
                 )
             logger.info("Database updated: %s", name)
+            st_common.clear_state_key("database_configs")
         except api_call.ApiError as ex:
             logger.error("Database not updated: %s (%s)", name, ex)
+            _ = [d.update(connected=False) for d in state.database_configs if d.get("name") == name]
             state.database_error = str(ex)
-        st_common.clear_state_key("database_configs")
     else:
         st.toast("No changes detected.", icon="ℹ️")
 

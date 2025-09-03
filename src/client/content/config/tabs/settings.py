@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 This script allows importing/exporting configurations using Streamlit (`st`).
 """
-# spell-checker:ignore streamlit, mvnw, obaas, ollama
+# spell-checker:ignore streamlit mvnw obaas ollama vllm
 
 import time
 import os
@@ -214,6 +214,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
 
 def spring_ai_zip(provider, ll_config, embed_config):
     """Create SpringAI Zip File"""
+
     # Source directory that you want to copy
     files = ["mvnw", "mvnw.cmd", "pom.xml", "README.md"]
 

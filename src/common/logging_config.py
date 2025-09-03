@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Default Logging Configuration
 """
+# pylint: disable=too-few-public-methods
 # spell-checker:ignore levelname inotify openai httpcore fsevents litellm
 
 import os
