@@ -10,9 +10,9 @@ import oci
 
 from server.bootstrap.configfile import ConfigStore
 
-from common import logging_config
 from common.schema import OracleCloudSettings
 
+from common import logging_config
 logger = logging_config.logging.getLogger("bootstrap.oci")
 
 

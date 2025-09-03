@@ -44,9 +44,13 @@ def get_model(
 ) -> Union[list[Model], Model, None]:
     """Used in direct call from list_models and agents.models"""
     model_objects = bootstrap.MODEL_OBJECTS
-
-    logger.debug("%i models are defined", len(model_objects))
-
+    logger.debug(
+        "Filtering %i models for id: %s; type: %s; disabled: %s",
+        len(model_objects),
+        model_id,
+        model_type,
+        include_disabled
+    )
     model_filtered = [
         model
         for model in model_objects

@@ -21,8 +21,7 @@ from server.agents.chatbot import chatbot_graph
 
 from server.api.core.models import UnknownModelError
 
-from common import schema
-from common import logging_config
+from common import schema, logging_config
 
 logger = logging_config.logging.getLogger("api.utils.chat")
 

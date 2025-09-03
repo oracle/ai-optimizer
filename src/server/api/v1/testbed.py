@@ -27,8 +27,7 @@ import server.api.utils.models as utils_models
 
 from server.api.v1 import chat
 
-from common import schema
-from common import logging_config
+from common import logging_config, schema
 
 logger = logging_config.logging.getLogger("endpoints.v1.testbed")
 
@@ -90,7 +89,9 @@ async def testbed_testset_qa(
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.TestSetQA:
     """Get TestSet Q&A"""
-    return utils_testbed.get_testset_qa(db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper())
+    return utils_testbed.get_testset_qa(
+        db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper()
+    )
 
 
 @auth.delete(

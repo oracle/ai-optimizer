@@ -27,9 +27,7 @@ from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitt
 
 import server.api.utils.databases as utils_databases
 
-from common import schema, functions
-
-from common import logging_config
+from common import schema, functions, logging_config
 
 logger = logging_config.logging.getLogger("api.utils.embed")
 

@@ -16,8 +16,7 @@ import server.api.utils.oci as utils_oci
 import server.api.core.models as core_models
 
 from common.functions import is_url_accessible
-from common import schema
-from common import logging_config
+from common import logging_config, schema
 
 logger = logging_config.logging.getLogger("api.utils.models")
 
@@ -159,18 +158,17 @@ def get_client_embed(model_config: dict, oci_config: schema.OracleCloudSettings)
     else:
         if provider == "hosted_vllm":
             kwargs = {
-                    "provider": "openai",
-                    "model": full_model_config["id"],
-                    "base_url": full_model_config.get("api_base"),
-                    "check_embedding_ctx_length":False #To avoid Tiktoken pre-transform on not OpenAI provided server
+                "provider": "openai",
+                "model": full_model_config["id"],
+                "base_url": full_model_config.get("api_base"),
+                "check_embedding_ctx_length": False,  # To avoid Tiktoken pre-transform on not OpenAI provided server
             }
         else:
             kwargs = {
-            "provider": provider,
-            "model": full_model_config["id"],
-            "base_url": full_model_config.get("api_base"),
+                "provider": provider,
+                "model": full_model_config["id"],
+                "base_url": full_model_config.get("api_base"),
             }
-
 
         if full_model_config.get("api_key"):  # only add if set
             kwargs["api_key"] = full_model_config["api_key"]

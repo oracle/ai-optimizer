@@ -26,7 +26,6 @@ def get_databases(force: bool = False) -> None:
     """Get Databases from API Server"""
     if force or "database_configs" not in state or not state.database_configs:
         try:
-            logger.info("Refreshing state.database_configs")
             # Validation will be done on currently configured client database
             # validation includes new vector_stores, etc.
             client_database = state.client_settings.get("database", {}).get("alias", {})

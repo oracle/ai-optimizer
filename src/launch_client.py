@@ -91,7 +91,7 @@ def main() -> None:
         }
         .stAppHeader img[alt="Logo"] {
             width: 50%;
-        }
+        }     
         </style>
         """,
     )
@@ -131,6 +131,7 @@ def main() -> None:
     state.disabled["model_cfg"] = os.environ.get("DISABLE_MODEL_CFG", "false").lower() == "true"
     state.disabled["oci_cfg"] = os.environ.get("DISABLE_OCI_CFG", "false").lower() == "true"
     state.disabled["settings"] = os.environ.get("DISABLE_SETTINGS", "false").lower() == "true"
+    state.disabled["mcp_cfg"] = os.environ.get("DISABLE_MCP_CFG", "false").lower() == "true"
 
     # Left Hand Side - Navigation
     chatbot = st.Page("client/content/chatbot.py", title="ChatBot", icon="💬", default=True)

@@ -8,8 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 import server.api.utils.databases as utils_databases
 
-from common import schema
-from common import logging_config
+from common import schema, logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.databases")
 
