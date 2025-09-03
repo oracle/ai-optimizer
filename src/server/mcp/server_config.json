@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "oraclevs": {
+      "command": "python3",
+      "args": ["server/mcp/tools/oraclevs_mcp_server.py"]
+    }
+  }
+}
