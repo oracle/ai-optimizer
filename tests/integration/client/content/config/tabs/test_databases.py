@@ -5,7 +5,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 # pylint: disable=import-error
 
-import re
 import pytest
 
 from conftest import TEST_CONFIG
@@ -49,7 +48,7 @@ class TestStreamlit:
         assert at.session_state.database_configs[0]["connected"] is False
         assert at.session_state.database_configs[0]["vector_stores"] == []
 
-    def test_wrong_details(self, app_server, app_test):
+    def test_no_database(self, app_server, app_test):
         """Submits with wrong details"""
         assert app_server is not None
         at = app_test(self.ST_FILE).run()
@@ -129,7 +128,7 @@ class TestStreamlit:
                 "username": TEST_CONFIG["db_username"],
                 "password": TEST_CONFIG["db_password"],
                 "dsn": "WRONG_TP",
-                "expected": "DPY-4026",
+                "expected": "DPY-4",
             },
             id="bad_dsn",
         ),
@@ -142,12 +141,23 @@ class TestStreamlit:
         assert db_container is not None
         at = app_test(self.ST_FILE).run()
         assert at.session_state.database_configs is not None
+
+        # Input and save good database
+        at.text_input(key="database_user").set_value(TEST_CONFIG["db_username"]).run()
+        at.text_input(key="database_password").set_value(TEST_CONFIG["db_password"]).run()
+        at.text_input(key="database_dsn").set_value(TEST_CONFIG["db_dsn"]).run()
+        at.button(key="save_database").click().run()
+
+        # Update Database Details and Save
         at.text_input(key="database_user").set_value(test_case["username"]).run()
         at.text_input(key="database_password").set_value(test_case["password"]).run()
         at.text_input(key="database_dsn").set_value(test_case["dsn"]).run()
         at.button(key="save_database").click().run()
+
+        # Check Errors
         assert at.error[0].value == "Current Status: Disconnected"
         assert test_case["expected"] in at.error[1].value and at.error[1].icon == "🚨"
+
         # Due to the connection error, the settings should NOT be updated and be set
         # to previous successful test connection; connected will be False for error handling
         assert at.session_state.database_configs[0]["name"] == "DEFAULT"

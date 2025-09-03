@@ -54,10 +54,11 @@ def patch_database(name: str, supplied: dict, connected: bool) -> bool:
                     payload={"json": supplied},
                 )
             logger.info("Database updated: %s", name)
+            st_common.clear_state_key("database_configs")
         except api_call.ApiError as ex:
             logger.error("Database not updated: %s (%s)", name, ex)
+            _ = [d.update(connected=False) for d in state.database_configs if d.get("name") == name]
             state.database_error = str(ex)
-        st_common.clear_state_key("database_configs")
     else:
         st.toast("No changes detected.", icon="ℹ️")
 
