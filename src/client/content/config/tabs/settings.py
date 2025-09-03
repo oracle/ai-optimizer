@@ -214,6 +214,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
 
 def spring_ai_zip(provider, ll_config, embed_config):
     """Create SpringAI Zip File"""
+
     # Source directory that you want to copy
     files = ["mvnw", "mvnw.cmd", "pom.xml", "README.md"]
 
