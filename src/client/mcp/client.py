@@ -8,6 +8,12 @@ from mcp.client.stdio import stdio_client
 from typing import List, Dict, Optional, Tuple, Type, Any
 from contextlib import AsyncExitStack
 
+# Import Streamlit session state
+try:
+    from streamlit import session_state as state
+except ImportError:
+    state = None
+
 # --- MODIFICATION: Import LangChain components ---
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, BaseMessage
 from langchain_core.language_models.base import BaseLanguageModel
@@ -86,7 +92,7 @@ class MCPClient:
         model_lower = model.lower()
 
         # Handle OpenAI models
-        if model_lower.startswith('gpt-'):
+        if model_lower.startswith('gpt-') and not model_lower.startswith('gpt-oss:'):
             # Check if api_key is in kwargs and rename it to openai_api_key for ChatOpenAI
             if 'api_key' in kwargs:
                 kwargs['openai_api_key'] = kwargs.pop('api_key')
@@ -94,6 +100,10 @@ class MCPClient:
             kwargs.pop('context_length', None)
             kwargs.pop('chat_history', None)
             return ChatOpenAI(model=model, **kwargs)
+        
+        # Handle Ollama models (including gpt-oss:20b)
+        elif model_lower.startswith('gpt-oss:') or model_lower in ['llama3.1', 'llama3', 'mistral', 'nomic-embed-text']:
+            return ChatOllama(model=model, **kwargs)
         
         # Handle Anthropic models
         elif model_lower.startswith('claude-'):
@@ -316,6 +326,37 @@ class MCPClient:
         return create_model(name, **fields)  # type: ignore
 
     async def execute_mcp_tool(self, tool_name: str, tool_args: Dict) -> str:
+        if tool_name == "oraclevs_retriever":
+            # --- Server settings ---
+            if getattr(state, "server", None):
+                server = state.server
+                if server.get("url") and server.get("port") and server.get("key"):
+                    tool_args["server_url"] = f"{server['url']}:{server['port']}"
+                    tool_args["api_key"] = server["key"]
+
+            # --- Database alias ---
+            if getattr(state, "client_settings", None):
+                db = state.client_settings.get("database", {})
+                if db.get("alias"):
+                    tool_args["database_alias"] = db["alias"]
+
+                # --- Vector search settings ---
+                vs = state.client_settings.get("vector_search", {})
+                if vs.get("alias"):
+                    tool_args["vector_store_alias"] = vs["alias"]
+                if vs.get("vector_store"):
+                    tool_args["vector_store"] = vs["vector_store"]
+
+            # --- Question fallback ---
+            if not tool_args.get("question"):
+                user_messages = [
+                    msg for msg in getattr(state, "messages", []) if msg.get("role") == "user"
+                ]
+                if user_messages:
+                    tool_args["question"] = user_messages[-1]["content"]
+                else:
+                    tool_args["question"] = "What information is available in the vector store?"
+
         try:
             session, _ = self.tool_to_session[tool_name]
             result = await session.call_tool(tool_name, arguments=tool_args)
