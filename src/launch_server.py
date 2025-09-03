@@ -83,12 +83,12 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
 
     client_args = [sys.executable, __file__, "--port", str(port)]
     if logfile:
-        log_file = open(f"apiserver_{port}.log", "a", encoding="utf-8")
+        log_file = open(f"apiserver_{port}.log", "a", encoding="utf-8")  # pylint: disable=consider-using-with
         stdout = stderr = log_file
     else:
         stdout = stderr = subprocess.PIPE
 
-    process = subprocess.Popen(client_args, stdout=stdout, stderr=stderr)
+    process = subprocess.Popen(client_args, stdout=stdout, stderr=stderr)  # pylint: disable=consider-using-with
     logger.info("Server started on port %i with PID %i", port, process.pid)
     return process.pid
 

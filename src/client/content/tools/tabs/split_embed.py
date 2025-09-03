@@ -391,7 +391,7 @@ def display_split_embed() -> None:
                 )
             st.success(f"Vector Store Populated: {response['message']}", icon="✅")
             # Refresh database_configs state to reflect new vector stores
-            get_databases(validate=True, force=True)
+            get_databases(force=True)
         except api_call.ApiError as ex:
             st.error(ex, icon="🚨")
 
