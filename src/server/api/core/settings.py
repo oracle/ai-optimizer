@@ -43,16 +43,16 @@ def get_client_settings(client: ClientIdType) -> Settings:
 def get_server_config() -> Configuration:
     """Return server configuration"""
     database_objects = bootstrap.DATABASE_OBJECTS
-    database_configs = [db for db in database_objects]
+    database_configs = list(database_objects)
 
     model_objects = bootstrap.MODEL_OBJECTS
-    model_configs = [model for model in model_objects]
+    model_configs = list(model_objects)
 
     oci_objects = bootstrap.OCI_OBJECTS
-    oci_configs = [oci for oci in oci_objects]
+    oci_configs = list(oci_objects)
 
     prompt_objects = bootstrap.PROMPT_OBJECTS
-    prompt_configs = [prompt for prompt in prompt_objects]
+    prompt_configs = list(prompt_objects)
 
     full_config = {
         "database_configs": database_configs,

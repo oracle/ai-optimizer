@@ -228,7 +228,7 @@ def get_databases(
         for db in databases:
             try:
                 db_conn = connect(config=db)
-            except (ValueError, PermissionError, ConnectionError):
+            except (ValueError, PermissionError, ConnectionError, LookupError):
                 continue
             db.vector_stores = _get_vs(db_conn)
             db.selectai = _selectai_enabled(db_conn)

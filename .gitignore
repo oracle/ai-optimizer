@@ -8,6 +8,7 @@
 **/THIRD_PARTY_LICENSES.txt
 sbin/**
 **/*.bak
+**/*.delete
 **/tmp/**
 **/temp/**
 **/chatbot_graph.png
