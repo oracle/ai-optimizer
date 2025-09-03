@@ -130,7 +130,7 @@ def render_configs(mcp_server: str, mcp_type: str, configs: list) -> None:
             "Details",
             on_click=mcp_details,
             key=f"{mcp_server}_{mcp_name}_details",
-            kwargs=dict(mcp_server=mcp_server, mcp_type=mcp_type, mcp_name=mcp_name),
+            kwargs={"mcp_server": mcp_server, "mcp_type": mcp_type, "mcp_name": mcp_name},
         )
 
 

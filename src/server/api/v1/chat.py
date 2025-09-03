@@ -21,8 +21,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from server.api.utils import chat
 from server.agents import chatbot
 
-from common import schema
-from common import logging_config
+from common import schema, logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.chat")
 

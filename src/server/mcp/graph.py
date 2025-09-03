@@ -20,7 +20,7 @@ from litellm.exceptions import APIConnectionError
 
 from launch_server import graph_memory
 
-import common.logging_config as logging_config
+from  common import logging_config
 
 logger = logging_config.logging.getLogger("mcp.graph")
 
@@ -163,4 +163,4 @@ def main(tools: list):
 
 
 if __name__ == "__main__":
-    main(list())
+    main([])
