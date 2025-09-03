@@ -5,7 +5,7 @@
 // Housekeeping
 locals {
   compartment_ocid = var.compartment_ocid != "" ? var.compartment_ocid : var.tenancy_ocid
-  label_prefix     = var.label_prefix != "" ? lower(var.label_prefix) : lower(substr(random_pet.label.id, 0, 12))
+  label_prefix = var.label_prefix != "" ? substr(lower(var.label_prefix), 0, 12) : substr(lower(random_pet.label.id), 0, 12)
 }
 
 

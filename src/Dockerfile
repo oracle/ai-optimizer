@@ -11,7 +11,7 @@ ENV TOKENIZERS_PARALLELISM=true \
     RUNUSER=oracleai
 
 RUN microdnf --nodocs -y update && \
-    microdnf --nodocs -y install python3.11 python3.11-pip && \
+    microdnf --nodocs -y install python3.11 python3.11-pip sqlcl && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
     groupadd $RUNUSER && \

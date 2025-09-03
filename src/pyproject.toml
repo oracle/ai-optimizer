@@ -17,7 +17,7 @@ dependencies = [
     "langchain-core==0.3.75",
     "httpx==0.28.1",
     "oracledb~=3.1",
-    "plotly==6.2.0",
+    "plotly==6.3.0",
 ]
 
 [project.optional-dependencies]
@@ -25,8 +25,9 @@ dependencies = [
 server = [
     "bokeh==3.8.0",
     "evaluate==0.4.5",
-    "fastapi==0.116.1",
     "faiss-cpu==1.12.0",
+    "fastapi==0.116.1",
+    "fastmcp==2.12.0",
     "giskard==2.18.0",
     "langchain-anthropic==0.3.19",
     "langchain-azure-ai==0.1.5",
@@ -39,12 +40,13 @@ server = [
     "langchain-groq==0.3.7",
     "langchain-huggingface==0.3.1",
     "langchain-mistralai==0.2.11",
+    "langchain-mcp-adapters==0.1.9",
     "langchain-ollama==0.3.7",
     "langchain-openai==0.3.32",
     "langchain-perplexity==0.1.2",
     "langchain-xai==0.2.5",
     "langgraph==0.6.6",
-    "litellm==1.76.1",
+    "litellm==1.76.1", 
     "llama-index==0.13.3",
     "lxml==6.0.0",
     "matplotlib==3.10.6",
