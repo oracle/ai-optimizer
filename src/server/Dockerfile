@@ -12,7 +12,7 @@ ENV RUNUSER=oracleai
 ENV PATH=/opt/.venv/bin:$PATH
 
 RUN microdnf --nodocs -y update && \
-    microdnf --nodocs -y install python3.11 python3.11-pip sqlcl && \
+    microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
     groupadd $RUNUSER && \
