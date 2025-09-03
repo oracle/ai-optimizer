@@ -7,12 +7,12 @@ if [[ "{provider}" == "ollama" ]]; then
     unset OPENAI_EMBEDDING_MODEL
     unset OPENAI_URL
     export OLLAMA_BASE_URL="{ll_model[api_base]}"
-    export OLLAMA_CHAT_MODEL="{ll_model[model]}"
-    export OLLAMA_EMBEDDING_MODEL="{vector_search[model]}"
+    export OLLAMA_CHAT_MODEL="{ll_model[id]}"
+    export OLLAMA_EMBEDDING_MODEL="{vector_search[id]}"
 else
     PREFIX="OP"; UNSET_PREFIX="OL"
-    export OPENAI_CHAT_MODEL="{ll_model[model]}"
-    export OPENAI_EMBEDDING_MODEL="{vector_search[model]}"
+    export OPENAI_CHAT_MODEL="{ll_model[id]}"
+    export OPENAI_EMBEDDING_MODEL="{vector_search[id]}"
     export OPENAI_URL="{ll_model[api_base]}"
     export OLLAMA_CHAT_MODEL=""
     unset OLLAMA_EMBEDDING_MODEL
