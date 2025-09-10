@@ -69,3 +69,4 @@ src/client/spring_ai/target/classes/*
 api_server_key
 .env
 
+optimizer_settings.json
