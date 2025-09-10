@@ -172,12 +172,13 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
 
 def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     """Get the users CTX Prompt"""
+
     ctx_prompt = next(
         item["prompt"]
         for item in state.prompt_configs
-        if item["name"] == state.client_settings["prompts"]["ctx"] and item["category"] == "ctx"
+        if item["name"] == state.client_settings["prompts"]["sys"] and item["category"] == "sys"
     )
-
+    logger.info(f"Prompt used in export:\n{ctx_prompt}")
     with open(src_dir / "templates" / file_name, "r", encoding="utf-8") as template:
         template_content = template.read()
 

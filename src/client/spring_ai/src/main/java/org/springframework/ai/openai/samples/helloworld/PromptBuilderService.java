@@ -37,6 +37,7 @@ public class PromptBuilderService {
 
                 INSTRUCTIONS:""";
 
+        // That's a standard RAG instruction, provided for convenience to change the contextInstr coming by the Oracle AI Optimizer export
         String defaultInstr = """
                 Answer the users question using the DOCUMENTS text above.
                 Keep your answer ground in the facts of the DOCUMENTS.
@@ -44,7 +45,7 @@ public class PromptBuilderService {
                 I'm sorry but I haven't enough information to answer.
                 """;
 
-        template += "\n" + defaultInstr;
+        template += "\n" + contextInstr;
 
         List<Document> similarDocuments = vectorStore.similaritySearch(
                 SearchRequest.builder().query(message).topK(topK).build());
