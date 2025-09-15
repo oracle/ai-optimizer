@@ -10,6 +10,8 @@ from litellm import completion
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
+from langgraph.graph.state import CompiledStateGraph
+
 import server.api.core.settings as core_settings
 import server.api.core.oci as core_oci
 import server.api.core.prompts as core_prompts
@@ -94,10 +96,13 @@ async def completion_generator(
         utils_selectai.set_profile(
             db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
         )
-
     logger.debug("Completion Kwargs: %s", kwargs)
+
+    # Establish the graph with tools
+    agent: CompiledStateGraph = graph.main(tools=[])
+
     final_response = None
-    async for output in graph.astream(**kwargs):
+    async for output in agent.astream(**kwargs):
         if "stream" in output:
             yield output["stream"].encode("utf-8")
         if "completion" in output:

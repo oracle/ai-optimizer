@@ -63,8 +63,7 @@ def clean_messages(state: OptimizerState, config: RunnableConfig) -> list:
 def should_continue(state: OptimizerState):
     """Determine if graph should continue to tools"""
     messages = state["messages"]
-    last_message = messages[-1]
-    if last_message.tool_calls:
+    if messages and messages[-1].tool_calls:
         return "tools"
     return END
 
@@ -144,13 +143,12 @@ def main(tools: list):
 
     # Add Edges
     workflow.add_edge(START, "initialise")
-    workflow.add_edge("initialise", "call_model")
+    workflow.add_edge("initialise", "stream_completion")
     workflow.add_conditional_edges(
-        "call_model",
+        "stream_completion",
         should_continue,
     )
-    workflow.add_edge("tools", "call_model")
-    workflow.add_edge("call_model", "stream_completion")
+    workflow.add_edge("tools", "stream_completion")
     workflow.add_edge("stream_completion", END)
 
     # Compile the graph and return it
