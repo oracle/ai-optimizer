@@ -367,3 +367,199 @@ def populate_vs(
     comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
     utils_databases.execute_sql(db_conn, comment)
     utils_databases.disconnect(db_conn)
+
+
+##########################################
+# Vector Store Refresh
+##########################################
+def get_vector_store_by_alias(db_details: schema.Database, alias: str) -> schema.DatabaseVectorStorage:
+    """Retrieve vector store configuration by alias"""
+    db_conn = utils_databases.connect(db_details)
+
+    try:
+        # Query for vector store with the given alias
+        query = """
+            SELECT table_name, table_comment
+            FROM user_tables
+            WHERE table_name LIKE 'VS_%'
+            AND table_comment LIKE '%GENAI:%'
+            AND REGEXP_SUBSTR(table_comment, 'alias:"([^"]+)"', 1, 1, NULL, 1) = :alias
+        """
+
+        cursor = db_conn.cursor()
+        cursor.execute(query, {"alias": alias})
+        result = cursor.fetchone()
+
+        if not result:
+            raise ValueError(f"Vector store with alias '{alias}' not found")
+
+        table_name, comment = result
+
+        # Parse the comment to extract parameters
+        import re
+
+        # Extract parameters from comment using regex
+        model_match = re.search(r'model:"([^"]+)"', comment)
+        chunk_size_match = re.search(r'chunk_size:(\d+)', comment)
+        chunk_overlap_match = re.search(r'chunk_overlap:(\d+)', comment)
+        distance_metric_match = re.search(r'distance_metric:"([^"]+)"', comment)
+        index_type_match = re.search(r'index_type:"([^"]+)"', comment)
+
+        if not all([model_match, chunk_size_match, chunk_overlap_match, distance_metric_match, index_type_match]):
+            raise ValueError(f"Could not parse vector store parameters from comment")
+
+        vs_config = schema.DatabaseVectorStorage(
+            vector_store=table_name,
+            alias=alias,
+            model=model_match.group(1),
+            chunk_size=int(chunk_size_match.group(1)),
+            chunk_overlap=int(chunk_overlap_match.group(1)),
+            distance_metric=distance_metric_match.group(1),
+            index_type=index_type_match.group(1)
+        )
+
+        return vs_config
+
+    finally:
+        utils_databases.disconnect(db_conn)
+
+
+def get_processed_objects_metadata(db_details: schema.Database, vector_store_name: str) -> dict:
+    """Get metadata of previously processed objects for a vector store"""
+    db_conn = utils_databases.connect(db_details)
+
+    try:
+        # Query metadata from the vector store table
+        query = f"""
+            SELECT DISTINCT
+                JSON_VALUE(metadata, '$.filename') as filename,
+                JSON_VALUE(metadata, '$.etag') as etag,
+                JSON_VALUE(metadata, '$.time_modified') as time_modified,
+                JSON_VALUE(metadata, '$.size') as size
+            FROM {vector_store_name}
+            WHERE JSON_VALUE(metadata, '$.filename') IS NOT NULL
+        """
+
+        cursor = db_conn.cursor()
+        cursor.execute(query)
+        results = cursor.fetchall()
+
+        processed_objects = {}
+        for row in results:
+            filename, etag, time_modified, size = row
+            processed_objects[filename] = {
+                "etag": etag,
+                "time_modified": time_modified,
+                "size": int(size) if size else None
+            }
+
+        return processed_objects
+
+    finally:
+        utils_databases.disconnect(db_conn)
+
+
+def refresh_vector_store_from_bucket(
+    vector_store_config: schema.DatabaseVectorStorage,
+    bucket_name: str,
+    bucket_objects: list[dict],
+    db_details: schema.Database,
+    embed_client,
+    oci_config,
+    rate_limit: int = 0
+) -> dict:
+    """
+    Refresh vector store with new/modified objects from OCI bucket
+
+    Args:
+        vector_store_config: Existing vector store configuration
+        bucket_name: OCI bucket name
+        bucket_objects: List of new/modified objects to process
+        db_details: Database configuration
+        embed_client: Embedding client
+        oci_config: OCI configuration
+        rate_limit: Rate limit in requests per minute
+
+    Returns:
+        Dict with processing results
+    """
+    if not bucket_objects:
+        return {
+            "processed_files": 0,
+            "new_files": 0,
+            "updated_files": 0,
+            "total_chunks": 0,
+            "message": "No new or modified files to process"
+        }
+
+    temp_directory = get_temp_directory("refresh", "embedding")
+    logger.info("Processing %d objects for vector store refresh", len(bucket_objects))
+
+    try:
+        # Download changed objects
+        downloaded_files = []
+        for obj in bucket_objects:
+            try:
+                import server.api.utils.oci as utils_oci
+                file_path = utils_oci.get_object(str(temp_directory), obj["name"], bucket_name, oci_config)
+                downloaded_files.append(file_path)
+            except Exception as ex:
+                logger.error("Failed to download object %s: %s", obj["name"], ex)
+                continue
+
+        if not downloaded_files:
+            return {
+                "processed_files": 0,
+                "new_files": 0,
+                "updated_files": 0,
+                "total_chunks": 0,
+                "message": "No files could be downloaded",
+                "errors": ["Failed to download any objects from bucket"]
+            }
+
+        # Process documents
+        split_docos, _ = load_and_split_documents(
+            downloaded_files,
+            vector_store_config.model,
+            vector_store_config.chunk_size,
+            vector_store_config.chunk_overlap,
+            write_json=False,
+            output_dir=None,
+        )
+
+        # Update metadata with bucket information
+        for doc in split_docos:
+            if "source" in doc.metadata:
+                filename = os.path.basename(doc.metadata["source"])
+                # Find the corresponding bucket object
+                bucket_obj = next((obj for obj in bucket_objects if obj["name"] == filename), None)
+                if bucket_obj:
+                    doc.metadata.update({
+                        "etag": bucket_obj["etag"],
+                        "time_modified": bucket_obj["time_modified"],
+                        "size": bucket_obj["size"],
+                        "bucket_name": bucket_name
+                    })
+
+        # Populate vector store
+        populate_vs(
+            vector_store=vector_store_config,
+            db_details=db_details,
+            embed_client=embed_client,
+            input_data=split_docos,
+            rate_limit=rate_limit,
+        )
+
+        return {
+            "processed_files": len(downloaded_files),
+            "new_files": len([obj for obj in bucket_objects]),
+            "updated_files": 0,  # All are treated as new for now
+            "total_chunks": len(split_docos),
+            "message": f"Successfully processed {len(downloaded_files)} files and {len(split_docos)} chunks"
+        }
+
+    finally:
+        # Clean up temporary directory
+        import shutil
+        if temp_directory.exists():
+            shutil.rmtree(temp_directory)

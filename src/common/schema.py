@@ -118,6 +118,27 @@ class DatabaseVectorStorage(BaseModel):
     index_type: Optional[IndexTypes] = Field(default=None, description="Vector Index")
 
 
+class VectorStoreRefreshRequest(BaseModel):
+    """Request for refreshing vector store from OCI bucket"""
+
+    vector_store_alias: str = Field(..., description="Alias of the existing vector store to refresh")
+    bucket_name: str = Field(..., description="OCI bucket name containing documents")
+    auth_profile: Optional[str] = Field(default="DEFAULT", description="OCI auth profile to use")
+    rate_limit: Optional[int] = Field(default=0, description="Rate limit in requests per minute")
+
+
+class VectorStoreRefreshStatus(BaseModel):
+    """Status response for vector store refresh operation"""
+
+    status: Literal["processing", "completed", "failed"] = Field(..., description="Current status")
+    message: str = Field(..., description="Status message")
+    processed_files: int = Field(default=0, description="Number of files processed")
+    new_files: int = Field(default=0, description="Number of new files found")
+    updated_files: int = Field(default=0, description="Number of updated files found")
+    total_chunks: int = Field(default=0, description="Total number of chunks processed")
+    errors: Optional[list[str]] = Field(default=[], description="Any errors encountered")
+
+
 class DatabaseSelectAIObjects(BaseModel):
     """Database SelectAI Objects"""
 

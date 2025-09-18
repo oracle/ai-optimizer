@@ -165,3 +165,101 @@ async def split_embed(
         raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
     finally:
         shutil.rmtree(temp_directory)  # Clean up the temporary directory
+
+
+@auth.post(
+    "/refresh",
+    description="Refresh Vector Store from OCI Bucket.",
+)
+async def refresh_vector_store(
+    request: schema.VectorStoreRefreshRequest,
+    client: schema.ClientIdType = Header(default="server"),
+) -> JSONResponse:
+    """Refresh an existing vector store with new/modified documents from OCI bucket"""
+    logger.debug("Received refresh_vector_store - request: %s", request)
+
+    try:
+        # Get OCI configuration
+        oci_config = core_oci.get_oci(client=client, auth_profile=request.auth_profile)
+
+        # Get database configuration
+        db_details = utils_databases.get_client_database(client)
+
+        # Get existing vector store configuration
+        vs_config = utils_embed.get_vector_store_by_alias(db_details, request.vector_store_alias)
+        logger.info("Found vector store: %s with model %s", vs_config.vector_store, vs_config.model)
+
+        # Get current bucket objects with metadata
+        import server.api.utils.oci as utils_oci
+        current_objects = utils_oci.get_bucket_objects_with_metadata(request.bucket_name, oci_config)
+
+        if not current_objects:
+            return JSONResponse(
+                status_code=200,
+                content=schema.VectorStoreRefreshStatus(
+                    status="completed",
+                    message=f"No supported files found in bucket {request.bucket_name}",
+                    processed_files=0,
+                    new_files=0,
+                    updated_files=0,
+                    total_chunks=0
+                ).model_dump()
+            )
+
+        # Get previously processed objects metadata
+        processed_objects = utils_embed.get_processed_objects_metadata(db_details, vs_config.vector_store)
+        logger.info("Found %d previously processed objects", len(processed_objects))
+
+        # Detect changes
+        new_objects, modified_objects = utils_oci.detect_changed_objects(current_objects, processed_objects)
+        changed_objects = new_objects + modified_objects
+
+        if not changed_objects:
+            return JSONResponse(
+                status_code=200,
+                content=schema.VectorStoreRefreshStatus(
+                    status="completed",
+                    message="No new or modified files to process",
+                    processed_files=0,
+                    new_files=0,
+                    updated_files=0,
+                    total_chunks=0
+                ).model_dump()
+            )
+
+        # Get embedding client using the same model as the existing vector store
+        embed_client = utils_models.get_client_embed({"model": vs_config.model, "enabled": True}, oci_config)
+
+        # Refresh the vector store
+        result = utils_embed.refresh_vector_store_from_bucket(
+            vector_store_config=vs_config,
+            bucket_name=request.bucket_name,
+            bucket_objects=changed_objects,
+            db_details=db_details,
+            embed_client=embed_client,
+            oci_config=oci_config,
+            rate_limit=request.rate_limit
+        )
+
+        return JSONResponse(
+            status_code=200,
+            content=schema.VectorStoreRefreshStatus(
+                status="completed",
+                message=result.get("message", "Vector store refreshed successfully"),
+                processed_files=result.get("processed_files", 0),
+                new_files=len(new_objects),
+                updated_files=len(modified_objects),
+                total_chunks=result.get("total_chunks", 0),
+                errors=result.get("errors", [])
+            ).model_dump()
+        )
+
+    except ValueError as ex:
+        logger.error("Validation error in refresh_vector_store: %s", ex)
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
+    except utils_databases.DbException as ex:
+        logger.error("Database error in refresh_vector_store: %s", ex)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(ex)}") from ex
+    except Exception as ex:
+        logger.error("Unexpected error in refresh_vector_store: %s", ex)
+        raise HTTPException(status_code=500, detail="Unexpected error occurred during refresh") from ex
