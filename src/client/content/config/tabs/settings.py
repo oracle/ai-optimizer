@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 This script allows importing/exporting configurations using Streamlit (`st`).
 """
-# spell-checker:ignore streamlit, mvnw, obaas, ollama
+# spell-checker:ignore streamlit mvnw obaas ollama vllm
 
 import time
 import os
@@ -159,7 +159,7 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
 
     ll_provider = ll_model.get("provider", "")
     embed_provider = embed_model.get("provider", "")
-    logger.info(f"llm chat:{ll_provider} - embeddings:{embed_provider}")
+    logger.info("llm chat: %s - embeddings: %s", ll_provider, embed_provider)
     if all("hosted_vllm" in p for p in (ll_provider, embed_provider)):
         return "hosted_vllm"
     if all("openai" in p for p in (ll_provider, embed_provider)):
@@ -214,6 +214,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
 
 def spring_ai_zip(provider, ll_config, embed_config):
     """Create SpringAI Zip File"""
+
     # Source directory that you want to copy
     files = ["mvnw", "mvnw.cmd", "pom.xml", "README.md"]
 
@@ -344,8 +345,8 @@ def display_settings():
         embed_config = {}
     spring_ai_conf = spring_ai_conf_check(ll_config, embed_config)
 
-    logger.info(f"config found:{spring_ai_conf}")
-    
+    logger.info("config found: %s", spring_ai_conf)
+
     if spring_ai_conf == "hybrid":
         st.markdown(f"""
             The current configuration combination of embedding and language models
@@ -364,7 +365,7 @@ def display_settings():
                 disabled=spring_ai_conf == "hybrid",
             )
         with col_centre:
-            if (spring_ai_conf != "hosted_vllm"):
+            if spring_ai_conf != "hosted_vllm":
                 st.download_button(
                     label="Download SpringAI",
                     data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
@@ -372,7 +373,6 @@ def display_settings():
                     mime="application/zip",  # Mime type for zip file
                     disabled=spring_ai_conf == "hybrid",
                 )
-            
 
 
 if __name__ == "__main__":

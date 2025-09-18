@@ -23,10 +23,10 @@ spring:
           frequencyPenalty: {ll_model[frequency_penalty]}
           maxTokens: {ll_model[max_completion_tokens]}
           topP: {ll_model[top_p]}
-          model: {ll_model[model]}
+          model: {ll_model[id]}
       embedding:
         options:
-          model: {vector_search[model]}
+          model: {vector_search[id]}
     ollama:
       base-url: "http://ollama.ollama.svc.cluster.local:11434"
       chat:
@@ -36,10 +36,10 @@ spring:
           frequency-penalty: {ll_model[frequency_penalty]}
           num-predict: {ll_model[max_completion_tokens]}
           top-p: {ll_model[top_p]}
-          model: \"{ll_model[model]}\"
+          model: \"{ll_model[id]}\"
       embedding:
         options: 
-          model: \"{vector_search[model]}\"        
+          model: \"{vector_search[id]}\"        
 aims:
   context_instr: \"{ctx_prompt}\"
   vectortable:
