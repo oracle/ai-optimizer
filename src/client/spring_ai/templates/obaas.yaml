@@ -41,7 +41,7 @@ spring:
         options: 
           model: \"{vector_search[id]}\"        
 aims:
-  context_instr: \"{ctx_prompt}\"
+  sys_instr: \"{sys_prompt}\"
   vectortable:
     name: {vector_search[vector_store]}
   rag_params: 
