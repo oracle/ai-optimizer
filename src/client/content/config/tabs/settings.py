@@ -178,7 +178,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
         for item in state.prompt_configs
         if item["name"] == state.client_settings["prompts"]["sys"] and item["category"] == "sys"
     )
-    logger.info(f"Prompt used in export:\n{sys_prompt}")
+    logger.info("Prompt used in export:\n%s", sys_prompt)
     with open(src_dir / "templates" / file_name, "r", encoding="utf-8") as template:
         template_content = template.read()
 
