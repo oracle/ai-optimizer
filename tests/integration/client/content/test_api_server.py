@@ -28,6 +28,9 @@ class TestStreamlit:
         assert app_server is not None
         at = app_test(self.ST_FILE).run()
 
+        # Store original value for cleanup
+        original_auth_profile = at.session_state.client_settings["oci"]["auth_profile"]
+
         # Check that Server/Client Identical
         assert at.session_state.client_settings == at.session_state.server_settings
         # Update Client Settings
@@ -38,3 +41,10 @@ class TestStreamlit:
         # Validate settings have been copied
         assert at.session_state.client_settings == at.session_state.server_settings
         assert at.session_state.server_settings["oci"]["auth_profile"] == "TESTING"
+
+        # Clean up: restore original value both in session state and on server to avoid polluting other tests
+        at.session_state.client_settings["oci"]["auth_profile"] = original_auth_profile
+        # Copy the restored settings back to the server
+        at.button(key="copy_client_settings").click().run()
+        # Verify cleanup worked
+        assert at.session_state.server_settings["oci"]["auth_profile"] == original_auth_profile

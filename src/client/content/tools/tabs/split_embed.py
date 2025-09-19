@@ -134,7 +134,7 @@ def display_split_embed() -> None:
     file_sources = ["OCI", "Local", "Web"]
     oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
     oci_setup = oci_lookup.get(state.client_settings["oci"].get("auth_profile"))
-    if not oci_setup or "namespace" not in oci_setup or "tenancy" not in oci_setup:
+    if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
         st.warning("OCI is not fully configured, some functionality is disabled", icon="⚠️")
         file_sources.remove("OCI")
 
