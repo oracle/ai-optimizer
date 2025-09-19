@@ -34,6 +34,7 @@ FROM all_in_one_pyenv AS oai_application
 ENV PATH=/opt/.venv/bin:$PATH
 ENV TEMP=/app/tmp
 ENV TNS_ADMIN=/app/tns_admin
+ENV API_SERVER_CONTROL="TRUE"
 ENV OCI_CLI_CONFIG_FILE=/app/runtime/.oci/config
 
 # Expect the .oci directory to be mounted to /app/.oci

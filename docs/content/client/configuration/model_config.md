@@ -13,30 +13,13 @@ spell-checker:ignore ollama, mxbai, nomic, thenlper, minilm, uniqueid, huggingfa
 
 At a minimum, a Large _Language Model_ (LLM) must be configured in {{< short_app_ref >}} for basic functionality. For Retrieval-Augmented Generation (**RAG**), an _Embedding Model_ will also need to be configured.
 
-{{% notice style="default" title="Model APIs" icon="circle-info" %}}
-If there is a specific model API that you would like to use, please [open an issue in GitHub](https://github.com/oracle/ai-optimizer/issues/new).  
-{{% /notice %}}
-
-| Type  | API                                                      | Location      |
-| ----- | -------------------------------------------------------- | ------------- |
-| LLM   | [ChatOCIGenAI](#additional-information)                  | Private Cloud |
-| LLM   | [ChatOllama](#additional-information)                    | On-Premises   |
-| LLM   | [CompatOpenAI](#additional-information)                  | On-Premises   |
-| LLM   | [OpenAI](#additional-information)                        | Third-Party   |
-| LLM   | [ChatPerplexity](#additional-information)                | Third-Party   |
-| LLM   | [Cohere](#additional-information)                        | Third-Party   |
-| Embed | [OCIGenAIEmbeddings](#additional-information)            | Private Cloud |
-| Embed | [OllamaEmbeddings](#additional-information)              | On-Premises   |
-| Embed | [HuggingFaceEndpointEmbeddings](#additional-information) | On-Premises   |
-| Embed | [CompatOpenAIEmbeddings](#additional-information)        | On-Premises   |
-| Embed | [OpenAIEmbeddings](#additional-information)              | Third-Party   |
-| Embed | [CohereEmbeddings](#additional-information)              | Third-Party   |
+There is an extensive list of different API Model APIs available you can choose from.
 
 ## Configuration
 
 The models can either be configured using environment variables or through the {{< short_app_ref >}} interface. To configure models through environment variables, please read the [Additional Information](#additional-information) about the specific model you would like to configure.
 
-To configure an LLM or embedding model from the {{< short_app_ref >}}, navigate to `Configuration -> Models`:
+To configure an LLM or embedding model from the {{< short_app_ref >}}, navigate to _Configuration_ page and _Models_ tab:
 
 ![Model Config](../images/models_config.png)
 
