@@ -42,7 +42,7 @@ jobs:
       - name: Inject Static Version into _version.py and version.tf
         run: |
           echo "__version__ = \"$VERSION\"" > src/common/_version.py
-          sed -i "s/app_version = \".*\"/app_version = \"$VERSION\"/" opentofu/version.tf
+          sed -i "s/app_version = \".*\"/app_version = \"$VERSION\"/" opentofu/versions.tf
           echo "Injected version:"
           cat src/common/_version.py
           cat opentofu/version.tf
