@@ -173,12 +173,12 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
 def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     """Get the users CTX Prompt"""
 
-    ctx_prompt = next(
+    sys_prompt = next(
         item["prompt"]
         for item in state.prompt_configs
         if item["name"] == state.client_settings["prompts"]["sys"] and item["category"] == "sys"
     )
-    logger.info(f"Prompt used in export:\n{ctx_prompt}")
+    logger.info(f"Prompt used in export:\n{sys_prompt}")
     with open(src_dir / "templates" / file_name, "r", encoding="utf-8") as template:
         template_content = template.read()
 
@@ -186,18 +186,18 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
 
     formatted_content = template_content.format(
         provider=provider,
-        ctx_prompt=f"{ctx_prompt}",
+        sys_prompt=f"{sys_prompt}",
         ll_model=ll_config,
         vector_search=embed_config,
         database_config=database_lookup[state.client_settings["database"]["alias"]],
     )
 
     if file_name.endswith(".yaml"):
-        ctx_prompt = json.dumps(ctx_prompt, indent=True)  # Converts it into a valid JSON string (preserving quotes)
+        sys_prompt = json.dumps(sys_prompt, indent=True)  # Converts it into a valid JSON string (preserving quotes)
 
         formatted_content = template_content.format(
             provider=provider,
-            ctx_prompt=ctx_prompt,
+            sys_prompt=sys_prompt,
             ll_model=ll_config,
             vector_search=embed_config,
             database_config=database_lookup[state.client_settings["database"]["alias"]],
