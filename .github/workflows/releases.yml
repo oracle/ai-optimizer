@@ -45,7 +45,7 @@ jobs:
           sed -i "s/app_version = \".*\"/app_version = \"$VERSION\"/" opentofu/versions.tf
           echo "Injected version:"
           cat src/common/_version.py
-          cat opentofu/version.tf
+          cat opentofu/versions.tf
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
 
