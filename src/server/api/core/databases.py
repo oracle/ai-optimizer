@@ -35,12 +35,18 @@ def get_database(name: Optional[DatabaseNameType] = None) -> Union[list[Database
 
 
 def create_database(database: Database) -> Database:
-    """Create a new Model definition"""
+    """Create a new Database definition"""
     database_objects = bootstrap.DATABASE_OBJECTS
 
-    _ = get_database(name=database.name)
+    try:
+        existing = get_database(name=database.name)
+        if existing:
+            raise ValueError(f"Database {database.name} already exists")
+    except ValueError as ex:
+        if "not found" not in str(ex):
+            raise
 
-    if any(not getattr(database_objects, key) for key in ("user", "password", "dsn")):
+    if any(not getattr(database, key) for key in ("user", "password", "dsn")):
         raise ValueError("'user', 'password', and 'dsn' are required")
 
     database_objects.append(database)
