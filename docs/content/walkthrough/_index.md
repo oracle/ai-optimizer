@@ -224,7 +224,7 @@ Notice that there are no language models configured to use. Let's start the conf
 
 ### Configure the LLM
 
-To configure the On-Premises **LLM**, navigate to the _Configuration -> Models_ screen:
+To configure the On-Premises **LLM**, navigate to the _Configuration_ screen and _Models_ tab:
 
 1. Enable the `llama3.1` model that you pulled earlier by clicking the _Edit_ button
 ![Configure LLM](images/models_edit.png)
@@ -240,7 +240,7 @@ Navigate to the _ChatBot_ screen:
 
 The error about language models will have disappeared, but there are new warnings about embedding models and the database. You'll take care of those in the next steps.
 
-The `Chat model:` will have been pre-set to the only enabled **LLM** (_llama3.1_) and a dialog box to interact with the **LLM** will be ready for input.
+The `Chat model:` will have been pre-set to the only enabled **LLM** (_ollama/llama3.1_) and a dialog box to interact with the **LLM** will be ready for input.
 
 Feel free to play around with the different **LLM** Parameters, hovering over the {{% icon circle-question %}} icons to get more information on what they do.
 
@@ -248,7 +248,7 @@ You'll come back to the _ChatBot_ later to experiment further.
 
 ### Configure the Embedding Model
 
-To configure the On-Premises Embedding Model, navigate back to the _Configuration -> Models_ screen:
+To configure the On-Premises Embedding Model, navigate back to the _Configuration_ screen and _Models_ tab:
 
 1. Enable the `mxbai-embed-large` Embedding Model following the same process as you did for the Language Model.
 ![Configure Embedding Model](images/models_enable_embed.png)
@@ -257,12 +257,12 @@ To configure the On-Premises Embedding Model, navigate back to the _Configuratio
 
 ### Configure the Database
 
-To configure Oracle Database 23ai Free, navigate to the _Configuration -> Database_ screen:
+To configure Oracle Database 23ai Free, navigate to the _Configuration_ screen and _Databases_ tab:
 
 1. Enter the Database Username: `WALKTHROUGH`
 1. Enter the Database Password for the database user: `OrA_41_OpTIMIZER`
 1. Enter the Database Connection String: `//localhost:1521/FREEPDB1`
-1. Save
+1. Save Database
 
 ![Configure Database](../client/configuration/images/database_config.png)
 
@@ -272,7 +272,7 @@ To configure Oracle Database 23ai Free, navigate to the _Configuration -> Databa
 
 With the embedding model and database configured, you can now split and embed documents for use in **Vector Search**.
 
-Navigate to the _Split/Embed_ Screen:
+Navigate to the _Tools_ screen and _Split/Embed_ tab:
 
 1. Change the File Source to `Web`
 1. Enter the URL: 
@@ -285,7 +285,7 @@ Navigate to the _Split/Embed_ Screen:
 1. Please be patient...
 
 {{% notice style="code" title="Performance: Grab a beverage of your choosing..." icon="circle-info" %}}
-Depending on the infrastructure, the embedding process can take a few minutes. As long as the "RUNNING" dialog in the top-right corner is moving... it's working.
+Depending on the infrastructure, the embedding process can take a few minutes. As long as the "Populating Vector Store..." timer is running... it's working.
 {{% /notice %}}
 
 ![Split and Embed](images/split_embed_web.png)

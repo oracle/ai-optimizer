@@ -12,11 +12,11 @@ Once you are happy with the specific configuration of your {{< short_app_ref >}}
 
 ## View and Download
 
-To view and download the {{< short_app_ref >}} configuration, navigate to `Configuration -> Settings`:
+To view and download the {{< short_app_ref >}} configuration, navigate to the _Configuration_ page and _Settings_ tab:
 
 ![Download Settings](../images/settings_download.png)
 
-{{< icon "triangle-exclamation" >}} Settings contain sensitive information such as database passwords and API Keys.  By default, these settings will not be exported and will have to be re-entered after uploading the settings in a new instance of the {{< short_app_ref >}}.  If have a secure way to store the settings and would would like to export the sensitive data, tick the "Include Sensitive Settings" box.
+{{< icon "triangle-exclamation" >}} Settings contain sensitive information such as database passwords and API Keys.  By default, these settings will not be exported and will have to be re-entered after uploading the settings in a new instance of the {{< short_app_ref >}}.  If you have a secure way to store the settings and would would like to export the sensitive data, tick the "Include Sensitive Settings" box.
 
 ## Upload
 
@@ -29,7 +29,7 @@ To upload previously downloaded settings, navigate to `Configuration -> Settings
 
 If there are differences found, you can review the differences before clicking "Apply New Settings".
 
-## SpringAI
+## Source Code Templates
 
 You can download from the console a basic template that could help to expose as a OpenAI API compliant REST endpoint the RAG Chatbot defined in the chat console. 
 If your configuration has both OLLAMA or OpenAI as providers for chat and embeddings LLMs, it will appear a button named “Download SpringAI”:
