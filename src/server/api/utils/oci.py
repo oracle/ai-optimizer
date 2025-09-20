@@ -278,6 +278,76 @@ def get_bucket_objects(bucket_name: str, config: OracleCloudSettings = None) -> 
     return object_names
 
 
+def get_bucket_objects_with_metadata(bucket_name: str, config: OracleCloudSettings = None) -> list[dict]:
+    """Get a list of Bucket Objects with metadata for change detection"""
+    client_type = oci.object_storage.ObjectStorageClient
+    client = init_client(client_type, config)
+
+    objects_metadata = []
+    try:
+        response = client.list_objects(
+            namespace_name=config.namespace,
+            bucket_name=bucket_name,
+        )
+        objects = response.data.objects
+
+        # Filter supported file types and add metadata
+        supported_extensions = {'.pdf', '.html', '.md', '.txt', '.csv', '.png', '.jpg', '.jpeg'}
+
+        for obj in objects:
+            _, ext = os.path.splitext(obj.name.lower())
+            if ext in supported_extensions:
+                objects_metadata.append({
+                    "name": obj.name,
+                    "size": obj.size,
+                    "etag": obj.etag,
+                    "time_modified": obj.time_modified.isoformat() if obj.time_modified else None,
+                    "md5": obj.md5,
+                    "extension": ext[1:]  # Remove the dot
+                })
+    except oci.exceptions.ServiceError:
+        logger.debug("Bucket %s not found.", bucket_name)
+
+    return objects_metadata
+
+
+def detect_changed_objects(
+    current_objects: list[dict],
+    processed_objects: dict
+) -> tuple[list[dict], list[dict]]:
+    """
+    Detect new and modified objects by comparing current bucket state
+    with previously processed objects metadata
+
+    Args:
+        current_objects: Current objects from OCI bucket with metadata
+        processed_objects: Dict mapping object names to their last processed metadata
+
+    Returns:
+        Tuple of (new_objects, modified_objects)
+    """
+    new_objects = []
+    modified_objects = []
+
+    for obj in current_objects:
+        obj_name = obj["name"]
+
+        if obj_name not in processed_objects:
+            # New object
+            new_objects.append(obj)
+        else:
+            # Check if object has been modified
+            last_processed = processed_objects[obj_name]
+
+            # Compare etag and modification time
+            if (obj["etag"] != last_processed.get("etag") or
+                obj["time_modified"] != last_processed.get("time_modified")):
+                modified_objects.append(obj)
+
+    logger.info("Found %d new objects and %d modified objects", len(new_objects), len(modified_objects))
+    return new_objects, modified_objects
+
+
 def get_object(directory: str, object_name: str, bucket_name: str, config: OracleCloudSettings = None) -> list:
     """Download Object Storage Object"""
     client_type = oci.object_storage.ObjectStorageClient
