@@ -70,7 +70,7 @@ write_files:
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools uv
       uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch
-      uv pip install -e ".[all]" --quiet --no-input &
+      uv pip install -e ".[all]" &
       INSTALL_PID=$!
 
       # Install Models

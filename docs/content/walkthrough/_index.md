@@ -149,7 +149,7 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
 
    ```bash
    cd ai-optimizer
-   podman build-f src/Dockerfile -t localhost/ai-optimizer-aio:latest .
+   podman build -f src/Dockerfile -t localhost/ai-optimizer-aio:latest .
    ```
 
 1. Start the {{< short_app_ref >}}:
