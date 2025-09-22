@@ -17,22 +17,23 @@ Oracle Cloud Infrastructure (OCI) can _optionally_ be configured to enable addit
 
 ## Configuration
 
-OCI can either be configured through the [{{< short_app_ref >}} interface](#{{< short_app_ref >}}-interface), a [CLI Configuration File](#config-file), or by using [environment variables](#environment-variables).  
+OCI can either be configured through the [{{< short_app_ref >}} interface](#{{< short_app_ref >}}-interface), a [CLI Configuration File](#config-file), or by using [environment variables](#environment-variables).
+
 You will need to [generate an API Key](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm#two) to obtain the required configuration values.
 
 ---
 
 ### Interface
 
-To configure the Database from the {{< short_app_ref >}}, navigate to `Configuration -> OCI`:
+To configure the Database from the {{< short_app_ref >}}, navigate to _Configuration_ menu and _OCI_ tab:
 
 ![OCI Config](../images/oci_config.png)
 
-OCI GenAI Services can be configured once OCI access has been confirmed:
-
-![OCI GenAI Config](../images/oci_genai_config.png)
-
 Provide the values obtained by [generating an API Key](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm#two).
+
+OCI GenAI Services can also be configured on this page, once OCI access has been confirmed.
+
+
 
 ---
 

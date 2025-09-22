@@ -52,7 +52,7 @@ spring:
         options: 
           model: ${OLLAMA_EMBEDDING_MODEL}
 aims:
-  context_instr: ${CONTEXT_INSTR}
+  sys_instr: ${SYS_INSTR}
   vectortable:
     name: ${VECTOR_STORE}
   rag_params: 

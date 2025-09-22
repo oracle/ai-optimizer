@@ -38,7 +38,7 @@ export DB_USERNAME="{database_config[user]}"
 export DB_PASSWORD="{database_config[password]}"
 export DISTANCE_TYPE="{vector_search[distance_metric]}"
 export INDEX_TYPE="{vector_search[index_type]}"
-export CONTEXT_INSTR="{ctx_prompt}"
+export SYS_INSTR="{sys_prompt}"
 export TOP_K="{vector_search[top_k]}"
 
 export VECTOR_STORE="{vector_search[vector_store]}"

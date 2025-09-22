@@ -11,7 +11,7 @@ The {{< full_app_ref >}} is powered by an API Server to allow for any client to 
 
 Each client connected to the API Server, including those from the {{< short_app_ref >}} GUI client, share the same configuration but maintain their own settings.  Database, Model, OCI, and Prompt configurations are used across all clients; but which database, models, OCI profile, and prompts set are specific to each client.
 
-When started as part of the {{< short_app_ref >}} "All-in-One" deployment, you can change the Port it listens on and the API Server Key.  A restart is required for the changes to take effect.
+When started as part of the {{< short_app_ref >}} "All-in-One" deployment, by setting `API_SERVER_CONTROL=TRUE` before startup, you can change the Port it listens on and the API Server Key.
 
 ![Server Configuration](images/api_server_config.png)
 
@@ -19,7 +19,7 @@ If the API Server is started independently of the {{< short_app_ref >}} client, 
 
 ## Server Configuration
 
-During the startup of the API Server, a `server` client is created and populated with minimal settings.  The `server` client is the default when calling the API Server outside of the {{< short_app_ref >}} GUI client.  To copy your {{< short_app_ref >}} GUI client settings to the `server` client for use with external application clients, click the "Copy AI Optimizer Settings".  
+During the startup of the API Server, a `server` client is created and populated with minimal settings.  The `server` client is the default when calling the API Server outside of the {{< short_app_ref >}} GUI client.  To copy your {{< short_app_ref >}} GUI client settings to the `server` client for use with external application clients, click the "Copy Client Settings".  
 
 ![Server Settings](images/api_server_settings.png)
 

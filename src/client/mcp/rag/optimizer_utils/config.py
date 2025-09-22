@@ -33,7 +33,7 @@ def get_llm(data):
     logger.info(llm_config)
     provider = llm_config["provider"]
     url = llm_config["api_base"]
-    api_key = llm_config["api_key"]    
+    api_key = llm_config["api_key"]
 
     logger.info(f"CHAT_MODEL: {model} {provider} {url} {api_key}")
     if provider == "ollama":
@@ -82,7 +82,7 @@ def get_vectorstore(data, embeddings):
 
     db_by_name = {m["name"]: m for m in data.get("database_configs", [])}
     db_config= db_by_name.get(db_alias)
- 
+
     table_alias=data["client_settings"]["vector_search"]["alias"]
     model=data["client_settings"]["vector_search"]["model"]
     chunk_size=str(data["client_settings"]["vector_search"]["chunk_size"])
@@ -97,8 +97,8 @@ def get_vectorstore(data, embeddings):
     user=db_config["user"]
     password=db_config["password"]
     dsn=db_config["dsn"]
-   
-    logger.info(f"{db_table}: {user}/{password} - {dsn}")
+
+    logger.info(f"{db_table}: {user} - {dsn}")
     conn23c = oracledb.connect(user=user, password=password, dsn=dsn)
 
     logger.info("DB Connection successful!")
@@ -109,8 +109,8 @@ def get_vectorstore(data, embeddings):
         dist_strategy = DistanceStrategy.COSINE
     elif metric == "EUCLIDEAN":
         dist_strategy = DistanceStrategy.EUCLIDEAN
-    
+
     logger.info(embeddings)
     knowledge_base = OracleVS(client=conn23c,table_name=db_table, embedding_function=embeddings, distance_strategy=dist_strategy)
-    
+
     return knowledge_base

@@ -383,6 +383,11 @@ class TestEndpoints:
             num_chunks = int(response_data["message"].split()[0])
             assert num_chunks > 0, "Should have embedded at least one chunk"
 
+            # Clean up - drop the vector store that was created
+            expected_vector_store_name = self.get_vector_store_name("test_mixed_files")
+            drop_response = client.delete(f"/v1/embed/{expected_vector_store_name}", headers=auth_headers["valid_auth"])
+            assert drop_response.status_code == 200
+
     def test_vector_store_creation_and_deletion(self, client, auth_headers, db_container, mock_embedding_model):
         """Test that vector stores are created in the database and can be deleted"""
         assert db_container is not None
