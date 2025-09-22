@@ -27,13 +27,10 @@ jobs:
         build:
           - name: aio
             dockerfile: src/Dockerfile
-            context: src
           - name: client
             dockerfile: src/client/Dockerfile
-            context: src
           - name: server
             dockerfile: src/server/Dockerfile
-            context: src
 
     name: ${{ matrix.build.name }}
     steps:
