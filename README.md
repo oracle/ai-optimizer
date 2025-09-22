@@ -36,7 +36,7 @@ For more information, including more details on **Setup and Configuration** plea
 
 #### Bare-Metal Installation
 
-To run the application on bare-metal; download the [source](https://github.com/oracle/ai-optimizer) and from `src/`:
+To run the application on bare-metal; download the [source](https://github.com/oracle/ai-optimizer):
 
 1. Create and activate a Python Virtual Environment:
 
