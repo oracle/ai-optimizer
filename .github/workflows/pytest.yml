@@ -48,10 +48,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd src/
-          python -m pip install --upgrade pip wheel setuptools
-          pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch
-          pip install -e ".[all-test]"
+          python -m pip install --upgrade pip wheel setuptools uv
+          uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch
+          uv pip install -e ".[all-test]"
 
       - name: Run All Tests
         run: pytest
