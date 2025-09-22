@@ -69,13 +69,13 @@ To run the application on bare-metal, download the latest release:
    cd ai-optimizer
    python3.11 -m venv .venv
    source .venv/bin/activate
-   pip3.11 install --upgrade pip wheel
+   pip3.11 install --upgrade pip wheel uv
    ```
 
 1. Install the Python modules:
 
    ```bash
-    pip3.11 install -e ".[all]"
+   uv pip install -e ".[all]"
    ```
 
 1. Start Streamlit:
@@ -108,8 +108,10 @@ To run the application in a container, download the latest release:
 
 1. Build the *ai-optimizer-aio* image.
 
+   _Note:_ MacOS Silicon users may need to specify `--arch amd64`
+
    ```bash
-   podman build -t ai-optimizer-aio .
+   podman build -f src/Dockerfile -t ai-optimizer-aio .
    ```
 
 1. Start the Container:

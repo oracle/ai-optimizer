@@ -14,7 +14,7 @@ authors = [
 
 # Common dependencies that are always needed
 dependencies = [
-    "langchain-core==0.3.75",
+    "langchain-core==0.3.76",
     "httpx==0.28.1",
     "oracledb~=3.1",
     "plotly==6.3.0",
@@ -26,36 +26,35 @@ server = [
     "bokeh==3.8.0",
     "evaluate==0.4.5",
     "faiss-cpu==1.12.0",
-    "fastapi==0.116.1",
-    "fastmcp==2.12.0",
+    "fastapi==0.117.1",
+    "fastmcp==2.12.3",
     "giskard==2.18.0",
-    "langchain-anthropic==0.3.19",
-    "langchain-azure-ai==0.1.5",
-    "langchain-aws==0.2.31",
-    "langchain-cohere==0.4.5",
+    "langchain-anthropic==0.3.20",
+    "langchain-aws==0.2.33",
+    "langchain-cohere==0.4.6",
     "langchain-community==0.3.29",
     "langchain-deepseek==0.1.4",
-    "langchain-google-genai==2.1.10",
-    "langchain-google-vertexai==2.0.28",
-    "langchain-groq==0.3.7",
+    "langchain-google-genai==2.1.12",
+    "langchain-google-vertexai==2.1.2",
+    "langchain-groq==0.3.8",
     "langchain-huggingface==0.3.1",
-    "langchain-mistralai==0.2.11",
-    "langchain-mcp-adapters==0.1.9",
-    "langchain-ollama==0.3.7",
-    "langchain-openai==0.3.32",
+    "langchain-mistralai==0.2.12",
+    "langchain-mcp-adapters==0.1.10",
+    "langchain-ollama==0.3.8",
+    "langchain-openai==0.3.33",
     "langchain-perplexity==0.1.2",
     "langchain-xai==0.2.5",
-    "langgraph==0.6.6",
-    "litellm==1.77.1",
-    "llama-index==0.13.3",
-    "lxml==6.0.0",
+    "langgraph==0.6.7",
+    "litellm==1.77.3",
+    "llama-index==0.14.2",
+    "lxml==6.0.2",
     "matplotlib==3.10.6",
     "oci~=2.0",
-    "psutil==7.0.0",
+    "psutil==7.1.0",
     "python-multipart==0.0.20",
     "torch==2.8.0",
     "umap-learn==0.5.9.post2",
-    "uvicorn==0.35.0",
+    "uvicorn==0.36.0",
 ]
 
 # GUI component dependencies
@@ -85,8 +84,8 @@ all-test = [
 ]
 
 [tool.setuptools]
-packages = ["server", "client", "common"]
+packages = ["src.server", "src.client", "src.common"]
 
 [tool.setuptools_scm]
-root = ".."
+root = "."
 fallback_version = "0.0.0"
