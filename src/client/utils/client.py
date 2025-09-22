@@ -58,6 +58,7 @@ class Client:
                         raise  # Raise after final failure
                     sleep_time = backoff_factor * (2 ** (attempt - 1))  # Exponential backoff
                     time.sleep(sleep_time)
+            return None  # This should never be reached due to the raise above, but satisfies pylint
 
         response = settings_request("PATCH")
         if response.status_code != 200:

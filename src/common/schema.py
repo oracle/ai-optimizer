@@ -108,7 +108,9 @@ class DatabaseVectorStorage(BaseModel):
     """Database Vector Storage Tables"""
 
     vector_store: Optional[str] = Field(
-        default=None, description="Vector Store Table Name (auto-generated, do not set)", json_schema_extra={"readOnly": True}
+        default=None,
+        description="Vector Store Table Name (auto-generated, do not set)",
+        json_schema_extra={"readOnly": True},
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
     model: Optional[str] = Field(default=None, description="Embedding Model")
@@ -149,7 +151,9 @@ class Database(DatabaseAuth):
         default=[], description="Vector Storage (read-only)", json_schema_extra={"readOnly": True}
     )
     selectai: bool = Field(default=False, description="SelectAI Possible")
-    selectai_profiles: Optional[list] = Field(default=[], description="SelectAI Profiles (read-only)", json_schema_extra={"readOnly": True})
+    selectai_profiles: Optional[list] = Field(
+        default=[], description="SelectAI Profiles (read-only)", json_schema_extra={"readOnly": True}
+    )
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
 
@@ -239,7 +243,9 @@ class OracleCloudSettings(BaseModel):
     """Store Oracle Cloud Infrastructure Settings"""
 
     auth_profile: str = Field(default="DEFAULT", description="Config File Profile")
-    namespace: Optional[str] = Field(default=None, description="Object Store Namespace", json_schema_extra={"readOnly": True})
+    namespace: Optional[str] = Field(
+        default=None, description="Object Store Namespace", json_schema_extra={"readOnly": True}
+    )
     user: Optional[str] = Field(
         default=None,
         description="Optional if using Auth Token",
