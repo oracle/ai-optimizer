@@ -35,7 +35,7 @@ public class Config {
     }
 
     @Bean
-    public String contextInstr(@Value("${aims.context_instr}") String instr) {
+    public String contextInstr(@Value("${aims.sys_instr}") String instr) {
         return instr;
     }
 
