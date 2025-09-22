@@ -51,9 +51,8 @@ jobs:
 
       - name: Build and Push Source
         run: |
-          cd src
-          zip -r $RUNNER_TEMP/${{ env.SRC }}.zip .
-          tar -czf "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" .
+          zip -r $RUNNER_TEMP/${{ env.SRC }}.zip src pyproject.toml .dockerignore
+          tar -czf "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" src pyproject.toml .dockerignore
           gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.SRC }}.zip" --clobber
           gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" --clobber
         env:
