@@ -55,17 +55,15 @@ jobs:
             docker buildx build \
               --cache-from=type=local,src=/tmp/.buildx-cache \
               --cache-to=type=local,dest=/tmp/.buildx-cache-new \
-              --file ${{ matrix.build.context }}/${{ matrix.build.dockerfile }} \
+              --file ${{ matrix.build.dockerfile }} \
               --tag ${{ matrix.build.name }}:${{ github.sha }} \
-              --load \
-              ${{ matrix.build.context }}
+              --load .
           else
             docker buildx build \
               --cache-from=type=local,src=/tmp/.buildx-cache \
               --cache-to=type=local,dest=/tmp/.buildx-cache-new \
-              --file ${{ matrix.build.context }}/${{ matrix.build.dockerfile }} \
-              --output=type=cacheonly \
-              ${{ matrix.build.context }}
+              --file ${{ matrix.build.dockerfile }} \
+              --output=type=cacheonly .
           fi
 
       - name: Move Cache for Reuse
