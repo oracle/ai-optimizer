@@ -4,13 +4,15 @@
 
 locals {
   cloud_init_compute = templatefile("${path.module}/templates/cloudinit-compute.tpl", {
-    tenancy_id        = var.tenancy_id
-    compartment_id    = var.compartment_id
-    oci_region        = var.region
-    db_name           = var.adb_name
-    db_password       = var.adb_password
-    optimizer_version = var.optimizer_version
-    install_ollama    = var.vm_is_gpu_shape ? true : false
+    tenancy_id            = var.tenancy_id
+    compartment_id        = var.compartment_id
+    oci_region            = var.region
+    db_name               = var.adb_name
+    db_password           = var.adb_password
+    optimizer_version     = var.optimizer_version
+    optimizer_client_port = var.streamlit_client_port
+    optimizer_server_port = var.fastapi_server_port
+    install_ollama        = var.vm_is_gpu_shape ? true : false
   })
 
   cloud_init_database = templatefile("${path.module}/templates/cloudinit-database.tpl", {

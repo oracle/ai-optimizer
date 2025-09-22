@@ -30,7 +30,21 @@ write_files:
       User=oracleai
       Group=oracleai
       WorkingDirectory=/app
+
+      # Capabilities for binding to port 80
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+      # Security hardening
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=full
+      ProtectHome=true
+
+      # Environment
       Environment="HOME=/app"
+
+      # Restart policy
       Restart=on-failure
 
       [Install]
@@ -49,8 +63,8 @@ write_files:
         systemctl restart ollama
       fi
       systemctl stop firewalld.service
-      firewall-offline-cmd --zone=public --add-port 8501/tcp
-      firewall-offline-cmd --zone=public --add-port 8000/tcp
+      firewall-offline-cmd --zone=public --add-port ${optimizer_client_port}/tcp
+      firewall-offline-cmd --zone=public --add-port ${optimizer_server_port}/tcp
       systemctl start firewalld.service
 
   - path: /tmp/app_setup.sh
@@ -68,9 +82,9 @@ write_files:
       cd /app
       python3.11 -m venv .venv
       source .venv/bin/activate
-      pip3.11 install --upgrade pip wheel setuptools
-      pip3.11 install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch
-      pip3.11 install -e ".[all]" --quiet --no-input &
+      pip3.11 install --upgrade pip wheel setuptools uv
+      uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch
+      uv pip install -e ".[all]" --quiet --prerelease=allow &
       INSTALL_PID=$!
 
       # Install Models
@@ -87,7 +101,8 @@ write_files:
     content: |
       #!/bin/bash
       export OCI_CLI_AUTH=instance_principal
-      export API_SERVER_CONTROL="True"
+      export API_SERVER_CONTROL='TRUE'
+      export API_SERVER_PORT='${optimizer_server_port}'
       export DB_USERNAME='AI_OPTIMIZER'
       export DB_PASSWORD='${db_password}'
       export DB_DSN='${db_name}_TP'
@@ -101,12 +116,12 @@ write_files:
       find /app -name "*.nbc" -delete
       # Set venv and start
       source /app/.venv/bin/activate
-      streamlit run /app/launch_client.py --server.port 8501 --server.address 0.0.0.0
+      streamlit run /app/launch_client.py --server.port ${optimizer_client_port} --server.address 0.0.0.0
 
 runcmd:
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
-  - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz
+  - rm /tmp/app_setup.sh /tmp/root_setup.sh
   - chown oracleai:oracleai /app/start.sh
   - systemctl daemon-reexec
   - systemctl daemon-reload

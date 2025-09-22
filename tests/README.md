@@ -12,14 +12,13 @@ run as part of opening a new Pull Requests.  All tests must pass to enable mergi
    cd src/
    python3.11 -m venv .venv --copies
    source .venv/bin/activate
-   pip3.11 install --upgrade pip wheel setuptools
+   pip3.11 install --upgrade pip wheel setuptools uv
    ```
 
 1. Install the Python modules:
 
    ```bash
-   pip3.11 install -e ".[all-test]"
-   source .venv/bin/activate
+   uv pip install -e ".[all-test]" --prerelease=allow
    ```
 
 ## Running Tests

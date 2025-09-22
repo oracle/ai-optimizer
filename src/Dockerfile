@@ -23,9 +23,9 @@ RUN for dir in server client common; do \
 # Copy only pyproject.toml for dependency installation
 COPY pyproject.toml /opt/package/pyproject.toml
 # Use the virtual environment for pip installations
-RUN /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
-    /opt/.venv/bin/pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
-    /opt/.venv/bin/pip install --no-cache-dir "/opt/package[all]"
+RUN /opt/.venv/bin/pip install --upgrade pip wheel setuptools uv && \
+    /opt/.venv/bin/uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    /opt/.venv/bin/uv pip install --no-cache-dir "/opt/package[all]" --prerelease=allow
 
 ##################################################
 # Application
@@ -34,6 +34,7 @@ FROM all_in_one_pyenv AS oai_application
 ENV PATH=/opt/.venv/bin:$PATH
 ENV TEMP=/app/tmp
 ENV TNS_ADMIN=/app/tns_admin
+ENV API_SERVER_CONTROL="TRUE"
 ENV OCI_CLI_CONFIG_FILE=/app/runtime/.oci/config
 
 # Expect the .oci directory to be mounted to /app/.oci

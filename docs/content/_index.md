@@ -10,7 +10,7 @@ keywords = 'oracle optimizer toolkit microservices development genai rag'
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker:ignore streamlit, genai, venv
+spell-checker:ignore streamlit genai venv setuptools
 -->
 
 The {{< full_app_ref >}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**) combined with Retrieval-Augmented Generation (**RAG**) capabilities. By integrating Oracle Database AI VectorSearch and SelectAI, the {{< short_app_ref >}} enables users to enhance existing Large Language Models (**LLM**s) through **RAG**. This method significantly improves the performance and accuracy of AI models, helping to avoid common issues such as knowledge cutoff and hallucinations.
@@ -69,13 +69,13 @@ To run the application on bare-metal, download the latest release:
    cd ai-optimizer
    python3.11 -m venv .venv
    source .venv/bin/activate
-   pip3.11 install --upgrade pip wheel
+   pip3.11 install --upgrade pip wheel setuptools uv
    ```
 
 1. Install the Python modules:
 
    ```bash
-    pip3.11 install -e ".[all]"
+    uv pip install -e ".[all]" --prerelease=allow
    ```
 
 1. Start Streamlit:
