@@ -70,9 +70,10 @@ def _auth_headers():
 def client():
     """Create a test client for the FastAPI app."""
     # Lazy Load
+    import asyncio
     from launch_server import create_app
 
-    app = create_app()
+    app = asyncio.run(create_app())
     return TestClient(app)
 
 

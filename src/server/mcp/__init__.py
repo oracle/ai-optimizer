@@ -33,7 +33,7 @@ async def _discover_and_register(
 
         try:
             module = importlib.import_module(module_info.name)
-        except Exception as ex:
+        except (ImportError, ModuleNotFoundError, AttributeError, SyntaxError, ValueError) as ex:
             logger.error("Failed to import %s: %s", module_info.name, ex)
             continue
 
