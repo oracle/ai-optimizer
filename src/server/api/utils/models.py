@@ -123,6 +123,8 @@ def get_litellm_config(
     litellm_config.update(
         {"model": model_config["model"], "api_base": full_model_config.get("api_base"), "drop_params": True}
     )
+    if "api_key" in full_model_config:
+        litellm_config["api_key"] = full_model_config["api_key"]
 
     if provider == "oci":
         litellm_config.update(
@@ -159,18 +161,17 @@ def get_client_embed(model_config: dict, oci_config: schema.OracleCloudSettings)
     else:
         if provider == "hosted_vllm":
             kwargs = {
-                    "provider": "openai",
-                    "model": full_model_config["id"],
-                    "base_url": full_model_config.get("api_base"),
-                    "check_embedding_ctx_length":False #To avoid Tiktoken pre-transform on not OpenAI provided server
+                "provider": "openai",
+                "model": full_model_config["id"],
+                "base_url": full_model_config.get("api_base"),
+                "check_embedding_ctx_length": False,  # To avoid Tiktoken pre-transform on not OpenAI provided server
             }
         else:
             kwargs = {
-            "provider": provider,
-            "model": full_model_config["id"],
-            "base_url": full_model_config.get("api_base"),
+                "provider": provider,
+                "model": full_model_config["id"],
+                "base_url": full_model_config.get("api_base"),
             }
-
 
         if full_model_config.get("api_key"):  # only add if set
             kwargs["api_key"] = full_model_config["api_key"]
