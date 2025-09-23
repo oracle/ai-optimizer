@@ -100,18 +100,15 @@ def get_litellm_config(
 ) -> dict:
     """Establish LiteLLM client"""
     full_model_config, provider = _get_full_config(model_config, oci_config)
-    logger.debug("full_model_config: %s", full_model_config)
 
     # Get supported parameters and initialize config
     supported_params = get_supported_openai_params(model=model_config["model"])
-    logger.debug("supported_params: %s", supported_params)
 
     litellm_config = {
         k: full_model_config[k]
         for k in supported_params
         if k in full_model_config and full_model_config[k] is not None
     }
-    logger.debug("litellm_config: %s", litellm_config)
     if "cohere" in model_config["model"]:
         # Ensure we use the OpenAI compatible endpoint
         parsed = urlparse(full_model_config.get("api_base"))
