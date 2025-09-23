@@ -41,7 +41,6 @@ To run the application on bare-metal; download the [source](https://github.com/o
 1. Create and activate a Python Virtual Environment:
 
    ```bash
-   cd src/
    python3.11 -m venv .venv --copies
    source .venv/bin/activate
    pip3.11 install --upgrade pip wheel setuptools uv
@@ -56,6 +55,7 @@ To run the application on bare-metal; download the [source](https://github.com/o
 1. Start Streamlit:
 
    ```bash
+   cd src/
    streamlit run launch_client.py --server.port 8501
    ```
 
@@ -69,11 +69,10 @@ To run the application in a container; download the [source](https://github.com/
 
 1. Build the all-in-one image.
 
-   From the `src/` directory, build image:
+   _Note:_ MacOS Silicon users may need to specify `--arch amd64`
 
    ```bash
-   cd src/
-   podman build -t ai-optimizer-aio .
+   podman build -f src/Dockerfile -t ai-optimizer-aio .
    ```
 
 1. Start the Container:

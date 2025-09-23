@@ -9,7 +9,6 @@ run as part of opening a new Pull Requests.  All tests must pass to enable mergi
 1. Create and activate a Python Virtual Environment:
 
    ```bash
-   cd src/
    python3.11 -m venv .venv --copies
    source .venv/bin/activate
    pip3.11 install --upgrade pip wheel setuptools uv
@@ -18,7 +17,7 @@ run as part of opening a new Pull Requests.  All tests must pass to enable mergi
 1. Install the Python modules:
 
    ```bash
-   uv pip install -e ".[all-test]" --prerelease=allow
+   uv pip install -e ".[all-test]"
    ```
 
 ## Running Tests

@@ -84,7 +84,7 @@ write_files:
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools uv
       uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch
-      uv pip install -e ".[all]" --quiet --prerelease=allow &
+      uv pip install -e ".[all]" &
       INSTALL_PID=$!
 
       # Install Models
@@ -116,7 +116,7 @@ write_files:
       find /app -name "*.nbc" -delete
       # Set venv and start
       source /app/.venv/bin/activate
-      streamlit run /app/launch_client.py --server.port ${optimizer_client_port} --server.address 0.0.0.0
+      streamlit run /app/src/launch_client.py --server.port 8501 --server.address 0.0.0.0
 
 runcmd:
   - /tmp/root_setup.sh
