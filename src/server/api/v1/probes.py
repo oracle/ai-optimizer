@@ -2,9 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-
 # spell-checker:ignore noauth fastmcp healthz
-from datetime import datetime
+
 from fastapi import APIRouter, Request, Depends
 from fastmcp import FastMCP
 
@@ -40,5 +39,4 @@ def mcp_healthz(mcp_engine: FastMCP = Depends(get_mcp)):
         "name": server["name"],
         "version": server["version"],
         "available_tools": len(getattr(mcp_engine, "available_tools", [])) if mcp_engine else 0,
-        "timestamp": datetime.now().isoformat(),
     }

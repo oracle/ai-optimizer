@@ -41,23 +41,17 @@ async def _discover_and_register(
         if hasattr(module, "register"):
             logger.info("Registering via %s.register()", module_info.name)
             if ".tools." in module.__name__:
+                logger.info("Registering tool via %s.register_tool()", module_info.name)
                 await module.register(mcp, auth)
             if ".proxies." in module.__name__:
+                logger.info("Registering proxy via %s.register_proxy()", module_info.name)
                 await module.register(mcp)
             if ".prompts." in module.__name__:
+                logger.info("Registering prompt via %s.register_prompt()", module_info.name)
                 await module.register(mcp)
-        # elif hasattr(module, "register_tool"):
-        #     logger.info("Registering tool via %s.register_tool()", module_info.name)
-        #     module.register_tool(mcp, auth)
-        # elif hasattr(module, "register_prompt"):
-        #     logger.info("Registering prompt via %s.register_prompt()", module_info.name)
-        #     module.register_prompt(mcp)
-        # elif hasattr(module, "register_resource"):
-        #     logger.info("Registering resource via %s.register_resource()", module_info.name)
-        #     module.register_resource(mcp)
-        # elif hasattr(module, "register_proxy"):
-        #     logger.info("Registering proxy via %s.register_resource()", module_info.name)
-        #     module.register_resource(mcp)
+            if ".resources." in module.__name__:
+                logger.info("Registering resource via %s.register_resource()", module_info.name)
+                await module.register(mcp)
         else:
             logger.debug("No register function in %s, skipping.", module_info.name)
 
@@ -69,5 +63,6 @@ async def register_all_mcp(mcp: FastMCP, auth: APIRouter):
     logger.info("Starting Registering MCP Components")
     await _discover_and_register("server.mcp.tools", mcp=mcp, auth=auth)
     await _discover_and_register("server.mcp.proxies", mcp=mcp)
-    # await _discover_and_register("server.mcp.prompts", mcp=mcp)
+    await _discover_and_register("server.mcp.prompts", mcp=mcp)
+    await _discover_and_register("server.mcp.resources", mcp=mcp)
     logger.info("Finished Registering MCP Components")

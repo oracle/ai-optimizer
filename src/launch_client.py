@@ -33,6 +33,8 @@ except ImportError as ex:
     os.environ.pop("API_SERVER_CONTROL", None)
     LAUNCH_SERVER_EXISTS = False
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 #############################################################################
 # Functions
@@ -69,7 +71,7 @@ def main() -> None:
     """Streamlit GUI"""
     st.set_page_config(
         page_title="Oracle AI Optimizer and Toolkit",
-        page_icon="client/media/favicon.png",
+        page_icon=os.path.join(BASE_DIR, "client", "media", "favicon.png"),
         layout="wide",
         initial_sidebar_state="expanded",
         menu_items={
@@ -95,7 +97,7 @@ def main() -> None:
         </style>
         """,
     )
-    st.logo("client/media/logo.png")
+    st.logo(os.path.join(BASE_DIR, "client", "media", "logo.png"))
 
     # Setup Settings State
     api_down = False
