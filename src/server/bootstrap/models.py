@@ -89,7 +89,7 @@ def main() -> list[Model]:
             "id": "gpt-oss:20b",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "ll",
-            "provider": "ollama",
+            "provider": "ollama_chat",
             "api_key": "",
             "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
             "context_length": 131072,
@@ -222,6 +222,7 @@ def main() -> list[Model]:
     for model in models_list:
         update_env_var(model, "cohere", "api_key", "COHERE_API_KEY")
         update_env_var(model, "oci", "api_base", "OCI_GENAI_SERVICE_ENDPOINT")
+        update_env_var(model, "ollama_chat", "api_base", "ON_PREM_OLLAMA_URL")
         update_env_var(model, "ollama", "api_base", "ON_PREM_OLLAMA_URL")
         update_env_var(model, "huggingface", "api_base", "ON_PREM_HF_URL")
         update_env_var(model, "meta-llama", "api_base", "ON_PREM_VLLM_URL")
