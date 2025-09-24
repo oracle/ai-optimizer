@@ -10,7 +10,7 @@ from common import logging_config
 logger = logging_config.logging.getLogger("api.utils.mcp")
 
 
-def get_client(server: str = "http://127.0.0.1", port: int = 8000) -> dict:
+def get_client(server: str = "http://127.0.0.1", port: int = 8000, client: str = None) -> dict:
     """Get the MCP Client Configuration"""
     mcp_client = {
         "mcpServers": {
@@ -22,5 +22,7 @@ def get_client(server: str = "http://127.0.0.1", port: int = 8000) -> dict:
             }
         }
     }
+    if client == "langgraph":
+        del mcp_client["mcpServers"]["optimizer"]["type"]
 
     return mcp_client

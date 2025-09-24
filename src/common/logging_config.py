@@ -10,8 +10,18 @@ Default Logging Configuration
 import os
 import asyncio
 import logging
+import warnings
 from logging.config import dictConfig
 from common._version import __version__
+
+# --- Debug toggle ---
+DEBUG_MODE = os.environ.get("LOG_LEVEL", "").upper() == "DEBUG"
+
+# --- Control DeprecationWarnings globally ---
+if DEBUG_MODE:
+    warnings.filterwarnings("default", category=DeprecationWarning)
+else:
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 class VersionFilter(logging.Filter):
@@ -46,12 +56,13 @@ class PrettifyCancelledError(logging.Filter):
         return True
 
 
-# Standard formatter
+# --- Standard formatter ---
 FORMATTER = {
     "format": "%(asctime)s (v%(__version__)s) - %(levelname)-8s - (%(name)s): %(message)s",
     "datefmt": "%Y-%b-%d %H:%M:%S",
 }
 LOG_LEVEL = os.environ.get("LOG_LEVEL", default=logging.INFO)
+
 LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -74,6 +85,11 @@ LOGGING_CONFIG = {
     "loggers": {
         "": {  # root logger
             "level": LOG_LEVEL,
+            "handlers": ["default"],
+            "propagate": False,
+        },
+        "py.warnings": {  # capture warnings here
+            "level": "DEBUG" if DEBUG_MODE else "ERROR",
             "handlers": ["default"],
             "propagate": False,
         },
@@ -114,3 +130,6 @@ for name in ["LiteLLM", "LiteLLM Proxy", "LiteLLM Router"]:
     logger.propagate = False
 
 dictConfig(LOGGING_CONFIG)
+
+# --- Capture warnings into logging system ---
+logging.captureWarnings(True)

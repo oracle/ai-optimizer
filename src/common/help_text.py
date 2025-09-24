@@ -40,9 +40,6 @@ help_dict = {
         A higher presence penalty makes bringing up new subjects more likely rather than
         sticking to what has already been mentioned.
         """,
-    "selectai": """
-        Enable SelectAI Generation.
-        """,
     "vector_search": """
         Enable Vector Search Generation.
         """,

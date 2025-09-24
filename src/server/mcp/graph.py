@@ -2,27 +2,39 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore acompletion checkpointer litellm
+# spell-checker:ignore acompletion checkpointer litellm ainvoke
 
 import copy
+import json
 
-from langchain_core.messages import SystemMessage, ToolMessage, AIMessage
+from langchain_core.messages import SystemMessage, ToolMessage, AIMessage, HumanMessage
 from langchain_core.messages.utils import convert_to_openai_messages
 from langchain_core.runnables import RunnableConfig
 
 from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, MessagesState, START, END
-from langgraph.prebuilt import ToolNode
-
 
 from litellm import acompletion
 from litellm.exceptions import APIConnectionError
 
 from launch_server import graph_memory
 
-from  common import logging_config
+from common import logging_config
 
 logger = logging_config.logging.getLogger("mcp.graph")
+
+
+def _parse_tool_arguments(arguments: str) -> dict:
+    """Parse tool call arguments from string to dict"""
+    if not arguments or not isinstance(arguments, str):
+        return {}
+
+    try:
+        parsed = json.loads(arguments)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        logger.error("Failed to parse tool call arguments: %s", arguments)
+        return {}
 
 
 #############################################################################
@@ -38,24 +50,28 @@ class OptimizerState(MessagesState):
 #############################################################################
 # Functions
 #############################################################################
+
+
 def clean_messages(state: OptimizerState, config: RunnableConfig) -> list:
     """Return a list of messages that will be passed to the model for completion
-    Filter out old VS documents to avoid blowing-out the context window
+    Filter out old VS documents to avoid blowing-out the context window (#TODO)
     Leave the state as is (deepcopy) for GUI functionality"""
 
     use_history = config["metadata"]["use_history"]
 
     state_messages = copy.deepcopy(state.get("messages", []))
     if state_messages:
-        # If user decided for no history, only take the last message
-        state_messages = state_messages if use_history else state_messages[-1:]
+        # If user decided for no history, only take the last HumanMessage
+        if not use_history:
+            last_human = next(
+                (m for m in reversed(state_messages) if isinstance(m, HumanMessage)),
+                None,
+            )
+            state_messages = [last_human] if last_human else []
 
-        # Remove System Prompt from top
-        if isinstance(state_messages[0], SystemMessage):
+        # Remove System Prompt from top if it exists
+        if state_messages and isinstance(state_messages[0], SystemMessage):
             state_messages.pop(0)
-
-        # Remove ToolCalls
-        state_messages = [msg for msg in state_messages if not isinstance(msg, ToolMessage)]
 
     return state_messages
 
@@ -63,14 +79,84 @@ def clean_messages(state: OptimizerState, config: RunnableConfig) -> list:
 def should_continue(state: OptimizerState):
     """Determine if graph should continue to tools"""
     messages = state["messages"]
-    if messages and messages[-1].tool_calls:
-        return "tools"
-    return END
+
+    if not messages or not hasattr(messages[-1], "tool_calls") or not messages[-1].tool_calls:
+        return END
+
+    # Get tool call IDs that need responses
+    tool_call_ids = {tc.get("id") for tc in messages[-1].tool_calls if tc.get("id")}
+
+    # Get tool call IDs that already have responses
+    responded_tool_ids = {
+        msg.tool_call_id for msg in messages if isinstance(msg, ToolMessage) and hasattr(msg, "tool_call_id")
+    }
+
+    # Continue to tools if there are unprocessed tool calls
+    return "tools" if tool_call_ids - responded_tool_ids else END
 
 
 #############################################################################
 # NODES and EDGES
 #############################################################################
+def custom_tool_node(tools):
+    """Custom tool node that injects Optimizer configurations"""
+
+    async def tool_node(state: OptimizerState, config: RunnableConfig):
+        """Custom tool node that injects Optimizer configurations into tool calls"""
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+            return {"messages": []}
+
+        # Get thread_id from config
+        thread_id = config["configurable"]["thread_id"]
+        logger.info("Thread ID from config: %s", thread_id)  # Add this line
+
+        # Create a mapping of tool names to tool objects
+        tool_map = {tool.name: tool for tool in tools}
+
+        # Execute tools and collect responses
+        tool_responses = []
+
+        for tool_call in last_message.tool_calls:
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"].copy()  # Copy to avoid modifying original
+            tool_id = tool_call["id"]
+
+            # Inject thread_id into args for vector store tools
+            vector_tools = {"optimizer_vs_list"}
+            if tool_name in vector_tools:
+                tool_args = {**tool_args, "thread_id": thread_id}
+
+            try:
+                if tool_name in tool_map:
+                    # Execute the actual tool
+                    tool = tool_map[tool_name]
+                    result = await tool.ainvoke(tool_args) if hasattr(tool, "ainvoke") else tool.invoke(tool_args)
+
+                    # Convert result to string if it's not already
+                    if isinstance(result, dict):
+                        result = json.dumps(result, indent=2)
+                    elif not isinstance(result, str):
+                        result = str(result)
+                else:
+                    result = f"Unknown tool: {tool_name}"
+
+                tool_responses.append(ToolMessage(content=result, tool_call_id=tool_id, name=tool_name))
+            except Exception as ex:
+                logger.error("Tool execution failed for %s: %s", tool_name, ex)
+                tool_responses.append(
+                    ToolMessage(
+                        content=f"Error executing {tool_name}: {str(ex)}", tool_call_id=tool_id, name=tool_name
+                    )
+                )
+
+        return {"messages": tool_responses}
+
+    return tool_node
+
+
 async def initialise(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
     """Get messages from state based on Thread ID"""
     logger.debug("Initializing OptimizerState")
@@ -87,25 +173,87 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
 
     messages = state["cleaned_messages"]
     try:
-        # Get our Prompt
+        # Get our Prompt and insert
         sys_prompt = config.get("metadata", {}).get("sys_prompt")
         if state.get("context_input") and state.get("documents"):
             documents = state["documents"]
             new_prompt = SystemMessage(content=f"{sys_prompt.prompt}\n {documents}")
         else:
             new_prompt = SystemMessage(content=f"{sys_prompt.prompt}")
-
-        # Insert Prompt into cleaned_messages
         messages.insert(0, new_prompt)
+        logger.info("Sending Messages: %s", messages)
+
         # Await the asynchronous completion with streaming enabled
-        logger.info("Streaming completion...")
         ll_raw = config["configurable"]["ll_config"]
-        response = await acompletion(messages=convert_to_openai_messages(messages), stream=True, **ll_raw)
+        tools = config["metadata"].get("tools", [])
+
+        logger.info("Streaming completion...")
+        logger.info("Tools being sent: %s", tools)
+        logger.info("Model: %s", ll_raw.get("model", ""))
+
+        try:
+            response = await acompletion(
+                messages=convert_to_openai_messages(messages), stream=True, **ll_raw, tools=tools
+            )
+        except Exception as ex:
+            logger.error("Error during completion: %s", ex)
+            raise ex
         async for chunk in response:
-            content = chunk.choices[0].delta.content
-            if content is not None:
-                writer({"stream": content})
-                collected_content.append(content)
+            logger.info("Stream Response: %s", response)
+            logger.info("Stream Chunk: %s", chunk)
+            choice = chunk.choices[0].delta
+
+            # Check if the response finished immediately without content
+            if chunk.choices[0].finish_reason == "stop" and choice.content is None and not collected_content:
+                logger.info("Stream finished immediately without content, likely an empty response")
+                return {"messages": [AIMessage(content="I'm sorry, I was unable to produce a response.")]}
+
+            # Handle tool call streaming - once detected, accumulate until complete
+            if choice.tool_calls:
+                logger.info("Tool call detected, accumulating chunks...")
+                accumulated_tool_calls = {}
+
+                # Process this first chunk
+                for tool_call_delta in choice.tool_calls:
+                    index = tool_call_delta.index
+                    accumulated_tool_calls[index] = {
+                        "id": getattr(tool_call_delta, "id", "") or "",
+                        "name": getattr(tool_call_delta.function, "name", "") or "",
+                        "arguments": getattr(tool_call_delta.function, "arguments", "") or "",
+                    }
+
+                # Continue accumulating until tool calls are complete
+                while chunk.choices[0].finish_reason != "tool_calls":
+                    chunk = await anext(response)
+                    choice = chunk.choices[0].delta
+
+                    for tool_call_delta in choice.tool_calls:
+                        index = tool_call_delta.index
+                        if index in accumulated_tool_calls:
+                            if hasattr(tool_call_delta, "id") and tool_call_delta.id:
+                                accumulated_tool_calls[index]["id"] = tool_call_delta.id
+                            if hasattr(tool_call_delta.function, "name") and tool_call_delta.function.name:
+                                accumulated_tool_calls[index]["name"] = tool_call_delta.function.name
+                            if hasattr(tool_call_delta.function, "arguments") and tool_call_delta.function.arguments:
+                                accumulated_tool_calls[index]["arguments"] += tool_call_delta.function.arguments
+
+                # Process the complete tool calls
+                tool_calls = [
+                    {
+                        "name": data["name"],
+                        "args": _parse_tool_arguments(data["arguments"]) or {},
+                        "id": data["id"],
+                        "type": "tool_call",
+                    }
+                    for data in accumulated_tool_calls.values()
+                ]
+                return {"messages": [AIMessage(content="", tool_calls=tool_calls)]}
+
+            # Handle content streaming
+            if choice.content is not None:
+                writer({"stream": choice.content})
+                collected_content.append(choice.content)
+
             full_response.append(chunk)
 
         # After loop: update last chunk to a full completion with usage details
@@ -139,7 +287,7 @@ def main(tools: list):
     # Define the nodes
     workflow.add_node("initialise", initialise)
     workflow.add_node("stream_completion", stream_completion)
-    workflow.add_node("tools", ToolNode(tools))
+    workflow.add_node("tools", custom_tool_node(tools))
 
     # Add Edges
     workflow.add_edge(START, "initialise")
@@ -149,7 +297,6 @@ def main(tools: list):
         should_continue,
     )
     workflow.add_edge("tools", "stream_completion")
-    workflow.add_edge("stream_completion", END)
 
     # Compile the graph and return it
     mcp_graph = workflow.compile(checkpointer=graph_memory)

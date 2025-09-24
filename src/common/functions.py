@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore genai, hnsw
 
-from typing import Tuple
+from typing import Tuple, Dict
 import math
 import re
 
@@ -73,3 +73,61 @@ def get_vs_table(
     except TypeError:
         logger.fatal("Not all required values provided to get Vector Store Table name.")
     return store_table, store_comment
+
+
+def parse_vs_table(table_name: str) -> Dict[str, str]:
+    """
+    Parse structured vector table name format (inverse of get_vs_table).
+    Format: [alias_]<embedding_model>_<chunk_size>_<overlap>_<distance_metric>_<index_type>
+    """
+    try:
+        parts = table_name.split('_')
+
+        if len(parts) < 5:
+            return {
+                "alias": None,
+                "embedding_model": table_name,
+                "chunk_size": "UNKNOWN",
+                "overlap": "UNKNOWN",
+                "distance_metric": "UNKNOWN",
+                "index_type": "UNKNOWN",
+                "parse_status": "insufficient_parts"
+            }
+
+        # Last 4 parts are always: chunk_size, overlap, distance_metric, index_type
+        index_type = parts[-1]
+        distance_metric = parts[-2]
+        overlap = parts[-3]
+        chunk_size = parts[-4]
+
+        # Everything else is model (and possibly alias)
+        model_parts = parts[:-4]
+
+        if len(model_parts) == 1:
+            alias = None
+            embedding_model = model_parts[0]
+        else:
+            alias = model_parts[0]
+            embedding_model = '_'.join(model_parts[1:])
+
+        return {
+            "alias": alias,
+            "embedding_model": embedding_model,
+            "chunk_size": chunk_size,
+            "overlap": overlap,
+            "distance_metric": distance_metric,
+            "index_type": index_type,
+            "parse_status": "success"
+        }
+
+    except Exception as ex:
+        logger.warning("Failed to parse table name '%s': %s", table_name, ex)
+        return {
+            "alias": None,
+            "embedding_model": table_name,
+            "chunk_size": "UNKNOWN",
+            "overlap": "UNKNOWN",
+            "distance_metric": "UNKNOWN",
+            "index_type": "UNKNOWN",
+            "parse_status": f"parse_error: {str(ex)}"
+        }
