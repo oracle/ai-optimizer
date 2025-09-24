@@ -5,8 +5,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Session States Set:
 - user_client: Stores the Client
 """
+# spell-checker:ignore streamlit oraclevs selectai
 
-# spell-checker:ignore streamlit, oraclevs, selectai
 import asyncio
 import inspect
 import json
