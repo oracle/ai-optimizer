@@ -51,60 +51,54 @@ def show_vector_search_refs(context):
     st.markdown(f"**Notes:** Vector Search Query - {context[1]}")
 
 
-#############################################################################
-# MAIN
-#############################################################################
-async def main() -> None:
-    """Streamlit GUI"""
-    try:
-        get_models()
-    except api_call.ApiError:
-        st.stop()
-    #########################################################################
-    # Sidebar Settings
-    #########################################################################
-    # Get a list of available language models, if none, then stop
+def setup_sidebar():
+    """Configure sidebar settings"""
     ll_models_enabled = st_common.enabled_models_lookup("ll")
     if not ll_models_enabled:
         st.error("No language models are configured and/or enabled. Disabling Client.", icon="🛑")
         st.stop()
-    # the sidebars will set this to False if not everything is configured.
+
     state.enable_client = True
     st_common.tools_sidebar()
     st_common.history_sidebar()
     st_common.ll_sidebar()
     st_common.selectai_sidebar()
     st_common.vector_search_sidebar()
-    # Stop when sidebar configurations not set
+
     if not state.enable_client:
         st.stop()
 
-    #########################################################################
-    # Chatty-Bot Centre
-    #########################################################################
-    # Establish the Client
+
+def create_client():
+    """Create or get existing client"""
     if "user_client" not in state:
         state.user_client = client.Client(
             server=state.server,
             settings=state.client_settings,
             timeout=1200,
         )
-    user_client: client.Client = state.user_client
+    return state.user_client
 
-    history = await user_client.get_history()
+
+def display_chat_history(history):
+    """Display chat history messages"""
     st.chat_message("ai").write("Hello, how can I help you?")
     vector_search_refs = []
+
     for message in history or []:
         if not message["content"]:
             continue
+
         if message["role"] == "tool" and message["name"] == "oraclevs_tool":
             vector_search_refs = json.loads(message["content"])
-        if message["role"] in ("ai", "assistant"):
+
+        elif message["role"] in ("ai", "assistant"):
             with st.chat_message("ai"):
                 st.markdown(message["content"])
                 if vector_search_refs:
                     show_vector_search_refs(vector_search_refs)
                     vector_search_refs = []
+
         elif message["role"] in ("human", "user"):
             with st.chat_message("human"):
                 content = message["content"]
@@ -117,8 +111,12 @@ async def main() -> None:
                 else:
                     st.write(content)
 
+
+async def handle_chat_input(user_client):
+    """Handle user chat input and streaming response"""
     sys_prompt = state.client_settings["prompts"]["sys"]
     render_chat_footer()
+
     if human_request := st.chat_input(
         f"Ask your question here... (current prompt: {sys_prompt})",
         accept_file=True,
@@ -126,23 +124,42 @@ async def main() -> None:
     ):
         st.chat_message("human").write(human_request.text)
         file_b64 = None
+
         if human_request["files"]:
             file = human_request["files"][0]
             file_bytes = file.read()
             file_b64 = base64.b64encode(file_bytes).decode("utf-8")
+
         try:
             message_placeholder = st.chat_message("ai").empty()
             full_answer = ""
             async for chunk in user_client.stream(message=human_request.text, image_b64=file_b64):
                 full_answer += chunk
                 message_placeholder.markdown(full_answer)
-            # Stream until we hit the end then refresh to replace with history
             st.rerun()
-        except Exception:
+        except (ConnectionError, TimeoutError, api_call.ApiError) as ex:
+            logger.exception("Error during chat streaming: %s", ex)
             message_placeholder.markdown("An unexpected error occurred, please retry your request.")
             if st.button("Retry", key="reload_chatbot"):
                 st_common.clear_state_key("user_client")
                 st.rerun()
+
+
+#############################################################################
+# MAIN
+#############################################################################
+async def main() -> None:
+    """Streamlit GUI"""
+    try:
+        get_models()
+    except api_call.ApiError:
+        st.stop()
+
+    setup_sidebar()
+    user_client = create_client()
+    history = await user_client.get_history()
+    display_chat_history(history)
+    await handle_chat_input(user_client)
 
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
