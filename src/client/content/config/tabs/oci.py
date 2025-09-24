@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Script initializes a web interface for Oracle Cloud Infrastructure (OCI)
 It includes a form to input and test OCI API Access.
 """
-# spell-checker:ignore streamlit, ocid, selectbox, genai, oraclecloud
+# spell-checker:ignore streamlit ocid selectbox genai oraclecloud
 
 import pandas as pd
 

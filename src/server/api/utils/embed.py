@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore langchain, docstore, docos, vectorstores, oraclevs, genai, hnsw
+# spell-checker:ignore langchain docstore docos vectorstores oraclevs genai hnsw
 
 import json
 import copy

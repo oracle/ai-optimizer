@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 This script initializes a web interface for database configuration using Streamlit (`st`).
 It includes a form to input and test database connection settings.
 """
-# spell-checker:ignore selectai selectbox 
+# spell-checker:ignore selectai selectbox
 
 import json
 import pandas as pd

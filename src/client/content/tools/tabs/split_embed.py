@@ -4,8 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 This script initializes is used for the splitting and chunking process using Streamlit (`st`).
 """
+# spell-checker:ignore selectbox hnsw ivf ocids iterrows
 
-# spell-checker:ignore selectbox, hnsw, ivf, ocids,iterrows
 import math
 import re
 
