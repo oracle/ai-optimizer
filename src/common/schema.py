@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import time
 from typing import Optional, Literal, get_args, Any
-from pydantic import BaseModel, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator, ConfigDict
 
 from langchain_core.messages import ChatMessage
 import oracledb
@@ -108,7 +108,9 @@ class DatabaseVectorStorage(BaseModel):
     """Database Vector Storage Tables"""
 
     vector_store: Optional[str] = Field(
-        default=None, description="Vector Store Table Name (auto-generated, do not set)", readOnly=True
+        default=None,
+        description="Vector Store Table Name (auto-generated, do not set)",
+        json_schema_extra={"readOnly": True},
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
     model: Optional[str] = Field(default=None, description="Embedding Model")
@@ -142,8 +144,8 @@ class VectorStoreRefreshStatus(BaseModel):
 class DatabaseSelectAIObjects(BaseModel):
     """Database SelectAI Objects"""
 
-    owner: Optional[str] = Field(default=None, description="Object Owner", readOnly=True)
-    name: Optional[str] = Field(default=None, description="Object Name", readOnly=True)
+    owner: Optional[str] = Field(default=None, description="Object Owner", json_schema_extra={"readOnly": True})
+    name: Optional[str] = Field(default=None, description="Object Name", json_schema_extra={"readOnly": True})
     enabled: bool = Field(default=False, description="SelectAI Enabled")
 
 
@@ -165,12 +167,14 @@ class Database(DatabaseAuth):
     """Database Object"""
 
     name: str = Field(default="DEFAULT", description="Name of Database (Alias)")
-    connected: bool = Field(default=False, description="Connection Established", readOnly=True)
+    connected: bool = Field(default=False, description="Connection Established", json_schema_extra={"readOnly": True})
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
-        default=[], description="Vector Storage (read-only)", readOnly=True
+        default=[], description="Vector Storage (read-only)", json_schema_extra={"readOnly": True}
     )
     selectai: bool = Field(default=False, description="SelectAI Possible")
-    selectai_profiles: Optional[list] = Field(default=[], description="SelectAI Profiles (read-only)", readOnly=True)
+    selectai_profiles: Optional[list] = Field(
+        default=[], description="SelectAI Profiles (read-only)", json_schema_extra={"readOnly": True}
+    )
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
 
@@ -260,7 +264,9 @@ class OracleCloudSettings(BaseModel):
     """Store Oracle Cloud Infrastructure Settings"""
 
     auth_profile: str = Field(default="DEFAULT", description="Config File Profile")
-    namespace: Optional[str] = Field(default=None, description="Object Store Namespace", readOnly=True)
+    namespace: Optional[str] = Field(
+        default=None, description="Object Store Namespace", json_schema_extra={"readOnly": True}
+    )
     user: Optional[str] = Field(
         default=None,
         description="Optional if using Auth Token",
@@ -277,9 +283,7 @@ class OracleCloudSettings(BaseModel):
     )
     genai_region: Optional[str] = Field(default=None, description="Optional Region OCID of OCI GenAI services")
 
-    model_config = {
-        "extra": "allow"  # enable extra fields
-    }
+    model_config = ConfigDict(extra="allow")
 
 
 #####################################################
@@ -451,8 +455,8 @@ class ChatRequest(LanguageModelParameters):
     messages: list[ChatMessage] = Field(description="A list of messages comprising the conversation so far.")
 
     ### Example Request (will display in docs)
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra={
             "examples": [
                 {
                     "model": "openai/gpt-4o-mini",
@@ -466,7 +470,7 @@ class ChatRequest(LanguageModelParameters):
                 }
             ]
         }
-    }
+    )
 
 
 #####################################################

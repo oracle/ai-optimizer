@@ -11,6 +11,7 @@ from client.content.config.tabs.settings import get_settings, display_settings
 from client.content.config.tabs.oci import get_oci, display_oci
 from client.content.config.tabs.databases import get_databases, display_databases
 from client.content.config.tabs.models import get_models, display_models
+from client.content.config.tabs.mcp import get_mcp, display_mcp
 
 
 def main() -> None:
@@ -20,6 +21,7 @@ def main() -> None:
     get_databases()
     get_models()
     get_oci()
+    get_mcp()
 
     tabs_list = []
     if not state.disabled["settings"]:
@@ -30,6 +32,8 @@ def main() -> None:
         tabs_list.append("🤖 Models")
     if not state.disabled["oci_cfg"]:
         tabs_list.append("☁️ OCI")
+    if not state.disabled["mcp_cfg"]:
+        tabs_list.append("🔗 MCP")
 
     # Only create tabs if there is at least one
     tab_index = 0
@@ -52,6 +56,10 @@ def main() -> None:
         if not state.disabled["oci_cfg"]:
             with tabs[tab_index]:
                 display_oci()
+            tab_index += 1
+        if not state.disabled["mcp_cfg"]:
+            with tabs[tab_index]:
+                display_mcp()
             tab_index += 1
 
 
