@@ -364,18 +364,164 @@ def selectai_sidebar() -> None:
 #####################################################
 # Vector Search Options
 #####################################################
+def _render_vector_search_options(vector_search_type: str) -> None:
+    """Render vector search parameter controls based on search type."""
+    st.sidebar.number_input(
+        "Top K:",
+        help=help_text.help_dict["top_k"],
+        value=state.client_settings["vector_search"]["top_k"],
+        min_value=1,
+        max_value=10000,
+        key="selected_vector_search_top_k",
+        on_change=update_client_settings("vector_search"),
+    )
+    if vector_search_type == "Similarity Score Threshold":
+        st.sidebar.slider(
+            "Minimum Relevance Threshold:",
+            help=help_text.help_dict["score_threshold"],
+            value=state.client_settings["vector_search"]["score_threshold"],
+            min_value=0.0,
+            max_value=1.0,
+            step=0.1,
+            key="selected_vector_search_score_threshold",
+            on_change=update_client_settings("vector_search"),
+        )
+    if vector_search_type == "Maximal Marginal Relevance":
+        st.sidebar.number_input(
+            "Fetch K:",
+            help=help_text.help_dict["fetch_k"],
+            value=state.client_settings["vector_search"]["fetch_k"],
+            min_value=1,
+            max_value=10000,
+            key="selected_vector_search_fetch_k",
+            on_change=update_client_settings("vector_search"),
+        )
+        st.sidebar.slider(
+            "Degree of Diversity:",
+            help=help_text.help_dict["lambda_mult"],
+            value=state.client_settings["vector_search"]["lambda_mult"],
+            min_value=0.0,
+            max_value=1.0,
+            step=0.1,
+            key="selected_vector_search_lambda_mult",
+            on_change=update_client_settings("vector_search"),
+        )
+
+
+def _vs_reset() -> None:
+    """Reset Vector Store Selections"""
+    for key in state.client_settings["vector_search"]:
+        if key in (
+            "model",
+            "chunk_size",
+            "chunk_overlap",
+            "distance_metric",
+            "vector_store",
+            "alias",
+            "index_type",
+        ):
+            clear_state_key(f"selected_vector_search_{key}")
+            state.client_settings["vector_search"][key] = ""
+
+
+def _vs_gen_selectbox(label: str, options: list, key: str):
+    """Handle selectbox with auto-setting for a single unique value"""
+    valid_options = [option for option in options if option != ""]
+    if not valid_options:  # Disable the selectbox if no valid options are available
+        disabled = True
+        selected_value = ""
+    else:
+        disabled = False
+        if len(valid_options) == 1:  # Pre-select if only one unique option
+            selected_value = valid_options[0]
+            logger.debug("Defaulting %s to %s", key, selected_value)
+        else:
+            selected_value = (
+                state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
+            )
+            logger.debug("User selected %s to %s", key, selected_value)
+    return st.sidebar.selectbox(
+        label,
+        options=[""] + valid_options,
+        key=key,
+        index=([""] + valid_options).index(selected_value),
+        disabled=disabled,
+    )
+
+
+def _update_filtered_df(vs_df: pd.DataFrame) -> pd.DataFrame:
+    """Dynamically update filtered_df based on selected filters"""
+    embed_models_enabled = enabled_models_lookup("embed")
+    filtered = vs_df.copy()
+    # Remove vector stores where the model is not enabled
+    filtered = vs_df[vs_df["model"].isin(embed_models_enabled.keys())]
+    if state.get("selected_vector_search_alias"):
+        filtered = filtered[filtered["alias"] == state.selected_vector_search_alias]
+    if state.get("selected_vector_search_model"):
+        filtered = filtered[filtered["model"] == state.selected_vector_search_model]
+    if state.get("selected_vector_search_chunk_size"):
+        filtered = filtered[filtered["chunk_size"] == state.selected_vector_search_chunk_size]
+    if state.get("selected_vector_search_chunk_overlap"):
+        filtered = filtered[filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap]
+    if state.get("selected_vector_search_distance_metric"):
+        filtered = filtered[filtered["distance_metric"] == state.selected_vector_search_distance_metric]
+    if state.get("selected_vector_search_index_type"):
+        filtered = filtered[filtered["index_type"] == state.selected_vector_search_index_type]
+    return filtered
+
+
+def _render_vector_store_selection(vs_df: pd.DataFrame) -> None:
+    """Render vector store selection controls and handle state updates."""
+    filtered_df = _update_filtered_df(vs_df)
+
+    # Render selectbox with updated options
+    alias = _vs_gen_selectbox(
+        "Select Alias:", filtered_df["alias"].unique().tolist(), "selected_vector_search_alias"
+    )
+    embed_model = _vs_gen_selectbox(
+        "Select Model:", filtered_df["model"].unique().tolist(), "selected_vector_search_model"
+    )
+    chunk_size = _vs_gen_selectbox(
+        "Select Chunk Size:", filtered_df["chunk_size"].unique().tolist(), "selected_vector_search_chunk_size"
+    )
+    chunk_overlap = _vs_gen_selectbox(
+        "Select Chunk Overlap:",
+        filtered_df["chunk_overlap"].unique().tolist(),
+        "selected_vector_search_chunk_overlap",
+    )
+    distance_metric = _vs_gen_selectbox(
+        "Select Distance Metric:",
+        filtered_df["distance_metric"].unique().tolist(),
+        "selected_vector_search_distance_metric",
+    )
+    index_type = _vs_gen_selectbox(
+        "Select Index Type:", filtered_df["index_type"].unique().tolist(), "selected_vector_search_index_type"
+    )
+
+    if all([alias, embed_model, chunk_size, chunk_overlap, distance_metric, index_type]):
+        vs = filtered_df["vector_store"].iloc[0]
+        state.client_settings["vector_search"]["vector_store"] = vs
+        state.client_settings["vector_search"]["alias"] = alias
+        state.client_settings["vector_search"]["model"] = embed_model
+        state.client_settings["vector_search"]["chunk_size"] = chunk_size
+        state.client_settings["vector_search"]["chunk_overlap"] = chunk_overlap
+        state.client_settings["vector_search"]["distance_metric"] = distance_metric
+        state.client_settings["vector_search"]["index_type"] = index_type
+    else:
+        st.error("Please select Vector Store options or disable Vector Search to continue.", icon="❌")
+        state.enable_client = False
+
+    # Reset button
+    st.sidebar.button("Reset", type="primary", on_click=_vs_reset)
+
+
 def vector_search_sidebar() -> None:
     """Vector Search Sidebar Settings, conditional if Database/Embeddings are configured"""
     if state.client_settings["vector_search"]["enabled"]:
         st.sidebar.subheader("Vector Search", divider="red")
-
         switch_prompt("sys", "Vector Search Example")
-        ##########################
-        # Search
-        ##########################
-        # TODO(gotsysdba) "Similarity Score Threshold" currently raises NotImplementedError
-        # vector_search_type_list =
-        # ["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"]
+
+        # Search Type Selection
         vector_search_type_list = ["Similarity", "Maximal Marginal Relevance"]
         vector_search_type = st.sidebar.selectbox(
             "Search Type:",
@@ -384,155 +530,15 @@ def vector_search_sidebar() -> None:
             key="selected_vector_search_search_type",
             on_change=update_client_settings("vector_search"),
         )
-        st.sidebar.number_input(
-            "Top K:",
-            help=help_text.help_dict["top_k"],
-            value=state.client_settings["vector_search"]["top_k"],
-            min_value=1,
-            max_value=10000,
-            key="selected_vector_search_top_k",
-            on_change=update_client_settings("vector_search"),
-        )
-        if vector_search_type == "Similarity Score Threshold":
-            st.sidebar.slider(
-                "Minimum Relevance Threshold:",
-                help=help_text.help_dict["score_threshold"],
-                value=state.client_settings["vector_search"]["score_threshold"],
-                min_value=0.0,
-                max_value=1.0,
-                step=0.1,
-                key="selected_vector_search_score_threshold",
-                on_change=update_client_settings("vector_search"),
-            )
-        if vector_search_type == "Maximal Marginal Relevance":
-            st.sidebar.number_input(
-                "Fetch K:",
-                help=help_text.help_dict["fetch_k"],
-                value=state.client_settings["vector_search"]["fetch_k"],
-                min_value=1,
-                max_value=10000,
-                key="selected_vector_search_fetch_k",
-                on_change=update_client_settings("vector_search"),
-            )
-            st.sidebar.slider(
-                "Degree of Diversity:",
-                help=help_text.help_dict["lambda_mult"],
-                value=state.client_settings["vector_search"]["lambda_mult"],
-                min_value=0.0,
-                max_value=1.0,
-                step=0.1,
-                key="selected_vector_search_lambda_mult",
-                on_change=update_client_settings("vector_search"),
-            )
 
-        ##########################
-        # Vector Store
-        ##########################
+        # Render search options based on type
+        _render_vector_search_options(vector_search_type)
+
+        # Vector Store Section
         st.sidebar.subheader("Vector Store", divider="red")
-        # Create a DataFrame of all database vector storage tables
         db_alias = state.client_settings["database"]["alias"]
         database_lookup = state_configs_lookup("database_configs", "name")
-
         vs_df = pd.DataFrame(database_lookup[db_alias].get("vector_stores"))
 
-        def vs_reset() -> None:
-            """Reset Vector Store Selections"""
-            for key in state.client_settings["vector_search"]:
-                if key in (
-                    "model",
-                    "chunk_size",
-                    "chunk_overlap",
-                    "distance_metric",
-                    "vector_store",
-                    "alias",
-                    "index_type",
-                ):
-                    clear_state_key(f"selected_vector_search_{key}")
-                    state.client_settings["vector_search"][key] = ""
-
-        def vs_gen_selectbox(label, options, key):
-            """Handle selectbox with auto-setting for a single unique value"""
-            valid_options = [option for option in options if option != ""]
-            if not valid_options:  # Disable the selectbox if no valid options are available
-                disabled = True
-                selected_value = ""
-            else:
-                disabled = False
-                if len(valid_options) == 1:  # Pre-select if only one unique option
-                    selected_value = valid_options[0]
-                    logger.debug("Defaulting %s to %s", key, selected_value)
-                else:
-                    selected_value = (
-                        state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
-                    )
-                    logger.debug("User selected %s to %s", key, selected_value)
-            return st.sidebar.selectbox(
-                label,
-                options=[""] + valid_options,
-                key=key,
-                index=([""] + valid_options).index(selected_value),
-                disabled=disabled,
-            )
-
-        def update_filtered_df():
-            """Dynamically update filtered_df based on selected filters"""
-            embed_models_enabled = enabled_models_lookup("embed")
-            filtered = vs_df.copy()
-            # Remove vector stores where the model is not enabled
-            filtered = vs_df[vs_df["model"].isin(embed_models_enabled.keys())]
-            if state.get("selected_vector_search_alias"):
-                filtered = filtered[filtered["alias"] == state.selected_vector_search_alias]
-            if state.get("selected_vector_search_model"):
-                filtered = filtered[filtered["model"] == state.selected_vector_search_model]
-            if state.get("selected_vector_search_chunk_size"):
-                filtered = filtered[filtered["chunk_size"] == state.selected_vector_search_chunk_size]
-            if state.get("selected_vector_search_chunk_overlap"):
-                filtered = filtered[filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap]
-            if state.get("selected_vector_search_distance_metric"):
-                filtered = filtered[filtered["distance_metric"] == state.selected_vector_search_distance_metric]
-            if state.get("selected_vector_search_index_type"):
-                filtered = filtered[filtered["index_type"] == state.selected_vector_search_index_type]
-            return filtered
-
-        # Initialize filtered options
-        filtered_df = update_filtered_df()
-
-        # Render selectbox with updated options
-        alias = vs_gen_selectbox(
-            "Select Alias:", filtered_df["alias"].unique().tolist(), "selected_vector_search_alias"
-        )
-        embed_model = vs_gen_selectbox(
-            "Select Model:", filtered_df["model"].unique().tolist(), "selected_vector_search_model"
-        )
-        chunk_size = vs_gen_selectbox(
-            "Select Chunk Size:", filtered_df["chunk_size"].unique().tolist(), "selected_vector_search_chunk_size"
-        )
-        chunk_overlap = vs_gen_selectbox(
-            "Select Chunk Overlap:",
-            filtered_df["chunk_overlap"].unique().tolist(),
-            "selected_vector_search_chunk_overlap",
-        )
-        distance_metric = vs_gen_selectbox(
-            "Select Distance Metric:",
-            filtered_df["distance_metric"].unique().tolist(),
-            "selected_vector_search_distance_metric",
-        )
-        index_type = vs_gen_selectbox(
-            "Select Index Type:", filtered_df["index_type"].unique().tolist(), "selected_vector_search_index_type"
-        )
-
-        if all([alias, embed_model, chunk_size, chunk_overlap, distance_metric, index_type]):
-            vs = filtered_df["vector_store"].iloc[0]
-            state.client_settings["vector_search"]["vector_store"] = vs
-            state.client_settings["vector_search"]["alias"] = alias
-            state.client_settings["vector_search"]["model"] = embed_model
-            state.client_settings["vector_search"]["chunk_size"] = chunk_size
-            state.client_settings["vector_search"]["chunk_overlap"] = chunk_overlap
-            state.client_settings["vector_search"]["distance_metric"] = distance_metric
-            state.client_settings["vector_search"]["index_type"] = index_type
-        else:
-            st.error("Please select Vector Store options or disable Vector Search to continue.", icon="❌")
-            state.enable_client = False
-
-        # Reset button
-        st.sidebar.button("Reset", type="primary", on_click=vs_reset)
+        # Render vector store selection controls
+        _render_vector_store_selection(vs_df)
