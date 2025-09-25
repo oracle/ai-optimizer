@@ -234,12 +234,13 @@ def qa_update_gui(qa_testset: list) -> None:
 #############################################################################
 # MAIN
 #############################################################################
-def main() -> None:
-    """Streamlit GUI"""
+def check_prerequisites() -> tuple[bool, list, list, bool]:
+    """Check if prerequisites are met and return configuration data"""
     try:
         get_models()
     except api_call.ApiError:
         st.stop()
+
     db_avail = st_common.is_db_configured()
     if not db_avail:
         logger.debug("Testbed Disabled (Database not configured)")
@@ -273,15 +274,237 @@ def main() -> None:
         )
         gen_testset_disabled = True
 
+    return available_ll_models, available_embed_models, gen_testset_disabled
+
+
+def setup_testbed_sources() -> list:
+    """Setup and return available testset sources"""
     testset_sources = ["Database", "Local"]
     if "testbed_db_testsets" not in state:
         state.testbed_db_testsets = get_testbed_db_testsets()
     if not state.testbed_db_testsets:
         testset_sources.remove("Database")
+    return testset_sources
 
-    #############################################################################
-    # GUI
-    #############################################################################
+
+def render_testset_generation_ui(available_ll_models: list, available_embed_models: list) -> dict:
+    """Render test set generation UI and return parameters"""
+    test_upload_file = st.file_uploader(
+        (
+            "Select a local PDF file to build a temporary Knowledge Base. "
+            "It will be used to generate a synthetic Q&A Test Set."
+        ),
+        key=f"selected_uploader_{state.testbed['uploader_key']}",
+        accept_multiple_files=False,
+        type="pdf",
+    )
+
+    col_left, col_center, col_right = st.columns([0.2, 0.35, 0.35])
+    test_gen_questions = col_left.number_input(
+        "Number of Q&A:",
+        key="selected_test_gen_questions",
+        min_value=1,
+        max_value=100,
+        value=2,
+    )
+
+    if state.client_settings["testbed"].get("qa_ll_model") is None:
+        state.client_settings["testbed"]["qa_ll_model"] = available_embed_models[0]
+    selected_qa_ll_model = state.client_settings["testbed"]["qa_ll_model"]
+    qa_ll_model_idx = available_embed_models.index(selected_qa_ll_model)
+    test_gen_llm = col_center.selectbox(
+        "Q&A Language Model:",
+        key="selected_test_gen_llm",
+        options=available_ll_models,
+        index=qa_ll_model_idx,
+        on_change=st_common.update_client_settings("testbed"),
+        help="Don't see your model? Unfortunately it is not currently supported by the testing framework.",
+    )
+
+    if state.client_settings["testbed"].get("qa_embed_model") is None:
+        state.client_settings["testbed"]["qa_embed_model"] = available_embed_models[0]
+    selected_qa_embed_model = state.client_settings["testbed"]["qa_embed_model"]
+    qa_embed_model_idx = available_embed_models.index(selected_qa_embed_model)
+    test_gen_embed = col_right.selectbox(
+        "Q&A Embedding Model:",
+        key="selected_test_gen_embed",
+        options=available_embed_models,
+        index=qa_embed_model_idx,
+        on_change=st_common.update_client_settings("testbed"),
+        help="Don't see your model? Unfortunately it is not currently supported by the testing framework.",
+    )
+
+    return {
+        "ll_model": test_gen_llm,
+        "embed_model": test_gen_embed,
+        "questions": test_gen_questions,
+        "upload_file": test_upload_file,
+    }
+
+
+def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, str, bool]:
+    """Render existing testset UI and return configuration"""
+    testset_source = st.radio(
+        "TestSet Source:",
+        testset_sources,
+        index=0,
+        key="radio_test_source",
+        horizontal=True,
+        on_change=reset_testset,
+        kwargs={"cache": True},
+    )
+
+    button_load_disabled = True
+    endpoint = None
+
+    if testset_source == "Local":
+        endpoint = "v1/testbed/testset_load"
+        test_upload_file = st.file_uploader(
+            "Select a local, existing Q&A Test Set",
+            key=f"selected_uploader_{state.testbed['uploader_key']}",
+            accept_multiple_files=True,
+            type=["jsonl", "json"],
+        )
+        button_load_disabled = len(test_upload_file) == 0
+    else:
+        endpoint = "v1/testbed/testset_qa"
+        testset_list = [f"{item['name']} -- Created: {item['created']}" for item in state.testbed_db_testsets]
+        db_testset = st.selectbox(
+            "Test Set:", options=testset_list, key="selected_db_testset", on_change=reset_testset
+        )
+        button_load_disabled = db_testset is None
+
+    return testset_source, endpoint, button_load_disabled
+
+
+def process_testset_request(endpoint: str, api_params: dict, testset_source: str = None) -> None:
+    """Process testset loading/generation request"""
+    with st.spinner("Processing Q&A... please be patient.", show_time=True):
+        if testset_source != "Database":
+            api_params["name"] = (state.testbed["testset_name"],)
+            files = st_common.local_file_payload(state[f"selected_uploader_{state.testbed['uploader_key']}"])
+            api_payload = {"files": files}
+            try:
+                response = api_call.post(endpoint=endpoint, params=api_params, payload=api_payload, timeout=3600)
+                get_testbed_db_testsets.clear()
+                state.testbed_db_testsets = get_testbed_db_testsets()
+                state.testbed["testset_id"] = next(
+                    (
+                        d["tid"]
+                        for d in state.testbed_db_testsets
+                        if d.get("name") == state.testbed["testset_name"]
+                    ),
+                    None,
+                )
+            except api_call.ApiError as ex:
+                st.error(f"Error Generating TestSet: {ex}", icon="🚨")
+                st.stop()
+            except (ValueError, KeyError, TypeError) as ex:
+                logger.error("Exception: %s", ex)
+                st.error(f"Looks like you found a bug: {ex}", icon="🚨")
+                st.stop()
+        else:
+            # Set required state from splitting selected DB TestSet
+            testset_name, testset_created = state.selected_db_testset.split(" -- Created: ", 1)
+            state.testbed["testset_name"] = testset_name
+            state.testbed["testset_id"] = next(
+                (
+                    d["tid"]
+                    for d in state.testbed_db_testsets
+                    if d["name"] == testset_name and d["created"] == testset_created
+                ),
+                None,
+            )
+            api_params = {"tid": state.testbed["testset_id"]}
+            # Retrieve TestSet Data
+            response = api_call.get(endpoint=endpoint, params=api_params)
+
+    try:
+        state.testbed_qa = response["qa_data"]
+        st.success(f"{len(state.testbed_qa)} Q&A Loaded.", icon="✅")
+    except UnboundLocalError as ex:
+        logger.exception("Failed to load Tests: %s", ex)
+        st.error("Unable to process Tests", icon="🚨")
+
+
+def render_evaluation_ui(available_ll_models: list) -> None:
+    """Render evaluation UI and handle evaluation"""
+    if "testbed_evaluations" not in state and "testset_id" in state.testbed and state.testbed["testset_id"]:
+        # Retrieve Evaluations
+        api_params = {"tid": state.testbed["testset_id"]}
+        endpoint = "v1/testbed/evaluations"
+        state.testbed_evaluations = api_call.get(endpoint=endpoint, params=api_params)
+
+    if state.testbed_evaluations:
+        st.subheader(f"Previous Evaluations for {state.selected_new_testset_name}", divider="red")
+        evaluations = {
+            evaluation["eid"]: f"Evaluated: {evaluation['evaluated']} -- Correctness: {evaluation['correctness']}"
+            for evaluation in state.testbed_evaluations
+        }
+        select, view = st.columns([9, 1])
+        evaluation_eid = select.selectbox(
+            "Previous Evaluations:",
+            placeholder="-- Select --",
+            label_visibility="collapsed",
+            options=list(evaluations.keys()),
+            format_func=lambda x: evaluations[x],
+            key="selected_evaluation_report",
+        )
+        view.button(
+            "View",
+            type="primary",
+            width="stretch",
+            on_click=evaluation_report,
+            kwargs={"eid": evaluation_eid},
+            disabled=evaluation_eid is None,
+        )
+
+    st.subheader("Q&A Evaluation", divider="red")
+    st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
+    st_common.tools_sidebar()
+    st_common.ll_sidebar()
+    st_common.selectai_sidebar()
+    st_common.vector_search_sidebar()
+    st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
+    col_left, col_center, _ = st.columns([4, 3, 3])
+
+    if state.client_settings["testbed"].get("judge_model") is None:
+        state.client_settings["testbed"]["judge_model"] = available_ll_models[0]
+    selected_judge = state.client_settings["testbed"]["judge_model"]
+    judge_idx = available_ll_models.index(selected_judge)
+    col_left.selectbox(
+        "Judge Language Model:",
+        key="selected_testbed_judge_model",
+        options=available_ll_models,
+        index=judge_idx,
+        label_visibility="collapsed",
+        on_change=st_common.update_client_settings("testbed"),
+    )
+
+    if col_center.button(
+        "Start Evaluation",
+        type="primary",
+        key="evaluate_button",
+        help="Evaluation will automatically save the TestSet to the Database",
+        on_click=qa_update_db,
+    ):
+        with st.spinner("Starting Q&A evaluation... please be patient.", show_time=True):
+            st_common.clear_state_key("testbed_evaluations")
+            st_common.patch_settings()
+            endpoint = "v1/testbed/evaluate"
+            api_params = {"tid": state.testbed["testset_id"], "judge": state.selected_testbed_judge_model}
+            evaluate = api_call.post(endpoint=endpoint, params=api_params, timeout=1200)
+        st.success("Evaluation Complete!", icon="✅")
+
+        if evaluate:
+            evaluation_report(report=evaluate)
+
+
+def main() -> None:
+    """Streamlit GUI"""
+    available_ll_models, available_embed_models, gen_testset_disabled = check_prerequisites()
+    testset_sources = setup_testbed_sources()
+
     st.header("Testbed", divider="red")
     st.write("""
              Test Large Language and Embedding Configurations by generating or using an existing 'Test Set'.
@@ -305,155 +528,40 @@ def main() -> None:
         on_change=reset_testset,
         help="Create a new Test Set to be used for evaluation.",
     )
+
+    # Load/Generate Test Set UI
     api_params = {}
-    ###################################
-    # Load/Generate Test Set
-    ###################################
     button_load_disabled = True
     button_text, endpoint, testset_source = None, None, None
-    # Initialise the API Parameters (Increase Timeout)
+
     if not state.selected_generate_test:
         st.subheader("Run Existing Q&A Test Set", divider="red")
         button_text = "Load Q&A"
-        testset_source = st.radio(
-            "TestSet Source:",
-            testset_sources,
-            index=0,
-            key="radio_test_source",
-            horizontal=True,
-            on_change=reset_testset,
-            kwargs={"cache": True},
-        )
-        if testset_source == "Local":
-            # Upload a TestSet from client host
-            endpoint = "v1/testbed/testset_load"
-            test_upload_file = st.file_uploader(
-                "Select a local, existing Q&A Test Set",
-                key=f"selected_uploader_{state.testbed['uploader_key']}",
-                accept_multiple_files=True,
-                type=["jsonl", "json"],
-            )
-            button_load_disabled = len(test_upload_file) == 0
-        else:
-            # Select existing TestSet from Database
-            endpoint = "v1/testbed/testset_qa"
-            testset_list = [f"{item['name']} -- Created: {item['created']}" for item in state.testbed_db_testsets]
-            db_testset = st.selectbox(
-                "Test Set:", options=testset_list, key="selected_db_testset", on_change=reset_testset
-            )
-            button_load_disabled = db_testset is None
-
-    # Generate Test
-    if state.selected_generate_test:
+        testset_source, endpoint, button_load_disabled = render_existing_testset_ui(testset_sources)
+    else:
         st.subheader("Generate new Q&A Test Set", divider="red")
         button_text = "Generate Q&A"
         endpoint = "v1/testbed/testset_generate"
-        test_upload_file = st.file_uploader(
-            (
-                "Select a local PDF file to build a temporary Knowledge Base. "
-                "It will be used to generate a synthetic Q&A Test Set."
-            ),
-            key=f"selected_uploader_{state.testbed['uploader_key']}",
-            accept_multiple_files=False,
-            type="pdf",
-        )
-        button_load_disabled = test_upload_file is None
-        col_left, col_center, col_right = st.columns([0.2, 0.35, 0.35])
-        test_gen_questions = col_left.number_input(
-            "Number of Q&A:",
-            key="selected_test_gen_questions",
-            min_value=1,
-            max_value=100,
-            value=2,
-        )
-        if state.client_settings["testbed"].get("qa_ll_model") is None:
-            state.client_settings["testbed"]["qa_ll_model"] = available_embed_models[0]
-        selected_qa_ll_model = state.client_settings["testbed"]["qa_ll_model"]
-        qa_ll_model_idx = available_embed_models.index(selected_qa_ll_model)
-        test_gen_llm = col_center.selectbox(
-            "Q&A Language Model:",
-            key="selected_test_gen_llm",
-            options=available_ll_models,
-            index=qa_ll_model_idx,
-            on_change=st_common.update_client_settings("testbed"),
-            help="Don't see your model? Unfortunately it is not currently supported by the testing framework.",
-        )
-
-        if state.client_settings["testbed"].get("qa_embed_model") is None:
-            state.client_settings["testbed"]["qa_embed_model"] = available_embed_models[0]
-        selected_qa_embed_model = state.client_settings["testbed"]["qa_embed_model"]
-        qa_embed_model_idx = available_embed_models.index(selected_qa_embed_model)
-        test_gen_embed = col_right.selectbox(
-            "Q&A Embedding Model:",
-            key="selected_test_gen_embed",
-            options=available_embed_models,
-            index=qa_embed_model_idx,
-            on_change=st_common.update_client_settings("testbed"),
-            help="Don't see your model? Unfortunately it is not currently supported by the testing framework.",
-        )
+        gen_params = render_testset_generation_ui(available_ll_models, available_embed_models)
         api_params = {
-            "ll_model": test_gen_llm,
-            "embed_model": test_gen_embed,
-            "questions": test_gen_questions,
+            "ll_model": gen_params["ll_model"],
+            "embed_model": gen_params["embed_model"],
+            "questions": gen_params["questions"],
         }
-    # Process Q&A Request
+        button_load_disabled = gen_params["upload_file"] is None
+
+    # Process Q&A Request buttons
     button_load_disabled = button_load_disabled or state.testbed["testset_id"] == "" or "testbed_qa" in state
     col_left, col_center, _, col_right = st.columns([3, 3, 4, 3])
+
     if not button_load_disabled:
-        if "load_tests" in state and state.load_tests is True:
-            state.running = True
-        else:
-            state.running = False
+        state.running = "load_tests" in state and state.load_tests is True
     else:
         state.running = True
 
-    # Load TestSets (and Evaluations if from DB)
     if col_left.button(button_text, key="load_tests", width="stretch", disabled=state.running):
-        with st.spinner("Processing Q&A... please be patient.", show_time=True):
-            if testset_source != "Database":
-                api_params["name"] = (state.testbed["testset_name"],)
-                files = st_common.local_file_payload(state[f"selected_uploader_{state.testbed['uploader_key']}"])
-                api_payload = {"files": files}
-                try:
-                    response = api_call.post(endpoint=endpoint, params=api_params, payload=api_payload, timeout=3600)
-                    get_testbed_db_testsets.clear()
-                    state.testbed_db_testsets = get_testbed_db_testsets()
-                    state.testbed["testset_id"] = next(
-                        (
-                            d["tid"]
-                            for d in state.testbed_db_testsets
-                            if d.get("name") == state.testbed["testset_name"]
-                        ),
-                        None,
-                    )
-                except api_call.ApiError as ex:
-                    st.error(f"Error Generating TestSet: {ex}", icon="🚨")
-                    st.stop()
-                except Exception as ex:
-                    logger.error("Exception: %s", ex)
-                    st.error(f"Looks like you found a bug: {ex}", icon="🚨")
-                    st.stop()
-            else:
-                # Set required state from splitting selected DB TestSet
-                testset_name, testset_created = state.selected_db_testset.split(" -- Created: ", 1)
-                state.testbed["testset_name"] = testset_name
-                state.testbed["testset_id"] = next(
-                    (
-                        d["tid"]
-                        for d in state.testbed_db_testsets
-                        if d["name"] == testset_name and d["created"] == testset_created
-                    ),
-                    None,
-                )
-                api_params = {"tid": state.testbed["testset_id"]}
-                # Retrieve TestSet Data
-                response = api_call.get(endpoint=endpoint, params=api_params)
-        try:
-            state.testbed_qa = response["qa_data"]
-            st.success(f"{len(state.testbed_qa)} Q&A Loaded.", icon="✅")
-        except UnboundLocalError as ex:
-            logger.exception("Failed to load Tests: %s", ex)
-            st.error("Unable to process Tests", icon="🚨")
+        process_testset_request(endpoint, api_params, testset_source)
+
     col_center.button(
         "Reset",
         key="reset_test_framework",
@@ -471,9 +579,7 @@ def main() -> None:
         on_click=qa_delete,
     )
 
-    ###################################
     # Show/Edit Q&A Tests
-    ###################################
     if "testbed_qa" in state:
         st.subheader("Q&A Test Set Details", divider="red")
         st.text_input(
@@ -493,78 +599,8 @@ def main() -> None:
             mime="application/json",
             on_click=qa_update_db,
         )
-        ###################################
         # Evaluator
-        ###################################
-        if "testbed_evaluations" not in state and "testset_id" in state.testbed and state.testbed["testset_id"]:
-            # Retrieve Evaluations
-            api_params = {"tid": state.testbed["testset_id"]}
-            endpoint = "v1/testbed/evaluations"
-            state.testbed_evaluations = api_call.get(endpoint=endpoint, params=api_params)
-        if state.testbed_evaluations:
-            st.subheader(f"Previous Evaluations for {state.selected_new_testset_name}", divider="red")
-            evaluations = {
-                evaluation["eid"]: f"Evaluated: {evaluation['evaluated']} -- Correctness: {evaluation['correctness']}"
-                for evaluation in state.testbed_evaluations
-            }
-            select, view = st.columns([9, 1])
-            evaluation_eid = select.selectbox(
-                "Previous Evaluations:",
-                placeholder="-- Select --",
-                label_visibility="collapsed",
-                options=list(evaluations.keys()),
-                format_func=lambda x: evaluations[x],
-                key="selected_evaluation_report",
-            )
-            view.button(
-                "View",
-                type="primary",
-                width="stretch",
-                on_click=evaluation_report,
-                kwargs={"eid": evaluation_eid},
-                disabled=evaluation_eid is None,
-            )
-
-        st.subheader("Q&A Evaluation", divider="red")
-        st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
-        st_common.tools_sidebar()
-        st_common.ll_sidebar()
-        st_common.selectai_sidebar()
-        st_common.vector_search_sidebar()
-        st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
-        col_left, col_center, _ = st.columns([4, 3, 3])
-        if state.client_settings["testbed"].get("judge_model") is None:
-            state.client_settings["testbed"]["judge_model"] = available_ll_models[0]
-        selected_judge = state.client_settings["testbed"]["judge_model"]
-        judge_idx = available_ll_models.index(selected_judge)
-        col_left.selectbox(
-            "Judge Language Model:",
-            key="selected_testbed_judge_model",
-            options=available_ll_models,
-            index=judge_idx,
-            label_visibility="collapsed",
-            on_change=st_common.update_client_settings("testbed"),
-        )
-        if col_center.button(
-            "Start Evaluation",
-            type="primary",
-            key="evaluate_button",
-            help="Evaluation will automatically save the TestSet to the Database",
-            on_click=qa_update_db,
-        ):
-            with st.spinner("Starting Q&A evaluation... please be patient.", show_time=True):
-                st_common.clear_state_key("testbed_evaluations")
-                st_common.patch_settings()
-                endpoint = "v1/testbed/evaluate"
-                api_params = {"tid": state.testbed["testset_id"], "judge": state.selected_testbed_judge_model}
-                evaluate = api_call.post(endpoint=endpoint, params=api_params, timeout=1200)
-            st.success("Evaluation Complete!", icon="✅")
-
-            ###################################
-            # Results
-            ###################################
-            if evaluate:
-                evaluation_report(report=evaluate)
+        render_evaluation_ui(available_ll_models)
 
 
 if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
