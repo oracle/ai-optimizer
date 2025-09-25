@@ -1,41 +1,40 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker:disable
 ##################################################
 # Base - All-In-One
 ##################################################
 FROM container-registry.oracle.com/os/oraclelinux:8-slim AS all_in_one_pyenv
+ENV RUNUSER=oracleai \
+    VIRTUAL_ENV=/opt/.venv
 
-# NUMBA_DISABLE_JIT is for Apple Silicon support
-ENV TOKENIZERS_PARALLELISM=true \
-    NUMBA_DISABLE_JIT=1 \
-    RUNUSER=oracleai
-
-RUN microdnf --nodocs -y update && \
-    microdnf --nodocs -y install python3.11 python3.11-pip && \
+RUN groupadd $RUNUSER && \
+    useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
+    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel gcc gcc-c++ && \
     microdnf clean all && \
-    python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
-    groupadd $RUNUSER && \
-    useradd -u 10001 -g $RUNUSER -md /app $RUNUSER
-RUN for dir in server client common; do \
-      install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/$dir; \
-    done
+    python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
-# Copy only pyproject.toml for dependency installation
+COPY --chown=$RUNUSER:$RUNUSER src /opt/package/src
 COPY pyproject.toml /opt/package/pyproject.toml
-# Use the virtual environment for pip installations
-RUN /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
-    /opt/.venv/bin/pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
-    /opt/.venv/bin/pip install --no-cache-dir "/opt/package[all]"
+
+RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
+    ${VIRTUAL_ENV}/bin/uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    ${VIRTUAL_ENV}/bin/uv pip install "/opt/package[all]"
 
 ##################################################
 # Application
 ##################################################
 FROM all_in_one_pyenv AS oai_application
-ENV PATH=/opt/.venv/bin:$PATH
-ENV TEMP=/app/tmp
-ENV TNS_ADMIN=/app/tns_admin
-ENV API_SERVER_CONTROL="TRUE"
-ENV OCI_CLI_CONFIG_FILE=/app/runtime/.oci/config
+ENV PATH=$VIRTUAL_ENV/bin:$PATH \
+    TEMP=/app/tmp \
+    TNS_ADMIN=/app/tns_admin \
+    OCI_CLI_CONFIG_FILE=/app/runtime/.oci/config \
+    TOKENIZERS_PARALLELISM=true \
+    NUMBA_CACHE_DIR=/app/tmp \
+    MPLCONFIGDIR=/app/tmp \
+    TIKTOKEN_CACHE_DIR=/app/tmp \
+    NLTK_DATA=/app/tmp \
+    API_SERVER_CONTROL="TRUE"
 
 # Expect the .oci directory to be mounted to /app/.oci
 VOLUME ["/app/.oci"]
@@ -46,7 +45,7 @@ VOLUME ["/app/tns_admin"]
 RUN for dir in $TEMP $TNS_ADMIN $(dirname $OCI_CLI_CONFIG_FILE); do \
       install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
     done
-COPY --chown=$RUNUSER:$RUNUSER . /app/
+COPY --chown=$RUNUSER:$RUNUSER src /app/
 
 # Set user and working directory
 USER $RUNUSER

@@ -20,8 +20,8 @@ from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.document_loaders.image import UnstructuredImageLoader
 from langchain_community.vectorstores import oraclevs as LangchainVS
 from langchain_community.vectorstores.oraclevs import OracleVS
+from langchain_core.documents import Document as LangchainDocument
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain.docstore.document import Document as LangchainDocument
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
 

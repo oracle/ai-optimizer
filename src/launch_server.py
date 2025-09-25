@@ -2,13 +2,17 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore fastapi laddr checkpointer langgraph litellm
-# spell-checker:ignore noauth apiserver configfile selectai giskard ollama llms
-# pylint: disable=redefined-outer-name,wrong-import-position
+# spell-checker:ignore configfile fastmcp noauth selectai getpid procs litellm giskard ollama
+# spell-checker:ignore dotenv apiserver laddr
 
+# Patch litellm for Giskard/Ollama issue
+import server.patches.litellm_patch  # pylint: disable=unused-import, wrong-import-order
+
+# Set OS Environment before importing other modules
+# Set OS Environment (Don't move their position to reflect on imports)
+# pylint: disable=wrong-import-position
 import os
 
-# Set OS Environment (Don't move their position to reflect on imports)
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 os.environ["GSK_DISABLE_SENTRY"] = "true"
 os.environ["GSK_DISABLE_ANALYTICS"] = "true"
@@ -16,37 +20,41 @@ os.environ["USER_AGENT"] = "ai-optimizer"
 app_home = os.path.dirname(os.path.abspath(__file__))
 if "TNS_ADMIN" not in os.environ:
     os.environ["TNS_ADMIN"] = os.path.join(app_home, "tns_admin")
-
-# Patch litellm for Giskard/Ollama issue
-import server.patches.litellm_patch  # pylint: disable=unused-import
+# pylint: enable=wrong-import-position
 
 import argparse
-import queue
+import asyncio
+from contextlib import asynccontextmanager
+from pathlib import Path
 import secrets
 import socket
 import subprocess
-import threading
+import sys
 from typing import Annotated
-from pathlib import Path
 import uvicorn
 
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastmcp import FastMCP, settings
+from fastmcp.server.auth import StaticTokenVerifier
+from langgraph.checkpoint.memory import InMemorySaver
 import psutil
 
-from fastapi import FastAPI, HTTPException, Depends, status, APIRouter
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+# Configuration
+from server.bootstrap import configfile  # pylint: disable=ungrouped-imports
 
 # Logging
 from common import logging_config
 from common._version import __version__
 
-# Configuration
-from server.bootstrap import configfile
-
 logger = logging_config.logging.getLogger("launch_server")
+
+# Establish LangGraph Short-Term Memory (thread-level persistence)
+graph_memory = InMemorySaver()
 
 
 ##########################################
-# Process Control
+# Client Process Control
 ##########################################
 def start_server(port: int = 8000, logfile: bool = False) -> int:
     """Start the uvicorn server for FastAPI"""
@@ -71,53 +79,32 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
                 continue
         return None
 
-    def start_subprocess(port: int, logfile: bool) -> subprocess.Popen:
-        """Start the uvicorn server as a subprocess."""
-        logger.info("API server starting on port: %i", port)
-        log_file = open(f"apiserver_{port}.log", "a", encoding="utf-8") if logfile else None
-        stdout = stderr = log_file if logfile else subprocess.PIPE
-        process = subprocess.Popen(
-            [
-                "uvicorn",
-                "launch_server:create_app",
-                "--factory",
-                "--host",
-                "0.0.0.0",
-                "--port",
-                str(port),
-            ],
-            stdout=stdout,
-            stderr=stderr,
-        )
-        logger.info("API server started on Port: %i; PID: %i", port, process.pid)
-        return process
-
     port = port or find_available_port()
-    existing_pid = get_pid_using_port(port)
-    if existing_pid:
+    if existing_pid := get_pid_using_port(port):
         logger.info("API server already running on port: %i (PID: %i)", port, existing_pid)
         return existing_pid
 
-    popen_queue = queue.Queue()
-    thread = threading.Thread(
-        target=lambda: popen_queue.put(start_subprocess(port, logfile)),
-        daemon=True,
-    )
-    thread.start()
+    client_args = [sys.executable, __file__, "--port", str(port)]
+    if logfile:
+        log_file = open(f"apiserver_{port}.log", "a", encoding="utf-8")  # pylint: disable=consider-using-with
+        stdout = stderr = log_file
+    else:
+        stdout = stderr = subprocess.PIPE
 
-    return popen_queue.get().pid
+    process = subprocess.Popen(client_args, stdout=stdout, stderr=stderr)  # pylint: disable=consider-using-with
+    logger.info("Server started on port %i with PID %i", port, process.pid)
+    return process.pid
 
 
 def stop_server(pid: int) -> None:
-    """Stop the uvicorn server for FastAPI."""
+    """Stop the uvicorn server for FastAPI when started via the client"""
     try:
         proc = psutil.Process(pid)
         proc.terminate()
         proc.wait()
+        logger.info("API server stopped.")
     except (psutil.NoSuchProcess, psutil.AccessDenied) as ex:
         logger.error("Failed to terminate process with PID: %i - %s", pid, ex)
-
-    logger.info("API server stopped.")
 
 
 ##########################################
@@ -136,68 +123,124 @@ def get_api_key() -> str:
     return os.getenv("API_SERVER_KEY")
 
 
-def verify_key(
+def fastapi_verify_key(
     http_auth: Annotated[
         HTTPAuthorizationCredentials,
         Depends(HTTPBearer(description="Please provide API_SERVER_KEY.")),
     ],
 ) -> None:
-    """Verify that the provided API key is correct."""
+    """FastAPI: Verify that the provided API key is correct."""
     if http_auth.credentials != get_api_key():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
 
-def register_endpoints(noauth: APIRouter, auth: APIRouter):
+##########################################
+# Endpoint Registration
+##########################################
+async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     """Register API Endpoints - Imports to avoid bootstrapping before config file read
     New endpoints need to be registered in server.api.v1.__init__.py
     """
-    import server.api.v1 as api_v1  # pylint: disable=import-outside-toplevel
+    logger.debug("Starting Endpoint Registration")
+    # pylint: disable=import-outside-toplevel
+    import server.api.v1 as api_v1
+    from server.mcp import register_all_mcp
 
     # No-Authentication (probes only)
     noauth.include_router(api_v1.probes.noauth, prefix="/v1", tags=["Probes"])
 
     # Authenticated
     auth.include_router(api_v1.chat.auth, prefix="/v1/chat", tags=["Chatbot"])
-    auth.include_router(api_v1.databases.auth, prefix="/v1/databases", tags=["Config - Databases"])
     auth.include_router(api_v1.embed.auth, prefix="/v1/embed", tags=["Embeddings"])
+    auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
+    auth.include_router(api_v1.prompts.auth, prefix="/v1/prompts", tags=["Tools - Prompts"])
+    auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
+    auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Config - Settings"])
+    auth.include_router(api_v1.databases.auth, prefix="/v1/databases", tags=["Config - Databases"])
     auth.include_router(api_v1.models.auth, prefix="/v1/models", tags=["Config - Models"])
     auth.include_router(api_v1.oci.auth, prefix="/v1/oci", tags=["Config - Oracle Cloud Infrastructure"])
-    auth.include_router(api_v1.prompts.auth, prefix="/v1/prompts", tags=["Tools - Prompts"])
-    auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
-    auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Tools - Settings"])
-    auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
+    auth.include_router(api_v1.mcp.auth, prefix="/v1/mcp", tags=["Config - MCP Servers"])
+
+    # # Auto-discover all MCP tools and register HTTP + MCP endpoints
+    mcp_router = APIRouter(prefix="/mcp", tags=["MCP Tools"])
+    await register_all_mcp(mcp, auth)
+    auth.include_router(mcp_router)
+    logger.debug("Finished Endpoint Registration")
 
 
 #############################################################################
 # APP FACTORY
 #############################################################################
-def create_app(config: str = None) -> FastAPI:
-    """Create and configure the FastAPI app."""
+async def create_app(config: str = "") -> FastAPI:
+    """FastAPI Application Factory"""
+
     if not config:
         config = configfile.config_file_path()
     config_file = Path(os.getenv("CONFIG_FILE", config))
     configfile.ConfigStore.load_from_file(config_file)
 
-    app = FastAPI(
+    # FastMCP Server
+    fastmcp_verifier = StaticTokenVerifier(
+        tokens={get_api_key(): {"client_id": "optimizer", "scopes": ["read", "write"]}}
+    )
+    settings.stateless_http = True
+    fastmcp_app = FastMCP(
+        name="Oracle AI Optimizer and Toolkit MCP Server",
+        version=__version__,
+        auth=fastmcp_verifier,
+        include_fastmcp_meta=False,
+    )
+    fastmcp_engine = fastmcp_app.http_app(path="/")
+
+    @asynccontextmanager
+    async def combined_lifespan(fastapi_app: FastAPI):
+        """Ensures all MCP Servers are cleaned up"""
+        async with fastmcp_engine.lifespan(fastapi_app):
+            yield
+        # Shutdown cleanup
+        logger.info("Cleaning up leftover processes...")
+        parent = psutil.Process(os.getpid())
+        children = parent.children(recursive=True)
+        for p in children:
+            try:
+                p.terminate()
+            except psutil.NoSuchProcess:
+                continue
+        # Wait synchronously, outside the event loop
+        _, still_alive = psutil.wait_procs(children, timeout=3)
+        for p in still_alive:
+            try:
+                p.kill()
+            except psutil.NoSuchProcess:
+                continue
+
+    # FastAPI Server
+    fastapi_app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
         version=__version__,
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
+        lifespan=combined_lifespan,
         license_info={
             "name": "Universal Permissive License",
             "url": "http://oss.oracle.com/licenses/upl",
         },
     )
+    # Store MCP in the app state
+    fastapi_app.state.fastmcp_app = fastmcp_app
+    # Register MCP Server into FastAPI
+    fastapi_app.mount("/mcp", fastmcp_engine)
 
+    # Setup Routes and Register non-MCP endpoints
     noauth = APIRouter()
-    auth = APIRouter(dependencies=[Depends(verify_key)])
+    auth = APIRouter(dependencies=[Depends(fastapi_verify_key)])
 
-    # Register Endpoints
-    register_endpoints(noauth, auth)
-    app.include_router(noauth)
-    app.include_router(auth)
+    # Register the endpoints
+    await register_endpoints(fastmcp_app, auth, noauth)
+    fastapi_app.include_router(noauth)
+    fastapi_app.include_router(auth)
 
-    return app
+    return fastapi_app
 
 
 if __name__ == "__main__":
@@ -209,10 +252,23 @@ if __name__ == "__main__":
         default=configfile.config_file_path(),
         help="Full path to configuration file (JSON)",
     )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to start server",
+    )
     args = parser.parse_args()
 
     PORT = int(os.getenv("API_SERVER_PORT", "8000"))
     logger.info("API Server Using port: %i", PORT)
 
-    app = create_app(args.config)
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_config=logging_config.LOGGING_CONFIG)
+    # Sync entrypoint, but calls async factory before running Uvicorn
+    app = asyncio.run(create_app(args.config))
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=PORT,
+        timeout_graceful_shutdown=5,
+        log_config=logging_config.LOGGING_CONFIG,
+    )

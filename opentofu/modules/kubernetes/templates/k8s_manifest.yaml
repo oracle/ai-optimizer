@@ -136,7 +136,7 @@ spec:
             - --local
             - context=/workspace
             - --local
-            - dockerfile=/workspace/server
+            - dockerfile=/workspace/src/server
             - --output 
             - type=image,name=${repository_server}:latest,push=true
           securityContext:
@@ -172,7 +172,7 @@ spec:
             - --local
             - context=/workspace
             - --local
-            - dockerfile=/workspace/client
+            - dockerfile=/workspace/src/client
             - --output 
             - type=image,name=${repository_client}:latest,push=true
           securityContext:
