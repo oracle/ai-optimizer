@@ -112,7 +112,7 @@ class TestEndpoints:
         """Create mock embeddings and get_client_embed function"""
         mock_embeddings = self.MockEmbeddings(mock_embedding_model)
 
-        def mock_get_client_embed(model_config=None, oci_config=None, giskard=False):
+        def mock_get_client_embed(_model_config=None, _oci_config=None, _giskard=False):
             return mock_embeddings
 
         return mock_get_client_embed
@@ -290,7 +290,10 @@ class TestEndpoints:
     def test_store_web_file(self, client, auth_headers):
         """Test storing web files for embedding"""
         # Test URL
-        test_url = "https://docs.oracle.com/en/database/oracle/oracle-database/23/jjucp/universal-connection-pool-developers-guide.pdf"
+        test_url = (
+            "https://docs.oracle.com/en/database/oracle/oracle-database/23/jjucp/"
+            "universal-connection-pool-developers-guide.pdf"
+        )
 
         # Make the request
         response = client.post("/v1/embed/web/store", headers=auth_headers["valid_auth"], json=[test_url])

@@ -62,7 +62,7 @@ class TestPrompts:
             prompts.get_prompts(category="sys", name="nonexistent")
 
     @patch("server.api.core.prompts.bootstrap.PROMPT_OBJECTS")
-    def test_get_prompts_by_name_without_category_raises_error(self, mock_prompt_objects):
+    def test_get_prompts_by_name_without_category_raises_error(self, _mock_prompt_objects):
         """Test that filtering by name without category raises an error"""
         with pytest.raises(ValueError, match="Cannot filter prompts by name without specifying category"):
             prompts.get_prompts(name="default")
