@@ -33,6 +33,140 @@ logger = logging_config.logging.getLogger("client.content.config.tabs.settings")
 #############################################################################
 # Functions
 #############################################################################
+
+
+def _handle_key_comparison(
+    key: str, current: dict, uploaded: dict, differences: dict, new_path: str, sensitive_keys: set
+) -> None:
+    """Handle comparison for a single key between current and uploaded settings."""
+    is_sensitive = key in sensitive_keys
+
+    if key not in current:
+        if is_sensitive:
+            differences["Override on Upload"][new_path] = "present in uploaded only"
+        else:
+            differences["Missing in Current"][new_path] = {"uploaded": uploaded[key]}
+    elif key not in uploaded:
+        if is_sensitive:
+            # Silently update uploaded to match current
+            uploaded[key] = current[key]
+        else:
+            differences["Missing in Uploaded"][new_path] = {"current": current[key]}
+    else:
+        # Both present — compare
+        if is_sensitive:
+            if current[key] != uploaded[key]:
+                differences["Value Mismatch"][new_path] = {"current": current[key], "uploaded": uploaded[key]}
+        else:
+            child_diff = compare_settings(current[key], uploaded[key], new_path)
+            for diff_type, diff_dict in differences.items():
+                diff_dict.update(child_diff[diff_type])
+
+
+def _render_download_settings_section() -> None:
+    """Render the download settings section."""
+    settings = get_settings(state.selected_sensitive_settings)
+    st.json(settings, expanded=False)
+    col_left, col_centre, _ = st.columns([3, 4, 3])
+    col_left.download_button(
+        label="Download Settings",
+        data=save_settings(settings),
+        file_name="optimizer_settings.json",
+    )
+    col_centre.checkbox(
+        "Include Sensitive Settings",
+        key="selected_sensitive_settings",
+        help="Include API Keys and Passwords in Download",
+    )
+
+
+def _render_upload_settings_section() -> None:
+    """Render the upload settings section."""
+    uploaded_file = st.file_uploader("Upload the Settings file", type="json")
+    if uploaded_file is not None:
+        uploaded_settings = json.loads(uploaded_file.read().decode("utf-8"))
+        try:
+            settings = get_settings(True)
+            logger.info("Comparing Settings between Current and Uploaded")
+            differences = compare_settings(current=settings, uploaded=uploaded_settings)
+            # Remove empty difference groups
+            differences = {k: v for k, v in differences.items() if v}
+            # Show differences
+            if differences:
+                st.subheader("Differences found:")
+                st.json(differences, expanded=True)
+                if st.button("Apply New Settings"):
+                    apply_uploaded_settings(uploaded_settings)
+                    time.sleep(3)
+                    st.rerun()
+            else:
+                st.write("No differences found. The current configuration matches the saved settings.")
+        except json.JSONDecodeError:
+            st.error("Error: The uploaded file is not a valid.")
+    else:
+        st.info("Please upload a Settings file.")
+
+
+def _get_model_configs() -> tuple[dict, dict, str]:
+    """Get model configurations and determine Spring AI config type.
+
+    Returns:
+        tuple: (ll_config, embed_config, spring_ai_conf)
+    """
+    try:
+        model_lookup = st_common.enabled_models_lookup(model_type="ll")
+        ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
+    except KeyError:
+        ll_config = {}
+
+    try:
+        model_lookup = st_common.enabled_models_lookup(model_type="embed")
+        embed_config = (
+            model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
+        )
+    except KeyError:
+        embed_config = {}
+
+    spring_ai_conf = spring_ai_conf_check(ll_config, embed_config)
+    return ll_config, embed_config, spring_ai_conf
+
+
+def _render_source_code_templates_section() -> None:
+    """Render the source code templates section."""
+    st.header("Source Code Templates", divider="red")
+
+    ll_config, embed_config, spring_ai_conf = _get_model_configs()
+    logger.info("config found: %s", spring_ai_conf)
+
+    if spring_ai_conf == "hybrid":
+        st.markdown(f"""
+            The current configuration combination of embedding and language models
+            is currently **not supported** for Spring AI and LangChain MCP templates.
+            - Language Model:  **{ll_config.get("model", "Unset")}**
+            - Embedding Model: **{embed_config.get("model", "Unset")}**
+        """)
+    else:
+        settings = get_settings(state.selected_sensitive_settings)
+        col_left, col_centre, _ = st.columns([3, 4, 3])
+        with col_left:
+            st.download_button(
+                label="Download LangchainMCP",
+                data=langchain_mcp_zip(settings),  # Generate zip on the fly
+                file_name="langchain_mcp.zip",  # Zip file name
+                mime="application/zip",  # Mime type for zip file
+                disabled=spring_ai_conf == "hybrid",
+            )
+        with col_centre:
+            if spring_ai_conf != "hosted_vllm":
+                st.download_button(
+                    label="Download SpringAI",
+                    data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
+                    file_name="spring_ai.zip",  # Zip file name
+                    mime="application/zip",  # Mime type for zip file
+                    disabled=spring_ai_conf == "hybrid",
+                )
+
+
 def get_settings(include_sensitive: bool = False):
     """Get Server-Side Settings"""
     try:
@@ -77,7 +211,6 @@ def save_settings(settings):
 def compare_settings(current, uploaded, path=""):
     """Compare current settings with uploaded settings."""
     differences = {"Value Mismatch": {}, "Missing in Uploaded": {}, "Missing in Current": {}, "Override on Upload": {}}
-
     sensitive_keys = {"api_key", "password", "wallet_password"}
 
     if isinstance(current, dict) and isinstance(uploaded, dict):
@@ -89,30 +222,7 @@ def compare_settings(current, uploaded, path=""):
             if new_path == "client_settings.client":
                 continue
 
-            is_sensitive = key in sensitive_keys
-
-            if key not in current:
-                if is_sensitive:
-                    differences["Override on Upload"][new_path] = "present in uploaded only"
-                else:
-                    differences["Missing in Current"][new_path] = {"uploaded": uploaded[key]}
-
-            elif key not in uploaded:
-                if is_sensitive:
-                    # Silently update uploaded to match current
-                    uploaded[key] = current[key]
-                else:
-                    differences["Missing in Uploaded"][new_path] = {"current": current[key]}
-
-            else:
-                # Both present — compare
-                if is_sensitive:
-                    if current[key] != uploaded[key]:
-                        differences["Value Mismatch"][new_path] = {"current": current[key], "uploaded": uploaded[key]}
-                else:
-                    child_diff = compare_settings(current[key], uploaded[key], new_path)
-                    for diff_type, diff_dict in differences.items():
-                        diff_dict.update(child_diff[diff_type])
+            _handle_key_comparison(key, current, uploaded, differences, new_path, sensitive_keys)
 
     elif isinstance(current, list) and isinstance(uploaded, list):
         min_len = min(len(current), len(uploaded))
@@ -127,7 +237,6 @@ def compare_settings(current, uploaded, path=""):
         for i in range(min_len, len(uploaded)):
             new_path = f"{path}[{i}]"
             differences["Missing in Current"][new_path] = {"uploaded": uploaded[i]}
-
     else:
         if current != uploaded:
             differences["Value Mismatch"][path] = {"current": current, "uploaded": uploaded}
@@ -282,98 +391,23 @@ def langchain_mcp_zip(settings):
 def display_settings():
     """Streamlit GUI"""
     st.header("Client Settings", divider="red")
+
     if "selected_sensitive_settings" not in state:
         state.selected_sensitive_settings = False
+
     upload_settings = st.toggle(
         "Upload",
         key="selected_upload_settings",
         value=False,
         help="Save or Upload Client Settings.",
     )
+
     if not upload_settings:
-        settings = get_settings(state.selected_sensitive_settings)
-        st.json(settings, expanded=False)
-        col_left, col_centre, _ = st.columns([3, 4, 3])
-        col_left.download_button(
-            label="Download Settings",
-            data=save_settings(settings),
-            file_name="optimizer_settings.json",
-        )
-        col_centre.checkbox(
-            "Include Sensitive Settings",
-            key="selected_sensitive_settings",
-            help="Include API Keys and Passwords in Download",
-        )
+        _render_download_settings_section()
     else:
-        uploaded_file = st.file_uploader("Upload the Settings file", type="json")
-        if uploaded_file is not None:
-            uploaded_settings = json.loads(uploaded_file.read().decode("utf-8"))
-            # Convert the JSON content to a dictionary
-            try:
-                settings = get_settings(True)
-                logger.info("Comparing Settings between Current and Uploaded")
-                differences = compare_settings(current=settings, uploaded=uploaded_settings)
-                # Remove empty difference groups
-                differences = {k: v for k, v in differences.items() if v}
-                # Show differences
-                if differences:
-                    st.subheader("Differences found:")
-                    st.json(differences, expanded=True)
-                    if st.button("Apply New Settings"):
-                        apply_uploaded_settings(uploaded_settings)
-                        time.sleep(3)
-                        st.rerun()
-                else:
-                    st.write("No differences found. The current configuration matches the saved settings.")
-            except json.JSONDecodeError:
-                st.error("Error: The uploaded file is not a valid.")
-        else:
-            st.info("Please upload a Settings file.")
+        _render_upload_settings_section()
 
-    st.header("Source Code Templates", divider="red")
-    # Merge the User Settings into the Model Config
-    try:
-        model_lookup = st_common.enabled_models_lookup(model_type="ll")
-        ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
-    except KeyError:
-        ll_config = {}
-    try:
-        model_lookup = st_common.enabled_models_lookup(model_type="embed")
-        embed_config = (
-            model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
-        )
-    except KeyError:
-        embed_config = {}
-    spring_ai_conf = spring_ai_conf_check(ll_config, embed_config)
-
-    logger.info("config found: %s", spring_ai_conf)
-
-    if spring_ai_conf == "hybrid":
-        st.markdown(f"""
-            The current configuration combination of embedding and language models
-            is currently **not supported** for Spring AI and LangChain MCP templates.
-            - Language Model:  **{ll_config.get("model", "Unset")}**
-            - Embedding Model: **{embed_config.get("model", "Unset")}**
-        """)
-    else:
-        col_left, col_centre, _ = st.columns([3, 4, 3])
-        with col_left:
-            st.download_button(
-                label="Download LangchainMCP",
-                data=langchain_mcp_zip(settings),  # Generate zip on the fly
-                file_name="langchain_mcp.zip",  # Zip file name
-                mime="application/zip",  # Mime type for zip file
-                disabled=spring_ai_conf == "hybrid",
-            )
-        with col_centre:
-            if spring_ai_conf != "hosted_vllm":
-                st.download_button(
-                    label="Download SpringAI",
-                    data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
-                    file_name="spring_ai.zip",  # Zip file name
-                    mime="application/zip",  # Mime type for zip file
-                    disabled=spring_ai_conf == "hybrid",
-                )
+    _render_source_code_templates_section()
 
 
 if __name__ == "__main__":
