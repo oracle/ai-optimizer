@@ -4,6 +4,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 NOTE: Provide only one example per API to populate supported API lists; additional models should be
 added via the APIs
+
+WARNING: If you bootstrap additional Ollama Models, you will need to update the IaC to pull those.
+         Large models will cause the IaC to take much longer to be available.
 """
 # spell-checker:ignore configfile genai ollama pplx docos mxbai nomic thenlper
 # spell-checker:ignore huggingface vllm
@@ -85,18 +88,19 @@ def main() -> list[Model]:
             "max_completion_tokens": 4096,
             "frequency_penalty": 0.0,
         },
-        {
-            "id": "gpt-oss:20b",
-            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
-            "type": "ll",
-            "provider": "ollama",
-            "api_key": "",
-            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
-            "context_length": 131072,
-            "temperature": 1.0,
-            "max_completion_tokens": 2048,
-            "frequency_penalty": 0.0,
-        },
+        # Commented out for IaC reasons (see WARNING above)
+        # {
+        #     "id": "gpt-oss:20b",
+        #     "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
+        #     "type": "ll",
+        #     "provider": "ollama_chat",
+        #     "api_key": "",
+        #     "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+        #     "context_length": 131072,
+        #     "temperature": 1.0,
+        #     "max_completion_tokens": 2048,
+        #     "frequency_penalty": 0.0,
+        # },
         {
             "id": "meta-llama/Llama-3.2-1B-Instruct",
             "enabled": os.getenv("ON_PREM_VLLM_URL") is not None,
@@ -222,6 +226,7 @@ def main() -> list[Model]:
     for model in models_list:
         update_env_var(model, "cohere", "api_key", "COHERE_API_KEY")
         update_env_var(model, "oci", "api_base", "OCI_GENAI_SERVICE_ENDPOINT")
+        update_env_var(model, "ollama_chat", "api_base", "ON_PREM_OLLAMA_URL")
         update_env_var(model, "ollama", "api_base", "ON_PREM_OLLAMA_URL")
         update_env_var(model, "huggingface", "api_base", "ON_PREM_HF_URL")
         update_env_var(model, "meta-llama", "api_base", "ON_PREM_VLLM_URL")

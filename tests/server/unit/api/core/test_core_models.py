@@ -134,7 +134,7 @@ class TestModels:
 
     @patch("server.api.core.models.bootstrap.MODEL_OBJECTS")
     @patch("server.api.core.models.get_model")
-    def test_create_model_already_exists(self, mock_get_model, mock_model_objects):
+    def test_create_model_already_exists(self, mock_get_model, _mock_model_objects):
         """Test creating model that already exists"""
         mock_get_model.return_value = self.sample_model  # Model already exists
 

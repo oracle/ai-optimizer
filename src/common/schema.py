@@ -75,6 +75,7 @@ ModelProviders = Literal[
     "nvidia_nim",
     "oci",
     "ollama",
+    "ollama_chat",
     "oobabooga",
     "openai",
     "openrouter",

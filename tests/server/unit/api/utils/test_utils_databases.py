@@ -198,6 +198,7 @@ class TestDatabaseUtilsPrivateFunctions:
 
     def test_selectai_enabled_with_real_database(self, db_container):
         """Test SelectAI enabled check with real database"""
+        assert db_container is not None
         conn = databases.connect(self.sample_database)
 
         try:

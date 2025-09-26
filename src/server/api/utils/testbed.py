@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore giskard testset, ollama, testsets, litellm
+# spell-checker:ignore giskard testset ollama testsets litellm
 
 import json
 import pickle

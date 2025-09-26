@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore rerank, mult, HNSW
+# spell-checker:ignore rerank mult hnsw
 
 help_dict = {
     "context_length": """
