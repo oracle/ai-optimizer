@@ -24,6 +24,7 @@ from streamlit import session_state as state
 
 # Utilities
 from client.utils import api_call, st_common
+from client.content.config.tabs.models import get_models
 
 from common import logging_config
 
@@ -218,8 +219,8 @@ def compare_settings(current, uploaded, path=""):
         for key in keys:
             new_path = f"{path}.{key}" if path else key
 
-            # Skip specific path
-            if new_path == "client_settings.client":
+            # Skip specific paths
+            if new_path == "client_settings.client" or new_path.endswith(".created"):
                 continue
 
             _handle_key_comparison(key, current, uploaded, differences, new_path, sensitive_keys)
@@ -256,6 +257,9 @@ def apply_uploaded_settings(uploaded):
         )
         st.success(response["message"], icon="✅")
         state.client_settings = api_call.get(endpoint="v1/settings", params={"client": client_id})
+        # Clear States so they are refreshed
+        for key in ["oci_configs", "model_configs", "database_configs"]:
+            st_common.clear_state_key(key)
     except api_call.ApiError as ex:
         st.error(f"Settings for {state.client_settings['client']} - Update Failed", icon="❌")
         logger.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
@@ -390,6 +394,11 @@ def langchain_mcp_zip(settings):
 #####################################################
 def display_settings():
     """Streamlit GUI"""
+    try:
+        get_models()
+    except api_call.ApiError:
+        st.stop()
+
     st.header("Client Settings", divider="red")
 
     if "selected_sensitive_settings" not in state:

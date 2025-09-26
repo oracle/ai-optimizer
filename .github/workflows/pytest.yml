@@ -52,5 +52,11 @@ jobs:
           uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch --system
           uv pip install -e ".[all-test]" --system
 
+      - name: Run Pylint on Client Code
+        run: pylint src/client
+
+      - name: Run Pylint on Common Code
+        run: pylint src/common
+
       - name: Run All Tests
         run: pytest
