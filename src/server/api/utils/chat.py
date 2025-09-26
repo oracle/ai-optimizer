@@ -19,7 +19,7 @@ import server.api.utils.selectai as utils_selectai
 
 from server.agents.chatbot import chatbot_graph
 
-from server.api.core.models import UnknownModelError
+from server.api.utils.models import UnknownModelError
 
 from common import schema
 from common import logging_config

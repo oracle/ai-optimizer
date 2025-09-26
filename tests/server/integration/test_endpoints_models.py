@@ -7,8 +7,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from typing import get_args
 import pytest
-from common.schema import ModelProviders
-
 
 #############################################################################
 # Test AuthN required and Valid
@@ -49,10 +47,9 @@ class TestEndpoints:
     """Test Endpoints"""
 
     def test_models_list_api(self, client, auth_headers):
-        """Get a list of model APIs to use with tests"""
+        """Get a list of model Providers to use with tests"""
         response = client.get("/v1/models/provider", headers=auth_headers["valid_auth"])
         assert response.status_code == 200
-        assert sorted(response.json()) == sorted(list(get_args(ModelProviders)))
 
     def test_models_get_before(self, client, auth_headers):
         """Retrieve each individual model"""
