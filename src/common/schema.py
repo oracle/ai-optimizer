@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql
+# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql rerank
 
 import time
 from typing import Optional, Literal, Any
@@ -17,6 +17,7 @@ from common import help_text
 #####################################################
 DistanceMetrics = Literal["COSINE", "EUCLIDEAN_DISTANCE", "DOT_PRODUCT"]
 IndexTypes = Literal["HNSW", "IVF"]
+
 
 #####################################################
 # Database
@@ -131,8 +132,9 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
         default="aioptimizer",
         description="OpenAI Compatible Only",
     )
-    type: Literal["ll", "embed", "re-rank"] = Field(..., description="Type of Model.")
+    type: Literal["ll", "embed", "rerank"] = Field(..., description="Type of Model.")
     provider: str = Field(..., min_length=1, description="Model Provider.", examples=["openai", "anthropic", "ollama"])
+
 
 #####################################################
 # Oracle Cloud Infrastructure

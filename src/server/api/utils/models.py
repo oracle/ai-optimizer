@@ -2,9 +2,9 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore ollama pplx huggingface genai giskard litellm ocigenai
+# spell-checker:ignore ollama pplx huggingface genai giskard litellm ocigenai rerank vllm
 
-from typing import Optional, Union
+from typing import Optional, Union, Any
 from urllib.parse import urlparse
 
 import litellm
@@ -81,8 +81,6 @@ def get(
 
     if model_id and not model_filtered:
         raise UnknownModelError(f"{model_id} not found")
-    if model_type and not model_filtered:
-        raise UnknownModelError(f"{model_type} not found")
 
     if len(model_filtered) == 1:
         return model_filtered[0]
@@ -115,9 +113,67 @@ def delete(model_provider: schema.ModelProviderType, model_id: schema.ModelIdTyp
 #####################################################
 # Utility Functions
 #####################################################
-def get_supported_providers() -> list:
-    """Return a list of supported Providers from LiteLLM"""
-    return sorted([provider.value for provider in litellm.provider_list])
+def _process_model_entry(model: str, type_to_modes: dict, allowed_modes: set, provider: str) -> dict:
+    """Process a single model entry and return model dictionary"""
+    try:
+        details = litellm.get_model_info(model)
+        if details.get("mode") not in allowed_modes:
+            return None
+
+        provider_info = litellm.get_llm_provider(model)
+        api_base = provider_info[3] if len(provider_info) > 3 and provider_info[3] else None
+        if api_base is None and provider == "openai":
+            api_base = "https://api.openai.com/v1"
+        elif api_base is None and provider == "anthropic":
+            api_base = "https://api.anthropic.com/v1/"
+
+        model_entry = {k: v for k, v in details.items() if v is not None}
+        if api_base:
+            model_entry["api_base"] = api_base
+
+        # Add type based on mode using type_to_modes mapping
+        model_mode = details.get("mode")
+        for type_name, modes in type_to_modes.items():
+            if model_mode in modes:
+                model_entry["type"] = type_name
+                break
+
+        return model_entry
+    except Exception:  # pylint: disable=broad-exception-caught
+        return {"key": model}
+
+
+def get_supported(
+    model_provider: schema.ModelProviderType = None, model_type: schema.ModelTypeType = None
+) -> list[dict[str, Any]]:
+    """Return a list of supported Providers and models from LiteLLM"""
+
+    # Only return supported modes, can extend as required
+    type_to_modes = {
+        "ll": {"chat", "completion", "responses"},
+        "embed": {"embedding"},
+        "rerank": {"rerank"},
+    }
+    allowed_modes = type_to_modes.get(model_type, {"chat", "completion", "embedding", "responses", "rerank"})
+
+    # Below providers do not maintain a model list with litellm
+    skip_providers = {"ollama", "ollama_chat"}
+    result = []
+
+    for provider in sorted([p.value for p in litellm.provider_list]):
+        if model_provider and provider != model_provider:
+            continue
+
+        models = []
+        if provider not in skip_providers:
+            for model in litellm.models_by_provider.get(provider, []):
+                model_entry = _process_model_entry(model, type_to_modes, allowed_modes, provider)
+                if model_entry is not None:
+                    models.append(model_entry)
+
+        result.append({"provider": provider, "models": models})
+
+    return result
 
 
 def create_genai(config: schema.OracleCloudSettings) -> list[schema.Model]:

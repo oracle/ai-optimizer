@@ -244,22 +244,22 @@ class TestModelFunctions:
         assert at.session_state.model_configs != ["old_data"]
         assert isinstance(at.session_state.model_configs, list)
 
-    def test_get_model_providers_function(self, app_server, app_test):
-        """Test get_model_providers function"""
-        from client.content.config.tabs.models import get_model_providers
+    def test_get_supported_models_function(self, app_server, app_test):
+        """Test get_supported_models function"""
+        from client.content.config.tabs.models import get_supported_models
 
         assert app_server is not None
         at = self._setup_function_test(app_test)
 
         # Get providers using API context
         with patch("client.utils.api_call.state", at.session_state):
-            providers = get_model_providers()
+            models = get_supported_models(model_type="ll")
 
         # Should return a list of provider names
-        assert isinstance(providers, list)
-        assert len(providers) > 0
+        assert isinstance(models, list)
+        assert len(models) > 0
         # Common providers should be included
-        assert any(provider in ["openai", "anthropic", "ollama"] for provider in providers)
+        assert any(model["provider"] in ["openai", "anthropic", "ollama"] for model in models)
 
     def test_create_model_function_structure(self, app_server):
         """Test create_model function structure and requirements"""

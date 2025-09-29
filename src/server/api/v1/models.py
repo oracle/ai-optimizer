@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
-from typing import Optional
+from typing import Optional, Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
@@ -14,18 +14,6 @@ from common import schema, logging_config
 logger = logging_config.logging.getLogger("endpoints.v1.models")
 
 auth = APIRouter()
-
-
-@auth.get(
-    "/provider",
-    description="Get support model providers",
-    response_model=list,
-)
-async def models_list_provider() -> list[schema.Model]:
-    """List all model Providers"""
-    logger.debug("Received models_list_provider")
-
-    return utils_models.get_supported_providers()
 
 
 @auth.get(
@@ -42,6 +30,21 @@ async def models_list(
     models_ret = utils_models.get(model_type=model_type, include_disabled=include_disabled)
 
     return models_ret
+
+
+@auth.get(
+    "/supported",
+    description="Get supported providers and models",
+    response_model=list[dict[str, Any]],
+)
+async def models_supported(
+    model_provider: Optional[schema.ModelProviderType] = Query(None),
+    model_type: Optional[schema.ModelTypeType] = Query(None),
+) -> list[dict[str, Any]]:
+    """List all model Providers"""
+    logger.debug("Received models_supported")
+
+    return utils_models.get_supported(model_provider=model_provider, model_type=model_type)
 
 
 @auth.get(
