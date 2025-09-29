@@ -7,6 +7,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Tuple
 import math
 import re
+import oracledb
 
 import requests
 
@@ -73,3 +74,50 @@ def get_vs_table(
     except TypeError:
         logger.fatal("Not all required values provided to get Vector Store Table name.")
     return store_table, store_comment
+
+def is_sql_accessible(db_conn: str, query: str ) -> bool:
+    try: # Establish a connection
+
+        username = ""
+        password = ""
+        dsn = ""
+
+        if not db_conn:
+            return False
+        try:
+            user_part, dsn = db_conn.split('@')
+            username, password = user_part.split('/')        
+        except ValueError:
+            # If the string does not have the expected format, return False
+            return False
+
+        connection = oracledb.connect(user=username, password=password, dsn=dsn)
+
+        cursor = connection.cursor()
+        if not query:
+            return False
+        
+        cursor.execute(query)
+        rows = cursor.fetchmany(2)
+        
+        if not rows:
+            logger.error("SQL source return an empty table!")
+            return False
+        desc = cursor.description
+        if len(desc) != 1:
+            logger.error(f"SQL source returns {len(desc)} columns, expected 1.")
+            return False
+        
+        col_type = desc[0][1]
+        if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR, oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB):
+            logger.error(f"SQL source returns column of type {col_type}, expected VARCHAR or BLOB.")
+            return False
+
+        cursor.close()
+        connection.close()  
+        return True
+    
+    except oracledb.Error as e:
+        logger.error(f"SQL source connection error: {e}")
+
+        return False

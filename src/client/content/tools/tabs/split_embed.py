@@ -131,7 +131,7 @@ def display_split_embed() -> None:
     if not db_avail or not embed_models_enabled:
         st.stop()
 
-    file_sources = ["OCI", "Local", "Web"]
+    file_sources = ["OCI", "Local", "Web","SQL"]
     oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
     oci_setup = oci_lookup.get(state.client_settings["oci"].get("auth_profile"))
     if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
@@ -219,9 +219,24 @@ def display_split_embed() -> None:
     ################################################
     # Splitting
     ################################################
-    st.header("Load and Split Documents", divider="red")
-    file_source = st.radio("File Source:", file_sources, key="radio_file_source", horizontal=True)
+    st.header("Load Knowledge Base", divider="red")
+    file_source = st.radio("Knowledge Base Source:", file_sources, key="radio_file_source", horizontal=True)
     button_help = None
+
+    ######################################
+    # SQL Source
+    ######################################
+    if file_source == "SQL":
+        button_help = """
+            This button is disabled if there the SQL was unable to be validated.  Please check the SQL.
+        """
+        st.subheader("SQL query", divider=False)
+        db_connection = st.text_input("DB Connection:", key="db_connection_url")
+        sql_query = st.text_input("SQL:", key="sql_query")
+
+        populate_button_disabled = not ( functions.is_sql_accessible(db_connection, sql_query))
+    
+
 
     ######################################
     # Local Source
