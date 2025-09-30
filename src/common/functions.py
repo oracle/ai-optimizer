@@ -8,12 +8,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Tuple
 import math
 import re
-import oracledb
-import pandas as pd
-import pyarrow
 import uuid
 import os
 
+import oracledb
+import pyarrow
 import requests
 
 from common import logging_config
@@ -91,46 +90,47 @@ def is_sql_accessible(db_conn: str, query: str) -> bool:
         password = ""
         dsn = ""
 
-        if not db_conn:
-            return False
-        try:
-            user_part, dsn = db_conn.split("@")
-            username, password = user_part.split("/")
-        except ValueError:
-            # If the string does not have the expected format, return False
-            return False
+        ok = True
 
-        connection = oracledb.connect(user=username, password=password, dsn=dsn)
+        if db_conn and query:
+            try:
+                user_part, dsn = db_conn.split("@")
+                username, password = user_part.split("/")
+            except ValueError:
+                # If the string does not have the expected format, return False
+                return False
 
-        cursor = connection.cursor()
-        if not query:
-            return False
+            connection = oracledb.connect(user=username, password=password, dsn=dsn)
 
-        cursor.execute(query)
-        rows = cursor.fetchmany(2)
+            cursor = connection.cursor()
 
-        if not rows:
-            logger.error("SQL source return an empty table!")
-            return False
-        desc = cursor.description
-        if len(desc) != 1:
-            logger.error("SQL source returns %s columns, expected 1.",len(desc))
-            return False
+            cursor.execute(query)
+            rows = cursor.fetchmany(2)
+            desc = cursor.description
+            if not rows:
+                logger.error("SQL source return an empty table!")
+                ok = False
+            if len(desc) != 1:
+                logger.error("SQL source returns %s columns, expected 1.", len(desc))
+                ok = False
 
-        col_type = desc[0][1]
-        if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR):
-            # to be implemented: oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB
-            logger.error("SQL source returns column of type %s , expected VARCHAR or BLOB.",col_type
-            )
-            return False
+            if rows and len(desc) != 1:
+                col_type = desc[0][1]
+                if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR):
+                    # to be implemented: oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB
+                    logger.error(
+                        "SQL source returns column of type %s , expected VARCHAR or BLOB.",
+                        col_type,
+                    )
+            cursor.close()
+            connection.close()
+        else:
+            ok = False
 
-        cursor.close()
-        connection.close()
-        return True
+        return ok
 
     except oracledb.Error as e:
-        logger.error("SQL source connection error: %s",e)
-
+        logger.error("SQL source connection error: %s", e)
         return False
 
 
@@ -165,6 +165,6 @@ def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
         return full_file_path
 
     except oracledb.Error as e:
-        logger.error("SQL source connection error: %s",e)
+        logger.error("SQL source connection error: %s", e)
 
         return ""
