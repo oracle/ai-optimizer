@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker: disable
 
+import importlib
 from unittest.mock import patch, MagicMock
 
 from server.api.core import bootstrap
@@ -29,7 +30,6 @@ class TestBootstrap:
         mock_settings.return_value = [MagicMock()]
 
         # Reload the module to trigger initialization
-        import importlib
 
         importlib.reload(bootstrap)
 

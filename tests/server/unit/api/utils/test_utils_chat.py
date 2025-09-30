@@ -10,7 +10,6 @@ import pytest
 from langchain_core.messages import ChatMessage
 
 from server.api.utils import chat
-from server.api.core.models import UnknownModelError
 from common.schema import (
     ChatRequest,
     Settings,

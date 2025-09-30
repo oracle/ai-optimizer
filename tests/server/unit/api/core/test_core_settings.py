@@ -133,7 +133,7 @@ class TestSettings:
         assert mock_update_client.call_count == 2
 
     @patch("server.api.core.settings.update_server_config")
-    def test_load_config_from_json_data_missing_client_settings(self, mock_update_server):
+    def test_load_config_from_json_data_missing_client_settings(self, _mock_update_server):
         """Test loading config from JSON data without client_settings"""
         # Create config without client_settings
         invalid_config = {"database_configs": [], "model_configs": [], "oci_configs": [], "prompt_configs": []}

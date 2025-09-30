@@ -4,6 +4,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 NOTE: Provide only one example per API to populate supported API lists; additional models should be
 added via the APIs
+
+WARNING: If you bootstrap additional Ollama Models, you will need to update the IaC to pull those.
+         Large models will cause the IaC to take much longer to be available.
 """
 # spell-checker:ignore configfile genai ollama pplx docos mxbai nomic thenlper
 # spell-checker:ignore huggingface vllm
@@ -18,25 +21,25 @@ from common import logging_config
 logger = logging_config.logging.getLogger("bootstrap.models")
 
 
-def main() -> list[Model]:
-    """Define example Model Support"""
-    logger.debug("*** Bootstrapping Models - Start")
+def _update_env_var(model: Model, provider: str, model_key: str, env_var: str):
+    """Update model configuration with environment variable override"""
+    if model.get("provider") != provider:
+        return
 
-    def update_env_var(model: Model, provider: str, model_key: str, env_var: str):
-        if model.get("provider") != provider:
-            return
+    new_value = os.environ.get(env_var)
+    if not new_value:
+        return
 
-        new_value = os.environ.get(env_var)
-        if not new_value:
-            return
+    old_value = model.get(model_key)
+    if old_value != new_value:
+        logger.debug("Overriding '%s' for model '%s' with %s environment variable", model_key, model.id, env_var)
+        model[model_key] = new_value
+        logger.debug("Model '%s' updated via environment variable overrides.", model.id)
 
-        old_value = model.get(model_key)
-        if old_value != new_value:
-            logger.debug("Overriding '%s' for model '%s' with %s environment variable", model_key, model.id, env_var)
-            model[model_key] = new_value
-            logger.debug("Model '%s' updated via environment variable overrides.", model.id)
 
-    models_list = [
+def _get_base_models_list() -> list[dict]:
+    """Return the base list of model configurations"""
+    return [
         {
             "id": "command-r",
             "enabled": os.getenv("COHERE_API_KEY") is not None,
@@ -44,10 +47,7 @@ def main() -> list[Model]:
             "provider": "cohere",
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "api_base": "https://api.cohere.ai/compatibility/v1",
-            "context_length": 127072,
-            "temperature": 0.3,
-            "max_completion_tokens": 4096,
-            "frequency_penalty": 0.0,
+            "context_length": 128000,
         },
         {
             "id": "gpt-4o-mini",
@@ -56,10 +56,7 @@ def main() -> list[Model]:
             "provider": "openai",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "api_base": "https://api.openai.com/v1",
-            "context_length": 127072,
-            "temperature": 1.0,
-            "max_completion_tokens": 4096,
-            "frequency_penalty": 0.0,
+            "context_length": 128000,
         },
         {
             "id": "sonar",
@@ -68,10 +65,7 @@ def main() -> list[Model]:
             "provider": "perplexity",
             "api_key": os.environ.get("PPLX_API_KEY", default=""),
             "api_base": "https://api.perplexity.ai",
-            "context_length": 127072,
-            "temperature": 0.2,
-            "max_completion_tokens": 28000,
-            "frequency_penalty": 1.0,
+            "context_length": 128000,
         },
         {
             "id": "phi-4",
@@ -80,22 +74,7 @@ def main() -> list[Model]:
             "provider": "huggingface",
             "api_key": "",
             "api_base": "http://localhost:1234/v1",
-            "context_length": 131072,
-            "temperature": 1.0,
-            "max_completion_tokens": 4096,
-            "frequency_penalty": 0.0,
-        },
-        {
-            "id": "gpt-oss:20b",
-            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
-            "type": "ll",
-            "provider": "ollama",
-            "api_key": "",
-            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
-            "context_length": 131072,
-            "temperature": 1.0,
-            "max_completion_tokens": 2048,
-            "frequency_penalty": 0.0,
+            "context_length": 16384,
         },
         {
             "id": "meta-llama/Llama-3.2-1B-Instruct",
@@ -104,10 +83,7 @@ def main() -> list[Model]:
             "provider": "hosted_vllm",
             "api_key": "",
             "api_base": os.environ.get("ON_PREM_VLLM_URL", default="http://localhost:8000/v1"),
-            "context_length": 131072,
-            "temperature": 1.0,
-            "max_completion_tokens": 2048,
-            "frequency_penalty": 0.0,
+            "context_length": 16384,
         },
         {
             # This is intentionally last to line up with docos
@@ -118,9 +94,6 @@ def main() -> list[Model]:
             "api_key": "",
             "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
             "context_length": 131072,
-            "temperature": 1.0,
-            "max_completion_tokens": 2048,
-            "frequency_penalty": 0.0,
         },
         {
             "id": "thenlper/gte-base",
@@ -138,7 +111,7 @@ def main() -> list[Model]:
             "provider": "openai",
             "api_base": "https://api.openai.com/v1",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
-            "max_chunk_size": 8191,
+            "max_chunk_size": 1536,
         },
         {
             "id": "embed-english-light-v3.0",
@@ -170,7 +143,9 @@ def main() -> list[Model]:
         },
     ]
 
-    # Check for duplicates
+
+def _check_for_duplicates(models_list: list[dict]) -> None:
+    """Check for duplicate models and raise error if found"""
     unique_entries = set()
     for model in models_list:
         key = (model["provider"], model["id"])
@@ -178,55 +153,66 @@ def main() -> list[Model]:
             raise ValueError(f"Model '{model['provider']}/{model['id']}' already exists.")
         unique_entries.add(key)
 
-    # Merge with configuration if available
+
+def _values_differ(a, b) -> bool:
+    """Check if two values differ, handling different types appropriately"""
+    if isinstance(a, bool) or isinstance(b, bool):
+        return bool(a) != bool(b)
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return abs(a - b) > 1e-8
+    if isinstance(a, str) and isinstance(b, str):
+        return a.strip() != b.strip()
+    return a != b
+
+
+def _merge_with_config_store(models_list: list[dict]) -> list[dict]:
+    """Merge models list with configuration from ConfigStore"""
     configuration = ConfigStore.get()
-    if configuration and configuration.model_configs:
-        logger.debug("Merging model configs from ConfigStore")
+    if not configuration or not configuration.model_configs:
+        return models_list
 
-        # Use (provider, id) tuple as key
-        config_model_map = {(m.provider, m.id): m.model_dump() for m in configuration.model_configs}
-        existing = {(m["provider"], m["id"]): m for m in models_list}
+    logger.debug("Merging model configs from ConfigStore")
 
-        def values_differ(a, b):
-            if isinstance(a, bool) or isinstance(b, bool):
-                return bool(a) != bool(b)
-            if isinstance(a, (int, float)) and isinstance(b, (int, float)):
-                return abs(a - b) > 1e-8
-            if isinstance(a, str) and isinstance(b, str):
-                return a.strip() != b.strip()
-            return a != b
+    # Use (provider, id) tuple as key
+    config_model_map = {(m.provider, m.id): m.model_dump() for m in configuration.model_configs}
+    existing = {(m["provider"], m["id"]): m for m in models_list}
 
-        for key, override in config_model_map.items():
-            if key in existing:
-                for k, v in override.items():
-                    if k not in existing[key]:
-                        continue
-                    if values_differ(existing[key][k], v):
-                        log_func = logger.debug if k == "api_key" else logger.info
-                        log_func(
-                            "Overriding field '%s' for model '%s/%s' (was: %r → now: %r)",
-                            k,
-                            key[0],  # provider
-                            key[1],  # id
-                            existing[key][k],
-                            v,
-                        )
-                        existing[key][k] = v
-            else:
-                logger.info("Adding new model from ConfigStore: %s/%s", key[0], key[1])
-                existing[key] = override
+    for key, override in config_model_map.items():
+        if key in existing:
+            for k, v in override.items():
+                if k not in existing[key]:
+                    continue
+                if _values_differ(existing[key][k], v):
+                    log_func = logger.debug if k == "api_key" else logger.info
+                    log_func(
+                        "Overriding field '%s' for model '%s/%s' (was: %r → now: %r)",
+                        k,
+                        key[0],  # provider
+                        key[1],  # id
+                        existing[key][k],
+                        v,
+                    )
+                    existing[key][k] = v
+        else:
+            logger.info("Adding new model from ConfigStore: %s/%s", key[0], key[1])
+            existing[key] = override
 
-        models_list = list(existing.values())
+    return list(existing.values())
 
-    # Override with OS env vars (by API type)
+
+def _apply_env_var_overrides(models_list: list[dict]) -> None:
+    """Apply environment variable overrides to models"""
     for model in models_list:
-        update_env_var(model, "cohere", "api_key", "COHERE_API_KEY")
-        update_env_var(model, "oci", "api_base", "OCI_GENAI_SERVICE_ENDPOINT")
-        update_env_var(model, "ollama", "api_base", "ON_PREM_OLLAMA_URL")
-        update_env_var(model, "huggingface", "api_base", "ON_PREM_HF_URL")
-        update_env_var(model, "meta-llama", "api_base", "ON_PREM_VLLM_URL")
+        _update_env_var(model, "cohere", "api_key", "COHERE_API_KEY")
+        _update_env_var(model, "oci", "api_base", "OCI_GENAI_SERVICE_ENDPOINT")
+        _update_env_var(model, "ollama_chat", "api_base", "ON_PREM_OLLAMA_URL")
+        _update_env_var(model, "ollama", "api_base", "ON_PREM_OLLAMA_URL")
+        _update_env_var(model, "huggingface", "api_base", "ON_PREM_HF_URL")
+        _update_env_var(model, "meta-llama", "api_base", "ON_PREM_VLLM_URL")
 
-    # Check URL accessible for enabled models and disable if not:
+
+def _check_url_accessibility(models_list: list[dict]) -> None:
+    """Check URL accessibility for enabled models and disable if not accessible"""
     url_access_cache = {}
 
     for model in models_list:
@@ -239,6 +225,17 @@ def main() -> list[Model]:
                 logger.debug("Reusing cached result for %s for URL: %s", model["id"], url)
 
             model["enabled"] = url_access_cache[url]
+
+
+def main() -> list[Model]:
+    """Define example Model Support"""
+    logger.debug("*** Bootstrapping Models - Start")
+
+    models_list = _get_base_models_list()
+    _check_for_duplicates(models_list)
+    models_list = _merge_with_config_store(models_list)
+    _apply_env_var_overrides(models_list)
+    _check_url_accessibility(models_list)
 
     # Convert to Model objects
     model_objects = [Model(**model_dict) for model_dict in models_list]
