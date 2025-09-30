@@ -383,6 +383,11 @@ def display_split_embed() -> None:
                 if file_source == "Web":
                     endpoint = "v1/embed/web/store"
                     api_payload = {"json": [web_url]}
+                
+                if file_source == "SQL":
+                    endpoint = "v1/embed/sql/store"
+                    api_payload = {"json": [db_connection,sql_query]}
+
 
                 if file_source == "OCI":
                     # Download OCI Objects for Processing
@@ -392,6 +397,8 @@ def display_split_embed() -> None:
 
                 # Post Files to Server
                 response = api_call.post(endpoint=endpoint, payload=api_payload)
+                logger.info(f"Response to Post Files to Server:{response}")
+                logger.info(f"embed_request.model_dump():{embed_request.model_dump()}")
 
                 # All files are now on Server... Run Embeddings
                 embed_params = {

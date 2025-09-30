@@ -8,6 +8,10 @@ from typing import Tuple
 import math
 import re
 import oracledb
+import pandas as pd
+import pyarrow
+import uuid
+import os
 
 import requests
 
@@ -93,6 +97,7 @@ def is_sql_accessible(db_conn: str, query: str ) -> bool:
 
         connection = oracledb.connect(user=username, password=password, dsn=dsn)
 
+
         cursor = connection.cursor()
         if not query:
             return False
@@ -121,3 +126,39 @@ def is_sql_accessible(db_conn: str, query: str ) -> bool:
         logger.error(f"SQL source connection error: {e}")
 
         return False
+
+def run_sql_query(db_conn: str, query: str, base_path:str ) -> str:
+    try: # Establish a connection
+        username = ""
+        password = ""
+        dsn = ""
+        batch_size = 100
+
+        if not db_conn:
+            return False
+        try:
+            user_part, dsn = db_conn.split('@')
+            username, password = user_part.split('/')        
+        except ValueError:
+            # If the string does not have the expected format, return False
+            return False
+        random_filename = str(uuid.uuid4())
+
+        filename_with_extension = f"{random_filename}.csv"
+        connection = oracledb.connect(user=username, password=password, dsn=dsn)
+        for odf in connection.fetch_df_batches(statement=query, size=batch_size):
+            df = pyarrow.table(odf).to_pandas()
+    
+
+
+        full_file_path = os.path.join(base_path, filename_with_extension)
+
+        df.to_csv(full_file_path, index=False)
+
+        connection.close()  
+        return full_file_path
+    
+    except oracledb.Error as e:
+        logger.error(f"SQL source connection error: {e}")
+
+        return ""
