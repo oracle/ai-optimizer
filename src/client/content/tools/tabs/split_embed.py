@@ -422,7 +422,7 @@ def display_split_embed() -> None:
 
     _render_embedding_configuration(embed_models_enabled, embed_request)
 
-    (file_source, populate_button_disabled, button_help, 
+    (file_source, populate_button_disabled, button_help,
      web_url, src_bucket, src_files_selected, db_connection, sql_query)  = (
         _render_file_source_section(file_sources, oci_setup)
     )
