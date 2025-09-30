@@ -193,6 +193,8 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
     web_url = None
     src_bucket = None
     src_files_selected = None
+    db_connection = None
+    sql_query = None
 
     ######################################
     # SQL Source
@@ -263,7 +265,7 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
         src_files_selected = files_data_editor(src_files, "source")
         populate_button_disabled = src_files_selected["Process"].sum() == 0
 
-    return file_source, populate_button_disabled, button_help, web_url, src_bucket, src_files_selected
+    return file_source, populate_button_disabled, button_help, web_url, src_bucket, src_files_selected, db_connection, sql_query 
 
 
 def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
@@ -323,6 +325,8 @@ def _handle_vector_store_population(
     src_bucket: str,
     src_files_selected,
     rate_limit: int,
+    db_connection: str,
+    sql_query : str
 ) -> None:
     """Handle vector store population button and processing"""
     if not populate_button_disabled and embed_request.vector_store:
@@ -409,7 +413,7 @@ def display_split_embed() -> None:
     if not db_avail or not embed_models_enabled:
         st.stop()
 
-    file_sources = ["OCI", "Local", "Web"]
+    file_sources = ["OCI", "Local", "Web", "SQL"]
     oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
     oci_setup = oci_lookup.get(state.client_settings["oci"].get("auth_profile"))
     if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
@@ -420,7 +424,7 @@ def display_split_embed() -> None:
 
     _render_embedding_configuration(embed_models_enabled, embed_request)
 
-    file_source, populate_button_disabled, button_help, web_url, src_bucket, src_files_selected = (
+    file_source, populate_button_disabled, button_help, web_url, src_bucket, src_files_selected, db_connection, sql_query  = (
         _render_file_source_section(file_sources, oci_setup)
     )
 
@@ -436,6 +440,8 @@ def display_split_embed() -> None:
             src_bucket,
             src_files_selected,
             rate_limit,
+            db_connection,
+            sql_query
         )
 
 

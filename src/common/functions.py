@@ -114,7 +114,8 @@ def is_sql_accessible(db_conn: str, query: str ) -> bool:
             return False
         
         col_type = desc[0][1]
-        if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR, oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB):
+        if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR):
+            # to be implemented: oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB
             logger.error(f"SQL source returns column of type {col_type}, expected VARCHAR or BLOB.")
             return False
 
