@@ -2,6 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+
 # spell-checker:ignore genai hnsw
 
 from typing import Tuple
@@ -62,7 +63,9 @@ def get_vs_table(
     store_comment = None
     try:
         chunk_overlap_ceil = math.ceil(chunk_overlap)
-        table_string = f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
+        table_string = (
+            f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
+        )
         if alias:
             table_string = f"{alias}_{table_string}"
         store_table = re.sub(r"\W", "_", table_string.upper())
@@ -79,8 +82,10 @@ def get_vs_table(
         logger.fatal("Not all required values provided to get Vector Store Table name.")
     return store_table, store_comment
 
-def is_sql_accessible(db_conn: str, query: str ) -> bool:
-    try: # Establish a connection
+
+def is_sql_accessible(db_conn: str, query: str) -> bool:
+    """Check if the DB connection and SQL is working one field."""
+    try:  # Establish a connection
 
         username = ""
         password = ""
@@ -89,47 +94,49 @@ def is_sql_accessible(db_conn: str, query: str ) -> bool:
         if not db_conn:
             return False
         try:
-            user_part, dsn = db_conn.split('@')
-            username, password = user_part.split('/')        
+            user_part, dsn = db_conn.split("@")
+            username, password = user_part.split("/")
         except ValueError:
             # If the string does not have the expected format, return False
             return False
 
         connection = oracledb.connect(user=username, password=password, dsn=dsn)
 
-
         cursor = connection.cursor()
         if not query:
             return False
-        
+
         cursor.execute(query)
         rows = cursor.fetchmany(2)
-        
+
         if not rows:
             logger.error("SQL source return an empty table!")
             return False
         desc = cursor.description
         if len(desc) != 1:
-            logger.error(f"SQL source returns {len(desc)} columns, expected 1.")
+            logger.error("SQL source returns %s columns, expected 1.",len(desc))
             return False
-        
+
         col_type = desc[0][1]
         if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR):
             # to be implemented: oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB
-            logger.error(f"SQL source returns column of type {col_type}, expected VARCHAR or BLOB.")
+            logger.error("SQL source returns column of type %s , expected VARCHAR or BLOB.",col_type
+            )
             return False
 
         cursor.close()
-        connection.close()  
+        connection.close()
         return True
-    
+
     except oracledb.Error as e:
-        logger.error(f"SQL source connection error: {e}")
+        logger.error("SQL source connection error: %s",e)
 
         return False
 
-def run_sql_query(db_conn: str, query: str, base_path:str ) -> str:
-    try: # Establish a connection
+
+def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
+    """Save the query result as a CSV file to be embedded"""
+    try:  # Establish a connection
         username = ""
         password = ""
         dsn = ""
@@ -138,8 +145,8 @@ def run_sql_query(db_conn: str, query: str, base_path:str ) -> str:
         if not db_conn:
             return False
         try:
-            user_part, dsn = db_conn.split('@')
-            username, password = user_part.split('/')        
+            user_part, dsn = db_conn.split("@")
+            username, password = user_part.split("/")
         except ValueError:
             # If the string does not have the expected format, return False
             return False
@@ -149,17 +156,15 @@ def run_sql_query(db_conn: str, query: str, base_path:str ) -> str:
         connection = oracledb.connect(user=username, password=password, dsn=dsn)
         for odf in connection.fetch_df_batches(statement=query, size=batch_size):
             df = pyarrow.table(odf).to_pandas()
-    
-
 
         full_file_path = os.path.join(base_path, filename_with_extension)
 
         df.to_csv(full_file_path, index=False)
 
-        connection.close()  
+        connection.close()
         return full_file_path
-    
+
     except oracledb.Error as e:
-        logger.error(f"SQL source connection error: {e}")
+        logger.error("SQL source connection error: %s",e)
 
         return ""
