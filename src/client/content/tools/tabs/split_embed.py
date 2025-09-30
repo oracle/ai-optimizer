@@ -207,9 +207,7 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
         db_connection = st.text_input("DB Connection:", key="db_connection_url")
         sql_query = st.text_input("SQL:", key="sql_query")
 
-        populate_button_disabled = not ( functions.is_sql_accessible(db_connection, sql_query))
-    
-
+        populate_button_disabled = not functions.is_sql_accessible(db_connection, sql_query)
 
     ######################################
     # Local Source
@@ -265,7 +263,8 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
         src_files_selected = files_data_editor(src_files, "source")
         populate_button_disabled = src_files_selected["Process"].sum() == 0
 
-    return file_source, populate_button_disabled, button_help, web_url, src_bucket, src_files_selected, db_connection, sql_query 
+    return (file_source, populate_button_disabled, button_help, web_url,
+            src_bucket, src_files_selected, db_connection, sql_query)
 
 
 def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
@@ -356,8 +355,8 @@ def _handle_vector_store_population(
 
                 if file_source == "Web":
                     endpoint = "v1/embed/web/store"
-                    api_payload = {"json": [web_url]}
-                
+                    api_payload = {"json":[web_url]}
+
                 if file_source == "SQL":
                     endpoint = "v1/embed/sql/store"
                     api_payload = {"json": [db_connection,sql_query]}
@@ -369,8 +368,7 @@ def _handle_vector_store_population(
                     api_payload = {"json": process_list["File"].tolist()}
 
                 response = api_call.post(endpoint=endpoint, payload=api_payload)
-                logger.info(f"Response to Post Files to Server:{response}")
-                logger.info(f"embed_request.model_dump():{embed_request.model_dump()}")
+
 
                 embed_params = {
                     "client": state.client_settings["client"],
@@ -424,7 +422,8 @@ def display_split_embed() -> None:
 
     _render_embedding_configuration(embed_models_enabled, embed_request)
 
-    file_source, populate_button_disabled, button_help, web_url, src_bucket, src_files_selected, db_connection, sql_query  = (
+    (file_source, populate_button_disabled, button_help, 
+     web_url, src_bucket, src_files_selected, db_connection, sql_query)  = (
         _render_file_source_section(file_sources, oci_setup)
     )
 
