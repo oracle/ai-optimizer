@@ -47,6 +47,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "cohere",
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "api_base": "https://api.cohere.ai/compatibility/v1",
+            "max_tokens": 4000,
             "max_input_tokens": 128000,
         },
         {
@@ -56,6 +57,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "openai",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "api_base": "https://api.openai.com/v1",
+            "max_tokens": 16384,
             "max_input_tokens": 128000,
         },
         {
@@ -65,6 +67,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "perplexity",
             "api_key": os.environ.get("PPLX_API_KEY", default=""),
             "api_base": "https://api.perplexity.ai",
+            "max_tokens": 8000,
             "max_input_tokens": 128000,
         },
         {
@@ -83,6 +86,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "hosted_vllm",
             "api_key": "",
             "api_base": os.environ.get("ON_PREM_VLLM_URL", default="http://localhost:8000/v1"),
+            "max_tokens": 2048,
             "max_input_tokens": 16384,
         },
         {
@@ -93,6 +97,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "ollama",
             "api_key": "",
             "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "max_tokens": 4096,
             "max_input_tokens": 131072,
         },
         {
