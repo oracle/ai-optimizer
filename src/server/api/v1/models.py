@@ -87,7 +87,7 @@ async def models_update(payload: schema.Model) -> schema.Model:
 async def models_create(
     payload: schema.Model,
 ) -> schema.Model:
-    """Update a model"""
+    """Create a model"""
     logger.debug("Received model_create - payload: %s", payload)
 
     try:
