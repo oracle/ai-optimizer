@@ -92,7 +92,7 @@ def update(payload: schema.Model) -> schema.Model:
     """Update an existing Model definition"""
 
     model_upd = get(model_provider=payload.provider, model_id=payload.id)
-    if payload.enabled and not is_url_accessible(model_upd.api_base)[0]:
+    if payload.enabled and model_upd.api_base and not is_url_accessible(model_upd.api_base)[0]:
         model_upd.enabled = False
         raise URLUnreachableError("Model: Unable to update.  API URL is inaccessible.")
 
