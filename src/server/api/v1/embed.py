@@ -8,17 +8,20 @@ import json
 from urllib.parse import urlparse
 from pathlib import Path
 import shutil
+from bs4 import BeautifulSoup, Comment
+import re
 
 from fastapi import APIRouter, HTTPException, Response, Header, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
-import requests
+import aiohttp
 
 import server.api.core.oci as core_oci
 
 import server.api.utils.databases as utils_databases
 import server.api.utils.embed as utils_embed
 import server.api.utils.models as utils_models
+import server.api.utils.parse as web_parse
 
 from common import functions, schema, logging_config
 
@@ -59,25 +62,44 @@ async def store_web_file(
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
     # Save the file temporarily
-    for url in request:
-        filename = Path(urlparse(str(url)).path).name
-        request_timeout = 60
-        logger.debug("Requesting: %s (timeout in %is)", url, request_timeout)
-        response = requests.get(url, timeout=request_timeout)
-        content_type = response.headers.get("Content-Type", "").lower()
+    async with aiohttp.ClientSession() as session:
+        for url in request:
+            filename = Path(urlparse(str(url)).path).name
+            request_timeout = aiohttp.ClientTimeout(total=60)
+            logger.debug("Requesting: %s (timeout in %is)", url, request_timeout)
+            async with session.get(str(url), timeout=request_timeout) as response:
+                content_type = response.headers.get("Content-Type", "").lower()
 
-        if "application/pdf" in content_type or "application/octet-stream" in content_type:
-            with open(temp_directory / filename, "wb") as file:
-                file.write(response.content)
-        elif "text" in content_type or "html" in content_type:
-            with open(temp_directory / filename, "w", encoding="utf-8") as file:
-                file.write(response.text)
-        else:
-            shutil.rmtree(temp_directory)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Unprocessable content type: {content_type}.",
-            )
+                if "application/pdf" in content_type or "application/octet-stream" in content_type:
+                    with open(temp_directory / filename, "wb") as file:
+                        file.write(await response.read())
+
+                elif "text" in content_type or "html" in content_type:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+
+                    # Remove script and style elements
+                    for script in soup(["script", "style"]):
+                        script.decompose()
+                    # Remove comments
+                    for element in soup(text=lambda text: isinstance(text, Comment)):
+                        element.extract()
+
+                     # Get the text from the HTML
+                    text = ""
+                    for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li']):
+                        text += element.get_text(" ", strip=True) + "\n\n"    
+                    
+                    filename = f"{web_parse.slugify(str(url).split('/')[-1])}.txt"
+                    with open(temp_directory / filename, "w", encoding="utf-8", errors="replace") as file:
+                        file.write(text)
+
+                else:
+                    shutil.rmtree(temp_directory)
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Unprocessable content type: {content_type}.",
+                    )
 
     stored_files = [f.name for f in temp_directory.iterdir() if f.is_file()]
     return Response(content=json.dumps(stored_files), media_type="application/json")
