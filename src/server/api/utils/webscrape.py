@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup, Comment
 import re, unicodedata
 from readability import Document
 from typing import List, Dict, Tuple
+import aiohttp
 
 BAD_CHUNKS = [
     "nav","header","footer","aside","form","menu","breadcrumb","toc","pagination",
@@ -103,3 +104,21 @@ def extract_main_html(html: str) -> Tuple[str, str | None]:
         return doc.summary(html_partial=True), doc.short_title()
     except Exception:
         return html, None
+    
+async def fetch_and_extract_paragraphs(url):
+    paragraphs = []
+    async with aiohttp.ClientSession() as session:
+        async with session.get(str(url)) as response:
+            html = await response.text()
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            for script in soup(["script", "style"]):
+                script.decompose()
+            for element in soup(text=lambda text: isinstance(text, Comment)):
+                element.extract()
+            
+            for p in soup.find_all("p"):
+                txt = normalize_ws(p.get_text())
+                if txt:  
+                    paragraphs.append(txt)
+    return paragraphs

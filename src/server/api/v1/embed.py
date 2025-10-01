@@ -8,8 +8,6 @@ import json
 from urllib.parse import urlparse
 from pathlib import Path
 import shutil
-from bs4 import BeautifulSoup, Comment
-import re
 
 from fastapi import APIRouter, HTTPException, Response, Header, UploadFile
 from fastapi.responses import JSONResponse
@@ -91,26 +89,13 @@ async def store_web_file(
                 if "application/pdf" in content_type or "application/octet-stream" in content_type:
                     with open(temp_directory / filename, "wb") as file:
                         file.write(await response.read())
-
+                
                 elif "text" in content_type or "html" in content_type:
-                    html = await response.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-
-                    # Remove script and style elements
-                    for script in soup(["script", "style"]):
-                        script.decompose()
-                    # Remove comments
-                    for element in soup(text=lambda text: isinstance(text, Comment)):
-                        element.extract()
-
-                     # Get the text from the HTML
-                    text = ""
-                    for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li']):
-                        text += element.get_text(" ", strip=True) + "\n\n"    
-                    
+                    paragraphs = await web_parse.fetch_and_extract_paragraphs(url)
                     filename = f"{web_parse.slugify(str(url).split('/')[-1])}.txt"
                     with open(temp_directory / filename, "w", encoding="utf-8", errors="replace") as file:
-                        file.write(text)
+                        for para in paragraphs:
+                            file.write(para + "\n\n")
 
                 else:
                     shutil.rmtree(temp_directory)
