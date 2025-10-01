@@ -45,6 +45,12 @@ The process that starts clicking the **Populate Vector Store** button needs:
     - **OCI**: you can browse and add more than one document into the same vectostore table at a time;
     - **Local**: uploading more than one document into the same vectostore table at a time;
     - **Web**: upload one txt,pdf,html from the URL provided.
+    - **SQL**: define a query on an Oracle DB to extract a field of VARCHAR2 type to embed the contents, row-by-row. Set the following parameters:
+        - **DB Connection**: put in input a string like
+        ```CO/Welcome_12345@localhost:1521/FREEPDB1```
+        - **SQL**: set a query like
+        ```select PRODUCT_NAME from PRODUCTS``` to get just one field. The content it will be embedded from a string starting with the field name, to provide a better context in the chunk similarity search.
+
 
 - **Rate Limit (RPM)**: to avoid that a public LLM embedding service bans you for too much requests per second, out of your subscription limits.
 
