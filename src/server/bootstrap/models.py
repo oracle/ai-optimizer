@@ -86,18 +86,6 @@ def main() -> list[Model]:
             "frequency_penalty": 0.0,
         },
         {
-            "id": "gpt-oss:20b",
-            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
-            "type": "ll",
-            "provider": "ollama",
-            "api_key": "",
-            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
-            "context_length": 131072,
-            "temperature": 1.0,
-            "max_completion_tokens": 2048,
-            "frequency_penalty": 0.0,
-        },
-        {
             "id": "meta-llama/Llama-3.2-1B-Instruct",
             "enabled": os.getenv("ON_PREM_VLLM_URL") is not None,
             "type": "ll",
