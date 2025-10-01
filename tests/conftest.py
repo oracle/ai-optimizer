@@ -109,7 +109,7 @@ def app_server(request):
     if config_file:
         cmd.extend(["-c", config_file])
 
-    server_process = subprocess.Popen(cmd, cwd="src")
+    server_process = subprocess.Popen(cmd, cwd="src")  # pylint: disable=consider-using-with
 
     # Wait for server to be ready (up to 30 seconds)
     max_wait = 30

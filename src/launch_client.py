@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Session States Set:
 - client_settings: Stores all user settings
 """
-# spell-checker:ignore streamlit, scriptrunner
+# spell-checker:ignore streamlit scriptrunner
 
 import os
 from uuid import uuid4

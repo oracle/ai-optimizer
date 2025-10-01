@@ -2,13 +2,11 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai
 
-from typing import Optional, get_args
+from typing import Optional, Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-import server.api.core.models as core_models
 import server.api.utils.models as utils_models
 
 from common import schema, logging_config
@@ -16,17 +14,6 @@ from common import schema, logging_config
 logger = logging_config.logging.getLogger("endpoints.v1.models")
 
 auth = APIRouter()
-
-
-@auth.get(
-    "/provider",
-    description="Get support model providers",
-    response_model=list,
-)
-async def models_list_provider() -> list[schema.Model]:
-    """List all models APIs after applying filters if specified"""
-    logger.debug("Received models_list_provider")
-    return list(get_args(schema.ModelProviders))
 
 
 @auth.get(
@@ -40,9 +27,24 @@ async def models_list(
 ) -> list[schema.Model]:
     """List all models after applying filters if specified"""
     logger.debug("Received models_list - type: %s", model_type)
-    models_ret = core_models.get_model(model_type=model_type, include_disabled=include_disabled)
+    models_ret = utils_models.get(model_type=model_type, include_disabled=include_disabled)
 
     return models_ret
+
+
+@auth.get(
+    "/supported",
+    description="Get supported providers and models",
+    response_model=list[dict[str, Any]],
+)
+async def models_supported(
+    model_provider: Optional[schema.ModelProviderType] = Query(None),
+    model_type: Optional[schema.ModelTypeType] = Query(None),
+) -> list[dict[str, Any]]:
+    """List all model Providers"""
+    logger.debug("Received models_supported")
+
+    return utils_models.get_supported(model_provider=model_provider, model_type=model_type)
 
 
 @auth.get(
@@ -58,8 +60,8 @@ async def models_get(
     logger.debug("Received models_get - model: %s/%s", model_provider, model_id)
 
     try:
-        models_ret = core_models.get_model(model_provider=model_provider, model_id=model_id)
-    except core_models.UnknownModelError as ex:
+        models_ret = utils_models.get(model_provider=model_provider, model_id=model_id)
+    except utils_models.UnknownModelError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
 
     return models_ret
@@ -75,9 +77,9 @@ async def models_update(payload: schema.Model) -> schema.Model:
     logger.debug("Received models_update - payload: %s", payload)
     try:
         return utils_models.update(payload=payload)
-    except core_models.UnknownModelError as ex:
+    except utils_models.UnknownModelError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
-    except core_models.URLUnreachableError as ex:
+    except utils_models.URLUnreachableError as ex:
         raise HTTPException(status_code=422, detail=str(ex)) from ex
 
 
@@ -89,8 +91,8 @@ async def models_create(
     logger.debug("Received model_create - payload: %s", payload)
 
     try:
-        return core_models.create_model(payload)
-    except core_models.ExistsModelError as ex:
+        return utils_models.create(payload)
+    except utils_models.ExistsModelError as ex:
         raise HTTPException(status_code=409, detail=str(ex)) from ex
 
 
@@ -104,5 +106,5 @@ async def models_delete(
 ) -> JSONResponse:
     """Delete a model"""
     logger.debug("Received models_delete - model: %s/%s", model_provider, model_id)
-    core_models.delete_model(model_provider=model_provider, model_id=model_id)
+    utils_models.delete(model_provider=model_provider, model_id=model_id)
     return JSONResponse(status_code=200, content={"message": f"Model: {model_provider}/{model_id} deleted."})

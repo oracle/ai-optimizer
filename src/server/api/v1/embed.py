@@ -50,6 +50,24 @@ async def embed_drop_vs(
 
 
 @auth.post(
+    "/sql/store",
+    description="Store SQL field for Embedding.",
+)
+async def store_sql_file(
+    request: list[str],
+    client: schema.ClientIdType = Header(default="server"),
+) -> Response:
+    """Store contents from a SQL """
+    logger.debug("Received store_SQL_data - request: %s", request)
+    
+    temp_directory = utils_embed.get_temp_directory(client, "embedding")
+    result_file = functions.run_sql_query(db_conn=request[0], query=request[1], base_path=temp_directory)
+
+    stored_files= [result_file]
+    logger.debug(f"sql ingest - temp csv file location: {result_file}")
+    return Response(content=json.dumps(stored_files), media_type="application/json")
+
+@auth.post(
     "/web/store",
     description="Store Web Files for Embedding.",
 )

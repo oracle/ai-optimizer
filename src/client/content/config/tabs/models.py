@@ -10,7 +10,7 @@ Session States Set:
 # spell-checker:ignore selectbox
 
 from time import sleep
-from typing import Literal
+from typing import Literal, Any
 import urllib.parse
 
 import streamlit as st
@@ -49,10 +49,10 @@ def get_models(force: bool = False) -> None:
             state.model_configs = {}
 
 
-@st.cache_data(show_spinner="Retrieving Model Providers")
-def get_model_providers() -> list:
-    """Get list of valid Providers; function for Streamlit caching"""
-    response = api_call.get(endpoint="v1/models/provider")
+# @st.cache_data(show_spinner="Retrieving Supported Models")
+def get_supported_models(model_type: str) -> list[dict[str, Any]]:
+    """Get list of supported providers; function for Streamlit caching"""
+    response = api_call.get(endpoint="v1/models/supported", params={"model_type": model_type})
     return response
 
 
@@ -80,117 +80,179 @@ def delete_model(model_provider: str, model_id: str) -> None:
     clear_client_models(model_provider, model_id)
 
 
+def _initialize_model(action: str, model_type: str, model_id: str = None, model_provider: str = None) -> dict:
+    """Initialize model configuration based on action type"""
+    if action == "edit":
+        quoted_model_id = urllib.parse.quote(model_id, safe="")
+        model = api_call.get(endpoint=f"v1/models/{model_provider}/{quoted_model_id}")
+    else:
+        model = {"id": "unset", "type": model_type, "provider": "unset", "status": "CUSTOM"}
+
+    if action == "add":
+        model["enabled"] = True
+    else:
+        model["enabled"] = st.checkbox("Enabled", value=True if action == "add" else model["enabled"])
+
+    return model
+
+
+def _render_provider_selection(model: dict, supported_models: list, action: str) -> tuple[dict, list, bool]:
+    """Render provider selection UI and return updated model, provider models, and OCI flag"""
+    provider_index = next(
+        (i for i, item in enumerate(supported_models) if item["provider"] == model["provider"]), None
+    )
+    disable_for_oci = model["provider"] == "oci"
+
+    model["provider"] = st.selectbox(
+        "Provider (Required):",
+        help=help_text.help_dict["model_provider"],
+        placeholder="-- Choose the Model's Provider --",
+        index=provider_index,
+        options=[item["provider"] for item in supported_models],
+        key="add_model_provider",
+        disabled=action == "edit",
+    )
+
+    # Get models for the selected provider
+    provider_models = []
+    for item in supported_models:
+        if item["provider"] == model["provider"]:
+            provider_models = item["models"]
+            break
+
+    return model, provider_models, disable_for_oci
+
+
+def _render_model_selection(model: dict, provider_models: list, action: str) -> dict:
+    """Render model selection UI and return updated model"""
+    model_keys = [m["key"] for m in provider_models]
+    model_index = next((i for i, key in enumerate(model_keys) if key == model["id"]), None)
+
+    model["id"] = st.selectbox(
+        "Model (Required):",
+        help=help_text.help_dict["model_id"],
+        placeholder="-- Choose or Enter Model Name --",
+        index=model_index,
+        options=model_keys,
+        key="add_model_id",
+        accept_new_options=True,
+        disabled=action == "edit" or not model["provider"],
+    )
+
+    return model
+
+
+def _render_api_configuration(model: dict, provider_models: list, disable_for_oci: bool) -> dict:
+    """Render API configuration UI and return updated model"""
+    api_base = next(
+        (m.get("api_base", "") for m in provider_models if m.get("key") == model["id"]),
+        model.get("api_base", "")
+    )
+
+    model["api_base"] = st.text_input(
+        "Provider URL:",
+        help=help_text.help_dict["model_url"],
+        key="add_model_url",
+        value=api_base,
+        disabled=disable_for_oci,
+    )
+
+    model["api_key"] = st.text_input(
+        "API Key:",
+        help=help_text.help_dict["model_api_key"],
+        key="add_model_api_key",
+        type="password",
+        value=model.get("api_key", ""),
+        disabled=disable_for_oci,
+    )
+
+    return model
+
+
+def _render_model_specific_config(model: dict, model_type: str, provider_models: list) -> dict:
+    """Render model type specific configuration and return updated model"""
+    if model_type == "ll":
+        context_length = next(
+            (m.get("max_input_tokens", 8192) for m in provider_models if m.get("key") == model["id"]),
+            model.get("max_input_tokens", 8192),
+        )
+        model["context_length"] = st.number_input(
+            "Context Length:",
+            help=help_text.help_dict["context_length"],
+            min_value=0,
+            key="add_model_context_length",
+            value=context_length,
+        )
+
+        max_completion_tokens = next(
+            (m.get("max_output_tokens", 4096) for m in provider_models if m.get("key") == model["id"]),
+            model.get("max_output_tokens", 4096),
+        )
+        model["max_completion_tokens"] = st.number_input(
+            "Max Completion Tokens:",
+            help=help_text.help_dict["max_completion_tokens"],
+            min_value=1,
+            key="add_model_max_completion_tokens",
+            value=max_completion_tokens,
+        )
+    else:
+        output_vector_size = next(
+            (m.get("output_vector_size", 8191) for m in provider_models if m.get("key") == model["id"]),
+            model.get("output_vector_size", 8191),
+        )
+        model["max_chunk_size"] = st.number_input(
+            "Max Chunk Size:",
+            help=help_text.help_dict["chunk_size"],
+            min_value=0,
+            key="add_model_max_chunk_size",
+            value=output_vector_size,
+        )
+
+    return model
+
+
+def _handle_form_submission(model: dict, action: str) -> bool:
+    """Handle form submission and return True if successful"""
+    button_col_format = st.columns([1.2, 1.4, 6, 1.4])
+    action_button, delete_button, _, cancel_button = button_col_format
+
+    try:
+        if action == "add" and action_button.button(label="Add", type="primary", width="stretch"):
+            create_model(model=model)
+            return True
+        if action == "edit" and action_button.button(label="Save", type="primary", width="stretch"):
+            patch_model(model=model)
+            return True
+        if action != "add" and delete_button.button(label="Delete", type="secondary", width="stretch"):
+            delete_model(model_provider=model["provider"], model_id=model["id"])
+            return True
+    except api_call.ApiError as ex:
+        st.error(f"Failed to {action} model: {ex}")
+
+    if cancel_button.button(label="Cancel", type="secondary"):
+        st_common.clear_state_key("model_configs")
+        st.rerun()
+
+    return False
+
+
 @st.dialog("Model Configuration", width="large")
 def edit_model(
     model_type: str, action: Literal["add", "edit"], model_id: str = None, model_provider: str = None
 ) -> None:
     """Model Edit Dialog Box"""
-    # Initialize our model request
-    if action == "edit":
-        model_id = urllib.parse.quote(model_id, safe="")
-        model = api_call.get(endpoint=f"v1/models/{model_provider}/{model_id}")
-    else:
-        model = {"id": "unset", "type": model_type, "provider": "unset", "status": "CUSTOM"}
-    with st.form("edit_model"):
-        if action == "add":
-            model["enabled"] = True  # Server will update based on API URL Accessibility
-        else:
-            model["enabled"] = st.checkbox("Enabled", value=True if action == "add" else model["enabled"])
-        model["id"] = st.text_input(
-            "Model ID (Required):",
-            help=help_text.help_dict["model_id"],
-            value=None if model["id"] == "unset" else model["id"],
-            key="add_model_id",
-            disabled=action == "edit",
-        )
-        providers = get_model_providers()
-        provider_index = next((i for i, item in enumerate(providers) if item == model["provider"]), None)
-        disable_for_oci = model["provider"] == "oci"
-        model["provider"] = st.selectbox(
-            "Provider (Required):",
-            help=help_text.help_dict["model_provider"],
-            placeholder="-- Choose the Model's Provider --",
-            index=provider_index,
-            options=providers,
-            key="add_model_provider",
-            disabled=action == "edit",
-        )
-        model["api_base"] = st.text_input(
-            "Provider URL:",
-            help=help_text.help_dict["model_url"],
-            key="add_model_url",
-            value=model.get("api_base", ""),
-            disabled=disable_for_oci,
-        )
-        model["api_key"] = st.text_input(
-            "API Key:",
-            help=help_text.help_dict["model_api_key"],
-            key="add_model_api_key",
-            type="password",
-            value=model.get("api_key", ""),
-            disabled=disable_for_oci,
-        )
-        if model_type == "ll":
-            model["context_length"] = st.number_input(
-                "Context Length:",
-                help=help_text.help_dict["context_length"],
-                min_value=0,
-                key="add_model_context_length",
-                value=model.get("context_length", 8192),
-            )
-            model["temperature"] = st.number_input(
-                "Default Temperature:",
-                help=help_text.help_dict["temperature"],
-                min_value=0.00,
-                max_value=2.00,
-                key="add_model_temperature",
-                value=model.get("temperature", 1.0),
-            )
-            model["max_completion_tokens"] = st.number_input(
-                "Max Completion Tokens:",
-                help=help_text.help_dict["max_completion_tokens"],
-                min_value=1,
-                key="add_model_max_completion_tokens",
-                value=model.get("max_completion_tokens", 4096),
-            )
-            model["frequency_penalty"] = st.number_input(
-                "Default Frequency Penalty:",
-                help=help_text.help_dict["frequency_penalty"],
-                min_value=-2.00,
-                max_value=2.00,
-                value=model.get("frequency_penalty", 0.5),
-                key="add_model_frequency_penalty",
-            )
-        else:
-            model["max_chunk_size"] = st.number_input(
-                "Max Chunk Size:",
-                help=help_text.help_dict["chunk_size"],
-                min_value=0,
-                key="add_model_max_chunk_size",
-                value=model.get("max_chunk_size", 8191),
-            )
-        submit = False
-        button_col_format = st.columns([1.2, 1.4, 6, 1.4])
-        action_button, delete_button, _, cancel_button = button_col_format
-        try:
-            if action == "add" and action_button.form_submit_button(label="Add", type="primary", width="stretch"):
-                create_model(model=model)
-                submit = True
-            if action == "edit" and action_button.form_submit_button(label="Save", type="primary", width="stretch"):
-                patch_model(model=model)
-                submit = True
-            if action != "add" and delete_button.form_submit_button(label="Delete", type="secondary", width="stretch"):
-                delete_model(model_provider=model["provider"], model_id=model["id"])
-                submit = True
-            if submit:
-                sleep(1)
-                st_common.clear_state_key("model_configs")
-                st.rerun()
-        except api_call.ApiError as ex:
-            st.error(f"Failed to {action} model: {ex}")
-        if cancel_button.form_submit_button(label="Cancel", type="secondary"):
-            st_common.clear_state_key("model_configs")
-            st.rerun()
+    model = _initialize_model(action, model_type, model_id, model_provider)
+    supported_models = get_supported_models(model_type)
+
+    model, provider_models, disable_for_oci = _render_provider_selection(model, supported_models, action)
+    model = _render_model_selection(model, provider_models, action)
+    model = _render_api_configuration(model, provider_models, disable_for_oci)
+    model = _render_model_specific_config(model, model_type, provider_models)
+
+    if _handle_form_submission(model, action):
+        sleep(1)
+        st_common.clear_state_key("model_configs")
+        st.rerun()
 
 
 def render_model_rows(model_type: str) -> None:

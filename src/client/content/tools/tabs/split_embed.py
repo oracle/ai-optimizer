@@ -4,8 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 This script initializes is used for the splitting and chunking process using Streamlit (`st`).
 """
+# spell-checker:ignore selectbox hnsw ivf ocids iterrows
 
-# spell-checker:ignore selectbox, hnsw, ivf, ocids,iterrows
 import math
 import re
 
@@ -106,45 +106,11 @@ def update_chunk_size_input() -> None:
 
 
 #############################################################################
-# MAIN
+# Helper Functions
 #############################################################################
-def display_split_embed() -> None:
-    """Streamlit GUI"""
-    try:
-        get_models()
-        get_databases()
-        get_oci()
-    except api_call.ApiError:
-        st.stop()
-
-    db_avail = st_common.is_db_configured()
-    if not db_avail:
-        logger.debug("Embedding Disabled (Database not configured)")
-        st.error("Database is not configured. Disabling Embedding.", icon="🛑")
-
-    # Build a lookup
-    embed_models_enabled = st_common.enabled_models_lookup("embed")
-    if not embed_models_enabled:
-        logger.debug("Embedding Disabled (no Embedding Models)")
-        st.error("No embedding models are configured and/or enabled. Disabling Embedding.", icon="🛑")
-
-    if not db_avail or not embed_models_enabled:
-        st.stop()
-
-    file_sources = ["OCI", "Local", "Web"]
-    oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
-    oci_setup = oci_lookup.get(state.client_settings["oci"].get("auth_profile"))
-    if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
-        st.warning("OCI is not fully configured, some functionality is disabled", icon="⚠️")
-        file_sources.remove("OCI")
-
-    # Initialize our embedding request
-    embed_request = DatabaseVectorStorage()
-    #############################################################################
-    # GUI
-    #############################################################################
+def _render_embedding_configuration(embed_models_enabled: dict, embed_request: DatabaseVectorStorage) -> None:
+    """Render the embedding configuration section"""
     st.header("Embedding Configuration", divider="red")
-    populate_button_disabled = True  # Disable the populate button
     embed_request.model = st.selectbox(
         "Embedding models available: ",
         options=list(embed_models_enabled.keys()),
@@ -216,20 +182,40 @@ def display_split_embed() -> None:
     embed_request.index_type = col2_2.selectbox(
         "Index Type:", list(IndexTypes.__args__), key="selected_index_type", help=help_text.help_dict["index_type"]
     )
-    ################################################
-    # Splitting
-    ################################################
-    st.header("Load and Split Documents", divider="red")
-    file_source = st.radio("File Source:", file_sources, key="radio_file_source", horizontal=True)
+
+
+def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
+    """Render file source selection and return processing data"""
+    st.header("Load Knowledge Base", divider="red")
+    file_source = st.radio("Knowledge Base Source:", file_sources, key="radio_file_source", horizontal=True)
     button_help = None
+    populate_button_disabled = True
+    web_url = None
+    src_bucket = None
+    src_files_selected = None
+    db_connection = None
+    sql_query = None
+
+    ######################################
+    # SQL Source
+    ######################################
+    if file_source == "SQL":
+        button_help = """
+            This button is disabled if there the SQL was unable to be validated.  Please check the SQL.
+        """
+        st.subheader("SQL query", divider=False)
+        db_connection = st.text_input("DB Connection:", key="db_connection_url")
+        sql_query = st.text_input("SQL:", key="sql_query")
+
+        populate_button_disabled,msg = functions.is_sql_accessible(db_connection, sql_query)
+        if not populate_button_disabled and msg != "":
+            st.error(f"Error: {msg}")
 
     ######################################
     # Local Source
     ######################################
     if file_source == "Local":
-        button_help = """
-            This button is disabled if no local files have been provided.
-        """
+        button_help = "This button is disabled if no local files have been provided."
         st.subheader("Local Files", divider=False)
         embed_files = st.file_uploader(
             "Choose a file:",
@@ -239,26 +225,16 @@ def display_split_embed() -> None:
         )
         populate_button_disabled = len(embed_files) == 0
 
-    ######################################
-    # Web Source
-    ######################################
-    if file_source == "Web":
-        button_help = """
-            This button is disabled if there the URL was unable to be validated.  Please check the URL.
-        """
+    elif file_source == "Web":
+        button_help = "This button is disabled if there the URL was unable to be validated.  Please check the URL."
         st.subheader("Web Pages", divider=False)
         web_url = st.text_input("URL:", key="selected_web_url")
         is_web_accessible, _ = functions.is_url_accessible(web_url)
         populate_button_disabled = not (web_url and is_web_accessible)
 
-    ######################################
-    # OCI Source
-    ######################################
-    if file_source == "OCI":
-        button_help = """
-            This button is disabled if there are no documents from the source bucket split with
-            the current split and embed options.  Please Split and Embed to enable Vector Storage.
-        """
+    elif file_source == "OCI":
+        button_help = """This button is disabled if there are no documents from the source bucket split with
+            the current split and embed options.  Please Split and Embed to enable Vector Storage."""
         st.text(f"OCI namespace: {oci_setup['namespace']}")
         oci_compartments = get_compartments()
         src_bucket_list = []
@@ -280,7 +256,6 @@ def display_split_embed() -> None:
                 placeholder="Select source bucket...",
                 disabled=not bucket_compartment,
             )
-        src_files = []
         if src_bucket:
             src_objects = get_bucket_objects(src_bucket)
             src_files = files_data_frame(src_objects)
@@ -290,16 +265,18 @@ def display_split_embed() -> None:
         src_files_selected = files_data_editor(src_files, "source")
         populate_button_disabled = src_files_selected["Process"].sum() == 0
 
-    ######################################
-    # Populate Vector Store
-    ######################################
+    return (file_source, populate_button_disabled, button_help, web_url,
+            src_bucket, src_files_selected, db_connection, sql_query)
+
+
+def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
+    """Render vector store configuration section and return validation status and rate limit"""
     st.header("Populate Vector Store", divider="red")
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
     existing_vs = database_lookup.get(state.client_settings.get("database", {}).get("alias"), {}).get(
         "vector_stores", []
     )
 
-    # Mandatory Alias
     embed_alias_size, _ = st.columns([0.5, 0.5])
     embed_alias_invalid = False
     embed_request.vector_store = None
@@ -310,9 +287,7 @@ def display_split_embed() -> None:
         key="selected_embed_alias",
         placeholder="Press Enter to set.",
     )
-    # Define the regex pattern: starts with a letter, followed by alphanumeric characters or underscores
     pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
-    # Check if input is valid
     if embed_request.alias and not re.match(pattern, embed_request.alias):
         st.error(
             "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
@@ -329,15 +304,7 @@ def display_split_embed() -> None:
     st.markdown(f"##### **Vector Store:** `{embed_request.vector_store}`")
     st.caption(f"{vs_msg}")
 
-    # Button
-    if not populate_button_disabled and embed_request.vector_store:
-        if "button_populate" in state and state.button_populate is True:
-            state.running = True
-        else:
-            state.running = False
-    else:
-        state.running = True
-
+    # Always render rate limit input to ensure session state is initialized
     rate_size, _ = st.columns([0.28, 0.72])
     rate_limit = rate_size.number_input(
         "Rate Limit (RPM):",
@@ -346,6 +313,30 @@ def display_split_embed() -> None:
         max_value=60,
         key="selected_rate_limit",
     )
+
+    return embed_alias_invalid, rate_limit
+
+
+def _handle_vector_store_population(
+    embed_request: DatabaseVectorStorage,
+    file_source: str,
+    populate_button_disabled: bool,
+    button_help: str,
+    web_url: str,
+    src_bucket: str,
+    src_files_selected,
+    rate_limit: int,
+    db_connection: str,
+    sql_query : str
+) -> None:
+    """Handle vector store population button and processing"""
+    if not populate_button_disabled and embed_request.vector_store:
+        if "button_populate" in state and state.button_populate is True:
+            state.running = True
+        else:
+            state.running = False
+    else:
+        state.running = True
     if not embed_request.alias:
         st.info("Please provide a Vector Store Alias.")
     elif st.button(
@@ -359,7 +350,6 @@ def display_split_embed() -> None:
             with st.spinner("Populating Vector Store... please be patient.", show_time=True):
                 endpoint = None
                 api_payload = []
-                # Place files on Server for Embedding
                 if file_source == "Local":
                     endpoint = "v1/embed/local/store"
                     files = st_common.local_file_payload(state.local_file_uploader)
@@ -367,18 +357,21 @@ def display_split_embed() -> None:
 
                 if file_source == "Web":
                     endpoint = "v1/embed/web/store"
-                    api_payload = {"json": [web_url]}
+                    api_payload = {"json":[web_url]}
+
+                if file_source == "SQL":
+                    endpoint = "v1/embed/sql/store"
+                    api_payload = {"json": [db_connection,sql_query]}
+
 
                 if file_source == "OCI":
-                    # Download OCI Objects for Processing
                     endpoint = f"v1/oci/objects/download/{src_bucket}/{state.client_settings['oci']['auth_profile']}"
                     process_list = src_files_selected[src_files_selected["Process"]].reset_index(drop=True)
                     api_payload = {"json": process_list["File"].tolist()}
 
-                # Post Files to Server
                 response = api_call.post(endpoint=endpoint, payload=api_payload)
 
-                # All files are now on Server... Run Embeddings
+
                 embed_params = {
                     "client": state.client_settings["client"],
                     "rate_limit": rate_limit,
@@ -390,10 +383,67 @@ def display_split_embed() -> None:
                     timeout=7200,
                 )
             st.success(f"Vector Store Populated: {response['message']}", icon="✅")
-            # Refresh database_configs state to reflect new vector stores
             get_databases(force=True)
         except api_call.ApiError as ex:
             st.error(ex, icon="🚨")
+
+
+#############################################################################
+# MAIN
+#############################################################################
+def display_split_embed() -> None:
+    """Streamlit GUI"""
+    try:
+        get_models()
+        get_databases()
+        get_oci()
+    except api_call.ApiError:
+        st.stop()
+
+    db_avail = st_common.is_db_configured()
+    if not db_avail:
+        logger.debug("Embedding Disabled (Database not configured)")
+        st.error("Database is not configured. Disabling Embedding.", icon="🛑")
+
+    embed_models_enabled = st_common.enabled_models_lookup("embed")
+    if not embed_models_enabled:
+        logger.debug("Embedding Disabled (no Embedding Models)")
+        st.error("No embedding models are configured and/or enabled. Disabling Embedding.", icon="🛑")
+
+    if not db_avail or not embed_models_enabled:
+        st.stop()
+
+    file_sources = ["OCI", "Local", "Web", "SQL"]
+    oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
+    oci_setup = oci_lookup.get(state.client_settings["oci"].get("auth_profile"))
+    if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
+        st.warning("OCI is not fully configured, some functionality is disabled", icon="⚠️")
+        file_sources.remove("OCI")
+
+    embed_request = DatabaseVectorStorage()
+
+    _render_embedding_configuration(embed_models_enabled, embed_request)
+
+    (file_source, populate_button_disabled, button_help,
+     web_url, src_bucket, src_files_selected, db_connection, sql_query)  = (
+        _render_file_source_section(file_sources, oci_setup)
+    )
+
+    embed_alias_invalid, rate_limit = _render_vector_store_section(embed_request)
+
+    if not embed_alias_invalid:
+        _handle_vector_store_population(
+            embed_request,
+            file_source,
+            populate_button_disabled,
+            button_help,
+            web_url,
+            src_bucket,
+            src_files_selected,
+            rate_limit,
+            db_connection,
+            sql_query
+        )
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai ocid genai
+# spell-checker:ignore ocid genai
 
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import JSONResponse
