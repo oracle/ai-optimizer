@@ -186,14 +186,34 @@ def _render_embedding_configuration(embed_models_enabled: dict, embed_request: D
 
 def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
     """Render file source selection and return processing data"""
-    st.header("Load and Split Documents", divider="red")
-    file_source = st.radio("File Source:", file_sources, key="radio_file_source", horizontal=True)
+    st.header("Load Knowledge Base", divider="red")
+    file_source = st.radio("Knowledge Base Source:", file_sources, key="radio_file_source", horizontal=True)
     button_help = None
     populate_button_disabled = True
     web_url = None
     src_bucket = None
     src_files_selected = None
+    db_connection = None
+    sql_query = None
 
+    ######################################
+    # SQL Source
+    ######################################
+    if file_source == "SQL":
+        button_help = """
+            This button is disabled if there the SQL was unable to be validated.  Please check the SQL.
+        """
+        st.subheader("SQL query", divider=False)
+        db_connection = st.text_input("DB Connection:", key="db_connection_url")
+        sql_query = st.text_input("SQL:", key="sql_query")
+
+        populate_button_disabled,msg = functions.is_sql_accessible(db_connection, sql_query)
+        if not populate_button_disabled and msg != "":
+            st.error(f"Error: {msg}")
+
+    ######################################
+    # Local Source
+    ######################################
     if file_source == "Local":
         button_help = "This button is disabled if no local files have been provided."
         st.subheader("Local Files", divider=False)
@@ -245,7 +265,8 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
         src_files_selected = files_data_editor(src_files, "source")
         populate_button_disabled = src_files_selected["Process"].sum() == 0
 
-    return file_source, populate_button_disabled, button_help, web_url, src_bucket, src_files_selected
+    return (file_source, populate_button_disabled, button_help, web_url,
+            src_bucket, src_files_selected, db_connection, sql_query)
 
 
 def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
@@ -305,6 +326,8 @@ def _handle_vector_store_population(
     src_bucket: str,
     src_files_selected,
     rate_limit: int,
+    db_connection: str,
+    sql_query : str
 ) -> None:
     """Handle vector store population button and processing"""
     if not populate_button_disabled and embed_request.vector_store:
@@ -334,7 +357,12 @@ def _handle_vector_store_population(
 
                 if file_source == "Web":
                     endpoint = "v1/embed/web/store"
-                    api_payload = {"json": [web_url]}
+                    api_payload = {"json":[web_url]}
+
+                if file_source == "SQL":
+                    endpoint = "v1/embed/sql/store"
+                    api_payload = {"json": [db_connection,sql_query]}
+
 
                 if file_source == "OCI":
                     endpoint = f"v1/oci/objects/download/{src_bucket}/{state.client_settings['oci']['auth_profile']}"
@@ -342,6 +370,7 @@ def _handle_vector_store_population(
                     api_payload = {"json": process_list["File"].tolist()}
 
                 response = api_call.post(endpoint=endpoint, payload=api_payload)
+
 
                 embed_params = {
                     "client": state.client_settings["client"],
@@ -384,7 +413,7 @@ def display_split_embed() -> None:
     if not db_avail or not embed_models_enabled:
         st.stop()
 
-    file_sources = ["OCI", "Local", "Web"]
+    file_sources = ["OCI", "Local", "Web", "SQL"]
     oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
     oci_setup = oci_lookup.get(state.client_settings["oci"].get("auth_profile"))
     if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
@@ -395,7 +424,8 @@ def display_split_embed() -> None:
 
     _render_embedding_configuration(embed_models_enabled, embed_request)
 
-    file_source, populate_button_disabled, button_help, web_url, src_bucket, src_files_selected = (
+    (file_source, populate_button_disabled, button_help,
+     web_url, src_bucket, src_files_selected, db_connection, sql_query)  = (
         _render_file_source_section(file_sources, oci_setup)
     )
 
@@ -411,6 +441,8 @@ def display_split_embed() -> None:
             src_bucket,
             src_files_selected,
             rate_limit,
+            db_connection,
+            sql_query
         )
 
 
