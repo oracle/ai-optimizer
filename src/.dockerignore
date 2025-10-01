@@ -8,5 +8,5 @@
 **/*.sh
 **/tns_admin
 **/.oci
-!client/spring_ai/templates/env.sh
+!client/spring_ai/templates/start.sh
 !entrypoint.sh
