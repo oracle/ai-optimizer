@@ -21,7 +21,7 @@ import server.api.core.oci as core_oci
 import server.api.utils.databases as utils_databases
 import server.api.utils.embed as utils_embed
 import server.api.utils.models as utils_models
-import server.api.utils.parse as web_parse
+import server.api.utils.webscrape as web_parse
 
 from common import functions, schema, logging_config
 
