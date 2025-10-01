@@ -74,7 +74,7 @@ class TestModelsCRUD:
         mock_model_objects.__iter__ = MagicMock(return_value=iter([self.sample_model]))
         mock_model_objects.__len__ = MagicMock(return_value=1)
 
-        result = models.get(model_id="test-model")
+        (result,) = models.get(model_id="test-model")
 
         assert result == self.sample_model
 
@@ -94,9 +94,9 @@ class TestModelsCRUD:
         mock_model_objects.__iter__ = MagicMock(return_value=iter(all_models))
         mock_model_objects.__len__ = MagicMock(return_value=len(all_models))
 
-        result = models.get(model_provider="openai")
+        (result,) = models.get(model_provider="openai")
 
-        # Since only one model matches provider="openai", it should return the single object
+        # Since only one model matches provider="openai", it will return a list of single model
         assert result == self.sample_model
 
     @patch("server.api.utils.models.MODEL_OBJECTS")
@@ -117,27 +117,19 @@ class TestModelsCRUD:
         mock_model_objects.__iter__ = MagicMock(return_value=iter(all_models))
         mock_model_objects.__len__ = MagicMock(return_value=len(all_models))
 
-        result = models.get(include_disabled=False)
-
-        # Since only one model is enabled, it should return the single object
+        (result,) = models.get(include_disabled=False)
         assert result == self.sample_model
 
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    @patch("server.api.utils.models.get")
-    @patch("common.functions.is_url_accessible")
-    def test_create_model_success(self, mock_url_check, mock_get_model, mock_model_objects):
+    @patch("server.api.utils.models.MODEL_OBJECTS", [])
+    @patch("server.api.utils.models.is_url_accessible")
+    def test_create_model_success(self, mock_url_check):
         """Test successful model creation"""
-        mock_model_objects.append = MagicMock()
-        mock_get_model.side_effect = [
-            UnknownModelError("test-model not found"),  # First call should fail (model doesn't exist)
-            self.sample_model,  # Second call returns the created model
-        ]
         mock_url_check.return_value = (True, None)
 
         result = models.create(self.sample_model)
 
-        mock_model_objects.append.assert_called_once_with(self.sample_model)
         assert result == self.sample_model
+        assert result in models.MODEL_OBJECTS
 
     @patch("server.api.utils.models.MODEL_OBJECTS")
     @patch("server.api.utils.models.get")
@@ -148,14 +140,11 @@ class TestModelsCRUD:
         with pytest.raises(ExistsModelError, match="Model: openai/test-model already exists"):
             models.create(self.sample_model)
 
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    @patch("server.api.utils.models.get")
-    @patch("common.functions.is_url_accessible")
-    def test_create_model_unreachable_url(self, mock_url_check, mock_get_model, mock_model_objects):
+    @patch("server.api.utils.models.MODEL_OBJECTS", [])
+    @patch("server.api.utils.models.is_url_accessible")
+    def test_create_model_unreachable_url(self, mock_url_check):
         """Test creating model with unreachable URL"""
-        mock_model_objects.append = MagicMock()
-
-        # Create a copy of the model that will be modified
+        # Create a model that starts as enabled
         test_model = Model(
             id="test-model",
             provider="openai",
@@ -164,31 +153,19 @@ class TestModelsCRUD:
             api_base="https://api.openai.com",
         )
 
-        modified_model = Model(
-            id="test-model",
-            provider="openai",
-            type="ll",
-            enabled=False,  # Will be disabled due to URL check
-            api_base="https://api.openai.com",
-        )
-
-        mock_get_model.side_effect = [UnknownModelError("test-model not found"), modified_model]
         mock_url_check.return_value = (False, "Connection failed")
 
         result = models.create(test_model)
 
         assert result.enabled is False
 
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    @patch("server.api.utils.models.get")
-    def test_create_model_skip_url_check(self, mock_get_model, mock_model_objects):
+    @patch("server.api.utils.models.MODEL_OBJECTS", [])
+    def test_create_model_skip_url_check(self):
         """Test creating model without URL check"""
-        mock_model_objects.append = MagicMock()
-        mock_get_model.side_effect = [UnknownModelError("test-model not found"), self.sample_model]
-
         result = models.create(self.sample_model, check_url=False)
 
         assert result == self.sample_model
+        assert result in models.MODEL_OBJECTS
 
     @patch("server.api.utils.models.MODEL_OBJECTS")
     def test_delete_model(self, mock_model_objects):
@@ -232,11 +209,12 @@ class TestModelsUtils:
             key_file="/path/to/key.pem",
         )
 
-    @patch("server.api.utils.models.get")
-    @patch("common.functions.is_url_accessible")
-    def test_update_success(self, mock_url_check, mock_get_model):
+    @patch("server.api.utils.models.MODEL_OBJECTS", [])
+    @patch("server.api.utils.models.is_url_accessible")
+    def test_update_success(self, mock_url_check):
         """Test successful model update"""
-        mock_get_model.return_value = self.sample_model
+        # First create the model
+        models.MODEL_OBJECTS.append(self.sample_model)
         mock_url_check.return_value = (True, None)
 
         update_payload = Model(
@@ -251,12 +229,11 @@ class TestModelsUtils:
         result = models.update(update_payload)
 
         assert result.temperature == 0.8
-        mock_get_model.assert_called_once_with(model_provider="openai", model_id="test-model")
 
     @patch("server.api.utils.models.get")
     def test_get_full_config_success(self, mock_get_model):
         """Test successful full config retrieval"""
-        mock_get_model.return_value = self.sample_model
+        mock_get_model.return_value = [self.sample_model]
         model_config = {"model": "openai/gpt-4", "temperature": 0.8}
 
         full_config, provider = models._get_full_config(model_config, self.sample_oci_config)
@@ -280,17 +257,17 @@ class TestModelsUtils:
     def test_get_litellm_config_basic(self, mock_get_params, mock_get_full_config):
         """Test basic LiteLLM config generation"""
         mock_get_full_config.return_value = (
-            {"temperature": 0.7, "max_completion_tokens": 4096, "api_base": "https://api.openai.com"},
+            {"temperature": 0.7, "max_tokens": 4096, "api_base": "https://api.openai.com"},
             "openai",
         )
-        mock_get_params.return_value = ["temperature", "max_completion_tokens"]
+        mock_get_params.return_value = ["temperature", "max_tokens"]
         model_config = {"model": "openai/gpt-4"}
 
         result = models.get_litellm_config(model_config, self.sample_oci_config)
 
         assert result["model"] == "openai/gpt-4"
         assert result["temperature"] == 0.7
-        assert result["max_completion_tokens"] == 4096
+        assert result["max_tokens"] == 4096
         assert result["drop_params"] is True
 
     @patch("server.api.utils.models._get_full_config")

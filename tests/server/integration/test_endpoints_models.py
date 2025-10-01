@@ -180,9 +180,9 @@ class TestEndpoints:
                 "provider": "openai",
                 "api_key": "test-key",
                 "api_base": "https://api.openai.com/v1",
-                "context_length": 127072,
+                "max_input_tokens": 127072,
                 "temperature": 1.0,
-                "max_completion_tokens": 4096,
+                "max_tokens": 4096,
                 "frequency_penalty": 0.0,
             },
             201,
@@ -351,8 +351,8 @@ class TestEndpoints:
             # Validate optional fields if present
             if "api_base" in model and model["api_base"] is not None:
                 assert isinstance(model["api_base"], str)
-            if "context_length" in model and model["context_length"] is not None:
-                assert isinstance(model["context_length"], int)
+            if "max_input_tokens" in model and model["max_input_tokens"] is not None:
+                assert isinstance(model["max_input_tokens"], int)
             if "temperature" in model and model["temperature"] is not None:
                 assert isinstance(model["temperature"], (int, float))
 
@@ -394,7 +394,7 @@ class TestEndpoints:
             "provider": "test_provider",
             "api_key": "test-key",
             "api_base": "https://api.test.com/v1",
-            "context_length": 4096,
+            "max_input_tokens": 4096,
             "temperature": 0.7,
         }
 

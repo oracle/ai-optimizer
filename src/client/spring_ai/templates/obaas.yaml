@@ -21,7 +21,7 @@ spring:
           temperature: {ll_model[temperature]}
           presencePenalty: {ll_model[presence_penalty]}
           frequencyPenalty: {ll_model[frequency_penalty]}
-          maxTokens: {ll_model[max_completion_tokens]}
+          maxTokens: {ll_model[max_tokens]}
           topP: {ll_model[top_p]}
           model: {ll_model[id]}
       embedding:
@@ -34,7 +34,7 @@ spring:
           temperature: {ll_model[temperature]}
           presence-penalty: {ll_model[presence_penalty]}
           frequency-penalty: {ll_model[frequency_penalty]}
-          num-predict: {ll_model[max_completion_tokens]}
+          num-predict: {ll_model[max_tokens]}
           top-p: {ll_model[top_p]}
           model: \"{ll_model[id]}\"
       embedding:

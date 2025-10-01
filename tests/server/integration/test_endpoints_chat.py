@@ -56,7 +56,7 @@ class TestEndpoints:
                 messages=[ChatMessage(content="Hello", role="user")],
                 model="test-provider/test-model",
                 temperature=1.0,
-                max_completion_tokens=256,
+                max_tokens=256,
             )
             response = client.post(
                 "/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump()
@@ -99,7 +99,7 @@ class TestEndpoints:
                 messages=[ChatMessage(content="Hello", role="user")],
                 model="test-provider/test-model",
                 temperature=1.0,
-                max_completion_tokens=256,
+                max_tokens=256,
             )
 
             response = client.post(
@@ -124,7 +124,7 @@ class TestEndpoints:
                 messages=[ChatMessage(content="Hello", role="user")],
                 model="test-provider/test-model",
                 temperature=1.0,
-                max_completion_tokens=256,
+                max_tokens=256,
                 streaming=True,
             )
 
