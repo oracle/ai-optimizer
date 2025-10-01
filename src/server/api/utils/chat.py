@@ -91,9 +91,7 @@ async def completion_generator(
 
     if client_settings.selectai.enabled:
         utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
-        utils_selectai.set_profile(
-            db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
-        )
+        utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "max_tokens", model["max_tokens"])
 
     logger.debug("Completion Kwargs: %s", kwargs)
     final_response = None

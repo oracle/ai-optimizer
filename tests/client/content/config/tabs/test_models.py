@@ -69,7 +69,7 @@ class TestStreamlit:
         at = app_test(ST_FILE).run()
 
         # Verify model configs are loaded
-        assert hasattr(at.session_state, 'model_configs')
+        assert hasattr(at.session_state, "model_configs")
         assert at.session_state.model_configs is not None
 
         # Check that we have models of different types
@@ -121,7 +121,7 @@ class TestStreamlit:
         at = app_test(ST_FILE).run()
 
         # Should have model_configs in session state
-        assert hasattr(at.session_state, 'model_configs')
+        assert hasattr(at.session_state, "model_configs")
         assert at.session_state.model_configs is not None
         assert isinstance(at.session_state.model_configs, list)
 
@@ -170,8 +170,8 @@ class TestModelFunctions:
             "testbed": {
                 "judge_model": "openai/test-model",
                 "qa_ll_model": "different/model",
-                "qa_embed_model": "openai/test-model"
-            }
+                "qa_embed_model": "openai/test-model",
+            },
         }
 
         # Call function under test
@@ -196,8 +196,8 @@ class TestModelFunctions:
             "testbed": {
                 "judge_model": "other/model",
                 "qa_ll_model": "another/model",
-                "qa_embed_model": "yet-another/model"
-            }
+                "qa_embed_model": "yet-another/model",
+            },
         }
         at.session_state.client_settings = original_settings.copy()
 
@@ -347,12 +347,12 @@ class TestModelFunctions:
         for model in ll_models:
             # Language model specific fields might be present
             # These are optional in the API but commonly used
-            if "context_length" in model:
-                assert isinstance(model["context_length"], int)
+            if "max_input_tokens" in model:
+                assert isinstance(model["max_input_tokens"], int)
             if "temperature" in model:
                 assert isinstance(model["temperature"], (int, float))
-            if "max_completion_tokens" in model:
-                assert isinstance(model["max_completion_tokens"], int)
+            if "max_tokens" in model:
+                assert isinstance(model["max_tokens"], int)
             if "frequency_penalty" in model:
                 assert isinstance(model["frequency_penalty"], (int, float))
 
@@ -388,14 +388,12 @@ class TestModelFunctions:
 
         # Create a custom model ID that definitely won't be in the supported list
         custom_model_id = "custom-fine-tuned-model-12345"
-        assert custom_model_id not in model_keys, f"Custom model ID {custom_model_id} should not be in supported models"
+        assert custom_model_id not in model_keys, (
+            f"Custom model ID {custom_model_id} should not be in supported models"
+        )
 
         # Test model with custom ID
-        model = {
-            "id": custom_model_id,
-            "provider": "openai",
-            "type": "ll"
-        }
+        model = {"id": custom_model_id, "provider": "openai", "type": "ll"}
 
         action = "edit"
 
