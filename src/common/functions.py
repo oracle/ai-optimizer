@@ -82,7 +82,7 @@ def get_vs_table(
     return store_table, store_comment
 
 
-def is_sql_accessible(db_conn: str, query: str) -> bool:
+def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
     """Check if the DB connection and SQL is working one field."""
     try:  # Establish a connection
 
@@ -91,47 +91,47 @@ def is_sql_accessible(db_conn: str, query: str) -> bool:
         dsn = ""
 
         ok = True
+        return_msg=""
 
         if db_conn and query:
             try:
                 user_part, dsn = db_conn.split("@")
                 username, password = user_part.split("/")
             except ValueError:
-                # If the string does not have the expected format, return False
-                return False
+                return_msg=f"Wrong connection string {db_conn}"
+                logger.error(return_msg)
+                return False,return_msg
 
-            connection = oracledb.connect(user=username, password=password, dsn=dsn)
+            with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
+                with connection.cursor() as cursor:
 
-            cursor = connection.cursor()
+                    cursor.execute(query)
+                    rows = cursor.fetchmany(3)
+                    desc = cursor.description
+                    if not rows:
+                        return_msg = "SQL source return an empty table!"
+                        logger.error(return_msg)
+                        ok = False
+                    if len(desc) != 1:
+                        return_msg=f"SQL source returns {len(desc)} columns, expected 1."
+                        logger.error(return_msg)
+                        ok = False
 
-            cursor.execute(query)
-            rows = cursor.fetchmany(2)
-            desc = cursor.description
-            if not rows:
-                logger.error("SQL source return an empty table!")
-                ok = False
-            if len(desc) != 1:
-                logger.error("SQL source returns %s columns, expected 1.", len(desc))
-                ok = False
-
-            if rows and len(desc) != 1:
-                col_type = desc[0][1]
-                if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR):
-                    # to be implemented: oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB
-                    logger.error(
-                        "SQL source returns column of type %s , expected VARCHAR or BLOB.",
-                        col_type,
-                    )
-            cursor.close()
-            connection.close()
+                    if rows and len(desc) != 1:
+                        col_type = desc[0].FetchInfo.type
+                        if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR):
+                        # to be implemented: oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB
+                            return_msg=f"SQL source returns column of type %{col_type} , expected VARCHAR or BLOB."
+                            logger.error(return_msg)
         else:
             ok = False
 
-        return ok
+        return ok,return_msg
 
     except oracledb.Error as e:
-        logger.error("SQL source connection error: %s", e)
-        return False
+        return_msg=f"SQL source connection error:{e}"
+        logger.error(return_msg)
+        return False,return_msg
 
 
 def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
@@ -148,23 +148,22 @@ def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
             user_part, dsn = db_conn.split("@")
             username, password = user_part.split("/")
         except ValueError:
-            # If the string does not have the expected format, return False
+            logger.error("Wrong connection string %s", db_conn)
             return False
         random_filename = str(uuid.uuid4())
 
         filename_with_extension = f"{random_filename}.csv"
-        connection = oracledb.connect(user=username, password=password, dsn=dsn)
-        for odf in connection.fetch_df_batches(statement=query, size=batch_size):
-            df = pyarrow.table(odf).to_pandas()
+        with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
+            connection = oracledb.connect(user=username, password=password, dsn=dsn)
+            for odf in connection.fetch_df_batches(statement=query, size=batch_size):
+                df = pyarrow.table(odf).to_pandas()
 
-        full_file_path = os.path.join(base_path, filename_with_extension)
+            full_file_path = os.path.join(base_path, filename_with_extension)
 
-        df.to_csv(full_file_path, index=False)
+            df.to_csv(full_file_path, index=False)
 
-        connection.close()
         return full_file_path
 
     except oracledb.Error as e:
         logger.error("SQL source connection error: %s", e)
-
         return ""

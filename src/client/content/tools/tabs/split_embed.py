@@ -207,7 +207,9 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
         db_connection = st.text_input("DB Connection:", key="db_connection_url")
         sql_query = st.text_input("SQL:", key="sql_query")
 
-        populate_button_disabled = not functions.is_sql_accessible(db_connection, sql_query)
+        populate_button_disabled,msg = functions.is_sql_accessible(db_connection, sql_query)
+        if not populate_button_disabled and msg != "":
+            st.error(f"Error: {msg}")
 
     ######################################
     # Local Source
