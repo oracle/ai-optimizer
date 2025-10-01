@@ -47,7 +47,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "cohere",
             "api_key": os.environ.get("COHERE_API_KEY", default=""),
             "api_base": "https://api.cohere.ai/compatibility/v1",
-            "context_length": 128000,
+            "max_input_tokens": 128000,
         },
         {
             "id": "gpt-4o-mini",
@@ -56,7 +56,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "openai",
             "api_key": os.environ.get("OPENAI_API_KEY", default=""),
             "api_base": "https://api.openai.com/v1",
-            "context_length": 128000,
+            "max_input_tokens": 128000,
         },
         {
             "id": "sonar",
@@ -65,7 +65,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "perplexity",
             "api_key": os.environ.get("PPLX_API_KEY", default=""),
             "api_base": "https://api.perplexity.ai",
-            "context_length": 128000,
+            "max_input_tokens": 128000,
         },
         {
             "id": "phi-4",
@@ -74,7 +74,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "huggingface",
             "api_key": "",
             "api_base": "http://localhost:1234/v1",
-            "context_length": 16384,
+            "max_input_tokens": 16384,
         },
         {
             "id": "meta-llama/Llama-3.2-1B-Instruct",
@@ -83,7 +83,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "hosted_vllm",
             "api_key": "",
             "api_base": os.environ.get("ON_PREM_VLLM_URL", default="http://localhost:8000/v1"),
-            "context_length": 16384,
+            "max_input_tokens": 16384,
         },
         {
             # This is intentionally last to line up with docos
@@ -93,7 +93,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "ollama",
             "api_key": "",
             "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
-            "context_length": 131072,
+            "max_input_tokens": 131072,
         },
         {
             "id": "thenlper/gte-base",

@@ -26,8 +26,9 @@ async def models_list(
     include_disabled: schema.ModelEnabledType = Query(False, description="Include disabled models"),
 ) -> list[schema.Model]:
     """List all models after applying filters if specified"""
-    logger.debug("Received models_list - type: %s", model_type)
+    logger.debug("Received models_list - type: %s; include_disabled: %s", model_type, include_disabled)
     models_ret = utils_models.get(model_type=model_type, include_disabled=include_disabled)
+    print(models_ret)
 
     return models_ret
 
@@ -60,9 +61,12 @@ async def models_get(
     logger.debug("Received models_get - model: %s/%s", model_provider, model_id)
 
     try:
-        models_ret = utils_models.get(model_provider=model_provider, model_id=model_id)
+        (models_ret,) = utils_models.get(model_provider=model_provider, model_id=model_id)
     except utils_models.UnknownModelError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
+    except ValueError as ex:
+        # happens if >1 results
+        raise HTTPException(status_code=404, detail="Multiple models returned") from ex
 
     return models_ret
 

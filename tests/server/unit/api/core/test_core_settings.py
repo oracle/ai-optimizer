@@ -38,7 +38,7 @@ class TestSettings:
         result = settings.create_client_settings("new_client")
 
         assert result.client == "new_client"
-        assert result.ll_model.max_completion_tokens == self.default_settings.ll_model.max_completion_tokens
+        assert result.ll_model.max_tokens == self.default_settings.ll_model.max_tokens
         # Check that a new client was added to the list
         assert len(settings_list) == 2
         assert settings_list[-1].client == "new_client"

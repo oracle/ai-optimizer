@@ -176,28 +176,28 @@ def _render_api_configuration(model: dict, provider_models: list, disable_for_oc
 def _render_model_specific_config(model: dict, model_type: str, provider_models: list) -> dict:
     """Render model type specific configuration and return updated model"""
     if model_type == "ll":
-        context_length = next(
+        max_input_tokens = next(
             (m.get("max_input_tokens", 8192) for m in provider_models if m.get("key") == model["id"]),
             model.get("max_input_tokens", 8192),
         )
-        model["context_length"] = st.number_input(
-            "Context Length:",
-            help=help_text.help_dict["context_length"],
+        model["max_input_tokens"] = st.number_input(
+            "Max Input Tokens (Context Length):",
+            help=help_text.help_dict["max_input_tokens"],
             min_value=0,
-            key="add_model_context_length",
-            value=context_length,
+            key="add_model_max_input_tokens",
+            value=max_input_tokens,
         )
 
-        max_completion_tokens = next(
-            (m.get("max_output_tokens", 4096) for m in provider_models if m.get("key") == model["id"]),
-            model.get("max_output_tokens", 4096),
+        max_tokens = next(
+            (m.get("max_tokens", 4096) for m in provider_models if m.get("key") == model["id"]),
+            model.get("max_tokens", 4096),
         )
-        model["max_completion_tokens"] = st.number_input(
-            "Max Completion Tokens:",
-            help=help_text.help_dict["max_completion_tokens"],
+        model["max_tokens"] = st.number_input(
+            "Max Output (Completion) Tokens:",
+            help=help_text.help_dict["max_tokens"],
             min_value=1,
-            key="add_model_max_completion_tokens",
-            value=max_completion_tokens,
+            key="add_model_max_tokens",
+            value=max_tokens,
         )
     else:
         output_vector_size = next(
