@@ -159,7 +159,7 @@ def ll_sidebar() -> None:
             "model": default_ll_model,
             "temperature": ll_models_enabled[default_ll_model]["temperature"],
             "frequency_penalty": ll_models_enabled[default_ll_model]["frequency_penalty"],
-            "max_completion_tokens": ll_models_enabled[default_ll_model]["max_completion_tokens"],
+            "max_tokens": ll_models_enabled[default_ll_model]["max_tokens"],
         }
         state.client_settings["ll_model"].update(defaults)
 
@@ -193,19 +193,19 @@ def ll_sidebar() -> None:
     )
 
     # Completion Tokens
-    max_completion_tokens = ll_models_enabled[selected_model]["max_completion_tokens"]
-    user_completion_tokens = state.client_settings["ll_model"]["max_completion_tokens"]
+    max_tokens = ll_models_enabled[selected_model]["max_tokens"]
+    user_completion_tokens = state.client_settings["ll_model"]["max_tokens"]
     st.sidebar.slider(
-        f"Maximum Tokens (Default: {max_completion_tokens}):",
-        help=help_text.help_dict["max_completion_tokens"],
+        "Maximum Output Tokens:",
+        help=help_text.help_dict["max_tokens"],
         value=(
             user_completion_tokens
-            if user_completion_tokens is not None and user_completion_tokens <= max_completion_tokens
-            else max_completion_tokens
+            if user_completion_tokens is not None and user_completion_tokens <= max_tokens
+            else max_tokens
         ),
         min_value=1,
-        max_value=max_completion_tokens,
-        key="selected_ll_model_max_completion_tokens",
+        max_value=max_tokens,
+        key="selected_ll_model_max_tokens",
         on_change=update_client_settings("ll_model"),
     )
 
@@ -436,9 +436,7 @@ def _vs_gen_selectbox(label: str, options: list, key: str):
             selected_value = valid_options[0]
             logger.debug("Defaulting %s to %s", key, selected_value)
         else:
-            selected_value = (
-                state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
-            )
+            selected_value = state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
             logger.debug("User selected %s to %s", key, selected_value)
     return st.sidebar.selectbox(
         label,
@@ -475,9 +473,7 @@ def _render_vector_store_selection(vs_df: pd.DataFrame) -> None:
     filtered_df = _update_filtered_df(vs_df)
 
     # Render selectbox with updated options
-    alias = _vs_gen_selectbox(
-        "Select Alias:", filtered_df["alias"].unique().tolist(), "selected_vector_search_alias"
-    )
+    alias = _vs_gen_selectbox("Select Alias:", filtered_df["alias"].unique().tolist(), "selected_vector_search_alias")
     embed_model = _vs_gen_selectbox(
         "Select Model:", filtered_df["model"].unique().tolist(), "selected_vector_search_model"
     )

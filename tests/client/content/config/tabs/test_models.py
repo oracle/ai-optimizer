@@ -69,7 +69,7 @@ class TestStreamlit:
         at = app_test(ST_FILE).run()
 
         # Verify model configs are loaded
-        assert hasattr(at.session_state, 'model_configs')
+        assert hasattr(at.session_state, "model_configs")
         assert at.session_state.model_configs is not None
 
         # Check that we have models of different types
@@ -121,7 +121,7 @@ class TestStreamlit:
         at = app_test(ST_FILE).run()
 
         # Should have model_configs in session state
-        assert hasattr(at.session_state, 'model_configs')
+        assert hasattr(at.session_state, "model_configs")
         assert at.session_state.model_configs is not None
         assert isinstance(at.session_state.model_configs, list)
 
@@ -170,8 +170,8 @@ class TestModelFunctions:
             "testbed": {
                 "judge_model": "openai/test-model",
                 "qa_ll_model": "different/model",
-                "qa_embed_model": "openai/test-model"
-            }
+                "qa_embed_model": "openai/test-model",
+            },
         }
 
         # Call function under test
@@ -196,8 +196,8 @@ class TestModelFunctions:
             "testbed": {
                 "judge_model": "other/model",
                 "qa_ll_model": "another/model",
-                "qa_embed_model": "yet-another/model"
-            }
+                "qa_embed_model": "yet-another/model",
+            },
         }
         at.session_state.client_settings = original_settings.copy()
 
@@ -347,12 +347,12 @@ class TestModelFunctions:
         for model in ll_models:
             # Language model specific fields might be present
             # These are optional in the API but commonly used
-            if "context_length" in model:
-                assert isinstance(model["context_length"], int)
+            if "max_input_tokens" in model:
+                assert isinstance(model["max_input_tokens"], int)
             if "temperature" in model:
                 assert isinstance(model["temperature"], (int, float))
-            if "max_completion_tokens" in model:
-                assert isinstance(model["max_completion_tokens"], int)
+            if "max_tokens" in model:
+                assert isinstance(model["max_tokens"], int)
             if "frequency_penalty" in model:
                 assert isinstance(model["frequency_penalty"], (int, float))
 
@@ -367,3 +367,39 @@ class TestModelFunctions:
             # Embedding model specific fields might be present
             if "max_chunk_size" in model:
                 assert isinstance(model["max_chunk_size"], int)
+
+    def test_render_model_selection_with_custom_model_id(self, app_server, app_test):
+        """Test that _render_model_selection handles custom model IDs not in supported models list"""
+        from client.content.config.tabs.models import _render_model_selection, get_supported_models
+
+        assert app_server is not None
+        at = self._setup_function_test(app_test)
+
+        # Get actual supported models from API
+        with patch("client.utils.api_call.state", at.session_state):
+            supported_models = get_supported_models("ll")
+
+        # Find a provider and create a model with a custom ID not in their supported list
+        openai_provider = next((p for p in supported_models if p["provider"] == "openai"), None)
+        assert openai_provider is not None, "OpenAI provider should be available in supported models"
+
+        provider_models = openai_provider["models"]
+        model_keys = [m["key"] for m in provider_models]
+
+        # Create a custom model ID that definitely won't be in the supported list
+        custom_model_id = "custom-fine-tuned-model-12345"
+        assert custom_model_id not in model_keys, (
+            f"Custom model ID {custom_model_id} should not be in supported models"
+        )
+
+        # Test model with custom ID
+        model = {"id": custom_model_id, "provider": "openai", "type": "ll"}
+
+        action = "edit"
+
+        with patch("client.content.config.tabs.models.state", at.session_state):
+            # This should preserve the custom model ID even though it's not in provider models
+            result_model = _render_model_selection(model, provider_models, action)
+
+            # The model ID should be preserved
+            assert result_model["id"] == custom_model_id

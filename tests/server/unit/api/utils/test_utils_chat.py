@@ -31,7 +31,7 @@ class TestChatUtils:
         self.sample_client_settings = Settings(
             client="test_client",
             ll_model=LargeLanguageSettings(
-                model="openai/gpt-4", chat_history=True, temperature=0.7, max_completion_tokens=4096
+                model="openai/gpt-4", chat_history=True, temperature=0.7, max_tokens=4096
             ),
             vector_search=VectorSearchSettings(enabled=False),
             selectai=SelectAISettings(enabled=False),

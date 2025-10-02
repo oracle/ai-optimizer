@@ -86,7 +86,7 @@ def _initialize_model(action: str, model_type: str, model_id: str = None, model_
         quoted_model_id = urllib.parse.quote(model_id, safe="")
         model = api_call.get(endpoint=f"v1/models/{model_provider}/{quoted_model_id}")
     else:
-        model = {"id": "unset", "type": model_type, "provider": "unset", "status": "CUSTOM"}
+        model = {"id": "", "type": model_type, "provider": "unset", "status": "CUSTOM"}
 
     if action == "add":
         model["enabled"] = True
@@ -128,6 +128,11 @@ def _render_model_selection(model: dict, provider_models: list, action: str) -> 
     model_keys = [m["key"] for m in provider_models]
     model_index = next((i for i, key in enumerate(model_keys) if key == model["id"]), None)
 
+    # If the current model ID is not in the supported list, add it to the options
+    if model_index is None and model["id"] not in model_keys:
+        model_keys.append(model["id"])
+        model_index = len(model_keys) - 1
+
     model["id"] = st.selectbox(
         "Model (Required):",
         help=help_text.help_dict["model_id"],
@@ -145,8 +150,7 @@ def _render_model_selection(model: dict, provider_models: list, action: str) -> 
 def _render_api_configuration(model: dict, provider_models: list, disable_for_oci: bool) -> dict:
     """Render API configuration UI and return updated model"""
     api_base = next(
-        (m.get("api_base", "") for m in provider_models if m.get("key") == model["id"]),
-        model.get("api_base", "")
+        (m.get("api_base", "") for m in provider_models if m.get("key") == model["id"]), model.get("api_base", "")
     )
 
     model["api_base"] = st.text_input(
@@ -172,28 +176,28 @@ def _render_api_configuration(model: dict, provider_models: list, disable_for_oc
 def _render_model_specific_config(model: dict, model_type: str, provider_models: list) -> dict:
     """Render model type specific configuration and return updated model"""
     if model_type == "ll":
-        context_length = next(
+        max_input_tokens = next(
             (m.get("max_input_tokens", 8192) for m in provider_models if m.get("key") == model["id"]),
             model.get("max_input_tokens", 8192),
         )
-        model["context_length"] = st.number_input(
-            "Context Length:",
-            help=help_text.help_dict["context_length"],
+        model["max_input_tokens"] = st.number_input(
+            "Max Input Tokens (Context Length):",
+            help=help_text.help_dict["max_input_tokens"],
             min_value=0,
-            key="add_model_context_length",
-            value=context_length,
+            key="add_model_max_input_tokens",
+            value=max_input_tokens,
         )
 
-        max_completion_tokens = next(
-            (m.get("max_output_tokens", 4096) for m in provider_models if m.get("key") == model["id"]),
-            model.get("max_output_tokens", 4096),
+        max_tokens = next(
+            (m.get("max_tokens", 4096) for m in provider_models if m.get("key") == model["id"]),
+            model.get("max_tokens", 4096),
         )
-        model["max_completion_tokens"] = st.number_input(
-            "Max Completion Tokens:",
-            help=help_text.help_dict["max_completion_tokens"],
+        model["max_tokens"] = st.number_input(
+            "Max Output (Completion) Tokens:",
+            help=help_text.help_dict["max_tokens"],
             min_value=1,
-            key="add_model_max_completion_tokens",
-            value=max_completion_tokens,
+            key="add_model_max_tokens",
+            value=max_tokens,
         )
     else:
         output_vector_size = next(
@@ -218,6 +222,8 @@ def _handle_form_submission(model: dict, action: str) -> bool:
 
     try:
         if action == "add" and action_button.button(label="Add", type="primary", width="stretch"):
+            if not all([model["id"], model["provider"]]):
+                raise ValueError
             create_model(model=model)
             return True
         if action == "edit" and action_button.button(label="Save", type="primary", width="stretch"):
@@ -228,6 +234,11 @@ def _handle_form_submission(model: dict, action: str) -> bool:
             return True
     except api_call.ApiError as ex:
         st.error(f"Failed to {action} model: {ex}")
+    except ValueError:
+        if not model["id"]:
+            st.error("Model name is required.")
+        if not model["provider"]:
+            st.error("Provider name is required.")
 
     if cancel_button.button(label="Cancel", type="secondary"):
         st_common.clear_state_key("model_configs")

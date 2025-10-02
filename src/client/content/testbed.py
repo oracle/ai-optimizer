@@ -81,7 +81,7 @@ def evaluation_report(eid=None, report=None) -> None:
     # Settings
     st.subheader("Evaluation Settings")
     ll_settings = pd.DataFrame(report["settings"]["ll_model"], index=[0])
-    ll_settings.drop(["streaming", "chat_history", "context_length"], axis=1, inplace=True)
+    ll_settings.drop(["streaming", "chat_history", "max_input_tokens"], axis=1, inplace=True)
     ll_settings_reversed = ll_settings.iloc[:, ::-1]
     st.dataframe(ll_settings_reversed, hide_index=True)
     if report["settings"]["testbed"]["judge_model"]:
@@ -389,11 +389,7 @@ def process_testset_request(endpoint: str, api_params: dict, testset_source: str
                 get_testbed_db_testsets.clear()
                 state.testbed_db_testsets = get_testbed_db_testsets()
                 state.testbed["testset_id"] = next(
-                    (
-                        d["tid"]
-                        for d in state.testbed_db_testsets
-                        if d.get("name") == state.testbed["testset_name"]
-                    ),
+                    (d["tid"] for d in state.testbed_db_testsets if d.get("name") == state.testbed["testset_name"]),
                     None,
                 )
             except api_call.ApiError as ex:

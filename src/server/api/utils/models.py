@@ -57,7 +57,8 @@ def create(model: schema.Model, check_url: bool = True) -> schema.Model:
         model.enabled = False
 
     MODEL_OBJECTS.append(model)
-    return get(model_id=model.id, model_provider=model.provider, model_type=model.type)
+    (model_create,) = get(model_id=model.id, model_provider=model.provider, model_type=model.type)
+    return model_create
 
 
 def get(
@@ -65,7 +66,7 @@ def get(
     model_id: Optional[schema.ModelIdType] = None,
     model_type: Optional[schema.ModelTypeType] = None,
     include_disabled: bool = True,
-) -> Union[list[schema.Model], schema.Model, None]:
+) -> Union[list[schema.Model], None]:
     """Used in direct call from list_models and agents.models"""
     logger.debug("%i models are defined", len(MODEL_OBJECTS))
 
@@ -82,27 +83,24 @@ def get(
     if model_id and not model_filtered:
         raise UnknownModelError(f"{model_id} not found")
 
-    if len(model_filtered) == 1:
-        return model_filtered[0]
-
     return model_filtered
 
 
 def update(payload: schema.Model) -> schema.Model:
     """Update an existing Model definition"""
 
-    model_upd = get(model_provider=payload.provider, model_id=payload.id)
-    if payload.enabled and not is_url_accessible(model_upd.api_base)[0]:
-        model_upd.enabled = False
+    (model_update,) = get(model_provider=payload.provider, model_id=payload.id)
+    if payload.enabled and model_update.api_base and not is_url_accessible(model_update.api_base)[0]:
+        model_update.enabled = False
         raise URLUnreachableError("Model: Unable to update.  API URL is inaccessible.")
 
     for key, value in payload:
-        if hasattr(model_upd, key):
-            setattr(model_upd, key, value)
+        if hasattr(model_update, key):
+            setattr(model_update, key, value)
         else:
             raise InvalidModelError(f"Model: Invalid setting - {key}.")
 
-    return model_upd
+    return model_update
 
 
 def delete(model_provider: schema.ModelProviderType, model_id: schema.ModelIdType) -> None:
@@ -192,7 +190,7 @@ def create_genai(config: schema.OracleCloudSettings) -> list[schema.Model]:
         model_dict["provider"] = "oci"
         if "CHAT" in model["capabilities"]:
             model_dict["type"] = "ll"
-            model_dict["context_length"] = 131072
+            model_dict["max_input_tokens"] = 131072
         elif "TEXT_EMBEDDINGS" in model["capabilities"]:
             model_dict["type"] = "embed"
             model_dict["max_chunk_size"] = 8192
@@ -217,16 +215,16 @@ def _get_full_config(model_config: dict, oci_config: schema.OracleCloudSettings 
     model_provider, model_id = model_config["model"].split("/", 1)
 
     try:
-        defined_model = get(
+        (defined_model, ) = get(
             model_provider=model_provider,
             model_id=model_id,
             include_disabled=False,
-        ).model_dump()
+        )
     except UnknownModelError as ex:
         raise ex
 
     # Merge configurations, skipping None values
-    full_model_config = {**defined_model, **{k: v for k, v in model_config.items() if v is not None}}
+    full_model_config = {**defined_model.model_dump(), **{k: v for k, v in model_config.items() if v is not None}}
     provider = full_model_config.pop("provider")
 
     return full_model_config, provider

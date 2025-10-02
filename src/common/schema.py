@@ -91,11 +91,9 @@ class Database(DatabaseAuth):
 class LanguageModelParameters(BaseModel):
     """Language Model Parameters (also used by settings.py)"""
 
-    context_length: Optional[int] = Field(default=None, description="The context window for Language Model.")
+    max_input_tokens: Optional[int] = Field(default=None, description="The context window for Language Model.")
     frequency_penalty: Optional[float] = Field(description=help_text.help_dict["frequency_penalty"], default=0.00)
-    max_completion_tokens: Optional[int] = Field(
-        description=help_text.help_dict["max_completion_tokens"], default=4096
-    )
+    max_tokens: Optional[int] = Field(description=help_text.help_dict["max_tokens"], default=4096)
     presence_penalty: Optional[float] = Field(description=help_text.help_dict["presence_penalty"], default=0.00)
     temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=1.00)
     top_p: Optional[float] = Field(description=help_text.help_dict["top_p"], default=1.00)
@@ -348,7 +346,7 @@ class ChatRequest(LanguageModelParameters):
                     "messages": [{"role": "user", "content": "Hello, how are you?"}],
                     "response_format": {"type": "text"},
                     "temperature": 1,
-                    "max_completion_tokens": 10000,
+                    "max_tokens": 10000,
                     "top_p": 1,
                     "frequency_penalty": 0,
                     "presence_penalty": 0,
