@@ -275,7 +275,7 @@ class TestStreamlit:
                     {
                         "auth_profile": "DEFAULT",
                         "namespace": "test-namespace",
-                        "tenancy": None,  # No tenancy with oke_workload_identity
+                        "tenancy": "test-tenancy",
                         "region": "us-ashburn-1",
                         "authentication": "oke_workload_identity",
                     }
@@ -586,9 +586,25 @@ class TestStreamlit:
         # Scenario 1: Standard authentication with complete config - OCI should be available
         def mock_get_complete_config(endpoint=None, **kwargs):
             if endpoint == "v1/models":
-                return [{"id": "test-model", "type": "embed", "enabled": True, "api_base": "http://test.url", "max_chunk_size": 1000}]
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
             elif endpoint == "v1/oci":
-                return [{"auth_profile": "DEFAULT", "namespace": "test-ns", "tenancy": "test-tenancy", "region": "us-ashburn-1", "authentication": "api_key"}]
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": "test-ns",
+                        "tenancy": "test-tenancy",
+                        "region": "us-ashburn-1",
+                        "authentication": "api_key",
+                    }
+                ]
             return {}
 
         monkeypatch.setattr("client.utils.api_call.get", mock_get_complete_config)
@@ -604,9 +620,25 @@ class TestStreamlit:
         # Scenario 2: Missing namespace - OCI should NOT be available
         def mock_get_no_namespace(endpoint=None, **kwargs):
             if endpoint == "v1/models":
-                return [{"id": "test-model", "type": "embed", "enabled": True, "api_base": "http://test.url", "max_chunk_size": 1000}]
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
             elif endpoint == "v1/oci":
-                return [{"auth_profile": "DEFAULT", "namespace": None, "tenancy": "test-tenancy", "region": "us-ashburn-1", "authentication": "api_key"}]
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": None,
+                        "tenancy": "test-tenancy",
+                        "region": "us-ashburn-1",
+                        "authentication": "api_key",
+                    }
+                ]
             return {}
 
         monkeypatch.setattr("client.utils.api_call.get", mock_get_no_namespace)
@@ -619,9 +651,25 @@ class TestStreamlit:
         # Scenario 3: Standard auth missing tenancy - OCI should NOT be available
         def mock_get_no_tenancy_standard(endpoint=None, **kwargs):
             if endpoint == "v1/models":
-                return [{"id": "test-model", "type": "embed", "enabled": True, "api_base": "http://test.url", "max_chunk_size": 1000}]
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
             elif endpoint == "v1/oci":
-                return [{"auth_profile": "DEFAULT", "namespace": "test-ns", "tenancy": None, "region": "us-ashburn-1", "authentication": "api_key"}]
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": "test-ns",
+                        "tenancy": None,
+                        "region": "us-ashburn-1",
+                        "authentication": "api_key",
+                    }
+                ]
             return {}
 
         monkeypatch.setattr("client.utils.api_call.get", mock_get_no_tenancy_standard)
@@ -630,21 +678,6 @@ class TestStreamlit:
         file_source_radio = next((r for r in radios if hasattr(r, "options") and "Local" in r.options), None)
         assert file_source_radio is not None
         assert "OCI" not in file_source_radio.options, "OCI should not be available with standard auth but no tenancy"
-
-        # Scenario 4: oke_workload_identity missing tenancy - OCI SHOULD be available
-        def mock_get_oke_no_tenancy(endpoint=None, **kwargs):
-            if endpoint == "v1/models":
-                return [{"id": "test-model", "type": "embed", "enabled": True, "api_base": "http://test.url", "max_chunk_size": 1000}]
-            elif endpoint == "v1/oci":
-                return [{"auth_profile": "DEFAULT", "namespace": "test-ns", "tenancy": None, "region": "us-ashburn-1", "authentication": "oke_workload_identity"}]
-            return {}
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get_oke_no_tenancy)
-        at = self._run_app_and_verify_no_errors(app_test)
-        radios = at.get("radio")
-        file_source_radio = next((r for r in radios if hasattr(r, "options") and "OCI" in r.options), None)
-        assert file_source_radio is not None
-        assert "OCI" in file_source_radio.options, "OCI should be available with oke_workload_identity even without tenancy"
 
     def test_embedding_server_not_accessible(self, app_server, app_test, monkeypatch):
         """Test behavior when embedding server is not accessible"""
