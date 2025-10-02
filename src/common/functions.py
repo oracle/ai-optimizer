@@ -126,7 +126,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
         else:
             ok = False
 
-        return ok,return_msg
+        return not(ok),return_msg
 
     except oracledb.Error as e:
         return_msg=f"SQL source connection error:{e}"
