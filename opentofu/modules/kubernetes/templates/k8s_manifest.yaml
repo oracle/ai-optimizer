@@ -88,22 +88,6 @@ spec:
     spec:
       restartPolicy: Never
       initContainers:
-        - name: init-ocir-login
-          image: docker.io/alpine:latest
-          command:
-            - sh
-            - -c
-            - |
-              apk add --no-cache jq oci-cli docker && \
-              export TOKEN=$(oci raw-request --http-method GET --target-uri https://${repository_host}/20180419/docker/token | jq -r '.data.token') && \
-              echo "$TOKEN" | docker login -u 'BEARER_TOKEN' --password-stdin ${repository_host} && \
-              chown 1000:1000 /root/.docker/config.json
-          env:
-            - name: OCI_CLI_AUTH
-              value: instance_principal
-          volumeMounts:
-            - name: docker-auth
-              mountPath: /root/.docker
         - name: prepare-source-code
           image: docker.io/alpine:latest
           command:
@@ -118,63 +102,41 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /workspace
-      containers:
-        - name: buildkit-server
-          image: docker.io/moby/buildkit:master-rootless
-          env:
-            - name: BUILDKITD_FLAGS
-              value: --oci-worker-no-process-sandbox --oci-worker-gc=false
+        - name: init-ocir-login
+          image: ghcr.io/oracle/oci-cli:latest
           command:
-            - buildctl-daemonless.sh
-          args:
-            - build
-            - --no-cache
-            - --progress
-            - plain
-            - --frontend
-            - dockerfile.v0
-            - --local
-            - context=/workspace
-            - --local
-            - dockerfile=/workspace/src/server
-            - --output 
-            - type=image,name=${repository_server}:latest,push=true
-          securityContext:
-            seccompProfile:
-              type: Unconfined
-            appArmorProfile:
-              type: Unconfined
-            runAsUser: 1000
-            runAsGroup: 1000
+            - sh
+            - -c
+            - |
+              export TOKEN=$(oci raw-request --http-method GET --target-uri https://${repository_host}/20180419/docker/token | jq -r '.data.token')
+              mkdir -p /docker-config
+              echo "{\"auths\":{\"${repository_host}\":{\"auth\":\"$(echo -n "BEARER_TOKEN:$TOKEN" | base64 -w0)\"}}}" > /docker-config/config.json
+              chown 1000:1000 /docker-config/config.json
+              cat /docker-config/config.json
+          env:
+            - name: OCI_CLI_AUTH
+              value: instance_principal
           volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-              readOnly: true
-            - name: buildkitd
-              mountPath: /home/user/.local/share/buildkit/server
             - name: docker-auth
-              mountPath: /home/user/.docker
-              readOnly: true
+              mountPath: /docker-config
+      containers:
         - name: buildkit-client
           image: docker.io/moby/buildkit:master-rootless
           env:
             - name: BUILDKITD_FLAGS
               value: --oci-worker-no-process-sandbox --oci-worker-gc=false
           command:
-            - buildctl-daemonless.sh
+            - sh
+            - -c
           args:
-            - build
-            - --no-cache
-            - --progress
-            - plain
-            - --frontend
-            - dockerfile.v0
-            - --local
-            - context=/workspace
-            - --local
-            - dockerfile=/workspace/src/client
-            - --output 
-            - type=image,name=${repository_client}:latest,push=true
+            - |
+              buildctl-daemonless.sh build \
+                --no-cache \
+                --progress plain \
+                --frontend dockerfile.v0 \
+                --local context=/workspace \
+                --local dockerfile=/workspace/client \
+                --output type=image,name=${repository_client}:latest,push=true
           securityContext:
             seccompProfile:
               type: Unconfined
@@ -186,15 +148,50 @@ spec:
             - name: workspace
               mountPath: /workspace
               readOnly: true
-            - name: buildkitd
-              mountPath: /home/user/.local/share/buildkit/client
+            - name: buildkitd-client
+              mountPath: /home/user/.local/share/buildkit
+            - name: docker-auth
+              mountPath: /home/user/.docker
+              readOnly: true
+        - name: buildkit-server
+          image: docker.io/moby/buildkit:master-rootless
+          env:
+            - name: BUILDKITD_FLAGS
+              value: --oci-worker-no-process-sandbox --oci-worker-gc=false
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              buildctl-daemonless.sh build \
+                --no-cache \
+                --progress plain \
+                --frontend dockerfile.v0 \
+                --local context=/workspace \
+                --local dockerfile=/workspace/server \
+                --output type=image,name=${repository_server}:latest,push=true
+          securityContext:
+            seccompProfile:
+              type: Unconfined
+            appArmorProfile:
+              type: Unconfined
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+              readOnly: true
+            - name: buildkitd-server
+              mountPath: /home/user/.local/share/buildkit
             - name: docker-auth
               mountPath: /home/user/.docker
               readOnly: true
       volumes:
         - name: workspace
           emptyDir: {}
-        - name: buildkitd
+        - name: buildkitd-client
+          emptyDir: {}
+        - name: buildkitd-server
           emptyDir: {}
         - name: docker-auth
           emptyDir: {}

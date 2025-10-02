@@ -215,7 +215,7 @@ def _get_full_config(model_config: dict, oci_config: schema.OracleCloudSettings 
     model_provider, model_id = model_config["model"].split("/", 1)
 
     try:
-        (defined_model, ) = get(
+        (defined_model,) = get(
             model_provider=model_provider,
             model_id=model_id,
             include_disabled=False,
