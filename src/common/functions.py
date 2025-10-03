@@ -13,7 +13,6 @@ import os
 import csv
 
 import oracledb
-import pyarrow
 import requests
 
 
@@ -167,7 +166,7 @@ def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
         with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
 
             with connection.cursor() as cursor:
-                
+
                 cursor.arraysize = batch_size
                 cursor.execute(query)
 
