@@ -85,14 +85,15 @@ def get_vs_table(
 
 def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
     """Check if the DB connection and SQL is working one field."""
+
+    ok = True
+    return_msg = ""
+
     try:  # Establish a connection
 
         username = ""
         password = ""
         dsn = ""
-
-        ok = True
-        return_msg = ""
 
         if db_conn and query:
             try:
@@ -101,7 +102,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
             except ValueError:
                 return_msg = f"Wrong connection string {db_conn}"
                 logger.error(return_msg)
-                return False, return_msg
+                ok = False
 
             with oracledb.connect(
                 user=username, password=password, dsn=dsn
@@ -122,19 +123,23 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                         logger.error(return_msg)
                         ok = False
 
-                    if rows and len(desc) != 1:
-                        col_type = desc[0].FetchInfo.type
+                    if rows and len(desc) == 1:
+                        col_type = desc[0].type
+
                         if col_type not in (
                             oracledb.DB_TYPE_VARCHAR,
                             oracledb.DB_TYPE_NVARCHAR,
                         ):
-                            # to be implemented: oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB
-                            return_msg = f"SQL source returns column of type %{col_type} , expected VARCHAR or BLOB."
+                            # to be implemented: oracledb.DB_TYPE_CLOB,oracledb.DB_TYPE_JSON
+                            return_msg = f"SQL source returns column of type %{col_type}, expected VARCHAR."
                             logger.error(return_msg)
+                            ok = False
+
         else:
             ok = False
+            return_msg = ""
 
-        return not (ok), return_msg
+        return ok, return_msg
 
     except oracledb.Error as e:
         return_msg = f"SQL source connection error:{e}"
