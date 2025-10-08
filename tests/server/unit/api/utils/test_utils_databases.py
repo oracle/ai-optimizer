@@ -213,7 +213,7 @@ class TestDatabaseUtilsPrivateFunctions:
     def test_selectai_enabled_true(self, mock_execute_sql):
         """Test SelectAI enabled check returns True"""
         mock_connection = MagicMock()
-        mock_execute_sql.return_value = [(3,)]
+        mock_execute_sql.return_value = [(2,)]
 
         result = databases._selectai_enabled(mock_connection)
 
@@ -223,7 +223,7 @@ class TestDatabaseUtilsPrivateFunctions:
     def test_selectai_enabled_false(self, mock_execute_sql):
         """Test SelectAI enabled check returns False"""
         mock_connection = MagicMock()
-        mock_execute_sql.return_value = [(2,)]
+        mock_execute_sql.return_value = [(1,)]
 
         result = databases._selectai_enabled(mock_connection)
 
