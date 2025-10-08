@@ -189,7 +189,7 @@ variable "vm_is_gpu_shape" {
 // Kubernetes
 variable "k8s_api_is_public" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "k8s_api_endpoint_allowed_cidrs" {

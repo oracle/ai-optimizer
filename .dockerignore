@@ -20,5 +20,5 @@ src/**/*.log
 
 # But explicitly keep these
 !src/.streamlit
-!src/client/spring_ai/templates/env.sh
+!src/client/spring_ai/templates/start.sh
 !src/entrypoint.sh

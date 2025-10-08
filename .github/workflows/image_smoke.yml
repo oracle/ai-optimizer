@@ -79,7 +79,7 @@ jobs:
 
       - name: Scan with Trivy
         if: matrix.build.name == 'aio'
-        uses: aquasecurity/trivy-action@0.32.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: image
           image-ref: "aio:${{ github.sha }}"

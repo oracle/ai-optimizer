@@ -89,10 +89,10 @@ def _selectai_enabled(conn: oracledb.Connection) -> bool:
            WHERE TYPE = 'PACKAGE'
              AND PRIVILEGE = 'EXECUTE'
              AND GRANTEE = USER
-             AND TABLE_NAME IN ('DBMS_CLOUD','DBMS_CLOUD_AI','DBMS_CLOUD_PIPELINE')
+             AND TABLE_NAME IN ('DBMS_CLOUD_AI','DBMS_CLOUD_PIPELINE')
           """
     result = execute_sql(conn, sql)
-    if result[0][0] == 3:
+    if result[0][0] == 2:
         is_enabled = True
     logger.debug("SelectAI enabled (results: %s): %s", result[0][0], is_enabled)
 
