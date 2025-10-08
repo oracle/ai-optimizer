@@ -208,7 +208,7 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
         sql_query = st.text_input("SQL:", key="sql_query")
 
         populate_button_disabled, msg = functions.is_sql_accessible(db_connection, sql_query)
-        if not populate_button_disabled and msg != "":
+        if not populate_button_disabled or msg != "":
             st.error(f"Error: {msg}")
 
     ######################################
