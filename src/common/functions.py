@@ -10,10 +10,11 @@ import math
 import re
 import uuid
 import os
+import csv
 
 import oracledb
-import pyarrow
 import requests
+
 
 from common import logging_config
 
@@ -84,25 +85,28 @@ def get_vs_table(
 
 def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
     """Check if the DB connection and SQL is working one field."""
+
+    ok = True
+    return_msg = ""
+
     try:  # Establish a connection
 
         username = ""
         password = ""
         dsn = ""
 
-        ok = True
-        return_msg=""
-
         if db_conn and query:
             try:
                 user_part, dsn = db_conn.split("@")
                 username, password = user_part.split("/")
             except ValueError:
-                return_msg=f"Wrong connection string {db_conn}"
+                return_msg = f"Wrong connection string {db_conn}"
                 logger.error(return_msg)
-                return False,return_msg
+                ok = False
 
-            with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
+            with oracledb.connect(
+                user=username, password=password, dsn=dsn
+            ) as connection:
                 with connection.cursor() as cursor:
 
                     cursor.execute(query)
@@ -113,25 +117,34 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                         logger.error(return_msg)
                         ok = False
                     if len(desc) != 1:
-                        return_msg=f"SQL source returns {len(desc)} columns, expected 1."
+                        return_msg = (
+                            f"SQL source returns {len(desc)} columns, expected 1."
+                        )
                         logger.error(return_msg)
                         ok = False
 
-                    if rows and len(desc) != 1:
-                        col_type = desc[0].FetchInfo.type
-                        if col_type not in (oracledb.DB_TYPE_VARCHAR, oracledb.DB_TYPE_NVARCHAR):
-                        # to be implemented: oracledb.DB_TYPE_BLOB, oracledb.DB_TYPE_CLOB, oracledb.DB_TYPE_NCLOB
-                            return_msg=f"SQL source returns column of type %{col_type} , expected VARCHAR or BLOB."
+                    if rows and len(desc) == 1:
+                        col_type = desc[0].type
+
+                        if col_type not in (
+                            oracledb.DB_TYPE_VARCHAR,
+                            oracledb.DB_TYPE_NVARCHAR,
+                        ):
+                            # to be implemented: oracledb.DB_TYPE_CLOB,oracledb.DB_TYPE_JSON
+                            return_msg = f"SQL source returns column of type %{col_type}, expected VARCHAR."
                             logger.error(return_msg)
+                            ok = False
+
         else:
             ok = False
+            return_msg = ""
 
-        return ok,return_msg
+        return ok, return_msg
 
     except oracledb.Error as e:
-        return_msg=f"SQL source connection error:{e}"
+        return_msg = f"SQL source connection error:{e}"
         logger.error(return_msg)
-        return False,return_msg
+        return False, return_msg
 
 
 def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
@@ -153,14 +166,29 @@ def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
         random_filename = str(uuid.uuid4())
 
         filename_with_extension = f"{random_filename}.csv"
+        full_file_path = os.path.join(base_path, filename_with_extension)
+
         with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
-            connection = oracledb.connect(user=username, password=password, dsn=dsn)
-            for odf in connection.fetch_df_batches(statement=query, size=batch_size):
-                df = pyarrow.table(odf).to_pandas()
 
-            full_file_path = os.path.join(base_path, filename_with_extension)
+            with connection.cursor() as cursor:
 
-            df.to_csv(full_file_path, index=False)
+                cursor.arraysize = batch_size
+                cursor.execute(query)
+
+                # Write header
+                desc = cursor.description
+                column_names = [d[0] for d in desc]
+
+                with open(full_file_path, mode="w", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(column_names)
+
+                    # Fetch and append in batches
+                    while True:
+                        rows = cursor.fetchmany(batch_size)
+                        if not rows:
+                            break
+                        writer.writerows(rows)
 
         return full_file_path
 

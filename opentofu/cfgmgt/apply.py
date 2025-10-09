@@ -141,6 +141,35 @@ def apply_manifest():
     retry(apply_manifest_inner)
 
 
+def patch_oracle_operator_inner():
+    """Patch Oracle Database Operator deployment to disable readOnlyRootFilesystem"""
+    print("🔧 Patching oracle-database-operator deployment...")
+    cmd = [
+        "kubectl",
+        "-n",
+        "oracle-database-operator-system",
+        "patch",
+        "deployment",
+        "oracle-database-operator-controller-manager",
+        "--type",
+        "json",
+        "-p",
+        '[{"op": "replace", "path": "/spec/template/spec/containers/0/securityContext/readOnlyRootFilesystem", "value": false}]',
+    ]
+    _, stderr, rc = run_cmd(cmd, capture_output=False)
+    if rc == 0:
+        print("✅ Oracle operator patched.\n")
+        return True
+    else:
+        print(f"❌ Failed to patch operator:\n{stderr}")
+        return False
+
+
+def patch_oracle_operator():
+    """Retry Enabled Patch Oracle Operator"""
+    retry(patch_oracle_operator_inner)
+
+
 # --- Entry Point ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Apply a Helm chart and a Kubernetes manifest.")
@@ -149,4 +178,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     apply_manifest()
+    patch_oracle_operator()
     apply_helm_chart(args.release_name, args.namespace)
