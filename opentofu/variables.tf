@@ -59,6 +59,12 @@ variable "private_key_path" {
   default     = ""
 }
 
+variable "orm_install" {
+  description = "Deployment via Oracle Resource Manager."
+  type        = bool
+  default     = false
+}
+
 // Infrastructure Type/Label
 variable "label_prefix" {
   description = "Alpha Numeric (less than 12 characters) string that will be prepended to all resources. Leave blank to auto-generate."
@@ -189,7 +195,7 @@ variable "vm_is_gpu_shape" {
 // Kubernetes
 variable "k8s_api_is_public" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "k8s_api_endpoint_allowed_cidrs" {

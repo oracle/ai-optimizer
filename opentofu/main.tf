@@ -134,6 +134,7 @@ module "kubernetes" {
   public_subnet_id               = module.network.public_subnet_ocid
   private_subnet_id              = module.network.private_subnet_ocid
   lb_nsg_id                      = oci_core_network_security_group.lb.id
+  orm_install                    = var.orm_install
   providers = {
     oci.home_region = oci.home_region
   }

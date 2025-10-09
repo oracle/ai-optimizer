@@ -2,6 +2,11 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
+// Oracle Resource Manager
+locals {
+  create_orm_pe = var.orm_install && !var.k8s_api_is_public
+}
+
 // Region Mapping
 locals {
   region_map = {

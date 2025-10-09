@@ -23,6 +23,20 @@ resource "oci_artifacts_container_repository" "repository_client" {
   is_public      = false
 }
 
+// Oracle Resource Manager
+resource "oci_resourcemanager_private_endpoint" "orm_pe" {
+  count          = local.create_orm_pe ? 1 : 0
+  compartment_id = var.compartment_id
+  vcn_id         = var.vcn_id
+  display_name   = format("%s-orm-pe", var.label_prefix)
+  description    = "Private Endpoint for Resource Manager to OKE"
+  subnet_id      = var.private_subnet_id
+  nsg_id_list = [
+    oci_core_network_security_group.k8s_workers.id,
+    oci_core_network_security_group.k8s_api_endpoint.id
+  ]
+}
+
 // Cluster
 resource "oci_containerengine_cluster" "default_cluster" {
   compartment_id     = var.compartment_id

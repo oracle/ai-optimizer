@@ -18,6 +18,23 @@ os.environ["KUBECONFIG"] = os.path.join(STAGE_PATH, "kubeconfig")
 
 
 # --- Utility Functions ---
+def mod_kubeconfig(private_endpoint: str = None):
+    if not private_endpoint:
+        return
+
+    with open(os.environ["KUBECONFIG"], "r") as f:
+        lines = f.read().splitlines()
+
+    with open(os.environ["KUBECONFIG"], "w") as f:
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("server:"):
+                f.write(f"server: https://{private_endpoint}:6443\n")
+            elif stripped.startswith("certificate-authority-data:"):
+                f.write("insecure-skip-tls-verify: true\n")
+            else:
+                f.write(line + "\n")
+
 def run_cmd(cmd, capture_output=True):
     """Generic subprocess execution"""
     try:

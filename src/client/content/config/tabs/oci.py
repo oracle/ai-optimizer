@@ -6,7 +6,7 @@ Script initializes a web interface for Oracle Cloud Infrastructure (OCI)
 It includes a form to input and test OCI API Access.
 """
 # spell-checker:ignore streamlit ocid selectbox genai oraclecloud
-
+import time
 import pandas as pd
 
 import streamlit as st
@@ -204,6 +204,8 @@ def _render_oci_genai_section(
                     create_genai_models()
                     st_common.clear_state_key("model_configs")
                 st.success("Oracle GenAI models - Enabled.", icon="✅")
+                time.sleep(1)
+                st.rerun()
 
 
 def get_oci(force: bool = False) -> None:

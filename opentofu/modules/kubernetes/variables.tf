@@ -22,6 +22,10 @@ variable "private_subnet_id" {
   type = string
 }
 
+variable "orm_install" {
+  type = bool
+}
+
 variable "lb" {
   type = object({
     id             = string
