@@ -442,7 +442,7 @@ class TestEndpoints:
             mock_response.json.return_value = mock_report.dict()
             mock_get.return_value = mock_response
 
-            response = client.get(f"/v1/testbed/evaluation?eid=flow_eval_id", headers=auth_headers["valid_auth"])
+            response = client.get("/v1/testbed/evaluation?eid=flow_eval_id", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
 
         # Step 6: Delete the testset

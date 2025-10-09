@@ -14,7 +14,7 @@ authors = [
 
 # Common dependencies that are always needed
 dependencies = [
-    "langchain-core==0.3.76",
+    "langchain-core==0.3.78",
     "httpx==0.28.1",
     "oracledb~=3.1",
     "plotly==6.3.0",
@@ -24,29 +24,29 @@ dependencies = [
 # Server component dependencies
 server = [
     "bokeh==3.8.0",
-    "evaluate==0.4.5",
+    "evaluate==0.4.6",
     "faiss-cpu==1.12.0",
-    "fastapi==0.117.1",
-    "fastmcp==2.12.3",
+    "fastapi==0.118.1",
+    "fastmcp==2.12.4",
     "giskard==2.18.0",
-    "langchain-anthropic==0.3.20",
-    "langchain-aws==0.2.33",
+    "langchain-anthropic==0.3.21",
+    "langchain-aws==0.2.35",
     "langchain-cohere==0.4.6",
-    "langchain-community==0.3.29",
+    "langchain-community==0.3.31",
     "langchain-deepseek==0.1.4",
     "langchain-google-genai==2.1.12",
     "langchain-google-vertexai==2.1.2",
     "langchain-groq==0.3.8",
     "langchain-huggingface==0.3.1",
     "langchain-mistralai==0.2.12",
-    "langchain-mcp-adapters==0.1.10",
-    "langchain-ollama==0.3.8",
-    "langchain-openai==0.3.33",
+    "langchain-mcp-adapters==0.1.11",
+    "langchain-ollama==0.3.10",
+    "langchain-openai==0.3.35",
     "langchain-perplexity==0.1.2",
     "langchain-xai==0.2.5",
-    "langgraph==0.6.7",
-    "litellm==1.77.3",
-    "llama-index==0.14.2",
+    "langgraph==0.6.9",
+    "litellm==1.77.7",
+    "llama-index==0.14.4",
     "lxml==6.0.2",
     "matplotlib==3.10.6",
     "oci~=2.0",
@@ -54,12 +54,12 @@ server = [
     "python-multipart==0.0.20",
     "torch==2.8.0",
     "umap-learn==0.5.9.post2",
-    "uvicorn==0.36.0",
+    "uvicorn==0.37.0",
 ]
 
 # GUI component dependencies
 client = [
-    "streamlit==1.49.1",
+    "streamlit== 1.49.1",
 ]
 
 # Test dependencies

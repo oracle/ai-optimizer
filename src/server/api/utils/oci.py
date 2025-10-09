@@ -5,6 +5,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore genai ocids ocid
 
 import os
+import base64
+import json
 from typing import Union
 import urllib3.exceptions
 
@@ -75,6 +77,13 @@ def init_client(
             logger.info("OCI Authentication with Workload Identity")
             oke_workload_signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
             client = client_type(config={"region": config_json["region"]}, signer=oke_workload_signer)
+            if not config.tenancy:
+                token = oke_workload_signer.get_security_token()
+                payload_part = token.split(".")[1]
+                padding = "=" * (-len(payload_part) % 4)
+                decoded_bytes = base64.urlsafe_b64decode(payload_part + padding)
+                payload = json.loads(decoded_bytes)
+                config.tenancy = payload.get("tenant")
         elif config_json["authentication"] == "security_token" and config_json["security_token_file"]:
             logger.info("OCI Authentication with Security Token")
             token = None

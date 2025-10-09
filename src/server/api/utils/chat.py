@@ -19,7 +19,7 @@ import server.api.utils.selectai as utils_selectai
 
 from server.agents.chatbot import chatbot_graph
 
-from server.api.core.models import UnknownModelError
+from server.api.utils.models import UnknownModelError
 
 from common import schema
 from common import logging_config
@@ -91,9 +91,7 @@ async def completion_generator(
 
     if client_settings.selectai.enabled:
         utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
-        utils_selectai.set_profile(
-            db_conn, client_settings.selectai.profile, "max_tokens", model["max_completion_tokens"]
-        )
+        utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "max_tokens", model["max_tokens"])
 
     logger.debug("Completion Kwargs: %s", kwargs)
     final_response = None

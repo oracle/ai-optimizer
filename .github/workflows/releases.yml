@@ -39,10 +39,10 @@ jobs:
           echo "Tag validated: $TAG_NAME"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Inject Static Version into _version.py and version.tf
+      - name: Inject Static Version into _version.py and versions.tf
         run: |
           echo "__version__ = \"$VERSION\"" > src/common/_version.py
-          sed -i "s/app_version = \".*\"/app_version = \"$VERSION\"/" opentofu/versions.tf
+          sed -i "s/app_version[[:space:]]*=[[:space:]]*\".*\"/app_version = \"$VERSION\"/" opentofu/versions.tf
           echo "Injected version:"
           cat src/common/_version.py
           cat opentofu/versions.tf

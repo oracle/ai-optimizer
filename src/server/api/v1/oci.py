@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai ocid genai
+# spell-checker:ignore ocid genai
 
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import JSONResponse
@@ -66,7 +66,7 @@ async def oci_get(
 async def oci_list_regions(
     auth_profile: schema.OCIProfileType,
 ) -> list:
-    """Return a list of compartments"""
+    """Return a list of regions"""
     logger.debug("Received oci_list_regions - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
@@ -84,7 +84,7 @@ async def oci_list_regions(
 async def oci_list_genai(
     auth_profile: schema.OCIProfileType,
 ) -> list:
-    """Return a list of compartments"""
+    """Return a list of genai service models"""
     logger.debug("Received oci_list_genai - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)

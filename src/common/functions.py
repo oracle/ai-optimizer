@@ -2,13 +2,19 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore genai, hnsw
+
+# spell-checker:ignore genai hnsw
 
 from typing import Tuple
 import math
 import re
+import uuid
+import os
+import csv
 
+import oracledb
 import requests
+
 
 from common import logging_config
 
@@ -57,7 +63,9 @@ def get_vs_table(
     store_comment = None
     try:
         chunk_overlap_ceil = math.ceil(chunk_overlap)
-        table_string = f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
+        table_string = (
+            f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
+        )
         if alias:
             table_string = f"{alias}_{table_string}"
         store_table = re.sub(r"\W", "_", table_string.upper())
@@ -73,3 +81,117 @@ def get_vs_table(
     except TypeError:
         logger.fatal("Not all required values provided to get Vector Store Table name.")
     return store_table, store_comment
+
+
+def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
+    """Check if the DB connection and SQL is working one field."""
+
+    ok = True
+    return_msg = ""
+
+    try:  # Establish a connection
+
+        username = ""
+        password = ""
+        dsn = ""
+
+        if db_conn and query:
+            try:
+                user_part, dsn = db_conn.split("@")
+                username, password = user_part.split("/")
+            except ValueError:
+                return_msg = f"Wrong connection string {db_conn}"
+                logger.error(return_msg)
+                ok = False
+
+            with oracledb.connect(
+                user=username, password=password, dsn=dsn
+            ) as connection:
+                with connection.cursor() as cursor:
+
+                    cursor.execute(query)
+                    rows = cursor.fetchmany(3)
+                    desc = cursor.description
+                    if not rows:
+                        return_msg = "SQL source return an empty table!"
+                        logger.error(return_msg)
+                        ok = False
+                    if len(desc) != 1:
+                        return_msg = (
+                            f"SQL source returns {len(desc)} columns, expected 1."
+                        )
+                        logger.error(return_msg)
+                        ok = False
+
+                    if rows and len(desc) == 1:
+                        col_type = desc[0].type
+
+                        if col_type not in (
+                            oracledb.DB_TYPE_VARCHAR,
+                            oracledb.DB_TYPE_NVARCHAR,
+                        ):
+                            # to be implemented: oracledb.DB_TYPE_CLOB,oracledb.DB_TYPE_JSON
+                            return_msg = f"SQL source returns column of type %{col_type}, expected VARCHAR."
+                            logger.error(return_msg)
+                            ok = False
+
+        else:
+            ok = False
+            return_msg = ""
+
+        return ok, return_msg
+
+    except oracledb.Error as e:
+        return_msg = f"SQL source connection error:{e}"
+        logger.error(return_msg)
+        return False, return_msg
+
+
+def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
+    """Save the query result as a CSV file to be embedded"""
+    try:  # Establish a connection
+        username = ""
+        password = ""
+        dsn = ""
+        batch_size = 100
+
+        if not db_conn:
+            return False
+        try:
+            user_part, dsn = db_conn.split("@")
+            username, password = user_part.split("/")
+        except ValueError:
+            logger.error("Wrong connection string %s", db_conn)
+            return False
+        random_filename = str(uuid.uuid4())
+
+        filename_with_extension = f"{random_filename}.csv"
+        full_file_path = os.path.join(base_path, filename_with_extension)
+
+        with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
+
+            with connection.cursor() as cursor:
+
+                cursor.arraysize = batch_size
+                cursor.execute(query)
+
+                # Write header
+                desc = cursor.description
+                column_names = [d[0] for d in desc]
+
+                with open(full_file_path, mode="w", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(column_names)
+
+                    # Fetch and append in batches
+                    while True:
+                        rows = cursor.fetchmany(batch_size)
+                        if not rows:
+                            break
+                        writer.writerows(rows)
+
+        return full_file_path
+
+    except oracledb.Error as e:
+        logger.error("SQL source connection error: %s", e)
+        return ""

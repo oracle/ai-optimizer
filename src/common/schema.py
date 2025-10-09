@@ -2,11 +2,11 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql
+# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql rerank
 
 import time
-from typing import Optional, Literal, get_args, Any
-from pydantic import BaseModel, Field, PrivateAttr, model_validator, ConfigDict
+from typing import Optional, Literal, Any
+from pydantic import BaseModel, Field, PrivateAttr, ConfigDict
 
 from langchain_core.messages import ChatMessage
 import oracledb
@@ -17,88 +17,6 @@ from common import help_text
 #####################################################
 DistanceMetrics = Literal["COSINE", "EUCLIDEAN_DISTANCE", "DOT_PRODUCT"]
 IndexTypes = Literal["HNSW", "IVF"]
-
-# Model Providers
-# spell-checker:disable
-ModelProviders = Literal[
-    "ai21",
-    "aiml",
-    "aiohttp_openai",
-    "anthropic",
-    "azure",
-    "azure_ai",
-    "base_llm",
-    "base.py",
-    "baseten",
-    "bedrock",
-    "bytez",
-    "cerebras",
-    "clarifai",
-    "cloudflare",
-    "codestral",
-    "cohere",
-    "cometapi",
-    "dashscope",
-    "databricks",
-    "datarobot",
-    "deepgram",
-    "deepinfra",
-    "deepseek",
-    "elevenlabs",
-    "empower",
-    "featherless_ai",
-    "fireworks_ai",
-    "friendliai",
-    "galadriel",
-    "gemini",
-    "github",
-    "github_copilot",
-    "gradient_ai",
-    "groq",
-    "hosted_vllm",
-    "huggingface",
-    "hyperbolic",
-    "infinity",
-    "jina_ai",
-    "lambda_ai",
-    "litellm_proxy",
-    "llamafile",
-    "lm_studio",
-    "meta_llama",
-    "mistral",
-    "moonshot",
-    "morph",
-    "nebius",
-    "nlp_cloud",
-    "novita",
-    "nscale",
-    "nvidia_nim",
-    "oci",
-    "ollama",
-    "oobabooga",
-    "openai",
-    "openrouter",
-    "perplexity",
-    "petals",
-    "pg_vector",
-    "predibase",
-    "recraft",
-    "replicate",
-    "sagemaker",
-    "sambanova",
-    "snowflake",
-    "together_ai",
-    "topaz",
-    "triton",
-    "v0",
-    "vercel_ai_gateway,vertex_ai",
-    "vllm",
-    "voyage",
-    "watsonx",
-    "xai",
-    "xinference",
-]
-# spell-checker:enable
 
 
 #####################################################
@@ -194,11 +112,9 @@ class Database(DatabaseAuth):
 class LanguageModelParameters(BaseModel):
     """Language Model Parameters (also used by settings.py)"""
 
-    context_length: Optional[int] = Field(default=None, description="The context window for Language Model.")
+    max_input_tokens: Optional[int] = Field(default=None, description="The context window for Language Model.")
     frequency_penalty: Optional[float] = Field(description=help_text.help_dict["frequency_penalty"], default=0.00)
-    max_completion_tokens: Optional[int] = Field(
-        description=help_text.help_dict["max_completion_tokens"], default=4096
-    )
+    max_tokens: Optional[int] = Field(description=help_text.help_dict["max_tokens"], default=4096)
     presence_penalty: Optional[float] = Field(description=help_text.help_dict["presence_penalty"], default=0.00)
     temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=1.00)
     top_p: Optional[float] = Field(description=help_text.help_dict["top_p"], default=1.00)
@@ -235,20 +151,8 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
         default="aioptimizer",
         description="OpenAI Compatible Only",
     )
-    type: Literal["ll", "embed", "re-rank"] = Field(..., description="Type of Model.")
+    type: Literal["ll", "embed", "rerank"] = Field(..., description="Type of Model.")
     provider: str = Field(..., min_length=1, description="Model Provider.", examples=["openai", "anthropic", "ollama"])
-
-    @model_validator(mode="after")
-    def check_provider(self):
-        """Validate valid provider"""
-        providers = get_args(ModelProviders)
-
-        if not self.provider or self.provider == "unset":
-            return self
-
-        if self.provider not in providers:
-            raise ValueError(f"Provider '{self.provider}' is not valid. Must be one of: {providers}")
-        return self
 
 
 #####################################################
@@ -463,7 +367,7 @@ class ChatRequest(LanguageModelParameters):
                     "messages": [{"role": "user", "content": "Hello, how are you?"}],
                     "response_format": {"type": "text"},
                     "temperature": 1,
-                    "max_completion_tokens": 10000,
+                    "max_tokens": 10000,
                     "top_p": 1,
                     "frequency_penalty": 0,
                     "presence_penalty": 0,

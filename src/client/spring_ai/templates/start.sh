@@ -21,7 +21,7 @@ fi
 TEMPERATURE="{ll_model[temperature]}"
 FREQUENCY_PENALTY="{ll_model[frequency_penalty]}"
 PRESENCE_PENALTY="{ll_model[presence_penalty]}"
-MAX_TOKENS="{ll_model[max_completion_tokens]}"
+MAX_TOKENS="{ll_model[max_tokens]}"
 TOP_P="{ll_model[top_p]}"
 COMMON_VARS=("TEMPERATURE" "FREQUENCY_PENALTY" "PRESENCE_PENALTY" "MAX_TOKENS" "TOP_P")
 

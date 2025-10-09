@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 This script initializes a web interface for database configuration using Streamlit (`st`).
 It includes a form to input and test database connection settings.
 """
-# spell-checker:ignore streamlit, selectbox, selectai
+# spell-checker:ignore selectai selectbox
 
 import json
 import pandas as pd
@@ -22,6 +22,137 @@ logger = logging_config.logging.getLogger("client.content.config.tabs.database")
 #####################################################
 # Functions
 #####################################################
+
+
+def _render_database_configuration_form(database_lookup: dict, selected_database_alias: str) -> dict:
+    """Render the database configuration form.
+
+    Returns:
+        dict: Supplied configuration values
+    """
+    supplied = {}
+    connected = database_lookup[selected_database_alias]["connected"]
+
+    with st.container(border=True):
+        supplied["user"] = st.text_input(
+            "Database User:",
+            value=database_lookup[selected_database_alias]["user"],
+            key="database_user",
+        )
+        supplied["password"] = st.text_input(
+            "Database Password:",
+            value=database_lookup[selected_database_alias]["password"],
+            key="database_password",
+            type="password",
+        )
+        supplied["dsn"] = st.text_input(
+            "Database Connect String:",
+            value=database_lookup[selected_database_alias]["dsn"],
+            key="database_dsn",
+        )
+        supplied["wallet_password"] = st.text_input(
+            "Wallet Password (Optional):",
+            value=database_lookup[selected_database_alias]["wallet_password"],
+            key="database_wallet_password",
+            type="password",
+        )
+
+        # Display connection status
+        if connected:
+            st.success("Current Status: Connected")
+        else:
+            st.error("Current Status: Disconnected")
+            if "database_error" in state:
+                st.error(f"Update Failed - {state.database_error}", icon="🚨")
+
+        # Save button
+        if st.button("Save Database", key="save_database"):
+            if patch_database(selected_database_alias, supplied, connected):
+                st.rerun()
+
+    return supplied
+
+
+def _render_vector_stores_section(database_lookup: dict, selected_database_alias: str) -> None:
+    """Render the vector stores display section."""
+    st.subheader("Database Vector Storage", divider="red")
+    st.write("Existing Vector Storage Tables in Database.")
+
+    with st.container(border=True):
+        vector_stores = database_lookup[selected_database_alias]["vector_stores"]
+        if vector_stores:
+            vs_col_format = st.columns([2, 5, 10, 3, 3, 5, 3])
+            headers = ["\u200b", "Alias", "Model", "Chunk", "Overlap", "Dist. Metric", "Index"]
+
+            # Header row
+            for col, header in zip(vs_col_format, headers):
+                col.markdown(f"**<u>{header}</u>**", unsafe_allow_html=True)
+
+            # Vector store rows
+            for vs in vector_stores:
+                vector_store = vs["vector_store"].lower()
+                fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
+                # Delete Button in Column1
+                vs_col_format[0].button(
+                    "",
+                    icon="🗑️",
+                    key=f"vector_stores_{vector_store}",
+                    on_click=drop_vs,
+                    args=[vs],
+                    help="Drop Vector Storage Table",
+                )
+                for col, field in zip(vs_col_format[1:], fields):  # Starting from col2
+                    col.text_input(
+                        field.capitalize(),
+                        value=vs[field],
+                        label_visibility="collapsed",
+                        key=f"vector_stores_{vector_store}_{field}",
+                        disabled=True,
+                    )
+        else:
+            st.write("No Vector Stores Found")
+
+
+def _render_selectai_section(database_lookup: dict, selected_database_alias: str) -> None:
+    """Render the SelectAI configuration section."""
+    st.subheader("SelectAI", divider="red")
+    selectai_profiles = database_lookup[selected_database_alias]["selectai_profiles"]
+
+    if database_lookup[selected_database_alias]["selectai"] and len(selectai_profiles) > 0:
+        if not state.client_settings["selectai"]["profile"]:
+            state.client_settings["selectai"]["profile"] = selectai_profiles[0]
+
+        # Select Profile
+        st.selectbox(
+            "Profile:",
+            options=selectai_profiles,
+            index=selectai_profiles.index(state.client_settings["selectai"]["profile"]),
+            key="selected_selectai_profile",
+            on_change=select_ai_profile,
+        )
+
+        selectai_objects = selectai_df(state.client_settings["selectai"]["profile"])
+        if not selectai_objects.empty:
+            sai_df = st.data_editor(
+                selectai_objects,
+                column_config={
+                    "enabled": st.column_config.CheckboxColumn(label="Enabled", help="Toggle to enable or disable")
+                },
+                width="stretch",
+                hide_index=True,
+            )
+            if st.button("Apply SelectAI Changes", type="secondary"):
+                update_selectai(sai_df, selectai_objects)
+                st.rerun()
+        else:
+            st.write("No objects found for SelectAI.")
+    else:
+        if not database_lookup[selected_database_alias]["selectai"]:
+            st.write("Unable to use SelectAI with Database.")
+        elif len(selectai_profiles) == 0:
+            st.write("No SelectAI Profiles Found.")
+
+
 def get_databases(force: bool = False) -> None:
     """Get Databases from API Server"""
     if force or "database_configs" not in state or not state.database_configs:
@@ -114,12 +245,15 @@ def display_databases() -> None:
     """Streamlit GUI"""
     st.header("Database", divider="red")
     st.write("Configure the database used for Vector Storage and SelectAI.")
+
     try:
         get_databases()
     except api_call.ApiError:
         st.stop()
+
     st.subheader("Configuration")
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
+
     # Get a list of database names, and allow user to select
     selected_database_alias = st.selectbox(
         "Current Database:",
@@ -128,117 +262,15 @@ def display_databases() -> None:
         key="selected_database",
         on_change=st_common.update_client_settings("database"),
     )
-    # Present updatable options
-    with st.container(border=True):
-        # with st.form("update_database_config"):
-        supplied = {}
-        supplied["user"] = st.text_input(
-            "Database User:",
-            value=database_lookup[selected_database_alias]["user"],
-            key="database_user",
-        )
-        supplied["password"] = st.text_input(
-            "Database Password:",
-            value=database_lookup[selected_database_alias]["password"],
-            key="database_password",
-            type="password",
-        )
-        supplied["dsn"] = st.text_input(
-            "Database Connect String:",
-            value=database_lookup[selected_database_alias]["dsn"],
-            key="database_dsn",
-        )
-        supplied["wallet_password"] = st.text_input(
-            "Wallet Password (Optional):",
-            value=database_lookup[selected_database_alias]["wallet_password"],
-            key="database_wallet_password",
-            type="password",
-        )
-        connected = database_lookup[selected_database_alias]["connected"]
-        if connected:
-            st.success("Current Status: Connected")
-        else:
-            st.error("Current Status: Disconnected")
-            if "database_error" in state:
-                st.error(f"Update Failed - {state.database_error}", icon="🚨")
 
-        if st.button("Save Database", key="save_database"):
-            if patch_database(selected_database_alias, supplied, connected):
-                st.rerun()
+    # Render configuration form
+    _render_database_configuration_form(database_lookup, selected_database_alias)
+    connected = database_lookup[selected_database_alias]["connected"]
 
+    # Only show additional sections if database is connected
     if connected:
-        # Vector Stores
-        #############################################
-        st.subheader("Database Vector Storage", divider="red")
-        st.write("Existing Vector Storage Tables in Database.")
-        with st.container(border=True):
-            if database_lookup[selected_database_alias]["vector_stores"]:
-                vs_col_format = st.columns([2, 5, 10, 3, 3, 5, 3])
-                headers = ["\u200b", "Alias", "Model", "Chunk", "Overlap", "Dist. Metric", "Index"]
-
-                # Header row
-                for col, header in zip(vs_col_format, headers):
-                    col.markdown(f"**<u>{header}</u>**", unsafe_allow_html=True)
-
-                # Vector store rows
-                for vs in database_lookup[selected_database_alias]["vector_stores"]:
-                    vector_store = vs["vector_store"].lower()
-                    fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
-                    # Delete Button in Column1
-                    vs_col_format[0].button(
-                        "",
-                        icon="🗑️",
-                        key=f"vector_stores_{vector_store}",
-                        on_click=drop_vs,
-                        args=[vs],
-                        help="Drop Vector Storage Table",
-                    )
-                    for col, field in zip(vs_col_format[1:], fields):  # Starting from col2
-                        col.text_input(
-                            field.capitalize(),
-                            value=vs[field],
-                            label_visibility="collapsed",
-                            key=f"vector_stores_{vector_store}_{field}",
-                            disabled=True,
-                        )
-            else:
-                st.write("No Vector Stores Found")
-
-        # Select AI
-        #############################################
-        st.subheader("SelectAI", divider="red")
-        selectai_profiles = database_lookup[selected_database_alias]["selectai_profiles"]
-        if database_lookup[selected_database_alias]["selectai"] and len(selectai_profiles) > 0:
-            if not state.client_settings["selectai"]["profile"]:
-                state.client_settings["selectai"]["profile"] = selectai_profiles[0]
-            # Select Profile
-            st.selectbox(
-                "Profile:",
-                options=selectai_profiles,
-                index=selectai_profiles.index(state.client_settings["selectai"]["profile"]),
-                key="selected_selectai_profile",
-                on_change=select_ai_profile,
-            )
-            selectai_objects = selectai_df(state.client_settings["selectai"]["profile"])
-            if not selectai_objects.empty:
-                sai_df = st.data_editor(
-                    selectai_objects,
-                    column_config={
-                        "enabled": st.column_config.CheckboxColumn(label="Enabled", help="Toggle to enable or disable")
-                    },
-                    width="stretch",
-                    hide_index=True,
-                )
-                if st.button("Apply SelectAI Changes", type="secondary"):
-                    update_selectai(sai_df, selectai_objects)
-                    st.rerun()
-            else:
-                st.write("No objects found for SelectAI.")
-        else:
-            if not database_lookup[selected_database_alias]["selectai"]:
-                st.write("Unable to use SelectAI with Database.")
-            elif len(selectai_profiles) == 0:
-                st.write("No SelectAI Profiles Found.")
+        _render_vector_stores_section(database_lookup, selected_database_alias)
+        _render_selectai_section(database_lookup, selected_database_alias)
 
 
 if __name__ == "__main__":

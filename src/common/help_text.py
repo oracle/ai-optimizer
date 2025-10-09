@@ -2,10 +2,10 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore rerank, mult, HNSW
+# spell-checker:ignore rerank mult hnsw
 
 help_dict = {
-    "context_length": """
+    "max_input_tokens": """
         Maximum number of tokens (words, sub-words, or characters) the model can consider
         at once when generating a response.   It defines how much prior conversation or text
         the model "remembers" within a single interaction.
@@ -18,7 +18,7 @@ help_dict = {
         recommended altering this or Top P but not both.
         Default value often determined from the model card.
         """,
-    "max_completion_tokens": """
+    "max_tokens": """
         Sets the maximum length of the response.
         The higher the number, the longer the potential response, but it won't exceed this
         limit.  Max value often determined from the model card.
