@@ -19,21 +19,29 @@ os.environ["KUBECONFIG"] = os.path.join(STAGE_PATH, "kubeconfig")
 
 # --- Utility Functions ---
 def mod_kubeconfig(private_endpoint: str = None):
+    """Modify Kubeconfig with private endpoint if applicable"""
     if not private_endpoint:
         return
 
-    with open(os.environ["KUBECONFIG"], "r") as f:
+    with open(os.environ["KUBECONFIG"], "r", encoding="utf-8") as f:
         lines = f.read().splitlines()
 
-    with open(os.environ["KUBECONFIG"], "w") as f:
+    with open(os.environ["KUBECONFIG"], "w", encoding="utf-8") as f:
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("server:"):
-                f.write(f"server: https://{private_endpoint}:6443\n")
+                # Preserve indentation
+                indent = line[: len(line) - len(line.lstrip())]
+                f.write(f"{indent}server: https://{private_endpoint}:6443\n")
             elif stripped.startswith("certificate-authority-data:"):
-                f.write("insecure-skip-tls-verify: true\n")
+                # Preserve indentation
+                indent = line[: len(line) - len(line.lstrip())]
+                f.write(f"{indent}insecure-skip-tls-verify: true\n")
             else:
                 f.write(line + "\n")
+
+    print("✅ Modified kubeconfig with private endpoint.\n")
+
 
 def run_cmd(cmd, capture_output=True):
     """Generic subprocess execution"""
@@ -52,15 +60,17 @@ def run_cmd(cmd, capture_output=True):
         return "", str(e), 1
 
 
-def retry(func, retries=3, delay=10):
-    """Retry a function with given arguments on failure."""
+def retry(func, retries=5, delay=15):
+    """Retry a function with given arguments on failure using exponential backoff (x2)."""
+    current_delay = delay
     for attempt in range(1, retries + 1):
         print(f"🔁 Attempt {attempt}/{retries}")
         if func():
             return True
         if attempt < retries:
-            print(f"⏳ Retrying in {delay} seconds...")
-            time.sleep(delay)
+            print(f"⏳ Retrying in {current_delay} seconds...")
+            time.sleep(current_delay)
+            current_delay *= 2  # Exponential backoff: double the delay
     print("🚨 Maximum retries reached. Exiting.")
     sys.exit(1)
 
@@ -175,8 +185,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Apply a Helm chart and a Kubernetes manifest.")
     parser.add_argument("release_name", help="Helm release name")
     parser.add_argument("namespace", help="Kubernetes namespace")
+    parser.add_argument("--private_endpoint", nargs="?", const=None, default=None, help="Kubernetes Private Endpoint")
     args = parser.parse_args()
 
+    mod_kubeconfig(args.private_endpoint)
     apply_manifest()
     patch_oracle_operator()
     apply_helm_chart(args.release_name, args.namespace)

@@ -48,7 +48,7 @@ locals {
     },
     "Control Plane to K8s Services." : {
       protocol    = 6, port = 443,
-      destination = data.oci_core_services.core_services.services.0.cidr_block, destination_type = "SERVICE_CIDR_BLOCK"
+      destination = var.oci_services.cidr_block, destination_type = "SERVICE_CIDR_BLOCK"
     },
     "K8s API Endpoint to Workers" : {
       protocol    = 6, port = -1
@@ -93,7 +93,7 @@ locals {
     },
     "Workers to K8s Services." : {
       protocol    = 6, port = -1, port_min = 443, port_max = 443,
-      destination = data.oci_core_services.core_services.services.0.cidr_block, destination_type = "SERVICE_CIDR_BLOCK"
+      destination = var.oci_services.cidr_block, destination_type = "SERVICE_CIDR_BLOCK"
     },
     "Workers to the Internet." : {
       protocol    = 6, port = -1

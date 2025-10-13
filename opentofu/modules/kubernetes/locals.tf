@@ -5,6 +5,8 @@
 // Oracle Resource Manager
 locals {
   create_orm_pe = var.orm_install && !var.k8s_api_is_public
+  orm_pe        = local.create_orm_pe ? data.oci_resourcemanager_private_endpoint_reachable_ip.orm_pe_reachable_ip[0].ip_address : ""
+
 }
 
 // Region Mapping

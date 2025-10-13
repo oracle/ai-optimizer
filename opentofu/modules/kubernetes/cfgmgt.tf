@@ -59,7 +59,7 @@ resource "null_resource" "apply" {
   }
   provisioner "local-exec" {
     command = <<EOT
-      python3 ${path.root}/cfgmgt/apply.py ${var.label_prefix} ${var.label_prefix}
+      python3 ${path.root}/cfgmgt/apply.py ${var.label_prefix} ${var.label_prefix} --private_endpoint ${local.orm_pe}
     EOT
   }
   depends_on = [

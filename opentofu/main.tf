@@ -33,6 +33,8 @@ module "network" {
   compartment_id = local.compartment_ocid
   label_prefix   = local.label_prefix
   infra          = var.infrastructure
+  oci_services   = data.oci_core_services.core_services.services.0
+
 }
 
 // Load Balancer
@@ -85,6 +87,7 @@ module "vm" {
   tenancy_id            = var.tenancy_ocid
   compartment_id        = local.compartment_ocid
   vcn_id                = module.network.vcn_ocid
+  oci_services          = data.oci_core_services.core_services.services.0
   lb_id                 = oci_load_balancer_load_balancer.lb.id
   lb_client_port        = local.lb_client_port
   lb_server_port        = local.lb_server_port
@@ -113,6 +116,7 @@ module "kubernetes" {
   tenancy_id                     = var.tenancy_ocid
   compartment_id                 = local.compartment_ocid
   vcn_id                         = module.network.vcn_ocid
+  oci_services                   = data.oci_core_services.core_services.services.0
   region                         = var.region
   lb                             = oci_load_balancer_load_balancer.lb
   adb_id                         = oci_database_autonomous_database.default_adb.id
@@ -134,7 +138,7 @@ module "kubernetes" {
   public_subnet_id               = module.network.public_subnet_ocid
   private_subnet_id              = module.network.private_subnet_ocid
   lb_nsg_id                      = oci_core_network_security_group.lb.id
-  orm_install                    = var.orm_install
+  orm_install                    = var.current_user_ocid != ""
   providers = {
     oci.home_region = oci.home_region
   }

@@ -33,6 +33,15 @@ variable "vcn_id" {
   type = string
 }
 
+variable "oci_services" {
+  description = "OCI Services Network object containing id, name, and cidr_block"
+  type = object({
+    cidr_block = string
+    id         = string
+    name       = string
+  })
+}
+
 variable "private_subnet_id" {
   type = string
 }

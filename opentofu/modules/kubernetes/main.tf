@@ -3,9 +3,12 @@
 # spell-checker: disable
 
 resource "random_string" "api_key" {
-  length  = 32
-  special = false
-  upper   = false
+  length           = 32
+  special          = true
+  upper            = true
+  lower            = true
+  numeric          = true
+  override_special = "!@#$%^&*()-_=+[]{}|:,.<>?"
 }
 
 // oci_artifacts_container_repository
@@ -50,10 +53,9 @@ resource "oci_containerengine_cluster" "default_cluster" {
   }
 
   endpoint_config {
-    // Avoid K8s destruction by limiting access via is_public_ip_enabled and nsg_ids.  Keep on public subnet.
-    is_public_ip_enabled = var.k8s_api_is_public
-    nsg_ids              = [oci_core_network_security_group.k8s_api_endpoint.id]
-    subnet_id            = var.public_subnet_id
+    // Avoid K8s destruction by limiting access via nsg_ids.  Keep on public subnet.
+    nsg_ids   = [oci_core_network_security_group.k8s_api_endpoint.id]
+    subnet_id = var.public_subnet_id
   }
 
   image_policy_config {

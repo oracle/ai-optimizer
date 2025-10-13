@@ -35,7 +35,7 @@ variable "user_ocid" {
 }
 
 variable "current_user_ocid" {
-  description = "The ID of the user that terraform will use to create the resources. ORM compatible"
+  description = "DO NOT SET!  This is strictly used for OCI ORM Installs."
   type        = string
   default     = ""
 }
@@ -57,12 +57,6 @@ variable "private_key_path" {
   description = "The path to the OCI API private key."
   type        = string
   default     = ""
-}
-
-variable "orm_install" {
-  description = "Deployment via Oracle Resource Manager."
-  type        = bool
-  default     = false
 }
 
 // Infrastructure Type/Label
@@ -215,9 +209,9 @@ variable "k8s_cpu_node_pool_size" {
 }
 
 variable "k8s_node_pool_gpu_deploy" {
-  description = "Deploy a GPU Node Pool"
+  description = "Deploy a GPU Node Pool?"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "k8s_gpu_node_pool_size" {

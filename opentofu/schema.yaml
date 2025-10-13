@@ -94,6 +94,8 @@ variableGroups:
   #########################################################################
   - title: "Database Options"
     variables:
+      - byo_db
+      - byo_db_type
       - adb_license_model
       - adb_edition
       - adb_whitelist_cidrs
@@ -101,6 +103,13 @@ variableGroups:
       - adb_is_cpu_auto_scaling_enabled
       - adb_data_storage_size_in_gb
       - adb_is_storage_auto_scaling_enabled
+      - byo_db_username
+      - byo_db_password
+      - byo_adb_compartment
+      - byo_adb_ocid
+      - byo_odb_host
+      - byo_odb_port
+      - byo_odb_service
     visible: true
 
 ###########################################################################
@@ -261,6 +270,22 @@ variables:
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
 
   #########################################################################
+  byo_db:
+    type: boolean
+    title: "Bring Your Own Oracle Database?"
+    required: true
+
+  byo_db_type:
+    title: "Bring Your Own Database - Type"
+    type: enum
+    required: true
+    default: "ADB-S"
+    enum:
+      - "ADB-S"
+      - "Other"
+    visible: byo_db
+
+  ### Provision New ADB ###
   adb_license_model:
     type: enum
     title: "Autonomous Database License Model"
@@ -269,6 +294,9 @@ variables:
     enum:
       - "LICENSE_INCLUDED"
       - "BRING_YOUR_OWN_LICENSE"
+    visible:
+      not:
+        - byo_db
 
   adb_edition:
     type: enum
@@ -280,6 +308,8 @@ variables:
       - "STANDARD_EDITION"
     visible:
       and:
+        - not:
+            - byo_db
         - eq:
             - adb_license_model
             - BRING_YOUR_OWN_LICENSE
@@ -290,6 +320,9 @@ variables:
     required: true
     default: "0.0.0.0/0"
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
+    visible:
+      not:
+        - byo_db
 
   adb_ecpu_core_count:
     type: number
@@ -297,11 +330,17 @@ variables:
     required: true
     minimum: 2
     multipleOf: 1
+    visible:
+      not:
+        - byo_db
 
   adb_is_cpu_auto_scaling_enabled:
     type: boolean
     title: "Allow Autonomous Database CPU Auto Scaling? (3x CPU)"
     required: true
+    visible:
+      not:
+        - byo_db
 
   adb_data_storage_size_in_gb:
     type: number
@@ -311,11 +350,96 @@ variables:
     minimum: 20
     maximum: 393216
     multipleOf: 1
+    visible:
+      not:
+        - byo_db
 
   adb_is_storage_auto_scaling_enabled:
     type: boolean
     title: "Allow Autonomous Database Storage Auto Scaling?"
     required: true
+    visible:
+      not:
+        - byo_db
+
+  ### BYODB - AuthN ###
+  byo_db_username:
+    title: "Bring Your Own Database - Username"
+    type: string
+    default: "SYSTEM"
+    required: true
+    visible: byo_db
+
+  byo_db_password:
+    title: "Bring Your Own Database - Password"
+    type: password
+    default: ""
+    required: true
+    confirmation: false
+    visible: byo_db
+
+  ### BYODB - Use Existing ADB-S (Compartment/OCID) ###
+  byo_adb_compartment:
+    title: "BYO ADB-S Compartment"
+    description: "BYO ADB-S Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: compartment_ocid
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "ADB-S"
+
+  byo_adb_ocid:
+    title: "Bring Your Own Database - Autonomous Database"
+    type: oci:database:autonomousdatabase:id
+    required: true
+    dependsOn:
+      compartmentId: byo_adb_compartment
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "ADB-S"
+
+  ### BYODB - Use Existing Other (Host:Port/Service_Name) ###
+  byo_odb_host:
+    title: "Bring Your Own Database - Host"
+    type: string
+    default: "mydb.domain.com"
+    required: true
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "Other"
+
+  byo_odb_port:
+    title: "Bring Your Own Database - Port"
+    type: integer
+    default: 1521
+    required: true
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "Other"
+
+  byo_odb_service:
+    title: "Bring Your Own Database - Service Name"
+    type: string
+    default: "OPTIMIZER_TP"
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "Other"
 
 ###########################################################################
 # Output Groups
@@ -335,30 +459,6 @@ outputGroups:
         - infrastructure
         - "Kubernetes"
 
-  - title: "Container Image Repositories"
-    outputs:
-      - client_repository
-      - server_repository
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
-
-  - title: "Kubernetes Manifest"
-    outputs:
-      - k8s_manifest
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
-
-  - title: "Helm Values"
-    outputs:
-      - helm_values
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
 ###########################################################################
 outputs:
   client_url:
