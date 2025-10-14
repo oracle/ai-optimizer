@@ -56,6 +56,7 @@ class VectorStoreRefreshStatus(BaseModel):
     new_files: int = Field(default=0, description="Number of new files found")
     updated_files: int = Field(default=0, description="Number of updated files found")
     total_chunks: int = Field(default=0, description="Total number of chunks processed")
+    total_chunks_in_store: int = Field(default=0, description="Total number of chunks in vector store after refresh")
     errors: Optional[list[str]] = Field(default=[], description="Any errors encountered")
 
 

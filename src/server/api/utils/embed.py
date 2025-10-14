@@ -374,52 +374,56 @@ def populate_vs(
 ##########################################
 def get_vector_store_by_alias(db_details: schema.Database, alias: str) -> schema.DatabaseVectorStorage:
     """Retrieve vector store configuration by alias"""
+    import json
     db_conn = utils_databases.connect(db_details)
 
     try:
-        # Query for vector store with the given alias
+        # Query for vector store with the given alias - using all_tab_comments like _get_vs does
         query = """
-            SELECT table_name, table_comment
-            FROM user_tables
-            WHERE table_name LIKE 'VS_%'
-            AND table_comment LIKE '%GENAI:%'
-            AND REGEXP_SUBSTR(table_comment, 'alias:"([^"]+)"', 1, 1, NULL, 1) = :alias
+            SELECT ut.table_name,
+                   REPLACE(utc.comments, 'GENAI: ', '') AS comments
+            FROM all_tab_comments utc, all_tables ut
+            WHERE utc.table_name = ut.table_name
+            AND utc.comments LIKE 'GENAI:%'
         """
 
         cursor = db_conn.cursor()
-        cursor.execute(query, {"alias": alias})
+        cursor.execute(query)
+        results = cursor.fetchall()
+
+        # Find the vector store with matching alias
+        for table_name, comments in results:
+            try:
+                comments_dict = json.loads(comments)
+                if comments_dict.get("alias") == alias:
+                    vs_config = schema.DatabaseVectorStorage(
+                        vector_store=table_name,
+                        **comments_dict
+                    )
+                    return vs_config
+            except (json.JSONDecodeError, KeyError):
+                logger.warning(f"Failed to parse comments for table {table_name}")
+                continue
+
+        raise ValueError(f"Vector store with alias '{alias}' not found")
+
+    finally:
+        utils_databases.disconnect(db_conn)
+
+
+def get_total_chunks_count(db_details: schema.Database, vector_store_name: str) -> int:
+    """Get total number of chunks in the vector store"""
+    db_conn = utils_databases.connect(db_details)
+
+    try:
+        query = f'SELECT COUNT(*) FROM "{vector_store_name}"'
+        cursor = db_conn.cursor()
+        cursor.execute(query)
         result = cursor.fetchone()
-
-        if not result:
-            raise ValueError(f"Vector store with alias '{alias}' not found")
-
-        table_name, comment = result
-
-        # Parse the comment to extract parameters
-        import re
-
-        # Extract parameters from comment using regex
-        model_match = re.search(r'model:"([^"]+)"', comment)
-        chunk_size_match = re.search(r'chunk_size:(\d+)', comment)
-        chunk_overlap_match = re.search(r'chunk_overlap:(\d+)', comment)
-        distance_metric_match = re.search(r'distance_metric:"([^"]+)"', comment)
-        index_type_match = re.search(r'index_type:"([^"]+)"', comment)
-
-        if not all([model_match, chunk_size_match, chunk_overlap_match, distance_metric_match, index_type_match]):
-            raise ValueError(f"Could not parse vector store parameters from comment")
-
-        vs_config = schema.DatabaseVectorStorage(
-            vector_store=table_name,
-            alias=alias,
-            model=model_match.group(1),
-            chunk_size=int(chunk_size_match.group(1)),
-            chunk_overlap=int(chunk_overlap_match.group(1)),
-            distance_metric=distance_metric_match.group(1),
-            index_type=index_type_match.group(1)
-        )
-
-        return vs_config
-
+        return result[0] if result else 0
+    except Exception as e:
+        logger.warning(f"Could not count chunks in {vector_store_name}: {e}")
+        return 0
     finally:
         utils_databases.disconnect(db_conn)
 
@@ -429,32 +433,62 @@ def get_processed_objects_metadata(db_details: schema.Database, vector_store_nam
     db_conn = utils_databases.connect(db_details)
 
     try:
-        # Query metadata from the vector store table
-        query = f"""
-            SELECT DISTINCT
-                JSON_VALUE(metadata, '$.filename') as filename,
-                JSON_VALUE(metadata, '$.etag') as etag,
-                JSON_VALUE(metadata, '$.time_modified') as time_modified,
-                JSON_VALUE(metadata, '$.size') as size
-            FROM {vector_store_name}
-            WHERE JSON_VALUE(metadata, '$.filename') IS NOT NULL
-        """
-
+        # Retrieve all metadata and parse in Python since JSON_VALUE doesn't work
+        logger.info(f"Retrieving metadata from {vector_store_name}")
         cursor = db_conn.cursor()
+
+        # Get all unique metadata entries - metadata is automatically converted to dict by Oracle driver
+        query = f'SELECT DISTINCT metadata FROM "{vector_store_name}"'
+        logger.info(f"SQL Query: {query}")
         cursor.execute(query)
         results = cursor.fetchall()
+        logger.info(f"Query returned {len(results)} metadata entries")
 
+        # Parse metadata in Python to extract filename, etag, etc.
         processed_objects = {}
         for row in results:
-            filename, etag, time_modified, size = row
-            processed_objects[filename] = {
-                "etag": etag,
-                "time_modified": time_modified,
-                "size": int(size) if size else None
-            }
+            metadata = row[0]
+            # metadata is already a dict thanks to Oracle driver
+            if isinstance(metadata, dict) and 'filename' in metadata:
+                filename = metadata.get('filename')
+                if filename:
+                    processed_objects[filename] = {
+                        "etag": metadata.get('etag'),
+                        "time_modified": metadata.get('time_modified'),
+                        "size": metadata.get('size')
+                    }
 
-        return processed_objects
+        if processed_objects:
+            logger.info(f"Found {len(processed_objects)} previously processed objects (new format) in {vector_store_name}")
+            return processed_objects
+        else:
+            # Try old format - check for 'source' field in metadata
+            logger.info("No filename field found, trying old format with 'source' field")
+            for row in results:
+                metadata = row[0]
+                if isinstance(metadata, dict) and 'source' in metadata:
+                    source_path = metadata.get('source')
+                    if source_path:
+                        filename = os.path.basename(source_path)
+                        # For old format, we don't have etag/time_modified, so just mark as existing
+                        processed_objects[filename] = {
+                            "etag": None,
+                            "time_modified": None,
+                            "size": None
+                        }
 
+            if processed_objects:
+                logger.info(f"Found {len(processed_objects)} previously processed objects (old format) in {vector_store_name}")
+                logger.info("Note: Old metadata format detected. Files will be re-processed with new metadata on next refresh.")
+                return processed_objects
+            else:
+                logger.info(f"No previously processed objects found in {vector_store_name}")
+                return {}
+
+    except Exception as e:
+        # If table doesn't have metadata column or query fails, return empty dict
+        logger.warning(f"Could not retrieve processed objects metadata from {vector_store_name}: {e}")
+        return {}
     finally:
         utils_databases.disconnect(db_conn)
 
@@ -528,18 +562,26 @@ def refresh_vector_store_from_bucket(
         )
 
         # Update metadata with bucket information
+        logger.info(f"Updating metadata for {len(split_docos)} documents")
+        metadata_updated_count = 0
         for doc in split_docos:
             if "source" in doc.metadata:
                 filename = os.path.basename(doc.metadata["source"])
                 # Find the corresponding bucket object
-                bucket_obj = next((obj for obj in bucket_objects if obj["name"] == filename), None)
+                bucket_obj = next((obj for obj in bucket_objects if obj["name"] == filename or obj["name"].endswith(filename)), None)
                 if bucket_obj:
                     doc.metadata.update({
+                        "filename": bucket_obj["name"],  # Store the bucket object name for tracking
                         "etag": bucket_obj["etag"],
                         "time_modified": bucket_obj["time_modified"],
                         "size": bucket_obj["size"],
                         "bucket_name": bucket_name
                     })
+                    metadata_updated_count += 1
+                    logger.debug(f"Updated metadata for {filename}: etag={bucket_obj['etag']}")
+                else:
+                    logger.warning(f"Could not find bucket object for {filename}")
+        logger.info(f"Updated metadata for {metadata_updated_count}/{len(split_docos)} documents")
 
         # Populate vector store
         populate_vs(

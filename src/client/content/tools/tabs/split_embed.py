@@ -288,13 +288,41 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
     embed_alias_size, _ = st.columns([0.5, 0.5])
     embed_alias_invalid = False
     embed_request.vector_store = None
-    embed_request.alias = embed_alias_size.text_input(
-        "Vector Store Alias:",
-        max_chars=20,
-        help=help_text.help_dict["embed_alias"],
-        key="selected_embed_alias",
-        placeholder="Press Enter to set.",
-    )
+
+    # Create dropdown options from existing vector stores
+    existing_vs_names = [vs.get("alias", "") for vs in existing_vs if vs.get("alias")]
+    vs_options = ["Create new..."] + existing_vs_names
+
+    with embed_alias_size:
+        # Dropdown for existing vector stores
+        selected_vs = st.selectbox(
+            "Select or Create Vector Store:",
+            options=vs_options,
+            index=0,
+            help="Select an existing vector store or create a new one",
+            key="selected_vs_dropdown"
+        )
+
+        # Show text input if "Create new..." is selected or for editing
+        if selected_vs == "Create new...":
+            embed_request.alias = st.text_input(
+                "New Vector Store Alias:",
+                max_chars=20,
+                help=help_text.help_dict["embed_alias"],
+                key="selected_embed_alias",
+                placeholder="Press Enter to set.",
+            )
+        else:
+            # Use the selected existing vector store name
+            embed_request.alias = selected_vs
+            st.text_input(
+                "Vector Store Alias:",
+                value=selected_vs,
+                max_chars=20,
+                help=help_text.help_dict["embed_alias"],
+                key="selected_embed_alias",
+                disabled=True,
+            )
     pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
     if embed_request.alias and not re.match(pattern, embed_request.alias):
         st.error(
@@ -322,7 +350,7 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
         key="selected_rate_limit",
     )
 
-    return embed_alias_invalid, rate_limit
+    return embed_alias_invalid, rate_limit, existing_vs
 
 
 def _handle_vector_store_population(
@@ -336,6 +364,7 @@ def _handle_vector_store_population(
     rate_limit: int,
     db_connection: str,
     sql_query: str,
+    existing_vs: list,
 ) -> None:
     """Handle vector store population button and processing"""
     if not populate_button_disabled and embed_request.vector_store:
@@ -347,13 +376,33 @@ def _handle_vector_store_population(
         state.running = True
     if not embed_request.alias:
         st.info("Please provide a Vector Store Alias.")
-    elif st.button(
-        "Populate Vector Store",
-        type="primary",
-        key="button_populate",
-        disabled=state.running,
-        help=button_help,
-    ):
+
+    # Create two columns for buttons
+    col_populate, col_refresh = st.columns([0.5, 0.5])
+
+    with col_populate:
+        populate_clicked = st.button(
+            "Populate Vector Store",
+            type="primary",
+            key="button_populate",
+            disabled=state.running,
+            help=button_help,
+        )
+
+    with col_refresh:
+        # Only show refresh button for OCI source and if vector store exists
+        vs_exists = any(d.get("vector_store") == embed_request.vector_store for d in existing_vs)
+        refresh_disabled = file_source != "OCI" or not vs_exists or state.running or not embed_request.alias
+        refresh_help = "Refresh existing vector store with new/modified files from OCI bucket" if vs_exists else "Vector store must exist first"
+
+        refresh_clicked = st.button(
+            "Refresh from OCI",
+            key="button_refresh",
+            disabled=refresh_disabled,
+            help=refresh_help,
+        )
+
+    if populate_clicked:
         try:
             with st.spinner("Populating Vector Store... please be patient.", show_time=True):
                 endpoint = None
@@ -392,6 +441,50 @@ def _handle_vector_store_population(
             get_databases(force=True)
         except api_call.ApiError as ex:
             st.error(ex, icon="🚨")
+
+    elif refresh_clicked:
+        # Handle refresh button click
+        state.running = True
+        try:
+            with st.spinner("Refreshing Vector Store... checking for new/modified files.", show_time=True):
+                # Call the refresh endpoint
+                refresh_request = {
+                    "vector_store_alias": embed_request.alias,
+                    "bucket_name": src_bucket,
+                    "auth_profile": None,  # Set to None when using client header
+                    "rate_limit": rate_limit if rate_limit else 0,
+                }
+
+                response = api_call.post(
+                    endpoint="v1/embed/refresh",
+                    params={"client": state.client_settings["client"]},
+                    payload={"json": refresh_request},
+                    timeout=7200,
+                )
+
+            # Display results
+            if response.get("new_files", 0) > 0 or response.get("updated_files", 0) > 0:
+                st.success(
+                    f"✅ Refresh Complete!\n\n"
+                    f"- New files: {response.get('new_files', 0)}\n"
+                    f"- Updated files: {response.get('updated_files', 0)}\n"
+                    f"- Chunks added: {response.get('total_chunks', 0)}\n"
+                    f"- Total chunks in store: {response.get('total_chunks_in_store', 0)}",
+                    icon="✅"
+                )
+            else:
+                st.info(
+                    f"No new or modified files found in the bucket.\n\n"
+                    f"Total chunks in store: {response.get('total_chunks_in_store', 0)}",
+                    icon="ℹ️"
+                )
+
+            get_databases(force=True)
+
+        except api_call.ApiError as ex:
+            st.error(f"Refresh failed: {ex}", icon="🚨")
+        finally:
+            state.running = False
 
 
 #############################################################################
@@ -441,7 +534,7 @@ def display_split_embed() -> None:
         sql_query,
     ) = _render_file_source_section(file_sources, oci_setup)
 
-    embed_alias_invalid, rate_limit = _render_vector_store_section(embed_request)
+    embed_alias_invalid, rate_limit, existing_vs = _render_vector_store_section(embed_request)
 
     if not embed_alias_invalid:
         _handle_vector_store_population(
@@ -455,6 +548,7 @@ def display_split_embed() -> None:
             rate_limit,
             db_connection,
             sql_query,
+            existing_vs,
         )
 
 

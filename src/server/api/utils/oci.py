@@ -348,6 +348,11 @@ def detect_changed_objects(
             # Check if object has been modified
             last_processed = processed_objects[obj_name]
 
+            # If old format (no etag), skip - assume unchanged to avoid duplicates
+            if last_processed.get("etag") is None and last_processed.get("time_modified") is None:
+                logger.debug(f"Skipping {obj_name} - found in old metadata format (assumed unchanged)")
+                continue
+
             # Compare etag and modification time
             if (obj["etag"] != last_processed.get("etag") or
                 obj["time_modified"] != last_processed.get("time_modified")):

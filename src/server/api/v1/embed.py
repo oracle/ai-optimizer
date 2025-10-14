@@ -234,6 +234,9 @@ async def refresh_vector_store(
         changed_objects = new_objects + modified_objects
 
         if not changed_objects:
+            # Get total chunks in store
+            total_chunks_in_store = utils_embed.get_total_chunks_count(db_details, vs_config.vector_store)
+
             return JSONResponse(
                 status_code=200,
                 content=schema.VectorStoreRefreshStatus(
@@ -242,7 +245,8 @@ async def refresh_vector_store(
                     processed_files=0,
                     new_files=0,
                     updated_files=0,
-                    total_chunks=0
+                    total_chunks=0,
+                    total_chunks_in_store=total_chunks_in_store
                 ).model_dump()
             )
 
@@ -260,6 +264,9 @@ async def refresh_vector_store(
             rate_limit=request.rate_limit
         )
 
+        # Get total chunks in store after refresh
+        total_chunks_in_store = utils_embed.get_total_chunks_count(db_details, vs_config.vector_store)
+
         return JSONResponse(
             status_code=200,
             content=schema.VectorStoreRefreshStatus(
@@ -269,6 +276,7 @@ async def refresh_vector_store(
                 new_files=len(new_objects),
                 updated_files=len(modified_objects),
                 total_chunks=result.get("total_chunks", 0),
+                total_chunks_in_store=total_chunks_in_store,
                 errors=result.get("errors", [])
             ).model_dump()
         )
