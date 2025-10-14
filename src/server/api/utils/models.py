@@ -277,6 +277,7 @@ def get_litellm_config(
     if giskard:
         litellm_config.pop("model", None)
         litellm_config.pop("temperature", None)
+        litellm_config.pop("max_tokens", None)
 
     logger.debug("LiteLLM Config: %s", litellm_config)
 
