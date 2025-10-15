@@ -12,7 +12,7 @@ server:
     type: "ADB-FREE"
     image:
       repository: container-registry.oracle.com/database/adb-free
-      tag: latest-23ai
+      tag: latest
   # oci_config:
   #   fileSecretName: "oci-config-file"
 client:
