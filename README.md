@@ -7,7 +7,7 @@
 
 ## Description
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle Database 23ai** AI VectorSearch and SelectAI, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle AI Database** VectorSearch and SelectAI, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
 
 ## AI Optimizer Features
 
@@ -25,7 +25,7 @@ For more information, including more details on **Setup and Configuration** plea
 
 ### Prerequisites
 
-- Oracle Database 23ai incl. Oracle Database 23ai Free
+- Oracle AI Database incl. Oracle AI Database Free
 - Python 3.11 (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
 - Access to an Embedding and Chat Model:
@@ -89,7 +89,7 @@ To run the application in a container; download the [source](https://github.com/
 
 The **AI Optimizer** can be deployed in Oracle Cloud Infrastructure (OCI) using Infrastructure as Code (IaC).
 
-Choose either a light-weight Virtual Machine or robust Oracle Kubernetes Engine deployment, both with an Oracle Autonomous Database 23ai:  
+Choose either a light-weight Virtual Machine or robust Oracle Kubernetes Engine deployment, both with an Oracle Autonomous Database:  
 [![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
 
 For more information, please visit the [IaC Documentation](https://oracle.github.io/ai-optimizer/advanced/iac/index.html).

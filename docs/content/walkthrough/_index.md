@@ -11,7 +11,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore mxbai, ollama, sqlplus, sysdba, spfile, freepdb, tablespace, firewalld, hnsw
 -->
 
-This walkthrough will guide you through a basic installation of the {{< full_app_ref >}}. It will allow you to experiment with GenAI, using Retrieval-Augmented Generation (**RAG**) with Oracle Database 23ai at the core.
+This walkthrough will guide you through a basic installation of the {{< full_app_ref >}}. It will allow you to experiment with GenAI, using Retrieval-Augmented Generation (**RAG**) with the Oracle AI Database at the core.
 
 By the end of the walkthrough you will be familiar with:
 
@@ -50,7 +50,7 @@ You will run four container images to establish the "Infrastructure":
 
 - On-Premises **LLM** - llama3.1
 - On-Premises Embedding Model - mxbai-embed-large
-- Vector Storage/SelectAI - Oracle Database 23ai Free
+- Vector Storage/SelectAI - Oracle AI Database Free
 - The {{< short_app_ref >}}
 
 ### LLM - llama3.1
@@ -158,11 +158,11 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
    podman run -d --name ai-optimizer-aio --network=host localhost/ai-optimizer-aio:latest
    ```
 
-### Vector Storage - Oracle Database 23ai Free
+### Vector Storage - Oracle AI Database Free
 
-AI Vector Search in Oracle Database 23ai provides the ability to store and query private business data using a natural language interface. The {{< short_app_ref >}} uses these capabilities to provide more accurate and relevant **LLM** responses via Retrieval-Augmented Generation (**RAG**). [Oracle Database 23ai Free](https://www.oracle.com/uk/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
+AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The {{< short_app_ref >}} uses these capabilities to provide more accurate and relevant **LLM** responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
 
-To start Oracle Database 23ai Free:
+To start the Oracle AI Database Free:
 
 1. Start the container:
 
@@ -259,7 +259,7 @@ To configure the On-Premises Embedding Model, navigate back to the _Configuratio
 
 ### Configure the Database
 
-To configure Oracle Database 23ai Free, navigate to the _Configuration_ screen and _Databases_ tab:
+To configure Oracle AI Database Free, navigate to the _Configuration_ screen and _Databases_ tab:
 
 1. Enter the Database Username: `WALKTHROUGH`
 1. Enter the Database Password for the database user: `OrA_41_OpTIMIZER`
@@ -304,7 +304,7 @@ After the splitting and embedding process completes, you can query the Vector St
 
 From the command line:
 
-1. Connect to the Oracle Database 23ai Database:
+1. Connect to the Oracle AI Database:
 
    ```bash
    podman exec -it ai-optimizer-db sqlplus 'WALKTHROUGH/OrA_41_OpTIMIZER@FREEPDB1'
@@ -326,12 +326,12 @@ For this guided experiment, perform the following:
 
 1. Ask the _ChatBot_:
    ```text
-   In Oracle Database 23ai, how do I use AHF?
+   In Oracle AI Database, how do I use AHF?
    ```
 
 Responses may vary, but generally the _ChatBot_'s response will be inaccurate, including:
 
-- Not understanding that 23ai is an Oracle Database release. This is known as knowledge-cutoff.
+- Not understanding that there is a Oracle AI Database release. This is known as knowledge-cutoff.
 - Suggestions that AFH has to do with a non-existant Hybrid Feature and running `emcli` commands. These are hallucinations.
 
 Now select "Vector Search" in the Toolkit options and simply ask: `Are you sure?`

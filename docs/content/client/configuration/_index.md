@@ -25,7 +25,7 @@ For more information on the currently supported models and how to configure them
 
 ## 🗄️ Database Configuration
 
-A 23ai Oracle Database is required to store the embedding vectors to enable Retrieval-Augmented Generation (RAG). The ChatBot can be used without a configured database, but you will be unable to split/embed or experiment with RAG in the ChatBot.
+Oracle AI Database is required to store the embedding vectors to enable Retrieval-Augmented Generation (RAG). The ChatBot can be used without a configured database, but you will be unable to split/embed or experiment with RAG in the ChatBot.
 
 For more information on configuring the database, please read about [Database Configuration](db_config/).
 
