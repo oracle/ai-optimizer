@@ -147,6 +147,10 @@ def connect(config: Database) -> oracledb.Connection:
             "DPY-4026": LookupError,
         }
         if code in mapping:
+            # Custom message for ORA-28009
+            if code == "ORA-28009":
+                username = db_authn.get("user", "unknown")
+                raise mapping[code](f"Connecting as {username} is not permitted") from ex
             raise mapping[code](f"- {error.message}") from ex
         # If not recognized, re-raise untouched
         raise
