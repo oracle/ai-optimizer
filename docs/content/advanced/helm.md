@@ -146,7 +146,7 @@ A containerized Autonomous Oracle Database:
     type: "ADB-FREE"
     image:
       repository: container-registry.oracle.com/database/adb-free
-      tag: latest-23ai
+      tag: latest
 ```
 
 **ADB-S**

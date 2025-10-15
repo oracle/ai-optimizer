@@ -140,15 +140,23 @@ def connect(config: Database) -> oracledb.Connection:
         error = ex.args[0] if ex.args else None
         code = getattr(error, "full_code", None)
         mapping = {
+            "ORA-28009": PermissionError,
             "ORA-01017": PermissionError,
             "DPY-6005": ConnectionError,
             "DPY-4000": LookupError,
             "DPY-4026": LookupError,
         }
         if code in mapping:
+            # Custom message for ORA-28009
+            if code == "ORA-28009":
+                username = db_authn.get("user", "unknown")
+                raise mapping[code](f"Connecting as {username} is not permitted") from ex
             raise mapping[code](f"- {error.message}") from ex
         # If not recognized, re-raise untouched
         raise
+    except OSError as ex:
+        raise ConnectionError(f"Error connecting to database: {ex}") from ex
+    
     logger.debug("Connected to Databases: %s", config.dsn)
 
     return conn
