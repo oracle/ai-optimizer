@@ -143,8 +143,8 @@ variable "adb_ecpu_core_count" {
   type        = number
   default     = 2
   validation {
-    condition     = var.adb_ecpu_core_count >= 2
-    error_message = "Must be equal or greater than 2."
+    condition     = var.adb_ecpu_core_count >= 2 && var.adb_ecpu_core_count <= 512
+    error_message = "ADB ECPU count must be between 2 and 512"
   }
 }
 
