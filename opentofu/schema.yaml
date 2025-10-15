@@ -103,7 +103,6 @@ variableGroups:
       - adb_is_cpu_auto_scaling_enabled
       - adb_data_storage_size_in_gb
       - adb_is_storage_auto_scaling_enabled
-      - byo_db_username
       - byo_db_password
       - byo_adb_compartment
       - byo_adb_ocid
@@ -363,21 +362,9 @@ variables:
         - byo_db
 
   ### BYODB - AuthN ###
-  byo_db_username:
-    title: "Bring Your Own Database - Username"
-    type: string
-    default: "SYSTEM"
-    required: true
-    visible:
-      and:
-        - byo_db
-        - eq:
-            - byo_db_type
-            - "OTHER"
-
   byo_db_password:
     title: "Bring Your Own Database - Password"
-    description: "For ADB-S, please provide the ADMIN password."
+    description: "Password for ADMIN (ADB) or SYSTEM (non-ADB)."
     type: password
     default: ""
     required: true

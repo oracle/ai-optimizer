@@ -91,12 +91,6 @@ variable "byo_db_type" {
   }
 }
 
-variable "byo_db_username" {
-  description = "Bring Your Own Database - Username"
-  type        = string
-  default     = ""
-}
-
 variable "byo_db_password" {
   description = "Bring Your Own Database - Password"
   type        = string

@@ -48,12 +48,16 @@ locals {
   )
 
   db_conn = {
-    username = var.byo_db_type == "OTHER" ? var.byo_db_username : "ADMIN"
+    db_type  = var.byo_db_type == "OTHER" ? "OTHER" : "ADB"
+    username = var.byo_db_type == "OTHER" ? "SYSTEM" : "ADMIN"
     password = (
       var.byo_db_type == "" ? format("%s%s", random_password.adb_char[0].result, random_password.adb_rest[0].result) :
       var.byo_db_password
     )
-    service = var.byo_db_type == "OTHER" ? var.byo_odb_service : format("%s_TP", local.db_name)
+    service = (
+      var.byo_db_type == "OTHER" ? format("%s:%s/%s", var.byo_odb_host, var.byo_odb_port, var.byo_odb_service) :
+      format("%s_TP", local.db_name)
+    )
   }
 }
 

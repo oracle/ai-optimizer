@@ -70,6 +70,7 @@ variable "db_name" {
 
 variable "db_conn" {
   type = object({
+    db_type  = string
     username = string
     password = string
     service  = string

@@ -94,7 +94,10 @@ write_files:
       export DB_USERNAME='AI_OPTIMIZER'
       export DB_PASSWORD='${db_password}'
       export DB_DSN='${db_service}'
-      export DB_WALLET_PASSWORD='${db_password}'
+      if [ ${db_type} == "ADB" ]; then
+        export DB_WALLET_PASSWORD='${db_password}'
+      fi
+
       if ${install_ollama}; then
         export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
       fi
@@ -114,4 +117,4 @@ runcmd:
   - systemctl daemon-reload
   - systemctl enable ai-optimizer.service
   - systemctl start ai-optimizer.service
-  - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz
+  - rm /tmp/app_setup.sh /tmp/root_setup.sh
