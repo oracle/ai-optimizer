@@ -5,7 +5,7 @@
 // Load Balancer
 resource "oci_core_network_security_group" "lb" {
   compartment_id = local.compartment_ocid
-  vcn_id         = module.network.vcn_ocid
+  vcn_id         = local.vcn_ocid
   display_name   = format("%s-lb", local.label_prefix)
   lifecycle {
     ignore_changes = [defined_tags, freeform_tags]
@@ -49,6 +49,6 @@ resource "oci_core_network_security_group_security_rule" "lb_egress" {
   description               = "Loadbalancer VCN Access."
   direction                 = "EGRESS"
   protocol                  = "6"
-  destination               = module.network.private_subnet_cidr_block
+  destination               = local.private_subnet_cidr_block
   destination_type          = "CIDR_BLOCK"
 }

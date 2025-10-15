@@ -28,22 +28,30 @@ locals {
   ])
 }
 
+// Network
+locals {
+  vcn_ocid                  = var.byo_vcn_ocid == "" ? module.network["managed"].vcn_ocid : var.byo_vcn_ocid
+  public_subnet_ocid        = var.byo_vcn_ocid == "" ? module.network["managed"].public_subnet_ocid : var.byo_public_subnet_ocid
+  private_subnet_ocid       = var.byo_vcn_ocid == "" ? module.network["managed"].private_subnet_ocid : var.byo_private_subnet_ocid
+  private_subnet_cidr_block = var.byo_vcn_ocid == "" ? module.network["managed"].private_subnet_cidr_block : data.oci_core_subnet.byo_vcn_private[0].cidr_block
+}
+
 // Database
 locals {
   adb_whitelist_cidrs = concat(
     var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
-    [module.network.vcn_ocid]
+    [local.vcn_ocid]
   )
 
   db_ocid = (
-    var.byo_db_type == "" ? oci_database_autonomous_database.default_adb[0].id :
-    var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb[0].id :
+    var.byo_db_type == "" ? oci_database_autonomous_database.default_adb["managed"].id :
+    var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb["byo"].id :
     "N/A"
   )
 
   db_name = (
     var.byo_db_type == "" ? upper(format("%sDB", local.label_prefix)) :
-    var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb[0].db_name :
+    var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb["byo"].db_name :
     var.byo_odb_service
   )
 

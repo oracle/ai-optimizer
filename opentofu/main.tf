@@ -31,6 +31,7 @@ resource "random_password" "adb_rest" {
 
 // Network
 module "network" {
+  for_each       = var.byo_vcn_ocid == "" ? { managed = true } : {}
   source         = "./modules/network"
   compartment_id = local.compartment_ocid
   label_prefix   = local.label_prefix
@@ -50,7 +51,7 @@ resource "oci_load_balancer_load_balancer" "lb" {
     maximum_bandwidth_in_mbps = var.lb_max_shape
   }
   subnet_ids = [
-    module.network.public_subnet_ocid
+    local.public_subnet_ocid
   ]
   network_security_group_ids = [
     oci_core_network_security_group.lb.id,
@@ -59,7 +60,7 @@ resource "oci_load_balancer_load_balancer" "lb" {
 
 // Autonomous Database
 resource "oci_database_autonomous_database" "default_adb" {
-  count                                = var.byo_db_type == "" ? 1 : 0
+  for_each                             = var.byo_db_type == "" ? { managed = true } : {}
   admin_password                       = local.db_conn.password
   autonomous_maintenance_schedule_type = "REGULAR"
   character_set                        = "AL32UTF8"
@@ -83,13 +84,13 @@ resource "oci_database_autonomous_database" "default_adb" {
 
 // Virtual Machine
 module "vm" {
-  count                 = var.infrastructure == "VM" ? 1 : 0
+  for_each              = var.infrastructure == "VM" ? { managed = true } : {}
   source                = "./modules/vm"
   optimizer_version     = var.optimizer_version
   label_prefix          = local.label_prefix
   tenancy_id            = var.tenancy_ocid
   compartment_id        = local.compartment_ocid
-  vcn_id                = module.network.vcn_ocid
+  vcn_id                = local.vcn_ocid
   oci_services          = data.oci_core_services.core_services.services.0
   lb_id                 = oci_load_balancer_load_balancer.lb.id
   lb_client_port        = local.lb_client_port
@@ -104,7 +105,7 @@ module "vm" {
   compute_cpu_shape     = var.compute_cpu_shape
   compute_gpu_shape     = var.compute_gpu_shape
   availability_domains  = local.availability_domains
-  private_subnet_id     = module.network.private_subnet_ocid
+  private_subnet_id     = local.private_subnet_ocid
   providers = {
     oci.home_region = oci.home_region
   }
@@ -112,12 +113,12 @@ module "vm" {
 
 // Kubernetes
 module "kubernetes" {
-  count                          = var.infrastructure == "Kubernetes" ? 1 : 0
+  for_each                       = var.infrastructure == "Kubernetes" ? { managed = true } : {}
   source                         = "./modules/kubernetes"
   label_prefix                   = local.label_prefix
   tenancy_id                     = var.tenancy_ocid
   compartment_id                 = local.compartment_ocid
-  vcn_id                         = module.network.vcn_ocid
+  vcn_id                         = local.vcn_ocid
   oci_services                   = data.oci_core_services.core_services.services.0
   region                         = var.region
   lb                             = oci_load_balancer_load_balancer.lb
@@ -137,8 +138,8 @@ module "kubernetes" {
   compute_gpu_shape              = var.compute_gpu_shape
   compute_cpu_shape              = var.compute_cpu_shape
   availability_domains           = local.availability_domains
-  public_subnet_id               = module.network.public_subnet_ocid
-  private_subnet_id              = module.network.private_subnet_ocid
+  public_subnet_id               = local.public_subnet_ocid
+  private_subnet_id              = local.private_subnet_ocid
   lb_nsg_id                      = oci_core_network_security_group.lb.id
   orm_install                    = var.current_user_ocid != ""
   providers = {

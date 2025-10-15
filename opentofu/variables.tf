@@ -80,6 +80,25 @@ variable "infrastructure" {
   }
 }
 
+// Network
+variable "byo_vcn_ocid" {
+  description = "Bring Your Own Virtual Cloud Network - VCN OCID"
+  type        = string
+  default     = ""
+}
+
+variable "byo_public_subnet_ocid" {
+  description = "Bring Your Own Virtual Cloud Network - Pubic Subnet OCID"
+  type        = string
+  default     = ""
+}
+
+variable "byo_private_subnet_ocid" {
+  description = "Bring Your Own Virtual Cloud Network - Private Subnet OCID"
+  type        = string
+  default     = ""
+}
+
 // Database
 variable "byo_db_type" {
   description = "Bring Your Own Database - Type"
