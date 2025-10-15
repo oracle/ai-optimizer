@@ -54,8 +54,9 @@ resource "oci_containerengine_cluster" "default_cluster" {
 
   endpoint_config {
     // Avoid K8s destruction by limiting access via nsg_ids.  Keep on public subnet.
-    nsg_ids   = [oci_core_network_security_group.k8s_api_endpoint.id]
-    subnet_id = var.public_subnet_id
+    is_public_ip_enabled = true
+    nsg_ids              = [oci_core_network_security_group.k8s_api_endpoint.id]
+    subnet_id            = var.public_subnet_id
   }
 
   image_policy_config {

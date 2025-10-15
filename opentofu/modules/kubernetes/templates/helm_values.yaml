@@ -33,11 +33,11 @@ server:
   database:
     type: "ADB-S"
     oci_db:
-      ocid: "${adb_ocid}"
+      ocid: "${db_ocid}"
     authN:
-      secretName: "${adb_name}-db-authn"
+      secretName: "${db_name}-db-authn"
     privAuthN:
-      secretName: "${adb_name}-db-priv-authn"
+      secretName: "${db_name}-db-priv-authn"
 
 client:
   enable: true

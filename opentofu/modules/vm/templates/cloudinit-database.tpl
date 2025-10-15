@@ -10,7 +10,7 @@ write_files:
       export API_SERVER_HOST=$(hostname -f)
       export DB_USERNAME='AI_OPTIMIZER'
       export DB_PASSWORD='${db_password}'
-      export DB_DSN='${db_name}_TP'
+      export DB_DSN='${db_service}'
 
       sql /nolog <<EOF
       WHENEVER SQLERROR EXIT 1
@@ -58,6 +58,7 @@ write_files:
       export OCI_CLI_AUTH=instance_principal
       mkdir -p /app/tns_admin
       # Wait for Database and Download Wallet
+      echo "Downloading ADB Wallet..."
       max_attempts=40
       attempt=1
       while [ $attempt -le $max_attempts ]; do
@@ -77,3 +78,4 @@ write_files:
 runcmd:
   - su - oracleai -c '/tmp/db_setup.sh'
   - su - oracleai -c '/tmp/db_priv_sql.sh'
+  - rm /tmp/db_setup.sh /tmp/db_priv_sql.sh

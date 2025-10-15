@@ -23,24 +23,24 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${adb_name}-db-authn
+  name: ${db_name}-db-authn
   namespace: ${label}
 type: Opaque
 stringData:
   username: AI_OPTIMIZER
-  password: ${adb_password}
-  service: ${adb_service}
+  password: ${db_password}
+  service: ${db_service}
 ---
 # Secret containing privileged DB User details.
 # Used to create user defined in -db-authn in init-container
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${adb_name}-db-priv-authn
+  name: ${db_name}-db-priv-authn
   namespace: ${label}
 type: Opaque
 stringData:
-  password: ${adb_password}
+  password: ${db_password}
 ---
 apiVersion: "ingress.oraclecloud.com/v1beta1"
 kind: IngressClassParameters
@@ -95,7 +95,7 @@ spec:
             - -c
             - |
               wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
-                | tar -xz -C /workspace	  	
+                | tar -xz -C /workspace
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000

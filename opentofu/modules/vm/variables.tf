@@ -14,10 +14,6 @@ variable "compartment_id" {
   type = string
 }
 
-variable "region" {
-  type = string
-}
-
 variable "label_prefix" {
   type = string
 }
@@ -34,7 +30,6 @@ variable "vcn_id" {
 }
 
 variable "oci_services" {
-  description = "OCI Services Network object containing id, name, and cidr_block"
   type = object({
     cidr_block = string
     id         = string
@@ -66,12 +61,16 @@ variable "compute_gpu_shape" {
   type = string
 }
 
-variable "adb_name" {
+variable "db_name" {
   type = string
 }
 
-variable "adb_password" {
-  type = string
+variable "db_conn" {
+  type = object({
+    username = string
+    password = string
+    service  = string
+  })
 }
 
 variable "streamlit_client_port" {

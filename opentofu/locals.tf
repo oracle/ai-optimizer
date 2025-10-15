@@ -28,14 +28,33 @@ locals {
   ])
 }
 
-// Autonomous Database
+// Database
 locals {
-  adb_name = format("%sDB", upper(local.label_prefix))
   adb_whitelist_cidrs = concat(
     var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
     [module.network.vcn_ocid]
   )
-  adb_password = sensitive(format("%s%s", random_password.adb_char.result, random_password.adb_rest.result))
+
+  db_ocid = (
+    var.byo_db_type == "" ? oci_database_autonomous_database.default_adb[0].id :
+    var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb[0].id :
+    "N/A"
+  )
+
+  db_name = (
+    var.byo_db_type == "" ? upper(format("%sDB", local.label_prefix)) :
+    var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb[0].db_name :
+    var.byo_odb_service
+  )
+
+  db_conn = {
+    username = var.byo_db_type == "OTHER" ? var.byo_db_username : "ADMIN"
+    password = (
+      var.byo_db_type == "" ? format("%s%s", random_password.adb_char[0].result, random_password.adb_rest[0].result) :
+      var.byo_db_password
+    )
+    service = var.byo_db_type == "OTHER" ? var.byo_odb_service : format("%s_TP", local.db_name)
+  }
 }
 
 // Compute

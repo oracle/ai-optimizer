@@ -8,12 +8,14 @@ resource "random_pet" "label" {
 }
 
 resource "random_password" "adb_char" {
+  count   = var.byo_db_password == "" ? 1 : 0
   length  = 2
   special = false
   numeric = false
 }
 
 resource "random_password" "adb_rest" {
+  count            = var.byo_db_password == "" ? 1 : 0
   length           = 14
   min_numeric      = 2
   min_lower        = 2
@@ -57,7 +59,8 @@ resource "oci_load_balancer_load_balancer" "lb" {
 
 // Autonomous Database
 resource "oci_database_autonomous_database" "default_adb" {
-  admin_password                       = local.adb_password
+  count                                = var.byo_db_type == "" ? 1 : 0
+  admin_password                       = local.db_conn.password
   autonomous_maintenance_schedule_type = "REGULAR"
   character_set                        = "AL32UTF8"
   compartment_id                       = local.compartment_ocid
@@ -65,10 +68,10 @@ resource "oci_database_autonomous_database" "default_adb" {
   compute_model                        = "ECPU"
   data_storage_size_in_gb              = var.adb_data_storage_size_in_gb
   database_edition                     = var.adb_license_model == "BRING_YOUR_OWN_LICENSE" ? var.adb_edition : null
-  db_name                              = local.adb_name
+  db_name                              = local.db_name
   db_version                           = var.adb_version
   db_workload                          = "OLTP"
-  display_name                         = local.adb_name
+  display_name                         = local.db_name
   is_free_tier                         = false
   is_auto_scaling_enabled              = var.adb_is_cpu_auto_scaling_enabled
   is_auto_scaling_for_storage_enabled  = var.adb_is_storage_auto_scaling_enabled
@@ -91,9 +94,8 @@ module "vm" {
   lb_id                 = oci_load_balancer_load_balancer.lb.id
   lb_client_port        = local.lb_client_port
   lb_server_port        = local.lb_server_port
-  region                = var.region
-  adb_name              = local.adb_name
-  adb_password          = local.adb_password
+  db_name               = local.db_name
+  db_conn               = local.db_conn
   streamlit_client_port = local.streamlit_client_port
   fastapi_server_port   = local.fastapi_server_port
   vm_is_gpu_shape       = var.vm_is_gpu_shape
@@ -119,9 +121,9 @@ module "kubernetes" {
   oci_services                   = data.oci_core_services.core_services.services.0
   region                         = var.region
   lb                             = oci_load_balancer_load_balancer.lb
-  adb_id                         = oci_database_autonomous_database.default_adb.id
-  adb_name                       = local.adb_name
-  adb_password                   = local.adb_password
+  db_ocid                        = local.db_ocid
+  db_name                        = local.db_name
+  db_conn                        = local.db_conn
   k8s_api_is_public              = var.k8s_api_is_public
   k8s_node_pool_gpu_deploy       = var.k8s_node_pool_gpu_deploy
   k8s_gpu_node_pool_size         = var.k8s_gpu_node_pool_size

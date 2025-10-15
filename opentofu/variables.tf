@@ -80,7 +80,54 @@ variable "infrastructure" {
   }
 }
 
-// Autonomous Database
+// Database
+variable "byo_db_type" {
+  description = "Bring Your Own Database - Type"
+  type        = string
+  default     = ""
+  validation {
+    condition     = contains(["", "ADB-S", "OTHER"], var.byo_db_type)
+    error_message = "Must be either ADB-S or OTHER."
+  }
+}
+
+variable "byo_db_username" {
+  description = "Bring Your Own Database - Username"
+  type        = string
+  default     = ""
+}
+
+variable "byo_db_password" {
+  description = "Bring Your Own Database - Password"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "byo_adb_ocid" {
+  description = "Bring Your Own Autonomous Database - OCID"
+  type        = string
+  default     = ""
+}
+
+variable "byo_odb_host" {
+  description = "Bring Your Own Other Database - Hostname"
+  type        = string
+  default     = ""
+}
+
+variable "byo_odb_port" {
+  description = "Bring Your Own Other Database - Port"
+  type        = number
+  default     = 1521
+}
+
+variable "byo_odb_service" {
+  description = "Bring Your Own Other Database - Service Name"
+  type        = string
+  default     = ""
+}
+
 variable "adb_version" {
   description = "Autonomous Database Version"
   type        = string

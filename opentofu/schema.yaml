@@ -282,7 +282,7 @@ variables:
     default: "ADB-S"
     enum:
       - "ADB-S"
-      - "Other"
+      - "OTHER"
     visible: byo_db
 
   ### Provision New ADB ###
@@ -368,10 +368,16 @@ variables:
     type: string
     default: "SYSTEM"
     required: true
-    visible: byo_db
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "OTHER"
 
   byo_db_password:
     title: "Bring Your Own Database - Password"
+    description: "For ADB-S, please provide the ADMIN password."
     type: password
     default: ""
     required: true
@@ -393,7 +399,7 @@ variables:
             - "ADB-S"
 
   byo_adb_ocid:
-    title: "Bring Your Own Database - Autonomous Database"
+    title: "Bring Your Own Autonomous Database - OCID"
     type: oci:database:autonomousdatabase:id
     required: true
     dependsOn:
@@ -407,7 +413,7 @@ variables:
 
   ### BYODB - Use Existing Other (Host:Port/Service_Name) ###
   byo_odb_host:
-    title: "Bring Your Own Database - Host"
+    title: "Bring Your Own Other Database - Host"
     type: string
     default: "mydb.domain.com"
     required: true
@@ -416,10 +422,10 @@ variables:
         - byo_db
         - eq:
             - byo_db_type
-            - "Other"
+            - "OTHER"
 
   byo_odb_port:
-    title: "Bring Your Own Database - Port"
+    title: "Bring Your Own Other Database - Port"
     type: integer
     default: 1521
     required: true
@@ -428,10 +434,10 @@ variables:
         - byo_db
         - eq:
             - byo_db_type
-            - "Other"
+            - "OTHER"
 
   byo_odb_service:
-    title: "Bring Your Own Database - Service Name"
+    title: "Bring Your Own Other Database - Service Name"
     type: string
     default: "OPTIMIZER_TP"
     visible:
@@ -439,7 +445,7 @@ variables:
         - byo_db
         - eq:
             - byo_db_type
-            - "Other"
+            - "OTHER"
 
 ###########################################################################
 # Output Groups

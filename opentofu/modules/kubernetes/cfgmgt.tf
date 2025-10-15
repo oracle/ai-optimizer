@@ -9,8 +9,8 @@ locals {
     repository_client        = local.repository_client
     oci_tenancy              = var.tenancy_id
     oci_region               = var.region
-    adb_ocid                 = var.adb_id
-    adb_name                 = lower(var.adb_name)
+    db_ocid                  = var.db_ocid
+    db_name                  = lower(var.db_name)
     k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
     lb_ip                    = var.lb.ip_address_details[0].ip_address
   })
@@ -27,9 +27,9 @@ locals {
     lb_nsgs           = var.lb_nsg_id
     lb_min_shape      = var.lb.shape_details[0].minimum_bandwidth_in_mbps
     lb_max_shape      = var.lb.shape_details[0].maximum_bandwidth_in_mbps
-    adb_name          = lower(var.adb_name)
-    adb_password      = var.adb_password
-    adb_service       = format("%s_TP", var.adb_name)
+    db_name           = var.db_name
+    db_password       = var.db_conn.password
+    db_service        = var.db_conn.service
     api_key           = random_string.api_key.result
   })
 }

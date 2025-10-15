@@ -13,3 +13,8 @@ data "oci_core_services" "core_services" {
     regex  = true
   }
 }
+
+data "oci_database_autonomous_database" "byo_adb" {
+  count                  = var.byo_db_type == "ADB-S" ? 1 : 0
+  autonomous_database_id = var.byo_adb_ocid
+}

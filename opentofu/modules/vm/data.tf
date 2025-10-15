@@ -2,8 +2,6 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
-
-
 data "oci_core_images" "images" {
   compartment_id   = var.compartment_id
   operating_system = "Oracle Linux"
@@ -60,7 +58,7 @@ data "cloudinit_config" "workers" {
   part {
     content_type = "text/x-shellscript"
     content      = local.cloud_init_database
-    filename     = "50-custom-database-init.sh"
+    filename     = "51-custom-database-init.sh"
     merge_type   = "list(append)+dict(no_replace,recurse_list)+str(append)"
   }
 }

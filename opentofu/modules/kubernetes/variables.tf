@@ -61,17 +61,21 @@ variable "label_prefix" {
   type = string
 }
 
-variable "adb_id" {
+variable "db_ocid" {
+  type = string
+}
+variable "db_name" {
   type = string
 }
 
-variable "adb_name" {
-  type = string
+variable "db_conn" {
+  type = object({
+    username = string
+    password = string
+    service  = string
+  })
 }
 
-variable "adb_password" {
-  type = string
-}
 
 variable "k8s_version" {
   type = string

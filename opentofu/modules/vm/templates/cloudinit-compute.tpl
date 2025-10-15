@@ -60,7 +60,9 @@ write_files:
       # Download/Setup Source Code
       if [ "${optimizer_version}" = "main" ]; then
           URL="https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz"
-          curl -L "$URL" | tar -xz -C /app --strip-components=2 ai-optimizer-main/src
+          curl -L "$URL" | tar -xz -C /app \
+            --strip-components=2 ai-optimizer-main/src \
+            --strip-components=1 ai-optimizer-main/pyproject.toml
       else
           URL="https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz"
           curl -L "$URL" | tar -xz -C /app
@@ -88,9 +90,10 @@ write_files:
       #!/bin/bash
       export OCI_CLI_AUTH=instance_principal
       export API_SERVER_CONTROL="True"
+      export TNS_ADMIN='/app/tns_admin'
       export DB_USERNAME='AI_OPTIMIZER'
       export DB_PASSWORD='${db_password}'
-      export DB_DSN='${db_name}_TP'
+      export DB_DSN='${db_service}'
       export DB_WALLET_PASSWORD='${db_password}'
       if ${install_ollama}; then
         export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
@@ -106,9 +109,9 @@ write_files:
 runcmd:
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
-  - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz
   - chown oracleai:oracleai /app/start.sh
   - systemctl daemon-reexec
   - systemctl daemon-reload
   - systemctl enable ai-optimizer.service
   - systemctl start ai-optimizer.service
+  - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz
