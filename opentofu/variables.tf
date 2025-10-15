@@ -131,10 +131,10 @@ variable "byo_odb_service" {
 variable "adb_version" {
   description = "Autonomous Database Version"
   type        = string
-  default     = "23ai"
+  default     = "26ai"
   validation {
-    condition     = contains(["23ai"], var.adb_version)
-    error_message = "Must be 23ai."
+    condition     = contains(["26ai"], var.adb_version)
+    error_message = "Must be 26ai."
   }
 }
 
