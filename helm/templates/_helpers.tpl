@@ -191,32 +191,53 @@ Create the pull model list for Ollama
 
 {{/* ******************************************
 Validate that server.database.other fields are provided when database type is OTHER.
+Requires either 'dsn' OR all of (host, port, service_name).
 *********************************************** */}}
 {{- define "server.database.validateOtherType" -}}
   {{- if .Values.server.database -}}
     {{- $dbType := .Values.server.database.type | default "" -}}
 
     {{- if eq $dbType "OTHER" -}}
+      {{- $dsn := .Values.server.database.other.dsn -}}
       {{- $host := .Values.server.database.other.host -}}
       {{- $port := .Values.server.database.other.port -}}
       {{- $serviceName := .Values.server.database.other.service_name -}}
 
-      {{- if not $host -}}
-        {{- fail "server.database.other.host is required when server.database.type is OTHER" -}}
-      {{- else if and (kindIs "string" $host) (eq ($host | trim) "") -}}
-        {{- fail "server.database.other.host is required when server.database.type is OTHER" -}}
+      {{- /* Check if dsn is provided and not empty */ -}}
+      {{- $hasDsn := false -}}
+      {{- if $dsn -}}
+        {{- if and (kindIs "string" $dsn) (ne ($dsn | trim) "") -}}
+          {{- $hasDsn = true -}}
+        {{- end -}}
       {{- end -}}
 
-      {{- if not $port -}}
-        {{- fail "server.database.other.port is required when server.database.type is OTHER" -}}
-      {{- else if and (kindIs "string" $port) (eq ($port | trim) "") -}}
-        {{- fail "server.database.other.port is required when server.database.type is OTHER" -}}
+      {{- /* Check if individual fields are provided */ -}}
+      {{- $hasHost := false -}}
+      {{- if $host -}}
+        {{- if or (not (kindIs "string" $host)) (ne ($host | trim) "") -}}
+          {{- $hasHost = true -}}
+        {{- end -}}
       {{- end -}}
 
-      {{- if not $serviceName -}}
-        {{- fail "server.database.other.service_name is required when server.database.type is OTHER" -}}
-      {{- else if and (kindIs "string" $serviceName) (eq ($serviceName | trim) "") -}}
-        {{- fail "server.database.other.service_name is required when server.database.type is OTHER" -}}
+      {{- $hasPort := false -}}
+      {{- if $port -}}
+        {{- if or (not (kindIs "string" $port)) (ne ($port | trim) "") -}}
+          {{- $hasPort = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- $hasServiceName := false -}}
+      {{- if $serviceName -}}
+        {{- if or (not (kindIs "string" $serviceName)) (ne ($serviceName | trim) "") -}}
+          {{- $hasServiceName = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- /* Validate: must have either dsn OR all three individual fields */ -}}
+      {{- if not $hasDsn -}}
+        {{- if not (and $hasHost $hasPort $hasServiceName) -}}
+          {{- fail "server.database.type is OTHER: must provide either 'dsn' OR all of (host, port, service_name)" -}}
+        {{- end -}}
       {{- end -}}
     {{- end -}}
   {{- end -}}

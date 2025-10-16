@@ -29,11 +29,17 @@ server:
     oke: true
     region: "${oci_region}"
 
-  # -- Oracle Autonomous Database Configuration
+  # -- Oracle Database Configuration
   database:
+%{ if db_type == "OTHER" ~}
+    type: "OTHER"
+    other:
+      dsn: "${db_dsn}"
+%{ else ~}
     type: "ADB-S"
     oci:
       ocid: "${db_ocid}"
+%{ endif ~}
     authN:
       secretName: "${db_name}-db-authn"
     privAuthN:

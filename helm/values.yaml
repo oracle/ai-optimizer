@@ -91,13 +91,20 @@ server:
       # -- OCID of the Autonomous Database
       ocid: ""
 
-    # -- For OTHER; DSN components for database connectivity
+    # -- For OTHER; Database connectivity
+    # Either provide 'dsn' OR all of (host, port, service_name)
     other:
+      # -- Full DSN string (e.g: mydbhost.com:1521/mydb_service)
+      # If provided, supersedes host/port/service_name
+      dsn: ""
       # -- Database host (e.g: mydbhost.com)
+      # Required if dsn is not provided
       host: ""
       # -- Database port (e.g: 1521)
+      # Required if dsn is not provided
       port: ""
       # -- Database service name (e.g: mydb_service)
+      # Required if dsn is not provided
       service_name: ""
 
     # -- Application User Authentication/Connection Details
@@ -115,6 +122,8 @@ server:
     privAuthN:
       # -- secretName containing privileged user (i.e. ADMIN/SYSTEM) password
       secretName: "db-priv-authn"
+      # -- Key in secretName containing the username
+      usernameKey: "username"
       # -- Key in secretName containing the password
       passwordKey: "password"
 

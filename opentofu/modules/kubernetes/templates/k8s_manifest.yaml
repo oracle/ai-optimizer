@@ -40,6 +40,7 @@ metadata:
   namespace: ${label}
 type: Opaque
 stringData:
+  username: ${db_username}
   password: ${db_password}
 ---
 apiVersion: "ingress.oraclecloud.com/v1beta1"

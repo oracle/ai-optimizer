@@ -191,14 +191,16 @@ helm install ai-optimizer . \
 | `server.database.image.repository` | Container image for SIDB/ADB-FREE | `""` | See examples |
 | `server.database.image.tag` | Container image tag | `latest` | |
 | `server.database.oci.ocid` | ADB-S OCID (for ADB-S only) | `""` | |
-| `server.database.other.host` | Database host (for OTHER only) | `""` | Required for OTHER |
-| `server.database.other.port` | Database port (for OTHER only) | `""` | Required for OTHER |
-| `server.database.other.service_name` | Database service name (for OTHER only) | `""` | Required for OTHER |
+| `server.database.other.dsn` | Full DSN (for OTHER only) | `""` | Either dsn OR (host+port+service_name) |
+| `server.database.other.host` | Database host (for OTHER only) | `""` | Required if dsn not provided |
+| `server.database.other.port` | Database port (for OTHER only) | `""` | Required if dsn not provided |
+| `server.database.other.service_name` | Database service name (for OTHER only) | `""` | Required if dsn not provided |
 | `server.database.authN.secretName` | Secret with DB credentials | `"db-authn"` | Auto-generated if not exists |
 | `server.database.authN.usernameKey` | Key for username in secret | `"username"` | |
 | `server.database.authN.passwordKey` | Key for password in secret | `"password"` | |
 | `server.database.authN.serviceKey` | Key for connection string in secret | `"service"` | |
 | `server.database.privAuthN.secretName` | Secret with privileged user password | `"db-priv-authn"` | For user creation |
+| `server.database.privAuthN.usernameKey` | Key for privileged username | `"username"` | |
 | `server.database.privAuthN.passwordKey` | Key for privileged password | `"password"` | |
 
 **Database Types:**

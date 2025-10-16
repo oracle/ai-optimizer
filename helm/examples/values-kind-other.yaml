@@ -11,9 +11,12 @@ server:
   database:
     type: "OTHER"
     other:
-      host: "mydbhost.example.com"
-      port: "1521"
-      service_name: "MYSERVICE"
+      # Option 1: Provide full DSN string
+      dsn: "mydbhost.example.com:1521/MYSERVICE"
+      # Option 2: Provide individual components (commented out when using dsn)
+      # host: "mydbhost.example.com"
+      # port: "1521"
+      # service_name: "MYSERVICE"
     privAuthN:
       secretName: "db-priv-authn"
       passwordKey: "password"    

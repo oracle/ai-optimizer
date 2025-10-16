@@ -116,9 +116,10 @@ Configure the Oracle Database used by the {{< short_app_ref >}} API Server.
 | server.database.oci | Optional | | For ADB-S, OCID of the Autonomous Database Exclude for SIDB-FREE/ADB-FREE/OTHER |
 | server.database.oci.ocid | string | `""` | OCID of the Autonomous Database |
 | server.database.other | Optional | | For OTHER, connection details for external database |
-| server.database.other.host | string | `""` | Database host (required for OTHER) |
-| server.database.other.port | string/int | `""` | Database port (required for OTHER) |
-| server.database.other.service_name | string | `""` | Database service name (required for OTHER) |
+| server.database.other.dsn | string | `""` | Full DSN string (e.g: host:port/service) - Either dsn OR (host+port+service_name) |
+| server.database.other.host | string | `""` | Database host (required if dsn not provided) |
+| server.database.other.port | string/int | `""` | Database port (required if dsn not provided) |
+| server.database.other.service_name | string | `""` | Database service name (required if dsn not provided) |
 | server.database.authN | Required |  | Application User Authentication/Connection Details If defined, used to create the user defined in the authN secret |
 | server.database.authN.secretName | string | `"db-authn"` | Name of Secret containing the authentication/connection details |
 | server.database.authN.usernameKey | string | `"username"` | Key in secretName containing the username |
@@ -126,6 +127,7 @@ Configure the Oracle Database used by the {{< short_app_ref >}} API Server.
 | server.database.authN.serviceKey | string | `"service"` | Key in secretName containing the connection service name |
 | server.database.privAuthN | Optional |  | Privileged User Authentication/Connection Details If defined, used to create the user defined in the authN secret |
 | server.database.privAuthN.secretName | string | `"db-priv-authn"` | secretName containing privileged user (i.e. ADMIN/SYSTEM) password |
+| server.database.privAuthN.usernameKey | string | `"username"` | Key in secretName containing the username |
 | server.database.privAuthN.passwordKey | string | `"password"` | Key in secretName containing the password |
 
 
@@ -168,6 +170,15 @@ A pre-deployed Oracle Autonomous Database (_requires_ the [OraOperator](https://
 
 An external or bring-your-own Oracle Database:
 
+Option 1 - Using full DSN string:
+```yaml
+  database:
+    type: "OTHER"
+    other:
+      dsn: "mydbhost.example.com:1521/MYSERVICE"
+```
+
+Option 2 - Using individual components:
 ```yaml
   database:
     type: "OTHER"

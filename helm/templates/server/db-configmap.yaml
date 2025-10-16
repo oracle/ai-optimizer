@@ -20,8 +20,8 @@ data:
     {{- end }}
     WHENEVER SQLERROR EXIT 1
     WHENEVER OSERROR EXIT 1
-    {{- if (has .Values.server.database.type (list "ADB-S" "ADB-FREE")) }}
-    connect ADMIN/$PRIV_PASSWORD@$DB_DSN
+    {{- if (has .Values.server.database.type (list "ADB-S" "ADB-FREE" "OTHER")) }}
+    connect $PRIV_USERNAME/$PRIV_PASSWORD@$DB_DSN
     {{- else if eq .Values.server.database.type "SIDB-FREE" }}
     connect / as sysdba
     ALTER SYSTEM SET VECTOR_MEMORY_SIZE=512M SCOPE=SPFILE;

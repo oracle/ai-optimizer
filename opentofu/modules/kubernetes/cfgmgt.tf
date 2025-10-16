@@ -9,7 +9,9 @@ locals {
     repository_client        = local.repository_client
     oci_tenancy              = var.tenancy_id
     oci_region               = var.region
+    db_type                  = var.db_conn.db_type
     db_ocid                  = var.db_ocid
+    db_dsn                   = var.db_conn.service
     db_name                  = lower(var.db_name)
     k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
     lb_ip                    = var.lb.ip_address_details[0].ip_address
@@ -28,6 +30,7 @@ locals {
     lb_min_shape      = var.lb.shape_details[0].minimum_bandwidth_in_mbps
     lb_max_shape      = var.lb.shape_details[0].maximum_bandwidth_in_mbps
     db_name           = lower(var.db_name)
+    db_username       = var.db_conn.username
     db_password       = var.db_conn.password
     db_service        = var.db_conn.service
     api_key           = random_string.api_key.result
