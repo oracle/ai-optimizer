@@ -243,7 +243,7 @@ client:
   # image: Image and Tag to pull including pull policy
   image:
     # -- Image Repository
-    repository: localhost/ai-optimizer-server
+    repository: localhost/ai-optimizer-client
     # -- Image Tag
     tag: latest
     pullPolicy: IfNotPresent

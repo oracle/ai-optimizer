@@ -4,13 +4,17 @@
 
 {{- if .Values.server.database }}
   {{- if eq .Values.server.database.type "ADB-S" }}
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: AutonomousDatabase
 metadata:
   name: {{ .Release.Name }}-adb-s
   labels:
     app.kubernetes.io/component: database
     {{- include "global.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   action: "Sync"
   details:

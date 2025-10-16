@@ -27,7 +27,7 @@ locals {
     lb_nsgs           = var.lb_nsg_id
     lb_min_shape      = var.lb.shape_details[0].minimum_bandwidth_in_mbps
     lb_max_shape      = var.lb.shape_details[0].maximum_bandwidth_in_mbps
-    db_name           = var.db_name
+    db_name           = lower(var.db_name)
     db_password       = var.db_conn.password
     db_service        = var.db_conn.service
     api_key           = random_string.api_key.result

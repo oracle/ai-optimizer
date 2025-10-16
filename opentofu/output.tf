@@ -19,5 +19,5 @@ output "server_url" {
 
 output "kubeconfig_cmd" {
   description = "Command to generate kubeconfig file"
-  value       = var.infrastructure == "Kubernetes" ? module.kubernetes[0].kubeconfig_cmd : "N/A"
+  value       = var.infrastructure == "Kubernetes" ? module.kubernetes["managed"].kubeconfig_cmd : "N/A"
 }

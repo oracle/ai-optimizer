@@ -1,9 +1,9 @@
 # Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
-# spell-checker: ignore ocid ecpu
+# spell-checker: ignore ocid ecpu mydb byodb mbps autonomousdatabase cfgmgt ocpu
 
 title: "Oracle AI Optimizer and Toolkit"
-description: "Explore the capabilities of AI with the Oracle Database."
+description: "Explore the capabilities of the Oracle AI Database."
 informationalText: "https://oracle.github.io/ai-optimizer/"
 schemaVersion: 1.1.0
 version: "20190304"
@@ -77,6 +77,20 @@ variableGroups:
       - compute_cpu_shape
       - compute_cpu_ocpu
       - compute_gpu_shape
+
+  #########################################################################
+  # Network Options (BYO Only)
+  #########################################################################
+  - title: "Network Options"
+    variables:
+      - byo_vcn
+      - byo_vcn_compartment
+      - byo_vcn_ocid
+      - byo_private_subnet_compartment
+      - byo_private_subnet_ocid
+      - byo_public_subnet_compartment
+      - byo_public_subnet_ocid
+    visible: true
 
   #########################################################################
   # Load Balancer
@@ -236,6 +250,69 @@ variables:
                 - infrastructure
                 - "Kubernetes"
             - k8s_node_pool_gpu_deploy
+
+  #########################################################################
+  byo_vcn:
+    type: boolean
+    title: "Bring Your Own Virtual Cloud Network?"
+    default: false
+
+  byo_vcn_compartment:
+    title: "Virtual Cloud Network Compartment"
+    description: "BYO VCN Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: compartment_ocid
+    visible: byo_vcn
+
+  byo_vcn_ocid:
+    type: oci:core:vcn:id
+    title: "Virtual Cloud Network (VCN)"
+    description: "BYO VCN Resource"
+    dependsOn:
+      compartmentId: byo_vcn_compartment
+    required: true
+    visible: byo_vcn
+
+  byo_public_subnet_compartment:
+    title: "Public Subnet Compartment"
+    description: "BYO VCN Public Subnet Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: byo_vcn_compartment
+    visible: byo_vcn
+
+  byo_public_subnet_ocid:
+    type: oci:core:subnet:id
+    title: "Public Subnet"
+    description: "BYO VCN Public Subnet"
+    dependsOn:
+      compartmentId: byo_public_subnet_compartment
+      vcnId: byo_vcn_ocid
+      hidePublicSubnet: false
+      hidePrivateSubnet: true
+    required: true
+    visible: byo_vcn
+
+  byo_private_subnet_compartment:
+    title: "Private Subnet Compartment"
+    description: "BYO VCN Private Subnet Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: byo_vcn_compartment
+    visible: byo_vcn
+
+  byo_private_subnet_ocid:
+    type: oci:core:subnet:id
+    title: "Private Subnet"
+    description: "BYO VCN Private Subnet"
+    dependsOn:
+      compartmentId: byo_private_subnet_compartment
+      vcnId: byo_vcn_ocid
+      hidePublicSubnet: true
+      hidePrivateSubnet: false
+    required: true
+    visible: byo_vcn
 
   #########################################################################
   lb_min_shape:

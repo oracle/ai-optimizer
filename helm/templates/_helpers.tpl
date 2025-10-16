@@ -137,7 +137,7 @@ Database Secret Name
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
-  {{- printf "%s-db-authn" (include "release.name" .) -}}
+  {{- printf "%s-db-authn" .Release.Name -}}
 {{- end -}}
 {{- end }}
 
@@ -151,7 +151,7 @@ Database Privileged Secret Name
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
-  {{- printf "%s-db-priv-authn" (include "release.name" .) -}}
+  {{- printf "%s-db-priv-authn" .Release.Name -}}
 {{- end -}}
 {{- end }}
 
