@@ -92,7 +92,7 @@ Then install:
 helm install ai-optimizer . \
   --set global.api.apiKey="$API_KEY" \
   --set server.database.type="ADB-S" \
-  --set server.database.oci_db.ocid="ocid1.autonomousdatabase.oc1..." \
+  --set server.database.oci.ocid="ocid1.autonomousdatabase.oc1..." \
   --set server.database.authN.secretName="db-authn" \
   --set server.oci_config.fileSecretName="oci-config-file" \
   --set server.oci_config.region="us-ashburn-1"
@@ -109,7 +109,7 @@ helm install ai-optimizer . \
   --set global.api.apiKey="$API_KEY" \
   --set server.models.openAI.secretName="openai-secret" \
   --set server.database.type="ADB-S" \
-  --set server.database.oci_db.ocid="ocid1.autonomousdatabase..."
+  --set server.database.oci.ocid="ocid1.autonomousdatabase..."
 ```
 
 ### Example 5: High Availability with Autoscaling
@@ -187,10 +187,13 @@ helm install ai-optimizer . \
 
 | Parameter | Description | Default | Options |
 |-----------|-------------|---------|---------|
-| `server.database.type` | Type of Oracle Database | `""` | `SIDB-FREE`, `ADB-FREE`, `ADB-S` |
+| `server.database.type` | Type of Oracle Database | `""` | `SIDB-FREE`, `ADB-FREE`, `ADB-S`, `OTHER` |
 | `server.database.image.repository` | Container image for SIDB/ADB-FREE | `""` | See examples |
 | `server.database.image.tag` | Container image tag | `latest` | |
-| `server.database.oci_db.ocid` | ADB-S OCID (for ADB-S only) | `""` | |
+| `server.database.oci.ocid` | ADB-S OCID (for ADB-S only) | `""` | |
+| `server.database.other.host` | Database host (for OTHER only) | `""` | Required for OTHER |
+| `server.database.other.port` | Database port (for OTHER only) | `""` | Required for OTHER |
+| `server.database.other.service_name` | Database service name (for OTHER only) | `""` | Required for OTHER |
 | `server.database.authN.secretName` | Secret with DB credentials | `"db-authn"` | Auto-generated if not exists |
 | `server.database.authN.usernameKey` | Key for username in secret | `"username"` | |
 | `server.database.authN.passwordKey` | Key for password in secret | `"password"` | |
@@ -202,6 +205,7 @@ helm install ai-optimizer . \
 - **SIDB-FREE**: Oracle AI Database Free (containerized single instance)
 - **ADB-FREE**: Autonomous Oracle AI Database Free (containerized)
 - **ADB-S**: Autonomous Database Shared (managed OCI service)
+- **OTHER**: External/bring-your-own database (requires host, port, and service_name)
 
 #### Server OCI Configuration
 

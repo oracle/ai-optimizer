@@ -32,7 +32,7 @@ server:
   # -- Oracle Autonomous Database Configuration
   database:
     type: "ADB-S"
-    oci_db:
+    oci:
       ocid: "${db_ocid}"
     authN:
       secretName: "${db_name}-db-authn"

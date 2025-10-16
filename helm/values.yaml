@@ -75,7 +75,7 @@ server:
 
   # -- Oracle Database Configuration
   database:
-    # -- Either SIDB-FREE, ADB-FREE, or ADB-S
+    # -- Either SIDB-FREE, ADB-FREE, ADB-S (OCI), or OTHER
     type: ""
     # -- For SIDB-FREE/ADB-FREE, location of the image and its tag; Exclude for ADB-S
     image:
@@ -86,10 +86,19 @@ server:
       tag: latest
 
     # -- For ADB-S, OCID of the Autonomous Database
-    # Exclude for SIDB-FREE/ADB-FREE
-    oci_db:
-      # -- OCID of the DB
+    # Exclude for SIDB-FREE/ADB-FREE/OTHER
+    oci:
+      # -- OCID of the Autonomous Database
       ocid: ""
+
+    # -- For OTHER; DSN components for database connectivity
+    other:
+      # -- Database host (e.g: mydbhost.com)
+      host: ""
+      # -- Database port (e.g: 1521)
+      port: ""
+      # -- Database service name (e.g: mydb_service)
+      service_name: ""
 
     # -- Application User Authentication/Connection Details
     authN:

@@ -190,6 +190,40 @@ Create the pull model list for Ollama
 {{- end -}}
 
 {{/* ******************************************
+Validate that server.database.other fields are provided when database type is OTHER.
+*********************************************** */}}
+{{- define "server.database.validateOtherType" -}}
+  {{- if .Values.server.database -}}
+    {{- $dbType := .Values.server.database.type | default "" -}}
+
+    {{- if eq $dbType "OTHER" -}}
+      {{- $host := .Values.server.database.other.host -}}
+      {{- $port := .Values.server.database.other.port -}}
+      {{- $serviceName := .Values.server.database.other.service_name -}}
+
+      {{- if not $host -}}
+        {{- fail "server.database.other.host is required when server.database.type is OTHER" -}}
+      {{- else if and (kindIs "string" $host) (eq ($host | trim) "") -}}
+        {{- fail "server.database.other.host is required when server.database.type is OTHER" -}}
+      {{- end -}}
+
+      {{- if not $port -}}
+        {{- fail "server.database.other.port is required when server.database.type is OTHER" -}}
+      {{- else if and (kindIs "string" $port) (eq ($port | trim) "") -}}
+        {{- fail "server.database.other.port is required when server.database.type is OTHER" -}}
+      {{- end -}}
+
+      {{- if not $serviceName -}}
+        {{- fail "server.database.other.service_name is required when server.database.type is OTHER" -}}
+      {{- else if and (kindIs "string" $serviceName) (eq ($serviceName | trim) "") -}}
+        {{- fail "server.database.other.service_name is required when server.database.type is OTHER" -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
 Password Generator for Databases
 *********************************************** */}}
 {{- define "server.randomPassword" -}}

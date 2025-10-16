@@ -18,7 +18,7 @@ metadata:
 spec:
   action: "Sync"
   details:
-    id: {{ .Values.server.database.oci_db.ocid }}
+    id: {{ .Values.server.database.oci.ocid }}
   wallet:
     name: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}
     password:
