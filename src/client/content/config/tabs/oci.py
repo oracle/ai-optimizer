@@ -68,13 +68,9 @@ def _render_profile_selection(oci_lookup: dict, disable_config: bool) -> str:
 
 
 def _render_oci_configuration_form(
-    oci_lookup: dict, selected_oci_auth_profile: str, disable_config: bool, namespace: str
+    oci_lookup: dict, selected_oci_auth_profile: str, disable_config: bool, namespace: str, auth_supplied: dict
 ) -> dict:
-    """Render the OCI configuration form.
-
-    Returns:
-        dict: Supplied configuration values
-    """
+    """Render the OCI configuration form."""
     supplied = {}
     token_auth = st.checkbox("Use token authentication?", key="oci_token_auth", value=False, disabled=disable_config)
 
@@ -128,6 +124,9 @@ def _render_oci_configuration_form(
             if not disable_config:
                 supplied["security_token_file"] = None if not token_auth else supplied["security_token_file"]
                 supplied["user"] = None if token_auth else supplied["user"]
+
+            # Merge with auth settings before patching
+            supplied = {**auth_supplied, **supplied}
 
             if patch_oci(selected_oci_auth_profile, supplied, namespace):
                 st.rerun()
@@ -234,20 +233,16 @@ def create_genai_models() -> list[dict]:
 def patch_oci(auth_profile: str, supplied: dict, namespace: str, toast: bool = True) -> bool:
     """Update OCI"""
     rerun = False
-    # Check if the OIC configuration is changed, or no namespace
+    # Check if the OCI configuration is changed, or no namespace
     existing = next((item for item in state.oci_configs if item["auth_profile"] == auth_profile), None)
     differences = {key: (existing.get(key), supplied[key]) for key in supplied if existing.get(key) != supplied[key]}
     if differences or not namespace:
         rerun = True
         try:
-            if (
-                supplied.get("authentication")
-                not in (
-                    "instance_principal",
-                    "oke_workload_identity",
-                )
-                and supplied["security_token_file"]
-            ):
+            if supplied.get("authentication") not in (
+                "instance_principal",
+                "oke_workload_identity",
+            ) and supplied.get("security_token_file"):
                 supplied["authentication"] = "security_token"
 
             with st.spinner(text="Updating OCI Profile...", show_time=True):
@@ -290,7 +285,9 @@ def display_oci() -> None:
     namespace = oci_lookup[selected_oci_auth_profile]["namespace"]
 
     # Render configuration form and merge with auth settings
-    form_supplied = _render_oci_configuration_form(oci_lookup, selected_oci_auth_profile, disable_config, namespace)
+    form_supplied = _render_oci_configuration_form(
+        oci_lookup, selected_oci_auth_profile, disable_config, namespace, auth_supplied
+    )
     supplied = {**auth_supplied, **form_supplied}
 
     # Render GenAI section

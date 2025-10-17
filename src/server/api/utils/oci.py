@@ -70,7 +70,7 @@ def init_client(
         if config_json["authentication"] == "instance_principal":
             logger.info("OCI Authentication with Instance Principal")
             instance_signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-            client = client_type(config={}, signer=instance_signer, **client_kwargs)
+            client = client_type(config={"region": config_json["region"]}, signer=instance_signer, **client_kwargs)
             if not config.tenancy:
                 config.tenancy = instance_signer.tenancy_id
         elif config_json["authentication"] == "oke_workload_identity":
@@ -155,6 +155,9 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
         raise OciException(status_code=400, detail="Missing genai_compartment_id")
 
     genai_models = []
+    # Track unique models by (region, display_name) to avoid duplicates
+    seen_models = set()
+
     if regional:
         # Limit models to configured region
         if not hasattr(config, "genai_region") or not config.genai_region:
@@ -165,7 +168,7 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
         regions = get_regions(config)
 
     for region in regions:
-        region_config = config
+        region_config = config.model_copy(deep=True)
         region_config.region = region["region_name"]
         client_type = oci.generative_ai.GenerativeAiClient
         client = init_client(client_type, region_config)
@@ -189,10 +192,22 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
                 if model.time_deprecated or model.time_dedicated_retired or model.time_on_demand_retired:
                     excluded_display_names.add(model.display_name)
 
-            # Build our list of models
+            # Build our list of models (excluding deprecated ones and duplicates)
             for model in response.data.items:
+                # Skip deprecated models
+                if model.display_name in excluded_display_names:
+                    continue
+                # Skip cohere models without TEXT_EMBEDDINGS capability
                 if model.vendor == "cohere" and "TEXT_EMBEDDINGS" not in model.capabilities:
                     continue
+
+                # Skip duplicate models (same region + display_name)
+                model_key = (region["region_name"], model.display_name)
+                if model_key in seen_models:
+                    logger.debug("Skipping duplicate model: %s in %s", model.display_name, region["region_name"])
+                    continue
+                seen_models.add(model_key)
+
                 genai_models.append(
                     {
                         "region": region["region_name"],
