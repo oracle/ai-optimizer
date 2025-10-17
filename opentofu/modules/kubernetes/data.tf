@@ -19,18 +19,6 @@ data "oci_core_subnet" "private" {
   subnet_id = var.private_subnet_id
 }
 
-data "oci_core_services" "core_services" {
-  filter {
-    name   = "name"
-    values = ["All .* Services In Oracle Services Network"]
-    regex  = true
-  }
-}
-
-data "oci_load_balancer_load_balancers" "all_lb" {
-  compartment_id = var.compartment_id
-}
-
 data "oci_limits_limit_values" "gpu_ad_limits" {
   compartment_id = var.tenancy_id
   service_name   = "compute"
@@ -81,3 +69,9 @@ data "oci_containerengine_node_pool_option" "images" {
   node_pool_option_id = oci_containerengine_cluster.default_cluster.id
   compartment_id      = var.compartment_id
 }
+
+data "oci_resourcemanager_private_endpoint_reachable_ip" "orm_pe_reachable_ip" {
+  count               = local.create_orm_pe ? 1 : 0
+  private_endpoint_id = oci_resourcemanager_private_endpoint.orm_pe[0].id
+  private_ip          = split(":", oci_containerengine_cluster.default_cluster.endpoints[0].private_endpoint)[0]
+} 

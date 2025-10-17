@@ -1,9 +1,9 @@
 # Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
-# spell-checker: ignore ocid ecpu
+# spell-checker: ignore ocid ecpu mydb byodb mbps autonomousdatabase cfgmgt ocpu ocir
 
 title: "Oracle AI Optimizer and Toolkit"
-description: "Explore the capabilities of AI with the Oracle Database."
+description: "Explore the capabilities of the Oracle AI Database."
 informationalText: "https://oracle.github.io/ai-optimizer/"
 schemaVersion: 1.1.0
 version: "20190304"
@@ -41,6 +41,7 @@ variableGroups:
       - compartment_ocid
       - label_prefix
       - infrastructure
+      - optimizer_version
     visible: true
 
   #########################################################################
@@ -53,6 +54,8 @@ variableGroups:
       - k8s_cpu_node_pool_size
       - k8s_node_pool_gpu_deploy
       - k8s_gpu_node_pool_size
+      - k8s_byo_ocir
+      - k8s_byo_ocir_url
     visible:
       eq:
         - infrastructure
@@ -79,6 +82,20 @@ variableGroups:
       - compute_gpu_shape
 
   #########################################################################
+  # Network Options (BYO Only)
+  #########################################################################
+  - title: "Network Options"
+    variables:
+      - byo_vcn
+      - byo_vcn_compartment
+      - byo_vcn_ocid
+      - byo_private_subnet_compartment
+      - byo_private_subnet_ocid
+      - byo_public_subnet_compartment
+      - byo_public_subnet_ocid
+    visible: true
+
+  #########################################################################
   # Load Balancer
   #########################################################################
   - title: "Load Balancers Options"
@@ -94,13 +111,22 @@ variableGroups:
   #########################################################################
   - title: "Database Options"
     variables:
+      - byo_db
+      - byo_db_type
       - adb_license_model
       - adb_edition
+      - adb_networking
       - adb_whitelist_cidrs
       - adb_ecpu_core_count
       - adb_is_cpu_auto_scaling_enabled
       - adb_data_storage_size_in_gb
       - adb_is_storage_auto_scaling_enabled
+      - byo_db_password
+      - byo_adb_compartment
+      - byo_adb_ocid
+      - byo_odb_host
+      - byo_odb_port
+      - byo_odb_service
     visible: true
 
 ###########################################################################
@@ -120,10 +146,20 @@ variables:
     type: enum
     title: "Infrastructure to Deploy"
     required: true
-    default: "Kubernetes"
+    default: "VM"
     enum:
-      - "Kubernetes"
       - "VM"
+      - "Kubernetes"
+
+  optimizer_version:
+    type: enum
+    title: "Optimizer Version"
+    description: "Warning: Experimental may contain bugs!"
+    required: true
+    default: "Stable"
+    enum:
+      - "Stable"
+      - "Experimental"
 
   #########################################################################
   k8s_api_is_public:
@@ -165,6 +201,21 @@ variables:
     maximum: 80
     multipleOf: 1
     visible: k8s_node_pool_gpu_deploy
+
+  k8s_byo_ocir:
+    title: "Bring Your Own Oracle Container Image Registry (OCIR)?"
+    description: |
+      All container images should pre-exist in and will be pulled from the BYO OCIR.
+      For more information: 
+    type: boolean
+    default: false
+    required: true
+
+  k8s_byo_ocir_url:
+    title: "URL for existing OCIR"
+    description: "Example: iad.ocir.io/namespace"
+    type: string
+    visible: byo_ocir
 
   #########################################################################
   compute_cpu_shape:
@@ -230,6 +281,69 @@ variables:
             - k8s_node_pool_gpu_deploy
 
   #########################################################################
+  byo_vcn:
+    type: boolean
+    title: "Bring Your Own Virtual Cloud Network?"
+    default: false
+
+  byo_vcn_compartment:
+    title: "Virtual Cloud Network Compartment"
+    description: "BYO VCN Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: compartment_ocid
+    visible: byo_vcn
+
+  byo_vcn_ocid:
+    type: oci:core:vcn:id
+    title: "Virtual Cloud Network (VCN)"
+    description: "BYO VCN Resource"
+    dependsOn:
+      compartmentId: byo_vcn_compartment
+    required: true
+    visible: byo_vcn
+
+  byo_public_subnet_compartment:
+    title: "Public Subnet Compartment"
+    description: "BYO VCN Public Subnet Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: byo_vcn_compartment
+    visible: byo_vcn
+
+  byo_public_subnet_ocid:
+    type: oci:core:subnet:id
+    title: "Public Subnet"
+    description: "BYO VCN Public Subnet"
+    dependsOn:
+      compartmentId: byo_public_subnet_compartment
+      vcnId: byo_vcn_ocid
+      hidePublicSubnet: false
+      hidePrivateSubnet: true
+    required: true
+    visible: byo_vcn
+
+  byo_private_subnet_compartment:
+    title: "Private Subnet Compartment"
+    description: "BYO VCN Private Subnet Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: byo_vcn_compartment
+    visible: byo_vcn
+
+  byo_private_subnet_ocid:
+    type: oci:core:subnet:id
+    title: "Private Subnet"
+    description: "BYO VCN Private Subnet"
+    dependsOn:
+      compartmentId: byo_private_subnet_compartment
+      vcnId: byo_vcn_ocid
+      hidePublicSubnet: true
+      hidePrivateSubnet: false
+    required: true
+    visible: byo_vcn
+
+  #########################################################################
   lb_min_shape:
     type: integer
     title: "Minimum Load Balancer Bandwidth (Mbps)"
@@ -261,6 +375,22 @@ variables:
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
 
   #########################################################################
+  byo_db:
+    type: boolean
+    title: "Bring Your Own Oracle Database?"
+    required: true
+
+  byo_db_type:
+    title: "Bring Your Own Database - Type"
+    type: enum
+    required: true
+    default: "ADB-S"
+    enum:
+      - "ADB-S"
+      - "OTHER"
+    visible: byo_db
+
+  ### Provision New ADB ###
   adb_license_model:
     type: enum
     title: "Autonomous Database License Model"
@@ -269,6 +399,9 @@ variables:
     enum:
       - "LICENSE_INCLUDED"
       - "BRING_YOUR_OWN_LICENSE"
+    visible:
+      not:
+        - byo_db
 
   adb_edition:
     type: enum
@@ -280,9 +413,23 @@ variables:
       - "STANDARD_EDITION"
     visible:
       and:
+        - not:
+            - byo_db
         - eq:
             - adb_license_model
             - BRING_YOUR_OWN_LICENSE
+
+  adb_networking:
+    type: enum
+    title: "Autonomous Database Network Access"
+    required: true
+    default: "SECURE_ACCESS"
+    enum:
+      - "SECURE_ACCESS"
+      - "PRIVATE_ENDPOINT_ACCESS"
+    visible:
+      not:
+        - byo_db
 
   adb_whitelist_cidrs:
     type: array
@@ -290,6 +437,13 @@ variables:
     required: true
     default: "0.0.0.0/0"
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
+    visible:
+      and:
+        - not:
+            - byo_db
+        - eq:
+            - adb_networking
+            - PRIVATE_ENDPOINT_ACCESS
 
   adb_ecpu_core_count:
     type: number
@@ -297,11 +451,17 @@ variables:
     required: true
     minimum: 2
     multipleOf: 1
+    visible:
+      not:
+        - byo_db
 
   adb_is_cpu_auto_scaling_enabled:
     type: boolean
     title: "Allow Autonomous Database CPU Auto Scaling? (3x CPU)"
     required: true
+    visible:
+      not:
+        - byo_db
 
   adb_data_storage_size_in_gb:
     type: number
@@ -311,11 +471,90 @@ variables:
     minimum: 20
     maximum: 393216
     multipleOf: 1
+    visible:
+      not:
+        - byo_db
 
   adb_is_storage_auto_scaling_enabled:
     type: boolean
     title: "Allow Autonomous Database Storage Auto Scaling?"
     required: true
+    visible:
+      not:
+        - byo_db
+
+  ### BYODB - AuthN ###
+  byo_db_password:
+    title: "Bring Your Own Database - Password"
+    description: "Password for ADMIN (ADB) or SYSTEM (non-ADB)."
+    type: password
+    default: ""
+    required: true
+    confirmation: false
+    visible: byo_db
+
+  ### BYODB - Use Existing ADB-S (Compartment/OCID) ###
+  byo_adb_compartment:
+    title: "BYO ADB-S Compartment"
+    description: "BYO ADB-S Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: compartment_ocid
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "ADB-S"
+
+  byo_adb_ocid:
+    title: "Bring Your Own Autonomous Database - OCID"
+    type: oci:database:autonomousdatabase:id
+    required: true
+    dependsOn:
+      compartmentId: byo_adb_compartment
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "ADB-S"
+
+  ### BYODB - Use Existing Other (Host:Port/Service_Name) ###
+  byo_odb_host:
+    title: "Bring Your Own Other Database - Host"
+    type: string
+    default: "mydb.domain.com"
+    required: true
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "OTHER"
+
+  byo_odb_port:
+    title: "Bring Your Own Other Database - Port"
+    type: integer
+    default: 1521
+    required: true
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "OTHER"
+
+  byo_odb_service:
+    title: "Bring Your Own Other Database - Service Name"
+    type: string
+    default: "OPTIMIZER_TP"
+    visible:
+      and:
+        - byo_db
+        - eq:
+            - byo_db_type
+            - "OTHER"
 
 ###########################################################################
 # Output Groups
@@ -335,30 +574,6 @@ outputGroups:
         - infrastructure
         - "Kubernetes"
 
-  - title: "Container Image Repositories"
-    outputs:
-      - client_repository
-      - server_repository
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
-
-  - title: "Kubernetes Manifest"
-    outputs:
-      - k8s_manifest
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
-
-  - title: "Helm Values"
-    outputs:
-      - helm_values
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
 ###########################################################################
 outputs:
   client_url:

@@ -3,7 +3,6 @@
 # spell-checker: ignore nindent
 
 {{- if and .Values.server.database .Values.server.database.privAuthN }}
-  {{- if (has .Values.server.database.type (list "ADB-S" "ADB-FREE")) }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -29,6 +28,11 @@ spec:
             secretKeyRef:
               name: {{ include "global.apiSecretName" . }}
               key: {{ include "global.apiSecretKey" . }}
+        - name: PRIV_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.server.database.privAuthN.secretName }}
+              key: {{ default "username" .Values.server.database.privAuthN.usernameKey }}
         - name: PRIV_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -64,5 +68,4 @@ spec:
         secret:
           secretName: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}
       {{- end }}
-  {{ end -}}
 {{ end -}}

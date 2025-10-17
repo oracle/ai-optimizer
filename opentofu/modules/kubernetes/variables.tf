@@ -14,12 +14,25 @@ variable "vcn_id" {
   type = string
 }
 
+variable "oci_services" {
+  description = "OCI Services Network object containing id, name, and cidr_block"
+  type = object({
+    cidr_block = string
+    id         = string
+    name       = string
+  })
+}
+
 variable "public_subnet_id" {
   type = string
 }
 
 variable "private_subnet_id" {
   type = string
+}
+
+variable "orm_install" {
+  type = bool
 }
 
 variable "lb" {
@@ -48,34 +61,39 @@ variable "label_prefix" {
   type = string
 }
 
-variable "adb_id" {
+variable "db_ocid" {
+  type = string
+}
+variable "db_name" {
   type = string
 }
 
-variable "adb_name" {
+variable "db_conn" {
+  type = object({
+    db_type  = string
+    username = string
+    password = string
+    service  = string
+  })
+}
+
+variable "kubernetes_version" {
   type = string
 }
 
-variable "adb_password" {
-  type = string
-}
-
-variable "k8s_version" {
-  type = string
-}
-
-variable "k8s_api_is_public" {
+variable "api_is_public" {
   type = bool
 }
-variable "k8s_node_pool_gpu_deploy" {
+
+variable "node_pool_gpu_deploy" {
   type = bool
 }
 
-variable "k8s_cpu_node_pool_size" {
+variable "cpu_node_pool_size" {
   type = number
 }
 
-variable "k8s_gpu_node_pool_size" {
+variable "gpu_node_pool_size" {
   type = number
 }
 
@@ -84,10 +102,6 @@ variable "compute_gpu_shape" {
 }
 
 variable "compute_os_ver" {
-  type = string
-}
-
-variable "compute_cpu_arch" {
   type = string
 }
 
@@ -103,11 +117,19 @@ variable "lb_nsg_id" {
   type = string
 }
 
-variable "k8s_api_endpoint_allowed_cidrs" {
+variable "api_endpoint_allowed_cidrs" {
   type    = string
   default = ""
 }
 
-variable "k8s_run_cfgmgt" {
+variable "run_cfgmgt" {
   type = bool
+}
+
+variable "byo_ocir_url" {
+  type = string
+}
+
+variable "optimizer_version" {
+  type = string
 }

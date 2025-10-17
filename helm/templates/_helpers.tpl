@@ -137,7 +137,7 @@ Database Secret Name
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
-  {{- printf "%s-db-authn" (include "release.name" .) -}}
+  {{- printf "%s-db-authn" .Release.Name -}}
 {{- end -}}
 {{- end }}
 
@@ -151,7 +151,7 @@ Database Privileged Secret Name
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
-  {{- printf "%s-db-priv-authn" (include "release.name" .) -}}
+  {{- printf "%s-db-priv-authn" .Release.Name -}}
 {{- end -}}
 {{- end }}
 
@@ -188,6 +188,61 @@ Create the pull model list for Ollama
     {{- "" -}}
   {{- end }}
 {{- end -}}
+
+{{/* ******************************************
+Validate that server.database.other fields are provided when database type is OTHER.
+Requires either 'dsn' OR all of (host, port, service_name).
+*********************************************** */}}
+{{- define "server.database.validateOtherType" -}}
+  {{- if .Values.server.database -}}
+    {{- $dbType := .Values.server.database.type | default "" -}}
+
+    {{- if eq $dbType "OTHER" -}}
+      {{- $dsn := .Values.server.database.other.dsn -}}
+      {{- $host := .Values.server.database.other.host -}}
+      {{- $port := .Values.server.database.other.port -}}
+      {{- $serviceName := .Values.server.database.other.service_name -}}
+
+      {{- /* Check if dsn is provided and not empty */ -}}
+      {{- $hasDsn := false -}}
+      {{- if $dsn -}}
+        {{- if and (kindIs "string" $dsn) (ne ($dsn | trim) "") -}}
+          {{- $hasDsn = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- /* Check if individual fields are provided */ -}}
+      {{- $hasHost := false -}}
+      {{- if $host -}}
+        {{- if or (not (kindIs "string" $host)) (ne ($host | trim) "") -}}
+          {{- $hasHost = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- $hasPort := false -}}
+      {{- if $port -}}
+        {{- if or (not (kindIs "string" $port)) (ne ($port | trim) "") -}}
+          {{- $hasPort = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- $hasServiceName := false -}}
+      {{- if $serviceName -}}
+        {{- if or (not (kindIs "string" $serviceName)) (ne ($serviceName | trim) "") -}}
+          {{- $hasServiceName = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- /* Validate: must have either dsn OR all three individual fields */ -}}
+      {{- if not $hasDsn -}}
+        {{- if not (and $hasHost $hasPort $hasServiceName) -}}
+          {{- fail "server.database.type is OTHER: must provide either 'dsn' OR all of (host, port, service_name)" -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
 
 {{/* ******************************************
 Password Generator for Databases
