@@ -75,6 +75,7 @@ spec:
     apiGroup: ingress.oraclecloud.com
     kind: IngressClassParameters
     name: native-ic-params
+%{ if deploy_buildkit ~}
 ---
 # Builds and pushes application images to container registry.
 # Uses instance principles.
@@ -95,8 +96,15 @@ spec:
             - sh
             - -c
             - |
-              wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
-                | tar -xz -C /workspace
+              if [ "${optimizer_version}" = "Experimental" ]; then
+                wget -qO- https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz \
+                  | tar -xz -C /workspace ai-optimizer-main/src ai-optimizer-main/pyproject.toml --strip-components=1
+                mv /workspace/src/* /workspace/src/.* /workspace/ 2>/dev/null || true
+                rm -rf /workspace/src
+              else
+                wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
+                  | tar -xz -C /workspace
+              fi
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -220,3 +228,4 @@ spec:
           emptyDir: {}
         - name: docker-auth
           emptyDir: {}
+%{ endif }

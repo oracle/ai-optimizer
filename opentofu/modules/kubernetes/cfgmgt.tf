@@ -4,17 +4,17 @@
 
 locals {
   helm_values = templatefile("${path.module}/templates/helm_values.yaml", {
-    label                    = var.label_prefix
-    repository_server        = local.repository_server
-    repository_client        = local.repository_client
-    oci_tenancy              = var.tenancy_id
-    oci_region               = var.region
-    db_type                  = var.db_conn.db_type
-    db_ocid                  = var.db_ocid
-    db_dsn                   = var.db_conn.service
-    db_name                  = lower(var.db_name)
-    k8s_node_pool_gpu_deploy = var.k8s_node_pool_gpu_deploy
-    lb_ip                    = var.lb.ip_address_details[0].ip_address
+    label                = var.label_prefix
+    repository_server    = local.repository_server
+    repository_client    = local.repository_client
+    oci_tenancy          = var.tenancy_id
+    oci_region           = var.region
+    db_type              = var.db_conn.db_type
+    db_ocid              = var.db_ocid
+    db_dsn               = var.db_conn.service
+    db_name              = lower(var.db_name)
+    node_pool_gpu_deploy = var.node_pool_gpu_deploy
+    lb_ip                = var.lb.ip_address_details[0].ip_address
   })
 
   k8s_manifest = templatefile("${path.module}/templates/k8s_manifest.yaml", {
@@ -34,6 +34,8 @@ locals {
     db_password       = var.db_conn.password
     db_service        = var.db_conn.service
     api_key           = random_string.api_key.result
+    deploy_buildkit   = var.byo_ocir_url == ""
+    optimizer_version = var.optimizer_version
   })
 }
 
@@ -56,10 +58,18 @@ resource "local_sensitive_file" "k8s_manifest" {
 }
 
 resource "null_resource" "apply" {
-  count = var.k8s_run_cfgmgt ? 1 : 0
+  count = var.run_cfgmgt ? 1 : 0
   triggers = {
     always_run = "${timestamp()}"
   }
+
+  lifecycle {
+    precondition {
+      condition     = local.can_apply_cfgmgt
+      error_message = local.cfgmgt_error_message
+    }
+  }
+
   provisioner "local-exec" {
     command = <<EOT
       python3 ${path.root}/cfgmgt/apply.py ${var.label_prefix} ${var.label_prefix} --private_endpoint ${local.orm_pe}

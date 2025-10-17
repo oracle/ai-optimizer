@@ -74,14 +74,6 @@ variable "db_conn" {
   })
 }
 
-variable "streamlit_client_port" {
-  type = number
-}
-
-variable "fastapi_server_port" {
-  type = number
-}
-
 variable "lb_client_port" {
   type = number
 }

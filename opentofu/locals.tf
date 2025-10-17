@@ -38,11 +38,6 @@ locals {
 
 // Database
 locals {
-  adb_whitelist_cidrs = concat(
-    var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
-    [local.vcn_ocid]
-  )
-
   db_ocid = (
     var.byo_db_type == "" ? oci_database_autonomous_database.default_adb["managed"].id :
     var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb["byo"].id :
@@ -67,21 +62,21 @@ locals {
       format("%s_TP", local.db_name)
     )
   }
-}
 
-// Compute
-locals {
-  compute_cpu_arch = (
-    can(regex("^VM\\.Standard\\.A[0-9]+\\.Flex$", var.compute_cpu_shape))
-    ? "aarch64"
-    : "x86_64"
+  adb_whitelist_cidrs = (
+    var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? null :
+    concat(
+      var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
+      [local.vcn_ocid]
+    )
   )
+  adb_nsg                    = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? [oci_core_network_security_group.adb[0].id] : []
+  adb_subnet_id              = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.private_subnet_ocid : null
+  adb_private_endpoint_label = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.label_prefix : null
 }
 
-// Network
+// Load Balancer Ports
 locals {
-  streamlit_client_port = 8501
-  fastapi_server_port   = 8000
-  lb_client_port        = 80
-  lb_server_port        = 8000
+  lb_client_port = 80
+  lb_server_port = 8000
 }

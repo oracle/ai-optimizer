@@ -27,19 +27,6 @@ resource "random_password" "adb_rest" {
   }
 }
 
-
-
-// Network
-module "network" {
-  for_each       = var.byo_vcn_ocid == "" ? { managed = true } : {}
-  source         = "./modules/network"
-  compartment_id = local.compartment_ocid
-  label_prefix   = local.label_prefix
-  infra          = var.infrastructure
-  oci_services   = data.oci_core_services.core_services.services.0
-
-}
-
 // Load Balancer
 resource "oci_load_balancer_load_balancer" "lb" {
   compartment_id = local.compartment_ocid
@@ -79,70 +66,12 @@ resource "oci_database_autonomous_database" "default_adb" {
   is_dedicated                         = false
   license_model                        = var.adb_license_model
   is_mtls_connection_required          = true
+  nsg_ids                              = local.adb_nsg
   whitelisted_ips                      = local.adb_whitelist_cidrs
-}
-
-// Virtual Machine
-module "vm" {
-  for_each              = var.infrastructure == "VM" ? { managed = true } : {}
-  source                = "./modules/vm"
-  optimizer_version     = var.optimizer_version
-  label_prefix          = local.label_prefix
-  tenancy_id            = var.tenancy_ocid
-  compartment_id        = local.compartment_ocid
-  vcn_id                = local.vcn_ocid
-  oci_services          = data.oci_core_services.core_services.services.0
-  lb_id                 = oci_load_balancer_load_balancer.lb.id
-  lb_client_port        = local.lb_client_port
-  lb_server_port        = local.lb_server_port
-  db_name               = local.db_name
-  db_conn               = local.db_conn
-  streamlit_client_port = local.streamlit_client_port
-  fastapi_server_port   = local.fastapi_server_port
-  vm_is_gpu_shape       = var.vm_is_gpu_shape
-  compute_os_ver        = local.compute_os_ver
-  compute_cpu_ocpu      = var.compute_cpu_ocpu
-  compute_cpu_shape     = var.compute_cpu_shape
-  compute_gpu_shape     = var.compute_gpu_shape
-  availability_domains  = local.availability_domains
-  private_subnet_id     = local.private_subnet_ocid
-  providers = {
-    oci.home_region = oci.home_region
-  }
-}
-
-// Kubernetes
-module "kubernetes" {
-  for_each                       = var.infrastructure == "Kubernetes" ? { managed = true } : {}
-  source                         = "./modules/kubernetes"
-  label_prefix                   = local.label_prefix
-  tenancy_id                     = var.tenancy_ocid
-  compartment_id                 = local.compartment_ocid
-  vcn_id                         = local.vcn_ocid
-  oci_services                   = data.oci_core_services.core_services.services.0
-  region                         = var.region
-  lb                             = oci_load_balancer_load_balancer.lb
-  db_ocid                        = local.db_ocid
-  db_name                        = local.db_name
-  db_conn                        = local.db_conn
-  k8s_api_is_public              = var.k8s_api_is_public
-  k8s_node_pool_gpu_deploy       = var.k8s_node_pool_gpu_deploy
-  k8s_gpu_node_pool_size         = var.k8s_gpu_node_pool_size
-  k8s_version                    = local.k8s_version
-  k8s_cpu_node_pool_size         = var.k8s_cpu_node_pool_size
-  k8s_api_endpoint_allowed_cidrs = var.k8s_api_endpoint_allowed_cidrs
-  k8s_run_cfgmgt                 = var.k8s_run_cfgmgt
-  compute_cpu_arch               = local.compute_cpu_arch
-  compute_os_ver                 = local.compute_os_ver
-  compute_cpu_ocpu               = var.compute_cpu_ocpu
-  compute_gpu_shape              = var.compute_gpu_shape
-  compute_cpu_shape              = var.compute_cpu_shape
-  availability_domains           = local.availability_domains
-  public_subnet_id               = local.public_subnet_ocid
-  private_subnet_id              = local.private_subnet_ocid
-  lb_nsg_id                      = oci_core_network_security_group.lb.id
-  orm_install                    = var.current_user_ocid != ""
-  providers = {
-    oci.home_region = oci.home_region
+  private_endpoint_label               = local.adb_private_endpoint_label
+  subnet_id                            = local.adb_subnet_id
+  lifecycle {
+    // cannot change from PRIVATE_ENDPOINT_ACCESS to SECURE_ACCESS
+    ignore_changes = [whitelisted_ips, private_endpoint_label, subnet_id]
   }
 }

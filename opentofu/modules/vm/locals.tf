@@ -3,6 +3,11 @@
 # spell-checker: disable
 
 locals {
+  streamlit_client_port = 8501
+  fastapi_server_port   = 8000
+}
+
+locals {
   cloud_init_compute = templatefile("${path.module}/templates/cloudinit-compute.tpl", {
     db_type           = var.db_conn.db_type
     db_password       = var.db_conn.password

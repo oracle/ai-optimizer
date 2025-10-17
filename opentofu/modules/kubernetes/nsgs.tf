@@ -3,9 +3,9 @@
 # spell-checker: disable
 
 locals {
-  k8s_api_endpoint_allowed_cidrs = split(",", replace(var.k8s_api_endpoint_allowed_cidrs, "/\\s+/", ""))
-  k8s_api_endpoint_custom_rules = var.k8s_api_is_public ? {
-    for allowed_cidr in local.k8s_api_endpoint_allowed_cidrs :
+  api_endpoint_allowed_cidrs = split(",", replace(var.api_endpoint_allowed_cidrs, "/\\s+/", ""))
+  api_endpoint_custom_rules = var.api_is_public ? {
+    for allowed_cidr in local.api_endpoint_allowed_cidrs :
     "Allow custom ingress to kube-apiserver from ${allowed_cidr}" => {
       protocol = 6, port = 6443, source = allowed_cidr, source_type = "CIDR_BLOCK"
     }
@@ -34,7 +34,7 @@ resource "oci_core_network_security_group" "k8s_workers" {
 # Static NSGs - Mess with these at your peril
 #########################################################################
 locals {
-  k8s_api_endpoint_default_rules = {
+  api_endpoint_default_rules = {
     "K8s API Endpoint from Workers." : {
       protocol = 6, port = 6443,
       source   = data.oci_core_subnet.private.cidr_block, source_type = "CIDR_BLOCK"
@@ -59,7 +59,7 @@ locals {
     },
   }
 
-  k8s_workers_default_rules = {
+  workers_default_rules = {
     "Workers from Workers." : {
       protocol = "all", port = -1,
       source   = data.oci_core_subnet.private.cidr_block, source_type = "CIDR_BLOCK"
@@ -110,9 +110,9 @@ locals {
 locals {
   # Dynamic map of all NSG rules for enabled NSGs
   all_rules = { for x, y in merge(
-    { for k, v in local.k8s_api_endpoint_custom_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_api_endpoint.id }) },
-    { for k, v in local.k8s_api_endpoint_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_api_endpoint.id }) },
-    { for k, v in local.k8s_workers_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_workers.id }) },
+    { for k, v in local.api_endpoint_custom_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_api_endpoint.id }) },
+    { for k, v in local.api_endpoint_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_api_endpoint.id }) },
+    { for k, v in local.workers_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_workers.id }) },
     ) : x => merge(y, {
       description               = x
       network_security_group_id = lookup(y, "nsg_id")

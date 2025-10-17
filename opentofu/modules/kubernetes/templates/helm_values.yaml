@@ -73,7 +73,7 @@ client:
     disableSettings: "false"
 
 ollama:
-  enabled: ${k8s_node_pool_gpu_deploy}
+  enabled: ${node_pool_gpu_deploy}
   models:
     enabled: true
     modelPullList:

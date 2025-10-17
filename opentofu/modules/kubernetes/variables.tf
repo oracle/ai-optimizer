@@ -77,23 +77,23 @@ variable "db_conn" {
   })
 }
 
-
-variable "k8s_version" {
+variable "kubernetes_version" {
   type = string
 }
 
-variable "k8s_api_is_public" {
-  type = bool
-}
-variable "k8s_node_pool_gpu_deploy" {
+variable "api_is_public" {
   type = bool
 }
 
-variable "k8s_cpu_node_pool_size" {
+variable "node_pool_gpu_deploy" {
+  type = bool
+}
+
+variable "cpu_node_pool_size" {
   type = number
 }
 
-variable "k8s_gpu_node_pool_size" {
+variable "gpu_node_pool_size" {
   type = number
 }
 
@@ -102,10 +102,6 @@ variable "compute_gpu_shape" {
 }
 
 variable "compute_os_ver" {
-  type = string
-}
-
-variable "compute_cpu_arch" {
   type = string
 }
 
@@ -121,11 +117,19 @@ variable "lb_nsg_id" {
   type = string
 }
 
-variable "k8s_api_endpoint_allowed_cidrs" {
+variable "api_endpoint_allowed_cidrs" {
   type    = string
   default = ""
 }
 
-variable "k8s_run_cfgmgt" {
+variable "run_cfgmgt" {
   type = bool
+}
+
+variable "byo_ocir_url" {
+  type = string
+}
+
+variable "optimizer_version" {
+  type = string
 }

@@ -58,7 +58,7 @@ write_files:
     content: |
       #!/bin/bash
       # Download/Setup Source Code
-      if [ "${optimizer_version}" = "main" ]; then
+      if [ "${optimizer_version}" = "Experimental" ]; then
           URL="https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz"
           curl -L "$URL" | tar -xz -C /app \
             --strip-components=2 ai-optimizer-main/src \
@@ -71,7 +71,7 @@ write_files:
       python3.11 -m venv .venv
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools uv
-      uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch
+      uv pip install torch==2.9.0+cpu -f https://download.pytorch.org/whl/cpu/torch
       uv pip install -e ".[all]" &
       INSTALL_PID=$!
 
