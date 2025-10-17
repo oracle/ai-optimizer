@@ -2,17 +2,24 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore sidb ollama
 
-# Example Helm Values for Containerized ADB
+# Example Helm Values for external databases
 server:
   replicaCount: 1
   image:
     repository: localhost/ai-optimizer-server
     tag: latest
   database:
-    type: "ADB-FREE"
-    image:
-      repository: container-registry.oracle.com/database/adb-free
-      tag: latest
+    type: "OTHER"
+    other:
+      # Option 1: Provide full DSN string
+      dsn: "mydbhost.example.com:1521/MYSERVICE"
+      # Option 2: Provide individual components (commented out when using dsn)
+      # host: "mydbhost.example.com"
+      # port: "1521"
+      # service_name: "MYSERVICE"
+    privAuthN:
+      secretName: "db-priv-authn"
+      passwordKey: "password"    
 client:
   replicaCount: 1
   image:

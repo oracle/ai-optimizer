@@ -29,15 +29,21 @@ server:
     oke: true
     region: "${oci_region}"
 
-  # -- Oracle Autonomous Database Configuration
+  # -- Oracle Database Configuration
   database:
+%{ if db_type == "OTHER" ~}
+    type: "OTHER"
+    other:
+      dsn: "${db_dsn}"
+%{ else ~}
     type: "ADB-S"
-    oci_db:
-      ocid: "${adb_ocid}"
+    oci:
+      ocid: "${db_ocid}"
+%{ endif ~}
     authN:
-      secretName: "${adb_name}-db-authn"
+      secretName: "${db_name}-db-authn"
     privAuthN:
-      secretName: "${adb_name}-db-priv-authn"
+      secretName: "${db_name}-db-priv-authn"
 
 client:
   enable: true
@@ -67,7 +73,7 @@ client:
     disableSettings: "false"
 
 ollama:
-  enabled: ${k8s_node_pool_gpu_deploy}
+  enabled: ${node_pool_gpu_deploy}
   models:
     enabled: true
     modelPullList:

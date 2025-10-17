@@ -23,24 +23,25 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${adb_name}-db-authn
+  name: ${db_name}-db-authn
   namespace: ${label}
 type: Opaque
 stringData:
   username: AI_OPTIMIZER
-  password: ${adb_password}
-  service: ${adb_service}
+  password: ${db_password}
+  service: ${db_service}
 ---
 # Secret containing privileged DB User details.
 # Used to create user defined in -db-authn in init-container
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${adb_name}-db-priv-authn
+  name: ${db_name}-db-priv-authn
   namespace: ${label}
 type: Opaque
 stringData:
-  password: ${adb_password}
+  username: ${db_username}
+  password: ${db_password}
 ---
 apiVersion: "ingress.oraclecloud.com/v1beta1"
 kind: IngressClassParameters
@@ -74,6 +75,7 @@ spec:
     apiGroup: ingress.oraclecloud.com
     kind: IngressClassParameters
     name: native-ic-params
+%{ if deploy_buildkit ~}
 ---
 # Builds and pushes application images to container registry.
 # Uses instance principles.
@@ -94,8 +96,15 @@ spec:
             - sh
             - -c
             - |
-              wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
-                | tar -xz -C /workspace	  	
+              if [ "${optimizer_version}" = "Experimental" ]; then
+                wget -qO- https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz \
+                  | tar -xz -C /workspace ai-optimizer-main/src ai-optimizer-main/pyproject.toml --strip-components=1
+                mv /workspace/src/* /workspace/src/.* /workspace/ 2>/dev/null || true
+                rm -rf /workspace/src
+              else
+                wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
+                  | tar -xz -C /workspace
+              fi
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -108,11 +117,35 @@ spec:
             - sh
             - -c
             - |
-              export TOKEN=$(oci raw-request --http-method GET --target-uri https://${repository_host}/20180419/docker/token | jq -r '.data.token')
-              mkdir -p /docker-config
-              echo "{\"auths\":{\"${repository_host}\":{\"auth\":\"$(echo -n "BEARER_TOKEN:$TOKEN" | base64 -w0)\"}}}" > /docker-config/config.json
-              chown 1000:1000 /docker-config/config.json
-              cat /docker-config/config.json
+              RETRY_COUNT=0
+              REPO_PATH=$(echo "${repository_client}" | cut -d'/' -f2-)
+
+              while [ $RETRY_COUNT -lt 10 ]; do
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                echo "Attempt $RETRY_COUNT of 10"
+
+                TOKEN=$(oci raw-request --http-method GET --target-uri https://${repository_host}/20180419/docker/token | jq -r '.data.token' 2>/dev/null || echo "")
+                mkdir -p /docker-config
+                echo "{\"auths\":{\"${repository_host}\":{\"auth\":\"$(echo -n "BEARER_TOKEN:$TOKEN" | base64 -w0)\"}}}" > /docker-config/config.json
+                chown 1000:1000 /docker-config/config.json
+
+                HTTP_STATUS=$(oci raw-request --http-method GET \
+                  --target-uri "https://${repository_host}/v2/$REPO_PATH/tags/list" \
+                  --request-headers "{\"Authorization\": \"Bearer $TOKEN\"}" 2>/dev/null | jq -r '.status' || echo "000")
+
+                HTTP_CODE=$(echo "$HTTP_STATUS" | cut -d' ' -f1)
+
+                if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
+                  echo "Token validated: Status $HTTP_CODE"
+                  exit 0
+                fi
+
+                echo "Token invalid: Status $HTTP_CODE... retrying in 10s"
+                [ $RETRY_COUNT -lt 10 ] && sleep 10
+              done
+
+              echo "Failed after 10 attempts"
+              exit 1
           env:
             - name: OCI_CLI_AUTH
               value: instance_principal
@@ -195,3 +228,4 @@ spec:
           emptyDir: {}
         - name: docker-auth
           emptyDir: {}
+%{ endif }
