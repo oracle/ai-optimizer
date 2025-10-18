@@ -19,7 +19,7 @@ import litellm
 from langchain_core.messages import ChatMessage
 
 import server.api.core.settings as core_settings
-import server.api.core.oci as core_oci
+import server.api.utils.oci as utils_oci
 import server.api.utils.embed as utils_embed
 import server.api.utils.testbed as utils_testbed
 import server.api.utils.databases as utils_databases
@@ -150,7 +150,7 @@ async def testbed_generate_qa(
     """Retrieve contents from a local file uploaded and generate Q&A"""
     # Get the Model Configuration
     try:
-        oci_config = core_oci.get_oci(client)
+        oci_config = utils_oci.get(client)
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from ex
 
@@ -253,7 +253,7 @@ def testbed_evaluate(
 
     # Setup Judge Model
     logger.debug("Starting evaluation with Judge: %s", judge)
-    oci_config = core_oci.get_oci(client)
+    oci_config = utils_oci.get(client)
 
     judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
     set_llm_model(llm_model=judge, **judge_config)

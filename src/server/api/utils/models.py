@@ -264,16 +264,20 @@ def get_litellm_config(
 
     if provider == "oci":
         oci_params = {
-            "oci_auth_type": oci_config.authentication,
-            "oci_tenancy": oci_config.tenancy,
             "oci_region": oci_config.genai_region,
             "oci_compartment_id": oci_config.genai_compartment_id,
         }
 
-        # Only add credentials if NOT using instance principals or workload identity
-        if oci_config.authentication not in ("instance_principal", "oke_workload_identity"):
+        # Get OCI signer (returns None for API key auth)
+        signer = utils_oci.get_signer(oci_config)
+        if signer:
+            # Use signer for instance principals/workload identity
+            oci_params["oci_signer"] = signer
+        else:
+            # Use API key authentication (traditional method)
             oci_params.update(
                 {
+                    "oci_tenancy": oci_config.tenancy,
                     "oci_user": oci_config.user,
                     "oci_fingerprint": oci_config.fingerprint,
                     "oci_key_file": oci_config.key_file,
