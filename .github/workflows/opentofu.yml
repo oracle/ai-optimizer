@@ -148,31 +148,57 @@ jobs:
         id: plan
         run: |
           echo "Running plan with ${{ matrix.scenario.tfvars }}..."
-          tofu plan \
+
+          # Use tfvars filename (without path/extension) as plan filename to avoid spaces
+          PLAN_FILE="tfplan-$(basename ${{ matrix.scenario.tfvars }} .tfvars).out"
+
+          # Capture both stdout and stderr, and exit code
+          set +e
+          OUTPUT=$(tofu plan \
             -var-file="${{ matrix.scenario.tfvars }}" \
-            -out=tfplan-${{ matrix.scenario.name }}.out \
+            -out="$PLAN_FILE" \
             -detailed-exitcode \
-            -no-color || EXIT_CODE=$?
+            -no-color 2>&1)
+          EXIT_CODE=$?
+          set -e
+
+          echo "$OUTPUT"
 
           # Exit code 0: no changes, 1: error, 2: changes present
-          # For CI purposes, we expect errors due to fake credentials
-          # but we want to ensure the plan logic executes
-          if [ "${EXIT_CODE:-0}" -eq 1 ]; then
-            echo "Plan encountered an error - this is expected with placeholder credentials"
-            echo "::notice::Plan validation completed for ${{ matrix.scenario.name }}"
+          # Check for specific error types
+          if [ $EXIT_CODE -eq 1 ]; then
+            # Check if it's an auth/credential error (expected)
+            if echo "$OUTPUT" | grep -qE "(401|authentication|credential|authorization|private_key)"; then
+              echo "✅ Plan validation successful - encountered expected auth error"
+              echo "::notice::Plan validation completed for ${{ matrix.scenario.name }} (auth error expected)"
+              exit 0
+            # Check for syntax/argument errors (NOT expected - should fail)
+            elif echo "$OUTPUT" | grep -qE "(Too many command line arguments|Invalid|Unsupported|argument|flag)"; then
+              echo "❌ Plan validation FAILED - syntax or argument error"
+              echo "::error::Plan has syntax errors for ${{ matrix.scenario.name }}"
+              exit 1
+            else
+              # Other errors - print and fail
+              echo "❌ Plan validation FAILED - unexpected error"
+              echo "::error::Plan failed with unexpected error for ${{ matrix.scenario.name }}"
+              exit 1
+            fi
+          elif [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 2 ]; then
+            echo "✅ Plan completed successfully (exit code: $EXIT_CODE)"
             exit 0
           else
-            echo "Plan completed successfully"
-            exit 0
+            echo "❌ Unexpected exit code: $EXIT_CODE"
+            exit 1
           fi
 
       - name: Validate Plan Output
         working-directory: ./opentofu
         run: |
+          PLAN_FILE="tfplan-$(basename ${{ matrix.scenario.tfvars }} .tfvars).out"
           echo "Verifying plan file was generated..."
-          if [ -f "tfplan-${{ matrix.scenario.name }}.out" ]; then
-            echo "✅ Plan file exists"
-            tofu show tfplan-${{ matrix.scenario.name }}.out || echo "Plan show completed"
+          if [ -f "$PLAN_FILE" ]; then
+            echo "✅ Plan file exists: $PLAN_FILE"
+            tofu show "$PLAN_FILE" || echo "Plan show completed"
           else
             echo "ℹ️  No plan file (expected with auth errors)"
           fi
