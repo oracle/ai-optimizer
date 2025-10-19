@@ -26,6 +26,8 @@ jobs:
     name: Static Analysis & Security
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/opentofu/opentofu:latest
     permissions:
       pull-requests: write
       contents: read
@@ -36,11 +38,6 @@ jobs:
         uses: actions/checkout@v4
 
       # Terraform validation steps
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~1.5"
-
       - name: Cache Terraform Providers
         uses: actions/cache@v4
         with:
@@ -54,15 +51,15 @@ jobs:
 
       - name: Initialize Infrastructure as Code
         working-directory: ./opentofu
-        run: terraform init -backend=false
+        run: tofu init -backend=false
 
       - name: Validate Infrastructure as Code
         working-directory: ./opentofu
-        run: terraform validate
+        run: tofu validate
 
       - name: Check Terraform Formatting
         working-directory: ./opentofu
-        run: terraform fmt -recursive -check
+        run: tofu fmt -recursive -check
 
       # Schema validation
       - name: Setup Python
@@ -79,13 +76,14 @@ jobs:
         run: python3 ./validate_omr_schema.py OMRMetaSchema.yaml ../../opentofu/schema.yaml
 
       # Security scanning
-      - name: Run tfsec Security Scan
-        uses: aquasecurity/tfsec-action@v1.0.3
+      - name: Run Trivy Security Scan for IaC
+        uses: aquasecurity/trivy-action@master
         with:
-          working_directory: opentofu
-          soft_fail: true
-          format: sarif
-          additional_args: --no-color
+          scan-type: "config"
+          scan-ref: "opentofu"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          exit-code: "0"
 
   # Job 2: Plan validation with multiple deployment scenarios
   # Each scenario runs in parallel on separate runners for speed
@@ -93,6 +91,8 @@ jobs:
     name: Plan - ${{ matrix.scenario.name }}
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/opentofu/opentofu:latest
     permissions:
       pull-requests: write
 
@@ -124,11 +124,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~1.5"
-
       - name: Cache Terraform Providers
         uses: actions/cache@v4
         with:
@@ -150,14 +145,14 @@ jobs:
 
       - name: Initialize Infrastructure as Code
         working-directory: ./opentofu
-        run: terraform init -backend=false
+        run: tofu init -backend=false
 
       - name: Run Plan for Scenario
         working-directory: ./opentofu
         id: plan
         run: |
           echo "Running plan with ${{ matrix.scenario.tfvars }}..."
-          terraform plan \
+          tofu plan \
             -var-file="${{ matrix.scenario.tfvars }}" \
             -out=tfplan-${{ matrix.scenario.name }}.out \
             -detailed-exitcode \
@@ -181,7 +176,7 @@ jobs:
           echo "Verifying plan file was generated..."
           if [ -f "tfplan-${{ matrix.scenario.name }}.out" ]; then
             echo "✅ Plan file exists"
-            terraform show tfplan-${{ matrix.scenario.name }}.out || echo "Plan show completed"
+            tofu show tfplan-${{ matrix.scenario.name }}.out || echo "Plan show completed"
           else
             echo "ℹ️  No plan file (expected with auth errors)"
           fi
