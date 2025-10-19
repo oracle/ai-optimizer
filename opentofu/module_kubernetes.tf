@@ -40,16 +40,24 @@ variable "k8s_run_cfgmgt" {
   description = "Run Configuration Management Scripts?"
   type        = bool
   default     = true
-  validation {
-    condition     = var.k8s_run_cfgmgt == false || var.k8s_api_is_public == true || var.current_user_ocid != ""
-    error_message = "Cannot run configuration management with a private K8s API endpoint from local Terraform. Set k8s_api_is_public=true, k8s_run_cfgmgt=false, or use ORM."
-  }
 }
 
 variable "k8s_byo_ocir_url" {
   description = "BYO Oracle Cluster Image Repository URL"
   type        = string
   default     = ""
+}
+
+# Validation: Configuration management requires either public API endpoint or ORM installation
+resource "terraform_data" "k8s_cfgmgt_validation" {
+  count = var.infrastructure == "Kubernetes" ? 1 : 0
+
+  lifecycle {
+    precondition {
+      condition     = !var.k8s_run_cfgmgt || var.k8s_api_is_public || var.current_user_ocid != ""
+      error_message = "Cannot run configuration management with a private K8s API endpoint from local Terraform. Set k8s_api_is_public=true, k8s_run_cfgmgt=false, or use ORM."
+    }
+  }
 }
 
 module "kubernetes" {

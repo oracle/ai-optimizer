@@ -58,9 +58,15 @@ helm/values*.yaml
 ##############################################################################
 # IaC
 ##############################################################################
+# Ignore all tfvars files (contain credentials)
 **/**.tfvars
+# But allow example tfvars files for CI/CD testing (safe, no real credentials)
+!opentofu/examples/*.tfvars
+# Terraform/OpenTofu state and cache
 **/.terraform*
 **/terraform.tfstate*
+**/*.tfplan
+**/*.tfplan.out
 
 ##############################################################################
 # Random
