@@ -191,8 +191,13 @@ jobs:
 
             # SUCCESS INDICATOR: Check if plan generated any output (proves IaC is valid)
             # The plan must have shown actual infrastructure changes to be considered valid
+            # NOTE: With fake credentials, only statically-evaluable resources are validated
+            # Resources depending on data sources (OCI API calls) are not evaluated
             if echo "$OUTPUT" | grep -qE "Plan: [0-9]+ to (add|change|destroy)"; then
-              echo "✅ SUCCESS: Plan generated infrastructure changes (IaC syntax is valid)"
+              PLAN_COUNT=$(echo "$OUTPUT" | grep -oE "Plan: [0-9]+" | grep -oE "[0-9]+")
+              echo "✅ SUCCESS: Plan generated $PLAN_COUNT infrastructure changes"
+              echo "📝 NOTE: This validates syntax and statically-evaluable resources only"
+              echo "📝 Full validation requires real OCI credentials (not used in CI)"
 
               # Verify it failed due to expected auth/credential issues
               if echo "$OUTPUT" | grep -qiE "(Error:.*can not create client|Error:.*bad configuration|Error:.*private.?key|Error:.*(401|authentication|credential|authorization))"; then
@@ -246,9 +251,28 @@ jobs:
     steps:
       - name: All Validations Passed
         run: |
-          echo "================================================"
+          echo "========================================================================"
           echo "✅ All Infrastructure as Code validations passed!"
-          echo "================================================"
-          echo "- Static analysis (syntax, formatting, schema, security): ✅"
-          echo "- Plan validation (5 scenarios): ✅"
-          echo "================================================"
+          echo "========================================================================"
+          echo ""
+          echo "Static Analysis Checks:"
+          echo "  ✅ HCL syntax validation (tofu validate)"
+          echo "  ✅ Code formatting (tofu fmt)"
+          echo "  ✅ Oracle Resource Manager schema compliance"
+          echo "  ✅ Security scan (Trivy)"
+          echo ""
+          echo "Dynamic Plan Validation (5 scenarios):"
+          echo "  ✅ VM + New ADB"
+          echo "  ✅ K8s + New ADB"
+          echo "  ✅ VM + BYO ADB"
+          echo "  ✅ K8s + BYO Other DB"
+          echo "  ✅ VM + ARM Shape"
+          echo ""
+          echo "⚠️  IMPORTANT NOTES:"
+          echo "  • CI uses placeholder credentials for security"
+          echo "  • Only statically-evaluable resources are validated"
+          echo "  • Resources requiring OCI API calls (data sources) are not evaluated"
+          echo "  • Full end-to-end validation requires real OCI credentials"
+          echo "  • This CI validates: syntax, formatting, schema, and core logic"
+          echo ""
+          echo "========================================================================"

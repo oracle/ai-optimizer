@@ -6,6 +6,7 @@ tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaafaketenancyocidforgithubactionste
 compartment_ocid = "ocid1.compartment.oc1..aaaaaaaafakecompartmentocidforgithubactions"
 user_ocid        = "ocid1.user.oc1..aaaaaaaafakeuserocidforgithubactionstesting"
 fingerprint      = "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
+private_key      = "-----BEGIN RSA PRIVATE KEY-----\nFAKEKEYFORCITESTINGONLY\n-----END RSA PRIVATE KEY-----"
 region           = "us-phoenix-1"
 
 # Deployment Configuration
