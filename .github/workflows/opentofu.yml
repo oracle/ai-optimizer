@@ -62,14 +62,10 @@ jobs:
         run: tofu fmt -recursive -check
 
       # Schema validation
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-
-      - name: Install Python Dependencies
-        run: pip install pyyaml jsonschema referencing
+      - name: Install Python and Dependencies
+        run: |
+          apk add --no-cache python3 py3-pip
+          pip3 install pyyaml jsonschema referencing
 
       - name: Validate Oracle Resource Manager Schema
         working-directory: ./tests/opentofu
