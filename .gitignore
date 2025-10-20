@@ -44,6 +44,12 @@ __pycache__/
 **/*.egg-info
 **/build/
 
+# Test coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+test-results.xml
+
 ##############################################################################
 # AI Code Assists
 ##############################################################################
