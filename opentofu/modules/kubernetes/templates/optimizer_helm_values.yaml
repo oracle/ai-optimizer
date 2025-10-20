@@ -4,12 +4,12 @@
 
 global:
   api:
-    secretName: "${label}-api-key"
+    secretName: "${label}-optimizer-api-key"
 
 # -- API Server configuration
 server:
   image:
-    repository: ${repository_server}
+    repository: ${optimizer_repository_server}
     tag: "latest"
     pullPolicy: Always
 
@@ -48,7 +48,7 @@ server:
 client:
   enable: true
   image:
-    repository: ${repository_client}
+    repository: ${optimizer_repository_client}
     tag: "latest"
     pullPolicy: Always
 

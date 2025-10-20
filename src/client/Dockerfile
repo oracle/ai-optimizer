@@ -12,7 +12,7 @@ ENV RUNUSER=oracleai \
 
 RUN groupadd $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel gcc gcc-c++ && \
+    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
@@ -26,8 +26,8 @@ RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
 # Clint Application
 ##################################################
 FROM optimizer_base AS client
-
-ENV TEMP=/app/tmp
+ENV PATH=$VIRTUAL_ENV/bin:$PATH \
+    TEMP=/app/tmp
 
 # Prep the app directory
 RUN for dir in $TEMP; do \

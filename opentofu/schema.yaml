@@ -28,7 +28,6 @@ variableGroups:
 
   - title: "Hidden (Defaults)"
     variables:
-      - optimizer_version
       - adb_version
       - k8s_run_cfgmgt
     visible: false
@@ -206,7 +205,7 @@ variables:
     title: "Bring Your Own Oracle Container Image Registry (OCIR)?"
     description: |
       All container images should pre-exist in and will be pulled from the BYO OCIR.
-      For more information: 
+      For more information:
     type: boolean
     default: false
     required: true
@@ -215,7 +214,7 @@ variables:
     title: "URL for existing OCIR"
     description: "Example: iad.ocir.io/namespace"
     type: string
-    visible: byo_ocir
+    visible: k8s_byo_ocir
 
   #########################################################################
   compute_cpu_shape:
@@ -564,15 +563,10 @@ outputGroups:
     outputs:
       - client_url
       - server_url
-    visible: true
 
   - title: "Kubernetes KUBECONFIG command"
     outputs:
       - kubeconfig_cmd
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
 
 ###########################################################################
 outputs:
