@@ -442,6 +442,10 @@ def _vs_gen_selectbox(label: str, options: list, key: str):
             logger.debug("Defaulting %s to %s", key, selected_value)
         else:
             selected_value = state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
+            # Check if selected_value is actually in valid_options, otherwise reset to empty
+            if selected_value and selected_value not in valid_options:
+                logger.debug("Previously selected %s '%s' no longer available, resetting", key, selected_value)
+                selected_value = ""
             logger.debug("User selected %s to %s", key, selected_value)
     return st.sidebar.selectbox(
         label,

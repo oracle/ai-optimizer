@@ -198,7 +198,7 @@ async def refresh_vector_store(
 
     try:
         # Get OCI configuration
-        oci_config = core_oci.get_oci(client=client, auth_profile=request.auth_profile)
+        oci_config = utils_oci.get(client=client, auth_profile=request.auth_profile)
 
         # Get database configuration
         db_details = utils_databases.get_client_database(client)
@@ -208,7 +208,6 @@ async def refresh_vector_store(
         logger.info("Found vector store: %s with model %s", vs_config.vector_store, vs_config.model)
 
         # Get current bucket objects with metadata
-        import server.api.utils.oci as utils_oci
         current_objects = utils_oci.get_bucket_objects_with_metadata(request.bucket_name, oci_config)
 
         if not current_objects:
