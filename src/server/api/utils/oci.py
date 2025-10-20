@@ -12,7 +12,7 @@ import urllib3.exceptions
 
 import oci
 
-from server.bootstrap.bootstrap import OCI_OBJECTS, SETTINGS_OBJECTS
+from server.bootstrap import bootstrap
 from common.schema import OracleCloudSettings, ClientIdType, OCIProfileType
 from common import logging_config
 
@@ -48,12 +48,19 @@ def get(
     if client is not None and auth_profile is not None:
         raise ValueError("provide either 'client' or 'auth_profile', not both")
 
-    oci_objects = OCI_OBJECTS
+    oci_objects = bootstrap.OCI_OBJECTS
     if client is not None:
         # Get client settings directly from SETTINGS_OBJECTS
-        client_settings = next((s for s in SETTINGS_OBJECTS if s.client == client), None)
+        logger.debug("Looking for client %s in SETTINGS_OBJECTS", client)
+        logger.debug(
+            "SETTINGS_OBJECTS has %d entries: %s",
+            len(bootstrap.SETTINGS_OBJECTS),
+            [s.client for s in bootstrap.SETTINGS_OBJECTS],
+        )
+        client_settings = next((s for s in bootstrap.SETTINGS_OBJECTS if s.client == client), None)
         if not client_settings:
-            raise ValueError(f"client {client} not found")
+            available_clients = [s.client for s in bootstrap.SETTINGS_OBJECTS]
+            raise ValueError(f"client {client} not found in SETTINGS_OBJECTS with clients: {available_clients}")
 
         derived_auth_profile = (
             getattr(client_settings.oci, "auth_profile", "DEFAULT") if client_settings.oci else "DEFAULT"
@@ -275,6 +282,7 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
                         "id": model.id,
                     }
                 )
+            logger.info("Registered %i GenAI Models", len(genai_models))
         except oci.exceptions.ServiceError as ex:
             logger.info("Unable to get GenAI Models in Region: %s (%s)", region["region_name"], ex.message)
         except (oci.exceptions.RequestException, urllib3.exceptions.MaxRetryError):

@@ -38,13 +38,13 @@ class TestOciGet:
         )
         self.sample_client_settings = Settings(client="test_client", oci=OciSettings(auth_profile="CUSTOM"))
 
-    @patch("server.api.utils.oci.OCI_OBJECTS", [])
+    @patch("server.bootstrap.bootstrap.OCI_OBJECTS", [])
     def test_get_no_objects_configured(self):
         """Test getting OCI settings when none are configured"""
         with pytest.raises(ValueError, match="not configured"):
             oci_utils.get()
 
-    @patch("server.api.utils.oci.OCI_OBJECTS", new_callable=list)
+    @patch("server.bootstrap.bootstrap.OCI_OBJECTS", new_callable=list)
     def test_get_all(self, mock_oci_objects):
         """Test getting all OCI settings when no filters are provided"""
         all_oci = [self.sample_oci_default, self.sample_oci_custom]
@@ -54,7 +54,7 @@ class TestOciGet:
 
         assert result == all_oci
 
-    @patch("server.api.utils.oci.OCI_OBJECTS")
+    @patch("server.bootstrap.bootstrap.OCI_OBJECTS")
     def test_get_by_auth_profile_found(self, mock_oci_objects):
         """Test getting OCI settings by auth_profile when it exists"""
         mock_oci_objects.__iter__ = MagicMock(return_value=iter([self.sample_oci_default, self.sample_oci_custom]))
@@ -63,7 +63,7 @@ class TestOciGet:
 
         assert result == self.sample_oci_custom
 
-    @patch("server.api.utils.oci.OCI_OBJECTS")
+    @patch("server.bootstrap.bootstrap.OCI_OBJECTS")
     def test_get_by_auth_profile_not_found(self, mock_oci_objects):
         """Test getting OCI settings by auth_profile when it doesn't exist"""
         mock_oci_objects.__iter__ = MagicMock(return_value=iter([self.sample_oci_default]))
@@ -71,31 +71,52 @@ class TestOciGet:
         with pytest.raises(ValueError, match="profile 'NONEXISTENT' not found"):
             oci_utils.get(auth_profile="NONEXISTENT")
 
-    @patch("server.api.utils.oci.OCI_OBJECTS")
-    @patch("server.api.utils.oci.SETTINGS_OBJECTS")
-    def test_get_by_client_with_oci_settings(self, mock_settings_objects, mock_oci_objects):
+    def test_get_by_client_with_oci_settings(self):
         """Test getting OCI settings by client when client has OCI settings"""
-        mock_settings_objects.__iter__ = MagicMock(return_value=iter([self.sample_client_settings]))
-        mock_oci_objects.__iter__ = MagicMock(return_value=iter([self.sample_oci_default, self.sample_oci_custom]))
+        from server.bootstrap import bootstrap
 
-        result = oci_utils.get(client="test_client")
+        # Save originals
+        orig_settings = bootstrap.SETTINGS_OBJECTS
+        orig_oci = bootstrap.OCI_OBJECTS
 
-        assert result == self.sample_oci_custom
+        try:
+            # Replace with test data
+            bootstrap.SETTINGS_OBJECTS = [self.sample_client_settings]
+            bootstrap.OCI_OBJECTS = [self.sample_oci_default, self.sample_oci_custom]
 
-    @patch("server.api.utils.oci.OCI_OBJECTS")
-    @patch("server.api.utils.oci.SETTINGS_OBJECTS")
-    def test_get_by_client_without_oci_settings(self, mock_settings_objects, mock_oci_objects):
+            result = oci_utils.get(client="test_client")
+
+            assert result == self.sample_oci_custom
+        finally:
+            # Restore originals
+            bootstrap.SETTINGS_OBJECTS = orig_settings
+            bootstrap.OCI_OBJECTS = orig_oci
+
+    def test_get_by_client_without_oci_settings(self):
         """Test getting OCI settings by client when client has no OCI settings"""
+        from server.bootstrap import bootstrap
+
         client_settings_no_oci = Settings(client="test_client", oci=None)
-        mock_settings_objects.__iter__ = MagicMock(return_value=iter([client_settings_no_oci]))
-        mock_oci_objects.__iter__ = MagicMock(return_value=iter([self.sample_oci_default]))
 
-        result = oci_utils.get(client="test_client")
+        # Save originals
+        orig_settings = bootstrap.SETTINGS_OBJECTS
+        orig_oci = bootstrap.OCI_OBJECTS
 
-        assert result == self.sample_oci_default
+        try:
+            # Replace with test data
+            bootstrap.SETTINGS_OBJECTS = [client_settings_no_oci]
+            bootstrap.OCI_OBJECTS = [self.sample_oci_default]
 
-    @patch("server.api.utils.oci.OCI_OBJECTS")
-    @patch("server.api.utils.oci.SETTINGS_OBJECTS")
+            result = oci_utils.get(client="test_client")
+
+            assert result == self.sample_oci_default
+        finally:
+            # Restore originals
+            bootstrap.SETTINGS_OBJECTS = orig_settings
+            bootstrap.OCI_OBJECTS = orig_oci
+
+    @patch("server.bootstrap.bootstrap.OCI_OBJECTS")
+    @patch("server.bootstrap.bootstrap.SETTINGS_OBJECTS")
     def test_get_by_client_not_found(self, mock_settings_objects, mock_oci_objects):
         """Test getting OCI settings when client doesn't exist"""
         mock_settings_objects.__iter__ = MagicMock(return_value=iter([]))
@@ -103,15 +124,25 @@ class TestOciGet:
         with pytest.raises(ValueError, match="client test_client not found"):
             oci_utils.get(client="test_client")
 
-    @patch("server.api.utils.oci.OCI_OBJECTS")
-    @patch("server.api.utils.oci.SETTINGS_OBJECTS")
-    def test_get_by_client_no_matching_profile(self, mock_settings_objects, mock_oci_objects):
+    def test_get_by_client_no_matching_profile(self):
         """Test getting OCI settings by client when no matching profile exists"""
-        mock_settings_objects.__iter__ = MagicMock(return_value=iter([self.sample_client_settings]))
-        mock_oci_objects.__iter__ = MagicMock(return_value=iter([self.sample_oci_default]))  # Only DEFAULT profile
+        from server.bootstrap import bootstrap
 
-        with pytest.raises(ValueError, match="No settings found for client 'test_client' with auth_profile 'CUSTOM'"):
-            oci_utils.get(client="test_client")
+        # Save originals
+        orig_settings = bootstrap.SETTINGS_OBJECTS
+        orig_oci = bootstrap.OCI_OBJECTS
+
+        try:
+            # Replace with test data
+            bootstrap.SETTINGS_OBJECTS = [self.sample_client_settings]
+            bootstrap.OCI_OBJECTS = [self.sample_oci_default]  # Only DEFAULT profile
+
+            with pytest.raises(ValueError, match="No settings found for client 'test_client' with auth_profile 'CUSTOM'"):
+                oci_utils.get(client="test_client")
+        finally:
+            # Restore originals
+            bootstrap.SETTINGS_OBJECTS = orig_settings
+            bootstrap.OCI_OBJECTS = orig_oci
 
     def test_get_both_client_and_auth_profile(self):
         """Test that providing both client and auth_profile raises an error"""
