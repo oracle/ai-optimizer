@@ -1,9 +1,10 @@
 # Oracle AI Optimizer and Toolkit
 
 <!-- spell-checker:ignore streamlit, venv, setuptools -->
-![Test Status](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml/badge.svg)
-![IaC Status](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)
-![Build Status](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)
+[![Test Suite](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml)
+[![Validate IaC](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml)
+[![Validate Container Images](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml)
+[![Deploy Documentation](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml)
 
 ## Description
 
