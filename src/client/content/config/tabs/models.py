@@ -149,7 +149,7 @@ def _render_model_selection(model: dict, provider_models: list, action: str) -> 
 
 def _render_api_configuration(model: dict, provider_models: list, disable_for_oci: bool) -> dict:
     """Render API configuration UI and return updated model"""
-    api_base = next(
+    litellm_api_base = next(
         (m.get("api_base", "") for m in provider_models if m.get("key") == model["id"]), model.get("api_base", "")
     )
 
@@ -157,7 +157,7 @@ def _render_api_configuration(model: dict, provider_models: list, disable_for_oc
         "Provider URL:",
         help=help_text.help_dict["model_url"],
         key="add_model_url",
-        value=api_base,
+        value=model.get("api_base", litellm_api_base),
         disabled=disable_for_oci,
     )
 
