@@ -21,6 +21,7 @@ locals {
     db_service                  = var.db_conn.service
     optimizer_api_key           = random_string.optimizer_api_key.result
     deploy_buildkit             = var.byo_ocir_url == ""
+    deploy_optimizer            = var.deploy_optimizer
     optimizer_version           = var.optimizer_version
   })
 
@@ -53,6 +54,7 @@ resource "local_sensitive_file" "k8s_manifest" {
 }
 
 resource "local_sensitive_file" "optimizer_helm_values" {
+  count           = var.deploy_optimizer ? 1 : 0
   content         = local.helm_values
   filename        = "${path.root}/cfgmgt/stage/optimizer-helm-values.yaml"
   file_permission = 0600

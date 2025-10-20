@@ -75,7 +75,7 @@ spec:
     apiGroup: ingress.oraclecloud.com
     kind: IngressClassParameters
     name: native-ic-params
-%{ if deploy_buildkit ~}
+%{ if deploy_buildkit && deploy_optimizer ~}
 ---
 # Builds and pushes application images to container registry.
 # Uses instance principles.

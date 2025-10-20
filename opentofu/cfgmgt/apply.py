@@ -97,7 +97,8 @@ def apply_helm_chart_inner(release_name, namespace):
     values_path = os.path.join(STAGE_PATH, "optimizer-helm-values.yaml")
     if not os.path.isfile(values_path):
         print(f"⚠️ Values file not found: {values_path}")
-        return False
+        print("ℹ️ Skipping Helm chart application.\n")
+        return True  # Return True to indicate this is not a retriable failure
 
     helm_repo_add_if_missing()
 

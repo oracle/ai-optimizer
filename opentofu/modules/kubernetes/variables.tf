@@ -135,6 +135,6 @@ variable "optimizer_version" {
 }
 
 variable "deploy_optimizer" {
-  type = bool
+  type    = bool
   default = true
 }
