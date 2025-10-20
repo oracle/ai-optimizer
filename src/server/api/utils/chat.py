@@ -11,8 +11,9 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 import server.api.core.settings as core_settings
-import server.api.core.oci as core_oci
 import server.api.core.prompts as core_prompts
+
+import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
 import server.api.utils.databases as utils_databases
 import server.api.utils.selectai as utils_selectai
@@ -41,7 +42,7 @@ async def completion_generator(
     if not model["model"]:
         model = client_settings.ll_model.model_dump()
 
-    oci_config = core_oci.get_oci(client=client)
+    oci_config = utils_oci.get(client=client)
 
     # Setup Client Model
     try:

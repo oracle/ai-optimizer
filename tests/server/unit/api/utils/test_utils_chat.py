@@ -40,7 +40,7 @@ class TestChatUtils:
         )
 
     @patch("server.api.core.settings.get_client_settings")
-    @patch("server.api.core.oci.get_oci")
+    @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.core.prompts.get_prompts")
     @patch("server.agents.chatbot.chatbot_graph.astream")
@@ -77,7 +77,7 @@ class TestChatUtils:
         mock_get_oci.assert_called_once_with(client="test_client")
 
     @patch("server.api.core.settings.get_client_settings")
-    @patch("server.api.core.oci.get_oci")
+    @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.core.prompts.get_prompts")
     @patch("server.agents.chatbot.chatbot_graph.astream")
@@ -112,7 +112,7 @@ class TestChatUtils:
         assert results[2] == "[stream_finished]"
 
     @patch("server.api.core.settings.get_client_settings")
-    @patch("server.api.core.oci.get_oci")
+    @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.core.prompts.get_prompts")
     @patch("server.api.utils.databases.get_client_database")
@@ -162,7 +162,7 @@ class TestChatUtils:
         assert len(results) == 1
 
     @patch("server.api.core.settings.get_client_settings")
-    @patch("server.api.core.oci.get_oci")
+    @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.core.prompts.get_prompts")
     @patch("server.api.utils.databases.get_client_database")
@@ -213,7 +213,7 @@ class TestChatUtils:
         assert len(results) == 1
 
     @patch("server.api.core.settings.get_client_settings")
-    @patch("server.api.core.oci.get_oci")
+    @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.core.prompts.get_prompts")
     @patch("server.agents.chatbot.chatbot_graph.astream")
@@ -246,7 +246,7 @@ class TestChatUtils:
         assert len(results) == 1
 
     @patch("server.api.core.settings.get_client_settings")
-    @patch("server.api.core.oci.get_oci")
+    @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.core.prompts.get_prompts")
     @patch("server.agents.chatbot.chatbot_graph.astream")

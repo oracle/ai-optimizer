@@ -19,7 +19,7 @@ import litellm
 from langchain_core.messages import ChatMessage
 
 import server.api.core.settings as core_settings
-import server.api.core.oci as core_oci
+import server.api.utils.oci as utils_oci
 import server.api.utils.embed as utils_embed
 import server.api.utils.testbed as utils_testbed
 import server.api.utils.databases as utils_databases
@@ -150,7 +150,7 @@ async def testbed_generate_qa(
     """Retrieve contents from a local file uploaded and generate Q&A"""
     # Get the Model Configuration
     try:
-        oci_config = core_oci.get_oci(client)
+        oci_config = utils_oci.get(client)
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from ex
 
@@ -177,20 +177,40 @@ async def testbed_generate_qa(
                 open(full_testsets, "a", encoding="utf-8") as destination,
             ):
                 destination.write(source.read())
+        except KeyError as ex:
+            # Handle empty testset error (when no questions are generated due to model issues)
+            shutil.rmtree(temp_directory)
+            if "None of" in str(ex) and "are in the columns" in str(ex):
+                error_message = (
+                    f"Failed to generate any questions using model '{ll_model}'. "
+                    "This may indicate the model is unavailable, retired, or not found. "
+                    "Please verify the model name and try a different model."
+                )
+                logger.error("TestSet Generation Failed: %s", error_message)
+                raise HTTPException(status_code=400, detail=error_message) from ex
+            # Re-raise other KeyErrors
+            raise
+        except ValueError as ex:
+            # Handle model validation errors (e.g., empty testset due to model issues)
+            shutil.rmtree(temp_directory)
+            error_message = str(ex)
+            logger.error("TestSet Validation Error: %s", error_message)
+            raise HTTPException(status_code=400, detail=error_message) from ex
         except litellm.APIConnectionError as ex:
             shutil.rmtree(temp_directory)
-            logger.error("APIConnectionError Exception: %s", str(ex))
-            raise HTTPException(status_code=424, detail=str(ex)) from ex
+            error_message = str(ex)
+            logger.error("APIConnectionError Exception: %s", error_message)
+            raise HTTPException(status_code=424, detail=f"Model API error: {error_message}") from ex
         except Exception as ex:
             shutil.rmtree(temp_directory)
             logger.error("Unknown TestSet Exception: %s", str(ex))
-            raise HTTPException(status_code=500, detail=f"Unexpected testset error: {str(ex)}.") from ex
+            raise HTTPException(status_code=500, detail=f"Unexpected TestSet error: {str(ex)}.") from ex
 
-        # Store tests in database
-        with open(full_testsets, "rb") as file:
-            upload_file = UploadFile(file=file, filename=full_testsets)
-            testset_qa = await testbed_upsert_testsets(client=client, files=[upload_file], name=name)
-        shutil.rmtree(temp_directory)
+    # Store tests in database (only if we successfully generated testsets)
+    with open(full_testsets, "rb") as file:
+        upload_file = UploadFile(file=file, filename=full_testsets)
+        testset_qa = await testbed_upsert_testsets(client=client, files=[upload_file], name=name)
+    shutil.rmtree(temp_directory)
 
     return testset_qa
 
@@ -233,7 +253,7 @@ def testbed_evaluate(
 
     # Setup Judge Model
     logger.debug("Starting evaluation with Judge: %s", judge)
-    oci_config = core_oci.get_oci(client)
+    oci_config = utils_oci.get(client)
 
     judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
     set_llm_model(llm_model=judge, **judge_config)

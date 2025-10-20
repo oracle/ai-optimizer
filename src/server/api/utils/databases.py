@@ -156,7 +156,7 @@ def connect(config: Database) -> oracledb.Connection:
         raise
     except OSError as ex:
         raise ConnectionError(f"Error connecting to database: {ex}") from ex
-    
+
     logger.debug("Connected to Databases: %s", config.dsn)
 
     return conn
