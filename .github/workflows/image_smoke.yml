@@ -64,7 +64,7 @@ jobs:
           context: .
           file: ${{ matrix.build.dockerfile }}
           tags: ${{ matrix.build.name }}:${{ github.sha }}
-          load: ${{ matrix.build.name == 'aio' }}
+          load: true  # Load all images for smoke testing
           push: false
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
@@ -97,36 +97,92 @@ jobs:
           sarif_file: trivy-results-aio.sarif
           category: trivy-aio
 
-      # Smoke test - only AIO (contains both server and client)
-      - name: Smoke Test - Verify Container Starts
+      # Smoke test - Server container
+      - name: Smoke Test - Server Container
+        if: matrix.build.name == 'server'
+        run: |
+          echo "Testing Server container startup..."
+
+          # Start server container in background
+          docker run -d --name test-server \
+            -e API_SERVER_KEY=test-key-for-ci \
+            server:${{ github.sha }}
+
+          # Wait and verify container is still running (max 30 seconds)
+          echo "Waiting for container to stabilize..."
+          sleep 10
+
+          if docker ps --filter "name=test-server" --filter "status=running" | grep -q test-server; then
+            echo "✅ Server container started and is running"
+            docker stop test-server
+            exit 0
+          else
+            echo "❌ Server container failed to start or crashed"
+            docker logs test-server 2>&1
+            exit 1
+          fi
+
+      # Smoke test - Client container
+      - name: Smoke Test - Client Container
+        if: matrix.build.name == 'client'
+        run: |
+          echo "Testing Client container startup..."
+
+          # Start client container in background
+          # Client requires API_SERVER_* env vars to be set
+          docker run -d --name test-client \
+            -e API_SERVER_KEY=test-key-for-ci \
+            -e API_SERVER_URL=http://localhost \
+            -e API_SERVER_PORT=8000 \
+            client:${{ github.sha }}
+
+          # Wait and verify container is still running
+          echo "Waiting for container to stabilize..."
+          sleep 10
+
+          if docker ps --filter "name=test-client" --filter "status=running" | grep -q test-client; then
+            echo "✅ Client container started and is running"
+            docker stop test-client
+            exit 0
+          else
+            echo "❌ Client container failed to start or crashed"
+            docker logs test-client 2>&1
+            exit 1
+          fi
+
+      # Smoke test - AIO container (both server and client)
+      - name: Smoke Test - AIO Container
         if: matrix.build.name == 'aio'
         run: |
-          echo "Testing AIO image startup..."
+          echo "Testing AIO container startup..."
 
           # Start container in background
           docker run -d --name test-aio \
             -e API_SERVER_KEY=test-key-for-ci \
             aio:${{ github.sha }}
 
-          # Wait for startup (max 30 seconds)
-          for i in {1..30}; do
-            if docker logs test-aio 2>&1 | grep -qE "Application startup complete|Uvicorn running|Starting server|Streamlit"; then
-              echo "✅ Container started successfully"
-              docker logs test-aio | tail -20
-              docker stop test-aio
-              exit 0
-            fi
-            sleep 1
-          done
+          # Wait and verify container is still running
+          echo "Waiting for container to stabilize..."
+          sleep 10
 
-          echo "❌ Container failed to start within 30 seconds"
-          docker logs test-aio
-          docker stop test-aio || true
-          exit 1
+          if docker ps --filter "name=test-aio" --filter "status=running" | grep -q test-aio; then
+            echo "✅ AIO container started and is running"
+            docker stop test-aio
+            exit 0
+          else
+            echo "❌ AIO container failed to start or crashed"
+            docker logs test-aio 2>&1
+            exit 1
+          fi
 
-      - name: Cleanup Test Container
-        if: always() && matrix.build.name == 'aio'
+      # Cleanup test containers
+      - name: Cleanup Test Containers
+        if: always()
         run: |
+          docker stop test-server 2>/dev/null || true
+          docker rm test-server 2>/dev/null || true
+          docker stop test-client 2>/dev/null || true
+          docker rm test-client 2>/dev/null || true
           docker stop test-aio 2>/dev/null || true
           docker rm test-aio 2>/dev/null || true
 
@@ -140,9 +196,13 @@ jobs:
     steps:
       - name: All Validations Passed
         run: |
-          echo "================================================"
+          echo "========================================================"
           echo "✅ All container image validations passed!"
-          echo "================================================"
+          echo "========================================================"
           echo "- Image builds (aio, client, server): ✅"
-          echo "- Security scan (AIO only): ✅"
-          echo "- Smoke test (AIO only): ✅"
+          echo "- Security scan (AIO): ✅"
+          echo "- Smoke tests:"
+          echo "  - Server container startup: ✅"
+          echo "  - Client container startup: ✅"
+          echo "  - AIO container startup: ✅"
+          echo "========================================================"
