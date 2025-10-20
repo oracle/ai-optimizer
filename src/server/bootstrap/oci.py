@@ -16,6 +16,49 @@ from common.schema import OracleCloudSettings
 logger = logging_config.logging.getLogger("bootstrap.oci")
 
 
+def _apply_env_overrides_to_default_profile(config: list[dict]) -> None:
+    """Apply environment variable overrides to the DEFAULT OCI profile."""
+    def override(profile: dict, key: str, env_key: str, env: dict, overrides: dict, default=None):
+        val = env.get(env_key)
+        if val is not None and val != profile.get(key):
+            overrides[key] = (profile.get(key), val)
+            return val
+        return profile.get(key, default)
+
+    env = os.environ
+
+    for profile in config:
+        if profile["auth_profile"] == oci.config.DEFAULT_PROFILE:
+            overrides = {}
+
+            profile.update(
+                {
+                    "tenancy": override(profile, "tenancy", "OCI_CLI_TENANCY", env, overrides),
+                    "region": override(profile, "region", "OCI_CLI_REGION", env, overrides),
+                    "user": override(profile, "user", "OCI_CLI_USER", env, overrides),
+                    "fingerprint": override(profile, "fingerprint", "OCI_CLI_FINGERPRINT", env, overrides),
+                    "key_file": override(profile, "key_file", "OCI_CLI_KEY_FILE", env, overrides),
+                    "security_token_file": override(
+                        profile, "security_token_file", "OCI_CLI_SECURITY_TOKEN_FILE", env, overrides
+                    ),
+                    "authentication": env.get("OCI_CLI_AUTH")
+                    or ("security_token" if profile.get("security_token_file") else "api_key"),
+                    "genai_compartment_id": override(
+                        profile, "genai_compartment_id", "OCI_GENAI_COMPARTMENT_ID", env, overrides, None
+                    ),
+                    "genai_region": override(profile, "genai_region", "OCI_GENAI_REGION", env, overrides, None),
+                    "log_requests": profile.get("log_requests", False),
+                    "additional_user_agent": profile.get("additional_user_agent", ""),
+                    "pass_phrase": profile.get("pass_phrase"),
+                }
+            )
+
+            if overrides:
+                logger.info("Environment variable overrides for OCI DEFAULT profile:")
+                for key, (old, new) in overrides.items():
+                    logger.info("  %s: '%s' -> '%s'", key, old, new)
+
+
 def main() -> list[OracleCloudSettings]:
     """Read in OCI Configuration options into an object"""
     logger.debug("*** Bootstrapping OCI - Start")
@@ -62,45 +105,7 @@ def main() -> list[OracleCloudSettings]:
         config.append({"auth_profile": oci.config.DEFAULT_PROFILE})
 
     # Override DEFAULT profile with environment variables
-    def override(profile: dict, key: str, env_key: str, env: dict, overrides: dict, default=None):
-        val = env.get(env_key)
-        if val is not None and val != profile.get(key):
-            overrides[key] = (profile.get(key), val)
-            return val
-        return profile.get(key, default)
-
-    env = os.environ
-
-    for profile in config:
-        if profile["auth_profile"] == oci.config.DEFAULT_PROFILE:
-            overrides = {}
-
-            profile.update(
-                {
-                    "tenancy": override(profile, "tenancy", "OCI_CLI_TENANCY", env, overrides),
-                    "region": override(profile, "region", "OCI_CLI_REGION", env, overrides),
-                    "user": override(profile, "user", "OCI_CLI_USER", env, overrides),
-                    "fingerprint": override(profile, "fingerprint", "OCI_CLI_FINGERPRINT", env, overrides),
-                    "key_file": override(profile, "key_file", "OCI_CLI_KEY_FILE", env, overrides),
-                    "security_token_file": override(
-                        profile, "security_token_file", "OCI_CLI_SECURITY_TOKEN_FILE", env, overrides
-                    ),
-                    "authentication": env.get("OCI_CLI_AUTH")
-                    or ("security_token" if profile.get("security_token_file") else "api_key"),
-                    "genai_compartment_id": override(
-                        profile, "genai_compartment_id", "OCI_GENAI_COMPARTMENT_ID", env, overrides, None
-                    ),
-                    "genai_region": override(profile, "genai_region", "OCI_GENAI_REGION", env, overrides, None),
-                    "log_requests": profile.get("log_requests", False),
-                    "additional_user_agent": profile.get("additional_user_agent", ""),
-                    "pass_phrase": profile.get("pass_phrase"),
-                }
-            )
-
-            if overrides:
-                logger.info("Environment variable overrides for OCI DEFAULT profile:")
-                for key, (old, new) in overrides.items():
-                    logger.info("  %s: '%s' -> '%s'", key, old, new)
+    _apply_env_overrides_to_default_profile(config)
 
     # Build final OracleCloudSettings objects
     oci_objects = []

@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore
 
 from typing import Optional, Union
-from server.api.core import bootstrap
+from server.bootstrap import bootstrap
 
 from common.schema import PromptCategoryType, PromptNameType, Prompt
 from common import logging_config

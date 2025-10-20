@@ -16,6 +16,7 @@ sbin/**
 **/etc/*.json
 **/optimizer_settings.json
 !opentofu/**/cloudinit-oke.sh
+!opentofu/examples/manual-test.sh
 !src/entrypoint.sh
 !src/client/spring_ai/templates/env.sh
 tests/db_startup_temp/**
@@ -43,6 +44,12 @@ __pycache__/
 **/*.egg-info
 **/build/
 
+# Test coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+test-results.xml
+
 ##############################################################################
 # AI Code Assists
 ##############################################################################
@@ -58,9 +65,15 @@ helm/values*.yaml
 ##############################################################################
 # IaC
 ##############################################################################
+# Ignore all tfvars files (contain credentials)
 **/**.tfvars
+# But allow example tfvars files for CI/CD testing (safe, no real credentials)
+!opentofu/examples/*.tfvars
+# Terraform/OpenTofu state and cache
 **/.terraform*
 **/terraform.tfstate*
+**/*.tfplan
+**/*.tfplan.out
 
 ##############################################################################
 # Random

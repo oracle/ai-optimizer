@@ -14,7 +14,7 @@ from conftest import TEST_CONFIG
 
 from server.api.utils import databases
 from server.api.utils.databases import DbException
-from server.api.core import bootstrap
+from server.bootstrap import bootstrap
 from common.schema import Database
 
 
