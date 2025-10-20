@@ -133,3 +133,8 @@ variable "byo_ocir_url" {
 variable "optimizer_version" {
   type = string
 }
+
+variable "deploy_optimizer" {
+  type = bool
+  default = true
+}

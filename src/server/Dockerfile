@@ -14,7 +14,7 @@ ENV RUNUSER=oracleai \
 
 RUN groupadd $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel gcc gcc-c++ && \
+    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 

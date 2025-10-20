@@ -94,7 +94,7 @@ def helm_repo_add_if_missing():
 
 def apply_helm_chart_inner(release_name, namespace):
     """Apply Helm Chart"""
-    values_path = os.path.join(STAGE_PATH, "helm-values.yaml")
+    values_path = os.path.join(STAGE_PATH, "optimizer-helm-values.yaml")
     if not os.path.isfile(values_path):
         print(f"⚠️ Values file not found: {values_path}")
         return False
@@ -119,9 +119,9 @@ def apply_helm_chart_inner(release_name, namespace):
         print("✅ Helm chart applied:")
         print(f"Apply Helm Chart: {stdout}")
         return True
-    else:
-        print(f"❌ Failed to apply Helm chart:\n{stderr}")
-        return False
+
+    print(f"❌ Failed to apply Helm chart:\n{stderr}")
+    return False
 
 
 def apply_helm_chart(release_name, namespace):
@@ -129,31 +129,50 @@ def apply_helm_chart(release_name, namespace):
     retry(lambda: apply_helm_chart_inner(release_name, namespace))
 
 
-def apply_manifest_inner():
+def apply_manifest_inner(namespace):
     """Apply Manifest"""
     manifest_path = os.path.join(STAGE_PATH, "k8s-manifest.yaml")
     if not os.path.isfile(manifest_path):
         print(f"⚠️ Manifest not found: {manifest_path}")
         return False
 
+    # Delete existing Jobs with the same name to allow recreation
+    # Jobs are immutable and cannot be updated, only replaced
+    print("🗑️ Checking for existing buildkit Job...")
+    stdout, _, _ = run_cmd(
+        ["kubectl", "get", "job", "optimizer-buildkit", "-n", namespace, "-o", "name"], capture_output=True
+    )
+    if stdout:
+        print(f"🗑️ Deleting existing optimizer-buildkit Job in namespace '{namespace}'...")
+        run_cmd(
+            ["kubectl", "delete", "job", "optimizer-buildkit", "-n", namespace, "--ignore-not-found=true"],
+            capture_output=False,
+        )
+        time.sleep(2)  # Wait for deletion to complete
+
     print("🚀 Applying Kubernetes manifest: k8s-manifest.yaml")
     _, stderr, rc = run_cmd(["kubectl", "apply", "-f", manifest_path], capture_output=False)
     if rc == 0:
         print("✅ Manifest applied.\n")
         return True
-    else:
-        print(f"❌ Failed to apply manifest:\n{stderr}")
-        return False
+
+    print(f"❌ Failed to apply manifest:\n{stderr}")
+    return False
 
 
-def apply_manifest():
+def apply_manifest(namespace):
     """Retry Enabled Add/Update Manifest"""
-    retry(apply_manifest_inner)
+    retry(lambda: apply_manifest_inner(namespace))
 
 
 def patch_oracle_operator_inner():
     """Patch Oracle Database Operator deployment to disable readOnlyRootFilesystem"""
     print("🔧 Patching oracle-database-operator deployment...")
+    patch_json = (
+        '[{"op": "replace", "path": '
+        '"/spec/template/spec/containers/0/securityContext/readOnlyRootFilesystem", '
+        '"value": false}]'
+    )
     cmd = [
         "kubectl",
         "-n",
@@ -164,15 +183,15 @@ def patch_oracle_operator_inner():
         "--type",
         "json",
         "-p",
-        '[{"op": "replace", "path": "/spec/template/spec/containers/0/securityContext/readOnlyRootFilesystem", "value": false}]',
+        patch_json,
     ]
     _, stderr, rc = run_cmd(cmd, capture_output=False)
     if rc == 0:
         print("✅ Oracle operator patched.\n")
         return True
-    else:
-        print(f"❌ Failed to patch operator:\n{stderr}")
-        return False
+
+    print(f"❌ Failed to patch operator:\n{stderr}")
+    return False
 
 
 def patch_oracle_operator():
@@ -189,6 +208,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     mod_kubeconfig(args.private_endpoint)
-    apply_manifest()
+    apply_manifest(args.namespace)
     patch_oracle_operator()
     apply_helm_chart(args.release_name, args.namespace)

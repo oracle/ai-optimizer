@@ -11,11 +11,11 @@ metadata:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${label}-api-key
+  name: ${label}-optimizer-api-key
   namespace: ${label}
 type: Opaque
 stringData:
-  apiKey: ${api_key}
+  apiKey: ${optimizer_api_key}
 ---
 # Secret containing non-privileged DB User details.
 # Used for application connectivity to database.
@@ -82,7 +82,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: buildkit
+  name: optimizer-buildkit
   namespace: ${label}
 spec:
   ttlSecondsAfterFinished: 300
@@ -97,11 +97,11 @@ spec:
             - -c
             - |
               if [ "${optimizer_version}" = "Experimental" ]; then
+                echo "Downloading Code from MAIN branch"
                 wget -qO- https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz \
-                  | tar -xz -C /workspace ai-optimizer-main/src ai-optimizer-main/pyproject.toml --strip-components=1
-                mv /workspace/src/* /workspace/src/.* /workspace/ 2>/dev/null || true
-                rm -rf /workspace/src
+                  | tar -xz -C /workspace --strip-components=1 ai-optimizer-main/src ai-optimizer-main/pyproject.toml 
               else
+                echo "Downloading Code from LATEST release"
                 wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
                   | tar -xz -C /workspace
               fi
@@ -118,7 +118,7 @@ spec:
             - -c
             - |
               RETRY_COUNT=0
-              REPO_PATH=$(echo "${repository_client}" | cut -d'/' -f2-)
+              REPO_PATH=$(echo "${optimizer_repository_client}" | cut -d'/' -f2-)
 
               while [ $RETRY_COUNT -lt 10 ]; do
                 RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -130,7 +130,7 @@ spec:
                 chown 1000:1000 /docker-config/config.json
 
                 HTTP_STATUS=$(oci raw-request --http-method GET \
-                  --target-uri "https://${repository_host}/v2/$REPO_PATH/tags/list" \
+                  --target-uri "https://${repository_host}/v2/$REPO_PATH/manifests/latest" \
                   --request-headers "{\"Authorization\": \"Bearer $TOKEN\"}" 2>/dev/null | jq -r '.status' || echo "000")
 
                 HTTP_CODE=$(echo "$HTTP_STATUS" | cut -d' ' -f1)
@@ -168,8 +168,8 @@ spec:
                 --progress plain \
                 --frontend dockerfile.v0 \
                 --local context=/workspace \
-                --local dockerfile=/workspace/client \
-                --output type=image,name=${repository_client}:latest,push=true
+                --local dockerfile=/workspace/src/client \
+                --output type=image,name=${optimizer_repository_client}:latest,push=true
           securityContext:
             seccompProfile:
               type: Unconfined
@@ -201,8 +201,8 @@ spec:
                 --progress plain \
                 --frontend dockerfile.v0 \
                 --local context=/workspace \
-                --local dockerfile=/workspace/server \
-                --output type=image,name=${repository_server}:latest,push=true
+                --local dockerfile=/workspace/src/server \
+                --output type=image,name=${optimizer_repository_server}:latest,push=true
           securityContext:
             seccompProfile:
               type: Unconfined

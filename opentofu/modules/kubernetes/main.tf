@@ -2,7 +2,7 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
-resource "random_string" "api_key" {
+resource "random_string" "optimizer_api_key" {
   length           = 32
   special          = true
   upper            = true
@@ -14,7 +14,7 @@ resource "random_string" "api_key" {
 // oci_artifacts_container_repository
 // OCIR
 resource "oci_artifacts_container_repository" "optimizer_repositories" {
-  for_each       = var.byo_ocir_url != "" ? toset([]) : toset(local.container_repositories)
+  for_each       = var.byo_ocir_url != "" ? toset([]) : toset(local.optimizer_container_repositories)
   compartment_id = var.compartment_id
   display_name   = lower(format("%s/%s", var.label_prefix, each.value))
   is_immutable   = false
