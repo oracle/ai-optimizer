@@ -14,8 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 import requests
 
-import server.api.core.oci as core_oci
-
+import server.api.utils.oci as utils_oci
 import server.api.utils.databases as utils_databases
 import server.api.utils.embed as utils_embed
 import server.api.utils.models as utils_models
@@ -134,7 +133,7 @@ async def split_embed(
 ) -> Response:
     """Perform Split and Embed"""
     logger.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
-    oci_config = core_oci.get_oci(client=client)
+    oci_config = utils_oci.get(client=client)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
     try:
