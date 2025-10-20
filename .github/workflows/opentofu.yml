@@ -1,4 +1,10 @@
 # Workflow for validating Infrastructure as Code
+#
+# This workflow validates syntax, formatting, schema, and security.
+# It does NOT validate infrastructure logic or resource creation.
+# Manual testing with real OCI credentials is REQUIRED before merging.
+# See opentofu/TESTING.md for instructions.
+
 name: Validate Infrastructure as Code
 
 on:
@@ -9,11 +15,10 @@ on:
       - reopened
       - ready_for_review
     paths:
-      - "tests/**"
+      - "tests/opentofu/**"
       - "opentofu/**"
       - ".github/workflows/opentofu.yml"
 
-  # Allows running this workflow manually
   workflow_dispatch:
 
 # Optimize: Cache terraform providers across all jobs
@@ -81,198 +86,15 @@ jobs:
           output: "trivy-results.sarif"
           exit-code: "0"
 
-  # Job 2: Plan validation with multiple deployment scenarios
-  # Each scenario runs in parallel on separate runners for speed
-  verify-iac-plans:
-    name: Plan - ${{ matrix.scenario.name }}
-    if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/opentofu/opentofu:latest
-    permissions:
-      pull-requests: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        scenario:
-          - name: "VM + New ADB"
-            tfvars: "examples/ci-vm-new-adb.tfvars"
-            description: "Virtual Machine deployment with new Autonomous Database"
-
-          - name: "K8s + New ADB"
-            tfvars: "examples/ci-k8s-new-adb.tfvars"
-            description: "Kubernetes (OKE) deployment with new Autonomous Database"
-
-          - name: "VM + BYO ADB"
-            tfvars: "examples/ci-vm-byo-adb.tfvars"
-            description: "Virtual Machine with bring-your-own Autonomous Database"
-
-          - name: "K8s + BYO Other DB"
-            tfvars: "examples/ci-k8s-byo-other-db.tfvars"
-            description: "Kubernetes with bring-your-own other database"
-
-          - name: "VM + ARM Shape"
-            tfvars: "examples/ci-vm-arm-shape.tfvars"
-            description: "Virtual Machine with ARM (Ampere) compute shape"
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Cache Terraform Providers
-        uses: actions/cache@v4
-        with:
-          path: ~/.terraform.d/plugin-cache
-          key: ${{ runner.os }}-terraform-${{ hashFiles('opentofu/.terraform.lock.hcl') }}
-          restore-keys: |
-            ${{ runner.os }}-terraform-
-
-      - name: Create Plugin Cache Directory
-        run: mkdir -p ~/.terraform.d/plugin-cache
-
-      - name: Display Scenario Details
-        run: |
-          echo "================================================"
-          echo "Scenario: ${{ matrix.scenario.name }}"
-          echo "Description: ${{ matrix.scenario.description }}"
-          echo "Variables File: ${{ matrix.scenario.tfvars }}"
-          echo "================================================"
-
-      - name: Initialize Infrastructure as Code
-        working-directory: ./opentofu
-        run: tofu init -backend=false
-
-      - name: Run Plan for Scenario
-        working-directory: ./opentofu
-        id: plan
-        run: |
-          echo "Running plan with ${{ matrix.scenario.tfvars }}..."
-
-          # Use tfvars filename (without path/extension) as plan filename to avoid spaces
-          PLAN_FILE="tfplan-$(basename ${{ matrix.scenario.tfvars }} .tfvars).out"
-
-          # Capture both stdout and stderr, and exit code
-          set +e
-          OUTPUT=$(tofu plan \
-            -var-file="${{ matrix.scenario.tfvars }}" \
-            -out="$PLAN_FILE" \
-            -detailed-exitcode \
-            -no-color 2>&1)
-          EXIT_CODE=$?
-          set -e
-
-          echo "$OUTPUT"
-
-          # Exit code meanings: 0 = no changes, 1 = error, 2 = changes present
-
-          # First check for SUCCESS cases (exit codes 0 or 2 = plan completed fully)
-          if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 2 ]; then
-            echo "✅ Plan completed successfully (exit code: $EXIT_CODE)"
-            echo "plan_success=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Now handle ERROR case (exit code 1)
-          if [ $EXIT_CODE -eq 1 ]; then
-            # CRITICAL: Check for command-line syntax errors (MUST FAIL)
-            if echo "$OUTPUT" | grep -qiE "Too many command line arguments"; then
-              echo "❌ CRITICAL FAILURE: Command line syntax error"
-              echo "::error::Invalid tofu plan command syntax for ${{ matrix.scenario.name }}"
-              exit 1
-            fi
-
-            # CRITICAL: Check for HCL/configuration syntax errors (MUST FAIL)
-            if echo "$OUTPUT" | grep -qE "Error: (Invalid|Unsupported|Unrecognized) (block|argument|attribute)"; then
-              echo "❌ CRITICAL FAILURE: Invalid Terraform/OpenTofu syntax"
-              echo "::error::Configuration syntax error for ${{ matrix.scenario.name }}"
-              exit 1
-            fi
-
-            # SUCCESS INDICATOR: Check if plan generated any output (proves IaC is valid)
-            # The plan must have shown actual infrastructure changes to be considered valid
-            # NOTE: With fake credentials, only statically-evaluable resources are validated
-            # Resources depending on data sources (OCI API calls) are not evaluated
-            if echo "$OUTPUT" | grep -qE "Plan: [0-9]+ to (add|change|destroy)"; then
-              PLAN_COUNT=$(echo "$OUTPUT" | grep -oE "Plan: [0-9]+" | grep -oE "[0-9]+")
-              echo "✅ SUCCESS: Plan generated $PLAN_COUNT infrastructure changes"
-              echo "📝 NOTE: This validates syntax and statically-evaluable resources only"
-              echo "📝 Full validation requires real OCI credentials (not used in CI)"
-
-              # Verify it failed due to expected auth/credential issues
-              if echo "$OUTPUT" | grep -qiE "(Error:.*can not create client|Error:.*bad configuration|Error:.*private.?key|Error:.*(401|authentication|credential|authorization))"; then
-                echo "✅ SUCCESS: Failed with expected authentication error (using placeholder credentials)"
-                echo "::notice::✅ Plan validation PASSED for ${{ matrix.scenario.name }} - IaC validated, auth error expected"
-                echo "plan_success=true" >> $GITHUB_OUTPUT
-                exit 0
-              else
-                # Plan generated output but failed for unexpected reason - investigate
-                echo "⚠️  WARNING: Plan generated changes but failed for unexpected reason"
-                echo "This might be OK (could be missing required vars), manual review needed"
-                echo "::warning::Plan generated changes but failed unexpectedly for ${{ matrix.scenario.name }}"
-                echo "plan_success=true" >> $GITHUB_OUTPUT
-                exit 0
-              fi
-            fi
-
-            # If we get here, plan never generated infrastructure = validation FAILED
-            echo "❌ CRITICAL FAILURE: Plan did not generate any infrastructure"
-            echo "This indicates a validation error, syntax error, or missing configuration"
-            echo "::error::Plan validation FAILED for ${{ matrix.scenario.name }} - no infrastructure generated"
-            exit 1
-          fi
-
-          # Unexpected exit code
-          echo "❌ CRITICAL FAILURE: Unexpected exit code: $EXIT_CODE"
-          exit 1
-
-      - name: Validate Plan Output
-        if: steps.plan.outputs.plan_success == 'true'
-        working-directory: ./opentofu
-        run: |
-          PLAN_FILE="tfplan-$(basename ${{ matrix.scenario.tfvars }} .tfvars).out"
-          echo "Verifying plan file was generated..."
-          if [ -f "$PLAN_FILE" ]; then
-            echo "✅ Plan file exists: $PLAN_FILE"
-            echo "Displaying plan summary..."
-            tofu show "$PLAN_FILE" | head -50 || echo "Plan show completed"
-          else
-            echo "⚠️  Warning: Plan succeeded but no plan file found"
-            exit 1
-          fi
-
-  # Job 3: Summary job to ensure all validations passed
   verify-iac-summary:
     name: Validation Summary
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: [verify-iac-static, verify-iac-plans]
+    needs: [verify-iac-static]
 
     steps:
       - name: All Validations Passed
         run: |
-          echo "========================================================================"
-          echo "✅ All Infrastructure as Code validations passed!"
-          echo "========================================================================"
-          echo ""
-          echo "Static Analysis Checks:"
-          echo "  ✅ HCL syntax validation (tofu validate)"
-          echo "  ✅ Code formatting (tofu fmt)"
-          echo "  ✅ Oracle Resource Manager schema compliance"
-          echo "  ✅ Security scan (Trivy)"
-          echo ""
-          echo "Dynamic Plan Validation (5 scenarios):"
-          echo "  ✅ VM + New ADB"
-          echo "  ✅ K8s + New ADB"
-          echo "  ✅ VM + BYO ADB"
-          echo "  ✅ K8s + BYO Other DB"
-          echo "  ✅ VM + ARM Shape"
-          echo ""
-          echo "⚠️  IMPORTANT NOTES:"
-          echo "  • CI uses placeholder credentials for security"
-          echo "  • Only statically-evaluable resources are validated"
-          echo "  • Resources requiring OCI API calls (data sources) are not evaluated"
-          echo "  • Full end-to-end validation requires real OCI credentials"
-          echo "  • This CI validates: syntax, formatting, schema, and core logic"
-          echo ""
-          echo "========================================================================"
+          echo "✅ Syntax, formatting, schema, security validated"
+          echo "⚠️  Does NOT validate infrastructure logic"
+          echo "📖 See opentofu/TESTING.md for manual testing requirements"

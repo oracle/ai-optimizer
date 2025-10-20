@@ -16,6 +16,7 @@ sbin/**
 **/etc/*.json
 **/optimizer_settings.json
 !opentofu/**/cloudinit-oke.sh
+!opentofu/examples/manual-test.sh
 !src/entrypoint.sh
 !src/client/spring_ai/templates/env.sh
 tests/db_startup_temp/**

@@ -1,13 +1,6 @@
-# CI/CD Test Scenario: VM deployment with new Autonomous Database
-# This file contains placeholder values for GitHub Actions validation
+# Example: VM deployment with new Autonomous Database
 
-# Required OCI Authentication (placeholders for validation only)
-tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaafaketenancyocidforgithubactionstesting"
-compartment_ocid = "ocid1.compartment.oc1..aaaaaaaafakecompartmentocidforgithubactions"
-user_ocid        = "ocid1.user.oc1..aaaaaaaafakeuserocidforgithubactionstesting"
-fingerprint      = "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
-private_key      = "-----BEGIN RSA PRIVATE KEY-----\nFAKEKEYFORCITESTINGONLY\n-----END RSA PRIVATE KEY-----"
-region           = "us-phoenix-1"
+# Run: examples/test.sh
 
 # Deployment Configuration
 label_prefix      = "CITEST"

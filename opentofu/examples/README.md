@@ -1,55 +1,46 @@
 # OpenTofu Example Variable Files
 
-This directory contains example `.tfvars` files for different deployment scenarios. These files are primarily used for:
+This directory contains example `.tfvars` files for different deployment scenarios.
 
-1. **CI/CD Testing**: GitHub Actions uses these to validate OpenTofu plans without requiring real OCI credentials
-2. **Documentation**: Demonstrating different deployment configurations
-3. **Local Testing**: Quick starting points for different scenarios
+## Quick Start
 
-## Files
+```bash
+# Load credentials from ~/.oci/config and run all tests
+cd /path/to/your/project/opentofu/
+examples/manual-test.sh
+```
 
-### CI/CD Test Scenarios (with placeholder credentials)
+The test script automatically loads credentials from `~/.oci/config`, sets compartment to your tenancy root, and runs `tofu plan` on all testable examples.
+
+## Example Scenarios
 
 | File | Description | Infrastructure | Database |
 |------|-------------|----------------|----------|
-| `ci-vm-new-adb.tfvars` | VM deployment with new Autonomous Database | VM | New ADB |
-| `ci-k8s-new-adb.tfvars` | Kubernetes deployment with new ADB | Kubernetes (OKE) | New ADB |
-| `ci-vm-byo-adb.tfvars` | VM with bring-your-own ADB | VM | BYO ADB-S |
-| `ci-k8s-byo-other-db.tfvars` | Kubernetes with BYO other database | Kubernetes (OKE) | BYO OTHER |
-| `ci-vm-arm-shape.tfvars` | VM with ARM (Ampere) compute shape | VM | New ADB (BYOL) |
+| `vm-new-adb.tfvars` | VM deployment with new Autonomous Database | VM | New ADB |
+| `k8s-new-adb.tfvars` | Kubernetes deployment with new ADB | Kubernetes (OKE) | New ADB |
+| `vm-arm-shape.tfvars` | VM with ARM (Ampere) compute shape | VM | New ADB (BYOL) |
+| `vm-byo-adb.tfvars` | VM with bring-your-own ADB | VM | BYO ADB-S |
+| `vm-byo-other-db.tfvars` | VM with BYO other database | VM | BYO OTHER |
+| `k8s-byo-other-db.tfvars` | Kubernetes with BYO other database | Kubernetes (OKE) | BYO OTHER |
 
-## Using These Files
+## Manual Setup (Without Helper Script)
 
-### For GitHub Actions CI/CD
+If you prefer not to use the helper script:
 
-The GitHub Actions workflow automatically uses these files to test different deployment scenarios:
-
-```bash
-tofu init -backend=false
-tofu plan -var-file=examples/ci-vm-new-adb.tfvars
-```
-
-These plans will validate the OpenTofu configuration logic without requiring real OCI authentication.
-
-### For Local Development
-
-**Important**: These files contain placeholder credentials and will not work for actual deployments.
-
-To use these as templates for real deployments:
-
-1. Copy an example file:
+1. Copy an example:
    ```bash
-   cp examples/ci-vm-new-adb.tfvars terraform.tfvars
+   cd /path/to/your/project/opentofu/
+   cp examples/vm-new-adb.tfvars terraform.tfvars
    ```
 
-2. Edit `terraform.tfvars` with your real OCI credentials:
+2. Edit `terraform.tfvars` and uncomment/set the authentication variables:
    ```hcl
-   tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaayour-real-tenancy-ocid"
-   compartment_ocid = "ocid1.compartment.oc1..aaaaaaaayour-real-compartment-ocid"
-   user_ocid        = "ocid1.user.oc1..aaaaaaaayour-real-user-ocid"
-   fingerprint      = "your:real:fingerprint:here"
+   tenancy_ocid     = "ocid1.tenancy.oc1..aaa..."
+   compartment_ocid = "ocid1.compartment.oc1..aaa..."
+   user_ocid        = "ocid1.user.oc1..aaa..."
+   fingerprint      = "xx:xx:xx:..."
+   private_key_path = "~/.oci/oci_api_key.pem"
    region           = "us-phoenix-1"
-   private_key_path = "/path/to/your/private_key.pem"
    ```
 
 3. Run OpenTofu:
@@ -59,12 +50,17 @@ To use these as templates for real deployments:
    tofu apply
    ```
 
-## Contributing
+## OCI Config File Format
 
-When adding new deployment scenarios:
+The helper script, `examples/manual-test.sh`, reads from `~/.oci/config` which should look like:
 
-1. Create a new `ci-*.tfvars` file with a descriptive name
-2. Use placeholder credentials (fake OCIDs, fingerprints)
-3. Add comments explaining the scenario
-4. Update this README with the new scenario
-5. Update `.github/workflows/opentofu.yml` matrix to include the new file
+```ini
+[DEFAULT]
+user=ocid1.user.oc1..aaa...
+tenancy=ocid1.tenancy.oc1..aaa...
+region=us-phoenix-1
+fingerprint=xx:xx:xx:...
+key_file=~/.oci/oci_api_key.pem
+```
+
+If you don't have this file, run: `oci setup config`

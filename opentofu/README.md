@@ -7,6 +7,7 @@ This directory contains the OpenTofu/Terraform configuration for deploying the O
 This `opentofu/` directory is **designed to be portable** and can be copied to other projects or used standalone. It includes:
 
 - ✅ Standalone `.gitignore` - Works when copied to another repo
+- ✅ Self-contained modules - Remove modules if not applicable
 - ✅ Example variable files - Safe placeholder credentials for testing
 - ✅ Comprehensive documentation - Self-contained
 - ✅ CI/CD testing configs - GitHub Actions workflow examples
@@ -21,14 +22,16 @@ To use this infrastructure in another project:
    cd /path/to/your/project/opentofu/
    ```
 
-2. **The `.gitignore` is already configured:**
-   - Blocks real credentials (`*.tfvars`, `*.pem`)
-   - Allows example files (`examples/*.tfvars`)
-   - Blocks state files and cache
+2. **Remove modules that are not required (e.g. VM infrastructure):**
+   ```bash
+   cd /path/to/your/project/opentofu/
+   rm module_vm.tf
+   rm -rf modules/vm
+   ```
 
 3. **Start with an example:**
    ```bash
-   cp examples/ci-vm-new-adb.tfvars terraform.tfvars
+   cp examples/vm-new-adb.tfvars terraform.tfvars
    # Edit terraform.tfvars with your real OCI credentials
    ```
 
@@ -46,46 +49,28 @@ opentofu/
 ├── README.md                    # This file
 ├── TESTING.md                   # CI/CD testing documentation
 ├── .gitignore                   # Portable .gitignore (works standalone)
-├── examples/                    # Example variable files (safe to commit)
+├── examples/                    # Example variable files
 │   ├── README.md                # Documentation for examples
-│   ├── ci-vm-new-adb.tfvars     # VM with new ADB
-│   ├── ci-k8s-new-adb.tfvars    # Kubernetes with new ADB
+│   ├── vm-new-adb.tfvars        # VM with new ADB
+│   ├── k8s-new-adb.tfvars       # Kubernetes with new ADB
 │   └── ...                      # Other scenarios
 ├── *.tf                         # Main Terraform configuration
 ├── modules/                     # Terraform modules
 │   ├── network/
-│   ├── vm/
+│   ├── kubernetes/
 │   └── ...
 └── cfgmgt/                      # Configuration management scripts
 ```
 
-## .gitignore Strategy
-
-This directory has its **own `.gitignore`** that works both:
-- ✅ As part of this repo (with root `.gitignore`)
-- ✅ When copied to another project (standalone)
-
-**What's blocked:**
-- `*.tfvars` - Real credentials (except `examples/*.tfvars`)
-- `*.pem` - Private keys
-- `.terraform*` - Provider cache
-- `terraform.tfstate*` - State files
-- `*.tfplan` - Plan output files
-
-**What's allowed:**
-- `examples/*.tfvars` - Safe placeholder credentials for CI/CD
-- All `.tf` files - Infrastructure code
-- Documentation files
-
 ## Example Variable Files
 
-The `examples/` directory contains **safe-to-commit** variable files with placeholder credentials for:
+The `examples/` directory contains variable files with placeholder credentials for:
 
-1. **CI/CD Testing** - GitHub Actions uses these for validation
-2. **Documentation** - Demonstrates different deployment scenarios
+1. **Documentation** - Demonstrates different deployment scenarios
+2. **Manual Testing** - Templates for testing with real OCI credentials
 3. **Quick Start** - Copy as starting point for real deployments
 
-**Important:** These files contain **fake OCIDs and credentials** and will not work for actual deployments.
+**Important:** These files contain **placeholder OCIDs and credentials** and will not work for actual deployments. Replace with your real OCI credentials before running `tofu plan`.
 
 See [`examples/README.md`](examples/README.md) for details on each scenario.
 
@@ -121,7 +106,7 @@ The contents should otherwise be `app_version = "0.0.0"` to indicate a non-relea
 
 ```bash
 # Option A: Use an example as template
-cp examples/ci-vm-new-adb.tfvars terraform.tfvars
+cp examples/vm-new-adb.tfvars terraform.tfvars
 
 # Option B: Create from scratch
 cat > terraform.tfvars << EOF
@@ -155,18 +140,12 @@ tofu destroy
 
 ## Testing
 
-See [`TESTING.md`](TESTING.md) for details on the CI/CD testing strategy, including:
-
-- How to run tests locally
-- GitHub Actions workflow explanation
-- Adding new test scenarios
-- Performance optimizations
+See [`TESTING.md`](TESTING.md) for manual testing requirements. **CI validates syntax only** - infrastructure logic must be tested with real OCI credentials before merging changes.
 
 ## Documentation
 
 - **[TESTING.md](TESTING.md)** - CI/CD testing strategy and workflow details
 - **[examples/README.md](examples/README.md)** - Example variable files documentation
-- **[../.github/workflows/OPTIMIZATION.md](../.github/workflows/OPTIMIZATION.md)** - Workflow optimization details (if in original repo)
 
 ## Support
 
