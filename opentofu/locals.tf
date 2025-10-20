@@ -70,7 +70,7 @@ locals {
       [local.vcn_ocid]
     )
   )
-  adb_nsg                    = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? [oci_core_network_security_group.adb[0].id] : []
+  adb_nsg                    = var.byo_vcn_ocid != "" && var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? [oci_core_network_security_group.adb[0].id] : []
   adb_subnet_id              = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.private_subnet_ocid : null
   adb_private_endpoint_label = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.label_prefix : null
 }

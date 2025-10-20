@@ -64,6 +64,7 @@ client = [
 test = [
     "pylint",
     "pytest",
+    "pytest-cov",
     "pytest-asyncio",
     "docker",
 ]

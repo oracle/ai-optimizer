@@ -16,10 +16,6 @@ jobs:
   check:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    services:
-      docker:
-        image: docker:latest
-        options: --privileged
     # Block merging if the job fails
     permissions:
       pull-requests: write
@@ -27,10 +23,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-        with:
-          version: latest
 
       - uses: actions/setup-python@v5
         with:
@@ -58,5 +50,19 @@ jobs:
       - name: Run Pylint on Common Code
         run: pylint src/common
 
+      # Linting errors not yet resolved in Server Code
+      # - name: Run Pylint on Server Code
+      #   run: pylint src/server
+
       - name: Run All Tests
-        run: pytest
+        run: pytest tests -v --junitxml=test-results.xml --cov=src --cov-report=xml --cov-report=term
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-results.xml
+            coverage.xml
+            .coverage
