@@ -3,14 +3,16 @@
 # spell-checker:disable
 ##################################################
 # Base - All-In-One
+# Build from the project root directory:
+#  podman build -f src/Dockerfile -t ai-optimizer-aio:latest .
 ##################################################
 FROM container-registry.oracle.com/os/oraclelinux:8-slim AS all_in_one_pyenv
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
-RUN groupadd $RUNUSER && \
+RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel gcc gcc-c++ && \
+    microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 

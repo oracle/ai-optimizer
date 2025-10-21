@@ -94,6 +94,10 @@ def main() -> None:
         .stAppHeader img[alt="Logo"] {
             width: 50%;
         }
+        /* Fix emoji rendering in tab labels */
+        [data-testid="stMarkdownContainer"] p {
+            font-family: "sans-serif-pro" !important;
+        }
         </style>
         """,
     )
