@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 #############################################################
 # Base - API Server
-# Build from the / directory:
+# Build from the project root directory:
 #  podman build -f src/server/Dockerfile -t ai-optimizer-server:latest .
 #############################################################
 # spell-checker: disable
@@ -12,9 +12,9 @@ ENV RUNUSER=oracleai
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
-RUN groupadd $RUNUSER && \
+RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel && \
+    microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
