@@ -102,14 +102,14 @@ if not getattr(OCIChatConfig.validate_environment, "_is_custom_patch", False):
         api_base: Optional[str] = None,
     ) -> dict:
         """
-        Custom validate_environment to support instance principals.
-        When using instance principals, skip the validation of user/fingerprint/key.
+        Custom validate_environment to support instance principals and workload identity.
+        If oci_signer is present, use signer-based auth; otherwise use credential-based auth.
         """
-        oci_auth_type = optional_params.get("oci_auth_type")
+        oci_signer = optional_params.get("oci_signer")
 
-        # If using instance principals or workload identity, skip credential validation
-        if oci_auth_type in ("instance_principal", "oke_workload_identity"):
-            logger.info("Using OCI %s - skipping credential validation", oci_auth_type)
+        # If signer is provided, use signer-based authentication (instance principals/workload identity)
+        if oci_signer:
+            logger.info("OCI signer detected - using signer-based authentication")
             oci_region = optional_params.get("oci_region", "us-ashburn-1")
             api_base = (
                 api_base or litellm.api_base or f"https://inference.generativeai.{oci_region}.oci.oraclecloud.com"
@@ -133,7 +133,7 @@ if not getattr(OCIChatConfig.validate_environment, "_is_custom_patch", False):
 
             return headers
 
-        # For standard auth, use original validation
+        # For credential-based auth, use original validation
         return original_validate_environment(
             self, headers, model, messages, optional_params, litellm_params, api_key, api_base
         )
@@ -161,20 +161,14 @@ if not getattr(OCIChatConfig.sign_request, "_is_custom_patch", False):
         fake_stream: Optional[bool] = None,
     ) -> Tuple[dict, Optional[bytes]]:
         """
-        Custom sign_request to support instance principals.
-        Uses OCI SDK's native signers for instance principals.
+        Custom sign_request to support instance principals and workload identity.
+        If oci_signer is present, use it for signing; otherwise use credential-based auth.
         """
-        oci_auth_type = optional_params.get("oci_auth_type")
+        oci_signer = optional_params.get("oci_signer")
 
-        # If using instance principals or workload identity, use OCI SDK signers
-        if oci_auth_type in ("instance_principal", "oke_workload_identity"):
-            logger.info("Using OCI %s for request signing", oci_auth_type)
-
-            # Get the appropriate signer
-            if oci_auth_type == "instance_principal":
-                signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-            else:  # oke_workload_identity
-                signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
+        # If signer is provided, use it for request signing
+        if oci_signer:
+            logger.info("Using OCI signer for request signing")
 
             # Prepare the request
             from urllib.parse import urlparse
@@ -202,8 +196,8 @@ if not getattr(OCIChatConfig.sign_request, "_is_custom_patch", False):
 
             mock_request = MockRequest(method=method, url=api_base, headers=prepared_headers, body=body)
 
-            # Sign the request using OCI SDK
-            signer.do_request_sign(mock_request, enforce_content_headers=True)
+            # Sign the request using the provided OCI signer
+            oci_signer.do_request_sign(mock_request, enforce_content_headers=True)
 
             # Update headers with signed headers
             headers.update(mock_request.headers)
