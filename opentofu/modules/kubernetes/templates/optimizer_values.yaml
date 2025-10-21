@@ -9,7 +9,7 @@ global:
 # -- API Server configuration
 server:
   image:
-    repository: ${optimizer_repository_server}
+    repository: ${repository_base}/ai-optimizer-server
     tag: "latest"
     pullPolicy: Always
 
@@ -41,14 +41,14 @@ server:
       ocid: "${db_ocid}"
 %{ endif ~}
     authN:
-      secretName: "${db_name}-db-authn"
+      secretName: "${db_name}-optimizer-db-authn"
     privAuthN:
       secretName: "${db_name}-db-priv-authn"
 
 client:
   enable: true
   image:
-    repository: ${optimizer_repository_client}
+    repository: ${repository_base}/ai-optimizer-client
     tag: "latest"
     pullPolicy: Always
 

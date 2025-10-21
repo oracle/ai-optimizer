@@ -7,6 +7,19 @@ set -euo pipefail
 # Navigate to opentofu root
 cd "$(dirname "$(dirname "$0")")" || exit 1
 
+# Check for tofu or terraform in PATH
+if command -v tofu &> /dev/null; then
+    TF_CMD="tofu"
+elif command -v terraform &> /dev/null; then
+    TF_CMD="terraform"
+else
+    echo "Error: Neither 'tofu' nor 'terraform' found in PATH" >&2
+    exit 1
+fi
+
+echo "Using command: $TF_CMD"
+echo ""
+
 PROFILE="${1:-DEFAULT}"
 OCI_CONFIG="${OCI_CONFIG_FILE:-$HOME/.oci/config}"
 
@@ -44,6 +57,51 @@ export TF_VAR_compartment_ocid="$TF_VAR_tenancy_ocid"
 echo "✅ OCI credentials loaded (Profile: $PROFILE, Region: $TF_VAR_region)"
 echo ""
 
+# Pre-flight checks: format and validate
+echo "Running pre-flight checks..."
+echo ""
+
+echo "1. Formatting code with '$TF_CMD fmt --recursive'..."
+if $TF_CMD fmt --recursive > /dev/null; then
+    echo "  ✅ Format check passed"
+else
+    echo "  ❌ Format check failed"
+    exit 1
+fi
+
+echo "2. Validating configuration with '$TF_CMD validate'..."
+if $TF_CMD validate > /dev/null 2>&1; then
+    echo "  ✅ Validation passed"
+else
+    echo "  ❌ Validation failed"
+    echo ""
+    echo "Re-run: $TF_CMD validate"
+    exit 1
+fi
+
+echo ""
+
+# Check for existing deployed resources
+if [ -f "terraform.tfstate" ] && [ -s "terraform.tfstate" ]; then
+    echo "Checking for deployed resources..."
+
+    # Use terraform state list to check if there are any managed resources
+    if resource_count=$($TF_CMD state list 2>/dev/null | wc -l | xargs); then
+        if [ "$resource_count" -gt 0 ]; then
+            echo "❌ ERROR: Found $resource_count deployed resource(s) in the state"
+            echo ""
+            echo "This test script requires a clean state to test multiple configurations."
+            echo "Please destroy existing resources first:"
+            echo ""
+            echo "  $TF_CMD destroy -auto-approve"
+            echo ""
+            exit 1
+        else
+            echo "  ✅ State file exists but no resources are deployed (likely from previous destroy)"
+        fi
+    fi
+fi
+
 # Run tests
 EXAMPLES=(
     examples/vm-new-adb.tfvars
@@ -56,13 +114,16 @@ EXAMPLES=(
 for example in "${EXAMPLES[@]}"; do
     echo "Testing $example..."
 
-    if plan_output=$(tofu plan -var-file="$example" 2>&1); then
+    if plan_output=$($TF_CMD plan -var-file="$example" 2>&1); then
         plan_summary=$(echo "$plan_output" | grep -i "plan:" | tail -1 | sed 's/^[[:space:]]*//')
         echo "  ✅ ${plan_summary:-PASSED}"
     else
         echo "  ❌ FAILED"
         echo ""
-        echo "Re-run: tofu plan -var-file=$example"
+        echo "Error output:"
+        echo "$plan_output" | tail -20
+        echo ""
+        echo "Re-run: $TF_CMD plan -var-file=$example"
         exit 1
     fi
 done
