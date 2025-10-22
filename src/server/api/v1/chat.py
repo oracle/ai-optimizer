@@ -66,7 +66,7 @@ async def chat_stream(
     response_model=list[schema.ChatMessage],
 )
 async def chat_history_clean(client: schema.ClientIdType = Header(default="server")) -> list[ChatMessage]:
-    """Delete all Chat History"""
+    """Delete all Chat History and clear RAG document context"""
     agent: CompiledStateGraph = chatbot.chatbot_graph
     try:
         _ = agent.update_state(
@@ -75,7 +75,13 @@ async def chat_history_clean(client: schema.ClientIdType = Header(default="serve
                     "thread_id": client,
                 }
             ),
-            values={"messages": RemoveMessage(id=REMOVE_ALL_MESSAGES)},
+            values={
+                "messages": RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                "cleaned_messages": [],
+                "context_input": "",
+                "documents": {},
+                "final_response": {},
+            },
         )
         return [ChatMessage(content="As requested, I've forgotten our conversation.", role="system")]
     except KeyError:
