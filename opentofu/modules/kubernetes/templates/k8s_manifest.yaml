@@ -101,7 +101,7 @@ spec:
               if [ "${optimizer_version}" = "Experimental" ]; then
                 echo "Downloading Code from MAIN branch"
                 wget -qO- https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz \
-                  | tar -xz -C /workspace --strip-components=1 ai-optimizer-main/src ai-optimizer-main/pyproject.toml 
+                  | tar -xz -C /workspace --strip-components=1 ai-optimizer-main/src ai-optimizer-main/pyproject.toml
               else
                 echo "Downloading Code from LATEST release"
                 wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
@@ -119,41 +119,26 @@ spec:
             - sh
             - -c
             - |
-              RETRY_COUNT=0
               REPO_PATH=$(echo "${repository_base}" | cut -d'/' -f2-)
 
-              while [ $RETRY_COUNT -lt 10 ]; do
-                RETRY_COUNT=$((RETRY_COUNT + 1))
-                echo "Attempt $RETRY_COUNT of 10"
-
-                TOKEN=$(oci raw-request --http-method GET --target-uri https://${repository_host}/20180419/docker/token | jq -r '.data.token' 2>/dev/null || echo "")
-                mkdir -p /docker-config
-                echo "{\"auths\":{\"${repository_host}\":{\"auth\":\"$(echo -n "BEARER_TOKEN:$TOKEN" | base64 -w0)\"}}}" > /docker-config/config.json
-                chown 1000:1000 /docker-config/config.json
-
-                HTTP_STATUS=$(oci raw-request --http-method GET \
-                  --target-uri "https://${repository_host}/v2/$REPO_PATH/manifests/latest" \
-                  --request-headers "{\"Authorization\": \"Bearer $TOKEN\"}" 2>/dev/null | jq -r '.status' || echo "000")
-
-                HTTP_CODE=$(echo "$HTTP_STATUS" | cut -d' ' -f1)
-
-                if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
-                  echo "Token validated: Status $HTTP_CODE"
-                  exit 0
-                fi
-
-                echo "Token invalid: Status $HTTP_CODE... retrying in 10s"
-                [ $RETRY_COUNT -lt 10 ] && sleep 10
+              # Fetch separate tokens for each repository
+              for IMAGE in client server; do
+                TOKEN_RESPONSE=$(oci raw-request \
+                  --http-method GET \
+                  --target-uri \
+                  "https://${repository_host}/20180419/docker/token?scope=repository:$REPO_PATH/ai-optimizer-$IMAGE:push,pull&service=${repository_host}" 2>&1)
+                TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.data.token')
+                echo "{\"auths\":{\"${repository_host}\":{\"auth\":\"$(echo -n "BEARER_TOKEN:$TOKEN" | base64 -w0)\"}}}" > /docker-config/$IMAGE/config.json
+                chown 1000:1000 /docker-config/$IMAGE/config.json
               done
-
-              echo "Failed after 10 attempts"
-              exit 1
           env:
             - name: OCI_CLI_AUTH
-              value: instance_principal
+              value: oke_workload_identity
           volumeMounts:
-            - name: docker-auth
-              mountPath: /docker-config
+            - name: docker-auth-client
+              mountPath: /docker-config/client
+            - name: docker-auth-server
+              mountPath: /docker-config/server
       containers:
         - name: buildkit-client
           image: docker.io/moby/buildkit:master-rootless
@@ -185,7 +170,7 @@ spec:
               readOnly: true
             - name: buildkitd-client
               mountPath: /home/user/.local/share/buildkit
-            - name: docker-auth
+            - name: docker-auth-client
               mountPath: /home/user/.docker
               readOnly: true
         - name: buildkit-server
@@ -218,7 +203,7 @@ spec:
               readOnly: true
             - name: buildkitd-server
               mountPath: /home/user/.local/share/buildkit
-            - name: docker-auth
+            - name: docker-auth-server
               mountPath: /home/user/.docker
               readOnly: true
       volumes:
@@ -228,6 +213,8 @@ spec:
           emptyDir: {}
         - name: buildkitd-server
           emptyDir: {}
-        - name: docker-auth
+        - name: docker-auth-client
+          emptyDir: {}
+        - name: docker-auth-server
           emptyDir: {}
 %{ endif }
