@@ -174,3 +174,68 @@ class TestEndpoints:
             assert len(history) == 1
             assert history[0]["role"] == "system"
             assert "no history" in history[0]["content"].lower()
+
+    def test_chat_history_clears_rag_context(self, client, auth_headers):
+        """Test that clearing chat history also clears RAG document context
+
+        This test ensures that when PATCH /v1/chat/history is called,
+        all OptimizerState fields are cleared including:
+        - messages (conversation history)
+        - cleaned_messages (filtered messages)
+        - context_input (contextualized query)
+        - documents (RAG document context)
+        - final_response (completion response)
+
+        This prevents RAG documents from persisting across conversation resets.
+        """
+        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
+            # Create a mock state snapshot that simulates a conversation with RAG documents
+            mock_state = MagicMock()
+            mock_state.values = {
+                "messages": [
+                    ChatMessage(content="What is RAG?", role="user"),
+                    ChatMessage(content="RAG stands for Retrieval-Augmented Generation.", role="assistant"),
+                ],
+                "cleaned_messages": [
+                    ChatMessage(content="What is RAG?", role="user"),
+                ],
+                "context_input": "What is Retrieval-Augmented Generation?",
+                "documents": {
+                    "doc1": {"content": "RAG combines retrieval with generation..."},
+                    "doc2": {"content": "Vector search enables semantic retrieval..."},
+                },
+                "final_response": {
+                    "id": "test-response",
+                    "choices": [{"message": {"content": "RAG stands for..."}}],
+                },
+            }
+
+            # Setup the mock to return our state
+            mock_graph.get_state.return_value = mock_state
+            mock_graph.update_state.return_value = None
+
+            # Call the endpoint to clear history
+            response = client.patch("/v1/chat/history", headers=auth_headers["valid_auth"])
+
+            # Verify the response
+            assert response.status_code == 200
+            history = response.json()
+            assert len(history) == 1
+            assert history[0]["role"] == "system"
+            assert "forgotten" in history[0]["content"].lower()
+
+            # Verify update_state was called with ALL state fields cleared
+            mock_graph.update_state.assert_called_once()
+            call_args = mock_graph.update_state.call_args
+
+            # Check that values dict includes all OptimizerState fields
+            values = call_args.kwargs["values"]
+            assert "messages" in values  # Should have RemoveMessage
+            assert "cleaned_messages" in values
+            assert values["cleaned_messages"] == []
+            assert "context_input" in values
+            assert values["context_input"] == ""
+            assert "documents" in values
+            assert values["documents"] == {}
+            assert "final_response" in values
+            assert values["final_response"] == {}
