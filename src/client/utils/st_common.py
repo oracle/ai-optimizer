@@ -258,6 +258,11 @@ def tools_sidebar() -> None:
         state.client_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
         state.client_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
+        if state.client_settings["vector_search"]["enabled"]:
+            switch_prompt("sys", "Vector Search Example")
+        else:
+            switch_prompt("sys", "Basic Example")
+
     disable_selectai = not is_db_configured()
     disable_vector_search = not is_db_configured()
 

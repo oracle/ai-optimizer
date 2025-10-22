@@ -3,6 +3,12 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
+package_update: false
+packages:
+  - python36-oci-cli
+  - jre
+  - sqlcl
+
 write_files:
   - path: /tmp/db_priv_sql.sh
     permissions: '0755'

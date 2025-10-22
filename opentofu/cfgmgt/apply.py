@@ -11,11 +11,12 @@ import sys
 import time
 
 # --- Constants ---
-HELM_NAME = "ai-optimizer"
-HELM_REPO = "https://oracle.github.io/ai-optimizer/helm"
 STAGE_PATH = os.path.join(os.path.dirname(__file__), "stage")
 os.environ["KUBECONFIG"] = os.path.join(STAGE_PATH, "kubeconfig")
 
+# --- Helm Charts ---
+OPTIMIZER_HELM_NAME = "ai-optimizer"
+OPTIMIZER_HELM_REPO = "https://oracle.github.io/ai-optimizer/helm"
 
 # --- Utility Functions ---
 def mod_kubeconfig(private_endpoint: str = None):
@@ -78,8 +79,8 @@ def retry(func, retries=5, delay=15):
 # --- Core Functionalities ---
 def helm_repo_add_if_missing():
     """Add/Update Helm Repo"""
-    print(f"➕ Adding Helm repo '{HELM_NAME}'...")
-    _, stderr, rc = run_cmd(["helm", "repo", "add", HELM_NAME, HELM_REPO], capture_output=False)
+    print(f"➕ Adding Helm repo '{OPTIMIZER_HELM_NAME}'...")
+    _, stderr, rc = run_cmd(["helm", "repo", "add", OPTIMIZER_HELM_NAME, OPTIMIZER_HELM_REPO], capture_output=False)
     if rc != 0:
         print(f"❌ Failed to add repo:\n{stderr}")
         sys.exit(1)
@@ -89,32 +90,42 @@ def helm_repo_add_if_missing():
     if rc != 0:
         print(f"❌ Failed to update repos:\n{stderr}")
         sys.exit(1)
-    print(f"✅ Repo '{HELM_NAME}' added and updated.\n")
+    print(f"✅ Repo '{OPTIMIZER_HELM_NAME}' added and updated.\n")
 
 
 def apply_helm_chart_inner(release_name, namespace):
     """Apply Helm Chart"""
-    values_path = os.path.join(STAGE_PATH, "optimizer-helm-values.yaml")
-    if not os.path.isfile(values_path):
-        print(f"⚠️ Values file not found: {values_path}")
+    # Find all *-values.yaml files in the stage directory
+    values_files = [
+        f for f in os.listdir(STAGE_PATH)
+        if f.endswith("-values.yaml") and os.path.isfile(os.path.join(STAGE_PATH, f))
+    ]
+
+    if not values_files:
+        print(f"⚠️ No values files (*-values.yaml) found in: {STAGE_PATH}")
         print("ℹ️ Skipping Helm chart application.\n")
         return True  # Return True to indicate this is not a retriable failure
 
     helm_repo_add_if_missing()
 
+    # Build helm command with all values files
     cmd = [
         "helm",
         "upgrade",
         "--install",
         release_name,
-        f"{HELM_NAME}/{HELM_NAME}",
+        f"{OPTIMIZER_HELM_NAME}/{OPTIMIZER_HELM_NAME}",
         "--namespace",
         namespace,
-        "--values",
-        values_path,
     ]
 
-    print(f"🚀 Applying Helm chart '{HELM_NAME}' to namespace '{namespace}'...")
+    # Add each values file to the command
+    for values_file in sorted(values_files):
+        values_path = os.path.join(STAGE_PATH, values_file)
+        cmd.extend(["--values", values_path])
+        print(f"📄 Using values file: {values_file}")
+
+    print(f"🚀 Applying Helm chart '{OPTIMIZER_HELM_NAME}' to namespace '{namespace}'...")
     stdout, stderr, rc = run_cmd(cmd)
     if rc == 0:
         print("✅ Helm chart applied:")

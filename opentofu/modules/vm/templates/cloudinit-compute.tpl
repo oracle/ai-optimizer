@@ -11,10 +11,7 @@ users:
 
 package_update: false
 packages:
-  - python36-oci-cli
   - python3.11
-  - jre
-  - sqlcl
 
 write_files:
   - path: /etc/systemd/system/ai-optimizer.service
@@ -77,8 +74,9 @@ write_files:
 
       # Install Models
       if ${install_ollama}; then
-        ollama pull llama3.1
-        ollama pull mxbai-embed-large
+        echo "Pulling Ollama Models"
+        ollama pull llama3.1 > /dev/null 2>&1
+        ollama pull mxbai-embed-large > /dev/null 2>&1
       fi
 
       # Wait for python modules to finish
