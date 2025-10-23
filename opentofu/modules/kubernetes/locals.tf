@@ -43,10 +43,11 @@ locals {
          export KUBECONFIG=/path/to/kubeconfig
          kubectl apply -f k8s-manifest.yaml
          helm repo add ai-optimizer https://oracle.github.io/ai-optimizer/helm
-         helm upgrade --install ${var.label_prefix} ai-optimizer/ai-optimizer -f helm-values.yaml
+         helm upgrade --install ${var.label_prefix} ai-optimizer/ai-optimizer -f helm-values.yaml --version <VERSION>
+         (Use --version 0.0.0 for Experimental, omit --version flag for latest Stable release)
 
       3. Or use the apply.py script:
-         python3 apply.py ${var.label_prefix} ${var.label_prefix}
+         python3 apply.py ${var.label_prefix} ${var.label_prefix} --optimizer_version ${var.optimizer_version}
 
     Note: The K8s API is accessible only from within the VCN due to NSG rules.
   EOT

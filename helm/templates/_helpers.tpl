@@ -245,6 +245,56 @@ Requires either 'dsn' OR all of (host, port, service_name).
 
 
 {{/* ******************************************
+Database Type Helpers
+These helpers provide consistent database type checking across templates.
+*********************************************** */}}
+{{- define "server.database.type" -}}
+{{- if .Values.server.database -}}
+  {{- .Values.server.database.type -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "server.database.isSIDB" -}}
+{{- eq (include "server.database.type" .) "SIDB-FREE" -}}
+{{- end -}}
+
+{{- define "server.database.isADBFree" -}}
+{{- eq (include "server.database.type" .) "ADB-FREE" -}}
+{{- end -}}
+
+{{- define "server.database.isADBS" -}}
+{{- eq (include "server.database.type" .) "ADB-S" -}}
+{{- end -}}
+
+{{- define "server.database.isOther" -}}
+{{- eq (include "server.database.type" .) "OTHER" -}}
+{{- end -}}
+
+{{- define "server.database.isADB" -}}
+{{- or (eq (include "server.database.type" .) "ADB-S") (eq (include "server.database.type" .) "ADB-FREE") -}}
+{{- end -}}
+
+{{- define "server.database.isContainerDB" -}}
+{{- or (eq (include "server.database.type" .) "SIDB-FREE") (eq (include "server.database.type" .) "ADB-FREE") -}}
+{{- end -}}
+
+{{- define "server.database.needsPrivAuth" -}}
+{{- or (eq (include "server.database.isADB" .) "true") (eq (include "server.database.isOther" .) "true") -}}
+{{- end -}}
+
+{{/* ******************************************
+Database Service Name Helper
+Returns the short database type prefix (sidb or adb) for service naming.
+*********************************************** */}}
+{{- define "server.database.shortType" -}}
+{{- $dbType := include "server.database.type" . -}}
+{{- if $dbType -}}
+  {{- lower (split "-" $dbType)._0 -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
 Password Generator for Databases
 *********************************************** */}}
 {{- define "server.randomPassword" -}}

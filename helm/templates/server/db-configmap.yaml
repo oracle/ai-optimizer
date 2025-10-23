@@ -4,25 +4,23 @@
 # spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace
 
 {{- if .Values.server.database }}
+---
+# Database Initialization Scripts ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: db-custom-scripts
+  name: {{ include "global.fullname" . }}-db-init
   labels:
     app.kubernetes.io/component: database
     {{- include "global.labels" . | nindent 4 }}
 data:
   init.sh: |
-    {{- if eq .Values.server.database.type "SIDB-FREE" }}
-    sqlplus /nolog <<- EOF
-    {{ else }}
-    sql /nolog <<- EOF
-    {{- end }}
+    {{ if eq (include "server.database.isSIDB" .) "true" }}sqlplus{{ else }}sql{{ end }} /nolog <<- EOF
     WHENEVER SQLERROR EXIT 1
     WHENEVER OSERROR EXIT 1
-    {{- if (has .Values.server.database.type (list "ADB-S" "ADB-FREE" "OTHER")) }}
+    {{- if eq (include "server.database.needsPrivAuth" .) "true" }}
     connect $PRIV_USERNAME/$PRIV_PASSWORD@$DB_DSN
-    {{- else if eq .Values.server.database.type "SIDB-FREE" }}
+    {{- else }}
     connect / as sysdba
     ALTER SYSTEM SET VECTOR_MEMORY_SIZE=512M SCOPE=SPFILE;
     ALTER SESSION SET CONTAINER=FREEPDB1;
@@ -41,14 +39,14 @@ data:
       SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = '$DB_USERNAME';
       EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" QUOTA UNLIMITED ON ' || l_tblspace;
       EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "$DB_USERNAME"';
-      {{- if (has .Values.server.database.type (list "ADB-S" "ADB-FREE")) }}
+      {{- if eq (include "server.database.isADB" .) "true" }}
       EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_AI TO "$DB_USERNAME"';
       EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO "$DB_USERNAME"';
       {{- end }}
       EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" DEFAULT ROLE ALL';
     END;
     /
-    {{- if eq .Values.server.database.type "ADB-S" }}
+    {{- if eq (include "server.database.isADBS" .) "true" }}
     BEGIN
       DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
         host => '*.oraclevcn.com',
@@ -61,9 +59,9 @@ data:
     END;
     /
     {{- end }}
-    {{- if eq .Values.server.database.type "SIDB-FREE" }}
+    {{- if eq (include "server.database.isSIDB" .) "true" }}
     STARTUP FORCE;
     ALTER SYSTEM REGISTER;
     {{- end }}
     EOF
-{{ end -}}
+{{- end }}

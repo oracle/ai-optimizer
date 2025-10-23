@@ -1,0 +1,54 @@
+---
+# yamllint configuration for Helm charts
+extends: default
+
+rules:
+  # Allow longer lines for Helm templates with Go template directives
+  line-length:
+    max: 120
+    level: warning
+
+  # Helm templates use lots of braces
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+    min-spaces-inside-empty: 0
+    max-spaces-inside-empty: 0
+
+  # Helm templates often have complex indentation
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Allow duplicate keys for Helm template conditionals
+  key-duplicates:
+    level: warning
+
+  # Helm templates may have trailing spaces in Go templates
+  trailing-spaces:
+    level: warning
+
+  # Comments in Helm charts often have special formatting
+  comments:
+    min-spaces-from-content: 1
+    level: warning
+
+  # Allow empty values in Helm charts (common pattern)
+  empty-values:
+    level: warning
+
+  # Helm uses --- frequently for multiple documents
+  document-start:
+    present: false
+
+  # Truthy values are common in Helm (yes/no, on/off, etc.)
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    check-keys: false
+    level: warning
+
+ignore: |
+  helm/charts/
+  helm/Chart.lock
+  helm/README.md
