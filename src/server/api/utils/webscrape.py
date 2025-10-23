@@ -1,6 +1,5 @@
 from bs4 import BeautifulSoup, Comment
 import re, unicodedata
-from readability import Document
 from typing import List, Dict, Tuple
 import aiohttp
 
@@ -103,13 +102,6 @@ def slugify(text: str, max_len: int = 80) -> str:
     text = re.sub(r"[^\w\s-]", "", text).strip().lower()
     text = re.sub(r"[\s_-]+", "-", text)
     return text[:max_len] or "page"
-
-def extract_main_html(html: str) -> Tuple[str, str | None]:
-    try:
-        doc = Document(html)
-        return doc.summary(html_partial=True), doc.short_title()
-    except Exception:
-        return html, None
     
 async def fetch_and_extract_paragraphs(url):
     paragraphs = []
