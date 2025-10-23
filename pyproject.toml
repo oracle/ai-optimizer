@@ -62,11 +62,12 @@ client = [
 
 # Test dependencies
 test = [
+    "docker",
     "pylint",
     "pytest",
-    "pytest-cov",
     "pytest-asyncio",
-    "docker",
+    "pytest-cov",
+    "yamllint"
 ]
 
 # All-in-one installation (server + client)
