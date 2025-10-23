@@ -32,54 +32,60 @@ def clean_soup(soup: BeautifulSoup) -> None:
 def heading_level(tag) -> int:
     return int(tag.name[1])
 
-def extract_sections_from_html(html: str, default_title: str | None = None) -> List[Dict]:
-    soup = BeautifulSoup(html, "html.parser")
-    clean_soup(soup)
-    body = soup.body or soup
-
-    headings = body.find_all(re.compile(r"^h[1-6]$", re.I))
-    sections: List[Dict] = []
-
-    if not headings:
-        paras = [
-            normalize_ws(t.get_text(" ", strip=True))
-            for t in body.find_all(["p","li"])
-            if t.get_text(strip=True)
-        ]
-        if paras:
-            title = default_title or (soup.title.string.strip() if soup.title and soup.title.string else "Document")
-            sections.append({"title": title, "level": 1, "paragraphs": paras})
-        return sections
-
-    for h in headings:
-        level = heading_level(h)
-        title = normalize_ws(h.get_text(" ", strip=True))
-        paras: List[str] = []
-
-        for sib in h.next_siblings:
-            if getattr(sib, "name", None) and re.match(r"^h[1-6]$", sib.name, re.I):
-                if int(sib.name[1]) <= level:
-                    break
-
-            if getattr(sib, "name", None) in ("p","li"):
-                txt = normalize_ws(sib.get_text(" ", strip=True))
-                if txt:
-                    paras.append(txt)
-            elif getattr(sib, "name", None) in ("ul","ol"):
-                for li in sib.find_all("li"):
-                    txt = normalize_ws(li.get_text(" ", strip=True))
-                    if txt:
-                        paras.append(f"- {txt}")
-            elif getattr(sib, "name", None) in ("div","section","article"):
-                for p in sib.find_all(["p","li"], recursive=True):
-                    txt = normalize_ws(p.get_text(" ", strip=True))
-                    if txt:
-                        paras.append(txt)
-
-        if paras:
-            sections.append({"title": title, "level": level, "paragraphs": paras})
-
+def group_by_sections(soup):
+    sections = []
+    for section in soup.find_all(['section', 'article']):
+        # Use the first heading if present for section title
+        heading = section.find(re.compile('^h[1-6]$'))
+        title = normalize_ws(heading.get_text()) if heading else ""
+        paragraphs = []
+        for p in section.find_all('p'):
+            txt = normalize_ws(p.get_text())
+            if txt:
+                paragraphs.append(txt)
+        if paragraphs:
+            # All paragraphs in the section are joined with blanklines; change as you prefer
+            sections.append({"title": title, "content": "\n\n".join(paragraphs)})
     return sections
+
+def table_to_markdown(table):
+    # Simple HTML table to Markdown converter
+    rows = []
+    for tr in table.find_all("tr"):
+        cols = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
+        rows.append(cols)
+    # Make Markdown
+    md = ""
+    if rows:
+        md += "| " + " | ".join(rows[0]) + " |\n"
+        md += "| " + " | ".join("---" for _ in rows[0]) + " |\n"
+        for row in rows[1:]:
+            md += "| " + " | ".join(row) + " |\n"
+    return md
+
+def group_by_headings(soup):
+    grouped = []
+    # Find all headings
+    for hdr in soup.find_all(re.compile("^h[1-6]$")):
+        title = normalize_ws(hdr.get_text())
+        buffer = []
+        # Find next siblings until another heading of this or higher level
+        for sib in hdr.find_next_siblings():
+            if sib.name and re.match(r"^h[1-6]$", sib.name, re.I):
+                if int(sib.name[1]) <= int(hdr.name[1]):
+                    break
+            if sib.name == "p":
+                text = normalize_ws(sib.get_text())
+                if text:
+                    buffer.append(text)
+            elif sib.name in ("ul", "ol"):
+                for li in sib.find_all('li'):
+                    text = normalize_ws(li.get_text())
+                    if text:
+                        buffer.append("• " + text)
+        if buffer:
+            grouped.append({"title": title, "content": "\n\n".join(buffer)})
+    return grouped
 
 def sections_to_markdown(sections: List[Dict]) -> str:
     lines: List[str] = []
@@ -122,3 +128,20 @@ async def fetch_and_extract_paragraphs(url):
                 if txt:  
                     paragraphs.append(txt)
     return paragraphs
+
+async def fetch_and_extract_sections(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(str(url)) as response:
+            html = await response.text()
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            for script in soup(["script", "style"]):
+                script.decompose()
+            for element in soup(text=lambda text: isinstance(text, Comment)):
+                element.extract()
+            
+            # Prefer by section, or fallback to headings
+            chunks = group_by_sections(soup)
+            if not chunks:
+                chunks = group_by_headings(soup)
+    return chunks

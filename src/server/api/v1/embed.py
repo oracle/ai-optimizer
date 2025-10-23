@@ -77,7 +77,6 @@ async def store_web_file(
     logger.debug("Received store_web_file - request: %s", request)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
-    # Save the file temporarily
     async with aiohttp.ClientSession() as session:
         for url in request:
             filename = Path(urlparse(str(url)).path).name
@@ -91,11 +90,19 @@ async def store_web_file(
                         file.write(await response.read())
                 
                 elif "text" in content_type or "html" in content_type:
-                    paragraphs = await web_parse.fetch_and_extract_paragraphs(url)
-                    filename = f"{web_parse.slugify(str(url).split('/')[-1])}.txt"
-                    with open(temp_directory / filename, "w", encoding="utf-8", errors="replace") as file:
-                        for para in paragraphs:
-                            file.write(para + "\n\n")
+                    sections = await web_parse.fetch_and_extract_sections(url)
+                    base = web_parse.slugify(str(url).split('/')[-1]) or "page"
+                    out_files = []
+                    for idx, sec in enumerate(sections, 1):
+                        # filename includes section number and optional slugified title for clarity
+                        stub = web_parse.slugify(sec.get("title", "")) or f"{base}-section{idx}"
+                        sec_filename = f"{stub}.txt"
+                        sec_path = temp_directory / sec_filename
+                        with open(sec_path, "w", encoding="utf-8", errors="replace") as f:
+                            if sec.get("title"):
+                                f.write(sec["title"].strip() + "\n\n")
+                            f.write(str(sec["content"]).strip())
+                        out_files.append(sec_filename)
 
                 else:
                     shutil.rmtree(temp_directory)
