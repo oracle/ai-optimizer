@@ -41,10 +41,19 @@ class TestStreamlit:
                             "namespace": "test-namespace",
                             "tenancy": "test-tenancy",
                             "region": "us-ashburn-1",
+                            "authentication": "api_key",
                         }
                     ]
                 else:
-                    return [{"auth_profile": "DEFAULT", "namespace": None, "tenancy": None, "region": "us-ashburn-1"}]
+                    return [
+                        {
+                            "auth_profile": "DEFAULT",
+                            "namespace": None,
+                            "tenancy": None,
+                            "region": "us-ashburn-1",
+                            "authentication": "api_key",
+                        }
+                    ]
             return {}
 
         monkeypatch.setattr("client.utils.api_call.get", mock_get)
@@ -182,6 +191,7 @@ class TestStreamlit:
                         "namespace": "test-namespace",
                         "tenancy": "test-tenancy",
                         "region": "us-ashburn-1",
+                        "authentication": "api_key",
                     }
                 ]
             return {}
@@ -241,6 +251,50 @@ class TestStreamlit:
         )
         assert file_source_radio is not None, "File source radio button not found"
         assert "OCI" not in file_source_radio.options, "OCI option should not be present when not configured"
+        assert "Local" in file_source_radio.options, "Local option missing from radio button"
+        assert "Web" in file_source_radio.options, "Web option missing from radio button"
+
+    def test_file_source_radio_with_oke_workload_identity(self, app_server, app_test, monkeypatch):
+        """Test file source radio button options when OCI is configured with oke_workload_identity"""
+        assert app_server is not None
+
+        # Mock OCI with oke_workload_identity authentication (no tenancy required)
+        def mock_get_oke(endpoint=None, **kwargs):
+            if endpoint == "v1/models":
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
+            elif endpoint == "v1/oci":
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": "test-namespace",
+                        "tenancy": "test-tenancy",
+                        "region": "us-ashburn-1",
+                        "authentication": "oke_workload_identity",
+                    }
+                ]
+            return {}
+
+        monkeypatch.setattr("client.utils.api_call.get", mock_get_oke)
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
+        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
+
+        at = self._run_app_and_verify_no_errors(app_test)
+
+        # Verify OCI option is available when using oke_workload_identity (even without tenancy)
+        radios = at.get("radio")
+        assert len(radios) > 0
+
+        file_source_radio = next((r for r in radios if hasattr(r, "options") and "OCI" in r.options), None)
+        assert file_source_radio is not None, "File source radio button not found"
+        assert "OCI" in file_source_radio.options, "OCI option missing from radio button with oke_workload_identity"
         assert "Local" in file_source_radio.options, "Local option missing from radio button"
         assert "Web" in file_source_radio.options, "Web option missing from radio button"
 
@@ -525,30 +579,105 @@ class TestStreamlit:
         assert math.ceil((100 / 100) * 1000) == 1000  # 100% overlap
         assert math.ceil((15 / 100) * 500) == 75  # 15% of 500
 
-    def test_file_source_determination_logic(self):
-        """Test file source determination logic directly"""
-        # Test OCI configuration logic
-        file_sources = ["OCI", "Local", "Web"]
+    def test_oci_file_source_availability_scenarios(self, app_server, app_test, monkeypatch):
+        """Test that OCI file source is available/unavailable based on different configuration scenarios"""
+        assert app_server is not None
 
-        # Test case 1: OCI properly configured
-        oci_setup = {"namespace": "test-namespace", "tenancy": "test-tenancy"}
-        if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
-            file_sources.remove("OCI")
-        assert "OCI" in file_sources
+        # Scenario 1: Standard authentication with complete config - OCI should be available
+        def mock_get_complete_config(endpoint=None, **kwargs):
+            if endpoint == "v1/models":
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
+            elif endpoint == "v1/oci":
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": "test-ns",
+                        "tenancy": "test-tenancy",
+                        "region": "us-ashburn-1",
+                        "authentication": "api_key",
+                    }
+                ]
+            return {}
 
-        # Test case 2: OCI not properly configured (missing namespace)
-        file_sources = ["OCI", "Local", "Web"]
-        oci_setup = {"namespace": None, "tenancy": "test-tenancy"}
-        if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
-            file_sources.remove("OCI")
-        assert "OCI" not in file_sources
+        monkeypatch.setattr("client.utils.api_call.get", mock_get_complete_config)
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
+        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 
-        # Test case 3: OCI not properly configured (missing tenancy)
-        file_sources = ["OCI", "Local", "Web"]
-        oci_setup = {"namespace": "test-namespace", "tenancy": None}
-        if not oci_setup or oci_setup.get("namespace") is None or oci_setup.get("tenancy") is None:
-            file_sources.remove("OCI")
-        assert "OCI" not in file_sources
+        at = self._run_app_and_verify_no_errors(app_test)
+        radios = at.get("radio")
+        file_source_radio = next((r for r in radios if hasattr(r, "options") and "Local" in r.options), None)
+        assert file_source_radio is not None
+        assert "OCI" in file_source_radio.options, "OCI should be available with complete standard config"
+
+        # Scenario 2: Missing namespace - OCI should NOT be available
+        def mock_get_no_namespace(endpoint=None, **kwargs):
+            if endpoint == "v1/models":
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
+            elif endpoint == "v1/oci":
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": None,
+                        "tenancy": "test-tenancy",
+                        "region": "us-ashburn-1",
+                        "authentication": "api_key",
+                    }
+                ]
+            return {}
+
+        monkeypatch.setattr("client.utils.api_call.get", mock_get_no_namespace)
+        at = self._run_app_and_verify_no_errors(app_test)
+        radios = at.get("radio")
+        file_source_radio = next((r for r in radios if hasattr(r, "options") and "Local" in r.options), None)
+        assert file_source_radio is not None
+        assert "OCI" not in file_source_radio.options, "OCI should not be available without namespace"
+
+        # Scenario 3: Standard auth missing tenancy - OCI should NOT be available
+        def mock_get_no_tenancy_standard(endpoint=None, **kwargs):
+            if endpoint == "v1/models":
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
+            elif endpoint == "v1/oci":
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": "test-ns",
+                        "tenancy": None,
+                        "region": "us-ashburn-1",
+                        "authentication": "api_key",
+                    }
+                ]
+            return {}
+
+        monkeypatch.setattr("client.utils.api_call.get", mock_get_no_tenancy_standard)
+        at = self._run_app_and_verify_no_errors(app_test)
+        radios = at.get("radio")
+        file_source_radio = next((r for r in radios if hasattr(r, "options") and "Local" in r.options), None)
+        assert file_source_radio is not None
+        assert "OCI" not in file_source_radio.options, "OCI should not be available with standard auth but no tenancy"
 
     def test_embedding_server_not_accessible(self, app_server, app_test, monkeypatch):
         """Test behavior when embedding server is not accessible"""

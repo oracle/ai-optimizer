@@ -215,7 +215,7 @@ def _get_full_config(model_config: dict, oci_config: schema.OracleCloudSettings 
     model_provider, model_id = model_config["model"].split("/", 1)
 
     try:
-        (defined_model, ) = get(
+        (defined_model,) = get(
             model_provider=model_provider,
             model_id=model_id,
             include_disabled=False,
@@ -263,20 +263,33 @@ def get_litellm_config(
         litellm_config["api_key"] = full_model_config["api_key"]
 
     if provider == "oci":
-        litellm_config.update(
-            {
-                "oci_user": oci_config.user,
-                "oci_fingerprint": oci_config.fingerprint,
-                "oci_tenancy": oci_config.tenancy,
-                "oci_region": oci_config.genai_region,
-                "oci_key_file": oci_config.key_file,
-                "oci_compartment_id": oci_config.genai_compartment_id,
-            }
-        )
+        oci_params = {
+            "oci_region": oci_config.genai_region,
+            "oci_compartment_id": oci_config.genai_compartment_id,
+        }
+
+        # Get OCI signer (returns None for API key auth)
+        signer = utils_oci.get_signer(oci_config)
+        if signer:
+            # Use signer for instance principals/workload identity
+            oci_params["oci_signer"] = signer
+        else:
+            # Use API key authentication (traditional method)
+            oci_params.update(
+                {
+                    "oci_tenancy": oci_config.tenancy,
+                    "oci_user": oci_config.user,
+                    "oci_fingerprint": oci_config.fingerprint,
+                    "oci_key_file": oci_config.key_file,
+                }
+            )
+
+        litellm_config.update(oci_params)
 
     if giskard:
         litellm_config.pop("model", None)
         litellm_config.pop("temperature", None)
+        litellm_config.pop("max_tokens", None)
 
     logger.debug("LiteLLM Config: %s", litellm_config)
 

@@ -7,40 +7,43 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: ${label}
+%{ if deploy_optimizer ~}
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${label}-api-key
+  name: ${label}-optimizer-api-key
   namespace: ${label}
 type: Opaque
 stringData:
-  apiKey: ${api_key}
+  apiKey: ${optimizer_api_key}
 ---
 # Secret containing non-privileged DB User details.
-# Used for application connectivity to database.
+# Used for Optimizer application connectivity to database.
 # User is created during cfgmgt init-containter
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${adb_name}-db-authn
+  name: ${db_name}-optimizer-db-authn
   namespace: ${label}
 type: Opaque
 stringData:
   username: AI_OPTIMIZER
-  password: ${adb_password}
-  service: ${adb_service}
+  password: ${db_password}
+  service: ${db_service}
+%{ endif }
 ---
 # Secret containing privileged DB User details.
 # Used to create user defined in -db-authn in init-container
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${adb_name}-db-priv-authn
+  name: ${db_name}-db-priv-authn
   namespace: ${label}
 type: Opaque
 stringData:
-  password: ${adb_password}
+  username: ${db_username}
+  password: ${db_password}
 ---
 apiVersion: "ingress.oraclecloud.com/v1beta1"
 kind: IngressClassParameters
@@ -74,13 +77,14 @@ spec:
     apiGroup: ingress.oraclecloud.com
     kind: IngressClassParameters
     name: native-ic-params
+%{ if deploy_buildkit && deploy_optimizer ~}
 ---
 # Builds and pushes application images to container registry.
 # Uses instance principles.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: buildkit
+  name: optimizer-buildkit
   namespace: ${label}
 spec:
   ttlSecondsAfterFinished: 300
@@ -88,93 +92,71 @@ spec:
     spec:
       restartPolicy: Never
       initContainers:
-        - name: init-ocir-login
-          image: docker.io/alpine:latest
-          command:
-            - sh
-            - -c
-            - |
-              apk add --no-cache jq oci-cli docker && \
-              export TOKEN=$(oci raw-request --http-method GET --target-uri https://${repository_host}/20180419/docker/token | jq -r '.data.token') && \
-              echo "$TOKEN" | docker login -u 'BEARER_TOKEN' --password-stdin ${repository_host} && \
-              chown 1000:1000 /root/.docker/config.json
-          env:
-            - name: OCI_CLI_AUTH
-              value: instance_principal
-          volumeMounts:
-            - name: docker-auth
-              mountPath: /root/.docker
         - name: prepare-source-code
           image: docker.io/alpine:latest
           command:
             - sh
             - -c
             - |
-              wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
-                | tar -xz -C /workspace	  	
+              if [ "${optimizer_version}" = "Experimental" ]; then
+                echo "Downloading Code from MAIN branch"
+                wget -qO- https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz \
+                  | tar -xz -C /workspace --strip-components=1 ai-optimizer-main/src ai-optimizer-main/pyproject.toml
+              else
+                echo "Downloading Code from LATEST release"
+                wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
+                  | tar -xz -C /workspace
+              fi
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
           volumeMounts:
             - name: workspace
               mountPath: /workspace
-      containers:
-        - name: buildkit-server
-          image: docker.io/moby/buildkit:master-rootless
-          env:
-            - name: BUILDKITD_FLAGS
-              value: --oci-worker-no-process-sandbox --oci-worker-gc=false
+        - name: init-ocir-login
+          image: ghcr.io/oracle/oci-cli:latest
           command:
-            - buildctl-daemonless.sh
-          args:
-            - build
-            - --no-cache
-            - --progress
-            - plain
-            - --frontend
-            - dockerfile.v0
-            - --local
-            - context=/workspace
-            - --local
-            - dockerfile=/workspace/src/server
-            - --output 
-            - type=image,name=${repository_server}:latest,push=true
-          securityContext:
-            seccompProfile:
-              type: Unconfined
-            appArmorProfile:
-              type: Unconfined
-            runAsUser: 1000
-            runAsGroup: 1000
+            - sh
+            - -c
+            - |
+              REPO_PATH=$(echo "${repository_base}" | cut -d'/' -f2-)
+
+              # Fetch separate tokens for each repository
+              for IMAGE in client server; do
+                TOKEN_RESPONSE=$(oci raw-request \
+                  --http-method GET \
+                  --target-uri \
+                  "https://${repository_host}/20180419/docker/token?scope=repository:$REPO_PATH/ai-optimizer-$IMAGE:push,pull&service=${repository_host}" 2>&1)
+                TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.data.token')
+                echo "{\"auths\":{\"${repository_host}\":{\"auth\":\"$(echo -n "BEARER_TOKEN:$TOKEN" | base64 -w0)\"}}}" > /docker-config/$IMAGE/config.json
+                chown 1000:1000 /docker-config/$IMAGE/config.json
+              done
+          env:
+            - name: OCI_CLI_AUTH
+              value: oke_workload_identity
           volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-              readOnly: true
-            - name: buildkitd
-              mountPath: /home/user/.local/share/buildkit/server
-            - name: docker-auth
-              mountPath: /home/user/.docker
-              readOnly: true
+            - name: docker-auth-client
+              mountPath: /docker-config/client
+            - name: docker-auth-server
+              mountPath: /docker-config/server
+      containers:
         - name: buildkit-client
           image: docker.io/moby/buildkit:master-rootless
           env:
             - name: BUILDKITD_FLAGS
               value: --oci-worker-no-process-sandbox --oci-worker-gc=false
           command:
-            - buildctl-daemonless.sh
+            - sh
+            - -c
           args:
-            - build
-            - --no-cache
-            - --progress
-            - plain
-            - --frontend
-            - dockerfile.v0
-            - --local
-            - context=/workspace
-            - --local
-            - dockerfile=/workspace/src/client
-            - --output 
-            - type=image,name=${repository_client}:latest,push=true
+            - |
+              buildctl-daemonless.sh build \
+                --no-cache \
+                --progress plain \
+                --frontend dockerfile.v0 \
+                --local context=/workspace \
+                --local dockerfile=/workspace/src/client \
+                --output type=image,name=${repository_base}/ai-optimizer-client:latest,push=true
           securityContext:
             seccompProfile:
               type: Unconfined
@@ -186,15 +168,53 @@ spec:
             - name: workspace
               mountPath: /workspace
               readOnly: true
-            - name: buildkitd
-              mountPath: /home/user/.local/share/buildkit/client
-            - name: docker-auth
+            - name: buildkitd-client
+              mountPath: /home/user/.local/share/buildkit
+            - name: docker-auth-client
+              mountPath: /home/user/.docker
+              readOnly: true
+        - name: buildkit-server
+          image: docker.io/moby/buildkit:master-rootless
+          env:
+            - name: BUILDKITD_FLAGS
+              value: --oci-worker-no-process-sandbox --oci-worker-gc=false
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              buildctl-daemonless.sh build \
+                --no-cache \
+                --progress plain \
+                --frontend dockerfile.v0 \
+                --local context=/workspace \
+                --local dockerfile=/workspace/src/server \
+                --output type=image,name=${repository_base}/ai-optimizer-server:latest,push=true
+          securityContext:
+            seccompProfile:
+              type: Unconfined
+            appArmorProfile:
+              type: Unconfined
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+              readOnly: true
+            - name: buildkitd-server
+              mountPath: /home/user/.local/share/buildkit
+            - name: docker-auth-server
               mountPath: /home/user/.docker
               readOnly: true
       volumes:
         - name: workspace
           emptyDir: {}
-        - name: buildkitd
+        - name: buildkitd-client
           emptyDir: {}
-        - name: docker-auth
+        - name: buildkitd-server
           emptyDir: {}
+        - name: docker-auth-client
+          emptyDir: {}
+        - name: docker-auth-server
+          emptyDir: {}
+%{ endif }

@@ -253,10 +253,15 @@ def ll_sidebar() -> None:
 def tools_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if all sorts of bs setup"""
 
-    def update_set_tool():
+    def _update_set_tool():
         """Update user settings as to which tool is being used"""
         state.client_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
         state.client_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
+
+        if state.client_settings["vector_search"]["enabled"]:
+            switch_prompt("sys", "Vector Search Example")
+        else:
+            switch_prompt("sys", "Basic Example")
 
     disable_selectai = not is_db_configured()
     disable_vector_search = not is_db_configured()
@@ -298,14 +303,19 @@ def tools_sidebar() -> None:
 
         # Vector Search Requirements
         embed_models_enabled = enabled_models_lookup("embed")
+
+        def _disable_vector_search(reason):
+            """Disable Vector Store, and make sure prompt is reset"""
+            state.client_settings["vector_search"]["enabled"] = False
+            logger.debug("Vector Search Disabled (%s)", reason)
+            st.warning(f"{reason}. Disabling Vector Search.", icon="⚠️")
+            tools[:] = [t for t in tools if t[0] != "Vector Search"]
+            switch_prompt("sys", "Basic Example")
+
         if not embed_models_enabled:
-            logger.debug("Vector Search Disabled (no Embedding Models)")
-            st.warning("No embedding models are configured and/or enabled. Disabling Vector Search.", icon="⚠️")
-            tools = [t for t in tools if t[0] != "Vector Search"]
+            _disable_vector_search("No embedding models are configured and/or enabled.")
         elif not database_lookup[db_alias].get("vector_stores"):
-            logger.debug("Vector Search Disabled (Database has no vector stores.)")
-            st.warning("Database has no Vector Stores. Disabling Vector Search.", icon="⚠️")
-            tools = [t for t in tools if t[0] != "Vector Search"]
+            _disable_vector_search("Database has no vector stores")
 
         tool_box = [name for name, _, disabled in tools if not disabled]
         if len(tool_box) > 1:
@@ -324,10 +334,10 @@ def tools_sidebar() -> None:
                 tool_box,
                 index=tool_index,
                 label_visibility="collapsed",
-                on_change=update_set_tool,
+                on_change=_update_set_tool,
                 key="selected_tool",
             )
-            if state.selected_tool == "None":
+            if state.selected_tool is None:
                 switch_prompt("sys", "Basic Example")
 
 

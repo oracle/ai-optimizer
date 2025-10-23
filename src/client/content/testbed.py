@@ -379,12 +379,12 @@ def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, str, bo
 
 def process_testset_request(endpoint: str, api_params: dict, testset_source: str = None) -> None:
     """Process testset loading/generation request"""
-    with st.spinner("Processing Q&A... please be patient.", show_time=True):
-        if testset_source != "Database":
-            api_params["name"] = (state.testbed["testset_name"],)
-            files = st_common.local_file_payload(state[f"selected_uploader_{state.testbed['uploader_key']}"])
-            api_payload = {"files": files}
-            try:
+    try:
+        with st.spinner("Processing Q&A... please be patient.", show_time=True):
+            if testset_source != "Database":
+                api_params["name"] = (state.testbed["testset_name"],)
+                files = st_common.local_file_payload(state[f"selected_uploader_{state.testbed['uploader_key']}"])
+                api_payload = {"files": files}
                 response = api_call.post(endpoint=endpoint, params=api_params, payload=api_payload, timeout=3600)
                 get_testbed_db_testsets.clear()
                 state.testbed_db_testsets = get_testbed_db_testsets()
@@ -392,28 +392,28 @@ def process_testset_request(endpoint: str, api_params: dict, testset_source: str
                     (d["tid"] for d in state.testbed_db_testsets if d.get("name") == state.testbed["testset_name"]),
                     None,
                 )
-            except api_call.ApiError as ex:
-                st.error(f"Error Generating TestSet: {ex}", icon="🚨")
-                st.stop()
-            except (ValueError, KeyError, TypeError) as ex:
-                logger.error("Exception: %s", ex)
-                st.error(f"Looks like you found a bug: {ex}", icon="🚨")
-                st.stop()
-        else:
-            # Set required state from splitting selected DB TestSet
-            testset_name, testset_created = state.selected_db_testset.split(" -- Created: ", 1)
-            state.testbed["testset_name"] = testset_name
-            state.testbed["testset_id"] = next(
-                (
-                    d["tid"]
-                    for d in state.testbed_db_testsets
-                    if d["name"] == testset_name and d["created"] == testset_created
-                ),
-                None,
-            )
-            api_params = {"tid": state.testbed["testset_id"]}
-            # Retrieve TestSet Data
-            response = api_call.get(endpoint=endpoint, params=api_params)
+            else:
+                # Set required state from splitting selected DB TestSet
+                testset_name, testset_created = state.selected_db_testset.split(" -- Created: ", 1)
+                state.testbed["testset_name"] = testset_name
+                state.testbed["testset_id"] = next(
+                    (
+                        d["tid"]
+                        for d in state.testbed_db_testsets
+                        if d["name"] == testset_name and d["created"] == testset_created
+                    ),
+                    None,
+                )
+                api_params = {"tid": state.testbed["testset_id"]}
+                # Retrieve TestSet Data
+                response = api_call.get(endpoint=endpoint, params=api_params)
+    except api_call.ApiError as ex:
+        st.error(f"Error Generating TestSet: {ex}", icon="🚨")
+        st.stop()
+    except (ValueError, KeyError, TypeError) as ex:
+        logger.error("Exception: %s", ex)
+        st.error(f"Looks like you found a bug: {ex}", icon="🚨")
+        st.stop()
 
     try:
         state.testbed_qa = response["qa_data"]

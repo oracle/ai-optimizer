@@ -8,7 +8,7 @@ resource "oci_load_balancer_backend_set" "client_lb_backend_set" {
   name             = format("%s-client-lbbs", var.label_prefix)
   policy           = "LEAST_CONNECTIONS"
   health_checker {
-    port     = var.streamlit_client_port
+    port     = local.streamlit_client_port
     protocol = "HTTP"
     url_path = "/_stcore/health"
   }
@@ -19,7 +19,7 @@ resource "oci_load_balancer_backend_set" "server_lb_backend_set" {
   name             = format("%s-server-lbbs", var.label_prefix)
   policy           = "LEAST_CONNECTIONS"
   health_checker {
-    port     = var.fastapi_server_port
+    port     = local.fastapi_server_port
     protocol = "HTTP"
     url_path = "/v1/liveness"
   }
@@ -45,14 +45,14 @@ resource "oci_load_balancer_backend" "client_lb_backend" {
   load_balancer_id = var.lb_id
   backendset_name  = oci_load_balancer_backend_set.client_lb_backend_set.name
   ip_address       = oci_core_instance.instance.private_ip
-  port             = var.streamlit_client_port
+  port             = local.streamlit_client_port
 }
 
 resource "oci_load_balancer_backend" "server_lb_backend" {
   load_balancer_id = var.lb_id
   backendset_name  = oci_load_balancer_backend_set.server_lb_backend_set.name
   ip_address       = oci_core_instance.instance.private_ip
-  port             = var.fastapi_server_port
+  port             = local.fastapi_server_port
 }
 
 // Compute Instance

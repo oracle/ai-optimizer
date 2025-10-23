@@ -11,10 +11,7 @@ users:
 
 package_update: false
 packages:
-  - python36-oci-cli
   - python3.11
-  - jre
-  - sqlcl
 
 write_files:
   - path: /etc/systemd/system/ai-optimizer.service
@@ -58,9 +55,11 @@ write_files:
     content: |
       #!/bin/bash
       # Download/Setup Source Code
-      if [ "${optimizer_version}" = "main" ]; then
+      if [ "${optimizer_version}" = "Experimental" ]; then
           URL="https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz"
-          curl -L "$URL" | tar -xz -C /app --strip-components=2 ai-optimizer-main/src
+          curl -L "$URL" | tar -xz -C /app \
+            --strip-components=2 ai-optimizer-main/src \
+            --strip-components=1 ai-optimizer-main/pyproject.toml
       else
           URL="https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz"
           curl -L "$URL" | tar -xz -C /app
@@ -69,14 +68,15 @@ write_files:
       python3.11 -m venv .venv
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools uv
-      uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch
+      uv pip install torch==2.9.0+cpu -f https://download.pytorch.org/whl/cpu/torch
       uv pip install -e ".[all]" &
       INSTALL_PID=$!
 
       # Install Models
       if ${install_ollama}; then
-        ollama pull llama3.1
-        ollama pull mxbai-embed-large
+        echo "Pulling Ollama Models"
+        ollama pull llama3.1 > /dev/null 2>&1
+        ollama pull mxbai-embed-large > /dev/null 2>&1
       fi
 
       # Wait for python modules to finish
@@ -88,10 +88,14 @@ write_files:
       #!/bin/bash
       export OCI_CLI_AUTH=instance_principal
       export API_SERVER_CONTROL="True"
+      export TNS_ADMIN='/app/tns_admin'
       export DB_USERNAME='AI_OPTIMIZER'
       export DB_PASSWORD='${db_password}'
-      export DB_DSN='${db_name}_TP'
-      export DB_WALLET_PASSWORD='${db_password}'
+      export DB_DSN='${db_service}'
+      if [ ${db_type} == "ADB" ]; then
+        export DB_WALLET_PASSWORD='${db_password}'
+      fi
+
       if ${install_ollama}; then
         export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
       fi
@@ -106,9 +110,9 @@ write_files:
 runcmd:
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
-  - rm /tmp/app_setup.sh /tmp/root_setup.sh /tmp/source.tar.gz
   - chown oracleai:oracleai /app/start.sh
   - systemctl daemon-reexec
   - systemctl daemon-reload
   - systemctl enable ai-optimizer.service
   - systemctl start ai-optimizer.service
+  - rm /tmp/app_setup.sh /tmp/root_setup.sh

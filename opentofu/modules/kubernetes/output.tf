@@ -11,3 +11,8 @@ output "kubeconfig_cmd" {
     oci_containerengine_cluster.default_cluster.endpoint_config[0].is_public_ip_enabled ? "PUBLIC_ENDPOINT" : "PRIVATE_ENDPOINT"
   )
 }
+
+output "helm_manual_instructions" {
+  description = "Instructions for manual Helm deployment (when cfgmgt was skipped)"
+  value       = local.should_show_manual_steps ? local.manual_helm_instructions : null
+}

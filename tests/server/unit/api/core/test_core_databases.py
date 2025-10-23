@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from server.api.core import databases
-from server.api.core import bootstrap
+from server.bootstrap import bootstrap
 from common.schema import Database
 
 

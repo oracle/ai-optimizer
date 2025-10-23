@@ -89,10 +89,10 @@ def _selectai_enabled(conn: oracledb.Connection) -> bool:
            WHERE TYPE = 'PACKAGE'
              AND PRIVILEGE = 'EXECUTE'
              AND GRANTEE = USER
-             AND TABLE_NAME IN ('DBMS_CLOUD','DBMS_CLOUD_AI','DBMS_CLOUD_PIPELINE')
+             AND TABLE_NAME IN ('DBMS_CLOUD_AI','DBMS_CLOUD_PIPELINE')
           """
     result = execute_sql(conn, sql)
-    if result[0][0] == 3:
+    if result[0][0] == 2:
         is_enabled = True
     logger.debug("SelectAI enabled (results: %s): %s", result[0][0], is_enabled)
 
@@ -140,15 +140,23 @@ def connect(config: Database) -> oracledb.Connection:
         error = ex.args[0] if ex.args else None
         code = getattr(error, "full_code", None)
         mapping = {
+            "ORA-28009": PermissionError,
             "ORA-01017": PermissionError,
             "DPY-6005": ConnectionError,
             "DPY-4000": LookupError,
             "DPY-4026": LookupError,
         }
         if code in mapping:
+            # Custom message for ORA-28009
+            if code == "ORA-28009":
+                username = db_authn.get("user", "unknown")
+                raise mapping[code](f"Connecting as {username} is not permitted") from ex
             raise mapping[code](f"- {error.message}") from ex
         # If not recognized, re-raise untouched
         raise
+    except OSError as ex:
+        raise ConnectionError(f"Error connecting to database: {ex}") from ex
+
     logger.debug("Connected to Databases: %s", config.dsn)
 
     return conn

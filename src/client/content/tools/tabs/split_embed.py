@@ -207,8 +207,8 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
         db_connection = st.text_input("DB Connection:", key="db_connection_url")
         sql_query = st.text_input("SQL:", key="sql_query")
 
-        populate_button_disabled,msg = functions.is_sql_accessible(db_connection, sql_query)
-        if not populate_button_disabled and msg != "":
+        populate_button_disabled, msg = functions.is_sql_accessible(db_connection, sql_query)
+        if not populate_button_disabled or msg != "":
             st.error(f"Error: {msg}")
 
     ######################################
@@ -265,8 +265,16 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> tuple:
         src_files_selected = files_data_editor(src_files, "source")
         populate_button_disabled = src_files_selected["Process"].sum() == 0
 
-    return (file_source, populate_button_disabled, button_help, web_url,
-            src_bucket, src_files_selected, db_connection, sql_query)
+    return (
+        file_source,
+        populate_button_disabled,
+        button_help,
+        web_url,
+        src_bucket,
+        src_files_selected,
+        db_connection,
+        sql_query,
+    )
 
 
 def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
@@ -327,7 +335,7 @@ def _handle_vector_store_population(
     src_files_selected,
     rate_limit: int,
     db_connection: str,
-    sql_query : str
+    sql_query: str,
 ) -> None:
     """Handle vector store population button and processing"""
     if not populate_button_disabled and embed_request.vector_store:
@@ -357,12 +365,11 @@ def _handle_vector_store_population(
 
                 if file_source == "Web":
                     endpoint = "v1/embed/web/store"
-                    api_payload = {"json":[web_url]}
+                    api_payload = {"json": [web_url]}
 
                 if file_source == "SQL":
                     endpoint = "v1/embed/sql/store"
-                    api_payload = {"json": [db_connection,sql_query]}
-
+                    api_payload = {"json": [db_connection, sql_query]}
 
                 if file_source == "OCI":
                     endpoint = f"v1/oci/objects/download/{src_bucket}/{state.client_settings['oci']['auth_profile']}"
@@ -370,7 +377,6 @@ def _handle_vector_store_population(
                     api_payload = {"json": process_list["File"].tolist()}
 
                 response = api_call.post(endpoint=endpoint, payload=api_payload)
-
 
                 embed_params = {
                     "client": state.client_settings["client"],
@@ -424,10 +430,16 @@ def display_split_embed() -> None:
 
     _render_embedding_configuration(embed_models_enabled, embed_request)
 
-    (file_source, populate_button_disabled, button_help,
-     web_url, src_bucket, src_files_selected, db_connection, sql_query)  = (
-        _render_file_source_section(file_sources, oci_setup)
-    )
+    (
+        file_source,
+        populate_button_disabled,
+        button_help,
+        web_url,
+        src_bucket,
+        src_files_selected,
+        db_connection,
+        sql_query,
+    ) = _render_file_source_section(file_sources, oci_setup)
 
     embed_alias_invalid, rate_limit = _render_vector_store_section(embed_request)
 
@@ -442,7 +454,7 @@ def display_split_embed() -> None:
             src_files_selected,
             rate_limit,
             db_connection,
-            sql_query
+            sql_query,
         )
 
 

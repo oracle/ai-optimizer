@@ -5,12 +5,15 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore genai ocids ocid
 
 import os
-from typing import Union
+import base64
+import json
+from typing import Union, Optional
 import urllib3.exceptions
 
 import oci
 
-from common.schema import OracleCloudSettings
+from server.bootstrap import bootstrap
+from common.schema import OracleCloudSettings, ClientIdType, OCIProfileType
 from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.oci")
@@ -29,8 +32,76 @@ class OciException(Exception):
 
 
 #####################################################
-# Functions
+# CRUD Functions
 #####################################################
+def get(
+    client: Optional[ClientIdType] = None, auth_profile: Optional[OCIProfileType] = None
+) -> Union[list[OracleCloudSettings], OracleCloudSettings]:
+    """
+    Return all OCI Settings if no client or auth_profile is specified.
+    Raises ValueError if both client and auth_profile are provided.
+    If client is provided, derives auth_profile and returns matching OCI settings.
+    If auth_profile is provided, returns matching OCI settings.
+    Raises ValueError if no matching OCI found.
+    """
+    logger.debug("Getting OCI config for client: %s; auth_profile: %s", client, auth_profile)
+    if client is not None and auth_profile is not None:
+        raise ValueError("provide either 'client' or 'auth_profile', not both")
+
+    oci_objects = bootstrap.OCI_OBJECTS
+    if client is not None:
+        # Get client settings directly from SETTINGS_OBJECTS
+        logger.debug("Looking for client %s in SETTINGS_OBJECTS", client)
+        logger.debug(
+            "SETTINGS_OBJECTS has %d entries: %s",
+            len(bootstrap.SETTINGS_OBJECTS),
+            [s.client for s in bootstrap.SETTINGS_OBJECTS],
+        )
+        client_settings = next((s for s in bootstrap.SETTINGS_OBJECTS if s.client == client), None)
+        if not client_settings:
+            available_clients = [s.client for s in bootstrap.SETTINGS_OBJECTS]
+            raise ValueError(f"client {client} not found in SETTINGS_OBJECTS with clients: {available_clients}")
+
+        derived_auth_profile = (
+            getattr(client_settings.oci, "auth_profile", "DEFAULT") if client_settings.oci else "DEFAULT"
+        )
+
+        matching_oci = next((oci for oci in oci_objects if oci.auth_profile == derived_auth_profile), None)
+        if matching_oci is None:
+            raise ValueError(f"No settings found for client '{client}' with auth_profile '{derived_auth_profile}'")
+        return matching_oci
+
+    if auth_profile is not None:
+        matching_oci = next((oci for oci in oci_objects if oci.auth_profile == auth_profile), None)
+        if matching_oci is None:
+            raise ValueError(f"profile '{auth_profile}' not found")
+        return matching_oci
+
+    # No filters, return all
+    if not oci_objects:
+        raise ValueError("not configured")
+
+    return oci_objects
+
+
+#####################################################
+# Utility Functions
+#####################################################
+def get_signer(config: OracleCloudSettings) -> Optional[object]:
+    """Get OCI signer for instance principal or workload identity authentication."""
+
+    if config.authentication == "instance_principal":
+        logger.info("Creating Instance Principal signer")
+        return oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+
+    if config.authentication == "oke_workload_identity":
+        logger.info("Creating OKE Workload Identity signer")
+        return oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
+
+    # API key or security token authentication - no signer needed
+    return None
+
+
 def init_client(
     client_type: Union[
         oci.object_storage.ObjectStorageClient,
@@ -65,16 +136,24 @@ def init_client(
     config_json = config.model_dump(exclude_none=False)
     client = None
     try:
-        if config_json["authentication"] == "instance_principal":
-            logger.info("OCI Authentication with Instance Principal")
-            instance_signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-            client = client_type(config={}, signer=instance_signer, **client_kwargs)
+        # Get signer for instance principal or workload identity
+        signer = get_signer(config)
+
+        if signer:
+            # Use signer-based authentication
+            client = client_type(config={"region": config_json["region"]}, signer=signer, **client_kwargs)
+
+            # Set tenancy from signer if not already set
             if not config.tenancy:
-                config.tenancy = instance_signer.tenancy_id
-        elif config_json["authentication"] == "oke_workload_identity":
-            logger.info("OCI Authentication with Workload Identity")
-            oke_workload_signer = oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
-            client = client_type(config={"region": config_json["region"]}, signer=oke_workload_signer)
+                if config_json["authentication"] == "instance_principal":
+                    config.tenancy = signer.tenancy_id
+                elif config_json["authentication"] == "oke_workload_identity":
+                    token = signer.get_security_token()
+                    payload_part = token.split(".")[1]
+                    padding = "=" * (-len(payload_part) % 4)
+                    decoded_bytes = base64.urlsafe_b64decode(payload_part + padding)
+                    payload = json.loads(decoded_bytes)
+                    config.tenancy = payload.get("tenant")
         elif config_json["authentication"] == "security_token" and config_json["security_token_file"]:
             logger.info("OCI Authentication with Security Token")
             token = None
@@ -142,24 +221,24 @@ def get_regions(config: OracleCloudSettings = None) -> list[dict]:
 
 def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> list:
     """Get a list of GenAI models in a regions compartment"""
-    if not hasattr(config, "genai_compartment_id") or not config.genai_compartment_id:
+    if not config.genai_compartment_id:
         raise OciException(status_code=400, detail="Missing genai_compartment_id")
 
-    genai_models = []
+    # Determine regions to query
     if regional:
-        # Limit models to configured region
-        if not hasattr(config, "genai_region") or not config.genai_region:
+        if not config.genai_region:
             raise OciException(status_code=400, detail="Missing genai_region")
         regions = [{"region_name": config.genai_region}]
     else:
-        # Limit models to subscribed regions
         regions = get_regions(config)
 
+    genai_models = []
+    seen_models = set()  # Track unique models by (region, display_name)
+
     for region in regions:
-        region_config = config
+        region_config = config.model_copy(deep=True)
         region_config.region = region["region_name"]
-        client_type = oci.generative_ai.GenerativeAiClient
-        client = init_client(client_type, region_config)
+        client = init_client(oci.generative_ai.GenerativeAiClient, region_config)
         logger.info(
             "Checking Region: %s; Compartment: %s for GenAI services",
             region["region_name"],
@@ -174,16 +253,25 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
                 sort_by="displayName",
                 retry_strategy=oci.retry.NoneRetryStrategy(),
             )
-            # Identify all display_names that have been deprecated
-            excluded_display_names = set()
-            for model in response.data.items:
-                if model.time_deprecated or model.time_dedicated_retired or model.time_on_demand_retired:
-                    excluded_display_names.add(model.display_name)
+            # Identify deprecated model names
+            excluded_display_names = {
+                model.display_name
+                for model in response.data.items
+                if model.time_deprecated or model.time_dedicated_retired or model.time_on_demand_retired
+            }
 
-            # Build our list of models
+            # Build list of models (excluding deprecated ones and duplicates)
             for model in response.data.items:
-                if model.vendor == "cohere" and "TEXT_EMBEDDINGS" not in model.capabilities:
+                model_key = (region["region_name"], model.display_name)
+                # Skip if deprecated, duplicate, or cohere model without TEXT_EMBEDDINGS
+                if (
+                    model.display_name in excluded_display_names
+                    or model_key in seen_models
+                    or (model.vendor == "cohere" and "TEXT_EMBEDDINGS" not in model.capabilities)
+                ):
                     continue
+
+                seen_models.add(model_key)
                 genai_models.append(
                     {
                         "region": region["region_name"],
@@ -194,6 +282,7 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
                         "id": model.id,
                     }
                 )
+            logger.info("Registered %i GenAI Models", len(genai_models))
         except oci.exceptions.ServiceError as ex:
             logger.info("Unable to get GenAI Models in Region: %s (%s)", region["region_name"], ex.message)
         except (oci.exceptions.RequestException, urllib3.exceptions.MaxRetryError):

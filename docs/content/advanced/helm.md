@@ -109,10 +109,17 @@ Configure the Oracle Database used by the {{< short_app_ref >}} API Server.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| server.database.type | string | `""` | Either SIDB-FREE, ADB-FREE, or ADB-S |
-| server.database.image | object | | For SIDB-FREE/ADB-FREE, location of the image and its tag; Exclude for ADB-S |
+| server.database.type | string | `""` | Either SIDB-FREE, ADB-FREE, ADB-S, or OTHER |
+| server.database.image | object | | For SIDB-FREE/ADB-FREE, location of the image and its tag; Exclude for ADB-S/OTHER |
 | server.database.image.repository | string | `""` | For SIDB-FREE/ADB-FREE, repository location of the image |
 | server.database.image.tag | string | `"latest"` | For SIDB-FREE/ADB-FREE, tag of the image |
+| server.database.oci | Optional | | For ADB-S, OCID of the Autonomous Database Exclude for SIDB-FREE/ADB-FREE/OTHER |
+| server.database.oci.ocid | string | `""` | OCID of the Autonomous Database |
+| server.database.other | Optional | | For OTHER, connection details for external database |
+| server.database.other.dsn | string | `""` | Full DSN string (e.g: host:port/service) - Either dsn OR (host+port+service_name) |
+| server.database.other.host | string | `""` | Database host (required if dsn not provided) |
+| server.database.other.port | string/int | `""` | Database port (required if dsn not provided) |
+| server.database.other.service_name | string | `""` | Database service name (required if dsn not provided) |
 | server.database.authN | Required |  | Application User Authentication/Connection Details If defined, used to create the user defined in the authN secret |
 | server.database.authN.secretName | string | `"db-authn"` | Name of Secret containing the authentication/connection details |
 | server.database.authN.usernameKey | string | `"username"` | Key in secretName containing the username |
@@ -120,9 +127,8 @@ Configure the Oracle Database used by the {{< short_app_ref >}} API Server.
 | server.database.authN.serviceKey | string | `"service"` | Key in secretName containing the connection service name |
 | server.database.privAuthN | Optional |  | Privileged User Authentication/Connection Details If defined, used to create the user defined in the authN secret |
 | server.database.privAuthN.secretName | string | `"db-priv-authn"` | secretName containing privileged user (i.e. ADMIN/SYSTEM) password |
+| server.database.privAuthN.usernameKey | string | `"username"` | Key in secretName containing the username |
 | server.database.privAuthN.passwordKey | string | `"password"` | Key in secretName containing the password |
-| server.database.oci_db | Optional | | For ADB-S, OCID of the Autonomous Database Exclude for SIDB-FREE/ADB-FREE |
-| server.database.oci_db.ocid | string | `""` | OCID of the DB |
 
 
 ###### Examples
@@ -146,7 +152,7 @@ A containerized Autonomous Oracle Database:
     type: "ADB-FREE"
     image:
       repository: container-registry.oracle.com/database/adb-free
-      tag: latest-23ai
+      tag: latest
 ```
 
 **ADB-S**
@@ -156,8 +162,30 @@ A pre-deployed Oracle Autonomous Database (_requires_ the [OraOperator](https://
 ```yaml
   database:
     type: "ADB-S"
-    oci_db: 
+    oci:
       ocid: "ocid1.autonomousdatabase.oc1..."
+```
+
+**OTHER**
+
+An external or bring-your-own Oracle Database:
+
+Option 1 - Using full DSN string:
+```yaml
+  database:
+    type: "OTHER"
+    other:
+      dsn: "mydbhost.example.com:1521/MYSERVICE"
+```
+
+Option 2 - Using individual components:
+```yaml
+  database:
+    type: "OTHER"
+    other:
+      host: "mydbhost.example.com"
+      port: "1521"
+      service_name: "MYSERVICE"
 ```
 
 ##### Server Oracle Cloud Infrastructure Settings

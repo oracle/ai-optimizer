@@ -3,16 +3,6 @@
 [global]
 disableWidgetStateDuplicationWarning = true
 
-[theme]
-font = "sans-serif-pro"
-headingFont = "sans-serif"
-codeFont = "monospace"
-
-[theme.sidebar]
-font = "sans-serif"
-headingFont = "sans-serif"
-codeFont = "monospace"
-
 [browser]
 gatherUsageStats = false
 serverAddress = "localhost"

@@ -14,8 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 import aiohttp
 
-import server.api.core.oci as core_oci
-
+import server.api.utils.oci as utils_oci
 import server.api.utils.databases as utils_databases
 import server.api.utils.embed as utils_embed
 import server.api.utils.models as utils_models
@@ -55,15 +54,16 @@ async def store_sql_file(
     request: list[str],
     client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
-    """Store contents from a SQL """
+    """Store contents from a SQL"""
     logger.debug("Received store_SQL_data - request: %s", request)
-    
+
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
     result_file = functions.run_sql_query(db_conn=request[0], query=request[1], base_path=temp_directory)
 
-    stored_files= [result_file]
-    logger.debug(f"sql ingest - temp csv file location: {result_file}")
+    stored_files = [result_file]
+    logger.debug("sql ingest - temp csv file location: %s", result_file)
     return Response(content=json.dumps(stored_files), media_type="application/json")
+
 
 @auth.post(
     "/web/store",
@@ -140,7 +140,7 @@ async def split_embed(
 ) -> Response:
     """Perform Split and Embed"""
     logger.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
-    oci_config = core_oci.get_oci(client=client)
+    oci_config = utils_oci.get(client=client)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
     try:

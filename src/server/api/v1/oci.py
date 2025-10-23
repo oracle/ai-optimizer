@@ -7,7 +7,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import JSONResponse
 
-import server.api.core.oci as core_oci
 import server.api.utils.embed as utils_embed
 import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
@@ -19,7 +18,7 @@ logger = logging_config.logging.getLogger("endpoints.v1.oci")
 
 # Validate the DEFAULT OCI Profile and get models
 try:
-    default_config = core_oci.get_oci(auth_profile="DEFAULT")
+    default_config = utils_oci.get(auth_profile="DEFAULT")
     _ = utils_oci.get_namespace(config=default_config)
     _ = utils_models.create_genai(config=default_config)
 except utils_oci.OciException:
@@ -37,7 +36,7 @@ async def oci_list() -> list[schema.OracleCloudSettings]:
     """List OCI Configuration"""
     logger.debug("Received oci_list")
     try:
-        return core_oci.get_oci()
+        return utils_oci.get()
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}.") from ex
 
@@ -53,7 +52,7 @@ async def oci_get(
     """List OCI Configuration"""
     logger.debug("Received oci_get - auth_profile: %s", auth_profile)
     try:
-        return core_oci.get_oci(auth_profile=auth_profile)
+        return utils_oci.get(auth_profile=auth_profile)
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=f"OCI: {str(ex)}.") from ex
 
@@ -66,7 +65,7 @@ async def oci_get(
 async def oci_list_regions(
     auth_profile: schema.OCIProfileType,
 ) -> list:
-    """Return a list of compartments"""
+    """Return a list of regions"""
     logger.debug("Received oci_list_regions - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
@@ -84,7 +83,7 @@ async def oci_list_regions(
 async def oci_list_genai(
     auth_profile: schema.OCIProfileType,
 ) -> list:
-    """Return a list of compartments"""
+    """Return a list of genai service models"""
     logger.debug("Received oci_list_genai - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
