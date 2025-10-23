@@ -176,6 +176,8 @@ def load_and_split_documents(
             case "png" | "jpg" | "jpeg":
                 loader = UnstructuredImageLoader(file)
                 split = False
+            case "txt":
+                loader = document_loaders.TextLoader(file)
             case _:
                 raise ValueError(f"{extension} is not a supported file extension")
 
