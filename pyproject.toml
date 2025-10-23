@@ -50,9 +50,10 @@ server = [
     "oci~=2.0",
     "psutil==7.1.0",
     "python-multipart==0.0.20",
+    "readability==0.3.2",
     "torch==2.9.0",
     "umap-learn==0.5.9.post2",
-    "uvicorn==0.37.0",
+    "uvicorn==0.37.0",   
 ]
 
 # GUI component dependencies
