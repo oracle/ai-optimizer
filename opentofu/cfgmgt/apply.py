@@ -93,7 +93,7 @@ def helm_repo_add_if_missing():
     print(f"✅ Repo '{OPTIMIZER_HELM_NAME}' added and updated.\n")
 
 
-def apply_helm_chart_inner(release_name, namespace):
+def apply_helm_chart_inner(release_name, namespace, optimizer_version=None):
     """Apply Helm Chart"""
     # Find all *-values.yaml files in the stage directory
     values_files = [
@@ -119,6 +119,13 @@ def apply_helm_chart_inner(release_name, namespace):
         namespace,
     ]
 
+    # Add version flag if optimizer_version is "Experimental"
+    if optimizer_version == "Experimental":
+        cmd.extend(["--version", "0.0.0"])
+        print("🔬 Using Experimental version (0.0.0)")
+    else:
+        print("✅ Using latest Stable release")
+
     # Add each values file to the command
     for values_file in sorted(values_files):
         values_path = os.path.join(STAGE_PATH, values_file)
@@ -136,9 +143,9 @@ def apply_helm_chart_inner(release_name, namespace):
     return False
 
 
-def apply_helm_chart(release_name, namespace):
+def apply_helm_chart(release_name, namespace, optimizer_version=None):
     """Retry Enabled Add/Update Helm Chart"""
-    retry(lambda: apply_helm_chart_inner(release_name, namespace))
+    retry(lambda: apply_helm_chart_inner(release_name, namespace, optimizer_version))
 
 
 def apply_manifest_inner(namespace):
@@ -217,9 +224,15 @@ if __name__ == "__main__":
     parser.add_argument("release_name", help="Helm release name")
     parser.add_argument("namespace", help="Kubernetes namespace")
     parser.add_argument("--private_endpoint", nargs="?", const=None, default=None, help="Kubernetes Private Endpoint")
+    parser.add_argument(
+        "--optimizer_version",
+        choices=["Stable", "Experimental"],
+        default="Stable",
+        help="Optimizer version (Stable or Experimental)"
+    )
     args = parser.parse_args()
 
     mod_kubeconfig(args.private_endpoint)
     apply_manifest(args.namespace)
     patch_oracle_operator()
-    apply_helm_chart(args.release_name, args.namespace)
+    apply_helm_chart(args.release_name, args.namespace, args.optimizer_version)
