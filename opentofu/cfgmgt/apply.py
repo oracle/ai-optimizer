@@ -224,7 +224,12 @@ if __name__ == "__main__":
     parser.add_argument("release_name", help="Helm release name")
     parser.add_argument("namespace", help="Kubernetes namespace")
     parser.add_argument("--private_endpoint", nargs="?", const=None, default=None, help="Kubernetes Private Endpoint")
-    parser.add_argument("--optimizer_version", choices=["Stable", "Experimental"], default="Stable", help="Optimizer version (Stable or Experimental)")
+    parser.add_argument(
+        "--optimizer_version",
+        choices=["Stable", "Experimental"],
+        default="Stable",
+        help="Optimizer version (Stable or Experimental)"
+    )
     args = parser.parse_args()
 
     mod_kubeconfig(args.private_endpoint)
