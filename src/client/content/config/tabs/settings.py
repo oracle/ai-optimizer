@@ -319,8 +319,22 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
         yaml_data = yaml.safe_load(formatted_content)
         if provider == "ollama":
             del yaml_data["spring"]["ai"]["openai"]
+            yaml_data["spring"]["ai"]["openai"] = {
+                "chat": {
+                    "options": {
+                    "model": "_"
+                    }
+                }
+            }
         if provider == "openai":
             del yaml_data["spring"]["ai"]["ollama"]
+            yaml_data["spring"]["ai"]["ollama"] = {
+                "chat": {
+                    "options": {
+                        "model": "_"
+                    }
+                }
+            }
         formatted_content = yaml.dump(yaml_data)
 
     return formatted_content

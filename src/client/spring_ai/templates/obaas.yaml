@@ -1,6 +1,3 @@
-server:
-  servlet:
-    context-path: /v1
 spring:
   datasource:
     url: ${{spring.datasource.url]}}
@@ -14,8 +11,8 @@ spring:
         initialize-schema: True
         index-type: {vector_search[index_type]}
     openai:
-      base-url: \"{ll_model[api_base]}\"
-      api-key:  \"{ll_model[api_key]}\"
+      base-url: "http://api.openai.com"
+      api-key:  {ll_model[api_key]}
       chat:
         options:
           temperature: {ll_model[temperature]}
@@ -36,10 +33,10 @@ spring:
           frequency-penalty: {ll_model[frequency_penalty]}
           num-predict: {ll_model[max_tokens]}
           top-p: {ll_model[top_p]}
-          model: \"{ll_model[id]}\"
+          model: {ll_model[id]}
       embedding:
         options: 
-          model: \"{vector_search[id]}\"        
+          model: {vector_search[id]}        
 aims:
   sys_instr: \"{sys_prompt}\"
   vectortable:
