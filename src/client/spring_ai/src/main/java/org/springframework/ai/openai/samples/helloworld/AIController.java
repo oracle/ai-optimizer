@@ -53,6 +53,7 @@ class AIController {
 	private final OracleVectorStore vectorStore;
 	private final EmbeddingModel embeddingModel;
 	private final String legacyTable;
+	private final String userTable;
 	private final String contextInstr;
 	private final String searchType;
 	private final int TOPK;
@@ -76,6 +77,7 @@ class AIController {
 			OracleVectorStore vectorStore,
 			JdbcTemplate jdbcTemplate,
 			String legacyTable,
+			String userTable,
 			String contextInstr,
 			String searchType,
 			int TOPK) {
@@ -86,6 +88,7 @@ class AIController {
 		this.chatClient = chatClient;
 		this.embeddingModel = embeddingModel;
 		this.legacyTable = legacyTable;
+		this.userTable = userTable;
 		this.contextInstr = contextInstr;
 		this.searchType = searchType;
 		this.TOPK = TOPK;
@@ -132,18 +135,19 @@ class AIController {
 		} else {
 			// RUNNING in OBAAS
 			logger.info("Running on OBaaS with user: " + user);
+			logger.info("copying langchain table from schema/user: " + userTable);
 			sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
-					"SELECT ID, TEXT, METADATA, EMBEDDING FROM ADMIN." + legacyTable;
+					"SELECT ID, TEXT, METADATA, EMBEDDING FROM "+ userTable+"." + legacyTable;
 		}
 		// Execute the insert
 		logger.info("doesExist" + user + ": " + helper.doesTableExist(newTable, user,this.jdbcTemplate));
 		if (helper.countRecordsInTable(newTable, user,this.jdbcTemplate) == 0) {
 			// First microservice execution
-			logger.info("Table " + user + "." + newTable + " doesn't exist: create from ADMIN/USER." + legacyTable);
+			logger.info("Table " + user + "." + newTable + " doesn't exist: create from "+userTable+"." + legacyTable);
 			jdbcTemplate.update(sql);
 		} else {
 			// Table conversion already done
-			logger.info("Table +" + newTable + " exists: drop before if you want use with new contents " + legacyTable);
+			logger.info("Table " + user+"."+newTable + " exists: drop before if you want use with new contents " + userTable + "." + legacyTable);
 		}
 	}
 

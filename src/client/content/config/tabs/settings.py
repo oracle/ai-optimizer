@@ -297,6 +297,8 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
 
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
 
+    logger.info("Database Legacy User:%s",database_lookup[state.client_settings["database"]["alias"]]["user"])
+
     formatted_content = template_content.format(
         provider=provider,
         sys_prompt=f"{sys_prompt}",
