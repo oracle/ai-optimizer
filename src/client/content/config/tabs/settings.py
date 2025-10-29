@@ -335,6 +335,13 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
                     }
                 }
             }
+
+            # check if is formatting a "obaas" template to override openai base url that causes an issue in obaas with "/v1"
+
+            if file_name.find("obaas")!=-1 and yaml_data["spring"]["ai"]["openai"]["base-url"].find("api.openai.com") != -1:
+                yaml_data["spring"]["ai"]["openai"]["base-url"] = "https://api.openai.com"
+                logger.info("in spring_ai_obaas(%s) found openai.base-url and changed with https://api.openai.com",file_name)
+        
         formatted_content = yaml.dump(yaml_data)
 
     return formatted_content
