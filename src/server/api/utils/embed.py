@@ -130,7 +130,7 @@ def split_document(
             # Update metadata with source
             for doc in doc_split:
                 doc.metadata.update(tmp_meta)
-        case "pdf" | "md" | "txt" | "csv":
+        case "pdf" | "md" | "txt" | "csv" | "docx":
             doc_split = text_splitter.split_documents(document)
         case _:
             raise ValueError(f"Unsupported file type: {extension.lower()}")
@@ -171,6 +171,8 @@ def load_and_split_documents(
                 loader = document_loaders.TextLoader(file)
             case "md":
                 loader = document_loaders.TextLoader(file)
+            case "docx":
+                loader = document_loaders.Docx2txtLoader(file)
             case "csv":
                 loader = document_loaders.CSVLoader(file)
             case "png" | "jpg" | "jpeg":
