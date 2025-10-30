@@ -12,12 +12,13 @@ import shutil
 from fastapi import APIRouter, HTTPException, Response, Header, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
-import requests
+import aiohttp
 
 import server.api.utils.oci as utils_oci
 import server.api.utils.databases as utils_databases
 import server.api.utils.embed as utils_embed
 import server.api.utils.models as utils_models
+import server.api.utils.webscrape as web_parse
 
 from common import functions, schema, logging_config
 
@@ -76,26 +77,39 @@ async def store_web_file(
     logger.debug("Received store_web_file - request: %s", request)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
-    # Save the file temporarily
-    for url in request:
-        filename = Path(urlparse(str(url)).path).name
-        request_timeout = 60
-        logger.debug("Requesting: %s (timeout in %is)", url, request_timeout)
-        response = requests.get(url, timeout=request_timeout)
-        content_type = response.headers.get("Content-Type", "").lower()
+    async with aiohttp.ClientSession() as session:
+        for url in request:
+            filename = Path(urlparse(str(url)).path).name
+            request_timeout = aiohttp.ClientTimeout(total=60)
+            logger.debug("Requesting: %s (timeout in %is)", url, request_timeout)
+            async with session.get(str(url), timeout=request_timeout) as response:
+                content_type = response.headers.get("Content-Type", "").lower()
 
-        if "application/pdf" in content_type or "application/octet-stream" in content_type:
-            with open(temp_directory / filename, "wb") as file:
-                file.write(response.content)
-        elif "text" in content_type or "html" in content_type:
-            with open(temp_directory / filename, "w", encoding="utf-8") as file:
-                file.write(response.text)
-        else:
-            shutil.rmtree(temp_directory)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Unprocessable content type: {content_type}.",
-            )
+                if "application/pdf" in content_type or "application/octet-stream" in content_type:
+                    with open(temp_directory / filename, "wb") as file:
+                        file.write(await response.read())
+                
+                elif "text" in content_type or "html" in content_type:
+                    sections = await web_parse.fetch_and_extract_sections(url)
+                    base = web_parse.slugify(str(url).split('/')[-1]) or "page"
+                    out_files = []
+                    for idx, sec in enumerate(sections, 1):
+                        # filename includes section number and optional slugified title for clarity
+                        stub = web_parse.slugify(sec.get("title", "")) or f"{base}-section{idx}"
+                        sec_filename = f"{stub}.txt"
+                        sec_path = temp_directory / sec_filename
+                        with open(sec_path, "w", encoding="utf-8", errors="replace") as f:
+                            if sec.get("title"):
+                                f.write(sec["title"].strip() + "\n\n")
+                            f.write(str(sec["content"]).strip())
+                        out_files.append(sec_filename)
+
+                else:
+                    shutil.rmtree(temp_directory)
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Unprocessable content type: {content_type}.",
+                    )
 
     stored_files = [f.name for f in temp_directory.iterdir() if f.is_file()]
     return Response(content=json.dumps(stored_files), media_type="application/json")
