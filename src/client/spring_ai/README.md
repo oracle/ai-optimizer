@@ -1,5 +1,21 @@
 # Spring AI template
 
+## Prerequisites
+
+Before using the AI commands, make sure you have a developer token from OpenAI.
+
+Create an account at [OpenAI Signup](https://platform.openai.com/signup) and generate the token at [API Keys](https://platform.openai.com/account/api-keys).
+
+The Spring AI project defines a configuration property named `spring.ai.openai.api-key` that you should set to the value of the `API Key` obtained from `openai.com`.
+
+Exporting an environment variable is one way to set that configuration property.
+```shell
+export SPRING_AI_OPENAI_API_KEY=<INSERT KEY HERE>
+```
+
+Setting the API key is all you need to run the application.
+However, you can find more information on setting started in the [Spring AI reference documentation section on OpenAI Chat](https://docs.spring.io/spring-ai/reference/api/clients/openai-chat.html).
+
 ## How to run:
 Prepare two configurations in the `Oracle ai optimizer and toolkit`, based on vector stores created using this kind of configuration:
 
@@ -410,7 +426,7 @@ GRANT SELECT ON "<OPTIMIZER_USER>"."<VECTOR_STORE_TABLE>" TO <MS_USER>;
 <DATASTORE_ID> -> <MS_DATASTORE_ID>
 
 
-### Cleaning env
+### Cleanup env
 
 * First open a tunnel:
 ```
@@ -427,119 +443,6 @@ image delete --imageId <ID_GOT_WITH_IMAGE_LIST>
 artifact list
 artifact delete --artifactId <ID_GOT_WITH_ARTIFACT_LIST>
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-* execute:
-```
-kubectl create ns ollama
-helm install ollama ollama-helm/ollama --namespace ollama  --values ollama-values.yaml
-```
-* check:
-```
-kubectl -n ollama exec svc/ollama -- ollama ls
-```
-it should be:
-```
-NAME                        ID              SIZE      MODIFIED      
-nomic-embed-text:latest     0a109f422b47    274 MB    3 minutes ago    
-mxbai-embed-large:latest    468836162de7    669 MB    3 minutes ago    
-llama3.2:latest             a80c4f17acd5    2.0 GB    3 minutes ago 
-```
-* test a single LLM:
-```
-kubectl -n ollama exec svc/ollama -- ollama run "llama3.2" "what is spring boot?"
-```
-
-
-* **NOTE**: The Microservices will access to the ADB23ai on which the vector store table should be created as done in the local desktop example shown before. To access the ai-explorer running on **Oracle Backend for Microservices and AI** and create the same configuration, let's do:
-  * tunnel:
-  ```
-  kubectl -n ai-explorer port-forward svc/ai-explorer 8181:8501 
-  ```
-  * on localhost:
-  ```
-  http://localhost:8181/ai-sandbox
-  ```
-
-* Deploy with `oractl` on a new schema `vector`:
-  * tunnel:
-  ```
-    kubectl -n obaas-admin port-forward svc/obaas-admin 8080:8080
-  ```
-  
-  * oractl:
-  ```
-  create --app-name vector_search
-  bind --app-name vector_search --service-name myspringai --username vector
-  ```
-
-
-* the `bind` will create the new user, if not exists, but to have the `<VECTOR_STORE>_SPRINGAI` table compatible with SpringAI Oracle vector store adapter, the microservices need to access to the vector store table created by the ai-explorer with user ADMIN on ADB:
-
-```
-GRANT SELECT ON ADMIN.<VECTOR_STORE> TO vector;
-```
-* then deploy:
-```
-deploy --app-name vector_search --service-name myspringai --artifact-path <ProjectDir>/target/myspringai-0.0.1-SNAPSHOT.jar --image-version 0.0.1 --java-version ghcr.io/oracle/graalvm-native-image-obaas:21 --service-profile obaas
-```
-* test:
-```
-kubectl -n vector_search port-forward svc/myspringai 9090:8080
-```
-* from shell:
-```
-curl -N http://localhost:9090/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your_api_key" \
-  -d '{
-    "model": "server",
-    "messages": [{"role": "user", "content": "Can I use any kind of development environment to run the example?"}],
-    "stream": false
-  }'
-```
-it should return:
-```
-{
-  "choices": [
-    {
-      "message": {
-        "content": "Based on the provided documents, it seems that a specific development environment (IDE) is recommended for running the example.\n\nIn document \"67D5C08DF7F7480F\", it states: \"This guide uses IntelliJ Idea community version to create and update the files for this application.\" (page 17)\n\nHowever, there is no information in the provided documents that explicitly prohibits using other development environments. In fact, one of the articles mentions \"Application. Use these instructions as a reference.\" without specifying any particular IDE.\n\nTherefore, while it appears that IntelliJ Idea community version is recommended, I couldn't find any definitive statement ruling out the use of other development environments entirely.\n\nIf you'd like to run the example with a different environment, it might be worth investigating further or consulting additional resources. Sorry if this answer isn't more conclusive!"
-      }
-    }
-  ]
-}
-```
-
-
-## Prerequisites
-
-Before using the AI commands, make sure you have a developer token from OpenAI.
-
-Create an account at [OpenAI Signup](https://platform.openai.com/signup) and generate the token at [API Keys](https://platform.openai.com/account/api-keys).
-
-The Spring AI project defines a configuration property named `spring.ai.openai.api-key` that you should set to the value of the `API Key` obtained from `openai.com`.
-
-Exporting an environment variable is one way to set that configuration property.
-```shell
-export SPRING_AI_OPENAI_API_KEY=<INSERT KEY HERE>
-```
-
-Setting the API key is all you need to run the application.
-However, you can find more information on setting started in the [Spring AI reference documentation section on OpenAI Chat](https://docs.spring.io/spring-ai/reference/api/clients/openai-chat.html).
 
 
 
