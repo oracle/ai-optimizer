@@ -404,12 +404,12 @@ kubectl -n obaas-admin port-forward svc/obaas-admin 8080:8080
 namespace create --namespace <MS_NAMESPACE>
 ```
 
-* Create a dedicated user/schema for the microservice:
+* Create a dedicated user/schema for the microservice, providing a <MS_USER_PWD> to execute the command:
 
 ```
 datastore create --namespace <MS_NAMESPACE> --username <MS_USER> --id <MS_DATASTORE_ID>
-? password: <MS_USER_PWD>
 ```
+
 
 2. Connect to the Autonomous DB instance via the <OPTIMIZER_USER>/<OPTIMIZER_USER_PASSWORD>
 
