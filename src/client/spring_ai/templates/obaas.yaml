@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: ${{spring.datasource.url}}
-    username: ${{spring.datasource.username}}
-    password: ${{spring.datasource.password}}
+    url: ${{spring.datasource.url]}}
+    username: ${{spring.datasource.username]}}
+    password: ${{spring.datasource.password]}}
   ai:
     vectorstore:
       oracle:
