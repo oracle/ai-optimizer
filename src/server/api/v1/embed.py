@@ -46,6 +46,25 @@ async def embed_drop_vs(
     return JSONResponse(status_code=200, content={"message": f"Vector Store: {vs} dropped."})
 
 
+@auth.get(
+    "/{vs}/files",
+    description="Get list of files embedded in a Vector Store",
+)
+async def embed_get_files(
+    vs: schema.VectorStoreTableType,
+    client: schema.ClientIdType = Header(default="server"),
+) -> JSONResponse:
+    """Get list of files in Vector Store with statistics"""
+    logger.debug("Received %s embed_get_files: %s", client, vs)
+    try:
+        client_db = utils_databases.get_client_database(client)
+        file_list = utils_embed.get_vector_store_files(client_db, vs)
+        return JSONResponse(status_code=200, content=file_list)
+    except Exception as ex:
+        logger.error(f"Error retrieving file list from {vs}: {str(ex)}")
+        raise HTTPException(status_code=400, detail=f"Could not retrieve file list: {str(ex)}") from ex
+
+
 @auth.post(
     "/sql/store",
     description="Store SQL field for Embedding.",
@@ -124,15 +143,31 @@ async def store_local_file(
     client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Store contents from a local file uploaded to streamlit"""
+    import datetime
+
     logger.debug("Received store_local_file - files: %s", files)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
-    for file in files:
-        filename = temp_directory / file.filename
-        file_content = await file.read()
-        with filename.open("wb") as file:
-            file.write(file_content)
 
-    stored_files = [f.name for f in temp_directory.iterdir() if f.is_file()]
+    # Store file metadata
+    file_metadata = {}
+    for upload_file in files:
+        filename = temp_directory / upload_file.filename
+        file_content = await upload_file.read()
+        with filename.open("wb") as f:
+            f.write(file_content)
+
+        # Capture metadata for this file
+        file_metadata[upload_file.filename] = {
+            "size": len(file_content),
+            "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        }
+
+    # Store metadata in JSON file for later use
+    metadata_file = temp_directory / ".file_metadata.json"
+    with metadata_file.open("w") as f:
+        json.dump(file_metadata, f)
+
+    stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != ".file_metadata.json"]
     return Response(content=json.dumps(stored_files), media_type="application/json")
 
 
@@ -151,7 +186,7 @@ async def split_embed(
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
     try:
-        files = [f for f in temp_directory.iterdir() if f.is_file()]
+        files = [f for f in temp_directory.iterdir() if f.is_file() and f.name != ".file_metadata.json"]
         logger.info("Processing Files: %s", files)
     except FileNotFoundError as ex:
         raise HTTPException(
@@ -163,6 +198,19 @@ async def split_embed(
             status_code=404,
             detail=f"Embed: Client {client} no files found in folder.",
         )
+
+    # Load file metadata if available
+    file_metadata = None
+    metadata_file = temp_directory / ".file_metadata.json"
+    if metadata_file.exists():
+        try:
+            with metadata_file.open("r") as f:
+                file_metadata = json.load(f)
+            logger.info("Loaded metadata for %d files", len(file_metadata))
+        except Exception as e:
+            logger.warning("Could not load file metadata: %s", e)
+            file_metadata = None
+
     try:
         split_docos, _ = utils_embed.load_and_split_documents(
             files,
@@ -171,6 +219,7 @@ async def split_embed(
             request.chunk_overlap,
             write_json=False,
             output_dir=None,
+            file_metadata=file_metadata,
         )
 
         embed_client = utils_models.get_client_embed({"model": request.model, "enabled": True}, oci_config)

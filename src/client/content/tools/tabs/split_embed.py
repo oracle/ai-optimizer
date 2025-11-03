@@ -324,7 +324,12 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
                 disabled=True,
             )
     pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
-    if embed_request.alias and not re.match(pattern, embed_request.alias):
+
+    # Check if alias is empty when creating new vector store
+    if selected_vs == "Create new..." and not embed_request.alias:
+        st.warning("Please enter a Vector Store Alias to continue.")
+        embed_alias_invalid = True
+    elif embed_request.alias and not re.match(pattern, embed_request.alias):
         st.error(
             "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
         )
@@ -334,11 +339,69 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
         embed_request.vector_store, _ = functions.get_vs_table(
             **embed_request.model_dump(exclude={"database", "vector_store"})
         )
-    vs_msg = f"{embed_request.vector_store}, will be created."
-    if any(d.get("vector_store") == embed_request.vector_store for d in existing_vs):
-        vs_msg = f"{embed_request.vector_store} exists, new chunks will be added."
-    st.markdown(f"##### **Vector Store:** `{embed_request.vector_store}`")
-    st.caption(f"{vs_msg}")
+        vs_msg = f"{embed_request.vector_store}, will be created."
+        vs_exists = any(d.get("vector_store") == embed_request.vector_store for d in existing_vs)
+        if vs_exists:
+            vs_msg = f"{embed_request.vector_store} exists, new chunks will be added."
+        st.markdown(f"##### **Vector Store:** `{embed_request.vector_store}`")
+        st.caption(f"{vs_msg}")
+
+        # Display files in existing vector store
+        if vs_exists and embed_request.vector_store:
+            try:
+                file_list_response = api_call.get(endpoint=f"v1/embed/{embed_request.vector_store}/files")
+                if file_list_response and "files" in file_list_response:
+                    # Build expander title
+                    expander_title = f"📁 View Embedded Files ({file_list_response['total_files']} files, {file_list_response['total_chunks']} chunks)"
+                    if file_list_response.get('orphaned_chunks', 0) > 0:
+                        expander_title += f" ⚠️ {file_list_response['orphaned_chunks']} orphaned"
+
+                    with st.expander(expander_title):
+                        # Show warning if there are orphaned chunks
+                        if file_list_response.get('orphaned_chunks', 0) > 0:
+                            st.warning(
+                                f"**{file_list_response['orphaned_chunks']} orphaned chunks found** - "
+                                f"These chunks have missing or invalid filename metadata and won't be shown in search results properly."
+                            )
+
+                        if file_list_response['total_files'] > 0:
+                            # Create DataFrame for better display
+                            files_df = pd.DataFrame(file_list_response['files'])
+
+                            # Select columns to display (always show filename and chunk_count)
+                            display_cols = ['filename', 'chunk_count']
+                            column_config = {
+                                "filename": st.column_config.TextColumn("File Name", width="medium"),
+                                "chunk_count": st.column_config.NumberColumn("Chunks", width="small"),
+                            }
+
+                            # Only include size column if at least one file has size data
+                            if 'size' in files_df.columns and files_df['size'].notna().any():
+                                files_df['size'] = files_df['size'].apply(
+                                    lambda x: f"{x / 1024:.1f} KB" if x else "N/A"
+                                )
+                                display_cols.append('size')
+                                column_config["size"] = st.column_config.TextColumn("Size", width="small")
+
+                            # Only include time_modified column if at least one file has timestamp data
+                            if 'time_modified' in files_df.columns and files_df['time_modified'].notna().any():
+                                files_df['time_modified'] = files_df['time_modified'].apply(
+                                    lambda x: x.split('T')[0] if x else "N/A"
+                                )
+                                display_cols.append('time_modified')
+                                column_config["time_modified"] = st.column_config.TextColumn("Modified", width="small")
+
+                            st.dataframe(
+                                files_df[display_cols],
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config=column_config
+                            )
+                        else:
+                            st.info("No files found in this vector store.")
+            except api_call.ApiError as e:
+                logger.warning(f"Could not retrieve file list for {embed_request.vector_store}: {e}")
+                # Silently fail - this is not a critical feature
 
     # Always render rate limit input to ensure session state is initialized
     rate_size, _ = st.columns([0.28, 0.72])

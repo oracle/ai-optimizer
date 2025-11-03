@@ -62,7 +62,7 @@ def doc_to_json(document: LangchainDocument, file: str, output_dir: str = None) 
     return dst_file_path
 
 
-def process_metadata(idx: int, chunk: str) -> str:
+def process_metadata(idx: int, chunk: str, file_metadata: dict = None) -> str:
     """Add Metadata to Split Document"""
     filename = os.path.basename(chunk.metadata["source"])
     file = os.path.splitext(filename)[0]
@@ -72,6 +72,12 @@ def process_metadata(idx: int, chunk: str) -> str:
     # Add More Metadata as Required
     chunk_metadata["id"] = f"{file}_{idx}"
     chunk_metadata["filename"] = filename
+
+    # Add file size and timestamp if available
+    if file_metadata and filename in file_metadata:
+        chunk_metadata["size"] = file_metadata[filename].get("size")
+        chunk_metadata["time_modified"] = file_metadata[filename].get("time_modified")
+
     split_doc_with_mdata.append(LangchainDocument(page_content=str(chunk.page_content), metadata=chunk_metadata))
     return split_doc_with_mdata
 
@@ -149,19 +155,35 @@ def load_and_split_documents(
     chunk_overlap: int,
     write_json: bool = False,
     output_dir: str = None,
+    file_metadata: dict = None,
 ) -> list[LangchainDocument]:
     """
     Loads file into a Langchain Document.  Calls the Splitter (split_document) function
     Returns the list of the chunks in a LangchainDocument.
     If output_dir, a list of written json files
     """
+    import datetime
+
     split_files = []
     all_split_docos = []
+
+    # If no metadata provided, create from file system
+    if file_metadata is None:
+        file_metadata = {}
+
     for file in src_files:
         name = os.path.basename(file)
         stat = os.stat(file)
         extension = os.path.splitext(file)[1][1:]
         logger.info("Loading %s (%i bytes)", name, stat.st_size)
+
+        # Capture file metadata if not already provided (from upload)
+        if name not in file_metadata:
+            file_metadata[name] = {
+                "size": stat.st_size,
+                "time_modified": datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc).isoformat()
+            }
+
         split = True
         match extension.lower():
             case "pdf":
@@ -190,7 +212,7 @@ def load_and_split_documents(
             # Add IDs to metadata
             split_docos = []
             for idx, chunk in enumerate(split_doc, start=1):
-                split_doc_with_mdata = process_metadata(idx, chunk)
+                split_doc_with_mdata = process_metadata(idx, chunk, file_metadata)
                 split_docos += split_doc_with_mdata
         else:
             split_files = file
@@ -491,6 +513,77 @@ def get_processed_objects_metadata(db_details: schema.Database, vector_store_nam
         # If table doesn't have metadata column or query fails, return empty dict
         logger.warning(f"Could not retrieve processed objects metadata from {vector_store_name}: {e}")
         return {}
+    finally:
+        utils_databases.disconnect(db_conn)
+
+
+def get_vector_store_files(db_details: schema.Database, vector_store_name: str) -> dict:
+    """Get list of files embedded in a vector store with statistics"""
+    db_conn = utils_databases.connect(db_details)
+
+    try:
+        logger.info(f"Retrieving file list from {vector_store_name}")
+        cursor = db_conn.cursor()
+
+        # Get all metadata entries with chunk count
+        query = f'SELECT metadata FROM "{vector_store_name}"'
+        logger.info(f"SQL Query: {query}")
+        cursor.execute(query)
+        results = cursor.fetchall()
+        logger.info(f"Query returned {len(results)} chunks")
+
+        # Parse metadata to extract file information
+        files_info = {}
+        total_identified_chunks = 0
+        orphaned_chunks = 0
+
+        for row in results:
+            metadata = row[0]
+            chunk_identified = False
+
+            if isinstance(metadata, dict):
+                # Try new format first (filename field)
+                filename = metadata.get('filename')
+                if not filename and 'source' in metadata:
+                    # Fall back to old format
+                    filename = os.path.basename(metadata.get('source', ''))
+
+                if filename:
+                    if filename not in files_info:
+                        files_info[filename] = {
+                            "filename": filename,
+                            "chunk_count": 0,
+                            "etag": metadata.get('etag'),
+                            "time_modified": metadata.get('time_modified'),
+                            "size": metadata.get('size'),
+                        }
+                    files_info[filename]["chunk_count"] += 1
+                    total_identified_chunks += 1
+                    chunk_identified = True
+
+            if not chunk_identified:
+                orphaned_chunks += 1
+
+        # Convert to list and sort by filename
+        file_list = sorted(files_info.values(), key=lambda x: x["filename"])
+
+        result = {
+            "vector_store": vector_store_name,
+            "total_files": len(file_list),
+            "total_chunks": total_identified_chunks,
+            "orphaned_chunks": orphaned_chunks,
+            "files": file_list
+        }
+
+        if orphaned_chunks > 0:
+            logger.warning(f"Found {orphaned_chunks} orphaned chunks without valid filename metadata in {vector_store_name}")
+
+        logger.info(f"Found {len(file_list)} files with {len(results)} total chunks in {vector_store_name}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Could not retrieve file list from {vector_store_name}: {e}")
+        raise
     finally:
         utils_databases.disconnect(db_conn)
 
