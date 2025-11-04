@@ -94,7 +94,7 @@ class TestGetVectorStoreFiles:
         self.sample_db = Database(
             name="TEST_DB",
             user="test_user",
-            password="test_pass",
+            password="",
             dsn="localhost:1521/FREEPDB1"
         )
 
