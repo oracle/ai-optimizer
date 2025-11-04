@@ -377,6 +377,7 @@ def get_bucket_objects_with_metadata(bucket_name: str, config: OracleCloudSettin
         response = client.list_objects(
             namespace_name=config.namespace,
             bucket_name=bucket_name,
+            fields="name,size,etag,timeModified,md5"
         )
         objects = response.data.objects
 
@@ -386,17 +387,19 @@ def get_bucket_objects_with_metadata(bucket_name: str, config: OracleCloudSettin
         for obj in objects:
             _, ext = os.path.splitext(obj.name.lower())
             if ext in supported_extensions:
-                objects_metadata.append({
+                obj_metadata = {
                     "name": obj.name,
                     "size": obj.size,
                     "etag": obj.etag,
                     "time_modified": obj.time_modified.isoformat() if obj.time_modified else None,
                     "md5": obj.md5,
                     "extension": ext[1:]  # Remove the dot
-                })
+                }
+                objects_metadata.append(obj_metadata)
     except oci.exceptions.ServiceError:
         logger.debug("Bucket %s not found.", bucket_name)
 
+    logger.info("Retrieved %d objects with metadata from bucket %s", len(objects_metadata), bucket_name)
     return objects_metadata
 
 

@@ -77,6 +77,7 @@ def process_metadata(idx: int, chunk: str, file_metadata: dict = None) -> str:
     if file_metadata and filename in file_metadata:
         chunk_metadata["size"] = file_metadata[filename].get("size")
         chunk_metadata["time_modified"] = file_metadata[filename].get("time_modified")
+        chunk_metadata["etag"] = file_metadata[filename].get("etag")
 
     split_doc_with_mdata.append(LangchainDocument(page_content=str(chunk.page_content), metadata=chunk_metadata))
     return split_doc_with_mdata
@@ -550,12 +551,17 @@ def get_vector_store_files(db_details: schema.Database, vector_store_name: str) 
 
                 if filename:
                     if filename not in files_info:
+                        # Convert size to int if it's a Decimal (from Oracle NUMBER type)
+                        size_value = metadata.get('size')
+                        if size_value is not None:
+                            size_value = int(size_value)
+
                         files_info[filename] = {
                             "filename": filename,
                             "chunk_count": 0,
                             "etag": metadata.get('etag'),
                             "time_modified": metadata.get('time_modified'),
-                            "size": metadata.get('size'),
+                            "size": size_value,
                         }
                     files_info[filename]["chunk_count"] += 1
                     total_identified_chunks += 1
@@ -646,7 +652,22 @@ def refresh_vector_store_from_bucket(
                 "errors": ["Failed to download any objects from bucket"]
             }
 
-        # Process documents
+        # Build file metadata dict from bucket objects
+        file_metadata = {}
+        for obj in bucket_objects:
+            filename = os.path.basename(obj["name"])
+            size_value = obj.get("size")
+            if size_value is not None:
+                size_value = int(size_value)
+            file_metadata[filename] = {
+                "size": size_value,
+                "time_modified": obj.get("time_modified"),
+                "etag": obj.get("etag"),
+                "bucket_name": bucket_name
+            }
+        logger.info("Built metadata dict for %d files from bucket objects", len(file_metadata))
+
+        # Process documents with metadata
         split_docos, _ = load_and_split_documents(
             downloaded_files,
             vector_store_config.model,
@@ -654,29 +675,11 @@ def refresh_vector_store_from_bucket(
             vector_store_config.chunk_overlap,
             write_json=False,
             output_dir=None,
+            file_metadata=file_metadata,
         )
 
-        # Update metadata with bucket information
-        logger.info(f"Updating metadata for {len(split_docos)} documents")
-        metadata_updated_count = 0
-        for doc in split_docos:
-            if "source" in doc.metadata:
-                filename = os.path.basename(doc.metadata["source"])
-                # Find the corresponding bucket object
-                bucket_obj = next((obj for obj in bucket_objects if obj["name"] == filename or obj["name"].endswith(filename)), None)
-                if bucket_obj:
-                    doc.metadata.update({
-                        "filename": bucket_obj["name"],  # Store the bucket object name for tracking
-                        "etag": bucket_obj["etag"],
-                        "time_modified": bucket_obj["time_modified"],
-                        "size": bucket_obj["size"],
-                        "bucket_name": bucket_name
-                    })
-                    metadata_updated_count += 1
-                    logger.debug(f"Updated metadata for {filename}: etag={bucket_obj['etag']}")
-                else:
-                    logger.warning(f"Could not find bucket object for {filename}")
-        logger.info(f"Updated metadata for {metadata_updated_count}/{len(split_docos)} documents")
+        # Metadata already set by load_and_split_documents with file_metadata parameter
+        logger.info(f"Processed {len(split_docos)} document chunks with OCI bucket metadata")
 
         # Populate vector store
         populate_vs(

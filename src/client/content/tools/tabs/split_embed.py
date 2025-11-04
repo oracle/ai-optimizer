@@ -349,19 +349,31 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
         # Display files in existing vector store
         if vs_exists and embed_request.vector_store:
             try:
-                file_list_response = api_call.get(endpoint=f"v1/embed/{embed_request.vector_store}/files")
+                file_list_response = api_call.get(
+                    endpoint=f"v1/embed/{embed_request.vector_store}/files"
+                )
                 if file_list_response and "files" in file_list_response:
                     # Build expander title
-                    expander_title = f"📁 View Embedded Files ({file_list_response['total_files']} files, {file_list_response['total_chunks']} chunks)"
-                    if file_list_response.get('orphaned_chunks', 0) > 0:
-                        expander_title += f" ⚠️ {file_list_response['orphaned_chunks']} orphaned"
+                    total_files = file_list_response['total_files']
+                    total_chunks = file_list_response['total_chunks']
+                    expander_title = f"📁 View Embedded Files ({total_files} files, {total_chunks} chunks)"
+                    orphaned = file_list_response.get('orphaned_chunks', 0)
+                    if orphaned > 0:
+                        expander_title += f" ⚠️ {orphaned} orphaned"
 
                     with st.expander(expander_title):
+                        # Add refresh button
+                        col1, col2 = st.columns([0.9, 0.1])
+                        with col2:
+                            if st.button("🔄", key="refresh_file_list", help="Refresh file list"):
+                                st.rerun()
+
                         # Show warning if there are orphaned chunks
-                        if file_list_response.get('orphaned_chunks', 0) > 0:
+                        if orphaned > 0:
                             st.warning(
-                                f"**{file_list_response['orphaned_chunks']} orphaned chunks found** - "
-                                f"These chunks have missing or invalid filename metadata and won't be shown in search results properly."
+                                f"**{orphaned} orphaned chunks found** - "
+                                "These chunks have missing or invalid filename metadata "
+                                "and won't be shown in search results properly."
                             )
 
                         if file_list_response['total_files'] > 0:
@@ -400,7 +412,9 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
                         else:
                             st.info("No files found in this vector store.")
             except api_call.ApiError as e:
-                logger.warning(f"Could not retrieve file list for {embed_request.vector_store}: {e}")
+                logger.warning(
+                    "Could not retrieve file list for %s: %s", embed_request.vector_store, e
+                )
                 # Silently fail - this is not a critical feature
 
     # Always render rate limit input to ensure session state is initialized
@@ -455,8 +469,13 @@ def _handle_vector_store_population(
     with col_refresh:
         # Only show refresh button for OCI source and if vector store exists
         vs_exists = any(d.get("vector_store") == embed_request.vector_store for d in existing_vs)
-        refresh_disabled = file_source != "OCI" or not vs_exists or state.running or not embed_request.alias
-        refresh_help = "Refresh existing vector store with new/modified files from OCI bucket" if vs_exists else "Vector store must exist first"
+        refresh_disabled = (
+            file_source != "OCI" or not vs_exists or state.running or not embed_request.alias
+        )
+        if vs_exists:
+            refresh_help = "Refresh existing vector store with new/modified files from OCI bucket"
+        else:
+            refresh_help = "Vector store must exist first"
 
         refresh_clicked = st.button(
             "Refresh from OCI",
