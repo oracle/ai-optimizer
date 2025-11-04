@@ -363,7 +363,7 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
 
                     with st.expander(expander_title):
                         # Add refresh button
-                        col1, col2 = st.columns([0.9, 0.1])
+                        _, col2 = st.columns([0.9, 0.1])
                         with col2:
                             if st.button("🔄", key="refresh_file_list", help="Refresh file list"):
                                 st.rerun()
