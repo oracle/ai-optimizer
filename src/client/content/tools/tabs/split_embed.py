@@ -365,6 +365,118 @@ def _display_file_list_expander(file_list_response: dict) -> None:
             st.info("No files found in this vector store.")
 
 
+def _render_create_new_vs_input(embed_request: DatabaseVectorStorage) -> None:
+    """Render input for creating a new vector store"""
+    embed_request.alias = st.text_input(
+        "New Vector Store Alias:",
+        max_chars=20,
+        help=help_text.help_dict["embed_alias"],
+        key="selected_embed_alias",
+        placeholder="Enter a name for the new vector store",
+    )
+
+
+def _render_use_existing_vs_input(embed_request: DatabaseVectorStorage, existing_vs: list) -> None:
+    """Render dropdown for selecting an existing vector store"""
+    # Filter by model to prevent mixing embeddings from different models
+    vs_lookup = {
+        vs.get("alias"): vs
+        for vs in existing_vs
+        if vs.get("alias") and vs.get("model") == embed_request.model
+    }
+    vs_options = list(vs_lookup.keys())
+
+    if not vs_options:
+        st.warning(
+            f"No existing vector stores found for embedding model '{embed_request.model}'. "
+            f"Toggle 'Create New Vector Store' to create one.",
+            icon="⚠️"
+        )
+
+    selected_vs = st.selectbox(
+        "Select Existing Vector Store:",
+        options=vs_options if vs_options else [""],
+        index=0 if vs_options else None,
+        help="Only showing vector stores created with the same embedding model to prevent mixing embeddings",
+        key="selected_vs_dropdown",
+        disabled=not vs_options
+    )
+    embed_request.alias = selected_vs
+
+    # Get VS properties from selected existing VS and update embed_request
+    if selected_vs and selected_vs in vs_lookup:
+        selected_vs_props = vs_lookup[selected_vs]
+        embed_request.chunk_size = selected_vs_props.get("chunk_size", embed_request.chunk_size)
+        embed_request.chunk_overlap = selected_vs_props.get("chunk_overlap", embed_request.chunk_overlap)
+        embed_request.distance_metric = selected_vs_props.get("distance_metric", embed_request.distance_metric)
+        embed_request.index_type = selected_vs_props.get("index_type", embed_request.index_type)
+
+    # Show disabled text input with alias
+    st.text_input(
+        "Vector Store Alias:",
+        value=selected_vs if selected_vs else "",
+        max_chars=20,
+        help=help_text.help_dict["embed_alias"],
+        key="selected_embed_alias_readonly",
+        disabled=True,
+    )
+
+
+def _validate_vector_store_alias(embed_request: DatabaseVectorStorage, create_new_vs: bool) -> bool:
+    """Validate vector store alias and return True if invalid"""
+    pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
+
+    # Check if alias is empty when creating new vector store
+    if create_new_vs and not embed_request.alias:
+        st.warning("Please enter a Vector Store Alias to continue.")
+        return True
+
+    if embed_request.alias and not re.match(pattern, embed_request.alias):
+        st.error(
+            "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
+        )
+        return True
+
+    return False
+
+
+def _display_vector_store_info(
+    embed_request: DatabaseVectorStorage,
+    create_new_vs: bool,
+    existing_vs: list
+) -> None:
+    """Display vector store information and file list"""
+    embed_request.vector_store, _ = functions.get_vs_table(
+        **embed_request.model_dump(exclude={"database", "vector_store"})
+    )
+    vs_exists = any(d.get("vector_store") == embed_request.vector_store for d in existing_vs)
+
+    # Show full vector store table name
+    st.markdown(f"##### **Vector Store:** `{embed_request.vector_store}`")
+
+    # Different messages based on mode
+    if create_new_vs:
+        if vs_exists:
+            st.caption("Vector store already exists. New chunks will be added.")
+        else:
+            st.caption("New vector store will be created.")
+    else:
+        st.caption("Adding files to existing vector store.")
+
+    # Display files in existing vector store
+    if vs_exists and embed_request.vector_store:
+        try:
+            file_list_response = api_call.get(
+                endpoint=f"v1/embed/{embed_request.vector_store}/files"
+            )
+            if file_list_response and "files" in file_list_response:
+                _display_file_list_expander(file_list_response)
+        except api_call.ApiError as e:
+            logger.warning(
+                "Could not retrieve file list for %s: %s", embed_request.vector_store, e
+            )
+
+
 def _render_vector_store_section(embed_request: DatabaseVectorStorage, create_new_vs: bool) -> tuple:
     """Render vector store configuration section and return validation status and rate limit
 
@@ -381,109 +493,24 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage, create_ne
         "vector_stores", []
     )
 
+    # Render vector store input based on mode
     embed_alias_size, _ = st.columns([0.5, 0.5])
-    embed_alias_invalid = False
     embed_request.vector_store = None
 
     with embed_alias_size:
         if create_new_vs:
-            # Creating new vector store: just show text input for new VS name
-            embed_request.alias = st.text_input(
-                "New Vector Store Alias:",
-                max_chars=20,
-                help=help_text.help_dict["embed_alias"],
-                key="selected_embed_alias",
-                placeholder="Enter a name for the new vector store",
-            )
+            _render_create_new_vs_input(embed_request)
         else:
-            # Using existing mode: show only VS created with the same embedding model
-            # Filter by model to prevent mixing embeddings from different models
-            vs_lookup = {
-                vs.get("alias"): vs
-                for vs in existing_vs
-                if vs.get("alias") and vs.get("model") == embed_request.model
-            }
-            vs_options = list(vs_lookup.keys())
+            _render_use_existing_vs_input(embed_request, existing_vs)
 
-            if not vs_options:
-                st.warning(
-                    f"No existing vector stores found for embedding model '{embed_request.model}'. "
-                    f"Toggle 'Create New Vector Store' to create one.",
-                    icon="⚠️"
-                )
+    # Validate alias
+    embed_alias_invalid = _validate_vector_store_alias(embed_request, create_new_vs)
 
-            selected_vs = st.selectbox(
-                "Select Existing Vector Store:",
-                options=vs_options if vs_options else [""],
-                index=0 if vs_options else None,
-                help="Only showing vector stores created with the same embedding model to prevent mixing embeddings",
-                key="selected_vs_dropdown",
-                disabled=not vs_options
-            )
-            embed_request.alias = selected_vs
-
-            # Get VS properties from selected existing VS and update embed_request
-            if selected_vs and selected_vs in vs_lookup:
-                selected_vs_props = vs_lookup[selected_vs]
-                embed_request.chunk_size = selected_vs_props.get("chunk_size", embed_request.chunk_size)
-                embed_request.chunk_overlap = selected_vs_props.get("chunk_overlap", embed_request.chunk_overlap)
-                embed_request.distance_metric = selected_vs_props.get("distance_metric", embed_request.distance_metric)
-                embed_request.index_type = selected_vs_props.get("index_type", embed_request.index_type)
-
-            # Show disabled text input with alias
-            st.text_input(
-                "Vector Store Alias:",
-                value=selected_vs if selected_vs else "",
-                max_chars=20,
-                help=help_text.help_dict["embed_alias"],
-                key="selected_embed_alias_readonly",
-                disabled=True,
-            )
-
-    pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
-
-    # Check if alias is empty when creating new vector store
-    if create_new_vs and not embed_request.alias:
-        st.warning("Please enter a Vector Store Alias to continue.")
-        embed_alias_invalid = True
-    elif embed_request.alias and not re.match(pattern, embed_request.alias):
-        st.error(
-            "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
-        )
-        embed_alias_invalid = True
-
+    # Display vector store information and file list
     if not embed_alias_invalid and embed_request.alias:
-        embed_request.vector_store, _ = functions.get_vs_table(
-            **embed_request.model_dump(exclude={"database", "vector_store"})
-        )
-        vs_exists = any(d.get("vector_store") == embed_request.vector_store for d in existing_vs)
+        _display_vector_store_info(embed_request, create_new_vs, existing_vs)
 
-        # Show full vector store table name
-        st.markdown(f"##### **Vector Store:** `{embed_request.vector_store}`")
-
-        # Different messages based on mode
-        if create_new_vs:
-            if vs_exists:
-                st.caption("Vector store already exists. New chunks will be added.")
-            else:
-                st.caption("New vector store will be created.")
-        else:
-            st.caption("Adding files to existing vector store.")
-
-        # Display files in existing vector store
-        if vs_exists and embed_request.vector_store:
-            try:
-                file_list_response = api_call.get(
-                    endpoint=f"v1/embed/{embed_request.vector_store}/files"
-                )
-                if file_list_response and "files" in file_list_response:
-                    _display_file_list_expander(file_list_response)
-            except api_call.ApiError as e:
-                logger.warning(
-                    "Could not retrieve file list for %s: %s", embed_request.vector_store, e
-                )
-
-    # Always render rate limit input to ensure session state is initialized
+    # Render rate limit input
     rate_size, _ = st.columns([0.28, 0.72])
     rate_limit = rate_size.number_input(
         "Rate Limit (RPM):",
