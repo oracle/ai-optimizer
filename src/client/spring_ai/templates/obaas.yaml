@@ -10,12 +10,12 @@ spring:
     vectorstore:
       oracle:
         distance-type: {vector_search[distance_metric]}
-        remove-existing-vector-store-table: True
-        initialize-schema: True
+        remove-existing-vector-store-table: true
+        initialize-schema: true
         index-type: {vector_search[index_type]}
     openai:
       base-url: \"{ll_model[api_base]}\"
-      api-key:  \"{ll_model[api_key]}\"
+      api-key: \"{ll_model[api_key]}\"
       chat:
         options:
           temperature: {ll_model[temperature]}
@@ -38,12 +38,12 @@ spring:
           top-p: {ll_model[top_p]}
           model: \"{ll_model[id]}\"
       embedding:
-        options: 
-          model: \"{vector_search[id]}\"        
+        options:
+          model: \"{vector_search[id]}\"
 aims:
   sys_instr: \"{sys_prompt}\"
   vectortable:
     name: {vector_search[vector_store]}
-  rag_params: 
+  rag_params:
     search_type: Similarity
     top_k: {vector_search[top_k]}

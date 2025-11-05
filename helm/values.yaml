@@ -12,7 +12,9 @@ nameOverride: ""
 # -----------------------
 # -- Global Configuration
 global:
-  # -- Either provide the 'apiKey' directly or provide a secretName referring to an existing Secret containing the API key.
+  # -- Either:
+  # 1) Provide the 'apiKey' directly
+  # 2) Provide a secretName referring to an existing Secret containing the API key.
   api:
     # -- Key for making API calls to the server.
     # Recommended to supply at command line or use the secretName to avoid storing in the values file.
@@ -129,8 +131,10 @@ server:
 
   # -- Oracle Cloud Infrastructure Configuration
   oci_config:
-    # -- Enable Workload Identity Principals (WIP) (must be implemented)
+    # -- Enable Workload Identity Principals (IAM policies must exist)
     oke: false
+    # -- (Optional) Name of Pre-created configMap storing OCI API AuthN
+    configMapName: ""
     # -- Tenancy OCID.  Required when specifying keySecretName.
     tenancy: ""
     # -- User OCID.  Required when specifying keySecretName.
