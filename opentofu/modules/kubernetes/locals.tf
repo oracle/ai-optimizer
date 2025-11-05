@@ -4,7 +4,7 @@
 
 // Oracle Resource Manager
 locals {
-  create_orm_pe = var.orm_install && !var.api_is_public
+  create_orm_pe = var.orm_install ? contains(local.api_endpoint_allowed_cidrs, "0.0.0.0/0") ? false : true : false
   orm_pe        = local.create_orm_pe ? data.oci_resourcemanager_private_endpoint_reachable_ip.orm_pe_reachable_ip[0].ip_address : ""
 }
 

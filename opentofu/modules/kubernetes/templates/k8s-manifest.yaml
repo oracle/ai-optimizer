@@ -16,7 +16,7 @@ metadata:
   namespace: ${label}
 type: Opaque
 stringData:
-  apiKey: ${optimizer_api_key}
+  apiKey: "${optimizer_api_key}"
 ---
 # Secret containing non-privileged DB User details.
 # Used for Optimizer application connectivity to database.
@@ -29,8 +29,8 @@ metadata:
 type: Opaque
 stringData:
   username: AI_OPTIMIZER
-  password: ${db_password}
-  service: ${db_service}
+  password: "${db_password}"
+  service: "${db_service}"
 %{ endif }
 ---
 # Secret containing privileged DB User details.
@@ -42,8 +42,9 @@ metadata:
   namespace: ${label}
 type: Opaque
 stringData:
-  username: ${db_username}
-  password: ${db_password}
+  username: "${db_username}"
+  password: "${db_password}"
+  service: "${db_service}"
 ---
 apiVersion: "ingress.oraclecloud.com/v1beta1"
 kind: IngressClassParameters

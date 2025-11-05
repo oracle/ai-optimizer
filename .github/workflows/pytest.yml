@@ -43,6 +43,16 @@ jobs:
           python -m pip install --upgrade pip wheel setuptools uv
           uv pip install torch==2.9.0+cpu -f https://download.pytorch.org/whl/cpu/torch --system
           uv pip install -e ".[all-test]" --system
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Run yamllint on Code
+        run: yamllint .
+
+      - name: Run Helm Lint (basic structure)
+        run: helm lint helm/
+
+      - name: Run Helm Lint (with required values)
+        run: helm lint helm/ --set global.api.apiKey=test-api-key
 
       - name: Run Pylint on IaC Code
         run: pylint opentofu
