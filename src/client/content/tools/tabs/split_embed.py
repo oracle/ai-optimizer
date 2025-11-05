@@ -27,6 +27,44 @@ from common import logging_config, help_text, functions
 
 logger = logging_config.logging.getLogger("client.tools.tabs.split_embed")
 
+#####################################################
+# Classes
+#####################################################
+@dataclass
+class FileSourceData:
+    """Data class to hold file source configuration and validation state"""
+    file_source: Optional[str] = None
+    # Web source
+    web_url: Optional[str] = None
+    # OCI source
+    oci_bucket: Optional[str] = None
+    oci_files_selected: Optional[pd.DataFrame] = None
+    # SQL source
+    sql_connection: Optional[str] = None
+    sql_query: Optional[str] = None
+
+    def is_valid(self) -> bool:
+        """Check if the current file source configuration is valid"""
+        if self.file_source == "Local":
+            return bool(state.get("local_file_uploader"))
+        if self.file_source == "Web":
+            return bool(self.web_url and functions.is_url_accessible(self.web_url)[0])
+        if self.file_source == "SQL":
+            return not functions.is_sql_accessible(self.sql_connection, self.sql_query)[0]
+        if self.file_source == "OCI":
+            return bool(self.oci_files_selected is not None and self.oci_files_selected["Process"].sum() > 0)
+        return False
+
+    def get_button_help(self) -> str:
+        """Get help text for the populate button based on file source"""
+        help_text_map = {
+            "Local": "This button is disabled if no local files have been provided.",
+            "Web": "This button is disabled if there the URL was unable to be validated.  Please check the URL.",
+            "SQL": "This button is disabled if there the SQL was unable to be validated.  Please check the SQL.",
+            "OCI": "This button is disabled if there are no documents from the source bucket split with "
+                   "the current split and embed options.  Please Split and Embed to enable Vector Storage.",
+        }
+        return help_text_map.get(self.file_source, "")
 
 #####################################################
 # Functions
@@ -178,44 +216,6 @@ def _render_embedding_configuration(embed_models_enabled: dict, embed_request: D
     embed_request.index_type = col2_2.selectbox(
         "Index Type:", list(IndexTypes.__args__), key="selected_index_type", help=help_text.help_dict["index_type"]
     )
-
-
-@dataclass
-class FileSourceData:
-    """Data class to hold file source configuration and validation state"""
-    file_source: Optional[str] = None
-    # Web source
-    web_url: Optional[str] = None
-    # OCI source
-    oci_bucket: Optional[str] = None
-    oci_files_selected: Optional[pd.DataFrame] = None
-    # SQL source
-    sql_connection: Optional[str] = None
-    sql_query: Optional[str] = None
-
-    def is_valid(self) -> bool:
-        """Check if the current file source configuration is valid"""
-        if self.file_source == "Local":
-            return bool(state.get("local_file_uploader"))
-        if self.file_source == "Web":
-            return bool(self.web_url and functions.is_url_accessible(self.web_url)[0])
-        if self.file_source == "SQL":
-            return not functions.is_sql_accessible(self.sql_connection, self.sql_query)[0]
-        if self.file_source == "OCI":
-            return bool(self.oci_files_selected is not None and self.oci_files_selected["Process"].sum() > 0)
-        return False
-
-    def get_button_help(self) -> str:
-        """Get help text for the populate button based on file source"""
-        help_text_map = {
-            "Local": "This button is disabled if no local files have been provided.",
-            "Web": "This button is disabled if there the URL was unable to be validated.  Please check the URL.",
-            "SQL": "This button is disabled if there the SQL was unable to be validated.  Please check the SQL.",
-            "OCI": "This button is disabled if there are no documents from the source bucket split with "
-                   "the current split and embed options.  Please Split and Embed to enable Vector Storage.",
-        }
-        return help_text_map.get(self.file_source, "")
-
 
 def _render_file_source_section(file_sources: list, oci_setup: dict) -> FileSourceData:
     """Render file source selection and return processing data"""
