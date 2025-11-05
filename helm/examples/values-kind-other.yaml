@@ -19,7 +19,7 @@ server:
       # service_name: "MYSERVICE"
     privAuthN:
       secretName: "db-priv-authn"
-      passwordKey: "password"    
+      passwordKey: "password"
 client:
   replicaCount: 1
   image:

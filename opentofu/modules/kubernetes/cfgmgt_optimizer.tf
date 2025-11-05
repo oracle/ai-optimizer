@@ -3,7 +3,7 @@
 # spell-checker: disable
 
 locals {
-  optimizer_values = templatefile("${path.module}/templates/optimizer_values.yaml", {
+  optimizer_values = templatefile("${path.module}/templates/ai-optimizer-values.yaml", {
     label                = var.label_prefix
     repository_base      = local.repository_base
     oci_region           = var.region
@@ -19,6 +19,6 @@ locals {
 resource "local_sensitive_file" "optimizer_values" {
   count           = var.deploy_optimizer ? 1 : 0
   content         = local.optimizer_values
-  filename        = "${path.root}/cfgmgt/stage/optimizer-values.yaml"
+  filename        = "${path.root}/cfgmgt/stage/ai-optimizer-values.yaml"
   file_permission = 0600
 }

@@ -286,7 +286,7 @@ These helpers provide consistent database type checking across templates.
 Database Service Name Helper
 Returns the short database type prefix (sidb or adb) for service naming.
 *********************************************** */}}
-{{- define "server.database.shortType" -}}
+{{- define "server.database.dbName" -}}
 {{- $dbType := include "server.database.type" . -}}
 {{- if $dbType -}}
   {{- lower (split "-" $dbType)._0 -}}

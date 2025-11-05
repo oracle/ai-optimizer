@@ -317,7 +317,7 @@ definitions:
       - $ref: "#/definitions/mapVariable"
       - $ref: "#/definitions/objectVariable"
 
-  mapVariable: 
+  mapVariable:
     allOf:
       - $ref: "#/definitions/baseVariable"
       - required: [type, valueType]
@@ -330,7 +330,7 @@ definitions:
             type: [string]
         additionalProperties: true
 
-  listVariable: 
+  listVariable:
     allOf:
       - $ref: "#/definitions/baseVariable"
       - required: [type, valueType]
@@ -343,7 +343,7 @@ definitions:
             type: [string]
         additionalProperties: true
 
-  objectVariable: 
+  objectVariable:
     allOf:
       - $ref: "#/definitions/baseVariable"
       - required: [type, attributes]
@@ -551,7 +551,7 @@ definitions:
                 format: variablereference
             additionalProperties: false
         additionalProperties: true
-  
+
   imageVariable:
     allOf:
       - $ref: "#/definitions/baseVariable"
