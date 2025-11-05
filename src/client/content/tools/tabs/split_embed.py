@@ -142,8 +142,19 @@ def update_chunk_size_input() -> None:
 #############################################################################
 # Helper Functions
 #############################################################################
-def _render_embedding_configuration(embed_models_enabled: dict, embed_request: DatabaseVectorStorage) -> None:
-    """Render the embedding configuration section"""
+def _render_embedding_configuration(
+    embed_models_enabled: dict,
+    embed_request: DatabaseVectorStorage,
+    show_vs_config: bool = True
+) -> None:
+    """Render the embedding configuration section
+
+    Args:
+        embed_models_enabled: Dictionary of enabled embedding models
+        embed_request: The database vector storage request object
+        show_vs_config: If True, show chunk size, overlap, distance metric, and index type options.
+                       If False, these are determined by the selected existing vector store.
+    """
     st.header("Embedding Configuration", divider="red")
     embed_request.model = st.selectbox(
         "Embedding models available: ",
@@ -160,62 +171,75 @@ def _render_embedding_configuration(embed_models_enabled: dict, embed_request: D
             st.rerun()
         st.stop()
 
-    chunk_size_max = embed_models_enabled[embed_request.model]["max_chunk_size"]
-    col1_1, col1_2 = st.columns([0.8, 0.2])
-    with col1_1:
-        st.slider(
-            "Chunk Size (tokens):",
-            min_value=0,
-            max_value=chunk_size_max,
-            value=chunk_size_max,
-            key="selected_chunk_size_slider",
-            on_change=update_chunk_size_input,
-            help=help_text.help_dict["chunk_size"],
-        )
-        st.slider(
-            "Chunk Overlap (% of Chunk Size)",
-            min_value=0,
-            max_value=100,
-            value=20,
-            step=5,
-            key="selected_chunk_overlap_slider",
-            on_change=update_chunk_overlap_input,
-            format="%d%%",
-            help=help_text.help_dict["chunk_overlap"],
-        )
+    # Only show vector store configuration if creating new
+    if show_vs_config:
+        chunk_size_max = embed_models_enabled[embed_request.model]["max_chunk_size"]
+        col1_1, col1_2 = st.columns([0.8, 0.2])
+        with col1_1:
+            st.slider(
+                "Chunk Size (tokens):",
+                min_value=0,
+                max_value=chunk_size_max,
+                value=chunk_size_max,
+                key="selected_chunk_size_slider",
+                on_change=update_chunk_size_input,
+                help=help_text.help_dict["chunk_size"],
+            )
+            st.slider(
+                "Chunk Overlap (% of Chunk Size)",
+                min_value=0,
+                max_value=100,
+                value=20,
+                step=5,
+                key="selected_chunk_overlap_slider",
+                on_change=update_chunk_overlap_input,
+                format="%d%%",
+                help=help_text.help_dict["chunk_overlap"],
+            )
 
-    with col1_2:
-        embed_request.chunk_size = st.number_input(
-            "Chunk Size (tokens):",
-            label_visibility="hidden",
-            min_value=0,
-            max_value=chunk_size_max,
-            value=chunk_size_max,
-            key="selected_chunk_size_input",
-            on_change=update_chunk_size_slider,
-        )
-        chunk_overlap_pct = st.number_input(
-            "Chunk Overlap (% of Chunk Size):",
-            label_visibility="hidden",
-            min_value=0,
-            max_value=100,
-            value=20,
-            step=5,
-            key="selected_chunk_overlap_input",
-            on_change=update_chunk_overlap_slider,
-        )
-        embed_request.chunk_overlap = math.ceil((chunk_overlap_pct / 100) * embed_request.chunk_size)
+        with col1_2:
+            embed_request.chunk_size = st.number_input(
+                "Chunk Size (tokens):",
+                label_visibility="hidden",
+                min_value=0,
+                max_value=chunk_size_max,
+                value=chunk_size_max,
+                key="selected_chunk_size_input",
+                on_change=update_chunk_size_slider,
+            )
+            chunk_overlap_pct = st.number_input(
+                "Chunk Overlap (% of Chunk Size):",
+                label_visibility="hidden",
+                min_value=0,
+                max_value=100,
+                value=20,
+                step=5,
+                key="selected_chunk_overlap_input",
+                on_change=update_chunk_overlap_slider,
+            )
+            embed_request.chunk_overlap = math.ceil((chunk_overlap_pct / 100) * embed_request.chunk_size)
 
-    col2_1, col2_2 = st.columns([0.5, 0.5])
-    embed_request.distance_metric = col2_1.selectbox(
-        "Distance Metric:",
-        list(DistanceMetrics.__args__),
-        key="selected_distance_metric",
-        help=help_text.help_dict["distance_metric"],
-    )
-    embed_request.index_type = col2_2.selectbox(
-        "Index Type:", list(IndexTypes.__args__), key="selected_index_type", help=help_text.help_dict["index_type"]
-    )
+        col2_1, col2_2 = st.columns([0.5, 0.5])
+        embed_request.distance_metric = col2_1.selectbox(
+            "Distance Metric:",
+            list(DistanceMetrics.__args__),
+            key="selected_distance_metric",
+            help=help_text.help_dict["distance_metric"],
+        )
+        embed_request.index_type = col2_2.selectbox(
+            "Index Type:", list(IndexTypes.__args__), key="selected_index_type", help=help_text.help_dict["index_type"]
+        )
+    else:
+        # These will be set from the selected existing vector store
+        # Set defaults to avoid errors, will be overwritten in _render_vector_store_section
+        if not hasattr(embed_request, 'chunk_size') or embed_request.chunk_size is None:
+            embed_request.chunk_size = embed_models_enabled[embed_request.model]["max_chunk_size"]
+        if not hasattr(embed_request, 'chunk_overlap') or embed_request.chunk_overlap is None:
+            embed_request.chunk_overlap = 0
+        if not hasattr(embed_request, 'distance_metric') or embed_request.distance_metric is None:
+            embed_request.distance_metric = list(DistanceMetrics.__args__)[0]
+        if not hasattr(embed_request, 'index_type') or embed_request.index_type is None:
+            embed_request.index_type = list(IndexTypes.__args__)[0]
 
 def _render_file_source_section(file_sources: list, oci_setup: dict) -> FileSourceData:
     """Render file source selection and return processing data"""
@@ -341,8 +365,16 @@ def _display_file_list_expander(file_list_response: dict) -> None:
             st.info("No files found in this vector store.")
 
 
-def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
-    """Render vector store configuration section and return validation status and rate limit"""
+def _render_vector_store_section(embed_request: DatabaseVectorStorage, create_new_vs: bool) -> tuple:
+    """Render vector store configuration section and return validation status and rate limit
+
+    Args:
+        embed_request: The database vector storage request object
+        create_new_vs: If True, allow creating new vector store. If False, select from existing only.
+
+    Returns:
+        Tuple of (embed_alias_invalid, rate_limit, existing_vs)
+    """
     st.header("Populate Vector Store", divider="red")
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
     existing_vs = database_lookup.get(state.client_settings.get("database", {}).get("alias"), {}).get(
@@ -353,50 +385,65 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
     embed_alias_invalid = False
     embed_request.vector_store = None
 
-    # Filter vector stores by matching chunk size and overlap
-    matching_vs = [
-        vs for vs in existing_vs
-        if vs.get("chunk_size") == embed_request.chunk_size
-        and vs.get("chunk_overlap") == embed_request.chunk_overlap
-        and vs.get("alias")
-    ]
-    matching_vs_names = [vs.get("alias", "") for vs in matching_vs]
-    vs_options = ["Create new..."] + matching_vs_names
-
     with embed_alias_size:
-        # Dropdown for existing vector stores
-        selected_vs = st.selectbox(
-            "Select or Create Vector Store:",
-            options=vs_options,
-            index=0,
-            help="Only showing vector stores with matching chunk size and overlap configuration",
-            key="selected_vs_dropdown"
-        )
-
-        # Show text input if "Create new..." is selected or for editing
-        if selected_vs == "Create new...":
+        if create_new_vs:
+            # Creating new vector store: just show text input for new VS name
             embed_request.alias = st.text_input(
                 "New Vector Store Alias:",
                 max_chars=20,
                 help=help_text.help_dict["embed_alias"],
                 key="selected_embed_alias",
-                placeholder="Press Enter to set.",
+                placeholder="Enter a name for the new vector store",
             )
         else:
-            # Use the selected existing vector store name
+            # Using existing mode: show only VS created with the same embedding model
+            # Filter by model to prevent mixing embeddings from different models
+            vs_lookup = {
+                vs.get("alias"): vs
+                for vs in existing_vs
+                if vs.get("alias") and vs.get("model") == embed_request.model
+            }
+            vs_options = list(vs_lookup.keys())
+
+            if not vs_options:
+                st.warning(
+                    f"No existing vector stores found for embedding model '{embed_request.model}'. "
+                    f"Toggle 'Create New Vector Store' to create one.",
+                    icon="⚠️"
+                )
+
+            selected_vs = st.selectbox(
+                "Select Existing Vector Store:",
+                options=vs_options if vs_options else [""],
+                index=0 if vs_options else None,
+                help="Only showing vector stores created with the same embedding model to prevent mixing embeddings",
+                key="selected_vs_dropdown",
+                disabled=not vs_options
+            )
             embed_request.alias = selected_vs
+
+            # Get VS properties from selected existing VS and update embed_request
+            if selected_vs and selected_vs in vs_lookup:
+                selected_vs_props = vs_lookup[selected_vs]
+                embed_request.chunk_size = selected_vs_props.get("chunk_size", embed_request.chunk_size)
+                embed_request.chunk_overlap = selected_vs_props.get("chunk_overlap", embed_request.chunk_overlap)
+                embed_request.distance_metric = selected_vs_props.get("distance_metric", embed_request.distance_metric)
+                embed_request.index_type = selected_vs_props.get("index_type", embed_request.index_type)
+
+            # Show disabled text input with alias
             st.text_input(
                 "Vector Store Alias:",
-                value=selected_vs,
+                value=selected_vs if selected_vs else "",
                 max_chars=20,
                 help=help_text.help_dict["embed_alias"],
-                key="selected_embed_alias",
+                key="selected_embed_alias_readonly",
                 disabled=True,
             )
+
     pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
 
     # Check if alias is empty when creating new vector store
-    if selected_vs == "Create new..." and not embed_request.alias:
+    if create_new_vs and not embed_request.alias:
         st.warning("Please enter a Vector Store Alias to continue.")
         embed_alias_invalid = True
     elif embed_request.alias and not re.match(pattern, embed_request.alias):
@@ -405,16 +452,23 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage) -> tuple:
         )
         embed_alias_invalid = True
 
-    if not embed_alias_invalid:
+    if not embed_alias_invalid and embed_request.alias:
         embed_request.vector_store, _ = functions.get_vs_table(
             **embed_request.model_dump(exclude={"database", "vector_store"})
         )
-        vs_msg = f"{embed_request.vector_store}, will be created."
         vs_exists = any(d.get("vector_store") == embed_request.vector_store for d in existing_vs)
-        if vs_exists:
-            vs_msg = f"{embed_request.vector_store} exists, new chunks will be added."
+
+        # Show full vector store table name
         st.markdown(f"##### **Vector Store:** `{embed_request.vector_store}`")
-        st.caption(f"{vs_msg}")
+
+        # Different messages based on mode
+        if create_new_vs:
+            if vs_exists:
+                st.caption("Vector store already exists. New chunks will be added.")
+            else:
+                st.caption("New vector store will be created.")
+        else:
+            st.caption("Adding files to existing vector store.")
 
         # Display files in existing vector store
         if vs_exists and embed_request.vector_store:
@@ -611,11 +665,22 @@ def display_split_embed() -> None:
 
     embed_request = DatabaseVectorStorage()
 
-    _render_embedding_configuration(embed_models_enabled, embed_request)
+    # Toggle between creating new vector store or using existing
+    create_new_vs = st.toggle(
+        "Create New Vector Store",
+        key="selected_create_new_vs",
+        value=True,
+        help="Toggle between creating a new vector store or adding to an existing one. "
+             "When using an existing vector store, chunk size, overlap, distance metric, "
+             "and index type are already defined and cannot be changed.",
+    )
+
+    # Render embedding configuration - only show VS config options when creating new
+    _render_embedding_configuration(embed_models_enabled, embed_request, show_vs_config=create_new_vs)
 
     source_data = _render_file_source_section(file_sources, oci_setup)
 
-    embed_alias_invalid, rate_limit, existing_vs = _render_vector_store_section(embed_request)
+    embed_alias_invalid, rate_limit, existing_vs = _render_vector_store_section(embed_request, create_new_vs)
 
     if not embed_alias_invalid:
         _handle_vector_store_population(
