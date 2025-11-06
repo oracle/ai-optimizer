@@ -392,7 +392,9 @@ class TestSettingsFunctions:
                     )
 
                     assert "spring:" in result
-                    assert "api-key:" in result  
+                    assert "api-key:" in result 
+                    assert "ollama:" in result
+                    assert "model: _" in result 
 
     def test_spring_ai_zip_creation(self):
         """Test spring_ai_zip function creates proper ZIP file"""
