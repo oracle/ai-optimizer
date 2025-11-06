@@ -15,6 +15,8 @@ sbin/**
 **/*.sh
 **/etc/*.json
 **/optimizer_settings.json
+**/rag_base_optimizer_config.py
+**/rag_base_optimizer_config_mcp.py
 !opentofu/**/cloudinit-oke.sh
 !opentofu/examples/manual-test.sh
 !src/entrypoint.sh
@@ -83,3 +85,4 @@ spring_ai/create_user.sql
 spring_ai/drop.sql
 src/client/spring_ai/target/classes/*
 api_server_key
+DEVELOPMENT_NOTES.md

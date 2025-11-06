@@ -25,7 +25,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}-{{ include "server.database.shortType" . }}-1521
+  name: {{ .Release.Name }}-{{ include "server.database.dbName" . }}-1521
   labels:
     app.kubernetes.io/component: database
     {{- include "global.labels" . | nindent 4 }}

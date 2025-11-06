@@ -3,13 +3,7 @@
 # spell-checker: ignore nindent freepdb1 oserror selectai sidb spfile sqlplus
 # spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace
 
-# This file consolidates database-related Kubernetes resources:
-# - Secrets (auth, priv, wallet)
-# - Deployment (SIDB-FREE, ADB-FREE)
-# - Job (database initialization)
-# - AutonomousDatabase (ADB-S operator)
-#
-# Note: ConfigMap (initialization scripts) is now in db-configmap.yaml
+# This file consolidates database-related Kubernetes resources
 
 {{- if .Values.server.database }}
 
@@ -30,17 +24,17 @@ metadata:
     helm.sh/resource-policy: keep
 type: Opaque
 stringData:
-  username: "AI_OPTIMIZER"
-  password: {{ include "server.randomPassword" . | quote }}
+  {{ default "username" .Values.server.database.authN.usernameKey }}: "AI_OPTIMIZER"
+  {{ default "password" .Values.server.database.authN.passwordKey }}: {{ include "server.randomPassword" . | quote }}
   {{- if eq (include "server.database.isSIDB" .) "true" }}
-  service: "{{ .Release.Name }}-{{ include "server.database.shortType" . }}-1521:1521/FREEPDB1"
+  {{ default "service" .Values.server.database.authN.serviceKey }}: "{{ .Release.Name }}-{{ include "server.database.dbName" . }}-1521:1521/FREEPDB1"
   {{- else if eq (include "server.database.isADBFree" .) "true" }}
-  service: "{{ .Release.Name }}-{{ include "server.database.shortType" . }}-1521:1521/FREEPDB1"
+  {{ default "service" .Values.server.database.authN.serviceKey }}: "{{ .Release.Name }}-{{ include "server.database.dbName" . }}-1521:1521/FREEPDB1"
   {{- else if eq (include "server.database.isOther" .) "true" }}
     {{- if and .Values.server.database.other.dsn (ne (.Values.server.database.other.dsn | trim) "") }}
-  service: "{{ .Values.server.database.other.dsn }}"
+  {{ default "service" .Values.server.database.authN.serviceKey }}: "{{ .Values.server.database.other.dsn }}"
     {{- else }}
-  service: "{{ .Values.server.database.other.host }}:{{ .Values.server.database.other.port }}/{{ .Values.server.database.other.service_name }}"
+  {{ default "service" .Values.server.database.authN.serviceKey }}: "{{ .Values.server.database.other.host }}:{{ .Values.server.database.other.port }}/{{ .Values.server.database.other.service_name }}"
     {{- end }}
   {{- end }}
 {{- end }}
@@ -85,7 +79,7 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "global.fullname" . }}-{{ include "server.database.shortType" . }}
+  name: {{ include "global.fullname" . }}-{{ include "server.database.dbName" . }}
   labels:
     app.kubernetes.io/component: database
     {{- include "global.labels" . | nindent 4}}
@@ -238,10 +232,6 @@ metadata:
   labels:
     app.kubernetes.io/component: database
     {{- include "global.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   action: "Sync"
   details:
@@ -253,7 +243,7 @@ spec:
         name: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
   {{- if .Values.server.oci_config }}
   ociConfig:
-    configMapName: {{ .Release.Name }}-oci-config
+    configMapName: {{ .Values.server.oci_config.configMapName | default (printf "%s-oci-config" .Release.Name) }}
     {{- if .Values.server.oci_config.keySecretName }}
     secretName: {{ .Values.server.oci_config.keySecretName }}
     {{- end }}
