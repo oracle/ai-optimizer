@@ -484,20 +484,27 @@ def _handle_vector_store_population(
 ) -> None:
     """Handle vector store population button and processing"""
     is_source_valid = source_data.is_valid()
-    state.running = not (is_source_valid and embed_request.vector_store) or state.get("button_populate") is True
 
     if not embed_request.alias and create_new_vs:
         st.info("Please provide a Vector Store Alias.")
 
     refresh_clicked = False
     populate_clicked = False
-    if source_data.file_source == "OCI" and not create_new_vs and state.running:
+    if source_data.file_source == "OCI" and not create_new_vs:
+        state.running = (
+            not (is_source_valid and embed_request.vector_store) and state.get("button_refresh") is not True
+        )
         refresh_clicked = st.button(
             "Refresh from OCI",
+            type="primary",
             key="button_refresh",
+            disabled=state.running,
             help="Refresh vector store with new/modified files from OCI bucket",
         )
     else:
+        state.running = (
+            not (is_source_valid and embed_request.vector_store) and state.get("button_populate") is not True
+        )
         populate_clicked = st.button(
             "Populate Vector Store",
             type="primary",
