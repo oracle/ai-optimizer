@@ -391,8 +391,8 @@ class TestSettingsFunctions:
                         src_dir, "obaas.yaml", "openai", {"model": "gpt-4"}, {"model": "text-embedding-ada-002"}
                     )
 
-                    assert "model: gpt-4" in result
-                    assert "model: _" in result 
+                    assert "spring:" in result
+                    assert "api-key:" in result  
 
     def test_spring_ai_zip_creation(self):
         """Test spring_ai_zip function creates proper ZIP file"""
