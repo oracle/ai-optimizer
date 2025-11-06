@@ -22,7 +22,7 @@ from common import logging_config
 logger = logging_config.logging.getLogger("launch_client")
 
 # Import launch_server if it exists
-LAUNCH_SERVER_EXISTS = True
+launch_server_exists = True
 try:
     from launch_server import start_server, get_api_key
 
@@ -31,7 +31,7 @@ try:
 except ImportError as ex:
     logger.debug("API Server not present: %s", ex)
     os.environ.pop("API_SERVER_CONTROL", None)
-    LAUNCH_SERVER_EXISTS = False
+    launch_server_exists = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -93,6 +93,10 @@ def main() -> None:
         }
         .stAppHeader img[alt="Logo"] {
             width: 50%;
+        }
+        /* Fix emoji rendering in tab labels */
+        [data-testid="stMarkdownContainer"] p {
+            font-family: "sans-serif-pro" !important;
         }
         </style>
         """,
@@ -159,7 +163,7 @@ def main() -> None:
 if __name__ == "__main__":
     # Start Server if not running
     init_server_state()
-    if LAUNCH_SERVER_EXISTS:
+    if launch_server_exists:
         try:
             logger.debug("Server PID: %i", state.server["pid"])
         except KeyError:

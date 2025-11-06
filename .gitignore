@@ -15,7 +15,10 @@ sbin/**
 **/*.sh
 **/etc/*.json
 **/optimizer_settings.json
+**/rag_base_optimizer_config.py
+**/rag_base_optimizer_config_mcp.py
 !opentofu/**/cloudinit-oke.sh
+!opentofu/examples/manual-test.sh
 !src/entrypoint.sh
 !src/client/spring_ai/templates/env.sh
 tests/db_startup_temp/**
@@ -30,6 +33,7 @@ tests/db_startup_temp/**
 **/.scannerwork
 **/.cursorignore
 **/tns_admin
+**/*.pem
 sonar-project.properties
 
 ##############################################################################
@@ -42,15 +46,11 @@ __pycache__/
 **/*.egg-info
 **/build/
 
-##############################################################################
-# IaC
-##############################################################################
-**/**.tfvars
-**/.terraform*
-**/terraform.tfstate*
-**/*.pem
-opentofu/**/stage/*.*
-opentofu/**/stage/kubeconfig
+# Test coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+test-results.xml
 
 ##############################################################################
 # AI Code Assists
@@ -65,6 +65,19 @@ helm/values*.yaml
 !helm/values.yaml
 
 ##############################################################################
+# IaC
+##############################################################################
+# Ignore all tfvars files (contain credentials)
+**/**.tfvars
+# But allow example tfvars files for CI/CD testing (safe, no real credentials)
+!opentofu/examples/*.tfvars
+# Terraform/OpenTofu state and cache
+**/.terraform*
+**/terraform.tfstate*
+**/*.tfplan
+**/*.tfplan.out
+
+##############################################################################
 # Random
 ##############################################################################
 spring_ai/target/**
@@ -72,3 +85,4 @@ spring_ai/create_user.sql
 spring_ai/drop.sql
 src/client/spring_ai/target/classes/*
 api_server_key
+DEVELOPMENT_NOTES.md

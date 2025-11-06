@@ -3,16 +3,16 @@
 # spell-checker: disable
 #############################################################
 # Base - Web GUI
-# Build from the / directory:
+# Build from the project root directory:
 #  podman build -f src/client/Dockerfile -t ai-optimizer-client:latest .
 #############################################################
 FROM container-registry.oracle.com/os/oraclelinux:8-slim AS optimizer_base
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
-RUN groupadd $RUNUSER && \
+RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel gcc gcc-c++ && \
+    microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
@@ -26,8 +26,8 @@ RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
 # Clint Application
 ##################################################
 FROM optimizer_base AS client
-
-ENV TEMP=/app/tmp
+ENV PATH=$VIRTUAL_ENV/bin:$PATH \
+    TEMP=/app/tmp
 
 # Prep the app directory
 RUN for dir in $TEMP; do \

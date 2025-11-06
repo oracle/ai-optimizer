@@ -117,7 +117,7 @@ def is_db_configured() -> bool:
         (
             config.get("connected")
             for config in state.database_configs
-            if config.get("name") == state.client_settings["database"]["alias"]
+            if config.get("name") == state.client_settings.get("database", {}).get("alias")
         ),
         False,
     )
@@ -258,6 +258,11 @@ def tools_sidebar() -> None:
         state.client_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
         state.client_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
+        if state.client_settings["vector_search"]["enabled"]:
+            switch_prompt("sys", "Vector Search Example")
+        else:
+            switch_prompt("sys", "Basic Example")
+
     disable_selectai = not is_db_configured()
     disable_vector_search = not is_db_configured()
 
@@ -269,7 +274,7 @@ def tools_sidebar() -> None:
         switch_prompt("sys", "Basic Example")
     else:
         # Client Settings
-        db_alias = state.client_settings["database"]["alias"]
+        db_alias = state.client_settings.get("database", {}).get("alias")
         oci_auth_profile = state.client_settings["oci"]["auth_profile"]
 
         # Lookups
@@ -341,7 +346,7 @@ def tools_sidebar() -> None:
 #####################################################
 def selectai_sidebar() -> None:
     """SelectAI Sidebar Settings, conditional if Database/SelectAI are configured"""
-    db_alias = state.client_settings["database"]["alias"]
+    db_alias = state.client_settings.get("database", {}).get("alias")
     database_lookup = state_configs_lookup("database_configs", "name")
     if state.client_settings["selectai"]["enabled"]:
         st.sidebar.subheader("SelectAI", divider="red")
@@ -413,22 +418,6 @@ def _render_vector_search_options(vector_search_type: str) -> None:
         )
 
 
-def _vs_reset() -> None:
-    """Reset Vector Store Selections"""
-    for key in state.client_settings["vector_search"]:
-        if key in (
-            "model",
-            "chunk_size",
-            "chunk_overlap",
-            "distance_metric",
-            "vector_store",
-            "alias",
-            "index_type",
-        ):
-            clear_state_key(f"selected_vector_search_{key}")
-            state.client_settings["vector_search"][key] = ""
-
-
 def _vs_gen_selectbox(label: str, options: list, key: str):
     """Handle selectbox with auto-setting for a single unique value"""
     valid_options = [option for option in options if option != ""]
@@ -442,6 +431,10 @@ def _vs_gen_selectbox(label: str, options: list, key: str):
             logger.debug("Defaulting %s to %s", key, selected_value)
         else:
             selected_value = state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
+            # Check if selected_value is actually in valid_options, otherwise reset to empty
+            if selected_value and selected_value not in valid_options:
+                logger.debug("Previously selected %s '%s' no longer available, resetting", key, selected_value)
+                selected_value = ""
             logger.debug("User selected %s to %s", key, selected_value)
     return st.sidebar.selectbox(
         label,
@@ -452,7 +445,7 @@ def _vs_gen_selectbox(label: str, options: list, key: str):
     )
 
 
-def _update_filtered_df(vs_df: pd.DataFrame) -> pd.DataFrame:
+def update_filtered_vector_store(vs_df: pd.DataFrame) -> pd.DataFrame:
     """Dynamically update filtered_df based on selected filters"""
     embed_models_enabled = enabled_models_lookup("embed")
     filtered = vs_df.copy()
@@ -473,9 +466,26 @@ def _update_filtered_df(vs_df: pd.DataFrame) -> pd.DataFrame:
     return filtered
 
 
-def _render_vector_store_selection(vs_df: pd.DataFrame) -> None:
+def render_vector_store_selection(vs_df: pd.DataFrame) -> None:
     """Render vector store selection controls and handle state updates."""
-    filtered_df = _update_filtered_df(vs_df)
+    st.sidebar.subheader("Vector Store", divider="red")
+
+    def reset() -> None:
+        """Reset Vector Store Selections"""
+        for key in state.client_settings["vector_search"]:
+            if key in (
+                "model",
+                "chunk_size",
+                "chunk_overlap",
+                "distance_metric",
+                "vector_store",
+                "alias",
+                "index_type",
+            ):
+                clear_state_key(f"selected_vector_search_{key}")
+                state.client_settings["vector_search"][key] = ""
+
+    filtered_df = update_filtered_vector_store(vs_df)
 
     # Render selectbox with updated options
     alias = _vs_gen_selectbox("Select Alias:", filtered_df["alias"].unique().tolist(), "selected_vector_search_alias")
@@ -483,7 +493,9 @@ def _render_vector_store_selection(vs_df: pd.DataFrame) -> None:
         "Select Model:", filtered_df["model"].unique().tolist(), "selected_vector_search_model"
     )
     chunk_size = _vs_gen_selectbox(
-        "Select Chunk Size:", filtered_df["chunk_size"].unique().tolist(), "selected_vector_search_chunk_size"
+        "Select Chunk Size:",
+        filtered_df["chunk_size"].unique().tolist(),
+        "selected_vector_search_chunk_size",
     )
     chunk_overlap = _vs_gen_selectbox(
         "Select Chunk Overlap:",
@@ -496,7 +508,9 @@ def _render_vector_store_selection(vs_df: pd.DataFrame) -> None:
         "selected_vector_search_distance_metric",
     )
     index_type = _vs_gen_selectbox(
-        "Select Index Type:", filtered_df["index_type"].unique().tolist(), "selected_vector_search_index_type"
+        "Select Index Type:",
+        filtered_df["index_type"].unique().tolist(),
+        "selected_vector_search_index_type",
     )
 
     if all([alias, embed_model, chunk_size, chunk_overlap, distance_metric, index_type]):
@@ -509,11 +523,11 @@ def _render_vector_store_selection(vs_df: pd.DataFrame) -> None:
         state.client_settings["vector_search"]["distance_metric"] = distance_metric
         state.client_settings["vector_search"]["index_type"] = index_type
     else:
-        st.error("Please select Vector Store options or disable Vector Search to continue.", icon="❌")
+        st.info("Please select existing Vector Store options to continue.", icon="⬅️")
         state.enable_client = False
 
     # Reset button
-    st.sidebar.button("Reset", type="primary", on_click=_vs_reset)
+    st.sidebar.button("Reset", type="primary", on_click=reset)
 
 
 def vector_search_sidebar() -> None:
@@ -536,10 +550,9 @@ def vector_search_sidebar() -> None:
         _render_vector_search_options(vector_search_type)
 
         # Vector Store Section
-        st.sidebar.subheader("Vector Store", divider="red")
-        db_alias = state.client_settings["database"]["alias"]
+        db_alias = state.client_settings.get("database", {}).get("alias")
         database_lookup = state_configs_lookup("database_configs", "name")
-        vs_df = pd.DataFrame(database_lookup[db_alias].get("vector_stores"))
+        vs_df = pd.DataFrame(database_lookup.get(db_alias, {}).get("vector_stores", []))
 
         # Render vector store selection controls
-        _render_vector_store_selection(vs_df)
+        render_vector_store_selection(vs_df)

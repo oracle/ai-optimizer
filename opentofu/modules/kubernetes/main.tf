@@ -2,32 +2,44 @@
 # All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 # spell-checker: disable
 
-resource "random_string" "api_key" {
-  length  = 32
-  special = false
-  upper   = false
+resource "random_string" "optimizer_api_key" {
+  length           = 32
+  special          = true
+  upper            = true
+  lower            = true
+  numeric          = true
+  override_special = "!@#$%^&*()-_=+[]{}|:,.<>?"
 }
 
 // oci_artifacts_container_repository
-resource "oci_artifacts_container_repository" "repository_server" {
+// OCIR
+resource "oci_artifacts_container_repository" "optimizer_repositories" {
+  for_each       = var.byo_ocir_url != "" ? toset([]) : toset(local.optimizer_container_repositories)
   compartment_id = var.compartment_id
-  display_name   = lower(format("%s/server", var.label_prefix))
+  display_name   = lower(format("%s/%s", var.label_prefix, each.value))
   is_immutable   = false
   is_public      = false
 }
 
-resource "oci_artifacts_container_repository" "repository_client" {
+// Oracle Resource Manager
+resource "oci_resourcemanager_private_endpoint" "orm_pe" {
+  count          = local.create_orm_pe ? 1 : 0
   compartment_id = var.compartment_id
-  display_name   = lower(format("%s/client", var.label_prefix))
-  is_immutable   = false
-  is_public      = false
+  vcn_id         = var.vcn_id
+  display_name   = format("%s-orm-pe", var.label_prefix)
+  description    = "Private Endpoint for Resource Manager to OKE"
+  subnet_id      = var.private_subnet_id
+  nsg_id_list = [
+    oci_core_network_security_group.k8s_workers.id,
+    oci_core_network_security_group.k8s_api_endpoint.id
+  ]
 }
 
 // Cluster
 resource "oci_containerengine_cluster" "default_cluster" {
   compartment_id     = var.compartment_id
-  kubernetes_version = format("v%s", var.k8s_version)
-  name               = local.k8s_cluster_name
+  kubernetes_version = format("v%s", var.kubernetes_version)
+  name               = local.cluster_name
   vcn_id             = var.vcn_id
   type               = "ENHANCED_CLUSTER"
 
@@ -36,8 +48,12 @@ resource "oci_containerengine_cluster" "default_cluster" {
   }
 
   endpoint_config {
-    // Avoid K8s destruction by limiting access via is_public_ip_enabled and nsg_ids.  Keep on public subnet.
-    is_public_ip_enabled = var.k8s_api_is_public
+    // Architecture Decision: Keep endpoint on public subnet with public IP to avoid resource destruction
+    // when toggling public/private access. Access control is managed via NSG rules instead:
+    //   - When api_is_public=true:  NSG allows ingress from specified CIDRs (see nsgs.tf)
+    //   - When api_is_public=false: NSG only allows internal VCN traffic (effectively private)
+    // This approach prevents cluster recreation when changing access patterns.
+    is_public_ip_enabled = true
     nsg_ids              = [oci_core_network_security_group.k8s_api_endpoint.id]
     subnet_id            = var.public_subnet_id
   }
@@ -56,18 +72,18 @@ resource "oci_containerengine_cluster" "default_cluster" {
     }
     persistent_volume_config {
       freeform_tags = {
-        "clusterName" = local.k8s_cluster_name
+        "clusterName" = local.cluster_name
       }
     }
     service_lb_config {
       freeform_tags = {
-        "clusterName" = local.k8s_cluster_name
+        "clusterName" = local.cluster_name
       }
     }
     service_lb_subnet_ids = [var.public_subnet_id]
   }
   freeform_tags = {
-    "clusterName" = local.k8s_cluster_name
+    "clusterName" = local.cluster_name
   }
   lifecycle {
     ignore_changes = [defined_tags, freeform_tags]
@@ -107,11 +123,11 @@ resource "oci_containerengine_addon" "ingress_addon" {
 resource "oci_containerengine_node_pool" "cpu_node_pool_details" {
   cluster_id         = oci_containerengine_cluster.default_cluster.id
   compartment_id     = var.compartment_id
-  kubernetes_version = format("v%s", var.k8s_version)
+  kubernetes_version = format("v%s", var.kubernetes_version)
   name               = format("%s-np-cpu", var.label_prefix)
   initial_node_labels {
     key   = "name"
-    value = local.k8s_cluster_name
+    value = local.cluster_name
   }
   node_config_details {
     node_pool_pod_network_option_details {
@@ -125,7 +141,7 @@ resource "oci_containerengine_node_pool" "cpu_node_pool_details" {
         subnet_id           = var.private_subnet_id
       }
     }
-    size    = var.k8s_cpu_node_pool_size
+    size    = var.cpu_node_pool_size
     nsg_ids = [oci_core_network_security_group.k8s_workers.id]
   }
   node_eviction_node_pool_settings {
@@ -156,14 +172,14 @@ resource "oci_containerengine_node_pool" "cpu_node_pool_details" {
 }
 
 resource "oci_containerengine_node_pool" "gpu_node_pool_details" {
-  count              = var.k8s_node_pool_gpu_deploy ? 1 : 0
+  count              = var.node_pool_gpu_deploy ? 1 : 0
   cluster_id         = oci_containerengine_cluster.default_cluster.id
   compartment_id     = var.compartment_id
-  kubernetes_version = format("v%s", var.k8s_version)
+  kubernetes_version = format("v%s", var.kubernetes_version)
   name               = format("%s-np-gpu", var.label_prefix)
   initial_node_labels {
     key   = "name"
-    value = local.k8s_cluster_name
+    value = local.cluster_name
   }
   node_config_details {
     node_pool_pod_network_option_details {
@@ -177,7 +193,7 @@ resource "oci_containerengine_node_pool" "gpu_node_pool_details" {
         subnet_id           = var.private_subnet_id
       }
     }
-    size    = var.k8s_gpu_node_pool_size
+    size    = var.gpu_node_pool_size
     nsg_ids = [oci_core_network_security_group.k8s_workers.id]
   }
   node_eviction_node_pool_settings {

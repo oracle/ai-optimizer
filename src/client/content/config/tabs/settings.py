@@ -304,7 +304,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
         sys_prompt=f"{sys_prompt}",
         ll_model=ll_config,
         vector_search=embed_config,
-        database_config=database_lookup[state.client_settings["database"]["alias"]],
+        database_config=database_lookup[state.client_settings.get("database", {}).get("alias")],
     )
 
     if file_name.endswith(".yaml"):
@@ -315,7 +315,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
             sys_prompt=sys_prompt,
             ll_model=ll_config,
             vector_search=embed_config,
-            database_config=database_lookup[state.client_settings["database"]["alias"]],
+            database_config=database_lookup[state.client_settings.get("database", {}).get("alias")],
         )
 
         yaml_data = yaml.safe_load(formatted_content)

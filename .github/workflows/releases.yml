@@ -39,13 +39,16 @@ jobs:
           echo "Tag validated: $TAG_NAME"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Inject Static Version into _version.py and versions.tf
+      - name: Inject Static Version into _version.py, versions.tf, and Chart.yaml
         run: |
           echo "__version__ = \"$VERSION\"" > src/common/_version.py
           sed -i "s/app_version[[:space:]]*=[[:space:]]*\".*\"/app_version = \"$VERSION\"/" opentofu/versions.tf
+          sed -i "s/^version:[[:space:]]*.*$/version: $VERSION/" helm/Chart.yaml
+          sed -i "s/^appVersion:[[:space:]]*\".*\"$/appVersion: \"$VERSION\"/" helm/Chart.yaml
           echo "Injected version:"
           cat src/common/_version.py
           cat opentofu/versions.tf
+          cat helm/Chart.yaml
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
 

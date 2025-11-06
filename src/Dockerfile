@@ -3,14 +3,16 @@
 # spell-checker:disable
 ##################################################
 # Base - All-In-One
+# Build from the project root directory:
+#  podman build -f src/Dockerfile -t ai-optimizer-aio:latest .
 ##################################################
 FROM container-registry.oracle.com/os/oraclelinux:8-slim AS all_in_one_pyenv
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
-RUN groupadd $RUNUSER && \
+RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel gcc gcc-c++ && \
+    microdnf --nodocs -y install python3.11 python3.11-pip && \
     microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
@@ -18,7 +20,7 @@ COPY --chown=$RUNUSER:$RUNUSER src /opt/package/src
 COPY pyproject.toml /opt/package/pyproject.toml
 
 RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
-    ${VIRTUAL_ENV}/bin/uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    ${VIRTUAL_ENV}/bin/uv pip install torch==2.9.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
     ${VIRTUAL_ENV}/bin/uv pip install "/opt/package[all]"
 
 ##################################################

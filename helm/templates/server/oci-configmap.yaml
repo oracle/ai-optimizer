@@ -3,10 +3,18 @@
 # spell-checker: ignore nindent
 
 {{- if .Values.server.oci_config }}
+{{- /* Determine the ConfigMap name to use or create */ -}}
+{{- $configMapName := .Values.server.oci_config.configMapName | default (printf "%s-oci-config" .Release.Name) }}
+
+{{- /* Check if the ConfigMap already exists */ -}}
+{{- $configMapExists := lookup "v1" "ConfigMap" .Release.Namespace $configMapName }}
+
+{{- /* Only create ConfigMap if it doesn't exist */ -}}
+{{- if not $configMapExists }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-oci-config
+  name: {{ $configMapName }}
   labels:
     app.kubernetes.io/component: server
     {{- include "global.labels" . | nindent 4 }}
@@ -25,4 +33,5 @@ data:
   region: {{ .region | quote }}
     {{- end }}
   {{- end }}
+{{- end }}
 {{- end -}}

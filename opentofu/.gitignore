@@ -1,0 +1,20 @@
+##############################################################################
+# IaC
+##############################################################################
+# Ignore all tfvars files (contain credentials)
+**/**.tfvars
+# But allow example tfvars files for CI/CD testing (safe, no real credentials)
+!examples/*.tfvars
+
+# Terraform/OpenTofu state and cache
+**/.terraform*
+**/terraform.tfstate*
+**/*.tfplan
+**/*.tfplan.out
+
+# Private keys and sensitive files
+**/*.pem
+
+# Stage directory
+**/stage/*.*
+**/stage/kubeconfig

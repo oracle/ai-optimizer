@@ -137,7 +137,7 @@ Database Secret Name
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
-  {{- printf "%s-db-authn" (include "release.name" .) -}}
+  {{- printf "%s-db-authn" .Release.Name -}}
 {{- end -}}
 {{- end }}
 
@@ -151,7 +151,7 @@ Database Privileged Secret Name
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
-  {{- printf "%s-db-priv-authn" (include "release.name" .) -}}
+  {{- printf "%s-db-priv-authn" .Release.Name -}}
 {{- end -}}
 {{- end }}
 
@@ -188,6 +188,111 @@ Create the pull model list for Ollama
     {{- "" -}}
   {{- end }}
 {{- end -}}
+
+{{/* ******************************************
+Validate that server.database.other fields are provided when database type is OTHER.
+Requires either 'dsn' OR all of (host, port, service_name).
+*********************************************** */}}
+{{- define "server.database.validateOtherType" -}}
+  {{- if .Values.server.database -}}
+    {{- $dbType := .Values.server.database.type | default "" -}}
+
+    {{- if eq $dbType "OTHER" -}}
+      {{- $dsn := .Values.server.database.other.dsn -}}
+      {{- $host := .Values.server.database.other.host -}}
+      {{- $port := .Values.server.database.other.port -}}
+      {{- $serviceName := .Values.server.database.other.service_name -}}
+
+      {{- /* Check if dsn is provided and not empty */ -}}
+      {{- $hasDsn := false -}}
+      {{- if $dsn -}}
+        {{- if and (kindIs "string" $dsn) (ne ($dsn | trim) "") -}}
+          {{- $hasDsn = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- /* Check if individual fields are provided */ -}}
+      {{- $hasHost := false -}}
+      {{- if $host -}}
+        {{- if or (not (kindIs "string" $host)) (ne ($host | trim) "") -}}
+          {{- $hasHost = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- $hasPort := false -}}
+      {{- if $port -}}
+        {{- if or (not (kindIs "string" $port)) (ne ($port | trim) "") -}}
+          {{- $hasPort = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- $hasServiceName := false -}}
+      {{- if $serviceName -}}
+        {{- if or (not (kindIs "string" $serviceName)) (ne ($serviceName | trim) "") -}}
+          {{- $hasServiceName = true -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- /* Validate: must have either dsn OR all three individual fields */ -}}
+      {{- if not $hasDsn -}}
+        {{- if not (and $hasHost $hasPort $hasServiceName) -}}
+          {{- fail "server.database.type is OTHER: must provide either 'dsn' OR all of (host, port, service_name)" -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
+Database Type Helpers
+These helpers provide consistent database type checking across templates.
+*********************************************** */}}
+{{- define "server.database.type" -}}
+{{- if .Values.server.database -}}
+  {{- .Values.server.database.type -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "server.database.isSIDB" -}}
+{{- eq (include "server.database.type" .) "SIDB-FREE" -}}
+{{- end -}}
+
+{{- define "server.database.isADBFree" -}}
+{{- eq (include "server.database.type" .) "ADB-FREE" -}}
+{{- end -}}
+
+{{- define "server.database.isADBS" -}}
+{{- eq (include "server.database.type" .) "ADB-S" -}}
+{{- end -}}
+
+{{- define "server.database.isOther" -}}
+{{- eq (include "server.database.type" .) "OTHER" -}}
+{{- end -}}
+
+{{- define "server.database.isADB" -}}
+{{- or (eq (include "server.database.type" .) "ADB-S") (eq (include "server.database.type" .) "ADB-FREE") -}}
+{{- end -}}
+
+{{- define "server.database.isContainerDB" -}}
+{{- or (eq (include "server.database.type" .) "SIDB-FREE") (eq (include "server.database.type" .) "ADB-FREE") -}}
+{{- end -}}
+
+{{- define "server.database.needsPrivAuth" -}}
+{{- or (eq (include "server.database.isADB" .) "true") (eq (include "server.database.isOther" .) "true") -}}
+{{- end -}}
+
+{{/* ******************************************
+Database Service Name Helper
+Returns the short database type prefix (sidb or adb) for service naming.
+*********************************************** */}}
+{{- define "server.database.dbName" -}}
+{{- $dbType := include "server.database.type" . -}}
+{{- if $dbType -}}
+  {{- lower (split "-" $dbType)._0 -}}
+{{- end -}}
+{{- end -}}
+
 
 {{/* ******************************************
 Password Generator for Databases

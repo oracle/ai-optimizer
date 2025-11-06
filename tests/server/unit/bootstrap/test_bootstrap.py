@@ -7,7 +7,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import importlib
 from unittest.mock import patch, MagicMock
 
-from server.api.core import bootstrap
+from server.bootstrap import bootstrap
 
 
 class TestBootstrap:
@@ -50,4 +50,4 @@ class TestBootstrap:
     def test_logger_exists(self):
         """Test that logger is properly configured"""
         assert hasattr(bootstrap, "logger")
-        assert bootstrap.logger.name == "api.core.bootstrap"
+        assert bootstrap.logger.name == "bootstrap"

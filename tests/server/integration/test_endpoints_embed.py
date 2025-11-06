@@ -54,9 +54,11 @@ class TestInvalidAuthEndpoints:
         "endpoint, api_method",
         [
             pytest.param("/v1/embed/TESTVS", "delete", id="embed_drop_vs"),
+            pytest.param("/v1/embed/TESTVS/files", "get", id="embed_get_files"),
             pytest.param("/v1/embed/web/store", "post", id="store_web_file"),
             pytest.param("/v1/embed/local/store", "post", id="store_local_file"),
             pytest.param("/v1/embed", "post", id="split_embed"),
+            pytest.param("/v1/embed/refresh", "post", id="refresh_vector_store"),
         ],
     )
     def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
@@ -463,3 +465,79 @@ class TestEndpoints:
             # Verify all vector stores are removed
             for expected_name in expected_vector_store_names:
                 self.verify_vector_store_exists(client, auth_headers, expected_name, should_exist=False)
+
+    def test_get_vector_store_files(self, client, auth_headers, db_container, mock_embedding_model):
+        """Test retrieving file list from vector store"""
+        assert db_container is not None
+        self.configure_database(client, auth_headers)
+
+        # Create and populate a vector store
+        self.create_test_file(content=LONGER_TEST_CONTENT)
+        mock_get_client_embed = self.setup_mock_embeddings(mock_embedding_model)
+
+        alias = "test_file_listing"
+        test_data = self.create_embed_params(alias)
+        expected_vector_store_name = self.get_vector_store_name(alias)
+
+        with patch("server.api.utils.models.get_client_embed", side_effect=mock_get_client_embed):
+            # Create vector store
+            response = client.post("/v1/embed", headers=auth_headers["valid_auth"], json=test_data)
+            assert response.status_code == 200
+
+            # Get file list
+            file_list_response = client.get(
+                f"/v1/embed/{expected_vector_store_name}/files",
+                headers=auth_headers["valid_auth"]
+            )
+
+            # Verify response
+            assert file_list_response.status_code == 200
+            data = file_list_response.json()
+
+            assert "vector_store" in data
+            assert data["vector_store"] == expected_vector_store_name
+            assert "total_files" in data
+            assert "total_chunks" in data
+            assert "files" in data
+            assert data["total_files"] > 0
+            assert data["total_chunks"] > 0
+
+            # Clean up
+            drop_response = client.delete(f"/v1/embed/{expected_vector_store_name}", headers=auth_headers["valid_auth"])
+            assert drop_response.status_code == 200
+
+    def test_get_files_empty_vector_store(self, client, auth_headers, db_container, mock_embedding_model):
+        """Test retrieving file list from empty vector store"""
+        assert db_container is not None
+        self.configure_database(client, auth_headers)
+
+        # Create empty vector store
+        self.create_test_file()
+        mock_get_client_embed = self.setup_mock_embeddings(mock_embedding_model)
+
+        alias = "test_empty_listing"
+        test_data = self.create_embed_params(alias)
+        expected_vector_store_name = self.get_vector_store_name(alias)
+
+        with patch("server.api.utils.models.get_client_embed", side_effect=mock_get_client_embed):
+            # Create vector store
+            response = client.post("/v1/embed", headers=auth_headers["valid_auth"], json=test_data)
+            assert response.status_code == 200
+
+            # Drop all chunks to make it empty
+            drop_response = client.delete(f"/v1/embed/{expected_vector_store_name}", headers=auth_headers["valid_auth"])
+            assert drop_response.status_code == 200
+
+    def test_get_files_nonexistent_vector_store(self, client, auth_headers, db_container):
+        """Test retrieving file list from nonexistent vector store"""
+        assert db_container is not None
+        self.configure_database(client, auth_headers)
+
+        # Try to get files from non-existent vector store
+        response = client.get(
+            "/v1/embed/NONEXISTENT_VS/files",
+            headers=auth_headers["valid_auth"]
+        )
+
+        # Should return error or empty list
+        assert response.status_code in (200, 400)
