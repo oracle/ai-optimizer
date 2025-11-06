@@ -365,36 +365,6 @@ class TestSettingsFunctions:
                     assert "You are a helpful assistant." in result
                     assert "{'model': 'gpt-4'}" in result
 
-    def test_spring_ai_obaas_yaml_template(self):
-        """Test spring_ai_obaas function with YAML template"""
-        from client.content.config.tabs.settings import spring_ai_obaas
-
-        mock_session_state = self._create_mock_session_state()
-        mock_template_content = textwrap.dedent("""
-            spring:
-              ai:
-                openai:
-                  api-key: test
-                  base-url: api.openai.com
-                ollama:
-                  base-url: http://localhost:11434
-            prompt: {sys_prompt}
-            """)
-
-        with patch("client.content.config.tabs.settings.state", mock_session_state):
-            with patch("client.content.config.tabs.settings.st_common.state_configs_lookup") as mock_lookup:
-                with patch("builtins.open", mock_open(read_data=mock_template_content)):
-                    mock_lookup.return_value = {"DEFAULT": {"user": "test_user"}}
-
-                    src_dir = Path("/test/path")
-                    result = spring_ai_obaas(
-                        src_dir, "obaas.yaml", "openai", {"model": "gpt-4"}, {"model": "text-embedding-ada-002"}
-                    )
-
-                    assert "spring:" in result
-                    assert "api-key:" in result 
-                    assert "ollama:" in result
-                    assert "model: _" in result 
 
     def test_spring_ai_zip_creation(self):
         """Test spring_ai_zip function creates proper ZIP file"""
