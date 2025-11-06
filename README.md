@@ -14,6 +14,7 @@ The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a stream
 
 - [Configuring Embedding and Chat Models](https://oracle.github.io/ai-optimizer/client/configuration/model_config)
 - [Splitting and Embedding Documentation](https://oracle.github.io/ai-optimizer/client/tools/split_embed)
+- [Auto-refresh Vector Store from OCI Object Storage buckets](https://oracle.github.io/ai-optimizer/server/api/v1/embed)
 - [Modifying System Prompts (Prompt Engineering)](https://oracle.github.io/ai-optimizer/client/tools/prompt_eng)
 - [Experimenting with **LLM** Parameters](https://oracle.github.io/ai-optimizer/client/chatbot)
 - [Testbed for auto-generated or existing Q&A datasets](https://oracle.github.io/ai-optimizer/client/testbed)

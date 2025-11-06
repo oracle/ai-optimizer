@@ -692,3 +692,130 @@ class TestStreamlit:
         # Should show warning about server accessibility
         warnings = at.get("warning")
         assert len(warnings) > 0
+
+    def test_create_new_vs_toggle_not_shown_when_no_vector_stores(self, app_server, app_test, monkeypatch):
+        """Test that 'Create New Vector Store' toggle is NOT shown when no vector stores exist"""
+        assert app_server is not None
+        self._setup_common_mocks(monkeypatch)
+
+        # Mock database_configs with no vector stores
+        def mock_get_no_vs(endpoint=None, **kwargs):
+            if endpoint == "v1/models":
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
+            elif endpoint == "v1/databases":
+                return [
+                    {
+                        "name": "DEFAULT",
+                        "vector_stores": [],  # No vector stores
+                    }
+                ]
+            elif endpoint == "v1/oci":
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": "test-namespace",
+                        "tenancy": "test-tenancy",
+                        "region": "us-ashburn-1",
+                        "authentication": "api_key",
+                    }
+                ]
+            return {}
+
+        monkeypatch.setattr("client.utils.api_call.get", mock_get_no_vs)
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
+        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
+
+        at = self._run_app_and_verify_no_errors(app_test)
+
+        # Toggle should NOT be present when no vector stores exist
+        toggles = at.get("toggle")
+        create_new_toggle = next(
+            (t for t in toggles if hasattr(t, "label") and "Create New Vector Store" in str(t.label)), None
+        )
+        assert create_new_toggle is None, "Toggle should not be shown when no vector stores exist"
+
+    def test_create_new_vs_toggle_shown_when_vector_stores_exist(self, app_server, app_test, monkeypatch):
+        """Test that 'Create New Vector Store' toggle IS shown when vector stores exist"""
+        assert app_server is not None
+        self._setup_common_mocks(monkeypatch)
+
+        # Mock database_configs with existing vector stores
+        def mock_get_with_vs(endpoint=None, **kwargs):
+            if endpoint == "v1/models":
+                return [
+                    {
+                        "id": "test-model",
+                        "type": "embed",
+                        "enabled": True,
+                        "api_base": "http://test.url",
+                        "max_chunk_size": 1000,
+                    }
+                ]
+            elif endpoint == "v1/databases":
+                return [
+                    {
+                        "name": "DEFAULT",
+                        "vector_stores": [
+                            {
+                                "alias": "existing_vs",
+                                "model": "test-model",
+                                "vector_store": "VECTOR_STORE_TABLE",
+                                "chunk_size": 500,
+                                "chunk_overlap": 50,
+                                "distance_metric": "COSINE",
+                                "index_type": "IVF",
+                            }
+                        ],
+                    }
+                ]
+            elif endpoint == "v1/oci":
+                return [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "namespace": "test-namespace",
+                        "tenancy": "test-tenancy",
+                        "region": "us-ashburn-1",
+                        "authentication": "api_key",
+                    }
+                ]
+            return {}
+
+        monkeypatch.setattr("client.utils.api_call.get", mock_get_with_vs)
+        monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
+        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
+
+        at = self._run_app_and_verify_no_errors(app_test)
+
+        # Toggle SHOULD be present when vector stores exist
+        toggles = at.get("toggle")
+        create_new_toggle = next(
+            (t for t in toggles if hasattr(t, "label") and "Create New Vector Store" in str(t.label)), None
+        )
+        assert create_new_toggle is not None, "Toggle should be shown when vector stores exist"
+        assert create_new_toggle.value is True, "Toggle should default to True (create new mode)"
+
+    def test_populate_button_shown_in_create_new_mode(self, app_server, app_test, monkeypatch):
+        """Test that 'Populate Vector Store' button is shown when in create new mode"""
+        assert app_server is not None
+        self._setup_common_mocks(monkeypatch)
+
+        at = self._run_app_and_verify_no_errors(app_test)
+
+        # Should have Populate button
+        buttons = at.get("button")
+        populate_button = next(
+            (b for b in buttons if hasattr(b, "label") and "Populate Vector Store" in str(b.label)), None
+        )
+        assert populate_button is not None, "Populate button should be present in create new mode"
+
+        # Should NOT have Refresh button when in create new mode
+        refresh_button = next((b for b in buttons if hasattr(b, "label") and "Refresh from OCI" in str(b.label)), None)
+        assert refresh_button is None, "Refresh button should not be present in create new mode"

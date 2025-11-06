@@ -258,7 +258,7 @@ def display_databases() -> None:
     selected_database_alias = st.selectbox(
         "Current Database:",
         options=list(database_lookup.keys()),
-        index=list(database_lookup.keys()).index(state.client_settings["database"]["alias"]),
+        index=list(database_lookup.keys()).index(state.client_settings.get("database", {}).get("alias")),
         key="selected_database",
         on_change=st_common.update_client_settings("database"),
     )
