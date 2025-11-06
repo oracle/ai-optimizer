@@ -49,13 +49,13 @@ spring:
           num-predict: {OL_MAX_TOKENS}
           model: ${OLLAMA_CHAT_MODEL}
       embedding:
-        options: 
+        options:
           model: ${OLLAMA_EMBEDDING_MODEL}
 aims:
   sys_instr: ${SYS_INSTR}
   vectortable:
     name: ${VECTOR_STORE}
     user: ${USER_TABLE}
-  rag_params: 
+  rag_params:
     search_type: Similarity
     top_k: ${TOP_K}
