@@ -70,5 +70,8 @@ if __name__ == "__main__":
     # Set optimizer_settings.json file ABSOLUTE path
     rag.set_optimizer_settings_path("optimizer_settings.json")
     
+    # Change according protocol type
+     
     #mcp.run(transport='stdio')
-    mcp.run(transport='sse')
+    #mcp.run(transport='sse')
+    mcp.run(transport='streamable-http')

@@ -55,6 +55,7 @@ aims:
   sys_instr: ${SYS_INSTR}
   vectortable:
     name: ${VECTOR_STORE}
+    user: ${USER_TABLE}
   rag_params: 
     search_type: Similarity
     top_k: ${TOP_K}

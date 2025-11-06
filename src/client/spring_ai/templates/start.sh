@@ -42,4 +42,5 @@ export SYS_INSTR="{sys_prompt}"
 export TOP_K="{vector_search[top_k]}"
 
 export VECTOR_STORE="{vector_search[vector_store]}"
+export USER_TABLE=$DB_USERNAME
 mvn spring-boot:run -P {provider}
