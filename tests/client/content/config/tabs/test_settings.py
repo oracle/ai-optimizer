@@ -375,6 +375,7 @@ class TestSettingsFunctions:
               ai:
                 openai:
                   api-key: test
+                  base-url: api.openai.com
                 ollama:
                   base-url: http://localhost:11434
             prompt: {sys_prompt}
