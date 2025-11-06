@@ -2,8 +2,9 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore docos
+# spell-checker:ignore docos slugified webscrape
 
+import datetime
 import json
 from urllib.parse import urlparse
 from pathlib import Path
@@ -61,7 +62,7 @@ async def embed_get_files(
         file_list = utils_embed.get_vector_store_files(client_db, vs)
         return JSONResponse(status_code=200, content=file_list)
     except Exception as ex:
-        logger.error(f"Error retrieving file list from {vs}: {str(ex)}")
+        logger.error("Error retrieving file list from %s: %s", vs, str(ex))
         raise HTTPException(status_code=400, detail=f"Could not retrieve file list: {str(ex)}") from ex
 
 
@@ -107,10 +108,10 @@ async def store_web_file(
                 if "application/pdf" in content_type or "application/octet-stream" in content_type:
                     with open(temp_directory / filename, "wb") as file:
                         file.write(await response.read())
-                
+
                 elif "text" in content_type or "html" in content_type:
                     sections = await web_parse.fetch_and_extract_sections(url)
-                    base = web_parse.slugify(str(url).split('/')[-1]) or "page"
+                    base = web_parse.slugify(str(url).rsplit('/', maxsplit=1)[-1]) or "page"
                     out_files = []
                     for idx, sec in enumerate(sections, 1):
                         # filename includes section number and optional slugified title for clarity
@@ -143,8 +144,6 @@ async def store_local_file(
     client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Store contents from a local file uploaded to streamlit"""
-    import datetime
-
     logger.debug("Received store_local_file - files: %s", files)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
@@ -159,7 +158,7 @@ async def store_local_file(
         # Capture metadata for this file
         file_metadata[upload_file.filename] = {
             "size": len(file_content),
-            "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
 
     # Store metadata in JSON file for later use
@@ -207,8 +206,8 @@ async def split_embed(
             with metadata_file.open("r") as f:
                 file_metadata = json.load(f)
             logger.info("Loaded metadata for %d files", len(file_metadata))
-        except Exception as e:
-            logger.warning("Could not load file metadata: %s", e)
+        except Exception as ex:
+            logger.warning("Could not load file metadata: %s", ex)
             file_metadata = None
 
     try:
@@ -282,8 +281,8 @@ async def refresh_vector_store(
                     processed_files=0,
                     new_files=0,
                     updated_files=0,
-                    total_chunks=0
-                ).model_dump()
+                    total_chunks=0,
+                ).model_dump(),
             )
 
         # Get previously processed objects metadata
@@ -307,8 +306,8 @@ async def refresh_vector_store(
                     new_files=0,
                     updated_files=0,
                     total_chunks=0,
-                    total_chunks_in_store=total_chunks_in_store
-                ).model_dump()
+                    total_chunks_in_store=total_chunks_in_store,
+                ).model_dump(),
             )
 
         # Get embedding client using the same model as the existing vector store
@@ -322,7 +321,7 @@ async def refresh_vector_store(
             db_details=db_details,
             embed_client=embed_client,
             oci_config=oci_config,
-            rate_limit=request.rate_limit
+            rate_limit=request.rate_limit,
         )
 
         # Get total chunks in store after refresh
@@ -338,8 +337,8 @@ async def refresh_vector_store(
                 updated_files=len(modified_objects),
                 total_chunks=result.get("total_chunks", 0),
                 total_chunks_in_store=total_chunks_in_store,
-                errors=result.get("errors", [])
-            ).model_dump()
+                errors=result.get("errors", []),
+            ).model_dump(),
         )
 
     except ValueError as ex:

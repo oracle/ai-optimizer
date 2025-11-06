@@ -27,12 +27,14 @@ from common import logging_config, help_text, functions
 
 logger = logging_config.logging.getLogger("client.tools.tabs.split_embed")
 
+
 #####################################################
 # Classes
 #####################################################
 @dataclass
 class FileSourceData:
     """Data class to hold file source configuration and validation state"""
+
     file_source: Optional[str] = None
     # Web source
     web_url: Optional[str] = None
@@ -62,9 +64,10 @@ class FileSourceData:
             "Web": "This button is disabled if there the URL was unable to be validated.  Please check the URL.",
             "SQL": "This button is disabled if there the SQL was unable to be validated.  Please check the SQL.",
             "OCI": "This button is disabled if there are no documents from the source bucket split with "
-                   "the current split and embed options.  Please Split and Embed to enable Vector Storage.",
+            "the current split and embed options.  Please Split and Embed to enable Vector Storage.",
         }
         return help_text_map.get(self.file_source, "")
+
 
 #####################################################
 # Functions
@@ -142,11 +145,7 @@ def update_chunk_size_input() -> None:
 #############################################################################
 # Helper Functions
 #############################################################################
-def _render_embedding_configuration(
-    embed_models_enabled: dict,
-    embed_request: DatabaseVectorStorage,
-    show_vs_config: bool = True
-) -> None:
+def _render_embedding_config_section(embed_models_enabled: dict, embed_request: DatabaseVectorStorage) -> None:
     """Render the embedding configuration section
 
     Args:
@@ -171,77 +170,65 @@ def _render_embedding_configuration(
             st.rerun()
         st.stop()
 
-    # Only show vector store configuration if creating new
-    if show_vs_config:
-        chunk_size_max = embed_models_enabled[embed_request.model]["max_chunk_size"]
-        col1_1, col1_2 = st.columns([0.8, 0.2])
-        with col1_1:
-            st.slider(
-                "Chunk Size (tokens):",
-                min_value=0,
-                max_value=chunk_size_max,
-                value=chunk_size_max,
-                key="selected_chunk_size_slider",
-                on_change=update_chunk_size_input,
-                help=help_text.help_dict["chunk_size"],
-            )
-            st.slider(
-                "Chunk Overlap (% of Chunk Size)",
-                min_value=0,
-                max_value=100,
-                value=20,
-                step=5,
-                key="selected_chunk_overlap_slider",
-                on_change=update_chunk_overlap_input,
-                format="%d%%",
-                help=help_text.help_dict["chunk_overlap"],
-            )
-
-        with col1_2:
-            embed_request.chunk_size = st.number_input(
-                "Chunk Size (tokens):",
-                label_visibility="hidden",
-                min_value=0,
-                max_value=chunk_size_max,
-                value=chunk_size_max,
-                key="selected_chunk_size_input",
-                on_change=update_chunk_size_slider,
-            )
-            chunk_overlap_pct = st.number_input(
-                "Chunk Overlap (% of Chunk Size):",
-                label_visibility="hidden",
-                min_value=0,
-                max_value=100,
-                value=20,
-                step=5,
-                key="selected_chunk_overlap_input",
-                on_change=update_chunk_overlap_slider,
-            )
-            embed_request.chunk_overlap = math.ceil((chunk_overlap_pct / 100) * embed_request.chunk_size)
-
-        col2_1, col2_2 = st.columns([0.5, 0.5])
-        embed_request.distance_metric = col2_1.selectbox(
-            "Distance Metric:",
-            list(DistanceMetrics.__args__),
-            key="selected_distance_metric",
-            help=help_text.help_dict["distance_metric"],
+    chunk_size_max = embed_models_enabled[embed_request.model]["max_chunk_size"]
+    col1_1, col1_2 = st.columns([0.8, 0.2])
+    with col1_1:
+        st.slider(
+            "Chunk Size (tokens):",
+            min_value=0,
+            max_value=chunk_size_max,
+            value=chunk_size_max,
+            key="selected_chunk_size_slider",
+            on_change=update_chunk_size_input,
+            help=help_text.help_dict["chunk_size"],
         )
-        embed_request.index_type = col2_2.selectbox(
-            "Index Type:", list(IndexTypes.__args__), key="selected_index_type", help=help_text.help_dict["index_type"]
+        st.slider(
+            "Chunk Overlap (% of Chunk Size)",
+            min_value=0,
+            max_value=100,
+            value=20,
+            step=5,
+            key="selected_chunk_overlap_slider",
+            on_change=update_chunk_overlap_input,
+            format="%d%%",
+            help=help_text.help_dict["chunk_overlap"],
         )
-    else:
-        # These will be set from the selected existing vector store
-        # Set defaults to avoid errors, will be overwritten in _render_vector_store_section
-        if not hasattr(embed_request, 'chunk_size') or embed_request.chunk_size is None:
-            embed_request.chunk_size = embed_models_enabled[embed_request.model]["max_chunk_size"]
-        if not hasattr(embed_request, 'chunk_overlap') or embed_request.chunk_overlap is None:
-            embed_request.chunk_overlap = 0
-        if not hasattr(embed_request, 'distance_metric') or embed_request.distance_metric is None:
-            embed_request.distance_metric = list(DistanceMetrics.__args__)[0]
-        if not hasattr(embed_request, 'index_type') or embed_request.index_type is None:
-            embed_request.index_type = list(IndexTypes.__args__)[0]
 
-def _render_file_source_section(file_sources: list, oci_setup: dict) -> FileSourceData:
+    with col1_2:
+        embed_request.chunk_size = st.number_input(
+            "Chunk Size (tokens):",
+            label_visibility="hidden",
+            min_value=0,
+            max_value=chunk_size_max,
+            value=chunk_size_max,
+            key="selected_chunk_size_input",
+            on_change=update_chunk_size_slider,
+        )
+        chunk_overlap_pct = st.number_input(
+            "Chunk Overlap (% of Chunk Size):",
+            label_visibility="hidden",
+            min_value=0,
+            max_value=100,
+            value=20,
+            step=5,
+            key="selected_chunk_overlap_input",
+            on_change=update_chunk_overlap_slider,
+        )
+        embed_request.chunk_overlap = math.ceil((chunk_overlap_pct / 100) * embed_request.chunk_size)
+
+    col2_1, col2_2 = st.columns([0.5, 0.5])
+    embed_request.distance_metric = col2_1.selectbox(
+        "Distance Metric:",
+        list(DistanceMetrics.__args__),
+        key="selected_distance_metric",
+        help=help_text.help_dict["distance_metric"],
+    )
+    embed_request.index_type = col2_2.selectbox(
+        "Index Type:", list(IndexTypes.__args__), key="selected_index_type", help=help_text.help_dict["index_type"]
+    )
+
+
+def _render_load_kb_section(file_sources: list, oci_setup: dict) -> FileSourceData:
     """Render file source selection and return processing data"""
     st.header("Load Knowledge Base", divider="red")
     data = FileSourceData()
@@ -306,10 +293,10 @@ def _render_file_source_section(file_sources: list, oci_setup: dict) -> FileSour
 def _display_file_list_expander(file_list_response: dict) -> None:
     """Display the file list expander with embedded files information"""
     # Build expander title
-    total_files = file_list_response['total_files']
-    total_chunks = file_list_response['total_chunks']
-    expander_title = f"📁 View Embedded Files ({total_files} files, {total_chunks} chunks)"
-    orphaned = file_list_response.get('orphaned_chunks', 0)
+    total_files = file_list_response["total_files"]
+    total_chunks = file_list_response["total_chunks"]
+    expander_title = f"📁 Exiting Embeddings ({total_files} files, {total_chunks} chunks)"
+    orphaned = file_list_response.get("orphaned_chunks", 0)
     if orphaned > 0:
         expander_title += f" ⚠️ {orphaned} orphaned"
 
@@ -328,156 +315,37 @@ def _display_file_list_expander(file_list_response: dict) -> None:
                 "and won't be shown in search results properly."
             )
 
-        if file_list_response['total_files'] > 0:
+        if file_list_response["total_files"] > 0:
             # Create DataFrame for better display
-            files_df = pd.DataFrame(file_list_response['files'])
+            files_df = pd.DataFrame(file_list_response["files"])
 
             # Select columns to display (always show filename and chunk_count)
-            display_cols = ['filename', 'chunk_count']
+            display_cols = ["filename", "chunk_count"]
             column_config = {
                 "filename": st.column_config.TextColumn("File Name", width="medium"),
                 "chunk_count": st.column_config.NumberColumn("Chunks", width="small"),
             }
 
             # Only include size column if at least one file has size data
-            if 'size' in files_df.columns and files_df['size'].notna().any():
-                files_df['size'] = files_df['size'].apply(
-                    lambda x: f"{x / 1024:.1f} KB" if x else "N/A"
-                )
-                display_cols.append('size')
+            if "size" in files_df.columns and files_df["size"].notna().any():
+                files_df["size"] = files_df["size"].apply(lambda x: f"{x / 1024:.1f} KB" if x else "N/A")
+                display_cols.append("size")
                 column_config["size"] = st.column_config.TextColumn("Size", width="small")
 
             # Only include time_modified column if at least one file has timestamp data
-            if 'time_modified' in files_df.columns and files_df['time_modified'].notna().any():
-                files_df['time_modified'] = files_df['time_modified'].apply(
-                    lambda x: x.split('T')[0] if x else "N/A"
-                )
-                display_cols.append('time_modified')
+            if "time_modified" in files_df.columns and files_df["time_modified"].notna().any():
+                files_df["time_modified"] = files_df["time_modified"].apply(lambda x: x.split("T")[0] if x else "N/A")
+                display_cols.append("time_modified")
                 column_config["time_modified"] = st.column_config.TextColumn("Modified", width="small")
 
-            st.dataframe(
-                files_df[display_cols],
-                use_container_width=True,
-                hide_index=True,
-                column_config=column_config
-            )
+            st.dataframe(files_df[display_cols], width="stretch", hide_index=True, column_config=column_config)
         else:
             st.info("No files found in this vector store.")
 
 
-def _render_create_new_vs_input(embed_request: DatabaseVectorStorage) -> None:
-    """Render input for creating a new vector store"""
-    embed_request.alias = st.text_input(
-        "New Vector Store Alias:",
-        max_chars=20,
-        help=help_text.help_dict["embed_alias"],
-        key="selected_embed_alias",
-        placeholder="Enter a name for the new vector store",
-    )
-
-
-def _render_use_existing_vs_input(embed_request: DatabaseVectorStorage, existing_vs: list) -> None:
-    """Render dropdown for selecting an existing vector store"""
-    # Filter by model to prevent mixing embeddings from different models
-    vs_lookup = {
-        vs.get("alias"): vs
-        for vs in existing_vs
-        if vs.get("alias") and vs.get("model") == embed_request.model
-    }
-    vs_options = list(vs_lookup.keys())
-
-    if not vs_options:
-        st.warning(
-            f"No existing vector stores found for embedding model '{embed_request.model}'. "
-            f"Toggle 'Create New Vector Store' to create one.",
-            icon="⚠️"
-        )
-
-    selected_vs = st.selectbox(
-        "Select Existing Vector Store:",
-        options=vs_options if vs_options else [""],
-        index=0 if vs_options else None,
-        help="Only showing vector stores created with the same embedding model to prevent mixing embeddings",
-        key="selected_vs_dropdown",
-        disabled=not vs_options
-    )
-    embed_request.alias = selected_vs
-
-    # Get VS properties from selected existing VS and update embed_request
-    if selected_vs and selected_vs in vs_lookup:
-        selected_vs_props = vs_lookup[selected_vs]
-        embed_request.chunk_size = selected_vs_props.get("chunk_size", embed_request.chunk_size)
-        embed_request.chunk_overlap = selected_vs_props.get("chunk_overlap", embed_request.chunk_overlap)
-        embed_request.distance_metric = selected_vs_props.get("distance_metric", embed_request.distance_metric)
-        embed_request.index_type = selected_vs_props.get("index_type", embed_request.index_type)
-
-    # Show disabled text input with alias
-    st.text_input(
-        "Vector Store Alias:",
-        value=selected_vs if selected_vs else "",
-        max_chars=20,
-        help=help_text.help_dict["embed_alias"],
-        key="selected_embed_alias_readonly",
-        disabled=True,
-    )
-
-
-def _validate_vector_store_alias(embed_request: DatabaseVectorStorage, create_new_vs: bool) -> bool:
-    """Validate vector store alias and return True if invalid"""
-    pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
-
-    # Check if alias is empty when creating new vector store
-    if create_new_vs and not embed_request.alias:
-        st.warning("Please enter a Vector Store Alias to continue.")
-        return True
-
-    if embed_request.alias and not re.match(pattern, embed_request.alias):
-        st.error(
-            "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
-        )
-        return True
-
-    return False
-
-
-def _display_vector_store_info(
-    embed_request: DatabaseVectorStorage,
-    create_new_vs: bool,
-    existing_vs: list
-) -> None:
-    """Display vector store information and file list"""
-    embed_request.vector_store, _ = functions.get_vs_table(
-        **embed_request.model_dump(exclude={"database", "vector_store"})
-    )
-    vs_exists = any(d.get("vector_store") == embed_request.vector_store for d in existing_vs)
-
-    # Show full vector store table name
-    st.markdown(f"##### **Vector Store:** `{embed_request.vector_store}`")
-
-    # Different messages based on mode
-    if create_new_vs:
-        if vs_exists:
-            st.caption("Vector store already exists. New chunks will be added.")
-        else:
-            st.caption("New vector store will be created.")
-    else:
-        st.caption("Adding files to existing vector store.")
-
-    # Display files in existing vector store
-    if vs_exists and embed_request.vector_store:
-        try:
-            file_list_response = api_call.get(
-                endpoint=f"v1/embed/{embed_request.vector_store}/files"
-            )
-            if file_list_response and "files" in file_list_response:
-                _display_file_list_expander(file_list_response)
-        except api_call.ApiError as e:
-            logger.warning(
-                "Could not retrieve file list for %s: %s", embed_request.vector_store, e
-            )
-
-
-def _render_vector_store_section(embed_request: DatabaseVectorStorage, create_new_vs: bool) -> tuple:
+def _render_populate_vs_section(
+    embed_request: DatabaseVectorStorage, create_new_vs: bool
+) -> tuple[DatabaseVectorStorage, int]:
     """Render vector store configuration section and return validation status and rate limit
 
     Args:
@@ -485,32 +353,66 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage, create_ne
         create_new_vs: If True, allow creating new vector store. If False, select from existing only.
 
     Returns:
-        Tuple of (embed_alias_invalid, rate_limit, existing_vs)
+        Tuple of (embed_alias_invalid, rate_limit, vs_table)
     """
     st.header("Populate Vector Store", divider="red")
-    database_lookup = st_common.state_configs_lookup("database_configs", "name")
-    existing_vs = database_lookup.get(state.client_settings.get("database", {}).get("alias"), {}).get(
-        "vector_stores", []
-    )
 
-    # Render vector store input based on mode
-    embed_alias_size, _ = st.columns([0.5, 0.5])
     embed_request.vector_store = None
+    embed_alias_invalid = False
+    if create_new_vs:
+        # Creating new vector store: just show text input for new VS name
+        embed_request.alias = st.text_input(
+            "Vector Store Alias:",
+            max_chars=20,
+            help=help_text.help_dict["embed_alias"],
+            key="selected_embed_alias",
+            placeholder="Enter a name for the new vector store",
+        )
+        alias_pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
+        if not embed_request.alias:
+            st.warning("Please enter a Vector Store Alias to continue.")
+            embed_alias_invalid = True
+        elif not re.match(alias_pattern, embed_request.alias):
+            st.error(
+                "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
+            )
+            embed_alias_invalid = True
+    else:
+        # Using existing Vector Store
+        embed_request.alias = state.selected_vector_search_alias
+        embed_request.model = state.selected_vector_search_model
+        embed_request.chunk_size = state.selected_vector_search_chunk_size
+        embed_request.chunk_overlap = state.selected_vector_search_chunk_overlap
+        embed_request.distance_metric = state.selected_vector_search_distance_metric
+        embed_request.index_type = state.selected_vector_search_index_type
 
-    with embed_alias_size:
-        if create_new_vs:
-            _render_create_new_vs_input(embed_request)
-        else:
-            _render_use_existing_vs_input(embed_request, existing_vs)
-
-    # Validate alias
-    embed_alias_invalid = _validate_vector_store_alias(embed_request, create_new_vs)
-
-    # Display vector store information and file list
     if not embed_alias_invalid and embed_request.alias:
-        _display_vector_store_info(embed_request, create_new_vs, existing_vs)
+        embed_request.vector_store, _ = functions.get_vs_table(
+            **embed_request.model_dump(exclude={"database", "vector_store"})
+        )
 
-    # Render rate limit input
+        # Show full vector store table name and check existence
+        st.markdown(f"##### **Vector Store:** `{embed_request.vector_store}`")
+        vs_exists = any(
+            store["vector_store"] == embed_request.vector_store
+            for db in state.database_configs
+            for store in db.get("vector_stores", [])
+        )
+        if vs_exists:
+            st.caption("Vector store already exists. New chunks will be added to existing Vector Store.")
+        else:
+            st.caption("New vector store will be created.")
+
+        # Display files in existing vector store
+        if not create_new_vs and embed_request.vector_store:
+            try:
+                file_list_response = api_call.get(endpoint=f"v1/embed/{embed_request.vector_store}/files")
+                if file_list_response and "files" in file_list_response:
+                    _display_file_list_expander(file_list_response)
+            except api_call.ApiError as e:
+                logger.warning("Could not retrieve file list for %s: %s", embed_request.vector_store, e)
+
+    # Always render rate limit input to ensure session state is initialized
     rate_size, _ = st.columns([0.28, 0.72])
     rate_limit = rate_size.number_input(
         "Rate Limit (RPM):",
@@ -520,7 +422,7 @@ def _render_vector_store_section(embed_request: DatabaseVectorStorage, create_ne
         key="selected_rate_limit",
     )
 
-    return embed_alias_invalid, rate_limit, existing_vs
+    return embed_request, rate_limit
 
 
 def _process_populate_request(
@@ -578,46 +480,30 @@ def _process_refresh_request(embed_request: DatabaseVectorStorage, src_bucket: s
 
 
 def _handle_vector_store_population(
-    embed_request: DatabaseVectorStorage,
-    source_data: FileSourceData,
-    rate_limit: int,
-    existing_vs: list,
+    embed_request: DatabaseVectorStorage, source_data: FileSourceData, rate_limit: int, create_new_vs: bool
 ) -> None:
     """Handle vector store population button and processing"""
     is_source_valid = source_data.is_valid()
     state.running = not (is_source_valid and embed_request.vector_store) or state.get("button_populate") is True
 
-    if not embed_request.alias:
+    if not embed_request.alias and create_new_vs:
         st.info("Please provide a Vector Store Alias.")
 
-    # Create two columns for buttons
-    col_populate, col_refresh = st.columns([0.5, 0.5])
-
-    # Check if vector store exists
-    vs_exists = any(d.get("vector_store") == embed_request.vector_store for d in existing_vs)
-
-    with col_populate:
+    refresh_clicked = False
+    populate_clicked = False
+    if source_data.file_source == "OCI" and not create_new_vs and state.running:
+        refresh_clicked = st.button(
+            "Refresh from OCI",
+            key="button_refresh",
+            help="Refresh vector store with new/modified files from OCI bucket",
+        )
+    else:
         populate_clicked = st.button(
             "Populate Vector Store",
             type="primary",
             key="button_populate",
             disabled=state.running,
             help=source_data.get_button_help(),
-        )
-
-    with col_refresh:
-        refresh_disabled = (
-            source_data.file_source != "OCI" or not vs_exists or state.running or not embed_request.alias
-        )
-        refresh_help = (
-            "Refresh existing vector store with new/modified files from OCI bucket"
-            if vs_exists else "Vector store must exist first"
-        )
-        refresh_clicked = st.button(
-            "Refresh from OCI",
-            key="button_refresh",
-            disabled=refresh_disabled,
-            help=refresh_help,
         )
 
     if populate_clicked:
@@ -628,13 +514,11 @@ def _handle_vector_store_population(
             get_databases(force=True)
         except api_call.ApiError as ex:
             st.error(ex, icon="🚨")
-
     elif refresh_clicked:
         state.running = True
         try:
             with st.spinner("Refreshing Vector Store... checking for new/modified files.", show_time=True):
                 response = _process_refresh_request(embed_request, source_data.oci_bucket, rate_limit)
-
             # Display results
             if response.get("new_files", 0) > 0 or response.get("updated_files", 0) > 0:
                 st.success(
@@ -643,13 +527,13 @@ def _handle_vector_store_population(
                     f"- Updated files: {response.get('updated_files', 0)}\n"
                     f"- Chunks added: {response.get('total_chunks', 0)}\n"
                     f"- Total chunks in store: {response.get('total_chunks_in_store', 0)}",
-                    icon="✅"
+                    icon="✅",
                 )
             else:
                 st.info(
                     f"No new or modified files found in the bucket.\n\n"
                     f"Total chunks in store: {response.get('total_chunks_in_store', 0)}",
-                    icon="ℹ️"
+                    icon="ℹ️",
                 )
             get_databases(force=True)
         except api_call.ApiError as ex:
@@ -683,6 +567,7 @@ def display_split_embed() -> None:
     if not db_avail or not embed_models_enabled:
         st.stop()
 
+    # Setup Corpus Sources
     file_sources = ["OCI", "Local", "Web", "SQL"]
     oci_lookup = st_common.state_configs_lookup("oci_configs", "auth_profile")
     oci_setup = oci_lookup.get(state.client_settings["oci"].get("auth_profile"))
@@ -690,32 +575,47 @@ def display_split_embed() -> None:
         st.warning("OCI is not fully configured, some functionality is disabled", icon="⚠️")
         file_sources.remove("OCI")
 
+    # Setup Model for Embedding Request
     embed_request = DatabaseVectorStorage()
 
-    # Toggle between creating new vector store or using existing
-    create_new_vs = st.toggle(
-        "Create New Vector Store",
-        key="selected_create_new_vs",
-        value=True,
-        help="Toggle between creating a new vector store or adding to an existing one. "
-             "When using an existing vector store, chunk size, overlap, distance metric, "
-             "and index type are already defined and cannot be changed.",
-    )
-
-    # Render embedding configuration - only show VS config options when creating new
-    _render_embedding_configuration(embed_models_enabled, embed_request, show_vs_config=create_new_vs)
-
-    source_data = _render_file_source_section(file_sources, oci_setup)
-
-    embed_alias_invalid, rate_limit, existing_vs = _render_vector_store_section(embed_request, create_new_vs)
-
-    if not embed_alias_invalid:
-        _handle_vector_store_population(
-            embed_request,
-            source_data,
-            rate_limit,
-            existing_vs,
+    # Check for existing Vector Stores with corresponding enabled embedding models
+    create_new_vs = True
+    db_alias = state.client_settings.get("database", {}).get("alias")
+    database_lookup = st_common.state_configs_lookup("database_configs", "name")
+    vs_df = pd.DataFrame(database_lookup.get(db_alias, {}).get("vector_stores", []))
+    if not vs_df.empty:
+        # Toggle between creating new vector store or using existing
+        create_new_vs = st.toggle(
+            "Create New Vector Store",
+            key="selected_create_new_vs",
+            value=True,
+            help="Toggle between creating a new vector store or adding to an existing one. "
+            "When using an existing vector store, chunk size, overlap, distance metric, "
+            "and index type are already defined and cannot be changed.",
         )
+        if not create_new_vs:
+            # Render vector store selection controls
+            st_common.render_vector_store_selection(vs_df)
+
+    # Render embedding configuration for new VS
+    if create_new_vs:
+        _render_embedding_config_section(embed_models_enabled, embed_request)
+    else:
+        vs_fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
+        vs_missing = [
+            f"selected_vector_search_{field}"
+            for field in vs_fields
+            if not getattr(state, f"selected_vector_search_{field}", None)
+        ]
+        if vs_missing:
+            st.stop()
+
+    source_data = _render_load_kb_section(file_sources, oci_setup)
+
+    embed_request, rate_limit = _render_populate_vs_section(embed_request, create_new_vs)
+
+    if embed_request:
+        _handle_vector_store_population(embed_request, source_data, rate_limit, create_new_vs)
 
 
 if __name__ == "__main__":

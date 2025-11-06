@@ -4,11 +4,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore langchain docstore docos vectorstores oraclevs genai hnsw
 
-import json
 import copy
+import datetime
+import json
 import math
 import os
 from pathlib import Path
+import shutil
 import time
 from typing import Union
 
@@ -26,6 +28,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
 
 import server.api.utils.databases as utils_databases
+import server.api.utils.oci as utils_oci
 
 from common import schema, functions
 
@@ -54,8 +57,8 @@ def doc_to_json(document: LangchainDocument, file: str, output_dir: str = None) 
     json_data = json.dumps(docs_dict, indent=4)
 
     dst_file_path = os.path.join(output_dir, dst_file_name)
-    with open(dst_file_path, "w", encoding="utf-8") as file:
-        file.write(json_data)
+    with open(dst_file_path, "w", encoding="utf-8") as f:
+        f.write(json_data)
     file_size = os.path.getsize(dst_file_path)
     logger.info("Wrote split JSON file: %s (%i bytes)", dst_file_path, file_size)
 
@@ -163,8 +166,6 @@ def load_and_split_documents(
     Returns the list of the chunks in a LangchainDocument.
     If output_dir, a list of written json files
     """
-    import datetime
-
     split_files = []
     all_split_docos = []
 
@@ -182,7 +183,7 @@ def load_and_split_documents(
         if name not in file_metadata:
             file_metadata[name] = {
                 "size": stat.st_size,
-                "time_modified": datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc).isoformat()
+                "time_modified": datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc).isoformat(),
             }
 
         split = True
@@ -399,7 +400,6 @@ def populate_vs(
 ##########################################
 def get_vector_store_by_alias(db_details: schema.Database, alias: str) -> schema.DatabaseVectorStorage:
     """Retrieve vector store configuration by alias"""
-    import json
     db_conn = utils_databases.connect(db_details)
 
     try:
@@ -421,13 +421,10 @@ def get_vector_store_by_alias(db_details: schema.Database, alias: str) -> schema
             try:
                 comments_dict = json.loads(comments)
                 if comments_dict.get("alias") == alias:
-                    vs_config = schema.DatabaseVectorStorage(
-                        vector_store=table_name,
-                        **comments_dict
-                    )
+                    vs_config = schema.DatabaseVectorStorage(vector_store=table_name, **comments_dict)
                     return vs_config
             except (json.JSONDecodeError, KeyError):
-                logger.warning(f"Failed to parse comments for table {table_name}")
+                logger.warning("Failed to parse comments for table %s", table_name)
                 continue
 
         raise ValueError(f"Vector store with alias '{alias}' not found")
@@ -446,8 +443,8 @@ def get_total_chunks_count(db_details: schema.Database, vector_store_name: str) 
         cursor.execute(query)
         result = cursor.fetchone()
         return result[0] if result else 0
-    except Exception as e:
-        logger.warning(f"Could not count chunks in {vector_store_name}: {e}")
+    except Exception as ex:
+        logger.warning("Could not count chunks in %s: %s", vector_store_name, ex)
         return 0
     finally:
         utils_databases.disconnect(db_conn)
@@ -459,60 +456,64 @@ def get_processed_objects_metadata(db_details: schema.Database, vector_store_nam
 
     try:
         # Retrieve all metadata and parse in Python since JSON_VALUE doesn't work
-        logger.info(f"Retrieving metadata from {vector_store_name}")
+        logger.info("Retrieving metadata from %s", vector_store_name)
         cursor = db_conn.cursor()
 
         # Get all unique metadata entries - metadata is automatically converted to dict by Oracle driver
         query = f'SELECT DISTINCT metadata FROM "{vector_store_name}"'
-        logger.info(f"SQL Query: {query}")
+        logger.info("SQL Query: %s", query)
         cursor.execute(query)
         results = cursor.fetchall()
-        logger.info(f"Query returned {len(results)} metadata entries")
+        logger.info("Query returned %s metadata entries", len(results))
 
         # Parse metadata in Python to extract filename, etag, etc.
         processed_objects = {}
         for row in results:
             metadata = row[0]
             # metadata is already a dict thanks to Oracle driver
-            if isinstance(metadata, dict) and 'filename' in metadata:
-                filename = metadata.get('filename')
+            if isinstance(metadata, dict) and "filename" in metadata:
+                filename = metadata.get("filename")
                 if filename:
                     processed_objects[filename] = {
-                        "etag": metadata.get('etag'),
-                        "time_modified": metadata.get('time_modified'),
-                        "size": metadata.get('size')
+                        "etag": metadata.get("etag"),
+                        "time_modified": metadata.get("time_modified"),
+                        "size": metadata.get("size"),
                     }
 
         if processed_objects:
-            logger.info(f"Found {len(processed_objects)} previously processed objects (new format) in {vector_store_name}")
+            logger.info(
+                "Found %i previously processed objects (new format) in %s", len(processed_objects), vector_store_name
+            )
             return processed_objects
-        else:
-            # Try old format - check for 'source' field in metadata
-            logger.info("No filename field found, trying old format with 'source' field")
-            for row in results:
-                metadata = row[0]
-                if isinstance(metadata, dict) and 'source' in metadata:
-                    source_path = metadata.get('source')
-                    if source_path:
-                        filename = os.path.basename(source_path)
-                        # For old format, we don't have etag/time_modified, so just mark as existing
-                        processed_objects[filename] = {
-                            "etag": None,
-                            "time_modified": None,
-                            "size": None
-                        }
 
-            if processed_objects:
-                logger.info(f"Found {len(processed_objects)} previously processed objects (old format) in {vector_store_name}")
-                logger.info("Note: Old metadata format detected. Files will be re-processed with new metadata on next refresh.")
-                return processed_objects
-            else:
-                logger.info(f"No previously processed objects found in {vector_store_name}")
-                return {}
+        # Try old format - check for 'source' field in metadata
+        logger.info("No filename field found, trying old format with 'source' field")
+        for row in results:
+            metadata = row[0]
+            if isinstance(metadata, dict) and "source" in metadata:
+                source_path = metadata.get("source")
+                if source_path:
+                    filename = os.path.basename(source_path)
+                    # For old format, we don't have etag/time_modified, so just mark as existing
+                    processed_objects[filename] = {"etag": None, "time_modified": None, "size": None}
 
-    except Exception as e:
+        if processed_objects:
+            logger.info(
+                "Found %s previously processed objects (old format) in %s",
+                len(processed_objects),
+                vector_store_name,
+            )
+            logger.info(
+                "Note: Old metadata format detected. Files will be re-processed with new metadata on next refresh."
+            )
+            return processed_objects
+
+        logger.info("No previously processed objects found in %s", vector_store_name)
+        return {}
+
+    except Exception as ex:
         # If table doesn't have metadata column or query fails, return empty dict
-        logger.warning(f"Could not retrieve processed objects metadata from {vector_store_name}: {e}")
+        logger.warning("Could not retrieve processed objects metadata from %s: %s", vector_store_name, ex)
         return {}
     finally:
         utils_databases.disconnect(db_conn)
@@ -523,15 +524,15 @@ def get_vector_store_files(db_details: schema.Database, vector_store_name: str) 
     db_conn = utils_databases.connect(db_details)
 
     try:
-        logger.info(f"Retrieving file list from {vector_store_name}")
+        logger.info("Retrieving file list from %s", vector_store_name)
         cursor = db_conn.cursor()
 
         # Get all metadata entries with chunk count
         query = f'SELECT metadata FROM "{vector_store_name}"'
-        logger.info(f"SQL Query: {query}")
+        logger.info("SQL Query: %s", query)
         cursor.execute(query)
         results = cursor.fetchall()
-        logger.info(f"Query returned {len(results)} chunks")
+        logger.info("Query returned %s chunks", len(results))
 
         # Parse metadata to extract file information
         files_info = {}
@@ -540,35 +541,40 @@ def get_vector_store_files(db_details: schema.Database, vector_store_name: str) 
 
         for row in results:
             metadata = row[0]
-            chunk_identified = False
 
-            if isinstance(metadata, dict):
-                # Try new format first (filename field)
-                filename = metadata.get('filename')
-                if not filename and 'source' in metadata:
-                    # Fall back to old format
-                    filename = os.path.basename(metadata.get('source', ''))
-
-                if filename:
-                    if filename not in files_info:
-                        # Convert size to int if it's a Decimal (from Oracle NUMBER type)
-                        size_value = metadata.get('size')
-                        if size_value is not None:
-                            size_value = int(size_value)
-
-                        files_info[filename] = {
-                            "filename": filename,
-                            "chunk_count": 0,
-                            "etag": metadata.get('etag'),
-                            "time_modified": metadata.get('time_modified'),
-                            "size": size_value,
-                        }
-                    files_info[filename]["chunk_count"] += 1
-                    total_identified_chunks += 1
-                    chunk_identified = True
-
-            if not chunk_identified:
+            # Skip non-dict metadata
+            if not isinstance(metadata, dict):
                 orphaned_chunks += 1
+                continue
+
+            # Try new format first (filename field)
+            filename = metadata.get("filename")
+            if not filename and "source" in metadata:
+                # Fall back to old format
+                filename = os.path.basename(metadata.get("source", ""))
+
+            # Skip chunks without filename
+            if not filename:
+                orphaned_chunks += 1
+                continue
+
+            # Initialize file entry if needed
+            if filename not in files_info:
+                # Convert size to int if it's a Decimal (from Oracle NUMBER type)
+                size_value = metadata.get("size")
+                if size_value is not None:
+                    size_value = int(size_value)
+
+                files_info[filename] = {
+                    "filename": filename,
+                    "chunk_count": 0,
+                    "etag": metadata.get("etag"),
+                    "time_modified": metadata.get("time_modified"),
+                    "size": size_value,
+                }
+
+            files_info[filename]["chunk_count"] += 1
+            total_identified_chunks += 1
 
         # Convert to list and sort by filename
         file_list = sorted(files_info.values(), key=lambda x: x["filename"])
@@ -578,17 +584,21 @@ def get_vector_store_files(db_details: schema.Database, vector_store_name: str) 
             "total_files": len(file_list),
             "total_chunks": total_identified_chunks,
             "orphaned_chunks": orphaned_chunks,
-            "files": file_list
+            "files": file_list,
         }
 
         if orphaned_chunks > 0:
-            logger.warning(f"Found {orphaned_chunks} orphaned chunks without valid filename metadata in {vector_store_name}")
+            logger.warning(
+                "Found %s orphaned chunks without valid filename metadata in %s",
+                orphaned_chunks,
+                vector_store_name,
+            )
 
-        logger.info(f"Found {len(file_list)} files with {len(results)} total chunks in {vector_store_name}")
+        logger.info("Found %s files with %s total chunks in %s", len(file_list), len(results), vector_store_name)
         return result
 
-    except Exception as e:
-        logger.error(f"Could not retrieve file list from {vector_store_name}: {e}")
+    except Exception as ex:
+        logger.error("Could not retrieve file list from %s: %s", vector_store_name, ex)
         raise
     finally:
         utils_databases.disconnect(db_conn)
@@ -601,7 +611,7 @@ def refresh_vector_store_from_bucket(
     db_details: schema.Database,
     embed_client,
     oci_config,
-    rate_limit: int = 0
+    rate_limit: int = 0,
 ) -> dict:
     """
     Refresh vector store with new/modified objects from OCI bucket
@@ -624,7 +634,7 @@ def refresh_vector_store_from_bucket(
             "new_files": 0,
             "updated_files": 0,
             "total_chunks": 0,
-            "message": "No new or modified files to process"
+            "message": "No new or modified files to process",
         }
 
     temp_directory = get_temp_directory("refresh", "embedding")
@@ -635,7 +645,6 @@ def refresh_vector_store_from_bucket(
         downloaded_files = []
         for obj in bucket_objects:
             try:
-                import server.api.utils.oci as utils_oci
                 file_path = utils_oci.get_object(str(temp_directory), obj["name"], bucket_name, oci_config)
                 downloaded_files.append(file_path)
             except Exception as ex:
@@ -649,7 +658,7 @@ def refresh_vector_store_from_bucket(
                 "updated_files": 0,
                 "total_chunks": 0,
                 "message": "No files could be downloaded",
-                "errors": ["Failed to download any objects from bucket"]
+                "errors": ["Failed to download any objects from bucket"],
             }
 
         # Build file metadata dict from bucket objects
@@ -663,7 +672,7 @@ def refresh_vector_store_from_bucket(
                 "size": size_value,
                 "time_modified": obj.get("time_modified"),
                 "etag": obj.get("etag"),
-                "bucket_name": bucket_name
+                "bucket_name": bucket_name,
             }
         logger.info("Built metadata dict for %d files from bucket objects", len(file_metadata))
 
@@ -679,7 +688,7 @@ def refresh_vector_store_from_bucket(
         )
 
         # Metadata already set by load_and_split_documents with file_metadata parameter
-        logger.info(f"Processed {len(split_docos)} document chunks with OCI bucket metadata")
+        logger.info("Processed %s document chunks with OCI bucket metadata", len(split_docos))
 
         # Populate vector store
         populate_vs(
@@ -692,14 +701,13 @@ def refresh_vector_store_from_bucket(
 
         return {
             "processed_files": len(downloaded_files),
-            "new_files": len([obj for obj in bucket_objects]),
+            "new_files": len(bucket_objects),
             "updated_files": 0,  # All are treated as new for now
             "total_chunks": len(split_docos),
-            "message": f"Successfully processed {len(downloaded_files)} files and {len(split_docos)} chunks"
+            "message": f"Successfully processed {len(downloaded_files)} files and {len(split_docos)} chunks",
         }
 
     finally:
         # Clean up temporary directory
-        import shutil
         if temp_directory.exists():
             shutil.rmtree(temp_directory)
