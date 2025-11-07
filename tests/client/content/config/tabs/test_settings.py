@@ -365,8 +365,9 @@ class TestSettingsFunctions:
                     assert "You are a helpful assistant." in result
                     assert "{'model': 'gpt-4'}" in result
 
-    def test_spring_ai_obaas_non_yaml_file():
+    def test_spring_ai_obaas_non_yaml_file(self):
         """Test spring_ai_obaas with non-YAML file"""
+        from client.content.config.tabs.settings import spring_ai_obaas
         mock_state = SimpleNamespace(
             client_settings={
                 "prompts": {"sys": "Basic Example"},
