@@ -86,9 +86,9 @@ public class Helper {
 
     public String getModel(String modelOpenAI, String modelOllamaAI) {
         String modelId = "custom";
-        if (!"".equals(modelOpenAI)) {
+        if (!"_".equals(modelOpenAI)) {
             modelId = modelOpenAI;
-        } else if (!"".equals(modelOllamaAI)) {
+        } else if (!"_".equals(modelOllamaAI)) {
             modelId = modelOllamaAI;
         }
         return modelId;
