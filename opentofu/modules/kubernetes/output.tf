@@ -5,7 +5,7 @@
 output "kubeconfig_cmd" {
   description = "Command to generate kubeconfig file"
   value = format(
-    "oci ce cluster create-kubeconfig --cluster-id %s --region %s --token-version 2.0.0 --kube-endpoint %s --file $HOME/.kube/config",
+    "oci ce cluster create-kubeconfig --cluster-id %s --region %s --token-version 2.0.0 --kube-endpoint %s --file $HOME/.kube/config --with-auth-context --profile DEFAULT",
     oci_containerengine_cluster.default_cluster.id,
     var.region,
     oci_containerengine_cluster.default_cluster.endpoint_config[0].is_public_ip_enabled ? "PUBLIC_ENDPOINT" : "PRIVATE_ENDPOINT"

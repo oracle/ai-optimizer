@@ -7,6 +7,12 @@
 #########################################################################
 
 // Standard Default Vars
+variable "deploy_optimizer" {
+  description = "Determines if the AI Optimizer and Toolkit is deployed"
+  type        = bool
+  default     = true
+}
+
 variable "optimizer_version" {
   description = "Determines if latest release or main code line is used"
   type        = string
