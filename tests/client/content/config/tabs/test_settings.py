@@ -365,6 +365,28 @@ class TestSettingsFunctions:
                     assert "You are a helpful assistant." in result
                     assert "{'model': 'gpt-4'}" in result
 
+    def test_spring_ai_obaas_non_yaml_file():
+        """Test spring_ai_obaas with non-YAML file"""
+        mock_state = SimpleNamespace(
+            client_settings={
+                "prompts": {"sys": "Basic Example"},
+                "database": {"alias": "DEFAULT"}
+            },
+            prompt_configs=[{"name": "Basic Example", "category": "sys", "prompt": "You are a helpful assistant."}]
+        )
+        mock_template_content = "Provider: {provider}\nPrompt: {sys_prompt}\nLLM: {ll_model}\nEmbed: {vector_search}\nDB: {database_config}"
+
+        with patch('client.content.config.tabs.settings.state', mock_state):
+            with patch('client.content.config.tabs.settings.st_common.state_configs_lookup') as mock_lookup:
+                with patch('builtins.open', mock_open(read_data=mock_template_content)):
+                    mock_lookup.return_value = {"DEFAULT": {"user": "test_user"}}
+
+                    src_dir = Path("/test/path")
+                    result = spring_ai_obaas(src_dir, "start.sh", "openai", {"model": "gpt-4"}, {"model": "text-embedding-ada-002"})
+
+                    assert "Provider: openai" in result
+                    assert "You are a helpful assistant." in result
+                    assert "{'model': 'gpt-4'}" in result
 
     def test_spring_ai_zip_creation(self):
         """Test spring_ai_zip function creates proper ZIP file"""
