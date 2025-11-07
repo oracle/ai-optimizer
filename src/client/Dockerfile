@@ -6,14 +6,14 @@
 # Build from the project root directory:
 #  podman build -f src/client/Dockerfile -t ai-optimizer-client:latest .
 #############################################################
-FROM container-registry.oracle.com/os/oraclelinux:8-slim AS optimizer_base
+FROM container-registry.oracle.com/os/oraclelinux:9 AS optimizer_base
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
 RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install python3.11 python3.11-pip && \
-    microdnf clean all && \
+    dnf --nodocs -y install python3.11 python3.11-pip && \
+    dnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
 COPY --chown=$RUNUSER:$RUNUSER src /opt/package/src
