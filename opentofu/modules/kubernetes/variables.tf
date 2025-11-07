@@ -130,6 +130,11 @@ variable "byo_ocir_url" {
   type = string
 }
 
+variable "use_cluster_addons" {
+  type    = bool
+  default = true
+}
+
 variable "optimizer_version" {
   type = string
 }
