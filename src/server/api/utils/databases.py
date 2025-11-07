@@ -9,8 +9,8 @@ import json
 import oracledb
 from langchain_community.vectorstores import oraclevs as LangchainVS
 
-import server.api.core.databases as core_databases
 import server.api.core.settings as core_settings
+from server.bootstrap.bootstrap import DATABASE_OBJECTS
 
 from common.schema import (
     Database,
@@ -36,6 +36,56 @@ class DbException(Exception):
         self.status_code = status_code
         self.detail = detail
         super().__init__(detail)
+
+
+class ExistsDatabaseError(ValueError):
+    """Raised when the database already exist."""
+
+
+class UnknownDatabaseError(ValueError):
+    """Raised when the database doesn't exist."""
+
+
+#####################################################
+# CRUD Functions
+#####################################################
+def create(database: Database) -> Database:
+    """Create a new Database definition"""
+
+    try:
+        _ = get(name=database.name)
+        raise ExistsDatabaseError(f"Database: {database.name} already exists")
+    except UnknownDatabaseError:
+        pass
+
+    if any(not getattr(database, key) for key in ("user", "password", "dsn")):
+        raise ValueError("'user', 'password', and 'dsn' are required")
+
+    DATABASE_OBJECTS.append(database)
+    return get(name=database.name)
+
+
+def get(name: Optional[DatabaseNameType] = None) -> Union[list[Database], None]:
+    """
+    Return all Database objects if `name` is not provided,
+    or the single Database if `name` is provided.
+    If a `name` is provided and not found, raise exception
+    """
+    database_objects = DATABASE_OBJECTS
+
+    logger.debug("%i databases are defined", len(database_objects))
+    database_filtered = [db for db in database_objects if (name is None or db.name == name)]
+    logger.debug("%i databases after filtering", len(database_filtered))
+
+    if name and not database_filtered:
+        raise UnknownDatabaseError(f"{name} not found")
+
+    return database_filtered
+
+
+def delete(name: DatabaseNameType) -> None:
+    """Remove database from database objects"""
+    DATABASE_OBJECTS[:] = [d for d in DATABASE_OBJECTS if d.name != name]
 
 
 #####################################################
@@ -231,7 +281,7 @@ def get_databases(
     db_name: Optional[DatabaseNameType] = None, validate: bool = False
 ) -> Union[list[Database], Database, None]:
     """Return list of Database Objects"""
-    databases = core_databases.get_database(db_name)
+    databases = get(db_name)
     if validate:
         for db in databases:
             try:
