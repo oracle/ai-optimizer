@@ -3,14 +3,13 @@
 # spell-checker: ignore nindent
 
 {{- if .Values.server.oci_config }}
-{{- /* Determine the ConfigMap name to use or create */ -}}
-{{- $configMapName := .Values.server.oci_config.configMapName | default (printf "%s-oci-config" .Release.Name) }}
+{{- /* Validate OCI config settings */ -}}
+{{- include "server.ociConfig.validate" . }}
+{{- /* Only create ConfigMap if configMapName is not specified (user wants us to create it) */ -}}
+{{- if not .Values.server.oci_config.configMapName }}
+{{- /* Determine the default ConfigMap name */ -}}
+{{- $configMapName := printf "%s-oci-config" .Release.Name }}
 
-{{- /* Check if the ConfigMap already exists */ -}}
-{{- $configMapExists := lookup "v1" "ConfigMap" .Release.Namespace $configMapName }}
-
-{{- /* Only create ConfigMap if it doesn't exist */ -}}
-{{- if not $configMapExists }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "langchain-community==0.3.21",
+    "langchain-community==0.3.27",
     "langchain-core==0.3.52",
     "langchain-huggingface==0.1.2",
     "langchain-ollama==0.3.2",

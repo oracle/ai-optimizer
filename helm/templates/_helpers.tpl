@@ -243,6 +243,27 @@ Requires either 'dsn' OR all of (host, port, service_name).
   {{- end -}}
 {{- end -}}
 
+{{/* ******************************************
+Validate that if server.oci_config.configMapName is specified,
+then none of the other OCI config values (tenancy, user, fingerprint, region) should be provided.
+*********************************************** */}}
+{{- define "server.ociConfig.validate" -}}
+  {{- if .Values.server.oci_config -}}
+    {{- $configMapName := .Values.server.oci_config.configMapName | trim | default "" -}}
+    {{- $tenancy := .Values.server.oci_config.tenancy | trim | default "" -}}
+    {{- $user := .Values.server.oci_config.user | trim | default "" -}}
+    {{- $fingerprint := .Values.server.oci_config.fingerprint | trim | default "" -}}
+    {{- $region := .Values.server.oci_config.region | trim | default "" -}}
+
+    {{- /* If configMapName is provided, ensure no other config values are provided */ -}}
+    {{- if ne $configMapName "" -}}
+      {{- if or (ne $tenancy "") (ne $user "") (ne $fingerprint "") (ne $region "") -}}
+        {{- fail "server.oci_config.configMapName is specified: you cannot also provide tenancy, user, fingerprint, or region. Either provide configMapName to reference an existing ConfigMap, OR provide the config values to create a new ConfigMap." -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
 
 {{/* ******************************************
 Database Type Helpers
