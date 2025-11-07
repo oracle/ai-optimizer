@@ -91,18 +91,21 @@ resource "oci_containerengine_cluster" "default_cluster" {
 }
 
 resource "oci_containerengine_addon" "oraoper_addon" {
+  count                            = var.use_cluster_addons ? 1 : 0
   addon_name                       = "OracleDatabaseOperator"
   cluster_id                       = oci_containerengine_cluster.default_cluster.id
   remove_addon_resources_on_delete = true
 }
 
 resource "oci_containerengine_addon" "certmgr_addon" {
+  count                            = var.use_cluster_addons ? 1 : 0
   addon_name                       = "CertManager"
   cluster_id                       = oci_containerengine_cluster.default_cluster.id
   remove_addon_resources_on_delete = true
 }
 
 resource "oci_containerengine_addon" "ingress_addon" {
+  count                            = var.use_cluster_addons ? 1 : 0
   addon_name                       = "NativeIngressController"
   cluster_id                       = oci_containerengine_cluster.default_cluster.id
   remove_addon_resources_on_delete = true

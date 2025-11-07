@@ -12,6 +12,7 @@ users:
 package_update: false
 packages:
   - python3.11
+  - sqlcl
 
 write_files:
   - path: /etc/systemd/system/ai-optimizer.service
