@@ -6,7 +6,7 @@
 # Build from the project root directory:
 #  podman build -f src/client/Dockerfile -t ai-optimizer-client:latest .
 #############################################################
-FROM container-registry.oracle.com/os/oraclelinux:9 AS optimizer_base
+FROM container-registry.oracle.com/os/oraclelinux:8 AS optimizer_base
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 

@@ -6,13 +6,13 @@
 # Build from the project root directory:
 #  podman build -f src/Dockerfile -t ai-optimizer-aio:latest .
 ##################################################
-FROM container-registry.oracle.com/os/oraclelinux:9 AS all_in_one_pyenv
+FROM container-registry.oracle.com/os/oraclelinux:8 AS all_in_one_pyenv
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
 RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    dnf config-manager --add-repo https://yum.oracle.com/repo/OracleLinux/OL9/oracle/software/\$basearch && \
+    dnf config-manager --add-repo https://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/\$basearch && \
     dnf --nodocs -y install python3.11 python3.11-pip sqlcl java-21-openjdk-headless --nogpgcheck && \
     dnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV

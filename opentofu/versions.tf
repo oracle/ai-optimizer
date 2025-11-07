@@ -4,6 +4,6 @@
 # Do Not Modify. Updated during release cycle.
 locals {
   app_version    = "0.0.0"
-  compute_os_ver = "9.6"
+  compute_os_ver = "8.10"
   k8s_version    = "1.34.1"
 }
