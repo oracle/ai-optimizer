@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import os
 import copy
 import json
-from server.api.core import bootstrap
+from server.bootstrap import bootstrap
 
 from common.schema import Settings, Configuration, ClientIdType
 from common import logging_config

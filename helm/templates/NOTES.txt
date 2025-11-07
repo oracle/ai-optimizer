@@ -1,0 +1,142 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+Thank you for installing {{ .Chart.Name }} {{ .Chart.Version }}!
+
+Your release "{{ .Release.Name }}" has been deployed to namespace "{{ .Release.Namespace }}".
+
+================================================================================
+ACCESSING THE APPLICATION
+================================================================================
+
+{{- if .Values.client.enabled }}
+
+Streamlit Client (Web UI):
+{{- if .Values.client.ingress.enabled }}
+  The client UI is available via Ingress.
+  {{- if .Values.client.ingress.tls }}
+  Access at: https://{{ (index .Values.client.ingress.tls 0).hosts | first }}
+  {{- else }}
+  Access at: http://<your-ingress-host>{{ include "global.getPath" . }}
+  {{- end }}
+{{- else }}
+  Port-forward to access locally:
+    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "global.fullname" . }}-client-http 8501:80
+
+  Then open in your browser:
+    http://localhost:8501
+{{- end }}
+
+{{- else }}
+  Client is disabled. Set client.enabled=true to enable the Streamlit UI.
+{{- end }}
+
+Server API:
+{{- if .Values.server.ingress.enabled }}
+  The server API is available via Ingress.
+  {{- if .Values.server.ingress.tls }}
+  Access at: https://{{ (index .Values.server.ingress.tls 0).hosts | first }}{{ include "global.getPath" . }}v1
+  {{- else }}
+  Access at: http://<your-ingress-host>{{ include "global.getPath" . }}v1
+  {{- end }}
+{{- else }}
+  Port-forward to access locally:
+    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "server.serviceName" . }} 8000:8000
+
+  Then access the API at:
+    http://localhost:8000{{ include "global.getPath" . }}v1
+{{- end }}
+
+================================================================================
+CHECKING STATUS
+================================================================================
+
+View all resources:
+  kubectl get all -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Check pod status:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "global.name" . }}
+
+View server logs:
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=server -f
+
+{{- if .Values.client.enabled }}
+View client logs:
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=client -f
+{{- end }}
+
+{{- if .Values.server.database }}
+{{- if eq .Values.server.database.type "ADB-S" }}
+
+Check database operator status:
+  kubectl get autonomousdatabase -n {{ .Release.Namespace }} {{ .Release.Name }}-adb-s
+  kubectl describe autonomousdatabase -n {{ .Release.Namespace }} {{ .Release.Name }}-adb-s
+{{- else if or (eq .Values.server.database.type "SIDB-FREE") (eq .Values.server.database.type "ADB-FREE") }}
+
+Check database pod status:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/component=database
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=database -f
+{{- end }}
+{{- end }}
+
+{{- if .Values.ollama.enabled }}
+
+Check Ollama status:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/component=ollama
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=ollama -f
+{{- end }}
+
+================================================================================
+CONFIGURATION
+================================================================================
+
+API Key Secret:
+  kubectl get secret -n {{ .Release.Namespace }} {{ include "global.apiSecretName" . }}
+
+{{- if .Values.server.database }}
+Database Credentials:
+  kubectl get secret -n {{ .Release.Namespace }} {{ include "server.databaseSecret" . }}
+{{- end }}
+
+{{- if .Values.server.autoscaling.enabled }}
+
+Server Autoscaling (HPA):
+  kubectl get hpa -n {{ .Release.Namespace }} {{ include "global.fullname" . }}-server
+  kubectl describe hpa -n {{ .Release.Namespace }} {{ include "global.fullname" . }}-server
+{{- end }}
+
+{{- if .Values.client.autoscaling.enabled }}
+
+Client Autoscaling (HPA):
+  kubectl get hpa -n {{ .Release.Namespace }} {{ include "global.fullname" . }}-client
+  kubectl describe hpa -n {{ .Release.Namespace }} {{ include "global.fullname" . }}-client
+{{- end }}
+
+================================================================================
+UPGRADE & UNINSTALL
+================================================================================
+
+To upgrade this release:
+  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} --reuse-values
+
+To uninstall this release:
+  helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Note: Secrets with "helm.sh/resource-policy: keep" annotation will be retained.
+To delete them manually:
+  kubectl delete secret -n {{ .Release.Namespace }} {{ include "server.databaseSecret" . }}
+{{- if .Values.server.database }}
+{{- if .Values.server.database.privAuthN }}
+  kubectl delete secret -n {{ .Release.Namespace }} {{ include "server.databasePrivSecret" . }}
+{{- end }}
+{{- end }}
+
+================================================================================
+MORE INFORMATION
+================================================================================
+
+Documentation: https://github.com/oracle/ai-optimizer
+Report Issues: https://github.com/oracle/ai-optimizer/issues
+License: Universal Permissive License v1.0
+
+Happy optimizing with the Oracle AI Optimizer and Toolkit! 🚀

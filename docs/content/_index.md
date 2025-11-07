@@ -17,7 +17,7 @@ The {{< full_app_ref >}} provides a streamlined environment where developers and
 
 - **GenAI**: Powers the generation of text, images, or other data based on prompts using pre-trained **LLM**s.
 - **RAG**: Enhances **LLM**s by retrieving relevant, real-time information allowing models to provide up-to-date and accurate responses.
-- **Vector Database**: A database, including Oracle Database 23ai, that can natively store and manage vector embeddings and handle the unstructured data they describe, such as documents, images, video, or audio.
+- **Vector Database**: A database, including Oracle AI Database, that can natively store and manage vector embeddings and handle the unstructured data they describe, such as documents, images, video, or audio.
 
 ## Features
 
@@ -40,7 +40,7 @@ The [Walkthrough](walkthrough) is a great way to familiarize yourself with the *
 
 ## Prerequisites
 
-- Oracle Database 23ai incl. Oracle Database 23ai Free
+- Oracle AI Database incl. Oracle AI Database Free
 - Python 3.11 (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
 - Access to an Embedding and Chat Model:

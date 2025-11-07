@@ -2,27 +2,28 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 #############################################################
 # Base - API Server
-# Build from the / directory:
+# Build from the project root directory:
 #  podman build -f src/server/Dockerfile -t ai-optimizer-server:latest .
 #############################################################
 # spell-checker: disable
-FROM container-registry.oracle.com/os/oraclelinux:8-slim AS optimizer_base
+FROM container-registry.oracle.com/os/oraclelinux:8 AS optimizer_base
 
 ENV RUNUSER=oracleai
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
-RUN groupadd $RUNUSER && \
+RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install python3.11 python3.11-pip python3.11-devel gcc gcc-c++ && \
-    microdnf clean all && \
+    dnf config-manager --add-repo https://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/\$basearch && \
+    dnf --nodocs -y install python3.11 python3.11-pip && \
+    dnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
 COPY --chown=$RUNUSER:$RUNUSER src /opt/package/src
 COPY pyproject.toml /opt/package/pyproject.toml
 
 RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
-    ${VIRTUAL_ENV}/bin/uv pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    ${VIRTUAL_ENV}/bin/uv pip install torch==2.9.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
     ${VIRTUAL_ENV}/bin/uv pip install "/opt/package[server]"
 
 ##################################################

@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore tablespace mycomplexsecret mycomplexwalletsecret 
 -->
 
-To use the Retrieval-Augmented Generation (RAG) functionality of the {{< short_app_ref >}}, you will need to setup/enable an [embedding model](../model_config) and have access to an **Oracle Database 23ai**. Both the [Always Free Oracle Autonomous Database Serverless (ADB-S)](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/autonomous-always-free.html) and the [Oracle Database 23ai Free](https://www.oracle.com/uk/database/free/get-started/) are supported. They are a great, no-cost, way to get up and running quickly.
+To use the Retrieval-Augmented Generation (RAG) functionality of the {{< short_app_ref >}}, you will need to setup/enable an [embedding model](../model_config) and have access to an **Oracle AI Database**. Both the [Always Free Oracle Autonomous Database Serverless (ADB-S)](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/autonomous-always-free.html) and the [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) are supported. They are a great, no-cost, way to get up and running quickly.
 
 ## Configuration
 
@@ -89,12 +89,34 @@ podman run -v $TNS_ADMIN$:/app/tns_admin -p 8501:8501 -it --rm ai-optimizer-aio
 
 ## Database User
 
-A database user is required to store the embeddings, used for **RAG**, into the Oracle Database. A non-privileged user with a *non-SYSTEM tablespace* should be used for this purpose.  Use the below syntax as an __example__ of creating a new user with least privileges:
+A database user is required to store the embeddings, used for **RAG**, into the Oracle Database. A non-privileged user with a *non-SYSTEM tablespace* should be used for this purpose.  Use the below syntax as an __example__ of creating a new user with least privileges (change the value of `c_user_password`):
 
 ```sql
-CREATE USER "DEMO" IDENTIFIED BY MYCOMPLEXSECRET
-    DEFAULT TABLESPACE "DATA"
-    TEMPORARY TABLESPACE "TEMP";
+DECLARE
+    c_user_password dba_users.password%TYPE := 'MYSUPERSECRET';
+    v_default_perm  database_properties.property_value%TYPE;
+    v_default_temp  database_properties.property_value%TYPE;
+    v_sql           VARCHAR2(500);
+BEGIN    
+    -- Get default permanent tablespace
+    SELECT property_value 
+      INTO v_default_perm
+      FROM database_properties 
+     WHERE property_name = 'DEFAULT_PERMANENT_TABLESPACE';
+
+    -- Get default temporary tablespace
+    SELECT property_value 
+      INTO v_default_temp
+      FROM database_properties 
+     WHERE property_name = 'DEFAULT_TEMP_TABLESPACE';
+
+    -- Build dynamic CREATE USER statement
+    v_sql := 'CREATE USER demo IDENTIFIED BY "' || c_user_password || '" ' ||
+             'DEFAULT TABLESPACE ' || v_default_perm || ' ' ||
+             'TEMPORARY TABLESPACE ' || v_default_temp;
+    EXECUTE IMMEDIATE v_sql;
+END;
+/
 GRANT "DB_DEVELOPER_ROLE" TO "DEMO";
 ALTER USER "DEMO" DEFAULT ROLE ALL;
 ALTER USER "DEMO" QUOTA UNLIMITED ON DATA;
@@ -103,7 +125,6 @@ ALTER USER "DEMO" QUOTA UNLIMITED ON DATA;
 If running on a supported database for [SelectAI](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/select-ai.html) and want to use the feature, grant the following additional privileges and open appropriate ACLs:
 
 ```sql
-GRANT EXECUTE ON DBMS_CLOUD TO DEMO;
 GRANT EXECUTE ON DBMS_CLOUD_AI TO DEMO;
 GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO DEMO;
 ```

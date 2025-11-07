@@ -62,7 +62,7 @@ If you have already installed Node.js v20.17.0+, it should work.
 			"command": "npx",
 			"args": [
 				"mcp-remote",
-				"http://127.0.0.1:9090/sse"
+				"http://127.0.0.1:9090/mcp"
 				]
 			}
    		}
@@ -120,14 +120,17 @@ uv run rag_base_optimizer_config_mcp.py
 	* Set `Local` with `Remote client` line in `<PROJECT_DIR>/rag_base_optimizer_config_mcp.py`:
 
 	```python
-	#mcp = FastMCP("rag", port=9090) #Remote client
-	mcp = FastMCP("rag") #Local
+	#mcp.run(transport='stdio')
+    #mcp.run(transport='sse')
+    mcp.run(transport='streamable-http')
 	```
 
-	* Substitute `stdio` with `sse` line of code:
+	* Substitute `stdio` with `streamable-http` line of code:
+
 	```python
 	mcp.run(transport='stdio')
-	#mcp.run(transport='sse')
+    #mcp.run(transport='sse')
+    #mcp.run(transport='streamable-http')
 	```
 
 
@@ -146,9 +149,9 @@ npx @modelcontextprotocol/inspector
 
 * connect the browser to `http://127.0.0.1:6274` 
 
-* set the Transport Type to `SSE`
+* set the Transport Type to `Streamable HTTP`
 
-* set the `URL` to `http://localhost:9090/sse`
+* set the `URL` to `http://localhost:9090/mcp`
 
 * test the tool developed.
 

@@ -307,7 +307,7 @@ def create_semantic_relationships():
             (r"overview of oracle ai vector search", r"get started"),
             (r"why use oracle ai vector search", r"get started"),
             (r"get started", r"generate vector embeddings"),
-            (r"oracle database 23ai release updates", r"get started"),
+            (r"oracle ai database release updates", r"get started"),
             (r"conventions", r"overview of oracle ai vector search"),
             (r"preface", r"overview"),
             (r"introduction", r"get started"),

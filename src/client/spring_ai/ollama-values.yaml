@@ -10,4 +10,3 @@ ollama:
     - nomic-embed-text
 nodeSelector:
   node.kubernetes.io/instance-type: VM.GPU.A10.1
-  

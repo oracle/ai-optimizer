@@ -1,3 +1,7 @@
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# spell-checker: disable
+
 resource "oci_core_network_security_group" "compute" {
   compartment_id = var.compartment_id
   vcn_id         = var.vcn_id
@@ -31,7 +35,7 @@ resource "oci_core_network_security_group_security_rule" "vcn_services_egress" {
   description               = "Compute OCI Services - All Ingress."
   direction                 = "INGRESS"
   protocol                  = "all"
-  source                    = data.oci_core_services.core_services.services.0.cidr_block
+  source                    = var.oci_services.cidr_block
   source_type               = "SERVICE_CIDR_BLOCK"
 }
 

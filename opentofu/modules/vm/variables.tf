@@ -14,10 +14,6 @@ variable "compartment_id" {
   type = string
 }
 
-variable "region" {
-  type = string
-}
-
 variable "label_prefix" {
   type = string
 }
@@ -31,6 +27,14 @@ variable "availability_domains" {
 }
 variable "vcn_id" {
   type = string
+}
+
+variable "oci_services" {
+  type = object({
+    cidr_block = string
+    id         = string
+    name       = string
+  })
 }
 
 variable "private_subnet_id" {
@@ -57,20 +61,17 @@ variable "compute_gpu_shape" {
   type = string
 }
 
-variable "adb_name" {
+variable "db_name" {
   type = string
 }
 
-variable "adb_password" {
-  type = string
-}
-
-variable "streamlit_client_port" {
-  type = number
-}
-
-variable "fastapi_server_port" {
-  type = number
+variable "db_conn" {
+  type = object({
+    db_type  = string
+    username = string
+    password = string
+    service  = string
+  })
 }
 
 variable "lb_client_port" {

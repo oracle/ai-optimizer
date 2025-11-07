@@ -61,7 +61,7 @@ spec:
             {{- end }}
             {{- if .Values.server.database }}
             {{- include "server.database.authN" . | nindent 12 }}
-              {{- if eq .Values.server.database.type "ADB-S" }}
+              {{- if eq (include "server.database.isADBS" .) "true" }}
             - name: DB_WALLET_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -117,7 +117,7 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: "/app/tmp"
-            {{- if and (hasKey .Values.server "database") (eq (default "" .Values.server.database.type) "ADB-S") }}
+            {{- if eq (include "server.database.isADBS" .) "true" }}
             - name: tns-admin
               mountPath: /app/tns_admin
             {{- end }}
@@ -131,7 +131,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if and (hasKey .Values.server "database") (eq (default "" .Values.server.database.type) "ADB-S") }}
+        {{- if eq (include "server.database.isADBS" .) "true" }}
         - name: tns-admin
           secret:
             secretName: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}

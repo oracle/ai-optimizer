@@ -1,18 +1,20 @@
 # Oracle AI Optimizer and Toolkit
 
 <!-- spell-checker:ignore streamlit, venv, setuptools -->
-![Test Status](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml/badge.svg)
-![IaC Status](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)
-![Build Status](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)
+[![Test Suite](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml)
+[![Validate IaC](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml)
+[![Validate Container Images](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml)
+[![Deploy Documentation](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml)
 
 ## Description
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle Database 23ai** AI VectorSearch and SelectAI, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle AI Database** VectorSearch and SelectAI, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
 
 ## AI Optimizer Features
 
 - [Configuring Embedding and Chat Models](https://oracle.github.io/ai-optimizer/client/configuration/model_config)
 - [Splitting and Embedding Documentation](https://oracle.github.io/ai-optimizer/client/tools/split_embed)
+- [Auto-refresh Vector Store from OCI Object Storage buckets](https://oracle.github.io/ai-optimizer/server/api/v1/embed)
 - [Modifying System Prompts (Prompt Engineering)](https://oracle.github.io/ai-optimizer/client/tools/prompt_eng)
 - [Experimenting with **LLM** Parameters](https://oracle.github.io/ai-optimizer/client/chatbot)
 - [Testbed for auto-generated or existing Q&A datasets](https://oracle.github.io/ai-optimizer/client/testbed)
@@ -25,7 +27,7 @@ For more information, including more details on **Setup and Configuration** plea
 
 ### Prerequisites
 
-- Oracle Database 23ai incl. Oracle Database 23ai Free
+- Oracle AI Database incl. Oracle AI Database Free
 - Python 3.11 (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
 - Access to an Embedding and Chat Model:
@@ -89,7 +91,7 @@ To run the application in a container; download the [source](https://github.com/
 
 The **AI Optimizer** can be deployed in Oracle Cloud Infrastructure (OCI) using Infrastructure as Code (IaC).
 
-Choose either a light-weight Virtual Machine or robust Oracle Kubernetes Engine deployment, both with an Oracle Autonomous Database 23ai:  
+Choose either a light-weight Virtual Machine or robust Oracle Kubernetes Engine deployment, both with an Oracle Autonomous Database:  
 [![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
 
 For more information, please visit the [IaC Documentation](https://oracle.github.io/ai-optimizer/advanced/iac/index.html).

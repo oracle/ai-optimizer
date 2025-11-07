@@ -68,7 +68,7 @@ resource "oci_core_service_gateway" "sgw" {
   vcn_id         = oci_core_vcn.vcn.id
   display_name   = format("%s-sgw", var.label_prefix)
   services {
-    service_id = data.oci_core_services.core_services.services.0.id
+    service_id = var.oci_services.id
   }
 }
 
@@ -91,7 +91,7 @@ resource "oci_core_route_table" "private_route_table" {
   }
   route_rules {
     description       = "traffic to OCI services"
-    destination       = data.oci_core_services.core_services.services.0.cidr_block
+    destination       = var.oci_services.cidr_block
     destination_type  = "SERVICE_CIDR_BLOCK"
     network_entity_id = oci_core_service_gateway.sgw.id
   }

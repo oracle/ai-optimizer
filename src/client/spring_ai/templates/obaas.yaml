@@ -1,6 +1,3 @@
-server:
-  servlet:
-    context-path: /v1
 spring:
   datasource:
     url: ${{spring.datasource.url]}}
@@ -14,14 +11,14 @@ spring:
         initialize-schema: True
         index-type: {vector_search[index_type]}
     openai:
-      base-url: \"{ll_model[api_base]}\"
-      api-key:  \"{ll_model[api_key]}\"
+      base-url: {ll_model[api_base]}
+      api-key:  {ll_model[api_key]}
       chat:
         options:
           temperature: {ll_model[temperature]}
           presencePenalty: {ll_model[presence_penalty]}
           frequencyPenalty: {ll_model[frequency_penalty]}
-          maxTokens: {ll_model[max_completion_tokens]}
+          maxTokens: {ll_model[max_tokens]}
           topP: {ll_model[top_p]}
           model: {ll_model[id]}
       embedding:
@@ -34,16 +31,17 @@ spring:
           temperature: {ll_model[temperature]}
           presence-penalty: {ll_model[presence_penalty]}
           frequency-penalty: {ll_model[frequency_penalty]}
-          num-predict: {ll_model[max_completion_tokens]}
+          num-predict: {ll_model[max_tokens]}
           top-p: {ll_model[top_p]}
-          model: \"{ll_model[id]}\"
+          model: {ll_model[id]}
       embedding:
         options: 
-          model: \"{vector_search[id]}\"        
+          model: {vector_search[id]}        
 aims:
   sys_instr: \"{sys_prompt}\"
   vectortable:
     name: {vector_search[vector_store]}
+    user: {database_config[user]}
   rag_params: 
     search_type: Similarity
     top_k: {vector_search[top_k]}

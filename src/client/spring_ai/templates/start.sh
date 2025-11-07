@@ -21,7 +21,7 @@ fi
 TEMPERATURE="{ll_model[temperature]}"
 FREQUENCY_PENALTY="{ll_model[frequency_penalty]}"
 PRESENCE_PENALTY="{ll_model[presence_penalty]}"
-MAX_TOKENS="{ll_model[max_completion_tokens]}"
+MAX_TOKENS="{ll_model[max_tokens]}"
 TOP_P="{ll_model[top_p]}"
 COMMON_VARS=("TEMPERATURE" "FREQUENCY_PENALTY" "PRESENCE_PENALTY" "MAX_TOKENS" "TOP_P")
 
@@ -42,4 +42,5 @@ export SYS_INSTR="{sys_prompt}"
 export TOP_K="{vector_search[top_k]}"
 
 export VECTOR_STORE="{vector_search[vector_store]}"
+export USER_TABLE=$DB_USERNAME
 mvn spring-boot:run -P {provider}

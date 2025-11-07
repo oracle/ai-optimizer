@@ -15,7 +15,7 @@ The {{< full_app_ref >}} consists of an API Server ([**ai-optimizer-server**](#a
 ![Architecture Overview](images/arch_overview.png)
 
 The following additional components, not delivered with the {{< short_app_ref >}}, are also required.  These can be run On-Premises or in the Cloud:
-- [Oracle Database 23ai](#database), including [Oracle Database 23ai **Free**](https://www.oracle.com/uk/database/free/)
+- [Oracle AI Database](#database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free)
 - Access to at least one [Large Language Model](#large-language-model)
 - Access to at least one [Embedding Model](#embedding-model) (for Retrieval Augmented Generation)
 
@@ -45,7 +45,7 @@ You can develop and replace the provided client with any REST capable client.
 
 ## Database
 
-[Oracle Database 23ai](https://www.oracle.com/uk/database/23ai/), including [Oracle Database 23ai **Free**](https://www.oracle.com/uk/database/free/) provides a persistent data store for the {{< short_app_ref >}}.  
+[Oracle AI Database](https://www.oracle.com/database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free) provides a persistent data store for the {{< short_app_ref >}}.  
 
 ![Database](./images/vector_storage.png)
 
@@ -54,7 +54,7 @@ You can develop and replace the provided client with any REST capable client.
 The **AI Optimizer** can be used to interact with language models without having the database configured, but additional functionality such as RAG, will not be available without the database.
 {{% /notice %}}
 
-The 23ai database provides:
+Oracle AI Database provides:
 
 - the Vector Store for split and embedded documents used for Retrieval Augmented Generation (RAG).
 - storage for the [Testbed](testbed) Q&A Test Sets and Evaluations

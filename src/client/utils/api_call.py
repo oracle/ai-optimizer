@@ -157,6 +157,7 @@ def patch(
     )
     if toast:
         st.toast("Update Successful.", icon="✅")
+        time.sleep(1)
     return response.json()
 
 
@@ -166,3 +167,4 @@ def delete(endpoint: str, timeout: int = 60, retries: int = 5, backoff_factor: f
     success = response.json()["message"]
     if toast:
         st.toast(success, icon="✅")
+        time.sleep(1)

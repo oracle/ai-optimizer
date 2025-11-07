@@ -28,29 +28,55 @@ locals {
   ])
 }
 
-// Autonomous Database
-locals {
-  adb_name = format("%sDB", upper(local.label_prefix))
-  adb_whitelist_cidrs = concat(
-    var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
-    [module.network.vcn_ocid]
-  )
-  adb_password = sensitive(format("%s%s", random_password.adb_char.result, random_password.adb_rest.result))
-}
-
-// Compute
-locals {
-  compute_cpu_arch = (
-    can(regex("^VM\\.Standard\\.A[0-9]+\\.Flex$", var.compute_cpu_shape))
-    ? "aarch64"
-    : "x86_64"
-  )
-}
-
 // Network
 locals {
-  streamlit_client_port = 8501
-  fastapi_server_port   = 8000
-  lb_client_port        = 80
-  lb_server_port        = 8000
+  vcn_ocid                  = var.byo_vcn_ocid == "" ? module.network["managed"].vcn_ocid : var.byo_vcn_ocid
+  public_subnet_ocid        = var.byo_vcn_ocid == "" ? module.network["managed"].public_subnet_ocid : var.byo_public_subnet_ocid
+  private_subnet_ocid       = var.byo_vcn_ocid == "" ? module.network["managed"].private_subnet_ocid : var.byo_private_subnet_ocid
+  private_subnet_cidr_block = var.byo_vcn_ocid == "" ? module.network["managed"].private_subnet_cidr_block : data.oci_core_subnet.byo_vcn_private[0].cidr_block
+}
+
+// Database
+locals {
+  db_ocid = (
+    var.byo_db_type == "" ? oci_database_autonomous_database.default_adb["managed"].id :
+    var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb["byo"].id :
+    "N/A"
+  )
+
+  db_name = (
+    var.byo_db_type == "" ? upper(format("%sDB", local.label_prefix)) :
+    var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb["byo"].db_name :
+    var.byo_odb_service
+  )
+
+  db_conn = {
+    db_type  = var.byo_db_type == "OTHER" ? "OTHER" : "ADB"
+    username = var.byo_db_type == "OTHER" ? "SYSTEM" : "ADMIN"
+    password = (
+      var.byo_db_type == "" ? format("%s%s", random_password.adb_char[0].result, random_password.adb_rest[0].result) :
+      var.byo_db_password
+    )
+    service = (
+      var.byo_db_type == "OTHER" ? format("%s:%s/%s", var.byo_odb_host, var.byo_odb_port, var.byo_odb_service) :
+      format("%s_TP", local.db_name)
+    )
+  }
+
+  adb_whitelist_cidrs = (
+    var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? null :
+    concat(
+      var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
+      [local.vcn_ocid]
+    )
+  )
+  adb_nsg                    = var.byo_vcn_ocid != "" && var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? [oci_core_network_security_group.adb[0].id] : []
+  adb_subnet_id              = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.private_subnet_ocid : null
+  adb_private_endpoint_label = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.label_prefix : null
+}
+
+// Load Balancer Ports
+locals {
+  lb_client_port = 80
+  lb_server_port = 8000
 }

@@ -17,14 +17,15 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.graph.state import CompiledStateGraph
 
 import server.api.core.settings as core_settings
-import server.api.core.oci as core_oci
 import server.api.core.prompts as core_prompts
 import server.api.utils.mcp as utils_mcp
+
+import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
 
 from server.mcp import graph
 
-from server.api.core.models import UnknownModelError
+from server.api.utils.models import UnknownModelError
 
 from common import schema
 from common import logging_config
@@ -46,7 +47,7 @@ async def completion_generator(
     if not model["model"]:
         model = client_settings.ll_model.model_dump()
 
-    oci_config = core_oci.get_oci(client=client)
+    oci_config = utils_oci.get(client=client)
 
     # Setup Client Model
     try:

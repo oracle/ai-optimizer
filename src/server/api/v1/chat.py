@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai litellm
+# spell-checker:ignore litellm
 
 from fastapi import APIRouter, Header
 from fastapi.responses import StreamingResponse
@@ -75,7 +75,13 @@ async def chat_history_clean(client: schema.ClientIdType = Header(default="serve
                     "thread_id": client,
                 }
             ),
-            values={"messages": RemoveMessage(id=REMOVE_ALL_MESSAGES)},
+            values={
+                "messages": RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                "cleaned_messages": [],
+                "context_input": "",
+                "documents": {},
+                "final_response": {},
+            },
         )
         return [ChatMessage(content="As requested, I've forgotten our conversation.", role="system")]
     except KeyError:

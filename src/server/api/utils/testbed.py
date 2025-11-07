@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore giskard testset, ollama, testsets, litellm
+# spell-checker:ignore giskard testset ollama testsets litellm
 
 import json
 import pickle
@@ -247,7 +247,9 @@ def build_knowledge_base(
         model_config={"model": ll_model}, oci_config=oci_config, giskard=True
     )
     set_llm_model(llm_model=ll_model, **ll_model_config)
-    embed_model_config = utils_models.get_litellm_config(model_config={"model": embed_model}, giskard=True)
+    embed_model_config = utils_models.get_litellm_config(
+        model_config={"model": embed_model}, oci_config=oci_config, giskard=True
+    )
     set_embedding_model(model=embed_model, **embed_model_config)
 
     knowledge_base_df = pd.DataFrame([node.text for node in text_nodes], columns=["text"])

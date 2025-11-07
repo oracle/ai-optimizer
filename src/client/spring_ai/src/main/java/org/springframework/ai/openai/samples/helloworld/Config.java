@@ -33,6 +33,12 @@ public class Config {
     public String legacyTable(@Value("${aims.vectortable.name}") String table) {
         return table;
     }
+    
+    @Bean
+    public String userTable(@Value("${aims.vectortable.user}") String user) {
+        return user;
+    }
+
 
     @Bean
     public String contextInstr(@Value("${aims.sys_instr}") String instr) {

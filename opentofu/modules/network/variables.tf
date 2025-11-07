@@ -21,3 +21,12 @@ variable "vcn_cidr" {
     "Kubernetes" = ["10.42.0.0/16"]
   }
 }
+
+variable "oci_services" {
+  description = "OCI Services Network object containing id, name, and cidr_block"
+  type = object({
+    cidr_block = string
+    id         = string
+    name       = string
+  })
+}
