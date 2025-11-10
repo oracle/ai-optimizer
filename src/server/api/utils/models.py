@@ -89,18 +89,18 @@ def get(
 def update(payload: schema.Model) -> schema.Model:
     """Update an existing Model definition"""
 
-    (model_update,) = get(model_provider=payload.provider, model_id=payload.id)
-    if payload.enabled and model_update.api_base and not is_url_accessible(model_update.api_base)[0]:
-        model_update.enabled = False
+    # Get the existing model from MODEL_OBJECTS (this is a reference to the object in the list)
+    (model_existing,) = get(model_provider=payload.provider, model_id=payload.id)
+
+    # Check URL accessibility if enabling the model
+    if payload.enabled and payload.api_base and not is_url_accessible(payload.api_base)[0]:
+        model_existing.enabled = False
         raise URLUnreachableError("Model: Unable to update.  API URL is inaccessible.")
 
-    for key, value in payload:
-        if hasattr(model_update, key):
-            setattr(model_update, key, value)
-        else:
-            raise InvalidModelError(f"Model: Invalid setting - {key}.")
-
-    return model_update
+    # Update all fields from payload in place
+    for key, value in payload.model_dump().items():
+        setattr(model_existing, key, value)
+    return model_existing
 
 
 def delete(model_provider: schema.ModelProviderType, model_id: schema.ModelIdType) -> None:
