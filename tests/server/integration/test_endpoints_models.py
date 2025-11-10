@@ -321,6 +321,52 @@ class TestEndpoints:
         )
         assert response.status_code == 404
 
+    def test_models_update_max_chunk_size(self, client, auth_headers):
+        """Test updating max_chunk_size for embedding models (regression test)"""
+        # Create an embedding model with default max_chunk_size
+        payload = {
+            "id": "test-embed-chunk-size",
+            "enabled": False,
+            "type": "embed",
+            "provider": "test_provider",
+            "api_base": "http://127.0.0.1:11434",
+            "max_chunk_size": 8192,
+        }
+
+        # Create the model
+        response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
+        assert response.status_code == 201
+        assert response.json()["max_chunk_size"] == 8192
+
+        # Update the max_chunk_size to 512
+        payload["max_chunk_size"] = 512
+        response = client.patch(
+            f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"], json=payload
+        )
+        assert response.status_code == 200
+        assert response.json()["max_chunk_size"] == 512
+
+        # Verify the update persists by fetching the model again
+        response = client.get(f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"])
+        assert response.status_code == 200
+        assert response.json()["max_chunk_size"] == 512
+
+        # Update to a different value to ensure it's not cached
+        payload["max_chunk_size"] = 1024
+        response = client.patch(
+            f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"], json=payload
+        )
+        assert response.status_code == 200
+        assert response.json()["max_chunk_size"] == 1024
+
+        # Verify again
+        response = client.get(f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"])
+        assert response.status_code == 200
+        assert response.json()["max_chunk_size"] == 1024
+
+        # Clean up
+        client.delete(f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"])
+
     def test_models_response_schema_validation(self, client, auth_headers):
         """Test response schema validation for all endpoints"""
         # Test /v1/models response schema
