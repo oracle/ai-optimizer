@@ -144,7 +144,7 @@ def _get_base_models_list() -> list[dict]:
             "provider": "ollama",
             "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
             "api_key": "",
-            "max_chunk_size": 8192,
+            "max_chunk_size": 512,
         },
     ]
 
