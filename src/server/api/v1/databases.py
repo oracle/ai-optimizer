@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 
 from fastapi import APIRouter, HTTPException
+import oracledb
 
 import server.api.utils.databases as utils_databases
 
@@ -15,7 +16,7 @@ logger = logging_config.logging.getLogger("endpoints.v1.databases")
 # Validate the DEFAULT Databases
 try:
     _ = utils_databases.get_databases(db_name="DEFAULT", validate=True)
-except Exception:
+except (ValueError, PermissionError, ConnectionError, LookupError, oracledb.DatabaseError):
     pass
 
 auth = APIRouter()
