@@ -89,8 +89,8 @@ def _parse_vector_table_row(row: tuple) -> VectorTable:
 async def register(mcp, auth):
     """Invoke Registration of Vector Storage discovery"""
 
-    @mcp.tool(name="optimizer_vector-storage")
-    @auth.get("/vector_storage", operation_id="vector_storage")
+    @mcp.tool(name="optimizer_vs-storage")
+    @auth.get("/vs_storage", operation_id="vs_storage")
     def vector_storage(
         thread_id: str, mcp_client: str = "Optimizer", model: str = "UNKNOWN-LLM"
     ) -> VectorStoreListResponse:

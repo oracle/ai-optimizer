@@ -141,8 +141,8 @@ async def _vs_grade_impl(
 async def register(mcp, auth):
     """Invoke Registration of Vector Search Tools"""
 
-    @mcp.tool(name="optimizer_grading")
-    @auth.get("/grading", operation_id="grading")
+    @mcp.tool(name="optimizer_vs-grading")
+    @auth.get("/vs_grading", operation_id="vs_grading")
     async def grading(
         thread_id: str,
         question: str,

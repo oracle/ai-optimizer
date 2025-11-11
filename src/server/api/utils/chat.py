@@ -2,8 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# spell-checker:ignore astream litellm sqlcl
 
-# spell-checker:ignore astream litellm
 from typing import Literal, AsyncGenerator
 
 from litellm import completion
@@ -81,27 +81,29 @@ async def completion_generator(
     user_sys_prompt = getattr(client_settings.prompts, "sys", "Basic Example")
     kwargs["config"]["metadata"]["sys_prompt"] = core_prompts.get_prompts(category="sys", name=user_sys_prompt)
 
-    # Define MCP config and tools if enabled (this is to create conditional nodes in the graph)
+    # Define MCP config and tools (this is to create conditional nodes in the graph)
+    mcp_client = MultiServerMCPClient(
+        {"optimizer": utils_mcp.get_client(client="langgraph")["mcpServers"]["optimizer"]}
+    )
     graph_tools = []
-    if client_settings.mcp.enabled:
-        mcp_client = MultiServerMCPClient(
-            {"optimizer": utils_mcp.get_client(client="langgraph")["mcpServers"]["optimizer"]}
-        )
+
+    # Always fetch all available MCP tools
+    if client_settings.vector_search.enabled or client_settings.nl2sql.enabled:
         graph_tools = await mcp_client.get_tools()
-        # Filter out vector store tools if vector search is not enabled
-        if not client_settings.vector_search.enabled:
-            vector_tool_names = {
-                "optimizer_retriever",
-                "optimizer_vector-storage"
-            }
-            graph_tools = [tool for tool in graph_tools if tool.name not in vector_tool_names]
+
+    # Filter out Vector Search tools if not enabled (retriever and storage tools only)
+    if not client_settings.vector_search.enabled:
+        graph_tools = [tool for tool in graph_tools if not tool.name.startswith("optimizer_vs")]
+
+    # Filter out NL2SQL tools if not enabled
+    if not client_settings.nl2sql.enabled:
+        graph_tools = [tool for tool in graph_tools if not tool.name.startswith("sqlcl_")]
 
     # Convert LangChain tools to OpenAI Functions for binding to LiteLLM model
-    if graph_tools:
-        kwargs["config"]["metadata"]["tools"] = [
-            {"type": "function", "function": convert_to_openai_function(t)} for t in graph_tools
-        ]
-
+    # Always set tools in metadata, even if empty, to prevent NoneType errors
+    kwargs["config"]["metadata"]["tools"] = [
+        {"type": "function", "function": convert_to_openai_function(t)} for t in graph_tools
+    ]
     logger.debug("Completion Kwargs: %s", kwargs)
 
     # Establish the graph

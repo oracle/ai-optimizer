@@ -142,8 +142,8 @@ def _vs_retrieve_impl(
 async def register(mcp, auth):
     """Invoke Registration of Vector Search Retriever"""
 
-    @mcp.tool(name="optimizer_retriever")
-    @auth.get("/retriever", operation_id="retriever")
+    @mcp.tool(name="optimizer_vs-retriever")
+    @auth.get("/vs_retriever", operation_id="vs_retriever")
     def retriever(
         thread_id: str,
         question: str,

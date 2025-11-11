@@ -249,7 +249,10 @@ def tools_sidebar() -> None:
 
     def _update_set_tool():
         """Update user settings as to which tool is being used"""
-        state.client_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
+        st.write(state.selected_tool)
+        state.client_settings["vector_search"]["enabled"] = "Vector Search" in state.selected_tool
+        state.client_settings["nl2sql"]["enabled"] = "NL2SQL" in state.selected_tool
+
 
         if state.client_settings["vector_search"]["enabled"]:
             switch_prompt("sys", "Vector Search Example")
@@ -258,10 +261,11 @@ def tools_sidebar() -> None:
 
     disable_vector_search = not is_db_configured()
 
-    if disable_vector_search:
-        logger.debug("Vector Search Disabled (Database not configured)")
-        st.warning("Database is not configured. Disabling Vector Search.", icon="⚠️")
+    if not is_db_configured():
+        logger.debug("Vector Search/NL2SQL Disabled (Database not configured)")
+        st.warning("Database is not configured. Disabling Vector Search and NL2SQL tools.", icon="⚠️")
         state.client_settings["vector_search"]["enabled"] = False
+        state.client_settings["nl2sql"]["enabled"] = False
         switch_prompt("sys", "Basic Example")
     else:
         # Client Settings
@@ -271,8 +275,8 @@ def tools_sidebar() -> None:
         database_lookup = state_configs_lookup("database_configs", "name")
 
         tools = [
-            ("LLM Only", "Do not use tools", False),
             ("Vector Search", "Use AI with Unstructured Data", disable_vector_search),
+            ("NL2SQL", "Use AI with Structured Data", disable_vector_search)
         ]
 
         # Vector Search Requirements
@@ -302,10 +306,11 @@ def tools_sidebar() -> None:
                 ),
                 0,
             )
-            st.sidebar.selectbox(
+            st.sidebar.multiselect(
                 "Tool Selection",
-                tool_box,
-                index=tool_index,
+                options=tool_box,
+                placeholder="Language Model Only",
+                # index=tool_index,
                 label_visibility="collapsed",
                 on_change=_update_set_tool,
                 key="selected_tool",

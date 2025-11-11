@@ -242,10 +242,10 @@ class VectorSearchSettings(DatabaseVectorStorage):
     )
 
 
-class McpSettings(BaseModel):
-    """Store MCP Settings"""
+class NL2SQLSettings(BaseModel):
+    """Store NL2SQLSettings Settings"""
 
-    enabled: bool = Field(default=True, description="MCP Tools Enabled")
+    enabled: bool = Field(default=False, description="NL2SQL Tools Enabled")
 
 
 class OciSettings(BaseModel):
@@ -287,7 +287,7 @@ class Settings(BaseModel):
     vector_search: Optional[VectorSearchSettings] = Field(
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
-    mcp: Optional[McpSettings] = Field(default_factory=McpSettings, description="MCP Settings")
+    nl2sql: Optional[NL2SQLSettings] = Field(default_factory=NL2SQLSettings, description="NL2SQL Settings")
     testbed: Optional[TestBedSettings] = Field(default_factory=TestBedSettings, description="TestBed Settings")
 
 

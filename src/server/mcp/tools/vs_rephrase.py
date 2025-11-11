@@ -102,8 +102,8 @@ async def _perform_rephrase(question: str, chat_history: List[str], ctx_prompt_c
 async def register(mcp, auth):
     """Invoke Registration of Context Rephrasing"""
 
-    @mcp.tool(name="optimizer_rephrase")
-    @auth.get("/rephrase", operation_id="rephrase")
+    @mcp.tool(name="optimizer_vs-rephrase")
+    @auth.get("/vs_rephrase", operation_id="vs_rephrase")
     async def rephrase(
         thread_id: str,
         question: str,
