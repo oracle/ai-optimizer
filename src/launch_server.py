@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore configfile fastmcp noauth selectai getpid procs litellm giskard ollama
+# spell-checker:ignore configfile fastmcp noauth getpid procs litellm giskard ollama
 # spell-checker:ignore dotenv apiserver laddr
 
 # Patch litellm for Giskard/Ollama issue
@@ -152,7 +152,6 @@ async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     # Authenticated
     auth.include_router(api_v1.chat.auth, prefix="/v1/chat", tags=["Chatbot"])
     auth.include_router(api_v1.embed.auth, prefix="/v1/embed", tags=["Embeddings"])
-    auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
     auth.include_router(api_v1.prompts.auth, prefix="/v1/prompts", tags=["Tools - Prompts"])
     auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
     auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Config - Settings"])
@@ -161,7 +160,7 @@ async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     auth.include_router(api_v1.oci.auth, prefix="/v1/oci", tags=["Config - Oracle Cloud Infrastructure"])
     auth.include_router(api_v1.mcp.auth, prefix="/v1/mcp", tags=["Config - MCP Servers"])
 
-    # # Auto-discover all MCP tools and register HTTP + MCP endpoints
+    # Auto-discover all MCP tools and register HTTP + MCP endpoints
     mcp_router = APIRouter(prefix="/mcp", tags=["MCP Tools"])
     await register_all_mcp(mcp, auth)
     auth.include_router(mcp_router)

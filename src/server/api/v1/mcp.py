@@ -5,8 +5,10 @@ This file is being used in APIs, and not the backend.py file.
 """
 
 # spell-checker:ignore noauth fastmcp healthz
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastmcp import FastMCP, Client
+from fastmcp.prompts.prompt import PromptMessage, TextContent
+import mcp
 
 import server.api.utils.mcp as utils_mcp
 
@@ -93,3 +95,56 @@ async def mcp_list_prompts(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]
         await client.close()
 
     return prompts_info
+
+
+@auth.get(
+    "/prompt/{prompt_name}",
+    description="Get MCP prompt",
+    response_model=mcp.types.GetPromptResult,
+)
+async def mcp_get_prompt(prompt_name: str, mcp_engine: FastMCP = Depends(get_mcp)) -> mcp.types.GetPromptResult:
+    """Get MCP Prompts"""
+    try:
+        client = Client(mcp_engine)
+        async with client:
+            prompt = await client.get_prompt(name=prompt_name)
+            logger.debug("MCP Resources: %s", prompt)
+    finally:
+        await client.close()
+
+    return prompt
+
+
+@auth.put(
+    "/prompt/{prompt_name}",
+    description="Update an existing MCP prompt text",
+    response_model=dict,
+)
+async def mcp_update_prompt(
+    prompt_name: str,
+    prompt_text: str,
+    mcp_engine: FastMCP = Depends(get_mcp),
+) -> dict:
+    """Update an existing MCP prompt with new text"""
+    logger.info("Updating MCP prompt: %s", prompt_name)
+
+    try:
+        # Check if prompt exists (will raise 404 if not found)
+        await mcp_get_prompt(prompt_name, mcp_engine)
+
+        # Re-register the prompt (this will override the existing one)
+        mcp_engine.prompt(name=prompt_name)(
+            lambda: PromptMessage(role="assistant", content=TextContent(type="text", text=prompt_text))
+        )
+
+        logger.info("Successfully updated MCP prompt: %s", prompt_name)
+        return {
+            "message": f"Prompt '{prompt_name}' updated successfully",
+            "name": prompt_name,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as ex:
+        logger.error("Failed to update MCP prompt '%s': %s", prompt_name, ex)
+        raise HTTPException(status_code=500, detail=f"Failed to update prompt: {str(ex)}") from ex

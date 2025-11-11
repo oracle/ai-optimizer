@@ -63,9 +63,7 @@ def get_vs_table(
     store_comment = None
     try:
         chunk_overlap_ceil = math.ceil(chunk_overlap)
-        table_string = (
-            f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
-        )
+        table_string = f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
         if alias:
             table_string = f"{alias}_{table_string}"
         store_table = re.sub(r"\W", "_", table_string.upper())
@@ -83,6 +81,64 @@ def get_vs_table(
     return store_table, store_comment
 
 
+def parse_vs_table(table_name: str) -> dict[str, str]:
+    """
+    Parse structured vector table name format (inverse of get_vs_table).
+    Format: [alias_]<embedding_model>_<chunk_size>_<overlap>_<distance_metric>_<index_type>
+    """
+    try:
+        parts = table_name.split("_")
+
+        if len(parts) < 5:
+            return {
+                "alias": None,
+                "embedding_model": table_name,
+                "chunk_size": "UNKNOWN",
+                "overlap": "UNKNOWN",
+                "distance_metric": "UNKNOWN",
+                "index_type": "UNKNOWN",
+                "parse_status": "insufficient_parts",
+            }
+
+        # Last 4 parts are always: chunk_size, overlap, distance_metric, index_type
+        index_type = parts[-1]
+        distance_metric = parts[-2]
+        overlap = parts[-3]
+        chunk_size = parts[-4]
+
+        # Everything else is model (and possibly alias)
+        model_parts = parts[:-4]
+
+        if len(model_parts) == 1:
+            alias = None
+            embedding_model = model_parts[0]
+        else:
+            alias = model_parts[0]
+            embedding_model = "_".join(model_parts[1:])
+
+        return {
+            "alias": alias,
+            "embedding_model": embedding_model,
+            "chunk_size": chunk_size,
+            "overlap": overlap,
+            "distance_metric": distance_metric,
+            "index_type": index_type,
+            "parse_status": "success",
+        }
+
+    except (ValueError, IndexError, AttributeError, TypeError) as ex:
+        logger.warning("Failed to parse table name '%s': %s", table_name, ex)
+        return {
+            "alias": None,
+            "embedding_model": table_name,
+            "chunk_size": "UNKNOWN",
+            "overlap": "UNKNOWN",
+            "distance_metric": "UNKNOWN",
+            "index_type": "UNKNOWN",
+            "parse_status": f"parse_error: {str(ex)}",
+        }
+
+
 def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
     """Check if the DB connection and SQL is working one field."""
 
@@ -90,7 +146,6 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
     return_msg = ""
 
     try:  # Establish a connection
-
         username = ""
         password = ""
         dsn = ""
@@ -104,11 +159,8 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                 logger.error(return_msg)
                 ok = False
 
-            with oracledb.connect(
-                user=username, password=password, dsn=dsn
-            ) as connection:
+            with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
                 with connection.cursor() as cursor:
-
                     cursor.execute(query)
                     rows = cursor.fetchmany(3)
                     desc = cursor.description
@@ -117,9 +169,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                         logger.error(return_msg)
                         ok = False
                     if len(desc) != 1:
-                        return_msg = (
-                            f"SQL source returns {len(desc)} columns, expected 1."
-                        )
+                        return_msg = f"SQL source returns {len(desc)} columns, expected 1."
                         logger.error(return_msg)
                         ok = False
 
@@ -169,9 +219,7 @@ def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
         full_file_path = os.path.join(base_path, filename_with_extension)
 
         with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
-
             with connection.cursor() as cursor:
-
                 cursor.arraysize = batch_size
                 cursor.execute(query)
 

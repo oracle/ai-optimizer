@@ -90,10 +90,6 @@ class Database(DatabaseAuth):
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
         default=[], description="Vector Storage (read-only)", json_schema_extra={"readOnly": True}
     )
-    selectai: bool = Field(default=False, description="SelectAI Possible")
-    selectai_profiles: Optional[list] = Field(
-        default=[], description="SelectAI Profiles (read-only)", json_schema_extra={"readOnly": True}
-    )
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
 
@@ -246,14 +242,10 @@ class VectorSearchSettings(DatabaseVectorStorage):
     )
 
 
-class SelectAISettings(BaseModel):
-    """Store SelectAI Settings"""
+class McpSettings(BaseModel):
+    """Store MCP Settings"""
 
-    enabled: bool = Field(default=False, description="SelectAI Enabled")
-    profile: Optional[str] = Field(default=None, description="SelectAI Profile")
-    action: Literal["runsql", "showsql", "explainsql", "narrate"] = Field(
-        default="narrate", description="SelectAI Action"
-    )
+    enabled: bool = Field(default=True, description="MCP Tools Enabled")
 
 
 class OciSettings(BaseModel):
@@ -295,7 +287,7 @@ class Settings(BaseModel):
     vector_search: Optional[VectorSearchSettings] = Field(
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
-    selectai: Optional[SelectAISettings] = Field(default_factory=SelectAISettings, description="SelectAI Settings")
+    mcp: Optional[McpSettings] = Field(default_factory=McpSettings, description="MCP Settings")
     testbed: Optional[TestBedSettings] = Field(default_factory=TestBedSettings, description="TestBed Settings")
 
 
@@ -428,7 +420,6 @@ OCIResourceOCID = OracleResource.__annotations__["ocid"]
 PromptNameType = Prompt.__annotations__["name"]
 PromptCategoryType = Prompt.__annotations__["category"]
 PromptPromptType = PromptText.__annotations__["prompt"]
-SelectAIProfileType = Database.__annotations__["selectai_profiles"]
 TestSetsIdType = TestSets.__annotations__["tid"]
 TestSetsNameType = TestSets.__annotations__["name"]
 TestSetDateType = TestSets.__annotations__["created"]

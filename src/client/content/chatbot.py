@@ -62,7 +62,6 @@ def setup_sidebar():
     st_common.tools_sidebar()
     st_common.history_sidebar()
     st_common.ll_sidebar()
-    st_common.selectai_sidebar()
     st_common.vector_search_sidebar()
 
     if not state.enable_client:
