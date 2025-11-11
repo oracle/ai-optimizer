@@ -124,9 +124,8 @@ def custom_tool_node(tools):
             tool_args = tool_call["args"].copy()  # Copy to avoid modifying original
             tool_id = tool_call["id"]
 
-            # Inject thread_id into args for vector store tools
-            vector_tools = {"optimizer_vs_list"}
-            if tool_name in vector_tools:
+            # Inject thread_id into args for native Optimizer tools (not proxies)
+            if tool_name.startswith("optimizer_"):
                 tool_args = {**tool_args, "thread_id": thread_id}
 
             try:

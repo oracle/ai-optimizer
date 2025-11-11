@@ -32,9 +32,9 @@ def show_vector_search_refs(context):
     ref_src = set()
     ref_cols = st.columns([3, 3, 3])
     # Create a button in each column
-    for i, (ref_col, chunk) in enumerate(zip(ref_cols, context[0])):
+    for i, (ref_col, chunk) in enumerate(zip(ref_cols, context["documents"])):
         with ref_col.popover(f"Reference: {i + 1}"):
-            chunk = context[0][i]
+            chunk = context["documents"][i]
             logger.debug("Chunk Content: %s", chunk)
             st.subheader("Reference Text", divider="red")
             st.markdown(chunk["page_content"])
@@ -48,7 +48,7 @@ def show_vector_search_refs(context):
 
     for link in ref_src:
         st.markdown("- " + link)
-    st.markdown(f"**Notes:** Vector Search Query - {context[1]}")
+    st.markdown(f"**Notes:** Vector Search Query - {context['context_input']}")
 
 
 def setup_sidebar():
@@ -88,7 +88,7 @@ def display_chat_history(history):
         if not message["content"]:
             continue
 
-        if message["role"] == "tool" and message["name"] == "oraclevs_tool":
+        if message["role"] == "tool" and message["name"] == "optimizer_vs-retriever":
             vector_search_refs = json.loads(message["content"])
 
         elif message["role"] in ("ai", "assistant"):
