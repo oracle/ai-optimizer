@@ -141,7 +141,12 @@ def custom_tool_node(tools):
                     elif not isinstance(result, str):
                         result = str(result)
                 else:
-                    result = f"Unknown tool: {tool_name}"
+                    logger.error(
+                        "Tool '%s' not found in tool_map. Available tools: %s", tool_name, list(tool_map.keys())
+                    )
+                    result = (
+                        f"Error: Tool '{tool_name}' is not available; it was not properly registered in the graph."
+                    )
 
                 tool_responses.append(ToolMessage(content=result, tool_call_id=tool_id, name=tool_name))
             except Exception as ex:
@@ -166,9 +171,16 @@ async def initialise(state: OptimizerState, config: RunnableConfig) -> Optimizer
 
 
 def _prepare_messages(state: OptimizerState, config: RunnableConfig) -> list:
-    """Prepare messages with system prompt"""
-    messages = state["cleaned_messages"]
+    """Prepare messages with system prompt
+
+    Uses state['messages'] which includes all messages including tool responses,
+    rather than state['cleaned_messages'] which is only set once at initialization.
+    """
+    messages = list(state["messages"])  # Make a copy to avoid modifying state
     sys_prompt = config.get("metadata", {}).get("sys_prompt")
+
+    # Remove any existing SystemMessages to avoid duplicates
+    messages = [m for m in messages if not isinstance(m, SystemMessage)]
 
     if state.get("context_input") and state.get("documents"):
         documents = state["documents"]
@@ -187,7 +199,7 @@ async def _accumulate_tool_calls(chunk, response):
     choice = chunk.choices[0].delta
 
     # Process initial chunk
-    for tool_call_delta in choice.tool_calls:
+    for tool_call_delta in choice.tool_calls or []:
         index = tool_call_delta.index
         accumulated_tool_calls[index] = {
             "id": getattr(tool_call_delta, "id", "") or "",
@@ -200,7 +212,7 @@ async def _accumulate_tool_calls(chunk, response):
         chunk = await anext(response)
         choice = chunk.choices[0].delta
 
-        for tool_call_delta in choice.tool_calls:
+        for tool_call_delta in choice.tool_calls or []:
             index = tool_call_delta.index
             if index in accumulated_tool_calls:
                 if hasattr(tool_call_delta, "id") and tool_call_delta.id:

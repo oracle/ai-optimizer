@@ -459,7 +459,6 @@ def render_evaluation_ui(available_ll_models: list) -> None:
     st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
     st_common.tools_sidebar()
     st_common.ll_sidebar()
-    st_common.selectai_sidebar()
     st_common.vector_search_sidebar()
     st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
     col_left, col_center, _ = st.columns([4, 3, 3])

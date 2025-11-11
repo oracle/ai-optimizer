@@ -249,7 +249,6 @@ def tools_sidebar() -> None:
 
     def _update_set_tool():
         """Update user settings as to which tool is being used"""
-        st.write(state.selected_tool)
         state.client_settings["vector_search"]["enabled"] = "Vector Search" in state.selected_tool
         state.client_settings["nl2sql"]["enabled"] = "NL2SQL" in state.selected_tool
 
@@ -298,14 +297,6 @@ def tools_sidebar() -> None:
         tool_box = [name for name, _, disabled in tools if not disabled]
         if len(tool_box) > 1:
             st.sidebar.subheader("Toolkit", divider="red")
-            tool_index = next(
-                (
-                    i
-                    for i, t in enumerate(tools)
-                    if (t[0] == "Vector Search" and state.client_settings["vector_search"]["enabled"])
-                ),
-                0,
-            )
             st.sidebar.multiselect(
                 "Tool Selection",
                 options=tool_box,
