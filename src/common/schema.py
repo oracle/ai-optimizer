@@ -2,10 +2,10 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql rerank
+# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama showsql rerank
 
 import time
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, List, Any
 from pydantic import BaseModel, Field, PrivateAttr, ConfigDict
 
 from langchain_core.messages import ChatMessage
@@ -31,6 +31,7 @@ class DatabaseVectorStorage(BaseModel):
         json_schema_extra={"readOnly": True},
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
+    description: Optional[str] = Field(default=None, description="Human-readable description of table contents")
     model: Optional[str] = Field(default=None, description="Embedding Model")
     chunk_size: Optional[int] = Field(default=0, description="Chunk Size")
     chunk_overlap: Optional[int] = Field(default=0, description="Chunk Overlap")
@@ -58,14 +59,6 @@ class VectorStoreRefreshStatus(BaseModel):
     total_chunks: int = Field(default=0, description="Total number of chunks processed")
     total_chunks_in_store: int = Field(default=0, description="Total number of chunks in vector store after refresh")
     errors: Optional[list[str]] = Field(default=[], description="Any errors encountered")
-
-
-class DatabaseSelectAIObjects(BaseModel):
-    """Database SelectAI Objects"""
-
-    owner: Optional[str] = Field(default=None, description="Object Owner", json_schema_extra={"readOnly": True})
-    name: Optional[str] = Field(default=None, description="Object Name", json_schema_extra={"readOnly": True})
-    enabled: bool = Field(default=False, description="SelectAI Enabled")
 
 
 class DatabaseAuth(BaseModel):
@@ -224,28 +217,10 @@ class PromptSettings(BaseModel):
     sys: str = Field(default="Basic Example", description="System Prompt Name")
 
 
-class VectorSearchSettings(DatabaseVectorStorage):
-    """Store vector_search Settings incl VectorStorage"""
+class VectorSearchSettings(BaseModel):
+    """Store vector_search Settings"""
 
-    enabled: bool = Field(default=False, description="vector_search Enabled")
     grading: bool = Field(default=True, description="Grade vector_search Results")
-    search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
-        default="Similarity", description="Search Type"
-    )
-    top_k: Optional[int] = Field(default=4, ge=1, le=10000, description="Top K")
-    score_threshold: Optional[float] = Field(
-        default=0.0, ge=0.0, le=1.0, description="Minimum Relevance Threshold (for Similarity Score Threshold)"
-    )
-    fetch_k: Optional[int] = Field(default=20, ge=1, le=10000, description="Fetch K (for Maximal Marginal Relevance)")
-    lambda_mult: Optional[float] = Field(
-        default=0.5, ge=0.0, le=1.0, description="Degree of Diversity (for Maximal Marginal Relevance)"
-    )
-
-
-class NL2SQLSettings(BaseModel):
-    """Store NL2SQLSettings Settings"""
-
-    enabled: bool = Field(default=False, description="NL2SQL Tools Enabled")
 
 
 class OciSettings(BaseModel):
@@ -284,10 +259,10 @@ class Settings(BaseModel):
     )
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
     database: Optional[DatabaseSettings] = Field(default_factory=DatabaseSettings, description="Database Settings")
+    tools_enabled: List[str] = Field(default_factory=list, description="List of enabled MCP tools for this client")
     vector_search: Optional[VectorSearchSettings] = Field(
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
-    nl2sql: Optional[NL2SQLSettings] = Field(default_factory=NL2SQLSettings, description="NL2SQL Settings")
     testbed: Optional[TestBedSettings] = Field(default_factory=TestBedSettings, description="TestBed Settings")
 
 

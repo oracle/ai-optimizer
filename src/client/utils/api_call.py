@@ -49,7 +49,7 @@ def send_request(
     payload: Optional[Dict] = None,
     timeout: int = 60,
     retries: int = 3,
-    backoff_factor: float = 2.0,
+    backoff_factor: float = 1.5,
 ) -> dict:
     """Send API requests with retry logic."""
     url = urljoin(f"{state.server['url']}:{state.server['port']}/", endpoint)
@@ -109,62 +109,36 @@ def send_request(
     raise ApiError("An unexpected error occurred.")
 
 
-def get(endpoint: str, params: Optional[dict] = None, retries: int = 3, backoff_factor: float = 2.0) -> json:
+def get(endpoint: str, params: Optional[dict] = None, **kwargs) -> json:
     """GET Requests"""
-    response = send_request("GET", endpoint, params=params, retries=retries, backoff_factor=backoff_factor)
+    response = send_request("GET", endpoint, params=params, **kwargs)
     return response.json()
 
 
-def post(
-    endpoint: str,
-    params: Optional[dict] = None,
-    payload: Optional[Dict] = None,
-    timeout: int = 60,
-    retries: int = 5,
-    backoff_factor: float = 1.5,
-) -> json:
-    """POST Requests"""
-    response = send_request(
-        "POST",
-        endpoint,
-        params=params,
-        payload=payload,
-        timeout=timeout,
-        retries=retries,
-        backoff_factor=backoff_factor,
-    )
+def post(endpoint: str, params: Optional[dict] = None, payload: Optional[Dict] = None, **kwargs) -> json:
+    """POST request wrapper"""
+    response = send_request("POST", endpoint, params=params, payload=payload, **kwargs)
     return response.json()
 
 
 def patch(
-    endpoint: str,
-    params: Optional[dict] = None,
-    payload: Optional[dict] = None,
-    timeout: int = 60,
-    retries: int = 5,
-    backoff_factor: float = 1.5,
-    toast=True,
-) -> None:
-    """PATCH Requests"""
-    response = send_request(
-        "PATCH",
-        endpoint,
-        params=params,
-        payload=payload,
-        timeout=timeout,
-        retries=retries,
-        backoff_factor=backoff_factor,
-    )
+    endpoint: str, params: Optional[dict] = None, payload: Optional[Dict] = None, toast: bool = True, **kwargs
+) -> json:
+    """PATCH request wrapper"""
+    response = send_request("PATCH", endpoint, params=params, payload=payload, **kwargs)
     if toast:
         st.toast("Update Successful.", icon="✅")
         time.sleep(1)
     return response.json()
 
 
-def delete(endpoint: str, timeout: int = 60, retries: int = 5, backoff_factor: float = 1.5, toast=True) -> None:
-    """DELETE Requests"""
-    response = send_request("DELETE", endpoint, timeout=timeout, retries=retries, backoff_factor=backoff_factor)
+def delete(
+    endpoint: str, params: Optional[dict] = None, payload: Optional[Dict] = None, toast: bool = True, **kwargs
+) -> json:
+    """DELETE request wrapper"""
+    response = send_request("DELETE", endpoint, params=params, payload=payload, **kwargs)
     success = response.json()["message"]
     if toast:
         st.toast(success, icon="✅")
         time.sleep(1)
+    return response.json()

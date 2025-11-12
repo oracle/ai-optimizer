@@ -2,11 +2,10 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore isin mult selectai selectbox
+# spell-checker:ignore isin mult selectbox
 
 from io import BytesIO
 from typing import Any, Union
-import pandas as pd
 
 import streamlit as st
 from streamlit import session_state as state
@@ -71,14 +70,6 @@ def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
         if file.name not in seen_file and not seen_file.add(file.name)
     ]
     return files
-
-
-def switch_prompt(prompt_type: PromptPromptType, prompt_name: PromptNameType) -> None:
-    """Auto Switch Prompts when not set to Custom"""
-    current_prompt = state.client_settings["prompts"][prompt_type]
-    if current_prompt not in ("Custom", prompt_name):
-        state.client_settings["prompts"][prompt_type] = prompt_name
-        st.info(f"Prompt Engineering - {prompt_name} Prompt has been set.", icon="ℹ️")
 
 
 def patch_settings() -> None:
@@ -247,67 +238,48 @@ def ll_sidebar() -> None:
 def tools_sidebar() -> None:
     """Sidebar Settings"""
 
-    def _update_set_tool():
-        """Update user settings as to which tool is being used"""
-        state.client_settings["vector_search"]["enabled"] = "Vector Search" in state.selected_tool
-        state.client_settings["nl2sql"]["enabled"] = "NL2SQL" in state.selected_tool
-
-
-        if state.client_settings["vector_search"]["enabled"]:
-            switch_prompt("sys", "Vector Search Example")
-        else:
-            switch_prompt("sys", "Basic Example")
-
-    disable_vector_search = not is_db_configured()
-
+    state.tool_box = []
     if not is_db_configured():
         logger.debug("Vector Search/NL2SQL Disabled (Database not configured)")
         st.warning("Database is not configured. Disabling Vector Search and NL2SQL tools.", icon="⚠️")
-        state.client_settings["vector_search"]["enabled"] = False
-        state.client_settings["nl2sql"]["enabled"] = False
-        switch_prompt("sys", "Basic Example")
     else:
+        # Add tools to tool_box
+        state.tool_box = ["Vector Search", "NL2SQL"]
+
         # Client Settings
         db_alias = state.client_settings.get("database", {}).get("alias")
 
         # Lookups
         database_lookup = state_configs_lookup("database_configs", "name")
 
-        tools = [
-            ("Vector Search", "Use AI with Unstructured Data", disable_vector_search),
-            ("NL2SQL", "Use AI with Structured Data", disable_vector_search)
-        ]
-
         # Vector Search Requirements
         embed_models_enabled = enabled_models_lookup("embed")
 
         def _disable_vector_search(reason):
             """Disable Vector Store, and make sure prompt is reset"""
-            state.client_settings["vector_search"]["enabled"] = False
             logger.debug("Vector Search Disabled (%s)", reason)
             st.warning(f"{reason}. Disabling Vector Search.", icon="⚠️")
-            tools[:] = [t for t in tools if t[0] != "Vector Search"]
-            switch_prompt("sys", "Basic Example")
+            state.client_settings["tools_enabled"] = [
+                t for t in state.client_settings["tools_enabled"] if t != "Vector Search"
+            ]
+            state.tool_box = [t for t in state.tool_box if t != "Vector Search"]
 
         if not embed_models_enabled:
             _disable_vector_search("No embedding models are configured and/or enabled.")
         elif not database_lookup[db_alias].get("vector_stores"):
             _disable_vector_search("Database has no vector stores")
 
-        tool_box = [name for name, _, disabled in tools if not disabled]
-        if len(tool_box) > 1:
+        if len(state.tool_box) > 1:
             st.sidebar.subheader("Toolkit", divider="red")
             st.sidebar.multiselect(
                 "Tool Selection",
-                options=tool_box,
+                default=state.client_settings["tools_enabled"],
+                options=state.tool_box,
                 placeholder="Language Model Only",
-                # index=tool_index,
                 label_visibility="collapsed",
-                on_change=_update_set_tool,
-                key="selected_tool",
+                key="selected_tools",
             )
-            if state.selected_tool is None:
-                switch_prompt("sys", "Basic Example")
+            state.client_settings["tools_enabled"] = state.selected_tools
 
 
 #####################################################
@@ -357,123 +329,10 @@ def _render_vector_search_options(vector_search_type: str) -> None:
         )
 
 
-def _vs_gen_selectbox(label: str, options: list, key: str):
-    """Handle selectbox with auto-setting for a single unique value"""
-    valid_options = [option for option in options if option != ""]
-    if not valid_options:  # Disable the selectbox if no valid options are available
-        disabled = True
-        selected_value = ""
-    else:
-        disabled = False
-        if len(valid_options) == 1:  # Pre-select if only one unique option
-            selected_value = valid_options[0]
-            logger.debug("Defaulting %s to %s", key, selected_value)
-        else:
-            selected_value = state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
-            # Check if selected_value is actually in valid_options, otherwise reset to empty
-            if selected_value and selected_value not in valid_options:
-                logger.debug("Previously selected %s '%s' no longer available, resetting", key, selected_value)
-                selected_value = ""
-            logger.debug("User selected %s to %s", key, selected_value)
-    return st.sidebar.selectbox(
-        label,
-        options=[""] + valid_options,
-        key=key,
-        index=([""] + valid_options).index(selected_value),
-        disabled=disabled,
-    )
-
-
-def update_filtered_vector_store(vs_df: pd.DataFrame) -> pd.DataFrame:
-    """Dynamically update filtered_df based on selected filters"""
-    embed_models_enabled = enabled_models_lookup("embed")
-    filtered = vs_df.copy()
-    # Remove vector stores where the model is not enabled
-    filtered = vs_df[vs_df["model"].isin(embed_models_enabled.keys())]
-    if state.get("selected_vector_search_alias"):
-        filtered = filtered[filtered["alias"] == state.selected_vector_search_alias]
-    if state.get("selected_vector_search_model"):
-        filtered = filtered[filtered["model"] == state.selected_vector_search_model]
-    if state.get("selected_vector_search_chunk_size"):
-        filtered = filtered[filtered["chunk_size"] == state.selected_vector_search_chunk_size]
-    if state.get("selected_vector_search_chunk_overlap"):
-        filtered = filtered[filtered["chunk_overlap"] == state.selected_vector_search_chunk_overlap]
-    if state.get("selected_vector_search_distance_metric"):
-        filtered = filtered[filtered["distance_metric"] == state.selected_vector_search_distance_metric]
-    if state.get("selected_vector_search_index_type"):
-        filtered = filtered[filtered["index_type"] == state.selected_vector_search_index_type]
-    return filtered
-
-
-def render_vector_store_selection(vs_df: pd.DataFrame) -> None:
-    """Render vector store selection controls and handle state updates."""
-    st.sidebar.subheader("Vector Store", divider="red")
-
-    def reset() -> None:
-        """Reset Vector Store Selections"""
-        for key in state.client_settings["vector_search"]:
-            if key in (
-                "model",
-                "chunk_size",
-                "chunk_overlap",
-                "distance_metric",
-                "vector_store",
-                "alias",
-                "index_type",
-            ):
-                clear_state_key(f"selected_vector_search_{key}")
-                state.client_settings["vector_search"][key] = ""
-
-    filtered_df = update_filtered_vector_store(vs_df)
-
-    # Render selectbox with updated options
-    alias = _vs_gen_selectbox("Select Alias:", filtered_df["alias"].unique().tolist(), "selected_vector_search_alias")
-    embed_model = _vs_gen_selectbox(
-        "Select Model:", filtered_df["model"].unique().tolist(), "selected_vector_search_model"
-    )
-    chunk_size = _vs_gen_selectbox(
-        "Select Chunk Size:",
-        filtered_df["chunk_size"].unique().tolist(),
-        "selected_vector_search_chunk_size",
-    )
-    chunk_overlap = _vs_gen_selectbox(
-        "Select Chunk Overlap:",
-        filtered_df["chunk_overlap"].unique().tolist(),
-        "selected_vector_search_chunk_overlap",
-    )
-    distance_metric = _vs_gen_selectbox(
-        "Select Distance Metric:",
-        filtered_df["distance_metric"].unique().tolist(),
-        "selected_vector_search_distance_metric",
-    )
-    index_type = _vs_gen_selectbox(
-        "Select Index Type:",
-        filtered_df["index_type"].unique().tolist(),
-        "selected_vector_search_index_type",
-    )
-
-    if all([alias, embed_model, chunk_size, chunk_overlap, distance_metric, index_type]):
-        vs = filtered_df["vector_store"].iloc[0]
-        state.client_settings["vector_search"]["vector_store"] = vs
-        state.client_settings["vector_search"]["alias"] = alias
-        state.client_settings["vector_search"]["model"] = embed_model
-        state.client_settings["vector_search"]["chunk_size"] = chunk_size
-        state.client_settings["vector_search"]["chunk_overlap"] = chunk_overlap
-        state.client_settings["vector_search"]["distance_metric"] = distance_metric
-        state.client_settings["vector_search"]["index_type"] = index_type
-    else:
-        st.info("Please select existing Vector Store options to continue.", icon="⬅️")
-        state.enable_client = False
-
-    # Reset button
-    st.sidebar.button("Reset", type="primary", on_click=reset)
-
-
 def vector_search_sidebar() -> None:
     """Vector Search Sidebar Settings, conditional if Database/Embeddings are configured"""
     if state.client_settings["vector_search"]["enabled"]:
         st.sidebar.subheader("Vector Search", divider="red")
-        switch_prompt("sys", "Vector Search Example")
 
         # Search Type Selection
         vector_search_type_list = ["Similarity", "Maximal Marginal Relevance"]
@@ -487,11 +346,3 @@ def vector_search_sidebar() -> None:
 
         # Render search options based on type
         _render_vector_search_options(vector_search_type)
-
-        # Vector Store Section
-        db_alias = state.client_settings.get("database", {}).get("alias")
-        database_lookup = state_configs_lookup("database_configs", "name")
-        vs_df = pd.DataFrame(database_lookup.get(db_alias, {}).get("vector_stores", []))
-
-        # Render vector store selection controls
-        render_vector_store_selection(vs_df)

@@ -51,14 +51,14 @@ def get_server_config() -> Configuration:
     oci_objects = bootstrap.OCI_OBJECTS
     oci_configs = list(oci_objects)
 
-    prompt_objects = bootstrap.PROMPT_OBJECTS
-    prompt_configs = list(prompt_objects)
+    # prompt_objects = bootstrap.PROMPT_OBJECTS
+    # prompt_configs = list(prompt_objects)
 
     full_config = {
         "database_configs": database_configs,
         "model_configs": model_configs,
         "oci_configs": oci_configs,
-        "prompt_configs": prompt_configs,
+        # "prompt_configs": prompt_configs,
     }
     return full_config
 

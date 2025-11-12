@@ -11,6 +11,7 @@ import re
 import uuid
 import os
 import csv
+import json
 
 import oracledb
 import requests
@@ -57,6 +58,7 @@ def get_vs_table(
     distance_metric: str,
     index_type: str = "HNSW",
     alias: str = None,
+    description: str = None,
 ) -> Tuple[str, str]:
     """Return the concatenated VS Table name and comment"""
     store_table = None
@@ -67,76 +69,68 @@ def get_vs_table(
         if alias:
             table_string = f"{alias}_{table_string}"
         store_table = re.sub(r"\W", "_", table_string.upper())
-        store_comment = (
-            f'{{"alias": "{alias}",'
-            f'"model": "{model}",'
-            f'"chunk_size": {chunk_size},'
-            f'"chunk_overlap": {chunk_overlap_ceil},'
-            f'"distance_metric": "{distance_metric}",'
-            f'"index_type": "{index_type}"}}'
-        )
+
+        # Build comment JSON with optional description
+        comment_parts = [
+            f'"alias": "{alias}"',
+            f'"description": "{description}"' if description else '"description": null',
+            f'"model": "{model}"',
+            f'"chunk_size": {chunk_size}',
+            f'"chunk_overlap": {chunk_overlap_ceil}',
+            f'"distance_metric": "{distance_metric}"',
+            f'"index_type": "{index_type}"'
+        ]
+        store_comment = "{" + ", ".join(comment_parts) + "}"
+
         logger.debug("Vector Store Table: %s; Comment: %s", store_table, store_comment)
     except TypeError:
         logger.fatal("Not all required values provided to get Vector Store Table name.")
     return store_table, store_comment
 
 
-def parse_vs_table(table_name: str) -> dict[str, str]:
+def parse_vs_comment(comment: str) -> dict:
     """
-    Parse structured vector table name format (inverse of get_vs_table).
-    Format: [alias_]<embedding_model>_<chunk_size>_<overlap>_<distance_metric>_<index_type>
+    Parse table comment JSON to extract vector store metadata.
+    Returns dict with keys: alias, description, model, chunk_size, chunk_overlap,
+    distance_metric, index_type.
+    Handles backward compatibility for comments without description field.
     """
+
+    default_result = {
+        "alias": None,
+        "description": None,
+        "model": None,
+        "chunk_size": None,
+        "chunk_overlap": None,
+        "distance_metric": None,
+        "index_type": None,
+        "parse_status": "no_comment",
+    }
+
+    if not comment:
+        return default_result
+
     try:
-        parts = table_name.split("_")
+        # Strip "GENAI: " prefix if present
+        json_str = comment
+        if comment.startswith("GENAI: "):
+            json_str = comment[7:]  # len("GENAI: ") = 7
 
-        if len(parts) < 5:
-            return {
-                "alias": None,
-                "embedding_model": table_name,
-                "chunk_size": "UNKNOWN",
-                "overlap": "UNKNOWN",
-                "distance_metric": "UNKNOWN",
-                "index_type": "UNKNOWN",
-                "parse_status": "insufficient_parts",
-            }
-
-        # Last 4 parts are always: chunk_size, overlap, distance_metric, index_type
-        index_type = parts[-1]
-        distance_metric = parts[-2]
-        overlap = parts[-3]
-        chunk_size = parts[-4]
-
-        # Everything else is model (and possibly alias)
-        model_parts = parts[:-4]
-
-        if len(model_parts) == 1:
-            alias = None
-            embedding_model = model_parts[0]
-        else:
-            alias = model_parts[0]
-            embedding_model = "_".join(model_parts[1:])
-
+        parsed = json.loads(json_str)
         return {
-            "alias": alias,
-            "embedding_model": embedding_model,
-            "chunk_size": chunk_size,
-            "overlap": overlap,
-            "distance_metric": distance_metric,
-            "index_type": index_type,
+            "alias": parsed.get("alias"),
+            "description": parsed.get("description"),  # May be None for backward compat
+            "model": parsed.get("model"),
+            "chunk_size": parsed.get("chunk_size"),
+            "chunk_overlap": parsed.get("chunk_overlap"),
+            "distance_metric": parsed.get("distance_metric"),
+            "index_type": parsed.get("index_type"),
             "parse_status": "success",
         }
-
-    except (ValueError, IndexError, AttributeError, TypeError) as ex:
-        logger.warning("Failed to parse table name '%s': %s", table_name, ex)
-        return {
-            "alias": None,
-            "embedding_model": table_name,
-            "chunk_size": "UNKNOWN",
-            "overlap": "UNKNOWN",
-            "distance_metric": "UNKNOWN",
-            "index_type": "UNKNOWN",
-            "parse_status": f"parse_error: {str(ex)}",
-        }
+    except (json.JSONDecodeError, AttributeError, TypeError) as ex:
+        logger.warning("Failed to parse table comment '%s': %s", comment, ex)
+        default_result["parse_status"] = f"parse_error: {str(ex)}"
+        return default_result
 
 
 def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:

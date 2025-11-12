@@ -273,6 +273,16 @@ def load_and_split_url(
 ##########################################
 # Vector Store
 ##########################################
+def update_vs_comment(vector_store: schema.DatabaseVectorStorage, db_details: schema.Database) -> None:
+    """Comment on Existing Vector Store"""
+    db_conn = utils_databases.connect(db_details)
+
+    _, store_comment = functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
+    comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
+    utils_databases.execute_sql(db_conn, comment)
+    utils_databases.disconnect(db_conn)
+
+
 def populate_vs(
     vector_store: schema.DatabaseVectorStorage,
     db_details: schema.Database,
@@ -389,10 +399,7 @@ def populate_vs(
         logger.error("Unable to create vector index: %s", ex)
 
     # Comment the VS table
-    _, store_comment = functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
-    comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
-    utils_databases.execute_sql(db_conn, comment)
-    utils_databases.disconnect(db_conn)
+    update_vs_comment(vector_store, db_conn)
 
 
 ##########################################

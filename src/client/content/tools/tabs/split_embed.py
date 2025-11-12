@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 This script initializes is used for the splitting and chunking process using Streamlit (`st`).
 """
-# spell-checker:ignore selectbox hnsw ivf ocids iterrows
+# spell-checker:ignore selectbox hnsw ivf ocids iterrows isin
 
 import math
 import re
@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-from client.utils import api_call, st_common
+from client.utils import api_call, st_common, vs_selector
 
 from client.content.config.tabs.databases import get_databases
 from client.content.config.tabs.models import get_models
@@ -359,6 +359,16 @@ def _render_populate_vs_section(
 
     embed_request.vector_store = None
     embed_alias_invalid = False
+    if not create_new_vs:
+        # Using existing Vector Store
+        embed_request.alias = state.selected_vector_search_alias
+        embed_request.description = state.selected_vector_search_description
+        embed_request.model = state.selected_vector_search_model
+        embed_request.chunk_size = state.selected_vector_search_chunk_size
+        embed_request.chunk_overlap = state.selected_vector_search_chunk_overlap
+        embed_request.distance_metric = state.selected_vector_search_distance_metric
+        embed_request.index_type = state.selected_vector_search_index_type
+
     if create_new_vs:
         # Creating new vector store: just show text input for new VS name
         embed_request.alias = st.text_input(
@@ -377,14 +387,6 @@ def _render_populate_vs_section(
                 "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
             )
             embed_alias_invalid = True
-    else:
-        # Using existing Vector Store
-        embed_request.alias = state.selected_vector_search_alias
-        embed_request.model = state.selected_vector_search_model
-        embed_request.chunk_size = state.selected_vector_search_chunk_size
-        embed_request.chunk_overlap = state.selected_vector_search_chunk_overlap
-        embed_request.distance_metric = state.selected_vector_search_distance_metric
-        embed_request.index_type = state.selected_vector_search_index_type
 
     if not embed_alias_invalid and embed_request.alias:
         embed_request.vector_store, _ = functions.get_vs_table(
@@ -403,14 +405,37 @@ def _render_populate_vs_section(
         else:
             st.caption("New vector store will be created.")
 
-        # Display files in existing vector store
-        if not create_new_vs and embed_request.vector_store:
-            try:
-                file_list_response = api_call.get(endpoint=f"v1/embed/{embed_request.vector_store}/files")
-                if file_list_response and "files" in file_list_response:
-                    _display_file_list_expander(file_list_response)
-            except api_call.ApiError as e:
-                logger.warning("Could not retrieve file list for %s: %s", embed_request.vector_store, e)
+    # Get Description
+    st.markdown("**Vector Store Description (Provide a description to help the retriever find relevant tables):**")
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        embed_request.description = st.text_input(
+            "Vector Store Description:",
+            max_chars=255,
+            value=embed_request.description,
+            placeholder="Enter a description for the new vector store",
+            label_visibility="collapsed",
+        )
+    with col2:
+        if not create_new_vs and embed_request.description:
+            if st.button(
+                "Update Description",
+                type="secondary",
+                key="comment_update",
+                help="Update the description of an existing Vector Store.",
+            ):
+                _ = api_call.patch(
+                    endpoint="v1/embed/comment", payload={"json": embed_request.model_dump()}, toast=True
+                )
+
+    # Display files in existing vector store
+    if not create_new_vs and embed_request.vector_store:
+        try:
+            file_list_response = api_call.get(endpoint=f"v1/embed/{embed_request.vector_store}/files")
+            if file_list_response and "files" in file_list_response:
+                _display_file_list_expander(file_list_response)
+        except api_call.ApiError as e:
+            logger.warning("Could not retrieve file list for %s: %s", embed_request.vector_store, e)
 
     # Always render rate limit input to ensure session state is initialized
     rate_size, _ = st.columns([0.28, 0.72])
@@ -587,10 +612,14 @@ def display_split_embed() -> None:
 
     # Check for existing Vector Stores with corresponding enabled embedding models
     create_new_vs = True
+
     db_alias = state.client_settings.get("database", {}).get("alias")
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
     vs_df = pd.DataFrame(database_lookup.get(db_alias, {}).get("vector_stores", []))
-    if not vs_df.empty:
+    # Remove VS if its embedding model does not exist/is disabled
+    vs_filtered = vs_df[vs_df["model"].isin(embed_models_enabled.keys())]
+
+    if not vs_filtered.empty:
         # Toggle between creating new vector store or using existing
         create_new_vs = st.toggle(
             "Create New Vector Store",
@@ -602,7 +631,7 @@ def display_split_embed() -> None:
         )
         if not create_new_vs:
             # Render vector store selection controls
-            st_common.render_vector_store_selection(vs_df)
+            vs_selector.render_vector_store_selection(vs_df)
 
     # Render embedding configuration for new VS
     if create_new_vs:

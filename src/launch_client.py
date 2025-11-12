@@ -108,7 +108,7 @@ def main() -> None:
     if "client_settings" not in state:
         try:
             client_id = str(uuid4())
-            _ = api_call.post(endpoint="v1/settings", params={"client": client_id})
+            _ = api_call.post(endpoint="v1/settings", params={"client": client_id}, retries=10, backoff_factor=2)
             init_configs_state(client_id)
         except api_call.ApiError:
             logger.error("Unable to contact API Server; setting as Down!")

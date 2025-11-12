@@ -169,6 +169,23 @@ async def store_local_file(
     stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != ".file_metadata.json"]
     return Response(content=json.dumps(stored_files), media_type="application/json")
 
+@auth.patch(
+    "/comment",
+    description="Update existing Vector Store Comment.",
+)
+async def comment_vs(
+    request: schema.DatabaseVectorStorage,
+    client: schema.ClientIdType = Header(default="server"),    
+) -> Response:
+    """Update the comment on an existing Vector Store"""
+    logger.info("Received comment_vs - request: %s", request)
+    utils_embed.update_vs_comment(
+        vector_store=request,
+        db_details=utils_databases.get_client_database(client),
+    )
+    return Response(
+        content=json.dumps({"message": "Vector Store comment updated."}), media_type="application/json"
+    )
 
 @auth.post(
     "/",

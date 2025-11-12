@@ -37,7 +37,6 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastmcp import FastMCP, settings
 from fastmcp.server.auth import StaticTokenVerifier
-from langgraph.checkpoint.memory import InMemorySaver
 import psutil
 
 # Configuration
@@ -48,9 +47,6 @@ from common import logging_config
 from common._version import __version__
 
 logger = logging_config.logging.getLogger("launch_server")
-
-# Establish LangGraph Short-Term Memory (thread-level persistence)
-graph_memory = InMemorySaver()
 
 
 ##########################################
@@ -152,7 +148,7 @@ async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     # Authenticated
     auth.include_router(api_v1.chat.auth, prefix="/v1/chat", tags=["Chatbot"])
     auth.include_router(api_v1.embed.auth, prefix="/v1/embed", tags=["Embeddings"])
-    auth.include_router(api_v1.prompts.auth, prefix="/v1/prompts", tags=["Tools - Prompts"])
+    auth.include_router(api_v1.mcp_prompts.auth, prefix="/v1/mcp", tags=["Tools - MCP Prompts"])
     auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
     auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Config - Settings"])
     auth.include_router(api_v1.databases.auth, prefix="/v1/databases", tags=["Config - Databases"])
