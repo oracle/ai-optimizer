@@ -24,6 +24,11 @@ from common import logging_config
 
 logger = logging_config.logging.getLogger("mcp.tools.retriever")
 
+# Configuration constants
+TABLE_SELECTION_TEMPERATURE = 0.0  # Deterministic table selection
+TABLE_SELECTION_MAX_TOKENS = 200  # Limit response size for table selection
+DEFAULT_MAX_TABLES = 3  # Default maximum number of tables to search
+
 
 class DatabaseConnectionError(Exception):
     """Raised when database connection is not available"""
@@ -35,7 +40,8 @@ class VectorSearchResponse(BaseModel):
     context_input: str  # The (possibly rephrased) question used for retrieval
     documents: List[dict]  # List of retrieved documents with metadata
     num_documents: int  # Number of documents retrieved
-    searched_tables: List[str]  # List of table names that were searched
+    searched_tables: List[str]  # List of table names that were searched successfully
+    failed_tables: List[str] = []  # List of table names that failed during search
     status: str  # "success" or "error"
     error: Optional[str] = None
 
@@ -72,7 +78,7 @@ def _get_available_vector_stores(thread_id: str):
 
 
 def _select_tables_with_llm(
-    question: str, available_tables: List, ll_config: dict, max_tables: int = 3
+    question: str, available_tables: List, ll_config: dict, max_tables: int = DEFAULT_MAX_TABLES
 ) -> List[str]:
     """Use LLM to select most relevant vector stores for the question
 
@@ -80,7 +86,7 @@ def _select_tables_with_llm(
         question: User's question
         available_tables: List of VectorTable objects
         ll_config: LiteLLM config dict with model and parameters
-        max_tables: Maximum number of tables to select (default: 3)
+        max_tables: Maximum number of tables to select (default: DEFAULT_MAX_TABLES)
 
     Returns:
         List of selected table names
@@ -118,20 +124,17 @@ def _select_tables_with_llm(
     prompt_template = prompt_msg.content.text
 
     # Format the template with actual values
-    prompt = prompt_template.format(
-        tables_info=tables_info,
-        question=question,
-        max_tables=max_tables
-    )
+    prompt = prompt_template.format(tables_info=tables_info, question=question, max_tables=max_tables)
 
     try:
         # Use client's configured LLM for table selection
         # Override temperature and max_tokens for deterministic selection
-        selection_config = {**ll_config, "temperature": 0.0, "max_tokens": 200}
-        response = completion(
-            messages=[{"role": "user", "content": prompt}],
-            **selection_config
-        )
+        selection_config = {
+            **ll_config,
+            "temperature": TABLE_SELECTION_TEMPERATURE,
+            "max_tokens": TABLE_SELECTION_MAX_TOKENS,
+        }
+        response = completion(messages=[{"role": "user", "content": prompt}], **selection_config)
 
         selection_text = response.choices[0].message.content.strip()
         logger.info("LLM table selection response: %s", selection_text)
@@ -245,6 +248,7 @@ def _vs_retrieve_impl(
     Automatically discovers and selects relevant tables based on the question.
     """
     searched_tables = []
+    failed_tables = []
     all_documents = []
 
     try:
@@ -282,6 +286,7 @@ def _vs_retrieve_impl(
                 documents=[],
                 num_documents=0,
                 searched_tables=[],
+                failed_tables=[],
                 status="error",
                 error="No vector stores available with enabled embedding models",
             )
@@ -292,7 +297,9 @@ def _vs_retrieve_impl(
         # Use LLM to select relevant tables
         ll_config = utils_models.get_litellm_config(client_settings.ll_model.model_dump(), oci_config)
         tables_to_search = _select_tables_with_llm(
-            question, available_tables, ll_config, max_tables=3
+            question,
+            available_tables,
+            ll_config,  # Uses DEFAULT_MAX_TABLES
         )
 
         logger.info("Searching %d table(s): %s", len(tables_to_search), tables_to_search)
@@ -313,6 +320,7 @@ def _vs_retrieve_impl(
                 searched_tables.append(table_name)
             except Exception as ex:
                 logger.error("Failed to search table %s: %s", table_name, ex)
+                failed_tables.append(table_name)
                 # Continue searching other tables even if one fails
 
         # Deduplicate documents by content (keep highest scoring)
@@ -331,17 +339,21 @@ def _vs_retrieve_impl(
             documents=[],
             num_documents=0,
             searched_tables=searched_tables,
+            failed_tables=failed_tables,
             status="error",
             error=f"Vector search failed: {str(ex)}",
         )
 
     logger.info("Found %d documents from %d table(s)", len(all_documents), len(searched_tables))
+    if failed_tables:
+        logger.warning("Failed to search %d table(s): %s", len(failed_tables), failed_tables)
 
     return VectorSearchResponse(
         context_input=question,
         documents=[vars(doc) for doc in all_documents],
         num_documents=len(all_documents),
         searched_tables=searched_tables,
+        failed_tables=failed_tables,
         status="success",
     )
 

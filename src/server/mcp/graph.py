@@ -158,7 +158,8 @@ def should_continue(state: OptimizerState) -> Literal["vs_orchestrate", "tools",
     if not messages or not hasattr(messages[-1], "tool_calls") or not messages[-1].tool_calls:
         return END
 
-    tool_call_ids = {tc.get("id") for tc in messages[-1].tool_calls if tc.get("id")}
+    # Extract tool call IDs with validation
+    tool_call_ids = {tc.get("id") for tc in messages[-1].tool_calls if isinstance(tc, dict) and tc.get("id")}
     responded_tool_ids = {
         msg.tool_call_id for msg in messages if isinstance(msg, ToolMessage) and hasattr(msg, "tool_call_id")
     }
@@ -166,7 +167,8 @@ def should_continue(state: OptimizerState) -> Literal["vs_orchestrate", "tools",
     if not tool_call_ids - responded_tool_ids:
         return END
 
-    tool_names = {tc.get("name") for tc in messages[-1].tool_calls if tc.get("name")}
+    # Extract tool names with validation
+    tool_names = {tc.get("name") for tc in messages[-1].tool_calls if isinstance(tc, dict) and tc.get("name")}
     vs_tools = {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grading"}
 
     # Route to VS orchestration if any VS tool called

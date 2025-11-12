@@ -30,6 +30,10 @@ from common import logging_config
 
 logger = logging_config.logging.getLogger("api.utils.chat")
 
+# Configuration constants
+GRAPH_RECURSION_LIMIT = 50  # Maximum depth for LangGraph execution
+STREAM_FINISHED_MARKER = "[stream_finished]"  # Marker to signal end of streaming
+
 
 def _get_system_prompt(tools_enabled: list) -> str:
     """Get appropriate system prompt based on enabled tools"""
@@ -99,7 +103,7 @@ async def completion_generator(
         "stream_mode": "custom",
         "input": {"messages": [HumanMessage(content=request.messages[0].content)]},
         "config": RunnableConfig(
-            recursion_limit=50,
+            recursion_limit=GRAPH_RECURSION_LIMIT,
             configurable={"thread_id": client, "ll_config": ll_config},
             metadata={
                 "use_history": client_settings.ll_model.chat_history,
@@ -125,7 +129,7 @@ async def completion_generator(
     if tool_support_error:
         if call == "streams":
             yield tool_support_error.encode("utf-8")
-            yield "[stream_finished]"
+            yield STREAM_FINISHED_MARKER
         else:
             yield {"choices": [{"message": {"role": "assistant", "content": tool_support_error}}]}
         return
@@ -147,7 +151,7 @@ async def completion_generator(
             if "completion" in output:
                 final_response = output["completion"]
         if call == "streams":
-            yield "[stream_finished]"  # This will break the Chatbot loop
+            yield STREAM_FINISHED_MARKER  # This will break the Chatbot loop
         if call == "completions" and final_response is not None:
             yield final_response  # This will be captured for ChatResponse
     except Exception as ex:
@@ -158,6 +162,6 @@ async def completion_generator(
         )
         if call == "streams":
             yield error_text.encode("utf-8")
-            yield "[stream_finished]"
+            yield STREAM_FINISHED_MARKER
         else:
             yield {"choices": [{"message": {"role": "assistant", "content": error_text}}]}
