@@ -10,11 +10,11 @@ from pydantic import BaseModel
 
 from litellm import acompletion
 from litellm.exceptions import APIConnectionError
-from langchain_core.prompts import PromptTemplate
 
 import server.api.core.settings as core_settings
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
+import server.mcp.prompts.defaults as grading_prompts
 
 from common import logging_config
 
@@ -39,28 +39,16 @@ def _format_documents(documents: List[dict]) -> str:
 
 async def _grade_documents_with_llm(question: str, documents_str: str, ll_config: dict) -> str:
     """Grade documents using LLM"""
-    grade_template = """
-    You are a Grader assessing the relevance of retrieved text to the user's input.
-    You MUST respond with a only a binary score of 'yes' or 'no'.
-    If you DO find ANY relevant retrieved text to the user's input, return 'yes' immediately and stop grading.
-    If you DO NOT find relevant retrieved text to the user's input, return 'no'.
-    Here is the user input:
-    -------
-    {question}
-    -------
-    Here is the retrieved text:
-    -------
-    {documents}
-    """
-    grade_prompt = PromptTemplate(
-        template=grade_template,
-        input_variables=["question", "documents"],
-    )
-    formatted_prompt = grade_prompt.format(question=question, documents=documents_str)
+    # Get grading prompt (checks cache for overrides first)
+    prompt_msg = grading_prompts.get_prompt_with_override("optimizer_vs-grading")
+    grade_template = prompt_msg.content.text
+
+    # Format the template with actual values
+    formatted_prompt = grade_template.format(question=question, documents=documents_str)
     logger.debug("Grading Prompt: %s", formatted_prompt)
 
     response = await acompletion(
-        messages=[{"role": "system", "content": formatted_prompt}],
+        messages=[{"role": prompt_msg.role, "content": formatted_prompt}],
         stream=False,
         **ll_config,
     )
@@ -142,7 +130,7 @@ async def register(mcp, auth):
     """Invoke Registration of Vector Search Tools"""
 
     @mcp.tool(name="optimizer_vs-grading")
-    @auth.get("/vs_grading", operation_id="vs_grading")
+    @auth.get("vs_grading", operation_id="vs_grading", include_in_schema=False)
     async def grading(
         thread_id: str,
         question: str,

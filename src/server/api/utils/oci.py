@@ -117,11 +117,11 @@ def init_client(
     oci.generative_ai.GenerativeAiClient,
 ]:
     """Initialize OCI Client with either user or Token"""
-    # connection timeout to 1 seconds and the read timeout to 60 seconds
+    # connection timeout to 5 seconds and the read timeout to 180 seconds
     # Retries and timeouts should be handled on the client side otherwise they conflict
     client_kwargs = {
         "retry_strategy": oci.retry.NoneRetryStrategy(),
-        "timeout": (1, 180),
+        "timeout": (5, 180),
     }
 
     # OCI GenAI (for model calling)

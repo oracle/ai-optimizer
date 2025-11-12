@@ -13,16 +13,17 @@ from langchain_core.runnables import RunnableConfig
 
 from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, MessagesState, START, END
+from langgraph.checkpoint.memory import InMemorySaver
 
 from litellm import acompletion
 from litellm.exceptions import APIConnectionError
-
-from launch_server import graph_memory
 
 from common import logging_config
 
 logger = logging_config.logging.getLogger("mcp.graph")
 
+# LangGraph Short-Term Memory (thread-level persistence)
+graph_memory = InMemorySaver()
 
 def _parse_tool_arguments(arguments: str) -> dict:
     """Parse tool call arguments from string to dict"""
@@ -124,8 +125,9 @@ def custom_tool_node(tools):
             tool_args = tool_call["args"].copy()  # Copy to avoid modifying original
             tool_id = tool_call["id"]
 
-            # Inject thread_id into args for native Optimizer tools (not proxies)
-            if tool_name.startswith("optimizer_"):
+            # Inject thread_id into args for vector store tools
+            vector_tools = {"optimizer_vs_list"}
+            if tool_name in vector_tools:
                 tool_args = {**tool_args, "thread_id": thread_id}
 
             try:
@@ -140,12 +142,7 @@ def custom_tool_node(tools):
                     elif not isinstance(result, str):
                         result = str(result)
                 else:
-                    logger.error(
-                        "Tool '%s' not found in tool_map. Available tools: %s", tool_name, list(tool_map.keys())
-                    )
-                    result = (
-                        f"Error: Tool '{tool_name}' is not available; it was not properly registered in the graph."
-                    )
+                    result = f"Unknown tool: {tool_name}"
 
                 tool_responses.append(ToolMessage(content=result, tool_call_id=tool_id, name=tool_name))
             except Exception as ex:
@@ -169,93 +166,38 @@ async def initialise(state: OptimizerState, config: RunnableConfig) -> Optimizer
     return {"cleaned_messages": cleaned_messages}
 
 
-def _prepare_messages(state: OptimizerState, config: RunnableConfig) -> list:
-    """Prepare messages with system prompt
-
-    Uses state['messages'] which includes all messages including tool responses,
-    rather than state['cleaned_messages'] which is only set once at initialization.
-    """
-    messages = list(state["messages"])  # Make a copy to avoid modifying state
-    sys_prompt = config.get("metadata", {}).get("sys_prompt")
-
-    # Remove any existing SystemMessages to avoid duplicates
-    messages = [m for m in messages if not isinstance(m, SystemMessage)]
-
-    if state.get("context_input") and state.get("documents"):
-        documents = state["documents"]
-        new_prompt = SystemMessage(content=f"{sys_prompt.prompt}\n {documents}")
-    else:
-        new_prompt = SystemMessage(content=f"{sys_prompt.prompt}")
-
-    messages.insert(0, new_prompt)
-    logger.info("Sending Messages: %s", messages)
-    return messages
-
-
-async def _accumulate_tool_calls(chunk, response):
-    """Accumulate tool call deltas until complete"""
-    accumulated_tool_calls = {}
-    choice = chunk.choices[0].delta
-
-    # Process initial chunk
-    for tool_call_delta in choice.tool_calls or []:
-        index = tool_call_delta.index
-        accumulated_tool_calls[index] = {
-            "id": getattr(tool_call_delta, "id", "") or "",
-            "name": getattr(tool_call_delta.function, "name", "") or "",
-            "arguments": getattr(tool_call_delta.function, "arguments", "") or "",
-        }
-
-    # Continue accumulating until complete
-    while chunk.choices[0].finish_reason != "tool_calls":
-        chunk = await anext(response)
-        choice = chunk.choices[0].delta
-
-        for tool_call_delta in choice.tool_calls or []:
-            index = tool_call_delta.index
-            if index in accumulated_tool_calls:
-                if hasattr(tool_call_delta, "id") and tool_call_delta.id:
-                    accumulated_tool_calls[index]["id"] = tool_call_delta.id
-                if hasattr(tool_call_delta.function, "name") and tool_call_delta.function.name:
-                    accumulated_tool_calls[index]["name"] = tool_call_delta.function.name
-                if hasattr(tool_call_delta.function, "arguments") and tool_call_delta.function.arguments:
-                    accumulated_tool_calls[index]["arguments"] += tool_call_delta.function.arguments
-
-    # Build complete tool calls
-    tool_calls = [
-        {
-            "name": data["name"],
-            "args": _parse_tool_arguments(data["arguments"]) or {},
-            "id": data["id"],
-            "type": "tool_call",
-        }
-        for data in accumulated_tool_calls.values()
-    ]
-    return tool_calls
-
-
-def _build_final_response(full_response: list, collected_content: list):
-    """Build final response from accumulated chunks"""
-    last_chunk = full_response[-1]
-    full_text = "".join(collected_content)
-    last_chunk.object = "chat.completion"
-    last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
-    delattr(last_chunk.choices[0], "delta")
-    last_chunk.choices[0].finish_reason = "stop"
-    return last_chunk.model_dump()
-
-
 async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
     """LiteLLM streaming wrapper"""
     writer = get_stream_writer()
     full_response = []
     collected_content = []
 
-    try:
-        # Prepare messages with system prompt
-        messages = _prepare_messages(state, config)
+    # Use full messages if we're coming from a tool execution (has ToolMessage)
+    # Otherwise use cleaned_messages from initialization
+    if state.get("messages") and any(isinstance(msg, ToolMessage) for msg in state["messages"]):
+        # We're in a tool loop - use all messages including tool responses
+        messages = copy.deepcopy(state["messages"])
+        # Remove System Prompt from top if it exists (will be re-added below)
+        if messages and isinstance(messages[0], SystemMessage):
+            messages.pop(0)
+    else:
+        # First pass - use cleaned messages
+        messages = state["cleaned_messages"]
 
-        # Get LLM config and tools
+    try:
+        # Get our Prompt and insert
+        sys_prompt = config.get("metadata", {}).get("sys_prompt")
+        if state.get("context_input") and state.get("documents"):
+            documents = state["documents"]
+            new_prompt = SystemMessage(content=f"{sys_prompt.content.text}\n {documents}")
+            logger.info("Using system prompt with documents: %s", sys_prompt.content.text)
+        else:
+            new_prompt = SystemMessage(content=f"{sys_prompt.content.text}")
+            logger.info("Using system prompt: %s", sys_prompt.content.text)
+        messages.insert(0, new_prompt)
+        logger.info("Sending Messages: %s", messages)
+
+        # Await the asynchronous completion with streaming enabled
         ll_raw = config["configurable"]["ll_config"]
         tools = config["metadata"].get("tools", [])
 
@@ -263,7 +205,6 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
         logger.info("Tools being sent: %s", tools)
         logger.info("Model: %s", ll_raw.get("model", ""))
 
-        # Start streaming completion
         try:
             response = await acompletion(
                 messages=convert_to_openai_messages(messages), stream=True, **ll_raw, tools=tools
@@ -271,22 +212,56 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
         except Exception as ex:
             logger.error("Error during completion: %s", ex)
             raise ex
-
-        # Process streaming response
         async for chunk in response:
-            logger.info("Stream Response: %s", response)
-            logger.info("Stream Chunk: %s", chunk)
+            logger.debug("Stream Response: %s", response)
+            logger.debug("Stream Chunk: %s", chunk)
             choice = chunk.choices[0].delta
 
-            # Check for immediate empty response
+            # Check if the response finished immediately without content
             if chunk.choices[0].finish_reason == "stop" and choice.content is None and not collected_content:
-                logger.info("Stream finished immediately without content")
+                logger.info("Stream finished immediately without content, likely an empty response")
                 return {"messages": [AIMessage(content="I'm sorry, I was unable to produce a response.")]}
 
-            # Handle tool call streaming
+            # Handle tool call streaming - once detected, accumulate until complete
             if choice.tool_calls:
                 logger.info("Tool call detected, accumulating chunks...")
-                tool_calls = await _accumulate_tool_calls(chunk, response)
+                accumulated_tool_calls = {}
+
+                # Process this first chunk
+                for tool_call_delta in choice.tool_calls:
+                    index = tool_call_delta.index
+                    accumulated_tool_calls[index] = {
+                        "id": getattr(tool_call_delta, "id", "") or "",
+                        "name": getattr(tool_call_delta.function, "name", "") or "",
+                        "arguments": getattr(tool_call_delta.function, "arguments", "") or "",
+                    }
+
+                # Continue accumulating until tool calls are complete
+                while chunk.choices[0].finish_reason != "tool_calls":
+                    chunk = await anext(response)
+                    choice = chunk.choices[0].delta
+
+                    if choice.tool_calls:
+                        for tool_call_delta in choice.tool_calls:
+                            index = tool_call_delta.index
+                            if index in accumulated_tool_calls:
+                                if hasattr(tool_call_delta, "id") and tool_call_delta.id:
+                                    accumulated_tool_calls[index]["id"] = tool_call_delta.id
+                                if hasattr(tool_call_delta.function, "name") and tool_call_delta.function.name:
+                                    accumulated_tool_calls[index]["name"] = tool_call_delta.function.name
+                                if hasattr(tool_call_delta.function, "arguments") and tool_call_delta.function.arguments:
+                                    accumulated_tool_calls[index]["arguments"] += tool_call_delta.function.arguments
+
+                # Process the complete tool calls
+                tool_calls = [
+                    {
+                        "name": data["name"],
+                        "args": _parse_tool_arguments(data["arguments"]) or {},
+                        "id": data["id"],
+                        "type": "tool_call",
+                    }
+                    for data in accumulated_tool_calls.values()
+                ]
                 return {"messages": [AIMessage(content="", tool_calls=tool_calls)]}
 
             # Handle content streaming
@@ -296,21 +271,24 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
 
             full_response.append(chunk)
 
-        # Build and send final response
+        # After loop: update last chunk to a full completion with usage details
         if full_response:
-            final_response = _build_final_response(full_response, collected_content)
-            writer({"completion": final_response})
+            last_chunk = full_response[-1]
             full_text = "".join(collected_content)
-        else:
-            full_text = ""
+            last_chunk.object = "chat.completion"
+            last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
+            delattr(last_chunk.choices[0], "delta")
+            last_chunk.choices[0].finish_reason = "stop"
+            final_response = last_chunk.model_dump()
+            logger.info("Final completion response: %s", final_response)
 
+            writer({"completion": final_response})
     except APIConnectionError as ex:
         logger.error(ex)
         full_text = "I'm not able to contact the model API; please validate its configuration/availability."
     except Exception as ex:
         logger.error(ex)
         full_text = f"I'm sorry, an unknown completion problem occurred: {str(ex).split('Traceback', 1)[0]}"
-
     return {"messages": [AIMessage(content=full_text)]}
 
 

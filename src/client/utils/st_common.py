@@ -12,7 +12,6 @@ from streamlit import session_state as state
 
 from client.utils import api_call
 from common import logging_config, help_text
-from common.schema import PromptPromptType, PromptNameType
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
@@ -331,7 +330,7 @@ def _render_vector_search_options(vector_search_type: str) -> None:
 
 def vector_search_sidebar() -> None:
     """Vector Search Sidebar Settings, conditional if Database/Embeddings are configured"""
-    if state.client_settings["vector_search"]["enabled"]:
+    if "Vector Search" in state.client_settings["tools_enabled"]:
         st.sidebar.subheader("Vector Search", divider="red")
 
         # Search Type Selection

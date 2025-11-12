@@ -7,7 +7,6 @@ This file is being used in APIs, and not the backend.py file.
 # spell-checker:ignore noauth fastmcp healthz
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastmcp import FastMCP, Client
-from fastmcp.prompts.prompt import PromptMessage, TextContent
 import mcp
 
 from server.api.v1.mcp import get_mcp
@@ -42,16 +41,16 @@ async def mcp_list_prompts(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]
 
 
 @auth.get(
-    "/prompts/{prompt_name}",
+    "/prompts/{name}",
     description="Get MCP prompt",
     response_model=mcp.types.GetPromptResult,
 )
-async def mcp_get_prompt(prompt_name: str, mcp_engine: FastMCP = Depends(get_mcp)) -> mcp.types.GetPromptResult:
+async def mcp_get_prompt(name: str, mcp_engine: FastMCP = Depends(get_mcp)) -> mcp.types.GetPromptResult:
     """Get MCP Prompts"""
     try:
         client = Client(mcp_engine)
         async with client:
-            prompt = await client.get_prompt(name=prompt_name)
+            prompt = await client.get_prompt(name=name)
             logger.debug("MCP Resources: %s", prompt)
     finally:
         await client.close()

@@ -221,6 +221,17 @@ class VectorSearchSettings(BaseModel):
     """Store vector_search Settings"""
 
     grading: bool = Field(default=True, description="Grade vector_search Results")
+    search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
+        default="Similarity", description="Search Type"
+    )
+    top_k: Optional[int] = Field(default=4, ge=1, le=10000, description="Top K")
+    score_threshold: Optional[float] = Field(
+        default=0.0, ge=0.0, le=1.0, description="Minimum Relevance Threshold (for Similarity Score Threshold)"
+    )
+    fetch_k: Optional[int] = Field(default=20, ge=1, le=10000, description="Fetch K (for Maximal Marginal Relevance)")
+    lambda_mult: Optional[float] = Field(
+        default=0.5, ge=0.0, le=1.0, description="Degree of Diversity (for Maximal Marginal Relevance)"
+    )
 
 
 class OciSettings(BaseModel):

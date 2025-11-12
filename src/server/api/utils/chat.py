@@ -63,7 +63,7 @@ async def completion_generator(
     }
 
     # Get System Prompt
-    kwargs["config"]["metadata"]["sys_prompt"] = default_prompts.basic_completion()
+    kwargs["config"]["metadata"]["sys_prompt"] = default_prompts.get_prompt_with_override("optimizer_basic-default")
 
     # Define MCP config and tools (this is to create conditional nodes in the graph)
     mcp_client = MultiServerMCPClient(

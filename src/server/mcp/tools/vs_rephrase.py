@@ -11,12 +11,12 @@ from pydantic import BaseModel
 from litellm import completion
 from litellm.exceptions import APIConnectionError
 from langchain_core.prompts import PromptTemplate
-from fastmcp import Client
 
 import server.api.core.settings as core_settings
-import server.api.core.prompts as core_prompts
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
+
+import server.mcp.prompts.defaults as default_prompts
 
 from common import logging_config
 
@@ -31,40 +31,6 @@ class RephrasePrompt(BaseModel):
     was_rephrased: bool
     status: str  # "success" or "error"
     error: Optional[str] = None
-
-
-async def _get_prompt_content(mcp, user_ctx_prompt: str) -> Optional[str]:
-    """Get prompt content from MCP or core prompts"""
-    ctx_prompt_content = None
-
-    # Try to get MCP prompt first
-    if user_ctx_prompt.startswith("optimizer_"):
-        try:
-            client = Client(mcp)
-            async with client:
-                prompt_result = await client.get_prompt(name=user_ctx_prompt)
-                # Extract text from the prompt messages
-                if prompt_result.messages:
-                    for message in prompt_result.messages:
-                        if hasattr(message.content, "text"):
-                            ctx_prompt_content = message.content.text
-                            break
-            await client.close()
-            logger.info("Retrieved MCP prompt: %s", user_ctx_prompt)
-        except Exception as ex:
-            logger.warning(
-                "Failed to get MCP prompt '%s', falling back to core prompts: %s",
-                user_ctx_prompt,
-                ex,
-            )
-
-    # Fall back to core prompts if MCP prompt not available
-    if not ctx_prompt_content:
-        ctx_prompt_obj = core_prompts.get_prompts(category="ctx", name=user_ctx_prompt)
-        if ctx_prompt_obj:
-            ctx_prompt_content = ctx_prompt_obj.prompt
-
-    return ctx_prompt_content
 
 
 async def _perform_rephrase(question: str, chat_history: List[str], ctx_prompt_content: str, ll_config: dict) -> str:
@@ -103,7 +69,7 @@ async def register(mcp, auth):
     """Invoke Registration of Context Rephrasing"""
 
     @mcp.tool(name="optimizer_vs-rephrase")
-    @auth.get("/vs_rephrase", operation_id="vs_rephrase")
+    @auth.get("/vs_rephrase", operation_id="vs_rephrase", include_in_schema=False)
     async def rephrase(
         thread_id: str,
         question: str,
@@ -152,19 +118,10 @@ async def register(mcp, auth):
 
             # Only rephrase if history is enabled and there's actual history
             if use_history and chat_history and len(chat_history) > 2:
-                user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
+                # Get context prompt (checks cache for overrides first)
+                ctx_prompt_msg = default_prompts.get_prompt_with_override("optimizer_context-default")
+                ctx_prompt_content = ctx_prompt_msg.content.text
 
-                # Get prompt content (MCP or core)
-                ctx_prompt_content = await _get_prompt_content(mcp, user_ctx_prompt)
-
-                if not ctx_prompt_content:
-                    logger.warning("No context prompt found, skipping rephrase")
-                    return RephrasePrompt(
-                        original_prompt=question,
-                        rephrased_prompt=question,
-                        was_rephrased=False,
-                        status="success",
-                    )
                 # Get LLM config
                 oci_config = utils_oci.get(client=thread_id)
                 ll_model = client_settings.ll_model.model_dump()
@@ -191,13 +148,6 @@ async def register(mcp, auth):
                         error=f"API connection failed: {str(ex)}",
                     )
 
-            # No rephrasing occurred
-            return RephrasePrompt(
-                original_prompt=question,
-                rephrased_prompt=question,
-                was_rephrased=False,
-                status="success",
-            )
         except Exception as ex:
             logger.error("Rephrase failed: %s", ex)
             return RephrasePrompt(
