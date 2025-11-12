@@ -29,6 +29,13 @@ from common import logging_config
 logger = logging_config.logging.getLogger("api.utils.chat")
 
 
+def _get_system_prompt(tools_enabled: list) -> str:
+    """Get appropriate system prompt based on enabled tools"""
+    if tools_enabled:
+        return default_prompts.get_prompt_with_override("optimizer_tools-default")
+    return default_prompts.get_prompt_with_override("optimizer_basic-default")
+
+
 async def completion_generator(
     client: schema.ClientIdType, request: schema.ChatRequest, call: Literal["completions", "streams"]
 ) -> AsyncGenerator[str, None]:
@@ -62,8 +69,8 @@ async def completion_generator(
         ),
     }
 
-    # Get System Prompt
-    kwargs["config"]["metadata"]["sys_prompt"] = default_prompts.get_prompt_with_override("optimizer_basic-default")
+    # Get System Prompt - use tools-default if any tools are enabled
+    kwargs["config"]["metadata"]["sys_prompt"] = _get_system_prompt(client_settings.tools_enabled)
 
     # Define MCP config and tools (this is to create conditional nodes in the graph)
     mcp_client = MultiServerMCPClient(
@@ -124,12 +131,26 @@ async def completion_generator(
     agent: CompiledStateGraph = graph.main(graph_tools)
 
     final_response = None
-    async for output in agent.astream(**kwargs):
-        if "stream" in output:
-            yield output["stream"].encode("utf-8")
-        if "completion" in output:
-            final_response = output["completion"]
-    if call == "streams":
-        yield "[stream_finished]"  # This will break the Chatbot loop
-    if call == "completions" and final_response is not None:
-        yield final_response  # This will be captured for ChatResponse
+    try:
+        async for output in agent.astream(**kwargs):
+            if "stream" in output:
+                yield output["stream"].encode("utf-8")
+            if "completion" in output:
+                final_response = output["completion"]
+        if call == "streams":
+            yield "[stream_finished]"  # This will break the Chatbot loop
+        if call == "completions" and final_response is not None:
+            yield final_response  # This will be captured for ChatResponse
+    except Exception as ex:
+        # Graph execution failed - return friendly error message
+        logger.exception("Graph execution failed")
+        error_text = (
+            f"I'm sorry, I've run into a problem: {str(ex)}\n\n"
+            "Please raise an issue at: https://github.com/oracle/ai-optimizer/issues"
+        )
+        if call == "streams":
+            yield error_text.encode("utf-8")
+            yield "[stream_finished]"
+        elif call == "completions":
+            # Return as completion response
+            yield {"choices": [{"message": {"role": "assistant", "content": error_text}}]}

@@ -155,7 +155,7 @@ async def register(mcp, auth):
             model: Name and version of the language model being used (optional)
 
         Returns:
-            Dictionary containing:
+            VectorGradeResponse object containing:
             - relevant: "yes" or "no" indicating if documents are relevant
             - formatted_documents: Documents formatted as concatenated string
                 (if relevant)

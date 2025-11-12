@@ -35,20 +35,13 @@ class RephrasePrompt(BaseModel):
 
 async def _perform_rephrase(question: str, chat_history: List[str], ctx_prompt_content: str, ll_config: dict) -> str:
     """Perform the actual rephrasing using LLM"""
-    ctx_template = """
-        {prompt}
-        Here is the context and history:
-        -------
-        {history}
-        -------
-        Here is the user input:
-        -------
-        {question}
-        -------
-        Return ONLY the rephrased query without any explanation or additional text.
-    """
+    # Get rephrase prompt template from prompts module (checks cache for overrides)
+    rephrase_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-rephrase")
+    rephrase_template_text = rephrase_prompt_msg.content.text
+
+    # Format the template with actual values
     rephrase_template = PromptTemplate(
-        template=ctx_template,
+        template=rephrase_template_text,
         input_variables=["prompt", "history", "question"],
     )
     formatted_prompt = rephrase_template.format(
@@ -58,11 +51,86 @@ async def _perform_rephrase(question: str, chat_history: List[str], ctx_prompt_c
     )
 
     response = completion(
-        messages=[{"role": "system", "content": formatted_prompt}],
+        messages=[{"role": rephrase_prompt_msg.role, "content": formatted_prompt}],
         stream=False,
         **ll_config,
     )
     return response.choices[0].message.content
+
+
+async def _vs_rephrase_impl(
+    thread_id: str,
+    question: str,
+    chat_history: Optional[List[str]],
+    mcp_client: str,
+    model: str,
+) -> RephrasePrompt:
+    """Internal implementation for rephrasing questions
+
+    Callable directly by graph orchestration without going through MCP tool layer.
+    """
+    try:
+        logger.info(
+            "Rephrasing question (Thread ID: %s, MCP: %s, Model: %s)",
+            thread_id,
+            mcp_client,
+            model,
+        )
+
+        # Get client settings
+        client_settings = core_settings.get_client_settings(thread_id)
+        use_history = client_settings.ll_model.chat_history
+
+        # Only rephrase if history is enabled and there's actual history
+        if use_history and chat_history and len(chat_history) > 2:
+            # Get context prompt (checks cache for overrides first)
+            ctx_prompt_msg = default_prompts.get_prompt_with_override("optimizer_context-default")
+            ctx_prompt_content = ctx_prompt_msg.content.text
+
+            # Get LLM config
+            oci_config = utils_oci.get(client=thread_id)
+            ll_model = client_settings.ll_model.model_dump()
+            ll_config = utils_models.get_litellm_config(ll_model, oci_config)
+
+            try:
+                rephrased = await _perform_rephrase(question, chat_history, ctx_prompt_content, ll_config)
+
+                if rephrased != question:
+                    logger.info("Rephrased: '%s' -> '%s'", question, rephrased)
+                    return RephrasePrompt(
+                        original_prompt=question,
+                        rephrased_prompt=rephrased,
+                        was_rephrased=True,
+                        status="success",
+                    )
+            except APIConnectionError as ex:
+                logger.error("Failed to rephrase: %s", str(ex))
+                return RephrasePrompt(
+                    original_prompt=question,
+                    rephrased_prompt=question,
+                    was_rephrased=False,
+                    status="error",
+                    error=f"API connection failed: {str(ex)}",
+                )
+
+        # No rephrasing needed or performed
+        logger.info("No rephrasing needed or history insufficient")
+        return RephrasePrompt(
+            original_prompt=question,
+            rephrased_prompt=question,
+            was_rephrased=False,
+            status="success",
+        )
+
+    except Exception as ex:
+        logger.error("Rephrase failed: %s", ex)
+        return RephrasePrompt(
+            original_prompt=question,
+            rephrased_prompt=question,
+            was_rephrased=False,
+            status="error",
+            error=str(ex),
+        )
 
 
 async def register(mcp, auth):
@@ -95,65 +163,14 @@ async def register(mcp, auth):
             model: Name and version of the language model being used (optional)
 
         Returns:
-            Dictionary containing:
-            - original_question: The original user question
-            - rephrased_question: The contextualized/rephrased question (may be
+            RephrasePrompt object containing:
+            - original_prompt: The original user question
+            - rephrased_prompt: The contextualized/rephrased question (may be
                 same as original)
             - was_rephrased: Boolean indicating if the question was actually
                 rephrased
             - status: "success" or "error"
             - error: Error message if status is "error" (optional)
         """
-        try:
-            logger.info(
-                "Rephrasing question (Thread ID: %s, MCP: %s, Model: %s)",
-                thread_id,
-                mcp_client,
-                model,
-            )
-
-            # Get client settings
-            client_settings = core_settings.get_client_settings(thread_id)
-            use_history = client_settings.ll_model.chat_history
-
-            # Only rephrase if history is enabled and there's actual history
-            if use_history and chat_history and len(chat_history) > 2:
-                # Get context prompt (checks cache for overrides first)
-                ctx_prompt_msg = default_prompts.get_prompt_with_override("optimizer_context-default")
-                ctx_prompt_content = ctx_prompt_msg.content.text
-
-                # Get LLM config
-                oci_config = utils_oci.get(client=thread_id)
-                ll_model = client_settings.ll_model.model_dump()
-                ll_config = utils_models.get_litellm_config(ll_model, oci_config)
-
-                try:
-                    rephrased = await _perform_rephrase(question, chat_history, ctx_prompt_content, ll_config)
-
-                    if rephrased != question:
-                        logger.info("Rephrased: '%s' -> '%s'", question, rephrased)
-                        return RephrasePrompt(
-                            original_prompt=question,
-                            rephrased_prompt=rephrased,
-                            was_rephrased=True,
-                            status="success",
-                        )
-                except APIConnectionError as ex:
-                    logger.error("Failed to rephrase: %s", str(ex))
-                    return RephrasePrompt(
-                        original_prompt=question,
-                        rephrased_prompt=question,
-                        was_rephrased=False,
-                        status="error",
-                        error=f"API connection failed: {str(ex)}",
-                    )
-
-        except Exception as ex:
-            logger.error("Rephrase failed: %s", ex)
-            return RephrasePrompt(
-                original_prompt=question,
-                rephrased_prompt=question,
-                was_rephrased=False,
-                status="error",
-                error=str(ex),
-            )
+        # Delegate to internal implementation (allows graph orchestration to bypass MCP layer)
+        return await _vs_rephrase_impl(thread_id, question, chat_history, mcp_client, model)

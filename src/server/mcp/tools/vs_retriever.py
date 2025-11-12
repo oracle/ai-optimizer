@@ -9,7 +9,6 @@ import json
 
 from pydantic import BaseModel
 
-from langchain_core.documents.base import Document
 from langchain_community.vectorstores.oraclevs import OracleVS
 
 from litellm import completion
@@ -19,7 +18,7 @@ import server.api.utils.databases as utils_databases
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
 import server.mcp.tools.vs_tables as vs_tables_tool
-from server.mcp.prompts import table_selection as table_selection_prompts
+import server.mcp.prompts.defaults as table_selection_prompts
 
 from common import logging_config
 
@@ -260,25 +259,14 @@ def _vs_retrieve_impl(
         client_settings = core_settings.get_client_settings(thread_id)
         vector_search = client_settings.vector_search
 
-        # Check if vector search is enabled
-        if not vector_search.enabled:
-            logger.warning("Vector search is not enabled for thread %s", thread_id)
-            return VectorSearchResponse(
-                context_input=question,
-                documents=[],
-                num_documents=0,
-                searched_tables=[],
-                status="error",
-                error="Vector search is not enabled in client settings",
-            )
-
+        # Tool presence indicates VS is enabled (controlled by chat.py:77-78)
         logger.info("Perform Vector Search with: %s", question)
 
         # Get database connection
-        db_client = utils_databases.get_client_database(thread_id, False)
-        if not db_client or not db_client.connection:
+        db_conn = utils_databases.get_client_database(thread_id, False)
+        if not db_conn or not db_conn.connection:
             raise DatabaseConnectionError("No database connection available")
-        db_conn = db_client.connection
+        db_conn = db_conn.connection
 
         # Get OCI config for embedding client creation
         oci_config = utils_oci.get(client=thread_id)
@@ -302,8 +290,7 @@ def _vs_retrieve_impl(
         table_info_map = {table.table_name: table for table in available_tables}
 
         # Use LLM to select relevant tables
-        ll_model_dict = client_settings.ll_model.model_dump()
-        ll_config = utils_models.get_litellm_config(ll_model_dict, oci_config)
+        ll_config = utils_models.get_litellm_config(client_settings.ll_model.model_dump(), oci_config)
         tables_to_search = _select_tables_with_llm(
             question, available_tables, ll_config, max_tables=3
         )
@@ -315,18 +302,12 @@ def _vs_retrieve_impl(
             try:
                 # Get the table's specific embedding model and distance metric
                 table_info = table_info_map[table_name]
-                table_model = table_info.parsed.model
-                table_distance_metric = table_info.parsed.distance_metric
+                logger.info("Creating embed client for table %s with model %s", table_name, table_info.parsed.model)
 
-                logger.info("Creating embed client for table %s with model %s", table_name, table_model)
-
-                # Create embed client for this table's model
-                embed_config = {"model": table_model}
-                embed_client = utils_models.get_client_embed(embed_config, oci_config)
-
-                # Search the table with its specific distance metric
+                # Create embed client for this table's model and search
+                embed_client = utils_models.get_client_embed({"model": table_info.parsed.model}, oci_config)
                 documents = _search_table(
-                    table_name, question, db_conn, embed_client, vector_search, table_distance_metric
+                    table_name, question, db_conn, embed_client, vector_search, table_info.parsed.distance_metric
                 )
                 all_documents.extend(documents)
                 searched_tables.append(table_name)
@@ -345,21 +326,21 @@ def _vs_retrieve_impl(
 
     except (AttributeError, KeyError, TypeError) as ex:
         logger.error("Vector search failed with exception: %s", ex)
-        all_documents = [
-            Document(
-                id="DocumentException",
-                page_content="I'm sorry, I think you found a bug!",
-                metadata={"source": f"{ex}"},
-            )
-        ]
+        return VectorSearchResponse(
+            context_input=question,
+            documents=[],
+            num_documents=0,
+            searched_tables=searched_tables,
+            status="error",
+            error=f"Vector search failed: {str(ex)}",
+        )
 
-    documents_dict = [vars(doc) for doc in all_documents]
-    logger.info("Found %d documents from %d table(s)", len(documents_dict), len(searched_tables))
+    logger.info("Found %d documents from %d table(s)", len(all_documents), len(searched_tables))
 
     return VectorSearchResponse(
         context_input=question,
-        documents=documents_dict,
-        num_documents=len(documents_dict),
+        documents=[vars(doc) for doc in all_documents],
+        num_documents=len(all_documents),
         searched_tables=searched_tables,
         status="success",
     )
@@ -406,7 +387,7 @@ async def register(mcp, auth):
             model: Name and version of the language model being used (optional)
 
         Returns:
-            Dictionary containing:
+            VectorSearchResponse object containing:
             - context_input: The question used for retrieval
             - documents: List of retrieved documents with page_content and metadata
                 (includes 'searched_table' in metadata)

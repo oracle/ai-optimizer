@@ -102,9 +102,8 @@ def is_model_enabled(model_id: str) -> bool:
         if models:
             logger.debug("Model %s is enabled (found %d configs)", model_id, len(models))
             return True
-        else:
-            logger.info("Model %s not found in enabled embed models", model_id)
-            return False
+        logger.info("Model %s not found in enabled embed models", model_id)
+        return False
     except utils_models.UnknownModelError:
         logger.info("Model %s (provider=%s, id=%s) not found", model_id, provider, model_name)
         return False
@@ -171,7 +170,7 @@ async def register(mcp, auth):
             model: Name and version of the language model being used (optional)
 
         Returns:
-            Dictionary containing:
+            VectorStoreListResponse object containing:
             - raw_results: List of tuples from SQL query
                 (schema_name, table_name, num_rows, last_analyzed, table_comment)
             - parsed_tables: List of structured objects with schema info and

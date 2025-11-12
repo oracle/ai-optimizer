@@ -49,15 +49,16 @@ def optimizer_basic_default() -> PromptMessage:
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
-def optimizer_vector_search_default() -> PromptMessage:
-    """Default Vector Search system prompt for chatbot."""
+def optimizer_tools_default() -> PromptMessage:
+    """Default system prompt when tools are enabled."""
     content = """
-        You are an assistant for question-answering tasks.
+        You are a helpful assistant with access to tools that can retrieve information and perform tasks.
 
-        You MUST use the optimizer_vs-retriever tool to search for information before answering any question.
-        Once you have retrieved documents, use them to answer the user's question accurately and concisely.
-        Keep your answer grounded in the facts of the retrieved documents.
-        If the retrieved documents are not relevant, state that you cannot find relevant sources.
+        When answering questions, use the available tools to gather accurate information.
+        Ground your answers in the information returned by the tools.
+        If a tool provides relevant information, use it to construct factual, well-sourced responses.
+        If the tool results are not relevant or insufficient, clearly state what information is available and what is not.
+        Always prioritize accuracy and cite your sources when using tool-provided information.
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -118,6 +119,25 @@ def optimizer_vs_grading() -> PromptMessage:
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
+def optimizer_vs_rephrase() -> PromptMessage:
+    """Prompt for rephrasing user query with conversation history context."""
+
+    content = """
+        {prompt}
+        Here is the context and history:
+        -------
+        {history}
+        -------
+        Here is the user input:
+        -------
+        {question}
+        -------
+        Return ONLY the rephrased query without any explanation or additional text.
+    """
+
+    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
+
+
 # MCP Registration
 async def register(mcp):
     """Register Out-of-Box Prompts"""
@@ -131,13 +151,14 @@ async def register(mcp):
         """
         return get_prompt_with_override("optimizer_basic-default")
 
-    @mcp.prompt(name="optimizer_vector-search-default", title="Vector Search Prompt", tags=optimizer_tags)
-    def vector_search_mcp() -> PromptMessage:
-        """Vector Search Prompt.
+    @mcp.prompt(name="optimizer_tools-default", title="Tools-Enabled Prompt", tags=optimizer_tags)
+    def tools_default_mcp() -> PromptMessage:
+        """Tools-Enabled Prompt.
 
-        Used to invoke the Vector Search tool to keep answers grounded.
+        Used when tools are enabled to ensure answers are grounded in tool responses.
+        Works with Vector Search, NL2SQL, and other tools.
         """
-        return get_prompt_with_override("optimizer_vector-search-default")
+        return get_prompt_with_override("optimizer_tools-default")
 
     @mcp.prompt(name="optimizer_context-default", title="Contextualize Prompt", tags=optimizer_tags)
     def context_default_mcp() -> PromptMessage:
@@ -166,3 +187,12 @@ async def register(mcp):
         are relevant to the user's question.
         """
         return get_prompt_with_override("optimizer_vs-grading")
+
+    @mcp.prompt(name="optimizer_vs-rephrase", title="Vector Search Rephrase Prompt", tags=optimizer_tags)
+    def rephrase_mcp() -> PromptMessage:
+        """Prompt for rephrasing user query with conversation history context.
+
+        Used by the vector search rephrase tool to contextualize the user's query
+        based on conversation history before performing retrieval.
+        """
+        return get_prompt_with_override("optimizer_vs-rephrase")
