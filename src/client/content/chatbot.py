@@ -26,7 +26,7 @@ logger = logging_config.logging.getLogger("client.content.chatbot")
 #############################################################################
 # Functions
 #############################################################################
-def show_vector_search_refs(context):
+def show_vector_search_refs(context, vs_metadata=None):
     """When Vector Search Content Found, show the references"""
     st.markdown("**References:**")
     ref_src = set()
@@ -46,9 +46,30 @@ def show_vector_search_refs(context):
             except KeyError:
                 logger.error("Chunk Metadata NOT FOUND!!")
 
-    for link in ref_src:
-        st.markdown("- " + link)
-    st.markdown(f"**Notes:** Vector Search Query - {context['context_input']}")
+    # Display Vector Search details in expander
+    if vs_metadata or ref_src:
+        with st.expander("Vector Search Details", expanded=False):
+            if ref_src:
+                st.markdown("**Source Documents:**")
+                for link in ref_src:
+                    st.markdown(f"- {link}")
+
+            if vs_metadata and vs_metadata.get("searched_tables"):
+                st.markdown("**Tables Searched:**")
+                for table in vs_metadata["searched_tables"]:
+                    st.markdown(f"- {table}")
+
+            if vs_metadata and vs_metadata.get("context_input"):
+                st.markdown(f"**Search Query:** {vs_metadata.get('context_input')}")
+
+
+def show_token_usage(token_usage):
+    """Display token usage for AI responses using caption"""
+    if token_usage:
+        prompt_tokens = token_usage.get("prompt_tokens", 0)
+        completion_tokens = token_usage.get("completion_tokens", 0)
+        total_tokens = token_usage.get("total_tokens", 0)
+        st.caption(f"Token usage: {prompt_tokens} prompt + {completion_tokens} completion = {total_tokens} total")
 
 
 def setup_sidebar():
@@ -80,7 +101,7 @@ def create_client():
 
 
 def display_chat_history(history):
-    """Display chat history messages"""
+    """Display chat history messages with metadata"""
     st.chat_message("ai").write("Hello, how can I help you?")
     vector_search_refs = []
 
@@ -94,8 +115,19 @@ def display_chat_history(history):
         elif message["role"] in ("ai", "assistant"):
             with st.chat_message("ai"):
                 st.markdown(message["content"])
+
+                # Extract metadata from response_metadata
+                response_metadata = message.get("response_metadata", {})
+                vs_metadata = response_metadata.get("vs_metadata", {})
+                token_usage = response_metadata.get("token_usage", {})
+
+                # Show token usage immediately after message
+                if token_usage:
+                    show_token_usage(token_usage)
+
+                # Show vector search references if available
                 if vector_search_refs:
-                    show_vector_search_refs(vector_search_refs)
+                    show_vector_search_refs(vector_search_refs, vs_metadata)
                     vector_search_refs = []
 
         elif message["role"] in ("human", "user"):

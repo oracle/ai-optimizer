@@ -144,15 +144,20 @@ async def completion_generator(
     agent: CompiledStateGraph = graph.main(graph_tools)
 
     final_response = None
+
     try:
         async for output in agent.astream(**kwargs):
             if "stream" in output:
                 yield output["stream"].encode("utf-8")
-            if "completion" in output:
+            elif "completion" in output:
                 final_response = output["completion"]
+            elif "vs_metadata" in output or "token_usage" in output:
+                # Log metadata emissions (automatically stored in AIMessage.response_metadata by graph.py)
+                logger.debug("Metadata emitted: %s", {k: v for k, v in output.items() if k != "stream"})
+
         if call == "streams":
             yield STREAM_FINISHED_MARKER  # This will break the Chatbot loop
-        if call == "completions" and final_response is not None:
+        elif call == "completions" and final_response is not None:
             yield final_response  # This will be captured for ChatResponse
     except Exception as ex:
         logger.exception("Graph execution failed")

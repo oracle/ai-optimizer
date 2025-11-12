@@ -106,7 +106,16 @@ async def chat_history_return(client: schema.ClientIdType = Header(default="serv
             )
         )
         messages: list[AnyMessage] = state_snapshot.values["messages"]
-        chat_messages = convert_to_openai_messages(messages)
+
+        # Convert to OpenAI format while preserving response_metadata
+        chat_messages = []
+        for msg in messages:
+            openai_msg = convert_to_openai_messages([msg])[0]
+            # Preserve response_metadata if present
+            if hasattr(msg, "response_metadata") and msg.response_metadata:
+                openai_msg["response_metadata"] = msg.response_metadata
+            chat_messages.append(openai_msg)
+
         return chat_messages
     except KeyError:
         return [ChatMessage(content="I'm sorry, I have no history of this conversation.", role="system")]

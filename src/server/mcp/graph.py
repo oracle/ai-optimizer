@@ -109,6 +109,7 @@ class OptimizerState(MessagesState):
     cleaned_messages: list  # Messages w/o VS Results
     context_input: str = ""  # Rephrased query used for retrieval (NEW for VS)
     documents: str = ""  # Retrieved documents formatted as string (NEW for VS)
+    vs_metadata: dict = {}  # VS metadata for client display (tables, query)
     final_response: dict  # OpenAI Response
 
 
@@ -348,14 +349,37 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
             final_response = last_chunk.model_dump()
             logger.info("Final completion response: %s", final_response)
 
+            # Extract and emit token usage via stream writer
+            token_usage = final_response.get("usage", {})
+            if token_usage:
+                writer({"token_usage": token_usage})
+                logger.info("Token usage written to stream: %s", token_usage)
+
             writer({"completion": final_response})
+
+            # Build response_metadata with both token_usage and vs_metadata
+            response_metadata = {
+                k: v
+                for k, v in [
+                    ("token_usage", token_usage),
+                    ("vs_metadata", state.get("vs_metadata", {})),
+                ]
+                if v
+            }
+
+            # Create AIMessage with metadata attached
+            logger.info("AIMessage created with metadata: %s", response_metadata)
+            return {"messages": [AIMessage(content=full_text, response_metadata=response_metadata)]}
+
     except APIConnectionError as ex:
         error_msg = _create_error_message(ex, "connecting to LLM API")
         return {"messages": [error_msg]}
     except Exception as ex:
         error_msg = _create_error_message(ex, "generating completion")
         return {"messages": [error_msg]}
-    return {"messages": [AIMessage(content=full_text)]}
+
+    # Fallback return (should not reach here normally)
+    return {"messages": [AIMessage(content="")]}
 
 
 async def _vs_step_rephrase(thread_id: str, question: str, chat_history: list, use_history: bool) -> str:
@@ -539,7 +563,9 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig) -> dict:
     Store results in state, NOT in message history (avoids context bloat)
 
     Creates ToolMessages with raw documents for GUI, formatted string for LLM injection.
+    Emits VS metadata via stream writer for client consumption.
     """
+    writer = get_stream_writer()
     empty_result = {"context_input": "", "documents": ""}
 
     # Validate config
@@ -557,7 +583,18 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig) -> dict:
         return empty_result
 
     # Execute VS pipeline
-    result, raw_documents = await _execute_vs_pipeline(thread_id, messages, config, empty_result)
+    result, raw_documents, searched_tables = await _execute_vs_pipeline(thread_id, messages, config, empty_result)
+
+    # Build and emit VS metadata via stream writer for client display
+    vs_metadata = {}
+    if searched_tables or result.get("context_input"):
+        vs_metadata = {
+            "searched_tables": searched_tables,
+            "context_input": result.get("context_input", ""),
+            "num_documents": len(raw_documents),
+        }
+        writer({"vs_metadata": vs_metadata})
+        logger.info("VS metadata written to stream: %s", vs_metadata)
 
     # Create ToolMessages
     tool_responses = _create_vs_tool_messages(messages, raw_documents, result)
@@ -566,20 +603,22 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig) -> dict:
     if tool_responses and isinstance(tool_responses[0], AIMessage):
         return {"context_input": "", "documents": "", "messages": tool_responses}
 
-    # Combine state updates with ToolMessages
+    # Combine state updates with ToolMessages and vs_metadata
     result["messages"] = tool_responses
+    result["vs_metadata"] = vs_metadata  # Store for stream_completion to attach to AIMessage
     return result
 
 
 async def _execute_vs_pipeline(
     thread_id: str, messages: list, config: RunnableConfig, empty_result: dict
-) -> tuple[dict, list]:
+) -> tuple[dict, list, list]:
     """Execute the VS pipeline: rephrase → retrieve → grade
 
     Returns:
-        tuple: (result dict, raw_documents list)
+        tuple: (result dict, raw_documents list, searched_tables list)
     """
     raw_documents = []
+    searched_tables = []
 
     try:
         # Extract user question
@@ -591,7 +630,7 @@ async def _execute_vs_pipeline(
 
         if not question:
             logger.error("No user question found in message history")
-            return empty_result, raw_documents
+            return empty_result, raw_documents, searched_tables
 
         logger.info("User question: %s", question)
 
@@ -606,18 +645,19 @@ async def _execute_vs_pipeline(
         retrieval_result = _vs_step_retrieve(thread_id, rephrased_question)
         if not retrieval_result or retrieval_result.num_documents == 0:
             logger.info("No documents retrieved - transparent completion")
-            return empty_result, raw_documents
+            return empty_result, raw_documents, searched_tables
 
-        # Preserve raw documents for client GUI
+        # Preserve raw documents and searched tables for client GUI
         raw_documents = retrieval_result.documents
+        searched_tables = retrieval_result.searched_tables
 
         # Step 3: Grade
         result = await _vs_step_grade(thread_id, question, retrieval_result.documents, rephrased_question)
-        return result, raw_documents
+        return result, raw_documents, searched_tables
 
     except Exception as ex:
         error_msg = _create_error_message(ex, "during vector search orchestration")
-        return {"context_input": "", "documents": "", "messages": [error_msg]}, raw_documents
+        return {"context_input": "", "documents": "", "messages": [error_msg]}, raw_documents, searched_tables
 
 
 # #############################################################################
