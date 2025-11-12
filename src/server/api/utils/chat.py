@@ -14,6 +14,8 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from langgraph.graph.state import CompiledStateGraph
 
+import litellm
+
 import server.api.core.settings as core_settings
 import server.api.utils.mcp as utils_mcp
 
@@ -34,6 +36,43 @@ def _get_system_prompt(tools_enabled: list) -> str:
     if tools_enabled:
         return default_prompts.get_prompt_with_override("optimizer_tools-default")
     return default_prompts.get_prompt_with_override("optimizer_basic-default")
+
+
+def _check_model_tool_support(model_config: dict, tools: list, tools_enabled: list) -> str | None:
+    """Check if model supports function calling when tools are enabled
+
+    Returns:
+        Error message string if model doesn't support tools, None if check passes
+    """
+    if not tools:
+        return None
+
+    model_name = model_config.get("model", "unknown")
+    if not litellm.supports_function_calling(model=model_name):
+        error_msg = (
+            f"The model '{model_name}' does not support tool/function calling. "
+            f"Tools enabled: {', '.join(tools_enabled)}. "
+            "Please either disable tools in settings or select a model that supports function calling."
+        )
+        logger.warning(error_msg)
+        return error_msg
+
+    return None
+
+
+def _filter_tools_by_enabled(tools: list, tools_enabled: list) -> list:
+    """Filter out tools that are not enabled and internal-only tools"""
+    filtered = tools
+    if "Vector Search" not in tools_enabled:
+        filtered = [tool for tool in filtered if not tool.name.startswith("optimizer_vs")]
+    else:
+        # Filter out internal-only VS tools (grading/rephrase called by vs_orchestrate)
+        # Only retriever and storage are exposed to the LLM
+        internal_tools = {"optimizer_vs-grading", "optimizer_vs-rephrase"}
+        filtered = [tool for tool in filtered if tool.name not in internal_tools]
+    if "NL2SQL" not in tools_enabled:
+        filtered = [tool for tool in filtered if not tool.name.startswith("sqlcl_")]
+    return filtered
 
 
 async def completion_generator(
@@ -77,53 +116,23 @@ async def completion_generator(
         {"optimizer": utils_mcp.get_client(client="langgraph")["mcpServers"]["optimizer"]}
     )
 
-    # Fetch all MCP Tools
+    # Fetch and filter MCP Tools
     graph_tools = await mcp_client.get_tools()
+    graph_tools = _filter_tools_by_enabled(graph_tools, client_settings.tools_enabled)
 
-    # Filter out Vector Search tools if not enabled (retriever and storage tools only)
-    if "Vector Search" not in client_settings.tools_enabled:
-        graph_tools = [tool for tool in graph_tools if not tool.name.startswith("optimizer_vs")]
-
-    # Filter out NL2SQL tools if not enabled
-    if "NL2SQL" not in client_settings.tools_enabled:
-        graph_tools = [tool for tool in graph_tools if not tool.name.startswith("sqlcl_")]
+    # Check if model supports function calling when tools are enabled
+    tool_support_error = _check_model_tool_support(model, graph_tools, client_settings.tools_enabled)
+    if tool_support_error:
+        if call == "streams":
+            yield tool_support_error.encode("utf-8")
+            yield "[stream_finished]"
+        else:
+            yield {"choices": [{"message": {"role": "assistant", "content": tool_support_error}}]}
+        return
 
     # Convert LangChain tools to OpenAI Functions for binding to LiteLLM model
-    # Always set tools in metadata, even if empty, to prevent NoneType errors
-    # Filter out internal parameters that should not be exposed to LLM
-    def clean_tool_schema(tool_schema):
-        """Remove internal parameters from tool schema and descriptions"""
-        params_to_exclude = {"thread_id", "mcp_client", "model"}
-
-        # Remove parameters from schema
-        if "parameters" in tool_schema and "properties" in tool_schema["parameters"]:
-            tool_schema["parameters"]["properties"] = {
-                k: v for k, v in tool_schema["parameters"]["properties"].items() if k not in params_to_exclude
-            }
-            if "required" in tool_schema["parameters"]:
-                tool_schema["parameters"]["required"] = [
-                    r for r in tool_schema["parameters"]["required"] if r not in params_to_exclude
-                ]
-
-        # Remove parameter mentions from description
-        if "description" in tool_schema:
-            desc = tool_schema["description"]
-            # Remove lines mentioning model/mcp_client arguments
-            lines = desc.split("\n")
-            cleaned_lines = [
-                line
-                for line in lines
-                if not any(
-                    phrase in line
-                    for phrase in ["The `model` argument", "The `mcp_client` argument", "mcp_client:", "model:"]
-                )
-            ]
-            tool_schema["description"] = "\n".join(cleaned_lines).strip()
-
-        return tool_schema
-
     kwargs["config"]["metadata"]["tools"] = [
-        {"type": "function", "function": clean_tool_schema(convert_to_openai_function(t))} for t in graph_tools
+        {"type": "function", "function": convert_to_openai_function(t)} for t in graph_tools
     ]
     logger.debug("Completion Kwargs: %s", kwargs)
 
@@ -142,7 +151,6 @@ async def completion_generator(
         if call == "completions" and final_response is not None:
             yield final_response  # This will be captured for ChatResponse
     except Exception as ex:
-        # Graph execution failed - return friendly error message
         logger.exception("Graph execution failed")
         error_text = (
             f"I'm sorry, I've run into a problem: {str(ex)}\n\n"
@@ -151,6 +159,5 @@ async def completion_generator(
         if call == "streams":
             yield error_text.encode("utf-8")
             yield "[stream_finished]"
-        elif call == "completions":
-            # Return as completion response
+        else:
             yield {"choices": [{"message": {"role": "assistant", "content": error_text}}]}
