@@ -160,18 +160,23 @@ async def testbed_generate_qa(
     for file in files:
         try:
             # Read and save file content
-            file_content = await file.read()
             filename = temp_directory / file.filename
             logger.info("Writing Q&A File to: %s", filename)
             with open(filename, "wb") as file:
-                file.write(file_content)
+                file.write(await file.read())
 
-            # Process file for knowledge base
-            text_nodes = utils_testbed.load_and_split(filename)
-            test_set = utils_testbed.build_knowledge_base(text_nodes, questions, ll_model, embed_model, oci_config)
-            # Save test set
+            # Process file for knowledge base and save test set
+            test_set = utils_testbed.build_knowledge_base(
+                utils_testbed.load_and_split(filename),
+                questions,
+                ll_model,
+                embed_model,
+                oci_config
+            )
             test_set_filename = temp_directory / f"{name}.jsonl"
             test_set.save(test_set_filename)
+
+            # Append test set to combined file
             with (
                 open(test_set_filename, "r", encoding="utf-8") as source,
                 open(full_testsets, "a", encoding="utf-8") as destination,
@@ -181,26 +186,30 @@ async def testbed_generate_qa(
             # Handle empty testset error (when no questions are generated due to model issues)
             shutil.rmtree(temp_directory)
             if "None of" in str(ex) and "are in the columns" in str(ex):
-                error_message = (
-                    f"Failed to generate any questions using model '{ll_model}'. "
-                    "This may indicate the model is unavailable, retired, or not found. "
-                    "Please verify the model name and try a different model."
+                logger.error(
+                    "TestSet Generation Failed: Failed to generate any questions using model '%s'. "
+                    "This may indicate the model is unavailable, retired, or not found.",
+                    ll_model
                 )
-                logger.error("TestSet Generation Failed: %s", error_message)
-                raise HTTPException(status_code=400, detail=error_message) from ex
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Failed to generate any questions using model '{ll_model}'. "
+                        "This may indicate the model is unavailable, retired, or not found. "
+                        "Please verify the model name and try a different model."
+                    )
+                ) from ex
             # Re-raise other KeyErrors
             raise
         except ValueError as ex:
             # Handle model validation errors (e.g., empty testset due to model issues)
             shutil.rmtree(temp_directory)
-            error_message = str(ex)
-            logger.error("TestSet Validation Error: %s", error_message)
-            raise HTTPException(status_code=400, detail=error_message) from ex
+            logger.error("TestSet Validation Error: %s", str(ex))
+            raise HTTPException(status_code=400, detail=str(ex)) from ex
         except litellm.APIConnectionError as ex:
             shutil.rmtree(temp_directory)
-            error_message = str(ex)
-            logger.error("APIConnectionError Exception: %s", error_message)
-            raise HTTPException(status_code=424, detail=f"Model API error: {error_message}") from ex
+            logger.error("APIConnectionError Exception: %s", str(ex))
+            raise HTTPException(status_code=424, detail=f"Model API error: {str(ex)}") from ex
         except Exception as ex:
             shutil.rmtree(temp_directory)
             logger.error("Unknown TestSet Exception: %s", str(ex))
@@ -208,8 +217,11 @@ async def testbed_generate_qa(
 
     # Store tests in database (only if we successfully generated testsets)
     with open(full_testsets, "rb") as file:
-        upload_file = UploadFile(file=file, filename=full_testsets)
-        testset_qa = await testbed_upsert_testsets(client=client, files=[upload_file], name=name)
+        testset_qa = await testbed_upsert_testsets(
+            client=client,
+            files=[UploadFile(file=file, filename=full_testsets)],
+            name=name
+        )
     shutil.rmtree(temp_directory)
 
     return testset_qa

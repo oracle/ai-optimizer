@@ -5,10 +5,8 @@ This file is being used in APIs, and not the backend.py file.
 """
 
 # spell-checker:ignore noauth fastmcp healthz
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends
 from fastmcp import FastMCP, Client
-from fastmcp.prompts.prompt import PromptMessage, TextContent
-import mcp
 
 import server.api.utils.mcp as utils_mcp
 

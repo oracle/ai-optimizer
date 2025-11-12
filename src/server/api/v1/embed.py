@@ -111,7 +111,7 @@ async def store_web_file(
 
                 elif "text" in content_type or "html" in content_type:
                     sections = await web_parse.fetch_and_extract_sections(url)
-                    base = web_parse.slugify(str(url).rsplit('/', maxsplit=1)[-1]) or "page"
+                    base = web_parse.slugify(str(url).rsplit("/", maxsplit=1)[-1]) or "page"
                     out_files = []
                     for idx, sec in enumerate(sections, 1):
                         # filename includes section number and optional slugified title for clarity
@@ -169,13 +169,14 @@ async def store_local_file(
     stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != ".file_metadata.json"]
     return Response(content=json.dumps(stored_files), media_type="application/json")
 
+
 @auth.patch(
     "/comment",
     description="Update existing Vector Store Comment.",
 )
 async def comment_vs(
     request: schema.DatabaseVectorStorage,
-    client: schema.ClientIdType = Header(default="server"),    
+    client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Update the comment on an existing Vector Store"""
     logger.info("Received comment_vs - request: %s", request)
@@ -183,9 +184,8 @@ async def comment_vs(
         vector_store=request,
         db_details=utils_databases.get_client_database(client),
     )
-    return Response(
-        content=json.dumps({"message": "Vector Store comment updated."}), media_type="application/json"
-    )
+    return Response(content=json.dumps({"message": "Vector Store comment updated."}), media_type="application/json")
+
 
 @auth.post(
     "/",
