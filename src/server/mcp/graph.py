@@ -64,7 +64,7 @@ def _create_error_message(exception: Exception, context: str = "") -> AIMessage:
     if context:
         error_text += f" {context}"
     error_text += f": {error_msg}"
-    error_text += "\n\nPlease raise an issue at: https://github.com/oracle/ai-optimizer/issues"
+    error_text += "\n\nIf this appears to be a bug rather than a configuration issue, please report it at: https://github.com/oracle/ai-optimizer/issues"
 
     return AIMessage(content=error_text)
 
@@ -415,30 +415,43 @@ async def _vs_step_rephrase(thread_id: str, question: str, chat_history: list, u
 def _vs_step_retrieve(thread_id: str, rephrased_question: str):
     """Execute retrieve step of VS pipeline
 
-    Returns retrieval result, or None if retrieval fails
+    Returns retrieval result, or raises exception if critical error occurs
     """
     logger.info("Retrieving documents for: %s", rephrased_question)
-    try:
-        retrieval_result = _vs_retrieve_impl(
-            thread_id=thread_id,
-            question=rephrased_question,
-            mcp_client="Optimizer-Internal",
-            model="graph-orchestrated",
-        )
+    retrieval_result = _vs_retrieve_impl(
+        thread_id=thread_id,
+        question=rephrased_question,
+        mcp_client="Optimizer-Internal",
+        model="graph-orchestrated",
+    )
 
-        if retrieval_result.status != "success":
-            logger.error("Retrieval failed: %s", retrieval_result.error)
-            return None
+    if retrieval_result.status != "success":
+        error_msg = retrieval_result.error or "Unknown error"
+        logger.error("Retrieval failed: %s", error_msg)
 
-        logger.info(
-            "Retrieved %d documents from tables: %s",
-            retrieval_result.num_documents,
-            retrieval_result.searched_tables,
-        )
-        return retrieval_result
-    except Exception as ex:
-        logger.error("Retrieval exception: %s", ex)
+        # Check for database connection errors - these are critical and should be surfaced to user
+        if "not connected to database" in error_msg.lower() or "dpy-1001" in error_msg.lower():
+            raise ConnectionError(
+                "Vector Search is enabled but the database connection has been lost. "
+                "Please reconnect to the database and try again."
+            )
+
+        # Check for no vector stores available - this should also be surfaced
+        if "no vector stores available" in error_msg.lower():
+            raise ValueError(
+                "Vector Search is enabled but no vector stores are available with enabled embedding models. "
+                "Please configure at least one vector store with an enabled embedding model."
+            )
+
+        # For other errors, return None (will result in transparent completion)
         return None
+
+    logger.info(
+        "Retrieved %d documents from tables: %s",
+        retrieval_result.num_documents,
+        retrieval_result.searched_tables,
+    )
+    return retrieval_result
 
 
 async def _vs_step_grade(thread_id: str, question: str, documents: list, rephrased_question: str) -> dict:

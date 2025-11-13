@@ -164,9 +164,32 @@ async def handle_chat_input(user_client):
         try:
             message_placeholder = st.chat_message("ai").empty()
             full_answer = ""
-            async for chunk in user_client.stream(message=human_request.text, image_b64=file_b64):
-                full_answer += chunk
-                message_placeholder.markdown(full_answer)
+
+            # Animated thinking indicator
+            async def animate_thinking():
+                """Animate the thinking indicator with increasing dots"""
+                dots = 0
+                while True:
+                    message_placeholder.markdown(f"🤔 Thinking{'.' * (dots % 4)}")
+                    dots += 1
+                    await asyncio.sleep(0.5)  # Update every 500ms
+
+            # Start the thinking animation
+            thinking_task = asyncio.create_task(animate_thinking())
+
+            try:
+                async for chunk in user_client.stream(message=human_request.text, image_b64=file_b64):
+                    # Cancel thinking animation on first chunk
+                    if thinking_task and not thinking_task.done():
+                        thinking_task.cancel()
+                        thinking_task = None
+                    full_answer += chunk
+                    message_placeholder.markdown(full_answer)
+            finally:
+                # Ensure thinking task is cancelled
+                if thinking_task and not thinking_task.done():
+                    thinking_task.cancel()
+
             st.rerun()
         except (ConnectionError, TimeoutError, api_call.ApiError) as ex:
             logger.exception("Error during chat streaming: %s", ex)

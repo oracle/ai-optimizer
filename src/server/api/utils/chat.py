@@ -37,9 +37,11 @@ STREAM_FINISHED_MARKER = "[stream_finished]"  # Marker to signal end of streamin
 
 def _get_system_prompt(tools_enabled: list) -> str:
     """Get appropriate system prompt based on enabled tools"""
-    if tools_enabled:
-        return default_prompts.get_prompt_with_override("optimizer_tools-default")
-    return default_prompts.get_prompt_with_override("optimizer_basic-default")
+    if not tools_enabled:
+        return default_prompts.get_prompt_with_override("optimizer_basic-default")
+
+    # Use tools-default prompt when tools are enabled
+    return default_prompts.get_prompt_with_override("optimizer_tools-default")
 
 
 def _check_model_tool_support(model_config: dict, tools: list, tools_enabled: list) -> str | None:
@@ -112,7 +114,7 @@ async def completion_generator(
         ),
     }
 
-    # Get System Prompt - use tools-default if any tools are enabled
+    # Get System Prompt
     kwargs["config"]["metadata"]["sys_prompt"] = _get_system_prompt(client_settings.tools_enabled)
 
     # Define MCP config and tools (this is to create conditional nodes in the graph)
