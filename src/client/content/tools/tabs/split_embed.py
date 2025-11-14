@@ -617,7 +617,7 @@ def display_split_embed() -> None:
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
     vs_df = pd.DataFrame(database_lookup.get(db_alias, {}).get("vector_stores", []))
     # Remove VS if its embedding model does not exist/is disabled
-    vs_filtered = vs_df[vs_df["model"].isin(embed_models_enabled.keys())]
+    vs_filtered = vs_df[vs_df["model"].isin(embed_models_enabled.keys())] if not vs_df.empty else vs_df
 
     if not vs_filtered.empty:
         # Toggle between creating new vector store or using existing

@@ -121,7 +121,7 @@ should_continue() → "vs_orchestrate"
     ↓
 vs_orchestrate node:
     1. Rephrase query (if chat history exists)
-    2. Retrieve documents from vector stores
+    2. Retrieve documents from vector stores (using rephrased query)
     3. Grade documents for relevance
     4. Store in state["documents"] (NOT in messages)
     ↓

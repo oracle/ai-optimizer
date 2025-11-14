@@ -42,7 +42,7 @@ async def embed_drop_vs(
         client_db = utils_databases.get_client_database(client)
         db_conn = utils_databases.connect(client_db)
         utils_databases.drop_vs(db_conn, vs)
-    except utils_databases.DbException as ex:
+    except (utils_databases.DbException, ValueError) as ex:
         raise HTTPException(status_code=400, detail=f"Embed: {str(ex)}.") from ex
     return JSONResponse(status_code=200, content={"message": f"Vector Store: {vs} dropped."})
 

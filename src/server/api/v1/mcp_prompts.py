@@ -3,14 +3,16 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 This file is being used in APIs, and not the backend.py file.
 """
-
 # spell-checker:ignore noauth fastmcp healthz
+
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastmcp import FastMCP, Client
 import mcp
 
 from server.api.v1.mcp import get_mcp
 from server.mcp.prompts import cache
+import server.api.utils.mcp as utils_mcp
+
 from common import logging_config
 
 logger = logging_config.logging.getLogger("api.v1.mcp_prompts")
@@ -25,17 +27,14 @@ auth = APIRouter()
 )
 async def mcp_list_prompts(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
     """List MCP Prompts"""
+
+    prompts = await utils_mcp.list_prompts(mcp_engine)
+    logger.debug("MCP Resources: %s", prompts)
+
     prompts_info = []
-    try:
-        client = Client(mcp_engine)
-        async with client:
-            prompts = await client.list_prompts()
-            logger.debug("MCP Resources: %s", prompts)
-            for prompts_object in prompts:
-                if prompts_object.name.startswith("optimizer_"):
-                    prompts_info.append(prompts_object.model_dump())
-    finally:
-        await client.close()
+    for prompts_object in prompts:
+        if prompts_object.name.startswith("optimizer_"):
+            prompts_info.append(prompts_object.model_dump())
 
     return prompts_info
 

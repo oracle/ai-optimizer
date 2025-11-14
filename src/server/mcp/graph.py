@@ -45,6 +45,57 @@ class DecimalEncoder(json.JSONEncoder):
 #############################################################################
 # Error Handling
 #############################################################################
+def _detect_unreliable_function_calling(
+    tools: list, response_text: str, model_name: str
+) -> tuple[bool, str | None]:
+    """Detect if model exhibited unreliable function calling behavior
+
+    Args:
+        tools: List of tools that were provided to the model
+        response_text: The text content returned by the model
+        model_name: Name of the model that generated the response
+
+    Returns:
+        Tuple of (is_unreliable, error_message)
+        - is_unreliable: True if unreliable behavior detected
+        - error_message: User-friendly error message if unreliable, None otherwise
+    """
+    if not tools or not response_text.strip():
+        return False, None
+
+    stripped = response_text.strip()
+
+    # Pattern 1: JSON with function call structure returned as text
+    # Indicates model attempted function calling but LiteLLM couldn't parse it
+    has_json_start = stripped.startswith(("{", "["))
+    has_function_keywords = any(
+        keyword in stripped[:100] for keyword in ['"name"', '"function"', '"arguments"']
+    )
+    has_object_notation = stripped.startswith('{"') and ":" in stripped[:50]
+
+    looks_like_function_json = (has_json_start and has_function_keywords) or has_object_notation
+
+    if looks_like_function_json:
+        error_msg = (
+            f"⚠️ **Function Calling Not Supported**\n\n"
+            f"The model '{model_name}' attempted to call a tool but failed. "
+            f"This model lacks reliable function calling support.\n\n"
+            "Please disable tools in settings or switch to a model "
+            "with native function calling support."
+        )
+        logger.warning(
+            "Detected unreliable function calling for model %s - "
+            "returned JSON as text instead of tool_calls",
+            model_name,
+        )
+        return True, error_msg
+
+    # Pattern 2: Add other patterns here as they're discovered
+    # Example: Model returning tool names without proper structure, etc.
+
+    return False, None
+
+
 def _create_error_message(exception: Exception, context: str = "") -> AIMessage:
     """Create user-friendly error wrapper around actual exception message"""
     logger.exception("Error %s", context if context else "in graph execution")
@@ -64,7 +115,10 @@ def _create_error_message(exception: Exception, context: str = "") -> AIMessage:
     if context:
         error_text += f" {context}"
     error_text += f": {error_msg}"
-    error_text += "\n\nIf this appears to be a bug rather than a configuration issue, please report it at: https://github.com/oracle/ai-optimizer/issues"
+    error_text += (
+        "\n\nIf this appears to be a bug rather than a configuration issue, "
+        "please report it at: https://github.com/oracle/ai-optimizer/issues"
+    )
 
     return AIMessage(content=error_text)
 
@@ -299,77 +353,194 @@ async def initialise(state: OptimizerState, config: RunnableConfig) -> Optimizer
     return {"cleaned_messages": clean_messages(state, config)}
 
 
-async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
-    """LiteLLM streaming wrapper"""
-    writer = get_stream_writer()
+def _build_completion_kwargs(messages: list, ll_raw: dict, tools: list) -> dict:
+    """Build kwargs for LiteLLM completion call
+
+    Args:
+        messages: Prepared messages for completion
+        ll_raw: Raw LLM configuration
+        tools: Available tools (may be empty)
+
+    Returns:
+        dict: Kwargs for acompletion()
+    """
+    completion_kwargs = {
+        "messages": convert_to_openai_messages(messages),
+        "stream": True,
+        **ll_raw
+    }
+
+    # Don't pass tools parameter when empty to prevent LiteLLM from forcing JSON format
+    if tools:
+        completion_kwargs["tools"] = tools
+
+    return completion_kwargs
+
+
+def _finalize_completion_response(full_response: list, full_text: str) -> dict:
+    """Transform streaming response into final completion format
+
+    Args:
+        full_response: List of response chunks
+        full_text: Concatenated content text
+
+    Returns:
+        dict: OpenAI-compatible completion response or None if no response
+    """
+    if not full_response:
+        return None
+
+    last_chunk = full_response[-1]
+    last_chunk.object = "chat.completion"
+    last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
+    delattr(last_chunk.choices[0], "delta")
+    last_chunk.choices[0].finish_reason = "stop"
+
+    return last_chunk.model_dump()
+
+
+def _build_response_metadata(token_usage: dict, vs_metadata: dict) -> dict:
+    """Build response metadata from token usage and VS metadata
+
+    Args:
+        token_usage: Token usage statistics from LLM response
+        vs_metadata: Vector search metadata from state
+
+    Returns:
+        dict: Combined metadata (empty dict if no metadata)
+    """
+    return {
+        k: v
+        for k, v in [
+            ("token_usage", token_usage),
+            ("vs_metadata", vs_metadata),
+        ]
+        if v
+    }
+
+
+def _emit_completion_metadata(writer, final_response: dict, state: OptimizerState):
+    """Extract and emit token usage and completion via stream writer
+
+    Args:
+        writer: LangGraph stream writer
+        final_response: Final completion response dict
+        state: Current graph state (for vs_metadata)
+
+    Returns:
+        dict: response_metadata for AIMessage
+    """
+    token_usage = final_response.get("usage", {})
+    if token_usage:
+        writer({"token_usage": token_usage})
+        logger.info("Token usage written to stream: %s", token_usage)
+
+    writer({"completion": final_response})
+
+    # Build combined metadata
+    response_metadata = _build_response_metadata(
+        token_usage,
+        state.get("vs_metadata", {})
+    )
+
+    logger.info("AIMessage created with metadata: %s", response_metadata)
+    return response_metadata
+
+
+async def _stream_llm_response(response, writer):
+    """Stream LLM response chunks and accumulate content
+
+    Args:
+        response: AsyncGenerator from acompletion
+        writer: LangGraph stream writer
+
+    Returns:
+        tuple: (full_text, full_response_chunks, tool_calls_if_any)
+            - full_text: str or None (if empty/tool calls)
+            - full_response_chunks: list or None
+            - tool_calls_if_any: list or None
+    """
     full_response = []
     collected_content = []
 
+    async for chunk in response:
+        choice = chunk.choices[0].delta
+
+        # Handle empty response
+        if chunk.choices[0].finish_reason == "stop" and choice.content is None and not collected_content:
+            return None, None, None  # Signal empty response
+
+        # Handle tool calls
+        if choice.tool_calls:
+            tool_calls = await _accumulate_tool_calls(response, chunk, choice)
+            return None, None, tool_calls
+
+        # Handle content streaming
+        if choice.content is not None:
+            writer({"stream": choice.content})
+            collected_content.append(choice.content)
+
+        full_response.append(chunk)
+
+    full_text = "".join(collected_content)
+    return full_text, full_response, None
+
+
+async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
+    """LiteLLM streaming wrapper - orchestrates LLM completion with streaming"""
+    writer = get_stream_writer()
     messages = _prepare_messages_for_completion(state, config)
 
     try:
         ll_raw = config["configurable"]["ll_config"]
         tools = config["metadata"].get("tools", [])
+        model_name = ll_raw.get("model", "unknown")
 
-        logger.info("Streaming completion...")
-        logger.info("Tools being sent: %s", tools)
-        logger.info("Model: %s", ll_raw.get("model", ""))
+        logger.info("Streaming completion with model: %s, tools: %s", model_name, tools)
+
+        # Make LLM API call
+        completion_kwargs = _build_completion_kwargs(messages, ll_raw, tools)
 
         try:
-            response = await acompletion(
-                messages=convert_to_openai_messages(messages), stream=True, **ll_raw, tools=tools
-            )
+            response = await acompletion(**completion_kwargs)
         except Exception as ex:
             logger.exception("Error calling LLM API")
             raise ex
 
-        async for chunk in response:
-            choice = chunk.choices[0].delta
+        # Stream and accumulate response
+        full_text, full_response, tool_calls = await _stream_llm_response(response, writer)
 
-            if chunk.choices[0].finish_reason == "stop" and choice.content is None and not collected_content:
-                return {"messages": [AIMessage(content="I'm sorry, I was unable to produce a response.")]}
+        # Build response based on LLM output
+        result_message = None
 
-            if choice.tool_calls:
-                tool_calls = await _accumulate_tool_calls(response, chunk, choice)
-                return {"messages": [AIMessage(content="", tool_calls=tool_calls)]}
+        # Handle empty response
+        if full_text is None and tool_calls is None:
+            result_message = AIMessage(content="I'm sorry, I was unable to produce a response.")
 
-            if choice.content is not None:
-                writer({"stream": choice.content})
-                collected_content.append(choice.content)
+        # Handle tool calls
+        elif tool_calls:
+            result_message = AIMessage(content="", tool_calls=tool_calls)
 
-            full_response.append(chunk)
-
-        if full_response:
-            last_chunk = full_response[-1]
-            full_text = "".join(collected_content)
-            last_chunk.object = "chat.completion"
-            last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
-            delattr(last_chunk.choices[0], "delta")
-            last_chunk.choices[0].finish_reason = "stop"
-            final_response = last_chunk.model_dump()
+        # Handle normal text response
+        else:
+            # Finalize completion response
+            final_response = _finalize_completion_response(full_response, full_text)
             logger.info("Final completion response: %s", final_response)
 
-            # Extract and emit token usage via stream writer
-            token_usage = final_response.get("usage", {})
-            if token_usage:
-                writer({"token_usage": token_usage})
-                logger.info("Token usage written to stream: %s", token_usage)
+            # Detect unreliable function calling
+            if tools:
+                is_unreliable, err_msg = _detect_unreliable_function_calling(
+                    tools, full_text, model_name
+                )
+                if is_unreliable:
+                    result_message = AIMessage(content=err_msg)
 
-            writer({"completion": final_response})
+            # Build normal response with metadata
+            if result_message is None:
+                response_metadata = _emit_completion_metadata(writer, final_response, state)
+                result_message = AIMessage(content=full_text, response_metadata=response_metadata)
 
-            # Build response_metadata with both token_usage and vs_metadata
-            response_metadata = {
-                k: v
-                for k, v in [
-                    ("token_usage", token_usage),
-                    ("vs_metadata", state.get("vs_metadata", {})),
-                ]
-                if v
-            }
-
-            # Create AIMessage with metadata attached
-            logger.info("AIMessage created with metadata: %s", response_metadata)
-            return {"messages": [AIMessage(content=full_text, response_metadata=response_metadata)]}
+        return {"messages": [result_message]}
 
     except APIConnectionError as ex:
         error_msg = _create_error_message(ex, "connecting to LLM API")
@@ -377,9 +548,6 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
     except Exception as ex:
         error_msg = _create_error_message(ex, "generating completion")
         return {"messages": [error_msg]}
-
-    # Fallback return (should not reach here normally)
-    return {"messages": [AIMessage(content="")]}
 
 
 async def _vs_step_rephrase(thread_id: str, question: str, chat_history: list, use_history: bool) -> str:

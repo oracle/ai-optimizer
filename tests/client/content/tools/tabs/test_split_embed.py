@@ -18,10 +18,10 @@ class TestStreamlit:
     # Streamlit File path
     ST_FILE = "../src/client/content/tools/tabs/split_embed.py"
 
-    def _setup_common_mocks(self, monkeypatch, oci_configured=True):
+    def _setup_common_mocks(self, monkeypatch, oci_configured=True, vector_stores=None):
         """Setup common mocks used across multiple tests"""
 
-        # Mock the API responses for get_models and OCI configs
+        # Mock the API responses for get_models, OCI configs, and databases
         def mock_get(endpoint=None, **kwargs):
             if endpoint == "v1/models":
                 return [
@@ -31,6 +31,14 @@ class TestStreamlit:
                         "enabled": True,
                         "api_base": "http://test.url",
                         "max_chunk_size": 1000,
+                    }
+                ]
+            elif endpoint == "v1/databases":
+                # Return database config with vector stores (empty by default)
+                return [
+                    {
+                        "name": "DEFAULT",
+                        "vector_stores": vector_stores if vector_stores is not None else [],
                     }
                 ]
             elif endpoint == "v1/oci":
@@ -745,50 +753,20 @@ class TestStreamlit:
     def test_create_new_vs_toggle_shown_when_vector_stores_exist(self, app_server, app_test, monkeypatch):
         """Test that 'Create New Vector Store' toggle IS shown when vector stores exist"""
         assert app_server is not None
-        self._setup_common_mocks(monkeypatch)
 
-        # Mock database_configs with existing vector stores
-        def mock_get_with_vs(endpoint=None, **kwargs):
-            if endpoint == "v1/models":
-                return [
-                    {
-                        "id": "test-model",
-                        "type": "embed",
-                        "enabled": True,
-                        "api_base": "http://test.url",
-                        "max_chunk_size": 1000,
-                    }
-                ]
-            elif endpoint == "v1/databases":
-                return [
-                    {
-                        "name": "DEFAULT",
-                        "vector_stores": [
-                            {
-                                "alias": "existing_vs",
-                                "model": "test-model",
-                                "vector_store": "VECTOR_STORE_TABLE",
-                                "chunk_size": 500,
-                                "chunk_overlap": 50,
-                                "distance_metric": "COSINE",
-                                "index_type": "IVF",
-                            }
-                        ],
-                    }
-                ]
-            elif endpoint == "v1/oci":
-                return [
-                    {
-                        "auth_profile": "DEFAULT",
-                        "namespace": "test-namespace",
-                        "tenancy": "test-tenancy",
-                        "region": "us-ashburn-1",
-                        "authentication": "api_key",
-                    }
-                ]
-            return {}
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get_with_vs)
+        # Setup mocks with existing vector stores
+        vector_stores = [
+            {
+                "alias": "existing_vs",
+                "model": "None/test-model",  # Must match provider/id format from enabled_models_lookup
+                "vector_store": "VECTOR_STORE_TABLE",
+                "chunk_size": 500,
+                "chunk_overlap": 50,
+                "distance_metric": "COSINE",
+                "index_type": "IVF",
+            }
+        ]
+        self._setup_common_mocks(monkeypatch, vector_stores=vector_stores)
         monkeypatch.setattr("common.functions.is_url_accessible", lambda api_base: (True, ""))
         monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
 

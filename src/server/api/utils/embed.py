@@ -399,7 +399,7 @@ def populate_vs(
         logger.error("Unable to create vector index: %s", ex)
 
     # Comment the VS table
-    update_vs_comment(vector_store, db_conn)
+    update_vs_comment(vector_store, db_details)
 
 
 ##########################################

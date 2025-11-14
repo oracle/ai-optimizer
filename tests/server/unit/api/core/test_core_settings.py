@@ -10,7 +10,7 @@ import os
 import pytest
 
 from server.api.core import settings
-from common.schema import Settings, Configuration, Database, Model, OracleCloudSettings, Prompt
+from common.schema import Settings, Configuration, Database, Model, OracleCloudSettings
 
 
 class TestSettings:
@@ -24,7 +24,6 @@ class TestSettings:
             "database_configs": [{"name": "test_db", "user": "user", "password": "pass", "dsn": "dsn"}],
             "model_configs": [{"id": "test-model", "provider": "openai", "type": "ll"}],
             "oci_configs": [{"auth_profile": "DEFAULT", "compartment_id": "ocid1.compartment.oc1..test"}],
-            "prompt_configs": [{"category": "sys", "name": "default", "prompt": "You are helpful"}],
             "client_settings": {"client": "default", "max_tokens": 1000, "temperature": 0.7},
         }
 
@@ -68,25 +67,30 @@ class TestSettings:
         with pytest.raises(ValueError, match="client nonexistent not found"):
             settings.get_client_settings("nonexistent")
 
+    @pytest.mark.asyncio
     @patch("server.api.core.settings.bootstrap.DATABASE_OBJECTS")
     @patch("server.api.core.settings.bootstrap.MODEL_OBJECTS")
     @patch("server.api.core.settings.bootstrap.OCI_OBJECTS")
-    @patch("server.api.core.settings.bootstrap.PROMPT_OBJECTS")
-    def test_get_server_config(self, mock_prompts, mock_oci, mock_models, mock_databases):
+    @patch("server.api.core.settings.get_mcp_prompts_with_overrides")
+    async def test_get_server_config(self, mock_get_prompts, mock_oci, mock_models, mock_databases):
         """Test getting server configuration"""
         mock_databases.__iter__ = MagicMock(
             return_value=iter([Database(name="test", user="u", password="p", dsn="d")])
         )
         mock_models.__iter__ = MagicMock(return_value=iter([Model(id="test", provider="openai", type="ll")]))
         mock_oci.__iter__ = MagicMock(return_value=iter([OracleCloudSettings(auth_profile="DEFAULT")]))
-        mock_prompts.__iter__ = MagicMock(return_value=iter([Prompt(category="sys", name="test", prompt="test")]))
 
-        result = settings.get_server_config()
+        # Mock MCP prompts retrieval
+        mock_get_prompts.return_value = []
+        mock_mcp_engine = MagicMock()
+
+        result = await settings.get_server_config(mock_mcp_engine)
 
         assert "database_configs" in result
         assert "model_configs" in result
         assert "oci_configs" in result
         assert "prompt_configs" in result
+        assert "prompt_overrides" in result
 
     @patch("server.api.core.settings.bootstrap.SETTINGS_OBJECTS")
     @patch("server.api.core.settings.get_client_settings")
@@ -136,7 +140,7 @@ class TestSettings:
     def test_load_config_from_json_data_missing_client_settings(self, _mock_update_server):
         """Test loading config from JSON data without client_settings"""
         # Create config without client_settings
-        invalid_config = {"database_configs": [], "model_configs": [], "oci_configs": [], "prompt_configs": []}
+        invalid_config = {"database_configs": [], "model_configs": [], "oci_configs": []}
 
         with pytest.raises(KeyError, match="Missing client_settings in config file"):
             settings.load_config_from_json_data(invalid_config)

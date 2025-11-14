@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import json
 from typing import Union
 
-from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile
+from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile, Request
 from fastapi.responses import JSONResponse
 
 import server.api.core.settings as core_settings
@@ -33,6 +33,7 @@ def _incl_readonly_param(incl_readonly: bool = Query(False, include_in_schema=Fa
     response_model=Union[schema.Configuration, schema.Settings],
 )
 async def settings_get(
+    request: Request,
     client: schema.ClientIdType,
     full_config: bool = False,
     incl_sensitive: bool = Depends(_incl_sensitive_param),
@@ -47,13 +48,17 @@ async def settings_get(
     if not full_config:
         return client_settings
 
-    config = core_settings.get_server_config()
+    # Get MCP engine for prompt retrieval
+    mcp_engine = request.app.state.fastmcp_app
+    config = await core_settings.get_server_config(mcp_engine)
+
     response = schema.Configuration(
         client_settings=client_settings,
         database_configs=config.get("database_configs"),
         model_configs=config.get("model_configs"),
         oci_configs=config.get("oci_configs"),
         prompt_configs=config.get("prompt_configs"),
+        prompt_overrides=config.get("prompt_overrides"),
     )
     return JSONResponse(content=response.model_dump_public(incl_sensitive=incl_sensitive, incl_readonly=incl_readonly))
 

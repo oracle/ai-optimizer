@@ -181,23 +181,17 @@ class OracleCloudSettings(BaseModel):
 
 
 #####################################################
-# Prompt Engineering
+# Prompt Engineering (MCP-based)
 #####################################################
-class PromptText(BaseModel):
-    """Patch'able Prompt Parameters"""
+class MCPPrompt(BaseModel):
+    """MCP Prompt metadata and content"""
 
-    prompt: str = Field(..., min_length=1, description="Prompt Text")
-
-
-class Prompt(PromptText):
-    """Prompt Object"""
-
-    name: str = Field(
-        default="Basic Example",
-        description="Name of Prompt.",
-        examples=["Basic Example", "vector_search Example", "Custom"],
-    )
-    category: Literal["sys", "ctx"] = Field(..., description="Category of Prompt.")
+    name: str = Field(..., description="MCP prompt name (e.g., 'optimizer_basic-default')")
+    title: str = Field(..., description="Human-readable title")
+    description: str = Field(default="", description="Prompt purpose and usage")
+    tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+    default_text: str = Field(..., description="Default prompt text from code")
+    override_text: Optional[str] = Field(None, description="User's custom override (if any)")
 
 
 #####################################################
@@ -287,7 +281,8 @@ class Configuration(BaseModel):
     database_configs: Optional[list[Database]] = None
     model_configs: Optional[list[Model]] = None
     oci_configs: Optional[list[OracleCloudSettings]] = None
-    prompt_configs: Optional[list[Prompt]] = None
+    prompt_configs: Optional[list[MCPPrompt]] = None
+    prompt_overrides: Optional[dict[str, str]] = None
 
     def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
@@ -403,9 +398,6 @@ ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]
 OCIResourceOCID = OracleResource.__annotations__["ocid"]
-PromptNameType = Prompt.__annotations__["name"]
-PromptCategoryType = Prompt.__annotations__["category"]
-PromptPromptType = PromptText.__annotations__["prompt"]
 TestSetsIdType = TestSets.__annotations__["tid"]
 TestSetsNameType = TestSets.__annotations__["name"]
 TestSetDateType = TestSets.__annotations__["created"]

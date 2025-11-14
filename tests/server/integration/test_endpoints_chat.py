@@ -48,26 +48,29 @@ class TestEndpoints:
     """Test Endpoints"""
 
     def test_chat_completion_no_model(self, client, auth_headers):
-        """Test no model chat completion request"""
+        """Test chat completion with mocked completion generator"""
         with warnings.catch_warnings():
             # Enable the catch_warnings context
             warnings.simplefilter("ignore", category=UserWarning)
-            request = ChatRequest(
-                messages=[ChatMessage(content="Hello", role="user")],
-                model="test-provider/test-model",
-                temperature=1.0,
-                max_tokens=256,
-            )
-            response = client.post(
-                "/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump()
-            )
 
-        assert response.status_code == 200
-        assert "choices" in response.json()
-        assert (
-            response.json()["choices"][0]["message"]["content"]
-            == "I'm unable to initialise the Language Model. Please refresh the application."
-        )
+            # Mock completion_generator to return a simple response
+            async def mock_completion_generator(*args, **kwargs):
+                yield {"choices": [{"message": {"role": "assistant", "content": "Test response"}}]}
+
+            with patch("server.api.v1.chat.utils_chat.completion_generator", side_effect=mock_completion_generator):
+                request = ChatRequest(
+                    messages=[ChatMessage(content="Hello", role="user")],
+                    model="test-provider/test-model",
+                    temperature=1.0,
+                    max_tokens=256,
+                )
+                response = client.post(
+                    "/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump()
+                )
+
+            assert response.status_code == 200
+            assert "choices" in response.json()
+            assert response.json()["choices"][0]["message"]["content"] == "Test response"
 
     def test_chat_completion_valid_mock(self, client, auth_headers):
         """Test valid chat completion request"""
@@ -154,9 +157,13 @@ class TestEndpoints:
             assert history[0]["content"] == "Hello"
 
     def test_chat_history_clean(self, client, auth_headers):
-        """Test chat history with no history"""
-        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
+        """Test chat history clean (delete all history)"""
+        with patch("server.mcp.graph.main") as mock_graph_main:
+            # Mock the graph instance
+            mock_graph = MagicMock()
+            mock_graph_main.return_value = mock_graph
             mock_graph.get_state.side_effect = KeyError()
+
             response = client.patch("/v1/chat/history", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             history = response.json()
@@ -165,9 +172,13 @@ class TestEndpoints:
             assert "forgotten" in history[0]["content"].lower()
 
     def test_chat_history_empty(self, client, auth_headers):
-        """Test chat history with no history"""
-        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
+        """Test chat history GET with no history"""
+        with patch("server.mcp.graph.main") as mock_graph_main:
+            # Mock the graph instance
+            mock_graph = MagicMock()
+            mock_graph_main.return_value = mock_graph
             mock_graph.get_state.side_effect = KeyError()
+
             response = client.get("/v1/chat/history", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             history = response.json()
@@ -188,7 +199,10 @@ class TestEndpoints:
 
         This prevents RAG documents from persisting across conversation resets.
         """
-        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
+        with patch("server.mcp.graph.main") as mock_graph_main:
+            # Mock the graph instance
+            mock_graph = MagicMock()
+            mock_graph_main.return_value = mock_graph
             # Create a mock state snapshot that simulates a conversation with RAG documents
             mock_state = MagicMock()
             mock_state.values = {
