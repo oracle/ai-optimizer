@@ -38,7 +38,7 @@ class TestMCPPromptExport:
         mock_prompt.name = "other_prompt"
         mock_prompt.title = "Other Prompt"
         mock_prompt.description = "Not an optimizer prompt"
-        mock_prompt.tags = []
+        mock_prompt.meta = None
 
         with patch("server.api.utils.mcp.list_prompts", new=AsyncMock(return_value=[mock_prompt])):
             result = await settings.get_mcp_prompts_with_overrides(mock_mcp_engine)
@@ -55,7 +55,7 @@ class TestMCPPromptExport:
         mock_prompt.name = "optimizer_basic-default"
         mock_prompt.title = "Basic Prompt"
         mock_prompt.description = "Basic system prompt"
-        mock_prompt.tags = ["source", "optimizer"]
+        mock_prompt.meta = {"_fastmcp": {"tags": ["source", "optimizer"]}}
 
         # Mock the default function
         mock_default_message = MagicMock()
@@ -84,7 +84,7 @@ class TestMCPPromptExport:
         mock_prompt.name = "optimizer_tools-default"
         mock_prompt.title = "Tools Prompt"
         mock_prompt.description = "Tools system prompt"
-        mock_prompt.tags = ["source", "optimizer"]
+        mock_prompt.meta = {"_fastmcp": {"tags": ["source", "optimizer"]}}
 
         mock_default_message = MagicMock()
         mock_default_message.content.text = "Default tools prompt"
@@ -112,7 +112,7 @@ class TestMCPPromptExport:
             mock_prompt.name = name
             mock_prompt.title = name.replace("optimizer_", "").replace("-", " ").title()
             mock_prompt.description = f"Description for {name}"
-            mock_prompt.tags = ["optimizer"]
+            mock_prompt.meta = {"_fastmcp": {"tags": ["optimizer"]}}
             mock_prompts.append(mock_prompt)
 
         # Mock default functions
@@ -153,7 +153,7 @@ class TestMCPPromptExport:
         mock_prompt.name = "optimizer_nonexistent-prompt"
         mock_prompt.title = "Nonexistent"
         mock_prompt.description = ""
-        mock_prompt.tags = []
+        mock_prompt.meta = None
 
         with patch("server.api.utils.mcp.list_prompts", new=AsyncMock(return_value=[mock_prompt])), \
              patch("server.api.core.settings.cache.get_override", return_value=None):

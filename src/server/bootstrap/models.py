@@ -91,7 +91,7 @@ def _get_base_models_list() -> list[dict]:
         },
         {
             # This is intentionally last to line up with docos
-            "id": "llama3.1",
+            "id": "qwen2.5:7b",
             "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
             "type": "ll",
             "provider": "ollama",

@@ -98,7 +98,7 @@ When configuring an Ollama model in the {{< short_app_ref >}}, set the `API Serv
 
 ## Quick-start
 
-Example of running llama3.1 on a Linux host:
+Example of running qwen2.5:7b on a Linux host:
 
 1. Install Ollama:
 
@@ -106,10 +106,10 @@ Example of running llama3.1 on a Linux host:
 sudo curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-1. Pull the llama3.1 model:
+1. Pull the qwen2.5:7b model:
 
 ```shell
-ollama pull llama3.1
+ollama pull qwen2.5:7b
 ```
 
 1. Start Ollama
