@@ -38,6 +38,7 @@ import time
 import socket
 import shutil
 import subprocess
+import warnings
 from pathlib import Path
 from typing import Generator, Optional
 from contextlib import contextmanager
@@ -46,6 +47,23 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from streamlit.testing.v1 import AppTest
+
+# Suppress LiteLLM cleanup warnings that occur during atexit
+warnings.filterwarnings("ignore", message="coroutine 'close_litellm_async_clients' was never awaited", category=RuntimeWarning)
+
+# Monkey-patch warnings.warn to filter out LiteLLM cleanup warnings during shutdown
+import sys
+_original_warn = warnings.warn
+
+def _filtered_warn(message, category=None, stacklevel=1, source=None):
+    """Filter out LiteLLM cleanup warnings during shutdown"""
+    if isinstance(message, str) and "close_litellm_async_clients" in message:
+        return
+    if isinstance(message, Warning) and "close_litellm_async_clients" in str(message):
+        return
+    _original_warn(message, category, stacklevel + 1, source)
+
+warnings.warn = _filtered_warn
 
 # For Database Container
 import docker
@@ -73,8 +91,48 @@ def client():
     import asyncio
     from launch_server import create_app
 
-    app = asyncio.run(create_app())
-    return TestClient(app)
+    # Get or create event loop for proper lifecycle management
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # Create the app using the managed event loop
+    app = loop.run_until_complete(create_app())
+
+    # Create test client with context manager to ensure proper cleanup
+    with TestClient(app) as test_client:
+        yield test_client
+
+    # Clean up any remaining async tasks before closing the loop
+    try:
+        # Try to clean up LiteLLM async clients if available
+        try:
+            from litellm.llms.custom_httpx.async_client_cleanup import close_litellm_async_clients
+
+            loop.run_until_complete(close_litellm_async_clients())
+        except (ImportError, AttributeError):
+            pass
+
+        # Cancel all running tasks
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+
+        # Run the loop one more time to handle cancellations
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+        # Close the event loop with warnings suppressed for atexit cleanup
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            loop.close()
+    except Exception:  # pylint: disable=broad-except
+        pass
 
 
 @pytest.fixture

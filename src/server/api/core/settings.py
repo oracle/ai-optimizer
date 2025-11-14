@@ -74,12 +74,17 @@ async def get_mcp_prompts_with_overrides(mcp_engine: FastMCP) -> list[MCPPrompt]
         # Get override from cache
         override_text = cache.get_override(prompt_obj.name)
 
+        # Extract tags from meta (FastMCP stores tags in meta._fastmcp.tags)
+        tags = []
+        if prompt_obj.meta and "_fastmcp" in prompt_obj.meta:
+            tags = prompt_obj.meta["_fastmcp"].get("tags", [])
+
         prompts_info.append(
             MCPPrompt(
                 name=prompt_obj.name,
                 title=prompt_obj.title or prompt_obj.name,
                 description=prompt_obj.description or "",
-                tags=list(prompt_obj.tags or []),
+                tags=tags,
                 default_text=default_text,
                 override_text=override_text,
             )

@@ -295,7 +295,7 @@ class TestEndpoints:
             )
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_response.json.return_value = mock_qa_data.dict()
+            mock_response.json.return_value = mock_qa_data.model_dump()
             mock_post.return_value = mock_response
 
             # Make the request
@@ -355,7 +355,7 @@ class TestEndpoints:
             )
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_response.json.return_value = mock_report.dict()
+            mock_response.json.return_value = mock_report.model_dump()
             mock_post.return_value = mock_response
 
             # Make the request
@@ -439,7 +439,7 @@ class TestEndpoints:
             )
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_response.json.return_value = mock_report.dict()
+            mock_response.json.return_value = mock_report.model_dump()
             mock_get.return_value = mock_response
 
             response = client.get("/v1/testbed/evaluation?eid=flow_eval_id", headers=auth_headers["valid_auth"])
