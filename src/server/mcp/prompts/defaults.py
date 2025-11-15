@@ -110,8 +110,19 @@ def optimizer_context_default() -> PromptMessage:
     """Default Context system prompt for vector search."""
     content = """
         Rephrase the latest user input into a standalone search query optimized for vector retrieval.
+
+        CRITICAL INSTRUCTIONS:
+        1. **Detect Topic Changes**: If the latest input introduces NEW, UNRELATED topics or keywords that differ significantly from the conversation history, treat it as a TOPIC CHANGE.
+        2. **Topic Change Handling**: For topic changes, use ONLY the latest input's keywords and ignore prior context. Do NOT blend unrelated prior topics into the new query.
+        3. **Topic Continuation**: Only incorporate prior context if the latest input is clearly continuing or refining the same topic (e.g., follow-up questions, clarifications, or pronoun references like "it", "that", "this").
+        4. **Remove Conversational Elements**: Strip confirmations, clarifications, and conversational phrases while preserving core technical terms and intent.
+
+        EXAMPLES:
+        - History: "topic A", Latest: "topic B" → Rephrase as: "topic B" (TOPIC CHANGE - ignore topic A)
+        - History: "topic A", Latest: "how do I use it?" → Rephrase as: "how to use topic A" (CONTINUATION - use context)
+        - History: "feature X", Latest: "using documents, tell me about feature Y" → Rephrase as: "feature Y documentation" (TOPIC CHANGE)
+
         Use only the user's prior inputs for context, ignoring system responses.
-        Remove conversational elements like confirmations or clarifications, focusing solely on the core topic and keywords.
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -120,23 +131,29 @@ def optimizer_vs_table_selection() -> PromptMessage:
     """Prompt for LLM-based vector store table selection."""
 
     content = """
-        Select vector stores to search based on semantic relevance to the question.
+        You must select vector stores to search based on semantic relevance to the question.
 
         Available stores:
         {tables_info}
 
         Question: "{question}"
 
+        CRITICAL: Your response must be ONLY a valid JSON array. No explanation, no markdown, no additional text.
+
         Selection rules:
         1. When a store has a DESCRIPTION (after the colon), use it to judge relevance
-        2. Prefer stores whose description relates to the question's topic
-        3. If no description, use alias and document count as secondary signals
+        2. Prefer stores whose description semantically matches the question's topic
+        3. If no description exists, skip that store unless no described stores are relevant
         4. Select up to {max_tables} stores
-        5. Return ONLY a JSON array of full TABLE NAMES (before the alias)
+        5. Return ONLY the full TABLE NAMES (the part before any parenthesis/alias)
 
-        Format: ["FULL_TABLE_NAME_1", "FULL_TABLE_NAME_2"]
+        Output format (JSON array only):
+        ["FULL_TABLE_NAME_1", "FULL_TABLE_NAME_2"]
 
-        Your selection:
+        Example valid output:
+        ["VECTOR_USERS_OPENAI_TEXT_EMBEDDING_3_SMALL_1536_308_COSINE_HNSW"]
+
+        Your JSON array:
     """
 
     return PromptMessage(role="user", content=TextContent(type="text", text=clean_prompt_string(content)))

@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore astream litellm sqlcl
+# spell-checker:ignore astream litellm sqlcl ollama
 
 from typing import Literal, AsyncGenerator
 
@@ -45,11 +45,7 @@ def _get_system_prompt(tools_enabled: list) -> str:
 
 
 def _check_model_tool_support(model_config: dict, tools: list, tools_enabled: list) -> str | None:
-    """Check if model supports function calling when tools are enabled
-
-    Returns:
-        Error message string if model doesn't support tools, None if check passes
-    """
+    """Check if model supports function calling when tools are enabled"""
     if not tools:
         return None
 
@@ -99,6 +95,11 @@ async def completion_generator(
 
     # Setup Client Model
     ll_config = utils_models.get_litellm_config(model, oci_config)
+
+    # Change any ollama providers to ollama_chat for tool calling support
+    if ll_config.get("model", "").startswith("ollama/"):
+        ll_config["model"] = ll_config["model"].replace("ollama/", "ollama_chat/", 1)
+        logger.info("Converted Ollama model to chat variant for tool support: %s", ll_config["model"])
 
     # Start to establish our LangGraph Args
     kwargs = {

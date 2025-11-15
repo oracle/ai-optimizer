@@ -106,7 +106,7 @@ class LanguageModelParameters(BaseModel):
     frequency_penalty: Optional[float] = Field(description=help_text.help_dict["frequency_penalty"], default=0.00)
     max_tokens: Optional[int] = Field(description=help_text.help_dict["max_tokens"], default=4096)
     presence_penalty: Optional[float] = Field(description=help_text.help_dict["presence_penalty"], default=0.00)
-    temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=1.00)
+    temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=0.50)
     top_p: Optional[float] = Field(description=help_text.help_dict["top_p"], default=1.00)
     streaming: Optional[bool] = Field(description="Enable Streaming (set by client)", default=False)
 
