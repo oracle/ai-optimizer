@@ -38,7 +38,7 @@ export DB_PASSWORD=<DB_PASSWORD>
 export DISTANCE_TYPE=COSINE
 export OPENAI_CHAT_MODEL=gpt-4o-mini
 export OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-export OLLAMA_CHAT_MODEL="qwen2.5:7b"
+export OLLAMA_CHAT_MODEL="llama3.1"
 export OLLAMA_EMBEDDING_MODEL=mxbai-embed-large
 export OLLAMA_BASE_URL="http://<OLLAMA_SERVER>:11434"
 export SYS_INSTR=" You are an assistant for question-answering tasks. Use the retrieved Documents and history to answer the question as accurately and comprehensively as possible. Keep your answer grounded in the facts of the Documents, be concise, and reference the Documents where possible. If you don't know the answer, just say that you are sorry as you don't haven't enough information. "
@@ -205,7 +205,7 @@ ollama:
     type: 'nvidia'
     number: 1
   models:
-    - qwen2.5:7b
+    - llama3.1
     - llama3.2
     - mxbai-embed-large
     - nomic-embed-text
@@ -233,13 +233,13 @@ it should be:
 NAME                        ID              SIZE      MODIFIED      
 nomic-embed-text:latest     0a109f422b47    274 MB    3 minutes ago    
 mxbai-embed-large:latest    468836162de7    669 MB    3 minutes ago    
-qwen2.5:7b:latest             a80c4f17acd5    2.0 GB    3 minutes ago
+llama3.1:latest             a80c4f17acd5    2.0 GB    3 minutes ago
 ```
 
 * test a single LLM:
 
 ```bash
-kubectl -n ollama exec svc/ollama -- ollama run "qwen2.5:7b" "what is spring boot?"
+kubectl -n ollama exec svc/ollama -- ollama run "llama3.1" "what is spring boot?"
 ```
 
 **NOTICE**: The Microservices will access to the ADB23ai on which the vector store table should be created, as done in the local desktop example shown before. To access the {{< short_app_ref >}} running on **Oracle Backend for Microservices and AI** and create the same configuration, let’s do:

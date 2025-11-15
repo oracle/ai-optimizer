@@ -4,7 +4,7 @@ ollama:
     type: 'nvidia'
     number: 1
   models:
-    - qwen2.5:7b
+    - llama3.1
     - llama3.2
     - mxbai-embed-large
     - nomic-embed-text

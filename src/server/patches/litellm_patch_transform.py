@@ -15,7 +15,7 @@ from httpx._models import Response
 
 from common import logging_config
 
-logger = logging_config.logging.getLogger("patches.litellm_patch")
+logger = logging_config.logging.getLogger("patches.litellm_patch_transform")
 
 # Only patch if not already patched
 if not getattr(OllamaConfig.transform_response, "_is_custom_patch", False):

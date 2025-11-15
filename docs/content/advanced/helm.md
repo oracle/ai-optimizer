@@ -280,7 +280,7 @@ It is recommended only to enable this functionality when you have access to a GP
 | ollama.image.repository | string | `"docker.io/ollama/ollama"` | Image Repository |
 | ollama.image.tag | string | `"latest"` | Image Tag |
 | ollama.models.enabled | bool | `true` | Enable automatic pulling of models |
-| ollama.models.modelPullList | list | `["qwen2.5:7b","mxbai-embed-large"]` | List of models to automatically pull |
+| ollama.models.modelPullList | list | `["llama3.1","mxbai-embed-large"]` | List of models to automatically pull |
 | ollama.resources | object | `{}` | Requests and limits for the container. Often used to ensure pod is running on a GPU worker |
 | ollama.nodeSelector | object | `{}` | Constrain pods to specific nodes Often used to ensure pod is running on a GPU worker |
 | ollama.affinity | object | `{}` | Rules for scheduling pods Often used to ensure pod is running on a GPU worker |

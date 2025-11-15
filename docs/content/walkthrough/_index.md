@@ -48,14 +48,14 @@ If you are using `docker`, make the walkthrough easier by aliasing the `podman` 
 
 You will run four container images to establish the "Infrastructure":
 
-- On-Premises **LLM** - qwen2.5:7b
+- On-Premises **LLM** - llama3.1
 - On-Premises Embedding Model - mxbai-embed-large
 - Vector Storage/SelectAI - Oracle AI Database Free
 - The {{< short_app_ref >}}
 
-### LLM - qwen2.5:7b
+### LLM - llama3.1
 
-To enable the _ChatBot_ functionality, access to a **LLM** is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _qwen2.5:7b_ **LLM**.
+To enable the _ChatBot_ functionality, access to a **LLM** is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _llama3.1_ **LLM**.
 
 1. Start the *Ollama* container:
 
@@ -97,7 +97,7 @@ To enable the _ChatBot_ functionality, access to a **LLM** is required. The walk
 1. Pull the **LLM** into the container:
 
    ```bash
-   podman exec -it ollama ollama pull qwen2.5:7b
+   podman exec -it ollama ollama pull llama3.1
    ```
 
 1. Test the **LLM**:
@@ -109,7 +109,7 @@ To enable the _ChatBot_ functionality, access to a **LLM** is required. The walk
 
    ```bash
    curl http://127.0.0.1:11434/api/generate -d '{
-   "model": "qwen2.5:7b",
+   "model": "llama3.1",
    "prompt": "Why is the sky blue?",
    "stream": false
    }'
@@ -228,7 +228,7 @@ Notice that there are no language models configured to use. Let's start the conf
 
 To configure the On-Premises **LLM**, navigate to the _Configuration_ screen and _Models_ tab:
 
-1. Enable the `qwen2.5:7b` model that you pulled earlier by clicking the _Edit_ button
+1. Enable the `llama3.1` model that you pulled earlier by clicking the _Edit_ button
 ![Configure LLM](images/models_edit.png)
 1. Tick the _Enabled_ checkbox, leave all other settings as-is, and _Save_
 ![Enable LLM](images/models_enable_llm.png)
@@ -242,7 +242,7 @@ Navigate to the _ChatBot_ screen:
 
 The error about language models will have disappeared, but there are new warnings about embedding models and the database. You'll take care of those in the next steps.
 
-The `Chat model:` will have been pre-set to the only enabled **LLM** (_ollama/qwen2.5:7b_) and a dialog box to interact with the **LLM** will be ready for input.
+The `Chat model:` will have been pre-set to the only enabled **LLM** (_ollama/llama3.1_) and a dialog box to interact with the **LLM** will be ready for input.
 
 Feel free to play around with the different **LLM** Parameters, hovering over the {{% icon circle-question %}} icons to get more information on what they do.
 
