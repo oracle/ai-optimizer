@@ -322,8 +322,15 @@ async def _accumulate_tool_calls(response, initial_chunk, initial_choice):
         }
 
     chunk = initial_chunk
-    while chunk.choices[0].finish_reason != "tool_calls":
-        chunk = await anext(response)
+    # Continue until we get a finish_reason indicating completion
+    # Different providers use different finish reasons: 'tool_calls' (OpenAI) or 'stop' (Ollama)
+    while chunk.choices[0].finish_reason not in ("tool_calls", "stop"):
+        try:
+            chunk = await anext(response)
+        except StopAsyncIteration:
+            # Stream ended without explicit finish_reason
+            break
+
         choice = chunk.choices[0].delta
 
         if choice.tool_calls:
