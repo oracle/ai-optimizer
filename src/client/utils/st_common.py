@@ -266,9 +266,9 @@ def tools_sidebar() -> None:
         if not embed_models_enabled:
             _disable_vector_search("No embedding models are configured and/or enabled.")
         elif not database_lookup[db_alias].get("vector_stores"):
-            _disable_vector_search("Database has no vector stores")
+            _disable_vector_search("Database has no vector stores.")
 
-        if len(state.tool_box) > 1:
+        if len(state.tool_box) > 0:
             st.sidebar.subheader("Toolkit", divider="red")
             st.sidebar.multiselect(
                 "Tool Selection",
