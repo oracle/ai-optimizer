@@ -101,7 +101,6 @@ def get_signer(config: OracleCloudSettings) -> Optional[object]:
     # API key or security token authentication - no signer needed
     return None
 
-
 def init_client(
     client_type: Union[
         oci.object_storage.ObjectStorageClient,
@@ -245,28 +244,35 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
             config.genai_compartment_id,
         )
         try:
+            # Get all models and filter for the desired capabilities
             response = client.list_models(
                 compartment_id=config.genai_compartment_id,
-                capability=["TEXT_EMBEDDINGS", "CHAT"],
                 lifecycle_state="ACTIVE",
                 sort_order="ASC",
                 sort_by="displayName",
                 retry_strategy=oci.retry.NoneRetryStrategy(),
             )
-            # Identify deprecated model names
+            all_items = response.data.items
+
+            # If no items were retrieved for any capability, skip this region
+            if not all_items:
+                continue
+
+            # Identify deprecated model names across all responses
             excluded_display_names = {
                 model.display_name
-                for model in response.data.items
+                for model in all_items
                 if model.time_deprecated or model.time_dedicated_retired or model.time_on_demand_retired
             }
 
             # Build list of models (excluding deprecated ones and duplicates)
-            for model in response.data.items:
+            for model in all_items:
                 model_key = (region["region_name"], model.display_name)
-                # Skip if deprecated, duplicate, or cohere model without TEXT_EMBEDDINGS
+                # Skip if deprecated, duplicate, doesn't have desired capabilities, or cohere model without TEXT_EMBEDDINGS
                 if (
                     model.display_name in excluded_display_names
                     or model_key in seen_models
+                    or ("TEXT_EMBEDDINGS" not in model.capabilities and "CHAT" not in model.capabilities)
                     or (model.vendor == "cohere" and "TEXT_EMBEDDINGS" not in model.capabilities)
                 ):
                     continue
