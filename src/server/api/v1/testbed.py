@@ -252,7 +252,7 @@ def testbed_evaluate(
     # Change Disable History
     client_settings.ll_model.chat_history = False
     # Change Grade vector_search
-    client_settings.vector_search.grading = False
+    client_settings.vector_search.grade = False
 
     db_conn = utils_databases.get_client_database(client).connection
     testset = utils_testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())

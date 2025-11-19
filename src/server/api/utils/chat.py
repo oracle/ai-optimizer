@@ -68,9 +68,9 @@ def _filter_tools_by_enabled(tools: list, tools_enabled: list) -> list:
     if "Vector Search" not in tools_enabled:
         filtered = [tool for tool in filtered if not tool.name.startswith("optimizer_vs")]
     else:
-        # Filter out internal-only VS tools (grading/rephrase called by vs_orchestrate)
+        # Filter out internal-only VS tools (grade/rephrase called by vs_orchestrate)
         # Only retriever and storage are exposed to the LLM
-        internal_tools = {"optimizer_vs-grading", "optimizer_vs-rephrase"}
+        internal_tools = {"optimizer_vs-grade", "optimizer_vs-rephrase"}
         filtered = [tool for tool in filtered if tool.name not in internal_tools]
     if "NL2SQL" not in tools_enabled:
         filtered = [tool for tool in filtered if not tool.name.startswith("sqlcl_")]
@@ -95,11 +95,6 @@ async def completion_generator(
 
     # Setup Client Model
     ll_config = utils_models.get_litellm_config(model, oci_config)
-
-    # Change any ollama providers to ollama_chat for tool calling support
-    if ll_config.get("model", "").startswith("ollama/"):
-        ll_config["model"] = ll_config["model"].replace("ollama/", "ollama_chat/", 1)
-        logger.info("Converted Ollama model to chat variant for tool support: %s", ll_config["model"])
 
     # Start to establish our LangGraph Args
     kwargs = {

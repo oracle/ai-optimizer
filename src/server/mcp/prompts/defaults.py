@@ -166,7 +166,7 @@ def optimizer_vs_table_selection() -> PromptMessage:
     return PromptMessage(role="user", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
-def optimizer_vs_grading() -> PromptMessage:
+def optimizer_vs_grade() -> PromptMessage:
     """Prompt for grading relevance of retrieved documents."""
 
     content = """
@@ -246,14 +246,14 @@ async def register(mcp):
         """
         return get_prompt_with_override("optimizer_vs-table-selection")
 
-    @mcp.prompt(name="optimizer_vs-grading", title="Vector Search Grading Prompt", tags=optimizer_tags)
+    @mcp.prompt(name="optimizer_vs-grade", title="Vector Search Grading Prompt", tags=optimizer_tags)
     def grading_mcp() -> PromptMessage:
         """Prompt for grading relevance of retrieved documents.
 
         Used by the vector search grading tool to assess whether retrieved documents
         are relevant to the user's question.
         """
-        return get_prompt_with_override("optimizer_vs-grading")
+        return get_prompt_with_override("optimizer_vs-grade")
 
     @mcp.prompt(name="optimizer_vs-rephrase", title="Vector Search Rephrase Prompt", tags=optimizer_tags)
     def rephrase_mcp() -> PromptMessage:

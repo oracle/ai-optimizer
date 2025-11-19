@@ -24,7 +24,7 @@ from common import logging_config
 
 # Import VS tool implementation functions for internal orchestration
 from server.mcp.tools.vs_retriever import _vs_retrieve_impl
-from server.mcp.tools.vs_grading import _vs_grade_impl
+from server.mcp.tools.vs_grade import _vs_grade_impl
 from server.mcp.tools.vs_rephrase import _vs_rephrase_impl
 
 logger = logging_config.logging.getLogger("mcp.graph")
@@ -224,7 +224,7 @@ def should_continue(state: OptimizerState) -> Literal["vs_orchestrate", "tools",
 
     # Extract tool names with validation
     tool_names = {tc.get("name") for tc in messages[-1].tool_calls if isinstance(tc, dict) and tc.get("name")}
-    vs_tools = {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grading"}
+    vs_tools = {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grade"}
 
     # Route to VS orchestration if any VS tool called
     if tool_names & vs_tools:
@@ -652,9 +652,9 @@ async def _vs_step_grade(thread_id: str, question: str, documents: list, rephras
             }
 
         logger.info(
-            "Grading result: %s (grading_enabled: %s)",
+            "Grading result: %s (grading_performed: %s)",
             grading_result.relevant,
-            grading_result.grading_enabled,
+            grading_result.grading_performed,
         )
 
         if grading_result.relevant == "yes":
@@ -725,7 +725,7 @@ def _create_vs_tool_messages(messages: list, raw_documents: list, result: dict) 
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call.get("name", "")
-        if tool_name in {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grading"}:
+        if tool_name in {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grade"}:
             try:
                 tool_responses.append(
                     ToolMessage(

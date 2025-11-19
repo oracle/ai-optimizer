@@ -61,7 +61,7 @@ mcp/
 ├── tools/                   # MCP tools (auto-discovered)
 │   ├── __init__.py
 │   ├── vs_retriever.py      # Vector search retrieval
-│   ├── vs_grading.py        # Document relevance grading
+│   ├── vs_grade.py          # Document relevance grading
 │   ├── vs_rephrase.py       # Query rephrasing with context
 │   └── vs_tables.py         # Vector store discovery
 ├── prompts/                 # MCP prompts (auto-discovered)
@@ -237,7 +237,7 @@ See [Complete Tool Reference](#9-complete-tool-reference) for detailed tool list
 | `optimizer_tools-default` | Tool-aware system prompt | Any tools enabled (VS, SQLcl, etc.) |
 | `optimizer_context-default` | Query rephrasing | VS rephrase tool needs context |
 | `optimizer_vs-table-selection` | Table selection | Smart retriever selecting vector stores |
-| `optimizer_vs-grading` | Document grading | Grading retrieved documents |
+| `optimizer_vs-grade` | Document grading | Grading retrieved documents |
 | `optimizer_vs-rephrase` | Query rephrasing | Rephrasing with chat history |
 
 **Prompt Override System** (`cache.py`):
@@ -268,7 +268,7 @@ See [Complete Tool Reference](#9-complete-tool-reference) for detailed tool list
 
 Tools are filtered based on client settings before being presented to the LLM:
 - **Vector Search disabled**: All `optimizer_vs-*` tools removed
-- **Vector Search enabled**: Internal-only tools (`optimizer_vs-grading`, `optimizer_vs-rephrase`) hidden from LLM
+- **Vector Search enabled**: Internal-only tools (`optimizer_vs-grade`, `optimizer_vs-rephrase`) hidden from LLM
 - **NL2SQL disabled**: All `sqlcl_*` tools removed
 
 **Configuration**: `Settings.tools_enabled` list (default: `["Vector Search", "NL2SQL"]`)
@@ -279,7 +279,7 @@ Tools are filtered based on client settings before being presented to the LLM:
 - **Only NL2SQL**: LLM sees `sqlcl_*` tools only
 - **Neither enabled**: Basic chatbot (no tools)
 
-**Internal-Only Tools**: `optimizer_vs-grading` and `optimizer_vs-rephrase` are never exposed to the LLM - they're only used by the `vs_orchestrate` internal pipeline.
+**Internal-Only Tools**: `optimizer_vs-grade` and `optimizer_vs-rephrase` are never exposed to the LLM - they're only used by the `vs_orchestrate` internal pipeline.
 
 ### 8. LLM-Driven Tool Selection
 
@@ -324,7 +324,7 @@ The LLM can chain tools sequentially:
 |------|---------------|----------|---------|---------|
 | `optimizer_vs-retriever` | ✅ Yes | `tools/vs_retriever.py` | Semantic search across vector stores (smart table selection, multi-table aggregation) | `VectorSearchResponse` with documents + metadata |
 | `optimizer_vs-storage` | ✅ Yes | `tools/vs_tables.py` | List available vector stores (filtered by enabled embedding models) | List of tables with alias, description, model |
-| `optimizer_vs-grading` | ❌ No (internal) | `tools/vs_grading.py` | Grade document relevance (binary scoring: yes/no) | `VectorGradeResponse` with relevance + formatted docs |
+| `optimizer_vs-grade` | ❌ No (internal) | `tools/vs_grade.py` | Grade document relevance (binary scoring: yes/no) | `VectorGradeResponse` with relevance + formatted docs |
 | `optimizer_vs-rephrase` | ❌ No (internal) | `tools/vs_rephrase.py` | Contextualize query with conversation history (only runs if >2 messages) | `VectorRephraseResponse` with rephrased query |
 
 **NL2SQL Tools** (External Path via SQLcl Proxy):
@@ -666,7 +666,7 @@ INFO - Using system prompt without documents (transparent completion)
 ```
 INFO - Question rephrased: 'it' -> 'vector index accuracy'
 INFO - Retrieved 5 documents from tables: ['DOCS_CHUNKS']
-INFO - Grading result: yes (grading_enabled: True)
+INFO - Grading result: yes (grading_performed: True)
 INFO - Documents deemed relevant - storing in state
 ```
 

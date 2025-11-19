@@ -214,7 +214,9 @@ class PromptSettings(BaseModel):
 class VectorSearchSettings(BaseModel):
     """Store vector_search Settings"""
 
-    grading: bool = Field(default=True, description="Grade vector_search Results")
+    discovery: bool = Field(default=True, description="Auto-discover Vector Stores")
+    rephrase: bool = Field(default=True, description="Rephrase User Prompt")
+    grade: bool = Field(default=True, description="Grade Vector Search Results")
     search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
         default="Similarity", description="Search Type"
     )

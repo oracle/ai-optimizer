@@ -26,7 +26,7 @@ class VectorGradeResponse(BaseModel):
 
     relevant: str  # "yes" or "no"
     formatted_documents: str  # Documents formatted as string (if relevant)
-    grading_enabled: bool  # Whether grading was actually performed
+    grading_performed: bool  # Whether grading was actually performed
     num_documents: int  # Number of documents evaluated
     status: str  # "success" or "error"
     error: Optional[str] = None
@@ -40,7 +40,7 @@ def _format_documents(documents: List[dict]) -> str:
 async def _grade_documents_with_llm(question: str, documents_str: str, ll_config: dict) -> str:
     """Grade documents using LLM"""
     # Get grading prompt (checks cache for overrides first)
-    prompt_msg = grading_prompts.get_prompt_with_override("optimizer_vs-grading")
+    prompt_msg = grading_prompts.get_prompt_with_override("optimizer_vs-grade")
     grade_template = prompt_msg.content.text
 
     # Format the template with actual values
@@ -85,11 +85,11 @@ async def _vs_grade_impl(
         # Format documents
         documents_str = _format_documents(documents)
         relevant = "yes"
-        grading_enabled = False
+        grading_performed = False
 
         # Only grade if grading is enabled and we have documents
         if vector_search.grading and documents:
-            grading_enabled = True
+            grading_performed = True
             # Get LLM config
             oci_config = utils_oci.get(client=thread_id)
             ll_model = client_settings.ll_model.model_dump()
@@ -110,7 +110,7 @@ async def _vs_grade_impl(
         return VectorGradeResponse(
             relevant=relevant.lower(),
             formatted_documents=formatted_docs,
-            grading_enabled=grading_enabled,
+            grading_performed=grading_performed,
             num_documents=len(documents),
             status="success",
         )
@@ -119,7 +119,7 @@ async def _vs_grade_impl(
         return VectorGradeResponse(
             relevant="yes",  # Default to yes on error
             formatted_documents="",
-            grading_enabled=False,
+            grading_performed=False,
             num_documents=len(documents) if documents else 0,
             status="error",
             error=str(ex),
@@ -129,7 +129,7 @@ async def _vs_grade_impl(
 async def register(mcp, auth):
     """Invoke Registration of Vector Search Tools"""
 
-    @mcp.tool(name="optimizer_vs-grading")
+    @mcp.tool(name="optimizer_vs-grade")
     @auth.get("vs_grading", operation_id="vs_grading", include_in_schema=False)
     async def grading(
         thread_id: str,
@@ -159,7 +159,7 @@ async def register(mcp, auth):
             - relevant: "yes" or "no" indicating if documents are relevant
             - formatted_documents: Documents formatted as concatenated string
                 (if relevant)
-            - grading_enabled: Whether grading was actually performed
+            - grading_performed: Whether grading was actually performed
             - num_documents: Number of documents evaluated
             - status: "success" or "error"
             - error: Error message if status is "error" (optional)
