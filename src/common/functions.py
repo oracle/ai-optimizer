@@ -143,7 +143,6 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
         username = ""
         password = ""
         dsn = ""
-
         if db_conn and query:
             try:
                 user_part, dsn = db_conn.split("@")
@@ -152,7 +151,6 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                 return_msg = f"Wrong connection string {db_conn}"
                 logger.error(return_msg)
                 ok = False
-
             with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(query)
@@ -182,7 +180,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
         else:
             ok = False
             return_msg = ""
-
+    
         return ok, return_msg
 
     except oracledb.Error as e:

@@ -52,7 +52,7 @@ class FileSourceData:
         if self.file_source == "Web":
             return bool(self.web_url and functions.is_url_accessible(self.web_url)[0])
         if self.file_source == "SQL":
-            return not functions.is_sql_accessible(self.sql_connection, self.sql_query)[0]
+            return functions.is_sql_accessible(self.sql_connection, self.sql_query)[0]
         if self.file_source == "OCI":
             return bool(self.oci_files_selected is not None and self.oci_files_selected["Process"].sum() > 0)
         return False
@@ -243,7 +243,7 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict) -> FileSourceDa
         data.sql_query = st.text_input("SQL:", key="sql_query")
 
         is_invalid, msg = functions.is_sql_accessible(data.sql_connection, data.sql_query)
-        if is_invalid or msg:
+        if not(is_invalid) or msg:
             st.error(f"Error: {msg}")
 
     ######################################
