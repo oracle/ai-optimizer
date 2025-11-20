@@ -250,6 +250,17 @@ def compare_settings(current, uploaded, path=""):
             if new_path == "client_settings.client" or new_path.endswith(".created"):
                 continue
 
+            # Special handling for prompt_overrides (simple dict comparison)
+            if new_path == "prompt_overrides":
+                current_overrides = current.get(key) or {}
+                uploaded_overrides = uploaded.get(key) or {}
+                if current_overrides != uploaded_overrides:
+                    differences["Value Mismatch"][new_path] = {
+                        "current": current_overrides,
+                        "uploaded": uploaded_overrides
+                    }
+                continue
+
             _handle_key_comparison(
                 key, current, uploaded, differences, new_path, sensitive_keys
             )
@@ -292,7 +303,7 @@ def apply_uploaded_settings(uploaded):
             endpoint="v1/settings", params={"client": client_id}
         )
         # Clear States so they are refreshed
-        for key in ["oci_configs", "model_configs", "database_configs"]:
+        for key in ["oci_configs", "model_configs", "database_configs", "prompt_configs"]:
             st_common.clear_state_key(key)
     except api_call.ApiError as ex:
         st.error(
@@ -322,15 +333,35 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
 
 
 def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
-    """Get the users CTX Prompt"""
+    """Get the system prompt for SpringAI export"""
 
-    sys_prompt = next(
-        item["prompt"]
-        for item in state.prompt_configs
-        if item["name"] == state.client_settings["prompts"]["sys"]
-        and item["category"] == "sys"
+    # Determine which system prompt would be active based on tools_enabled
+    tools_enabled = state.client_settings.get("tools_enabled", [])
+
+    # Select prompt name based on tools configuration
+    if not tools_enabled:
+        prompt_name = "optimizer_basic-default"
+        if state.client_settings["vector_search"]["enabled"]:
+            prompt_name = "optimizer_vs-no-tools-default"
+    else:
+        # Tools are enabled, use tools-default prompt
+        prompt_name = "optimizer_tools-default"
+
+    # Find the prompt in configs
+    sys_prompt_obj = next(
+        (item for item in state.prompt_configs if item["name"] == prompt_name),
+        None
     )
-    logger.info("Prompt used in export:\n%s", sys_prompt)
+
+    if sys_prompt_obj:
+        # Use override if present, otherwise use default
+        sys_prompt = sys_prompt_obj.get("override_text") or sys_prompt_obj.get("default_text")
+    else:
+        # Fallback to basic prompt if not found
+        logger.warning("Prompt %s not found in configs, using fallback", prompt_name)
+        sys_prompt = "You are a helpful assistant."
+
+    logger.info("Prompt used in export (%s):\n%s", prompt_name, sys_prompt)
     with open(src_dir / "templates" / file_name, "r", encoding="utf-8") as template:
         template_content = template.read()
 

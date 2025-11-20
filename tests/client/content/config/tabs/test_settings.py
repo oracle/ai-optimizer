@@ -176,9 +176,10 @@ class TestStreamlit:
 
         # Check that settings are loaded
         assert "ll_model" in at.session_state["client_settings"]
-        assert "prompts" in at.session_state["client_settings"]
         assert "oci" in at.session_state["client_settings"]
         assert "database" in at.session_state["client_settings"]
+        assert "vector_search" in at.session_state["client_settings"]
+        assert "selectai" in at.session_state["client_settings"]
 
 
 #############################################################################
@@ -201,10 +202,19 @@ class TestSettingsFunctions:
         return SimpleNamespace(
             client_settings={
                 "client": "test-client",
-                "prompts": {"sys": "Basic Example"},
                 "database": {"alias": "DEFAULT"},
+                "vector_search": {"enabled": False},
             },
-            prompt_configs=[{"name": "Basic Example", "category": "sys", "prompt": "You are a helpful assistant."}],
+            prompt_configs=[
+                {
+                    "name": "optimizer_basic-default",
+                    "title": "Basic Example",
+                    "description": "Basic default prompt",
+                    "tags": [],
+                    "default_text": "You are a helpful assistant.",
+                    "override_text": None,
+                }
+            ],
             database_configs=[{"name": "DEFAULT", "user": "test_user", "password": "test_pass"}],
         )
 
@@ -370,10 +380,19 @@ class TestSettingsFunctions:
         from client.content.config.tabs.settings import spring_ai_obaas
         mock_state = SimpleNamespace(
             client_settings={
-                "prompts": {"sys": "Basic Example"},
-                "database": {"alias": "DEFAULT"}
+                "database": {"alias": "DEFAULT"},
+                "vector_search": {"enabled": False},
             },
-            prompt_configs=[{"name": "Basic Example", "category": "sys", "prompt": "You are a helpful assistant."}]
+            prompt_configs=[
+                {
+                    "name": "optimizer_basic-default",
+                    "title": "Basic Example",
+                    "description": "Basic default prompt",
+                    "tags": [],
+                    "default_text": "You are a helpful assistant.",
+                    "override_text": None,
+                }
+            ]
         )
         mock_template_content = "Provider: {provider}\nPrompt: {sys_prompt}\nLLM: {ll_model}\nEmbed: {vector_search}\nDB: {database_config}"
 

@@ -16,7 +16,6 @@ from common.schema import (
     LargeLanguageSettings,
     VectorSearchSettings,
     SelectAISettings,
-    PromptSettings,
     OciSettings,
 )
 
@@ -35,25 +34,22 @@ class TestChatUtils:
             ),
             vector_search=VectorSearchSettings(enabled=False),
             selectai=SelectAISettings(enabled=False),
-            prompts=PromptSettings(sys="Basic Example", ctx="Basic Example"),
             oci=OciSettings(auth_profile="DEFAULT"),
         )
 
     @patch("server.api.core.settings.get_client_settings")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
-    @patch("server.api.core.prompts.get_prompts")
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_success(
-        self, mock_astream, mock_get_prompts, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
     ):
         """Test successful completion generation"""
         # Setup mocks
         mock_get_client_settings.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
-        mock_get_prompts.return_value = MagicMock(prompt="You are a helpful assistant")
 
         # Mock the async generator - this should only yield the final completion for "completions" mode
         async def mock_generator():
@@ -79,18 +75,16 @@ class TestChatUtils:
     @patch("server.api.core.settings.get_client_settings")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
-    @patch("server.api.core.prompts.get_prompts")
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_streaming(
-        self, mock_astream, mock_get_prompts, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
     ):
         """Test streaming completion generation"""
         # Setup mocks
         mock_get_client_settings.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
-        mock_get_prompts.return_value = MagicMock(prompt="You are a helpful assistant")
 
         # Mock the async generator
         async def mock_generator():
@@ -114,7 +108,6 @@ class TestChatUtils:
     @patch("server.api.core.settings.get_client_settings")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
-    @patch("server.api.core.prompts.get_prompts")
     @patch("server.api.utils.databases.get_client_database")
     @patch("server.api.utils.models.get_client_embed")
     @patch("server.agents.chatbot.chatbot_graph.astream")
@@ -124,7 +117,6 @@ class TestChatUtils:
         mock_astream,
         mock_get_client_embed,
         mock_get_client_database,
-        mock_get_prompts,
         mock_get_litellm_config,
         mock_get_oci,
         mock_get_client_settings,
@@ -138,7 +130,6 @@ class TestChatUtils:
         mock_get_client_settings.return_value = vector_search_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
-        mock_get_prompts.return_value = MagicMock(prompt="You are a helpful assistant")
 
         mock_db = MagicMock()
         mock_db.connection = MagicMock()
@@ -164,7 +155,6 @@ class TestChatUtils:
     @patch("server.api.core.settings.get_client_settings")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
-    @patch("server.api.core.prompts.get_prompts")
     @patch("server.api.utils.databases.get_client_database")
     @patch("server.api.utils.selectai.set_profile")
     @patch("server.agents.chatbot.chatbot_graph.astream")
@@ -174,7 +164,6 @@ class TestChatUtils:
         mock_astream,
         mock_set_profile,
         mock_get_client_database,
-        mock_get_prompts,
         mock_get_litellm_config,
         mock_get_oci,
         mock_get_client_settings,
@@ -189,7 +178,6 @@ class TestChatUtils:
         mock_get_client_settings.return_value = selectai_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
-        mock_get_prompts.return_value = MagicMock(prompt="You are a helpful assistant")
 
         mock_db = MagicMock()
         mock_db.connection = MagicMock()
@@ -215,11 +203,10 @@ class TestChatUtils:
     @patch("server.api.core.settings.get_client_settings")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
-    @patch("server.api.core.prompts.get_prompts")
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_no_model_specified(
-        self, mock_astream, mock_get_prompts, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
     ):
         """Test completion generation when no model is specified in request"""
         # Create request without model
@@ -229,7 +216,6 @@ class TestChatUtils:
         mock_get_client_settings.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
-        mock_get_prompts.return_value = MagicMock(prompt="You are a helpful assistant")
 
         # Mock the async generator
         async def mock_generator():
@@ -243,42 +229,6 @@ class TestChatUtils:
             results.append(result)
 
         # Should use model from client settings
-        assert len(results) == 1
-
-    @patch("server.api.core.settings.get_client_settings")
-    @patch("server.api.utils.oci.get")
-    @patch("server.api.utils.models.get_litellm_config")
-    @patch("server.api.core.prompts.get_prompts")
-    @patch("server.agents.chatbot.chatbot_graph.astream")
-    @pytest.mark.asyncio
-    async def test_completion_generator_custom_prompts(
-        self, mock_astream, mock_get_prompts, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
-    ):
-        """Test completion generation with custom prompts"""
-        # Setup settings with custom prompts
-        custom_settings = self.sample_client_settings.model_copy()
-        custom_settings.prompts.sys = "Custom System"
-        custom_settings.prompts.ctx = "Custom Context"
-
-        # Setup mocks
-        mock_get_client_settings.return_value = custom_settings
-        mock_get_oci.return_value = MagicMock()
-        mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
-        mock_get_prompts.return_value = MagicMock(prompt="Custom prompt")
-
-        # Mock the async generator
-        async def mock_generator():
-            yield {"completion": "Response with custom prompts"}
-
-        mock_astream.return_value = mock_generator()
-
-        # Test the function
-        results = []
-        async for result in chat.completion_generator("test_client", self.sample_request, "completions"):
-            results.append(result)
-
-        # Verify custom prompts are used
-        mock_get_prompts.assert_called_with(category="sys", name="Custom System")
         assert len(results) == 1
 
     def test_logger_exists(self):

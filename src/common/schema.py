@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql rerank
+# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama showsql rerank selectai
 
 import time
 from typing import Optional, Literal, Any
@@ -117,7 +117,7 @@ class LanguageModelParameters(BaseModel):
     frequency_penalty: Optional[float] = Field(description=help_text.help_dict["frequency_penalty"], default=0.00)
     max_tokens: Optional[int] = Field(description=help_text.help_dict["max_tokens"], default=4096)
     presence_penalty: Optional[float] = Field(description=help_text.help_dict["presence_penalty"], default=0.00)
-    temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=1.00)
+    temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=0.50)
     top_p: Optional[float] = Field(description=help_text.help_dict["top_p"], default=1.00)
     streaming: Optional[bool] = Field(description="Enable Streaming (set by client)", default=False)
 
@@ -192,6 +192,20 @@ class OracleCloudSettings(BaseModel):
 
 
 #####################################################
+# Prompt Engineering (MCP-based)
+#####################################################
+class MCPPrompt(BaseModel):
+    """MCP Prompt metadata and content"""
+
+    name: str = Field(..., description="MCP prompt name (e.g., 'optimizer_basic-default')")
+    title: str = Field(..., description="Human-readable title")
+    description: str = Field(default="", description="Prompt purpose and usage")
+    tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+    default_text: str = Field(..., description="Default prompt text from code")
+    override_text: Optional[str] = Field(None, description="User's custom override (if any)")
+
+
+#####################################################
 # Settings
 #####################################################
 class LargeLanguageSettings(LanguageModelParameters):
@@ -201,8 +215,8 @@ class LargeLanguageSettings(LanguageModelParameters):
     chat_history: bool = Field(default=True, description="Store Chat History")
 
 
-class VectorSearchSettings(DatabaseVectorStorage):
-    """Store vector_search Settings incl VectorStorage"""
+class VectorSearchSettings(BaseModel):
+    """Store vector_search Settings"""
 
     enabled: bool = Field(default=False, description="vector_search Enabled")
     grading: bool = Field(default=True, description="Grade vector_search Results")
@@ -279,6 +293,7 @@ class Configuration(BaseModel):
     database_configs: Optional[list[Database]] = None
     model_configs: Optional[list[Model]] = None
     oci_configs: Optional[list[OracleCloudSettings]] = None
+    prompt_overrides: Optional[dict[str, str]] = None
 
     def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
