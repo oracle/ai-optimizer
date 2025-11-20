@@ -14,7 +14,7 @@ authors = [
 
 # Common dependencies that are always needed
 dependencies = [
-    "langchain-core==0.3.79",
+    "langchain-core==0.3.80",
     "httpx==0.28.1",
     "oracledb~=3.1",
     "plotly==6.3.1",
