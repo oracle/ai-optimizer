@@ -148,6 +148,7 @@ async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     # Authenticated
     auth.include_router(api_v1.chat.auth, prefix="/v1/chat", tags=["Chatbot"])
     auth.include_router(api_v1.embed.auth, prefix="/v1/embed", tags=["Embeddings"])
+    auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
     auth.include_router(api_v1.mcp_prompts.auth, prefix="/v1/mcp", tags=["Tools - MCP Prompts"])
     auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
     auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Config - Settings"])
