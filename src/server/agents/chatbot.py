@@ -26,6 +26,8 @@ from litellm.exceptions import APIConnectionError
 
 from server.api.utils.databases import execute_sql
 
+import server.mcp.prompts.defaults as default_prompts
+
 from common import logging_config
 
 logger = logging_config.logging.getLogger("server.agents.chatbot")
@@ -91,28 +93,18 @@ def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "selectai_comp
 
 def rephrase(state: OptimizerState, config: RunnableConfig) -> str:
     """Take our contextualization prompt and reword the last user prompt"""
-    ctx_prompt = config.get("metadata", {}).get("ctx_prompt")
     retrieve_question = state["messages"][-1].content
 
-    if config["metadata"]["use_history"] and ctx_prompt and len(state["messages"]) > 2:
-        ctx_template = """
-            {prompt}
-            Here is the context and history:
-            -------
-            {history}
-            -------
-            Here is the user input:
-            -------
-            {question}
-            -------
-            Return ONLY the rephrased query without any explanation or additional text.
-        """
+    if config["metadata"]["use_history"] and len(state["messages"]) > 2:
+        rephrase_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-rephrase")
+        rephrase_template_text = rephrase_prompt_msg.content.text
+
         rephrase_template = PromptTemplate(
-            template=ctx_template,
+            template=rephrase_template_text,
             input_variables=["ctx_prompt", "history", "question"],
         )
         formatted_prompt = rephrase_template.format(
-            prompt=ctx_prompt.prompt, history=state["messages"], question=retrieve_question
+            prompt=rephrase_template_text, history=state["messages"], question=retrieve_question
         )
         ll_raw = config["configurable"]["ll_config"]
         try:
@@ -154,21 +146,11 @@ async def vs_grade(state: OptimizerState, config: RunnableConfig) -> OptimizerSt
     relevant = "yes"
     documents_dict = document_formatter(state["documents"])
     if config["metadata"]["vector_search"].grading and state.get("documents"):
-        grade_template = """
-        You are a Grader assessing the relevance of retrieved text to the user's input.
-        You MUST respond with a only a binary score of 'yes' or 'no'.
-        If you DO find ANY relevant retrieved text to the user's input, return 'yes' immediately and stop grading.
-        If you DO NOT find relevant retrieved text to the user's input, return 'no'.
-        Here is the user input:
-        -------
-        {question}
-        -------
-        Here is the retrieved text:
-        -------
-        {documents}
-        """
+        grade_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-grade")
+        grade_template_text = grade_prompt_msg.content.text
+
         grade_template = PromptTemplate(
-            template=grade_template,
+            template=grade_template_text,
             input_variables=["question", "documents"],
         )
         question = state["context_input"]
@@ -302,13 +284,13 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
 
     messages = state["cleaned_messages"]
     try:
-        # Get our Prompt
-        sys_prompt = config.get("metadata", {}).get("sys_prompt")
         if state.get("context_input") and state.get("documents"):
+            sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-no-tools-default")
             documents = state["documents"]
-            new_prompt = SystemMessage(content=f"{sys_prompt.prompt}\n {documents}")
+            new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}\n {documents}")
         else:
-            new_prompt = SystemMessage(content=f"{sys_prompt.prompt}")
+            sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_basic-default")
+            new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}")
 
         # Insert Prompt into cleaned_messages
         messages.insert(0, new_prompt)

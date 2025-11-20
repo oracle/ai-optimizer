@@ -13,7 +13,7 @@ from streamlit import session_state as state
 
 from client.utils import api_call
 from common import logging_config, help_text
-from common.schema import PromptPromptType, PromptNameType, SelectAISettings
+from common.schema import SelectAISettings
 
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
@@ -71,14 +71,6 @@ def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
         if file.name not in seen_file and not seen_file.add(file.name)
     ]
     return files
-
-
-def switch_prompt(prompt_type: PromptPromptType, prompt_name: PromptNameType) -> None:
-    """Auto Switch Prompts when not set to Custom"""
-    current_prompt = state.client_settings["prompts"][prompt_type]
-    if current_prompt not in ("Custom", prompt_name):
-        state.client_settings["prompts"][prompt_type] = prompt_name
-        st.info(f"Prompt Engineering - {prompt_name} Prompt has been set.", icon="ℹ️")
 
 
 def patch_settings() -> None:
@@ -258,11 +250,6 @@ def tools_sidebar() -> None:
         state.client_settings["vector_search"]["enabled"] = state.selected_tool == "Vector Search"
         state.client_settings["selectai"]["enabled"] = state.selected_tool == "SelectAI"
 
-        if state.client_settings["vector_search"]["enabled"]:
-            switch_prompt("sys", "Vector Search Example")
-        else:
-            switch_prompt("sys", "Basic Example")
-
     disable_selectai = not is_db_configured()
     disable_vector_search = not is_db_configured()
 
@@ -271,7 +258,6 @@ def tools_sidebar() -> None:
         st.warning("Database is not configured. Disabling Vector Search and SelectAI tools.", icon="⚠️")
         state.client_settings["selectai"]["enabled"] = False
         state.client_settings["vector_search"]["enabled"] = False
-        switch_prompt("sys", "Basic Example")
     else:
         # Client Settings
         db_alias = state.client_settings.get("database", {}).get("alias")
@@ -305,12 +291,11 @@ def tools_sidebar() -> None:
         embed_models_enabled = enabled_models_lookup("embed")
 
         def _disable_vector_search(reason):
-            """Disable Vector Store, and make sure prompt is reset"""
+            """Disable Vector Store"""
             state.client_settings["vector_search"]["enabled"] = False
             logger.debug("Vector Search Disabled (%s)", reason)
             st.warning(f"{reason}. Disabling Vector Search.", icon="⚠️")
             tools[:] = [t for t in tools if t[0] != "Vector Search"]
-            switch_prompt("sys", "Basic Example")
 
         if not embed_models_enabled:
             _disable_vector_search("No embedding models are configured and/or enabled.")
@@ -337,8 +322,6 @@ def tools_sidebar() -> None:
                 on_change=_update_set_tool,
                 key="selected_tool",
             )
-            if state.selected_tool is None:
-                switch_prompt("sys", "Basic Example")
 
 
 #####################################################
@@ -534,7 +517,6 @@ def vector_search_sidebar() -> None:
     """Vector Search Sidebar Settings, conditional if Database/Embeddings are configured"""
     if state.client_settings["vector_search"]["enabled"]:
         st.sidebar.subheader("Vector Search", divider="red")
-        switch_prompt("sys", "Vector Search Example")
 
         # Search Type Selection
         vector_search_type_list = ["Similarity", "Maximal Marginal Relevance"]

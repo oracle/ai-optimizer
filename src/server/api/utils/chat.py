@@ -11,7 +11,6 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 import server.api.core.settings as core_settings
-import server.api.core.prompts as core_prompts
 
 import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
@@ -72,10 +71,6 @@ async def completion_generator(
         ),
     }
 
-    # Get System Prompt
-    user_sys_prompt = getattr(client_settings.prompts, "sys", "Basic Example")
-    kwargs["config"]["metadata"]["sys_prompt"] = core_prompts.get_prompts(category="sys", name=user_sys_prompt)
-
     # Add DB Conn to KWargs when needed
     if client_settings.vector_search.enabled or client_settings.selectai.enabled:
         db_conn = utils_databases.get_client_database(client, False).connection
@@ -86,9 +81,6 @@ async def completion_generator(
         kwargs["config"]["configurable"]["embed_client"] = utils_models.get_client_embed(
             client_settings.vector_search.model_dump(), oci_config
         )
-        # Get Context Prompt
-        user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
-        kwargs["config"]["metadata"]["ctx_prompt"] = core_prompts.get_prompts(category="ctx", name=user_ctx_prompt)
 
     if client_settings.selectai.enabled:
         utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])

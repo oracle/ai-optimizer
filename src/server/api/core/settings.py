@@ -51,14 +51,10 @@ def get_server_config() -> Configuration:
     oci_objects = bootstrap.OCI_OBJECTS
     oci_configs = list(oci_objects)
 
-    prompt_objects = bootstrap.PROMPT_OBJECTS
-    prompt_configs = list(prompt_objects)
-
     full_config = {
         "database_configs": database_configs,
         "model_configs": model_configs,
         "oci_configs": oci_configs,
-        "prompt_configs": prompt_configs,
     }
     return full_config
 
@@ -88,9 +84,6 @@ def update_server_config(config_data: dict) -> None:
 
     if "oci_configs" in config_data:
         bootstrap.OCI_OBJECTS = config.oci_configs or []
-
-    if "prompt_configs" in config_data:
-        bootstrap.PROMPT_OBJECTS = config.prompt_configs or []
 
 
 def load_config_from_json_data(config_data: dict, client: ClientIdType = None) -> None:

@@ -53,7 +53,6 @@ async def settings_get(
         database_configs=config.get("database_configs"),
         model_configs=config.get("model_configs"),
         oci_configs=config.get("oci_configs"),
-        prompt_configs=config.get("prompt_configs"),
     )
     return JSONResponse(content=response.model_dump_public(incl_sensitive=incl_sensitive, incl_readonly=incl_readonly))
 

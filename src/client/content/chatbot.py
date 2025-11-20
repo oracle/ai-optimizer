@@ -114,11 +114,10 @@ def display_chat_history(history):
 
 async def handle_chat_input(user_client):
     """Handle user chat input and streaming response"""
-    sys_prompt = state.client_settings["prompts"]["sys"]
     render_chat_footer()
 
     if human_request := st.chat_input(
-        f"Ask your question here... (current prompt: {sys_prompt})",
+        "Ask your question here... ",
         accept_file=True,
         file_type=["jpg", "jpeg", "png"],
     ):

@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore genai
 
-from server.bootstrap import databases, models, oci, prompts, settings
+from server.bootstrap import databases, models, oci, settings
 from common import logging_config
 
 logger = logging_config.logging.getLogger("bootstrap")
@@ -12,5 +12,4 @@ logger = logging_config.logging.getLogger("bootstrap")
 DATABASE_OBJECTS = databases.main()
 MODEL_OBJECTS = models.main()
 OCI_OBJECTS = oci.main()
-PROMPT_OBJECTS = prompts.main()
 SETTINGS_OBJECTS = settings.main()

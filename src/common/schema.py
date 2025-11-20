@@ -192,26 +192,6 @@ class OracleCloudSettings(BaseModel):
 
 
 #####################################################
-# Prompt Engineering
-#####################################################
-class PromptText(BaseModel):
-    """Patch'able Prompt Parameters"""
-
-    prompt: str = Field(..., min_length=1, description="Prompt Text")
-
-
-class Prompt(PromptText):
-    """Prompt Object"""
-
-    name: str = Field(
-        default="Basic Example",
-        description="Name of Prompt.",
-        examples=["Basic Example", "vector_search Example", "Custom"],
-    )
-    category: Literal["sys", "ctx"] = Field(..., description="Category of Prompt.")
-
-
-#####################################################
 # Settings
 #####################################################
 class LargeLanguageSettings(LanguageModelParameters):
@@ -219,13 +199,6 @@ class LargeLanguageSettings(LanguageModelParameters):
 
     model: Optional[str] = Field(default=None, description="Model Name")
     chat_history: bool = Field(default=True, description="Store Chat History")
-
-
-class PromptSettings(BaseModel):
-    """Store Prompt Settings"""
-
-    ctx: str = Field(default="Basic Example", description="Context Prompt Name")
-    sys: str = Field(default="Basic Example", description="System Prompt Name")
 
 
 class VectorSearchSettings(DatabaseVectorStorage):
@@ -287,9 +260,6 @@ class Settings(BaseModel):
     ll_model: Optional[LargeLanguageSettings] = Field(
         default_factory=LargeLanguageSettings, description="Large Language Settings"
     )
-    prompts: Optional[PromptSettings] = Field(
-        default_factory=PromptSettings, description="Prompt Engineering Settings"
-    )
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
     database: Optional[DatabaseSettings] = Field(default_factory=DatabaseSettings, description="Database Settings")
     vector_search: Optional[VectorSearchSettings] = Field(
@@ -309,7 +279,6 @@ class Configuration(BaseModel):
     database_configs: Optional[list[Database]] = None
     model_configs: Optional[list[Model]] = None
     oci_configs: Optional[list[OracleCloudSettings]] = None
-    prompt_configs: Optional[list[Prompt]] = None
 
     def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
@@ -425,9 +394,6 @@ ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]
 OCIResourceOCID = OracleResource.__annotations__["ocid"]
-PromptNameType = Prompt.__annotations__["name"]
-PromptCategoryType = Prompt.__annotations__["category"]
-PromptPromptType = PromptText.__annotations__["prompt"]
 SelectAIProfileType = Database.__annotations__["selectai_profiles"]
 TestSetsIdType = TestSets.__annotations__["tid"]
 TestSetsNameType = TestSets.__annotations__["name"]
