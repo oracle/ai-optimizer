@@ -631,7 +631,7 @@ def display_split_embed() -> None:
         )
         if not create_new_vs:
             # Render vector store selection controls
-            vs_selector.render_vector_store_selection(vs_df)
+            vs_selector.render_vector_store_selection()
 
     # Render embedding configuration for new VS
     if create_new_vs:

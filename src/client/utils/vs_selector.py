@@ -33,25 +33,41 @@ def _vs_gen_selectbox(col, label: str, options: list, key: str):
     )
 
 
-def render_vector_store_selection(vs_df: pd.DataFrame) -> None:
-    """Render vector store selection controls and handle state updates."""
-    st.subheader("Existing Vector Store", divider="red")
+def render_vector_store_selection(container=None) -> None:
+    """Render vector store selection controls and handle state updates.
 
-    # --- Single-column rows for Alias and Model with configurable width ---
-    alias_col, model_col = st.columns([0.2, 0.8])  # Alias on its own line
-    # model_col, _ = st.columns([0.5, 0.5])  # Model on its own line
+    Automatically uses the currently selected database from session state.
 
-    # Two-column rows for the remaining rest
-    row2_col1, row2_col2 = st.columns([0.3, 0.3])
-    row3_col1, row3_col2 = st.columns([0.3, 0.3])
+    Args:
+        container: Optional Streamlit container (e.g., st.sidebar).
+                   If None, uses main area with columns. If provided, stacks vertically.
+    """
+    # Get current database alias from state and generate vs_df internally
+    db_alias = state.client_settings.get("database", {}).get("alias")
+    database_lookup = st_common.state_configs_lookup("database_configs", "name")
+    vs_df = pd.DataFrame(database_lookup.get(db_alias, {}).get("vector_stores", []))
+
+    ctx = container if container is not None else st
+
+    ctx.subheader("Existing Vector Store", divider="red")
+
+    # Create containers based on layout preference
+    # Use columns in main area, stack vertically in sidebar
+    if container is None:
+        alias_col, model_col = ctx.columns([0.2, 0.8])
+        row2_col1, row2_col2 = ctx.columns([0.3, 0.3])
+        row3_col1, row3_col2 = ctx.columns([0.3, 0.3])
+        containers = [alias_col, model_col, row2_col1, row2_col2, row3_col1, row3_col2]
+    else:
+        containers = [ctx] * 6
 
     selectbox_configs = [
-        (alias_col, "Select Alias:", "alias", "selected_vector_search_alias"),
-        (model_col, "Select Model:", "model", "selected_vector_search_model"),
-        (row2_col1, "Select Chunk Size:", "chunk_size", "selected_vector_search_chunk_size"),
-        (row2_col2, "Select Chunk Overlap:", "chunk_overlap", "selected_vector_search_chunk_overlap"),
-        (row3_col1, "Select Distance Metric:", "distance_metric", "selected_vector_search_distance_metric"),
-        (row3_col2, "Select Index Type:", "index_type", "selected_vector_search_index_type"),
+        (containers[0], "Select Alias:", "alias", "selected_vector_search_alias"),
+        (containers[1], "Select Model:", "model", "selected_vector_search_model"),
+        (containers[2], "Select Chunk Size:", "chunk_size", "selected_vector_search_chunk_size"),
+        (containers[3], "Select Chunk Overlap:", "chunk_overlap", "selected_vector_search_chunk_overlap"),
+        (containers[4], "Select Distance Metric:", "distance_metric", "selected_vector_search_distance_metric"),
+        (containers[5], "Select Index Type:", "index_type", "selected_vector_search_index_type"),
     ]
 
     def reset() -> None:
@@ -62,6 +78,12 @@ def render_vector_store_selection(vs_df: pd.DataFrame) -> None:
 
     # --- Filter the dataframe based on current selections ---
     embed_models_enabled = st_common.enabled_models_lookup("embed")
+
+    # Check if vs_df is empty before filtering
+    if vs_df.empty:
+        ctx.info("No vector stores found in the selected database.")
+        return
+
     filtered_df = vs_df[vs_df["model"].isin(embed_models_enabled.keys())]
     for _, _, df_col, state_key in selectbox_configs:
         if state.get(state_key):
@@ -74,11 +96,11 @@ def render_vector_store_selection(vs_df: pd.DataFrame) -> None:
         selections[state_key] = _vs_gen_selectbox(col, label, options, state_key)
 
     if not all(selections.values()):
-        st.info("Please select existing Vector Store options to continue.")
+        ctx.info("Please select existing Vector Store options to continue.")
     else:
         # There should only be one row matching all selected values
         description_value = filtered_df.iloc[0]["description"]
         state.selected_vector_search_description = description_value
 
     # --- Reset button ---
-    st.button("Reset", type="primary", on_click=reset)
+    ctx.button("Reset", type="primary", on_click=reset)

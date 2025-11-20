@@ -234,8 +234,30 @@ def ll_sidebar() -> None:
 #####################################################
 # Tools Options
 #####################################################
+def _vs_tools() -> None:
+    """Enable/Disable Features of VS Tools"""
+    st.sidebar.checkbox(
+        "Vector Store Discovery",
+        value=True,
+        key="selected_vs_discovery",
+        help="Allow AI to determine the best Vector Stores.",
+    )
+    st.sidebar.checkbox(
+        "Rephrasing",
+        value=True,
+        key="selected_vs_rephrase",
+        help="Allow AI to rephrase users prompt for optimal Vector Search.",
+    )
+    st.sidebar.checkbox(
+        "Grading",
+        value=True,
+        key="selected_vs_grading",
+        help="Grade and remove documents that are not applicable to users prompt",
+    )
+
+
 def tools_sidebar() -> None:
-    """Sidebar Settings"""
+    """Toolkit Sidebar Settings"""
 
     state.tool_box = []
     if not is_db_configured():
@@ -279,6 +301,9 @@ def tools_sidebar() -> None:
                 key="selected_tools",
             )
             state.client_settings["tools_enabled"] = state.selected_tools
+
+            if "Vector Search" in state.selected_tools:
+                _vs_tools()
 
 
 #####################################################
