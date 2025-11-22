@@ -5,8 +5,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 # pylint: disable=import-error
 
-from unittest.mock import patch
-
 
 #############################################################################
 # Test Streamlit UI
@@ -27,258 +25,274 @@ class TestStreamlit:
 
 
 #############################################################################
-# Test Prompt Switching Functions
+# Test Vector Search Tool Selection
 #############################################################################
-class TestPromptSwitching:
-    """Test automatic prompt switching based on tool selection"""
+class TestVectorSearchToolSelection:
+    """Test the Vector Search tool selection behavior in chatbot.py sidebar"""
 
-    def test_switch_prompt_to_vector_search(self, app_server, app_test):
-        """Test that selecting Vector Search switches to Vector Search Example prompt"""
-        from client.utils.st_common import switch_prompt
+    ST_FILE = "../src/client/content/chatbot.py"
 
-        assert app_server is not None
-        at = app_test(TestStreamlit.ST_FILE)
-        at.run()
+    def test_vector_search_not_shown_when_no_enabled_embedding_models(self, app_server, app_test, auth_headers):
+        """
+        Test that Vector Search option is NOT shown in Tool Selection selectbox
+        when vector stores exist but their embedding models are not enabled.
 
-        # Setup: ensure we're not starting with Vector Search Example or Custom
-        at.session_state.client_settings["prompts"]["sys"] = "Basic Example"
+        This test currently FAILS and detects the bug.
 
-        # Mock streamlit's info to track if prompt was switched
-        with patch("client.utils.st_common.state", at.session_state):
-            with patch("client.utils.st_common.st") as mock_st:
-                # Act: Switch to Vector Search prompt
-                switch_prompt("sys", "Vector Search Example")
+        Scenario:
+        - Database has vector stores that use "openai/text-embedding-3-small"
+        - That OpenAI model is NOT enabled
+        - But a different embedding model (Cohere) IS enabled
+        - tools_sidebar() only checks if ANY embedding models exist (line 291)
+        - It doesn't check if those models match the vector store models
 
-                # Assert: Prompt was updated
-                assert at.session_state.client_settings["prompts"]["sys"] == "Vector Search Example"
-                # Assert: User was notified via st.info
-                mock_st.info.assert_called_once()
-                assert "Vector Search Example" in str(mock_st.info.call_args)
+        Expected behavior:
+        - Vector Search should NOT appear in Tool Selection (no usable vector stores)
+        - User should only see "LLM Only" option
 
-    def test_switch_prompt_to_basic_example(self, app_server, app_test):
-        """Test that disabling Vector Search switches to Basic Example prompt"""
-        from client.utils.st_common import switch_prompt
+        Current broken behavior:
+        - Vector Search appears in Tool Selection
+        - When selected, render_vector_store_selection() filters out all vector stores
+        - User sees "Please select existing Vector Store options" with disabled dropdowns
+        - User gets stuck with unusable UI
 
-        assert app_server is not None
-        at = app_test(TestStreamlit.ST_FILE)
-        at.run()
-
-        # Setup: Start with Vector Search Example
-        at.session_state.client_settings["prompts"]["sys"] = "Vector Search Example"
-
-        # Mock streamlit's state and info
-        with patch("client.utils.st_common.state", at.session_state):
-            with patch("client.utils.st_common.st") as mock_st:
-                # Act: Switch to Basic Example
-                switch_prompt("sys", "Basic Example")
-
-                # Assert: Prompt was updated
-                assert at.session_state.client_settings["prompts"]["sys"] == "Basic Example"
-                # Assert: User was notified
-                mock_st.info.assert_called_once()
-                assert "Basic Example" in str(mock_st.info.call_args)
-
-    def test_switch_prompt_does_not_override_custom(self, app_server, app_test):
-        """Test that automatic switching respects Custom prompt selection"""
-        from client.utils.st_common import switch_prompt
+        Location of bug: src/client/utils/st_common.py:290-303
+        The check needs to verify that enabled models actually match vector store models,
+        not just that some embedding models are enabled.
+        """
+        import requests
+        from conftest import TEST_CONFIG
 
         assert app_server is not None
-        at = app_test(TestStreamlit.ST_FILE)
+        at = app_test(self.ST_FILE)
+
+        # Load full config like launch_client.py does (line 56-64)
+        full_config = requests.get(
+            url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",
+            headers=auth_headers["valid_auth"],
+            params={"client": TEST_CONFIG["client"], "full_config": True, "incl_sensitive": True, "incl_readonly": True},
+            timeout=120,
+        ).json()
+        for key, value in full_config.items():
+            at.session_state[key] = value
+
         at.run()
 
-        # Setup: User has selected Custom prompt
-        at.session_state.client_settings["prompts"]["sys"] = "Custom"
+        # Modify session state to simulate the problematic scenario:
+        # - Database is connected and has vector stores that use specific models
+        # - Those specific models are NOT enabled
+        # - But OTHER embedding models ARE enabled (so embed_models_enabled is not empty)
+        # This causes the bug: Vector Search appears but no vector stores are actually usable
 
-        # Mock streamlit's state and info
-        with patch("client.utils.st_common.state", at.session_state):
-            with patch("client.utils.st_common.st") as mock_st:
-                # Act: Attempt to switch to Vector Search Example
-                switch_prompt("sys", "Vector Search Example")
+        # First, ensure we have a connected database with vector stores
+        if at.session_state.database_configs:
+            db_config = at.session_state.database_configs[0]
+            db_config["connected"] = True
+            # Vector store uses openai/text-embedding-3-small
+            db_config["vector_stores"] = [
+                {
+                    "vector_store": "VS_TEST_OPENAI_SMALL",
+                    "alias": "TEST_DATA",
+                    "model": "openai/text-embedding-3-small",
+                    "chunk_size": 500,
+                    "chunk_overlap": 50,
+                    "distance_metric": "COSINE",
+                    "index_type": "IVF"
+                }
+            ]
+            at.session_state.client_settings["database"]["alias"] = db_config["name"]
 
-                # Assert: Prompt remains Custom (not overridden)
-                assert at.session_state.client_settings["prompts"]["sys"] == "Custom"
-                # Assert: User was NOT notified (no switching occurred)
-                mock_st.info.assert_not_called()
-
-    def test_switch_prompt_does_not_switch_if_already_set(self, app_server, app_test):
-        """Test that switching to the same prompt doesn't trigger notification"""
-        from client.utils.st_common import switch_prompt
-
-        assert app_server is not None
-        at = app_test(TestStreamlit.ST_FILE)
-        at.run()
-
-        # Setup: Already on Vector Search Example
-        at.session_state.client_settings["prompts"]["sys"] = "Vector Search Example"
-
-        # Mock streamlit's state and info
-        with patch("client.utils.st_common.state", at.session_state):
-            with patch("client.utils.st_common.st") as mock_st:
-                # Act: Try to switch to Vector Search Example again
-                switch_prompt("sys", "Vector Search Example")
-
-                # Assert: Prompt remains the same
-                assert at.session_state.client_settings["prompts"]["sys"] == "Vector Search Example"
-                # Assert: User was NOT notified (no change occurred)
-                mock_st.info.assert_not_called()
-
-    def test_vector_search_tool_enables_vector_search_prompt(self, app_server, app_test):
-        """Test that selecting Vector Search tool enables Vector Search and switches prompt"""
-        assert app_server is not None
-        at = app_test(TestStreamlit.ST_FILE)
-        at.run()
-
-        # Setup: Start with None tool selected and Basic Example prompt
-        at.session_state.selected_tool = "None"
-        at.session_state.client_settings["prompts"]["sys"] = "Basic Example"
-        at.session_state.client_settings["vector_search"] = {"enabled": False}
-        at.session_state.client_settings["selectai"] = {"enabled": False}
-
-        # Simulate selecting Vector Search tool
-        # This would trigger the _update_set_tool callback in tools_sidebar()
-        at.session_state.selected_tool = "Vector Search"
-
-        # Mock the switch_prompt behavior
-        with patch("client.utils.st_common.state", at.session_state):
-            with patch("client.utils.st_common.st"):
-                # Import and call the function that would be triggered
-                from client.utils.st_common import switch_prompt
-
-                # Simulate what _update_set_tool does
-                at.session_state.client_settings["vector_search"]["enabled"] = (
-                    at.session_state.selected_tool == "Vector Search"
-                )
-                at.session_state.client_settings["selectai"]["enabled"] = (
-                    at.session_state.selected_tool == "SelectAI"
-                )
-
-                # Apply prompt switching logic
-                if at.session_state.client_settings["vector_search"]["enabled"]:
-                    switch_prompt("sys", "Vector Search Example")
+        # Disable the OpenAI embedding model that the vector store needs
+        # But enable a DIFFERENT embedding model (Cohere)
+        for model in at.session_state.model_configs:
+            if model["type"] == "embed":
+                if "text-embedding-3-small" in model["id"]:
+                    model["enabled"] = False  # Disable the model the vector store needs
+                elif "cohere" in model["provider"]:
+                    model["enabled"] = True   # Enable a different model
                 else:
-                    switch_prompt("sys", "Basic Example")
+                    model["enabled"] = False
 
-                # Assert: Vector Search is enabled
-                assert at.session_state.client_settings["vector_search"]["enabled"] is True
-                assert at.session_state.client_settings["selectai"]["enabled"] is False
-                # Assert: Prompt switched to Vector Search Example
-                assert at.session_state.client_settings["prompts"]["sys"] == "Vector Search Example"
+        # Ensure at least one language model is enabled so the app runs
+        ll_enabled = False
+        for model in at.session_state.model_configs:
+            if model["type"] == "ll" and model["enabled"]:
+                ll_enabled = True
+                break
 
-    def test_selectai_tool_uses_basic_prompt(self, app_server, app_test):
-        """Test that selecting SelectAI tool uses Basic Example prompt"""
-        assert app_server is not None
-        at = app_test(TestStreamlit.ST_FILE)
+        if not ll_enabled:
+            # Enable the first LL model we find
+            for model in at.session_state.model_configs:
+                if model["type"] == "ll":
+                    model["enabled"] = True
+                    break
+
+        # Re-run with modified state
         at.run()
 
-        # Setup: Start with Vector Search selected
-        at.session_state.selected_tool = "Vector Search"
-        at.session_state.client_settings["prompts"]["sys"] = "Vector Search Example"
-        at.session_state.client_settings["vector_search"] = {"enabled": True}
-        at.session_state.client_settings["selectai"] = {"enabled": False}
+        # Get the Tool Selection selectbox
+        selectboxes = [sb for sb in at.selectbox if sb.label == "Tool Selection"]
 
-        # Simulate selecting SelectAI tool
-        at.session_state.selected_tool = "SelectAI"
+        # The bug: Vector Search appears as an option even when its vector stores can't be used
+        # Scenario: embed models ARE enabled, but they don't match the vector store models
+        # Expected: Vector Search should NOT appear (or should check model compatibility)
+        # Bug: Vector Search appears but render_vector_store_selection filters everything out
+        if selectboxes:
+            tool_selectbox = selectboxes[0]
+            # THIS SHOULD FAIL - Vector Search should NOT be in the options when
+            # the enabled embedding models don't match any vector store models
+            assert "Vector Search" not in tool_selectbox.options, (
+                f"BUG DETECTED: Vector Search appears in Tool Selection even though no vector stores "
+                f"are usable (enabled models don't match vector store models). "
+                f"Found options: {tool_selectbox.options}"
+            )
 
-        # Mock the switch_prompt behavior
-        with patch("client.utils.st_common.state", at.session_state):
-            with patch("client.utils.st_common.st"):
-                from client.utils.st_common import switch_prompt
+    def test_vector_search_disabled_when_selected_with_no_enabled_models(self, app_server, app_test, auth_headers):
+        """
+        Test that demonstrates the broken UX when Vector Search is selected
+        but no embedding models are enabled.
 
-                # Simulate what _update_set_tool does
-                at.session_state.client_settings["vector_search"]["enabled"] = (
-                    at.session_state.selected_tool == "Vector Search"
-                )
-                at.session_state.client_settings["selectai"]["enabled"] = (
-                    at.session_state.selected_tool == "SelectAI"
-                )
+        This test shows what happens when a user manages to select Vector Search
+        despite having no enabled embedding models - all the vector store selection
+        dropdowns become disabled, creating a poor user experience.
 
-                # Apply prompt switching logic
-                if at.session_state.client_settings["vector_search"]["enabled"]:
-                    switch_prompt("sys", "Vector Search Example")
-                else:
-                    switch_prompt("sys", "Basic Example")
+        This test documents the current broken behavior that will be fixed.
+        """
+        import requests
+        from conftest import TEST_CONFIG
 
-                # Assert: SelectAI is enabled, Vector Search is disabled
-                assert at.session_state.client_settings["vector_search"]["enabled"] is False
-                assert at.session_state.client_settings["selectai"]["enabled"] is True
-                # Assert: Prompt switched to Basic Example
-                assert at.session_state.client_settings["prompts"]["sys"] == "Basic Example"
-
-    def test_none_tool_uses_basic_prompt(self, app_server, app_test):
-        """Test that selecting None tool uses Basic Example prompt"""
         assert app_server is not None
-        at = app_test(TestStreamlit.ST_FILE)
+        at = app_test(self.ST_FILE)
+
+        # Load full config like launch_client.py does
+        full_config = requests.get(
+            url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",
+            headers=auth_headers["valid_auth"],
+            params={"client": TEST_CONFIG["client"], "full_config": True, "incl_sensitive": True, "incl_readonly": True},
+            timeout=120,
+        ).json()
+        for key, value in full_config.items():
+            at.session_state[key] = value
+
         at.run()
 
-        # Setup: Start with Vector Search selected
-        at.session_state.selected_tool = "Vector Search"
-        at.session_state.client_settings["prompts"]["sys"] = "Vector Search Example"
-        at.session_state.client_settings["vector_search"] = {"enabled": True}
-        at.session_state.client_settings["selectai"] = {"enabled": False}
+        # Set up the problematic scenario
+        if at.session_state.database_configs:
+            db_config = at.session_state.database_configs[0]
+            db_config["connected"] = True
+            db_config["vector_stores"] = [
+                {
+                    "vector_store": "VS_TEST_OPENAI_SMALL",
+                    "alias": "TEST_DATA",
+                    "model": "openai/text-embedding-3-small",
+                    "chunk_size": 500,
+                    "chunk_overlap": 50,
+                    "distance_metric": "COSINE",
+                    "index_type": "IVF"
+                }
+            ]
+            at.session_state.client_settings["database"]["alias"] = db_config["name"]
 
-        # Simulate selecting None tool
-        at.session_state.selected_tool = "None"
+        # Disable ALL embedding models
+        for model in at.session_state.model_configs:
+            if model["type"] == "embed":
+                model["enabled"] = False
 
-        # Mock the switch_prompt behavior
-        with patch("client.utils.st_common.state", at.session_state):
-            with patch("client.utils.st_common.st"):
-                from client.utils.st_common import switch_prompt
+        # Ensure at least one LL model is enabled
+        for model in at.session_state.model_configs:
+            if model["type"] == "ll":
+                model["enabled"] = True
+                break
 
-                # Simulate what _update_set_tool does
-                at.session_state.client_settings["vector_search"]["enabled"] = (
-                    at.session_state.selected_tool == "Vector Search"
-                )
-                at.session_state.client_settings["selectai"]["enabled"] = (
-                    at.session_state.selected_tool == "SelectAI"
-                )
-
-                # Apply prompt switching logic
-                if at.session_state.client_settings["vector_search"]["enabled"]:
-                    switch_prompt("sys", "Vector Search Example")
-                else:
-                    switch_prompt("sys", "Basic Example")
-
-                # Assert: Both tools are disabled
-                assert at.session_state.client_settings["vector_search"]["enabled"] is False
-                assert at.session_state.client_settings["selectai"]["enabled"] is False
-                # Assert: Prompt switched to Basic Example
-                assert at.session_state.client_settings["prompts"]["sys"] == "Basic Example"
-
-    def test_custom_prompt_not_overridden_by_tool_selection(self, app_server, app_test):
-        """Test that Custom prompt is not overridden when switching tools"""
-        assert app_server is not None
-        at = app_test(TestStreamlit.ST_FILE)
+        # Re-run
         at.run()
 
-        # Setup: User has Custom prompt selected
-        at.session_state.selected_tool = "None"
-        at.session_state.client_settings["prompts"]["sys"] = "Custom"
-        at.session_state.client_settings["vector_search"] = {"enabled": False}
-        at.session_state.client_settings["selectai"] = {"enabled": False}
+        # Try to select Vector Search if it exists in options (this is the bug)
+        selectboxes = [sb for sb in at.selectbox if sb.label == "Tool Selection"]
 
-        # Simulate selecting Vector Search tool
-        at.session_state.selected_tool = "Vector Search"
+        if selectboxes and "Vector Search" in selectboxes[0].options:
+            # This is the buggy behavior - Vector Search shouldn't be an option
+            tool_selectbox = selectboxes[0]
 
-        # Mock the switch_prompt behavior
-        with patch("client.utils.st_common.state", at.session_state):
-            with patch("client.utils.st_common.st"):
-                from client.utils.st_common import switch_prompt
+            # Try to select it
+            tool_selectbox.set_value("Vector Search").run()
 
-                # Simulate what _update_set_tool does
-                at.session_state.client_settings["vector_search"]["enabled"] = (
-                    at.session_state.selected_tool == "Vector Search"
-                )
-                at.session_state.client_settings["selectai"]["enabled"] = (
-                    at.session_state.selected_tool == "SelectAI"
-                )
+            # Now check that vector store selection is broken
+            # Should see "Vector Store" subheader
+            subheaders = [sh.value for sh in at.sidebar.subheader]
+            assert "Vector Store" in subheaders, (
+                "Vector Store subheader should appear but user cannot select anything"
+            )
 
-                # Apply prompt switching logic
-                if at.session_state.client_settings["vector_search"]["enabled"]:
-                    switch_prompt("sys", "Vector Search Example")
-                else:
-                    switch_prompt("sys", "Basic Example")
+            # Check that we end up in a broken state with info message
+            info_messages = [i.value for i in at.info]
+            assert any(
+                "Please select existing Vector Store options" in msg
+                for msg in info_messages
+            ), "Should show info message about selecting vector store options (broken UX)"
 
-                # Assert: Vector Search is enabled
-                assert at.session_state.client_settings["vector_search"]["enabled"] is True
-                # Assert: Prompt remains Custom (not overridden)
-                assert at.session_state.client_settings["prompts"]["sys"] == "Custom"
+    def test_vector_search_shown_when_embedding_models_enabled(self, app_server, app_test, auth_headers):
+        """
+        Test that Vector Search option IS shown when vector stores exist
+        AND their embedding models are enabled.
+
+        This is the happy path - when everything is configured correctly.
+        """
+        import requests
+        from conftest import TEST_CONFIG
+
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Load full config like launch_client.py does
+        full_config = requests.get(
+            url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",
+            headers=auth_headers["valid_auth"],
+            params={"client": TEST_CONFIG["client"], "full_config": True, "incl_sensitive": True, "incl_readonly": True},
+            timeout=120,
+        ).json()
+        for key, value in full_config.items():
+            at.session_state[key] = value
+
+        at.run()
+
+        # Set up the happy path scenario
+        if at.session_state.database_configs:
+            db_config = at.session_state.database_configs[0]
+            db_config["connected"] = True
+            db_config["vector_stores"] = [
+                {
+                    "vector_store": "VS_TEST_OPENAI_SMALL",
+                    "alias": "TEST_DATA",
+                    "model": "openai/text-embedding-3-small",
+                    "chunk_size": 500,
+                    "chunk_overlap": 50,
+                    "distance_metric": "COSINE",
+                    "index_type": "IVF"
+                }
+            ]
+            at.session_state.client_settings["database"]["alias"] = db_config["name"]
+
+        # Enable at least one embedding model that matches a vector store
+        for model in at.session_state.model_configs:
+            if model["type"] == "embed" and "text-embedding-3-small" in model["id"]:
+                model["enabled"] = True
+
+        # Ensure at least one LL model is enabled
+        for model in at.session_state.model_configs:
+            if model["type"] == "ll":
+                model["enabled"] = True
+                break
+
+        # Re-run
+        at.run()
+
+        # Get the Tool Selection selectbox (if it exists)
+        selectboxes = [sb for sb in at.selectbox if sb.label == "Tool Selection"]
+
+        if selectboxes:
+            tool_selectbox = selectboxes[0]
+            # Vector Search SHOULD be in the options
+            assert "Vector Search" in tool_selectbox.options, (
+                "Vector Search should appear when embedding models are enabled"
+            )

@@ -9,7 +9,6 @@ import pytest
 from common.schema import (
     Settings,
     LargeLanguageSettings,
-    PromptSettings,
     VectorSearchSettings,
     SelectAISettings,
     OciSettings,
@@ -61,10 +60,11 @@ class TestEndpoints:
         # Verify the response contains the expected structure
         assert settings["client"] == "default"
         assert "ll_model" in settings
-        assert "prompts" in settings
         assert "vector_search" in settings
         assert "selectai" in settings
         assert "oci" in settings
+        assert "database" in settings
+        assert "testbed" in settings
 
     def test_settings_get_nonexistent_client(self, client, auth_headers):
         """Test getting settings for a non-existent client"""
@@ -114,7 +114,6 @@ class TestEndpoints:
         updated_settings = Settings(
             client="default",
             ll_model=LargeLanguageSettings(model="updated-model", chat_history=False),
-            prompts=PromptSettings(ctx="Updated Context", sys="Updated System"),
             vector_search=VectorSearchSettings(enabled=True, grading=False, search_type="Similarity", top_k=5),
             selectai=SelectAISettings(enabled=True),
             oci=OciSettings(auth_profile="UPDATED"),
@@ -136,8 +135,6 @@ class TestEndpoints:
         # Check that the values were updated
         assert new_settings["ll_model"]["model"] == "updated-model"
         assert new_settings["ll_model"]["chat_history"] is False
-        assert new_settings["prompts"]["ctx"] == "Updated Context"
-        assert new_settings["prompts"]["sys"] == "Updated System"
         assert new_settings["vector_search"]["enabled"] is True
         assert new_settings["vector_search"]["grading"] is False
         assert new_settings["vector_search"]["top_k"] == 5

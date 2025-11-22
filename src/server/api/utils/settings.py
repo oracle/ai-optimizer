@@ -2,19 +2,25 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# spell-checker:ignore fastmcp
 
 import os
 import copy
 import json
-from server.bootstrap import bootstrap
+from fastmcp import FastMCP
 
-from common.schema import Settings, Configuration, ClientIdType
+from server.bootstrap import bootstrap
+from server.mcp.prompts import cache
+from server.mcp.prompts import defaults
+import server.api.utils.mcp as utils_mcp
+
+from common.schema import Settings, Configuration, ClientIdType, MCPPrompt
 from common import logging_config
 
 logger = logging_config.logging.getLogger("api.core.settings")
 
 
-def create_client_settings(client: ClientIdType) -> Settings:
+def create_client(client: ClientIdType) -> Settings:
     """Create a new client"""
     logger.debug("Creating client (if non-existent): %s", client)
     settings_objects = bootstrap.SETTINGS_OBJECTS
@@ -30,7 +36,7 @@ def create_client_settings(client: ClientIdType) -> Settings:
     return client_settings
 
 
-def get_client_settings(client: ClientIdType) -> Settings:
+def get_client(client: ClientIdType) -> Settings:
     """Return client settings"""
     settings_objects = bootstrap.SETTINGS_OBJECTS
     client_settings = next((settings for settings in settings_objects if settings.client == client), None)
@@ -40,7 +46,54 @@ def get_client_settings(client: ClientIdType) -> Settings:
     return client_settings
 
 
-def get_server_config() -> Configuration:
+async def get_mcp_prompts_with_overrides(mcp_engine: FastMCP) -> list[MCPPrompt]:
+    """Get all MCP prompts with their defaults and overrides"""
+    prompts_info = []
+    prompts = await utils_mcp.list_prompts(mcp_engine)
+
+    for prompt_obj in prompts:
+        # Only include optimizer prompts
+        if not prompt_obj.name.startswith("optimizer_"):
+            continue
+
+        # Get default text from code
+        default_func_name = prompt_obj.name.replace("-", "_")
+        default_func = getattr(defaults, default_func_name, None)
+
+        if default_func:
+            try:
+                default_message = default_func()
+                default_text = default_message.content.text
+            except Exception as ex:
+                logger.warning("Failed to get default text for %s: %s", prompt_obj.name, ex)
+                default_text = ""
+        else:
+            logger.warning("No default function found for prompt: %s", prompt_obj.name)
+            default_text = ""
+
+        # Get override from cache
+        override_text = cache.get_override(prompt_obj.name)
+
+        # Extract tags from meta (FastMCP stores tags in meta._fastmcp.tags)
+        tags = []
+        if prompt_obj.meta and "_fastmcp" in prompt_obj.meta:
+            tags = prompt_obj.meta["_fastmcp"].get("tags", [])
+
+        prompts_info.append(
+            MCPPrompt(
+                name=prompt_obj.name,
+                title=prompt_obj.title or prompt_obj.name,
+                description=prompt_obj.description or "",
+                tags=tags,
+                default_text=default_text,
+                override_text=override_text,
+            )
+        )
+
+    return prompts_info
+
+
+async def get_server(mcp_engine: FastMCP) -> dict:
     """Return server configuration"""
     database_objects = bootstrap.DATABASE_OBJECTS
     database_configs = list(database_objects)
@@ -51,32 +104,35 @@ def get_server_config() -> Configuration:
     oci_objects = bootstrap.OCI_OBJECTS
     oci_configs = list(oci_objects)
 
-    prompt_objects = bootstrap.PROMPT_OBJECTS
-    prompt_configs = list(prompt_objects)
+    # Get MCP prompts with overrides
+    prompt_configs = await get_mcp_prompts_with_overrides(mcp_engine)
+
+    # Extract just the overrides for compact storage
+    prompt_overrides = {p.name: p.override_text for p in prompt_configs if p.override_text is not None}
 
     full_config = {
         "database_configs": database_configs,
         "model_configs": model_configs,
         "oci_configs": oci_configs,
-        "prompt_configs": prompt_configs,
+        "prompt_overrides": prompt_overrides,  # Compact overrides only for export/import
     }
     return full_config
 
 
-def update_client_settings(payload: Settings, client: ClientIdType) -> Settings:
+def update_client(payload: Settings, client: ClientIdType) -> Settings:
     """Update a single client settings"""
     settings_objects = bootstrap.SETTINGS_OBJECTS
 
-    client_settings = get_client_settings(client)
+    client_settings = get_client(client)
     settings_objects.remove(client_settings)
 
     payload.client = client
     settings_objects.append(payload)
 
-    return get_client_settings(client)
+    return get_client(client)
 
 
-def update_server_config(config_data: dict) -> None:
+def update_server(config_data: dict) -> None:
     """Update server configuration"""
     config = Configuration(**config_data)
 
@@ -89,15 +145,22 @@ def update_server_config(config_data: dict) -> None:
     if "oci_configs" in config_data:
         bootstrap.OCI_OBJECTS = config.oci_configs or []
 
-    if "prompt_configs" in config_data:
-        bootstrap.PROMPT_OBJECTS = config.prompt_configs or []
+    # Load MCP prompt overrides into cache
+    if "prompt_overrides" in config_data:
+        overrides = config_data["prompt_overrides"]
+        if overrides:
+            logger.info("Loading %d prompt overrides into cache", len(overrides))
+            for name, text in overrides.items():
+                if text:  # Only set non-null overrides
+                    cache.set_override(name, text)
+                    logger.debug("Set override for prompt: %s", name)
 
 
 def load_config_from_json_data(config_data: dict, client: ClientIdType = None) -> None:
     """Shared logic for loading settings from JSON data."""
 
     # Load server config parts into state
-    update_server_config(config_data)
+    update_server(config_data)
 
     # Load extracted client_settings from config
     client_settings_data = config_data.get("client_settings")
@@ -109,12 +172,12 @@ def load_config_from_json_data(config_data: dict, client: ClientIdType = None) -
     # Determine clients to update
     if client:
         logger.debug("Updating client settings: %s", client)
-        update_client_settings(client_settings, client)
+        update_client(client_settings, client)
     else:
         server_settings = copy.deepcopy(client_settings)
-        update_client_settings(server_settings, "server")
+        update_client(server_settings, "server")
         default_settings = copy.deepcopy(client_settings)
-        update_client_settings(default_settings, "default")
+        update_client(default_settings, "default")
 
 
 def read_config_from_json_file() -> Configuration:
