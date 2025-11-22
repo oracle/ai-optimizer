@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from server.api.core import settings
+from server.api.utils import settings
 from common.schema import Settings, Configuration, Database, Model, OracleCloudSettings
 
 
@@ -29,13 +29,13 @@ class TestSettings:
         }
 
     @patch("server.api.core.settings.bootstrap")
-    def test_create_client_settings_success(self, mock_bootstrap):
+    def test_create_client_success(self, mock_bootstrap):
         """Test successful client settings creation"""
         # Create a list that includes the default settings and will be appended to
         settings_list = [self.default_settings]
         mock_bootstrap.SETTINGS_OBJECTS = settings_list
 
-        result = settings.create_client_settings("new_client")
+        result = settings.create_client("new_client")
 
         assert result.client == "new_client"
         assert result.ll_model.max_tokens == self.default_settings.ll_model.max_tokens
@@ -44,36 +44,36 @@ class TestSettings:
         assert settings_list[-1].client == "new_client"
 
     @patch("server.api.core.settings.bootstrap.SETTINGS_OBJECTS")
-    def test_create_client_settings_already_exists(self, mock_settings_objects):
+    def test_create_client_already_exists(self, mock_settings_objects):
         """Test creating client settings when client already exists"""
         mock_settings_objects.__iter__ = MagicMock(return_value=iter([self.test_client_settings]))
 
         with pytest.raises(ValueError, match="client test_client already exists"):
-            settings.create_client_settings("test_client")
+            settings.create_client("test_client")
 
     @patch("server.api.core.settings.bootstrap.SETTINGS_OBJECTS")
-    def test_get_client_settings_found(self, mock_settings_objects):
+    def test_get_client_found(self, mock_settings_objects):
         """Test getting client settings when client exists"""
         mock_settings_objects.__iter__ = MagicMock(return_value=iter([self.test_client_settings]))
 
-        result = settings.get_client_settings("test_client")
+        result = settings.get_client("test_client")
 
         assert result == self.test_client_settings
 
     @patch("server.api.core.settings.bootstrap.SETTINGS_OBJECTS")
-    def test_get_client_settings_not_found(self, mock_settings_objects):
+    def test_get_client_not_found(self, mock_settings_objects):
         """Test getting client settings when client doesn't exist"""
         mock_settings_objects.__iter__ = MagicMock(return_value=iter([self.default_settings]))
 
         with pytest.raises(ValueError, match="client nonexistent not found"):
-            settings.get_client_settings("nonexistent")
+            settings.get_client("nonexistent")
 
     @pytest.mark.asyncio
     @patch("server.api.core.settings.get_mcp_prompts_with_overrides")
     @patch("server.api.core.settings.bootstrap.DATABASE_OBJECTS")
     @patch("server.api.core.settings.bootstrap.MODEL_OBJECTS")
     @patch("server.api.core.settings.bootstrap.OCI_OBJECTS")
-    async def test_get_server_config(self, mock_oci, mock_models, mock_databases, mock_get_prompts):
+    async def test_get_server(self, mock_oci, mock_models, mock_databases, mock_get_prompts):
         """Test getting server configuration"""
         mock_databases.__iter__ = MagicMock(
             return_value=iter([Database(name="test", user="u", password="p", dsn="d")])
@@ -83,7 +83,7 @@ class TestSettings:
         mock_get_prompts.return_value = []  # Return empty list of prompts
 
         mock_mcp_engine = MagicMock()
-        result = await settings.get_server_config(mock_mcp_engine)
+        result = await settings.get_server(mock_mcp_engine)
 
         assert "database_configs" in result
         assert "model_configs" in result
@@ -91,8 +91,8 @@ class TestSettings:
         assert "prompt_overrides" in result
 
     @patch("server.api.core.settings.bootstrap.SETTINGS_OBJECTS")
-    @patch("server.api.core.settings.get_client_settings")
-    def test_update_client_settings(self, mock_get_settings, mock_settings_objects):
+    @patch("server.api.core.settings.get_client")
+    def test_update_client(self, mock_get_settings, mock_settings_objects):
         """Test updating client settings"""
         mock_get_settings.return_value = self.test_client_settings
         mock_settings_objects.remove = MagicMock()
@@ -100,23 +100,23 @@ class TestSettings:
         mock_settings_objects.__iter__ = MagicMock(return_value=iter([self.test_client_settings]))
 
         new_settings = Settings(client="test_client", max_tokens=800, temperature=0.9)
-        result = settings.update_client_settings(new_settings, "test_client")
+        result = settings.update_client(new_settings, "test_client")
 
         assert result.client == "test_client"
         mock_settings_objects.remove.assert_called_once_with(self.test_client_settings)
         mock_settings_objects.append.assert_called_once()
 
     @patch("server.api.core.settings.bootstrap")
-    def test_update_server_config(self, mock_bootstrap):
+    def test_update_server(self, mock_bootstrap):
         """Test updating server configuration"""
         # Use the valid sample config data that includes client_settings
-        settings.update_server_config(self.sample_config_data)
+        settings.update_server(self.sample_config_data)
 
         assert hasattr(mock_bootstrap, "DATABASE_OBJECTS")
         assert hasattr(mock_bootstrap, "MODEL_OBJECTS")
 
-    @patch("server.api.core.settings.update_server_config")
-    @patch("server.api.core.settings.update_client_settings")
+    @patch("server.api.core.settings.update_server")
+    @patch("server.api.core.settings.update_client")
     def test_load_config_from_json_data_with_client(self, mock_update_client, mock_update_server):
         """Test loading config from JSON data with specific client"""
         settings.load_config_from_json_data(self.sample_config_data, client="test_client")
@@ -124,8 +124,8 @@ class TestSettings:
         mock_update_server.assert_called_once_with(self.sample_config_data)
         mock_update_client.assert_called_once()
 
-    @patch("server.api.core.settings.update_server_config")
-    @patch("server.api.core.settings.update_client_settings")
+    @patch("server.api.core.settings.update_server")
+    @patch("server.api.core.settings.update_client")
     def test_load_config_from_json_data_without_client(self, mock_update_client, mock_update_server):
         """Test loading config from JSON data without specific client"""
         settings.load_config_from_json_data(self.sample_config_data)
@@ -134,7 +134,7 @@ class TestSettings:
         # Should be called twice: once for "server" and once for "default"
         assert mock_update_client.call_count == 2
 
-    @patch("server.api.core.settings.update_server_config")
+    @patch("server.api.core.settings.update_server")
     def test_load_config_from_json_data_missing_client_settings(self, _mock_update_server):
         """Test loading config from JSON data without client_settings"""
         # Create config without client_settings

@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 import litellm
 from langchain_core.messages import ChatMessage
 
-import server.api.core.settings as core_settings
+import server.api.utils.settings as utils_settings
 import server.api.utils.oci as utils_oci
 import server.api.utils.embed as utils_embed
 import server.api.utils.testbed as utils_testbed
@@ -236,7 +236,7 @@ def testbed_evaluate(
         return ai_response["choices"][0]["message"]["content"]
 
     evaluated = datetime.now().isoformat()
-    client_settings = core_settings.get_client_settings(client)
+    client_settings = utils_settings.get_client(client)
     # Change Disable History
     client_settings.ll_model.chat_history = False
     # Change Grade vector_search

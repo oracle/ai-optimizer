@@ -37,17 +37,17 @@ class TestChatUtils:
             oci=OciSettings(auth_profile="DEFAULT"),
         )
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.core.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_success(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test successful completion generation"""
         # Setup mocks
-        mock_get_client_settings.return_value = self.sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
 
@@ -69,20 +69,20 @@ class TestChatUtils:
         assert results[0] == b"Hello"  # Stream chunks are encoded as bytes
         assert results[1] == b" there"
         assert results[2] == "Hello there"  # Final completion is a string
-        mock_get_client_settings.assert_called_once_with("test_client")
+        mock_get_client.assert_called_once_with("test_client")
         mock_get_oci.assert_called_once_with(client="test_client")
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.core.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_streaming(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test streaming completion generation"""
         # Setup mocks
-        mock_get_client_settings.return_value = self.sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
 
@@ -105,7 +105,7 @@ class TestChatUtils:
         assert results[1] == b" there"
         assert results[2] == "[stream_finished]"
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.core.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.utils.databases.get_client_database")
@@ -119,7 +119,7 @@ class TestChatUtils:
         mock_get_client_database,
         mock_get_litellm_config,
         mock_get_oci,
-        mock_get_client_settings,
+        mock_get_client,
     ):
         """Test completion generation with vector search enabled"""
         # Setup settings with vector search enabled
@@ -127,7 +127,7 @@ class TestChatUtils:
         vector_search_settings.vector_search.enabled = True
 
         # Setup mocks
-        mock_get_client_settings.return_value = vector_search_settings
+        mock_get_client.return_value = vector_search_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
 
@@ -152,7 +152,7 @@ class TestChatUtils:
         mock_get_client_embed.assert_called_once()
         assert len(results) == 1
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.core.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.utils.databases.get_client_database")
@@ -166,7 +166,7 @@ class TestChatUtils:
         mock_get_client_database,
         mock_get_litellm_config,
         mock_get_oci,
-        mock_get_client_settings,
+        mock_get_client,
     ):
         """Test completion generation with SelectAI enabled"""
         # Setup settings with SelectAI enabled
@@ -175,7 +175,7 @@ class TestChatUtils:
         selectai_settings.selectai.profile = "TEST_PROFILE"
 
         # Setup mocks
-        mock_get_client_settings.return_value = selectai_settings
+        mock_get_client.return_value = selectai_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
 
@@ -200,20 +200,20 @@ class TestChatUtils:
         assert mock_set_profile.call_count == 2  # temperature and max_tokens
         assert len(results) == 1
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.core.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_no_model_specified(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test completion generation when no model is specified in request"""
         # Create request without model
         request_no_model = ChatRequest(messages=[self.sample_message], model=None)
 
         # Setup mocks
-        mock_get_client_settings.return_value = self.sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
 

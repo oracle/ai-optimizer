@@ -10,7 +10,7 @@ from litellm import completion
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
-import server.api.core.settings as core_settings
+import server.api.utils.settings as utils_settings
 
 import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
@@ -32,7 +32,7 @@ async def completion_generator(
 ) -> AsyncGenerator[str, None]:
     """Generate a completion from agent, stream the results"""
 
-    client_settings = core_settings.get_client_settings(client)
+    client_settings = utils_settings.get_client(client)
     model = request.model_dump()
     logger.debug("Settings: %s", client_settings)
     logger.debug("Request: %s", model)

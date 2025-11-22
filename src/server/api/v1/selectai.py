@@ -8,7 +8,7 @@ import json
 
 from fastapi import APIRouter, Header
 
-import server.api.core.settings as core_settings
+import server.api.utils.settings as utils_settings
 import server.api.utils.databases as utils_databases
 import server.api.utils.selectai as utils_selectai
 
@@ -28,7 +28,7 @@ async def selectai_get_objects(
     client: schema.ClientIdType = Header(default="server"),
 ) -> list[schema.DatabaseSelectAIObjects]:
     """Get DatabaseSelectAIObjects"""
-    client_settings = core_settings.get_client_settings(client)
+    client_settings = utils_settings.get_client(client)
     database = utils_databases.get_client_database(client=client, validate=False)
     select_ai_objects = utils_selectai.get_objects(database.connection, client_settings.selectai.profile)
     return select_ai_objects
@@ -45,7 +45,7 @@ async def selectai_update_objects(
 ) -> list[schema.DatabaseSelectAIObjects]:
     """Update DatabaseSelectAIObjects"""
     logger.debug("Received selectai_update - payload: %s", payload)
-    client_settings = core_settings.get_client_settings(client)
+    client_settings = utils_settings.get_client(client)
     object_list = json.dumps([obj.model_dump(include={"owner", "name"}) for obj in payload])
     db_conn = utils_databases.get_client_database(client).connection
     utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "object_list", object_list)
