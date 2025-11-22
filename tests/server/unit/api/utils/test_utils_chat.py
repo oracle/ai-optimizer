@@ -37,7 +37,7 @@ class TestChatUtils:
             oci=OciSettings(auth_profile="DEFAULT"),
         )
 
-    @patch("server.api.core.settings.get_client")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.agents.chatbot.chatbot_graph.astream")
@@ -72,7 +72,7 @@ class TestChatUtils:
         mock_get_client.assert_called_once_with("test_client")
         mock_get_oci.assert_called_once_with(client="test_client")
 
-    @patch("server.api.core.settings.get_client")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.agents.chatbot.chatbot_graph.astream")
@@ -105,7 +105,7 @@ class TestChatUtils:
         assert results[1] == b" there"
         assert results[2] == "[stream_finished]"
 
-    @patch("server.api.core.settings.get_client")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.utils.databases.get_client_database")
@@ -152,7 +152,7 @@ class TestChatUtils:
         mock_get_client_embed.assert_called_once()
         assert len(results) == 1
 
-    @patch("server.api.core.settings.get_client")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.api.utils.databases.get_client_database")
@@ -200,7 +200,7 @@ class TestChatUtils:
         assert mock_set_profile.call_count == 2  # temperature and max_tokens
         assert len(results) == 1
 
-    @patch("server.api.core.settings.get_client")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.agents.chatbot.chatbot_graph.astream")
