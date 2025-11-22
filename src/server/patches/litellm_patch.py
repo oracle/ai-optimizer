@@ -31,13 +31,6 @@ except Exception as e:
     logger.error("✗ Failed to load Ollama transform patch: %s", e)
 
 try:
-    from . import litellm_patch_oci_auth
-
-    logger.info("✓ OCI auth patches loaded (validate_environment, sign_request)")
-except Exception as e:
-    logger.error("✗ Failed to load OCI auth patches: %s", e)
-
-try:
     from . import litellm_patch_oci_streaming
 
     logger.info("✓ OCI streaming patches loaded (handle_generic_stream_chunk)")

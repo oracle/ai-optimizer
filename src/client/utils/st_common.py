@@ -301,6 +301,13 @@ def tools_sidebar() -> None:
             _disable_vector_search("No embedding models are configured and/or enabled.")
         elif not database_lookup[db_alias].get("vector_stores"):
             _disable_vector_search("Database has no vector stores")
+        else:
+            # Check if any enabled embedding models match the models used by vector stores
+            vector_stores = database_lookup[db_alias].get("vector_stores", [])
+            vector_store_models = {vs.get("model") for vs in vector_stores}
+            usable_vector_stores = vector_store_models.intersection(embed_models_enabled.keys())
+            if not usable_vector_stores:
+                _disable_vector_search("No vector stores available for enabled embedding models")
 
         tool_box = [name for name, _, disabled in tools if not disabled]
         if len(tool_box) > 1:
