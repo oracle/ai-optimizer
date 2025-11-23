@@ -1,6 +1,6 @@
 ## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent freepdb1 oserror selectai sidb spfile sqlplus
+# spell-checker: ignore nindent freepdb1 oserror sidb spfile sqlplus adbs oraclevcn 
 # spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace
 
 {{- if .Values.server.database }}

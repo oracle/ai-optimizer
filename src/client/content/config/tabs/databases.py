@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 This script initializes a web interface for database configuration using Streamlit (`st`).
 It includes a form to input and test database connection settings.
 """
-# spell-checker:ignore selectai selectbox
+# spell-checker:ignore selectbox
 
 import json
 import pandas as pd
@@ -113,46 +113,6 @@ def _render_vector_stores_section(database_lookup: dict, selected_database_alias
             st.write("No Vector Stores Found")
 
 
-def _render_selectai_section(database_lookup: dict, selected_database_alias: str) -> None:
-    """Render the SelectAI configuration section."""
-    st.subheader("SelectAI", divider="red")
-    selectai_profiles = database_lookup[selected_database_alias]["selectai_profiles"]
-
-    if database_lookup[selected_database_alias]["selectai"] and len(selectai_profiles) > 0:
-        if not state.client_settings["selectai"]["profile"]:
-            state.client_settings["selectai"]["profile"] = selectai_profiles[0]
-
-        # Select Profile
-        st.selectbox(
-            "Profile:",
-            options=selectai_profiles,
-            index=selectai_profiles.index(state.client_settings["selectai"]["profile"]),
-            key="selected_selectai_profile",
-            on_change=select_ai_profile,
-        )
-
-        selectai_objects = selectai_df(state.client_settings["selectai"]["profile"])
-        if not selectai_objects.empty:
-            sai_df = st.data_editor(
-                selectai_objects,
-                column_config={
-                    "enabled": st.column_config.CheckboxColumn(label="Enabled", help="Toggle to enable or disable")
-                },
-                width="stretch",
-                hide_index=True,
-            )
-            if st.button("Apply SelectAI Changes", type="secondary"):
-                update_selectai(sai_df, selectai_objects)
-                st.rerun()
-        else:
-            st.write("No objects found for SelectAI.")
-    else:
-        if not database_lookup[selected_database_alias]["selectai"]:
-            st.write("Unable to use SelectAI with Database.")
-        elif len(selectai_profiles) == 0:
-            st.write("No SelectAI Profiles Found.")
-
-
 def get_databases(force: bool = False) -> None:
     """Get Databases from API Server"""
     if force or "database_configs" not in state or not state.database_configs:
@@ -202,49 +162,12 @@ def drop_vs(vs: dict) -> None:
     get_databases(force=True)
 
 
-def select_ai_profile() -> None:
-    """Update the chosen SelectAI Profile"""
-    st_common.update_client_settings("selectai")
-    st_common.patch_settings()
-    selectai_df.clear()
-
-
-@st.cache_data(show_spinner="Retrieving SelectAI Objects")
-def selectai_df(profile):
-    """Get SelectAI Object List and produce Dataframe"""
-    logger.info("Retrieving objects from SelectAI Profile: %s", profile)
-    st_common.patch_settings()
-    selectai_objects = api_call.get(endpoint="v1/selectai/objects")
-    df = pd.DataFrame(selectai_objects, columns=["owner", "name", "enabled"])
-    df.columns = ["Owner", "Name", "Enabled"]
-    return df
-
-
-def update_selectai(sai_new_df: pd.DataFrame, sai_old_df: pd.DataFrame) -> None:
-    """Update SelectAI Object List"""
-    changes = sai_new_df[sai_new_df["Enabled"] != sai_old_df["Enabled"]]
-    if changes.empty:
-        st.toast("No changes detected.", icon="ℹ️")
-    else:
-        enabled_objects = sai_new_df[sai_new_df["Enabled"]].drop(columns=["Enabled"])
-        enabled_objects.columns = enabled_objects.columns.str.lower()
-        try:
-            _ = api_call.patch(
-                endpoint="v1/selectai/objects", payload={"json": json.loads(enabled_objects.to_json(orient="records"))}
-            )
-            logger.info("SelectAI Updated. Clearing Cache.")
-            selectai_df.clear()
-        except api_call.ApiError as ex:
-            logger.error("SelectAI not updated: %s", ex)
-
-
 #####################################################
 # MAIN
 #####################################################
 def display_databases() -> None:
     """Streamlit GUI"""
     st.header("Database", divider="red")
-    st.write("Configure the database used for Vector Storage and SelectAI.")
 
     try:
         get_databases()
@@ -270,7 +193,6 @@ def display_databases() -> None:
     # Only show additional sections if database is connected
     if connected:
         _render_vector_stores_section(database_lookup, selected_database_alias)
-        _render_selectai_section(database_lookup, selected_database_alias)
 
 
 if __name__ == "__main__":

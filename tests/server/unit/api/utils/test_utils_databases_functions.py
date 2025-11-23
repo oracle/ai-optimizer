@@ -169,93 +169,6 @@ class TestDatabaseUtilsPrivateFunctions:
         with pytest.raises(json.JSONDecodeError):
             databases._get_vs(mock_connection)
 
-    def test_selectai_enabled_with_real_database(self, db_container):
-        """Test SelectAI enabled check with real database"""
-        assert db_container is not None
-        conn = databases.connect(self.sample_database)
-
-        try:
-            # Test with real database (likely returns False for test environment)
-            result = databases._selectai_enabled(conn)
-            assert isinstance(result, bool)
-            # We don't assert the specific value as it depends on the database setup
-        finally:
-            databases.disconnect(conn)
-
-    @patch("server.api.utils.databases.execute_sql")
-    def test_selectai_enabled_true(self, mock_execute_sql):
-        """Test SelectAI enabled check returns True"""
-        mock_connection = MagicMock()
-        mock_execute_sql.return_value = [(2,)]
-
-        result = databases._selectai_enabled(mock_connection)
-
-        assert result is True
-
-    @patch("server.api.utils.databases.execute_sql")
-    def test_selectai_enabled_false(self, mock_execute_sql):
-        """Test SelectAI enabled check returns False"""
-        mock_connection = MagicMock()
-        mock_execute_sql.return_value = [(1,)]
-
-        result = databases._selectai_enabled(mock_connection)
-
-        assert result is False
-
-    @patch("server.api.utils.databases.execute_sql")
-    def test_selectai_enabled_zero_privileges(self, mock_execute_sql):
-        """Test SelectAI enabled check with zero privileges"""
-        mock_connection = MagicMock()
-        mock_execute_sql.return_value = [(0,)]
-
-        result = databases._selectai_enabled(mock_connection)
-
-        assert result is False
-
-    def test_get_selectai_profiles_with_real_database(self, db_container):
-        """Test SelectAI profiles retrieval with real database"""
-        assert db_container is not None
-        conn = databases.connect(self.sample_database)
-
-        try:
-            # Test with real database (likely returns empty list for test environment)
-            result = databases._get_selectai_profiles(conn)
-            assert isinstance(result, list)
-            # We don't assert the specific content as it depends on the database setup
-        finally:
-            databases.disconnect(conn)
-
-    @patch("server.api.utils.databases.execute_sql")
-    def test_get_selectai_profiles_with_data(self, mock_execute_sql):
-        """Test SelectAI profiles retrieval with data"""
-        mock_connection = MagicMock()
-        mock_execute_sql.return_value = [("PROFILE1",), ("PROFILE2",), ("PROFILE3",)]
-
-        result = databases._get_selectai_profiles(mock_connection)
-
-        assert result == ["PROFILE1", "PROFILE2", "PROFILE3"]
-
-    @patch("server.api.utils.databases.execute_sql")
-    def test_get_selectai_profiles_empty(self, mock_execute_sql):
-        """Test SelectAI profiles retrieval with no profiles"""
-        mock_connection = MagicMock()
-        mock_execute_sql.return_value = []
-
-        result = databases._get_selectai_profiles(mock_connection)
-
-        assert result == []
-
-    @patch("server.api.utils.databases.execute_sql")
-    def test_get_selectai_profiles_none_result(self, mock_execute_sql):
-        """Test SelectAI profiles retrieval with None results"""
-        mock_connection = MagicMock()
-        mock_execute_sql.return_value = None
-
-        result = databases._get_selectai_profiles(mock_connection)
-
-        assert result == []
-
-
 class TestDatabaseUtilsPublicFunctions:
     """Test public utility functions - connection and execution"""
 
@@ -615,10 +528,9 @@ class TestDatabaseUtilsQueryFunctions:
         """Test get_client_database with default settings"""
         assert db_container is not None
         assert db_objects_manager is not None
-        # Mock client settings without vector_search or selectai
+        # Mock client settings without vector_search
         mock_settings = MagicMock()
         mock_settings.vector_search = None
-        mock_settings.selectai = None
         mock_get_settings.return_value = mock_settings
 
         databases.DATABASE_OBJECTS.clear()
@@ -644,7 +556,6 @@ class TestDatabaseUtilsQueryFunctions:
         mock_vector_search.database = "VECTOR_DB"
         mock_settings = MagicMock()
         mock_settings.vector_search = mock_vector_search
-        mock_settings.selectai = None
         mock_get_settings.return_value = mock_settings
 
         databases.DATABASE_OBJECTS.clear()
@@ -668,7 +579,6 @@ class TestDatabaseUtilsQueryFunctions:
         # Mock client settings
         mock_settings = MagicMock()
         mock_settings.vector_search = None
-        mock_settings.selectai = None
         mock_get_settings.return_value = mock_settings
 
         databases.DATABASE_OBJECTS.clear()

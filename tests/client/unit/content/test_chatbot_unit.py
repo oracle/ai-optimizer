@@ -148,7 +148,6 @@ class TestSetupSidebar:
         monkeypatch.setattr(st_common, "tools_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "history_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "ll_sidebar", MagicMock())
-        monkeypatch.setattr(st_common, "selectai_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "vector_search_sidebar", MagicMock())
 
         # Initialize state
@@ -176,7 +175,6 @@ class TestSetupSidebar:
         monkeypatch.setattr(st_common, "tools_sidebar", disable_client)
         monkeypatch.setattr(st_common, "history_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "ll_sidebar", MagicMock())
-        monkeypatch.setattr(st_common, "selectai_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "vector_search_sidebar", MagicMock())
 
         # Mock st.stop

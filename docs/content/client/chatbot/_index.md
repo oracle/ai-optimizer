@@ -47,7 +47,6 @@ For more details on the parameters, ask the Chatbot or review [Concepts for Gene
 
 The {{< short_app_ref >}} provides tools to augment Large Language Models with your proprietary data using Retrieval Augmented Generation (**RAG**), including:
 * [Vector Search](#vector-search) for Unstructured Data
-* [SelectAI](#selectai) for Structured Data
 
 
 ## Vector Search
@@ -61,10 +60,3 @@ Choose the type of Search you want performed and the additional parameters assoc
 ### Vector Store
 
 With Vector Search selected, if you have more than one Vector Store, you can select which one will be used for searching, otherwise it will default to the only one available.  To choose a different Vector Store, click the "Reset" button to open up the available options.
-
-
-## SelectAI
-
-Once you've [configured SelectAI](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/select-ai-get-started.html#GUID-E9872607-42A6-43FA-9851-7B60430C21B7), the option to use SelectAI will be available.  After selecting the SelectAI toolkit, a profile and the default narrate option will automatically be selected.  If you have more then one profile, you can choose which one to use.  You can also select different SelectAI actions.
-
-![Chatbot SelectAI](images/chatbot_selectai.png)

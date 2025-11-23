@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
-# spell-checker:ignore astream selectai litellm
+# spell-checker:ignore astream litellm
 from typing import Literal, AsyncGenerator
 
 from litellm import completion
@@ -15,7 +15,6 @@ import server.api.utils.settings as utils_settings
 import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
 import server.api.utils.databases as utils_databases
-import server.api.utils.selectai as utils_selectai
 
 from server.agents.chatbot import chatbot_graph
 
@@ -66,25 +65,17 @@ async def completion_generator(
             metadata={
                 "use_history": client_settings.ll_model.chat_history,
                 "vector_search": client_settings.vector_search,
-                "selectai": client_settings.selectai,
             },
         ),
     }
 
     # Add DB Conn to KWargs when needed
-    if client_settings.vector_search.enabled or client_settings.selectai.enabled:
+    if client_settings.vector_search.enabled:
         db_conn = utils_databases.get_client_database(client, False).connection
         kwargs["config"]["configurable"]["db_conn"] = db_conn
-
-    # Setup Vector Search
-    if client_settings.vector_search.enabled:
         kwargs["config"]["configurable"]["embed_client"] = utils_models.get_client_embed(
             client_settings.vector_search.model_dump(), oci_config
         )
-
-    if client_settings.selectai.enabled:
-        utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "temperature", model["temperature"])
-        utils_selectai.set_profile(db_conn, client_settings.selectai.profile, "max_tokens", model["max_tokens"])
 
     logger.debug("Completion Kwargs: %s", kwargs)
     final_response = None

@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Session States Set:
 - user_client: Stores the Client
 """
-# spell-checker:ignore streamlit oraclevs selectai
+# spell-checker:ignore streamlit oraclevs
 
 import asyncio
 import inspect
@@ -62,7 +62,6 @@ def setup_sidebar():
     st_common.tools_sidebar()
     st_common.history_sidebar()
     st_common.ll_sidebar()
-    st_common.selectai_sidebar()
     st_common.vector_search_sidebar()
 
     if not state.enable_client:

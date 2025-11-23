@@ -178,7 +178,6 @@ class TestStreamlit:
         assert "oci" in at.session_state["client_settings"]
         assert "database" in at.session_state["client_settings"]
         assert "vector_search" in at.session_state["client_settings"]
-        assert "selectai" in at.session_state["client_settings"]
 
 
 #############################################################################
@@ -321,7 +320,6 @@ class TestSpringAIFunctions:
             "sys_prompt": {"name": "optimizer_basic-default"},
             "ctx_prompt": {"name": "optimizer_no-examples"},
             "vector_search": {"enabled": False},
-            "selectai": {"enabled": False},
         }
         at.session_state.prompt_configs = [
             {

@@ -50,8 +50,6 @@ class TestEndpoints:
         assert default_db["tcp_connect_timeout"] == 5
         assert default_db["user"] is None
         assert default_db["vector_stores"] == []
-        assert default_db["selectai"] is False
-        assert default_db["selectai_profiles"] == []
         assert default_db["wallet_location"] is None
         assert default_db["wallet_password"] is None
 
@@ -137,8 +135,6 @@ class TestEndpoints:
                 "tcp_connect_timeout": 5,
                 "user": TEST_CONFIG["db_username"],
                 "vector_stores": [],
-                "selectai": False,
-                "selectai_profiles": [],
                 "wallet_location": None,
                 "wallet_password": None,
             },

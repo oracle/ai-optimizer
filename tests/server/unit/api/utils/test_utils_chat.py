@@ -30,11 +30,8 @@ class TestChatUtils:
         self.sample_request = ChatRequest(messages=[self.sample_message], model="openai/gpt-4")
         self.sample_client_settings = Settings(
             client="test_client",
-            ll_model=LargeLanguageSettings(
-                model="openai/gpt-4", chat_history=True, temperature=0.7, max_tokens=4096
-            ),
+            ll_model=LargeLanguageSettings(model="openai/gpt-4", chat_history=True, temperature=0.7, max_tokens=4096),
             vector_search=VectorSearchSettings(enabled=False),
-            selectai=SelectAISettings(enabled=False),
             oci=OciSettings(auth_profile="DEFAULT"),
         )
 
@@ -151,54 +148,6 @@ class TestChatUtils:
         # Verify vector search setup
         mock_get_client_database.assert_called_once_with("test_client", False)
         mock_get_client_embed.assert_called_once()
-        assert len(results) == 1
-
-    @patch("server.api.utils.settings.get_client")
-    @patch("server.api.utils.oci.get")
-    @patch("server.api.utils.models.get_litellm_config")
-    @patch("server.api.utils.databases.get_client_database")
-    @patch("server.api.utils.selectai.set_profile")
-    @patch("server.agents.chatbot.chatbot_graph.astream")
-    @pytest.mark.asyncio
-    async def test_completion_generator_with_selectai(
-        self,
-        mock_astream,
-        mock_set_profile,
-        mock_get_client_database,
-        mock_get_litellm_config,
-        mock_get_oci,
-        mock_get_client,
-    ):
-        """Test completion generation with SelectAI enabled"""
-        # Setup settings with SelectAI enabled
-        selectai_settings = self.sample_client_settings.model_copy()
-        selectai_settings.selectai.enabled = True
-        selectai_settings.selectai.profile = "TEST_PROFILE"
-
-        # Setup mocks
-        mock_get_client.return_value = selectai_settings
-        mock_get_oci.return_value = MagicMock()
-        mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
-
-        mock_db = MagicMock()
-        mock_db.connection = MagicMock()
-        mock_get_client_database.return_value = mock_db
-
-        # Mock the async generator
-        async def mock_generator():
-            yield {"completion": "Response with SelectAI"}
-
-        mock_astream.return_value = mock_generator()
-
-        # Test the function
-        results = []
-        async for result in chat.completion_generator("test_client", self.sample_request, "completions"):
-            results.append(result)
-
-        # Verify SelectAI setup
-        mock_get_client_database.assert_called_once_with("test_client", False)
-        # Should set profile parameters
-        assert mock_set_profile.call_count == 2  # temperature and max_tokens
         assert len(results) == 1
 
     @patch("server.api.utils.settings.get_client")

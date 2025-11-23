@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore acompletion checkpointer litellm mult oraclevs vectorstores selectai
+# spell-checker:ignore acompletion checkpointer litellm mult oraclevs vectorstores
 
 import copy
 import decimal
@@ -76,13 +76,8 @@ def clean_messages(state: OptimizerState, config: RunnableConfig) -> list:
     return state_messages
 
 
-def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "selectai_completion", "stream_completion"]:
-    """Conditional edge to determine if using SelectAI, Vector Search or not"""
-    selectai_enabled = config["metadata"]["selectai"].enabled
-    if selectai_enabled:
-        logger.info("Invoking Chatbot with SelectAI: %s", selectai_enabled)
-        return "selectai_completion"
-
+def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "stream_completion"]:
+    """Conditional edge to determine if using Vector Search or not"""
     enabled = config["metadata"]["vector_search"].enabled
     if enabled:
         logger.info("Invoking Chatbot with Vector Search: %s", enabled)
@@ -244,38 +239,6 @@ async def vs_retrieve(state: OptimizerState, config: RunnableConfig) -> Optimize
     logger.info("Found Documents: %i", len(documents_dict))
     return {"context_input": retrieve_question, "documents": documents_dict}
 
-
-async def selectai_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
-    """Generate answer when SelectAI enabled; modify state with response"""
-    selectai_prompt = state["cleaned_messages"][-1:][0].content
-
-    logger.info("Generating SelectAI Response on %s", selectai_prompt)
-    sql = """
-        SELECT DBMS_CLOUD_AI.GENERATE(
-            prompt       => :query,
-            profile_name => :profile,
-            action       => :action)
-        FROM dual
-    """
-    binds = {
-        "query": selectai_prompt,
-        "profile": config["metadata"]["selectai"].profile,
-        "action": config["metadata"]["selectai"].action,
-    }
-    # Execute the SQL using the connection
-    db_conn = config["configurable"]["db_conn"]
-    try:
-        response = execute_sql(db_conn, sql, binds)
-    except Exception as ex:
-        logger.error("SelectAI has hit an issue: %s", ex)
-        response = [{sql: f"I'm sorry, I ran into an error: str({ex})"}]
-    # Response will be [{sql:, completion}]; return the completion
-    logger.debug("SelectAI Responded: %s", response)
-    response = list(response[0].values())[0]
-
-    return {"messages": [AIMessage(content=response)]}
-
-
 async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
     """LiteLLM streaming wrapper"""
     writer = get_stream_writer()
@@ -331,17 +294,15 @@ workflow.add_node("initialise", initialise)
 workflow.add_node("rephrase", rephrase)
 workflow.add_node("vs_retrieve", vs_retrieve)
 workflow.add_node("vs_grade", vs_grade)
-workflow.add_node("selectai_completion", selectai_completion)
 workflow.add_node("stream_completion", stream_completion)
 
 # Start the chatbot with clean messages
 workflow.add_edge(START, "initialise")
 
-# Branch to either "selectai_completion", "vs_retrieve", or "stream_completion"
+# Branch to either "vs_retrieve", or "stream_completion"
 workflow.add_conditional_edges("initialise", use_tool)
 workflow.add_edge("vs_retrieve", "vs_grade")
 workflow.add_edge("vs_grade", "stream_completion")
-workflow.add_edge("selectai_completion", END)
 
 # End the workflow
 workflow.add_edge("stream_completion", END)

@@ -54,7 +54,6 @@ class TestEndpoints:
         assert settings["client"] == "default"
         assert "ll_model" in settings
         assert "vector_search" in settings
-        assert "selectai" in settings
         assert "oci" in settings
         assert "database" in settings
         assert "testbed" in settings
@@ -108,7 +107,6 @@ class TestEndpoints:
             client="default",
             ll_model=LargeLanguageSettings(model="updated-model", chat_history=False),
             vector_search=VectorSearchSettings(enabled=True, grading=False, search_type="Similarity", top_k=5),
-            selectai=SelectAISettings(enabled=True),
             oci=OciSettings(auth_profile="UPDATED"),
         )
 
@@ -131,7 +129,6 @@ class TestEndpoints:
         assert new_settings["vector_search"]["enabled"] is True
         assert new_settings["vector_search"]["grading"] is False
         assert new_settings["vector_search"]["top_k"] == 5
-        assert new_settings["selectai"]["enabled"] is True
         assert new_settings["oci"]["auth_profile"] == "UPDATED"
 
     def test_settings_copy(self, client, auth_headers):

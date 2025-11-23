@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore mult selectai selectbox testset testsets
+# spell-checker:ignore mult selectbox testset testsets
 
 import random
 import string
@@ -470,7 +470,6 @@ def render_evaluation_ui(available_ll_models: list) -> None:
     st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
     st_common.tools_sidebar()
     st_common.ll_sidebar()
-    st_common.selectai_sidebar()
     st_common.vector_search_sidebar()
     st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
     col_left, col_center, _ = st.columns([4, 3, 3])

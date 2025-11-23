@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai clob nclob vectorstores oraclevs
+# spell-checker:ignore clob nclob vectorstores oraclevs genai privs
 
 from typing import Optional, Union
 import json
@@ -19,7 +19,6 @@ from common.schema import (
     ClientIdType,
     DatabaseAuth,
     DatabaseVectorStorage,
-    SelectAIProfileType,
 )
 from common import logging_config
 
@@ -127,42 +126,6 @@ def _get_vs(conn: oracledb.Connection) -> DatabaseVectorStorage:
     logger.debug("Found Vector Stores: %s", vector_stores)
 
     return vector_stores
-
-
-def _selectai_enabled(conn: oracledb.Connection) -> bool:
-    """Determine if SelectAI can be used"""
-    logger.debug("Checking %s for SelectAI", conn)
-    is_enabled = False
-    sql = """
-          SELECT COUNT(*)
-            FROM ALL_TAB_PRIVS
-           WHERE TYPE = 'PACKAGE'
-             AND PRIVILEGE = 'EXECUTE'
-             AND GRANTEE = USER
-             AND TABLE_NAME IN ('DBMS_CLOUD_AI','DBMS_CLOUD_PIPELINE')
-          """
-    result = execute_sql(conn, sql)
-    if result[0][0] == 2:
-        is_enabled = True
-    logger.debug("SelectAI enabled (results: %s): %s", result[0][0], is_enabled)
-
-    return is_enabled
-
-
-def _get_selectai_profiles(conn: oracledb.Connection) -> SelectAIProfileType:
-    """Retrieve SelectAI Profiles"""
-    logger.info("Looking for SelectAI Profiles")
-    selectai_profiles = []
-    sql = """
-            SELECT  profile_name
-            FROM USER_CLOUD_AI_PROFILES
-          """
-    results = execute_sql(conn, sql)
-    if results:
-        selectai_profiles = [row[0] for row in results]
-    logger.debug("Found SelectAI Profiles: %s", selectai_profiles)
-
-    return selectai_profiles
 
 
 #####################################################
@@ -289,9 +252,6 @@ def get_databases(
             except (ValueError, PermissionError, ConnectionError, LookupError):
                 continue
             db.vector_stores = _get_vs(db_conn)
-            db.selectai = _selectai_enabled(db_conn)
-            if db.selectai:
-                db.selectai_profiles = _get_selectai_profiles(db_conn)
             db.connected = True
             db.set_connection(db_conn)
     if db_name:
@@ -307,7 +267,6 @@ def get_client_database(client: ClientIdType, validate: bool = False) -> Databas
     # Get database name from client settings, defaulting to "DEFAULT"
     db_name = "DEFAULT"
     if (hasattr(client_settings, "vector_search") and client_settings.vector_search) or (
-        hasattr(client_settings, "selectai") and client_settings.selectai
     ):
         db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
 
