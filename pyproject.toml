@@ -63,6 +63,9 @@ client = [
 # Test dependencies
 test = [
     "docker",
+    "mypy",
+    "types-psutil",
+    "pandas-stubs",
     "pylint",
     "pytest",
     "pytest-asyncio",
