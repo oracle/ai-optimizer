@@ -3,12 +3,10 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from datetime import datetime
 from unittest.mock import patch, MagicMock
-
-import pytest
 
 from server.api.utils import oci as oci_utils
 from common.schema import OracleCloudSettings
@@ -17,7 +15,7 @@ from common.schema import OracleCloudSettings
 class TestGetBucketObjectsWithMetadata:
     """Test get_bucket_objects_with_metadata() function"""
 
-    def setup_method(self):
+    def __init__(self):
         """Setup test data"""
         self.sample_oci_config = OracleCloudSettings(
             auth_profile="DEFAULT",
@@ -44,18 +42,10 @@ class TestGetBucketObjectsWithMetadata:
         time2 = datetime(2025, 11, 2, 10, 0, 0)
 
         mock_obj1 = self.create_mock_object(
-            name="document1.pdf",
-            size=1024000,
-            etag="etag-123",
-            time_modified=time1,
-            md5="md5-hash-1"
+            name="document1.pdf", size=1024000, etag="etag-123", time_modified=time1, md5="md5-hash-1"
         )
         mock_obj2 = self.create_mock_object(
-            name="document2.txt",
-            size=2048,
-            etag="etag-456",
-            time_modified=time2,
-            md5="md5-hash-2"
+            name="document2.txt", size=2048, etag="etag-456", time_modified=time2, md5="md5-hash-2"
         )
 
         # Mock client
@@ -135,11 +125,7 @@ class TestGetBucketObjectsWithMetadata:
         """Test handling of objects with None time_modified"""
         # Create mock object with None time_modified
         mock_obj = self.create_mock_object(
-            name="document.pdf",
-            size=1024,
-            etag="etag-123",
-            time_modified=None,
-            md5="md5-hash"
+            name="document.pdf", size=1024, etag="etag-123", time_modified=None, md5="md5-hash"
         )
 
         # Mock client

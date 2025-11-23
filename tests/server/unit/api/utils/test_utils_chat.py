@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from unittest.mock import patch, MagicMock
 import pytest
@@ -24,7 +24,7 @@ from common.schema import (
 class TestChatUtils:
     """Test chat utility functions"""
 
-    def setup_method(self):
+    def __init__(self):
         """Setup test data"""
         self.sample_message = ChatMessage(role="user", content="Hello, how are you?")
         self.sample_request = ChatRequest(messages=[self.sample_message], model="openai/gpt-4")

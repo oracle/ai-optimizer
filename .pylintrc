@@ -68,7 +68,7 @@ ignored-modules=
 
 # Python code to execute, usually for sys.path manipulation such as
 # pygtk.require().
-#init-hook=
+init-hook='import sys; import os; sys.path.insert(0, os.path.join(os.getcwd(), "src") if os.path.exists("src") else os.path.join(os.path.dirname(os.getcwd()), "src"))'
 
 # Use multiple processes to speed up Pylint. Specifying 0 will auto-detect the
 # number of processors available to use, and will cap the count on Windows to
@@ -96,13 +96,13 @@ prefer-stubs=no
 py-version=3.11
 
 # Discover python modules and packages in the file system subtree.
-recursive=no
+recursive=yes
 
 # Add paths to the list of the source roots. Supports globbing patterns. The
 # source root is an absolute path or a path relative to the current working
 # directory used to determine a package namespace for modules located under the
 # source root.
-source-roots=
+source-roots=src
 
 # Allow loading of arbitrary C extensions. Extensions are imported into the
 # active Python interpreter and may run arbitrary code.

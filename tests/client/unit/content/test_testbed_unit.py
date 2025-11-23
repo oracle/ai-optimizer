@@ -1,3 +1,4 @@
+# pylint: disable=protected-access,import-error,import-outside-toplevel
 """
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
@@ -5,7 +6,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Additional tests for testbed.py to increase coverage from 36% to 85%+
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
 
 import sys
 from unittest.mock import MagicMock

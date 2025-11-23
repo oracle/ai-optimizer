@@ -3,15 +3,16 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from unittest.mock import patch, MagicMock
 
 import pytest
 
+from conftest import get_sample_oci_config
 from server.api.utils import models
 from server.api.utils.models import URLUnreachableError, InvalidModelError, ExistsModelError, UnknownModelError
-from common.schema import Model, OracleCloudSettings
+from common.schema import Model
 
 
 #####################################################
@@ -51,8 +52,8 @@ class TestModelsExceptions:
 class TestModelsCRUD:
     """Test models module functionality"""
 
-    def setup_method(self):
-        """Setup test data before each test"""
+    def __init__(self):
+        """Setup test data for all tests"""
         self.sample_model = Model(
             id="test-model", provider="openai", type="ll", enabled=True, api_base="https://api.openai.com"
         )
@@ -194,20 +195,12 @@ class TestModelsCRUD:
 class TestModelsUtils:
     """Test models utility functions"""
 
-    def setup_method(self):
+    def __init__(self):
         """Setup test data"""
         self.sample_model = Model(
             id="test-model", provider="openai", type="ll", enabled=True, api_base="https://api.openai.com"
         )
-        self.sample_oci_config = OracleCloudSettings(
-            auth_profile="DEFAULT",
-            compartment_id="ocid1.compartment.oc1..test",
-            genai_region="us-ashburn-1",
-            user="ocid1.user.oc1..testuser",
-            fingerprint="test-fingerprint",
-            tenancy="ocid1.tenancy.oc1..testtenant",
-            key_file="/path/to/key.pem",
-        )
+        self.sample_oci_config = get_sample_oci_config()
 
     @patch("server.api.utils.models.MODEL_OBJECTS", [])
     @patch("server.api.utils.models.is_url_accessible")

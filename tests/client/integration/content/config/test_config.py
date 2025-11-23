@@ -1,9 +1,9 @@
+# pylint: disable=protected-access,import-error,import-outside-toplevel
 """
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
 
 import streamlit as st
 from conftest import create_tabs_mock, run_streamlit_test
@@ -98,14 +98,7 @@ class TestStreamlit:
         """Test with only settings tab enabled"""
         assert app_server is not None
 
-        tabs_created = []
-        original_tabs = st.tabs
-
-        def mock_tabs(tab_list):
-            tabs_created.extend(tab_list)
-            return original_tabs(tab_list)
-
-        monkeypatch.setattr(st, "tabs", mock_tabs)
+        tabs_created = create_tabs_mock(monkeypatch)
 
         at = app_test(self.ST_FILE)
 
@@ -200,14 +193,7 @@ class TestStreamlit:
         """Test that partial tab enabling maintains correct order"""
         assert app_server is not None
 
-        tabs_created = []
-        original_tabs = st.tabs
-
-        def mock_tabs(tab_list):
-            tabs_created.extend(tab_list)
-            return original_tabs(tab_list)
-
-        monkeypatch.setattr(st, "tabs", mock_tabs)
+        tabs_created = create_tabs_mock(monkeypatch)
 
         at = app_test(self.ST_FILE)
 

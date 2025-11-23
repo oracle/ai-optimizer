@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 import pytest
 from common.schema import (
@@ -16,10 +16,10 @@ from common.schema import (
 
 
 #############################################################################
-# Test AuthN required and Valid
+# Endpoints Test
 #############################################################################
-class TestInvalidAuthEndpoints:
-    """Test endpoints without Headers and Invalid AuthN"""
+class TestEndpoints:
+    """Test Endpoints"""
 
     @pytest.mark.parametrize(
         "auth_type, status_code",
@@ -38,17 +38,10 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/settings/load/json", "post", id="load_settings_from_json"),
         ],
     )
-    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication"""
+    def test_invalid_auth_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valid authentication."""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
-
-
-#############################################################################
-# Endpoints Test
-#############################################################################
-class TestEndpoints:
-    """Test Endpoints"""
 
     def test_settings_get(self, client, auth_headers):
         """Test getting settings for a client"""

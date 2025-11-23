@@ -3,11 +3,24 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
-# pylint: disable=wrong-import-position
-# pylint: disable=import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel consider-using-with
 
 import os
+import sys
+import time
+import socket
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Generator, Optional
+from contextlib import contextmanager
+
+import requests
+import numpy as np
+import pytest
+import docker
+from docker.errors import DockerException
+from docker.models.containers import Container
 
 # This contains all the environment variables we consume on startup (add as required)
 # Used to clear testing environment from users env; Do before any additional imports
@@ -34,24 +47,8 @@ os.environ["API_SERVER_URL"] = "http://localhost"
 os.environ["API_SERVER_PORT"] = "8015"
 
 # Import rest of required modules
-import sys
-import time
-import socket
-import shutil
-import subprocess
-from pathlib import Path
-from typing import Generator, Optional
-from contextlib import contextmanager
-import requests
-import numpy as np
-import pytest
-from fastapi.testclient import TestClient
-from streamlit.testing.v1 import AppTest
-
-# For Database Container
-import docker
-from docker.errors import DockerException
-from docker.models.containers import Container
+from fastapi.testclient import TestClient  # pylint: disable=wrong-import-position
+from streamlit.testing.v1 import AppTest  # pylint: disable=wrong-import-position
 
 
 #################################################
@@ -92,6 +89,20 @@ def mock_embedding_model():
     return mock_embed_documents
 
 
+@pytest.fixture
+def db_objects_manager():
+    """
+    Fixture to manage DATABASE_OBJECTS save/restore operations.
+    This reduces code duplication across tests that need to manipulate DATABASE_OBJECTS.
+    """
+    from server.bootstrap.bootstrap import DATABASE_OBJECTS
+
+    original_db_objects = DATABASE_OBJECTS.copy()
+    yield DATABASE_OBJECTS
+    DATABASE_OBJECTS.clear()
+    DATABASE_OBJECTS.extend(original_db_objects)
+
+
 #################################################
 # Fixures for tests/client
 #################################################
@@ -110,23 +121,23 @@ def app_server(request):
     if config_file:
         cmd.extend(["-c", config_file])
 
-    server_process = subprocess.Popen(cmd, cwd="src")  # pylint: disable=consider-using-with
+    server_process = subprocess.Popen(cmd, cwd="src")
 
-    # Wait for server to be ready (up to 30 seconds)
-    max_wait = 30
-    start_time = time.time()
-    while not is_port_in_use(8015):
-        if time.time() - start_time > max_wait:
-            server_process.terminate()
-            server_process.wait()
-            raise TimeoutError("Server failed to start within 30 seconds")
-        time.sleep(0.5)
+    try:
+        # Wait for server to be ready (up to 30 seconds)
+        max_wait = 30
+        start_time = time.time()
+        while not is_port_in_use(8015):
+            if time.time() - start_time > max_wait:
+                raise TimeoutError("Server failed to start within 30 seconds")
+            time.sleep(0.5)
 
-    yield server_process
+        yield server_process
 
-    # Terminate the server after tests
-    server_process.terminate()
-    server_process.wait()
+    finally:
+        # Terminate the server after tests
+        server_process.terminate()
+        server_process.wait()
 
 
 @pytest.fixture
@@ -144,7 +155,7 @@ def app_test(auth_headers):
             "key": os.environ.get("API_SERVER_KEY"),
             "url": os.environ.get("API_SERVER_URL"),
             "port": int(os.environ.get("API_SERVER_PORT")),
-            "control": True
+            "control": True,
         }
         # Load full config like launch_client.py does in init_configs_state()
         full_config = requests.get(
@@ -154,7 +165,7 @@ def app_test(auth_headers):
                 "client": TEST_CONFIG["client"],
                 "full_config": True,
                 "incl_sensitive": True,
-                "incl_readonly": True
+                "incl_readonly": True,
             },
             timeout=120,
         ).json()
@@ -190,19 +201,15 @@ def setup_test_database(app_test_instance):
     db_config["dsn"] = TEST_CONFIG["db_dsn"]
 
     # Update the database on the server to establish connection
-    server_url = app_test_instance.session_state.server['url']
-    server_port = app_test_instance.session_state.server['port']
-    server_key = app_test_instance.session_state.server['key']
-    db_name = db_config['name']
+    server_url = app_test_instance.session_state.server["url"]
+    server_port = app_test_instance.session_state.server["port"]
+    server_key = app_test_instance.session_state.server["key"]
+    db_name = db_config["name"]
 
     response = requests.patch(
         url=f"{server_url}:{server_port}/v1/databases/{db_name}",
         headers={"Authorization": f"Bearer {server_key}", "client": "server"},
-        json={
-            "user": db_config["user"],
-            "password": db_config["password"],
-            "dsn": db_config["dsn"]
-        },
+        json={"user": db_config["user"], "password": db_config["password"], "dsn": db_config["dsn"]},
         timeout=120,
     )
 
@@ -275,7 +282,7 @@ def create_tabs_mock(monkeypatch):
     Returns:
         A list that will be populated with tab names as they are created
     """
-    import streamlit as st  # pylint: disable=import-outside-toplevel
+    import streamlit as st
 
     tabs_created = []
     original_tabs = st.tabs
@@ -327,6 +334,38 @@ def run_streamlit_test(app_test_instance, run=True):
         app_test_instance = app_test_instance.run()
     assert not app_test_instance.exception
     return app_test_instance
+
+
+def get_test_db_payload():
+    """Get standard test database payload for integration tests
+
+    Returns:
+        dict: Database configuration payload with test credentials
+    """
+    return {
+        "user": TEST_CONFIG["db_username"],
+        "password": TEST_CONFIG["db_password"],
+        "dsn": TEST_CONFIG["db_dsn"],
+    }
+
+
+def get_sample_oci_config():
+    """Get sample OCI configuration for unit tests
+
+    Returns:
+        OracleCloudSettings: Sample OCI configuration object
+    """
+    from common.schema import OracleCloudSettings
+
+    return OracleCloudSettings(
+        auth_profile="DEFAULT",
+        compartment_id="ocid1.compartment.oc1..test",
+        genai_region="us-ashburn-1",
+        user="ocid1.user.oc1..testuser",
+        fingerprint="test-fingerprint",
+        tenancy="ocid1.tenancy.oc1..testtenant",
+        key_file="/path/to/key.pem",
+    )
 
 
 #################################################

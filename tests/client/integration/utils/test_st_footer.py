@@ -1,9 +1,9 @@
+# pylint: disable=protected-access,import-error,import-outside-toplevel
 """
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
 
 import streamlit.components.v1 as components
 from client.utils.st_footer import render_chat_footer

@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from unittest.mock import patch, MagicMock, mock_open
 import os
@@ -17,8 +17,8 @@ from common.schema import Settings, Configuration, Database, Model, OracleCloudS
 class TestSettings:
     """Test settings module functionality"""
 
-    def setup_method(self):
-        """Setup test data before each test"""
+    def __init__(self):
+        """Setup test data for all tests"""
         self.default_settings = Settings(client="default")
         self.test_client_settings = Settings(client="test_client")
         self.sample_config_data = {
@@ -39,7 +39,7 @@ class TestSettings:
         result = settings.create_client("new_client")
 
         assert result.client == "new_client"
-        assert result.ll_model.max_tokens == self.default_settings.ll_model.max_tokens
+        assert result.ll_model.max_tokens == self.default_settings.ll_model.max_tokens  # pylint: disable=no-member
         # Check that a new client was added to the list
         assert len(settings_list) == 2
         assert settings_list[-1].client == "new_client"

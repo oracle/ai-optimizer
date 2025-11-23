@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from unittest.mock import patch, MagicMock
 import warnings
@@ -14,10 +14,10 @@ from common.schema import ChatRequest
 
 
 #############################################################################
-# Test AuthN required and Valid
+# Endpoints Test
 #############################################################################
-class TestInvalidAuthEndpoints:
-    """Test endpoints without Headers and Invalid AuthN"""
+class TestEndpoints:
+    """Test Endpoints"""
 
     @pytest.mark.parametrize(
         "auth_type, status_code",
@@ -35,17 +35,10 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/chat/history", "get", id="chat_history_return"),
         ],
     )
-    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication."""
+    def test_invalid_auth_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valid authentication."""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
-
-
-#############################################################################
-# Endpoints Test
-#############################################################################
-class TestEndpoints:
-    """Test Endpoints"""
 
     def test_chat_completion_no_model(self, client, auth_headers):
         """Test no model chat completion request"""

@@ -43,6 +43,7 @@ class Client:
 
         def settings_request(method, max_retries=3, backoff_factor=0.5):
             """Send Settings to Server with retry on failure"""
+            last_exception = None
             for attempt in range(1, max_retries + 1):
                 try:
                     with httpx.Client() as client:
@@ -53,11 +54,13 @@ class Client:
                             **self.request_defaults,
                         )
                 except httpx.HTTPError as ex:
+                    last_exception = ex
                     logger.error("Failed settings request %i: %s", attempt, ex)
-                    if attempt == max_retries:
-                        raise  # Raise after final failure
-                    sleep_time = backoff_factor * (2 ** (attempt - 1))  # Exponential backoff
-                    time.sleep(sleep_time)
+                    if attempt < max_retries:
+                        sleep_time = backoff_factor * (2 ** (attempt - 1))  # Exponential backoff
+                        time.sleep(sleep_time)
+            # All retries exhausted, raise the last exception
+            raise last_exception
 
         response = settings_request("PATCH")
         if response.status_code != 200:

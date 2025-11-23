@@ -3,13 +3,13 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
-from conftest import TEST_CONFIG
+from conftest import TEST_CONFIG, get_test_db_payload
 from langchain_core.embeddings import Embeddings
 from common.functions import get_vs_table
 
@@ -38,10 +38,10 @@ DEFAULT_EMBED_PARAMS = {
 
 
 #############################################################################
-# Test AuthN required and Valid
+# Endpoints Test
 #############################################################################
-class TestInvalidAuthEndpoints:
-    """Test endpoints without Headers and Invalid AuthN"""
+class TestEndpoints:
+    """Test Endpoints"""
 
     @pytest.mark.parametrize(
         "auth_type, status_code",
@@ -61,25 +61,14 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/embed/refresh", "post", id="refresh_vector_store"),
         ],
     )
-    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication."""
+    def test_invalid_auth_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valid authentication."""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
 
-
-#############################################################################
-# Endpoints Test
-#############################################################################
-class TestEndpoints:
-    """Test Endpoints"""
-
     def configure_database(self, client, auth_headers):
         """Update Database Configuration"""
-        payload = {
-            "user": TEST_CONFIG["db_username"],
-            "password": TEST_CONFIG["db_password"],
-            "dsn": TEST_CONFIG["db_dsn"],
-        }
+        payload = get_test_db_payload()
         response = client.patch("/v1/databases/DEFAULT", headers=auth_headers["valid_auth"], json=payload)
         assert response.status_code == 200
 

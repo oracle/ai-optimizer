@@ -1,3 +1,4 @@
+# pylint: disable=protected-access,import-error,import-outside-toplevel
 """
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
@@ -5,10 +6,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Unit tests for models.py to increase coverage
 """
 # spell-checker: disable
-# pylint: disable=import-error import-outside-toplevel
 
 from unittest.mock import MagicMock
-
 
 
 #############################################################################
@@ -67,7 +66,7 @@ class TestModelInitialization:
         from client.content.config.tabs import models
 
         # Call _initialize_model for add
-        result = models._initialize_model("add", "ll")  # pylint: disable=protected-access
+        result = models._initialize_model("add", "ll")
 
         # Verify default values
         assert result["type"] == "ll"
@@ -95,7 +94,7 @@ class TestModelInitialization:
         monkeypatch.setattr(st, "checkbox", MagicMock(return_value=True))
 
         # Call _initialize_model for edit
-        result = models._initialize_model("edit", "ll", "gpt-4", "openai")  # pylint: disable=protected-access
+        result = models._initialize_model("edit", "ll", "gpt-4", "openai")
 
         # Verify existing model data is returned
         assert result["id"] == "gpt-4"
@@ -126,10 +125,8 @@ class TestModelRendering:
         ]
 
         # Call function
-        # pylint: disable=protected-access
-        result_model, provider_models, disable_oci = models._render_provider_selection(
-            model, supported_models, "add"
-        )
+
+        result_model, provider_models, disable_oci = models._render_provider_selection(model, supported_models, "add")
 
         # Verify selectbox was called
         assert mock_selectbox.called
@@ -154,7 +151,7 @@ class TestModelRendering:
         ]
 
         # Call function
-        result = models._render_model_selection(model, provider_models, "add")  # pylint: disable=protected-access
+        result = models._render_model_selection(model, provider_models, "add")
 
         # Verify function worked
         assert "id" in result
@@ -176,7 +173,7 @@ class TestModelRendering:
         ]
 
         # Call function
-        result = models._render_api_configuration(model, provider_models, False)  # pylint: disable=protected-access
+        result = models._render_api_configuration(model, provider_models, False)
 
         # Verify function worked
         assert "api_base" in result
@@ -199,7 +196,7 @@ class TestModelRendering:
         ]
 
         # Call function
-        result = models._render_model_specific_config(model, "ll", provider_models)  # pylint: disable=protected-access
+        result = models._render_model_specific_config(model, "ll", provider_models)
 
         # Verify function worked
         assert "max_input_tokens" in result
@@ -223,7 +220,7 @@ class TestModelRendering:
         ]
 
         # Call function
-        result = models._render_model_specific_config(model, "embed", provider_models)  # pylint: disable=protected-access
+        result = models._render_model_specific_config(model, "embed", provider_models)
 
         # Verify function worked
         assert "max_chunk_size" in result
