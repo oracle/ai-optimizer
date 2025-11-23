@@ -2,8 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# pylint: disable=import-error
 # spell-checker: disable
+# pylint: disable=import-error import-outside-toplevel
 
 from unittest.mock import patch, MagicMock
 

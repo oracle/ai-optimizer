@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=too-many-arguments,too-many-positional-arguments
+# pylint: disable=import-error import-outside-toplevel
 
 from datetime import datetime
 from unittest.mock import patch, MagicMock
