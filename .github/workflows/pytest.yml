@@ -57,15 +57,8 @@ jobs:
       - name: Run Pylint on IaC Code
         run: pylint opentofu
 
-      - name: Run Pylint on Client Code
-        run: pylint src/client
-
-      - name: Run Pylint on Common Code
-        run: pylint src/common
-
-      # Linting errors not yet resolved in Server Code
-      # - name: Run Pylint on Server Code
-      #   run: pylint src/server
+      - name: Run Pylint on Source Code
+        run: pylint src
 
       - name: Run Pylint on Tests
         run: pylint tests
