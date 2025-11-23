@@ -81,7 +81,7 @@ async def _vs_rephrase_impl(
         )
 
         # Get client settings
-        client_settings = utils_settings.get_client_settings(thread_id)
+        client_settings = utils_settings.get_client(thread_id)
         use_history = client_settings.ll_model.chat_history
 
         # Only rephrase if history is enabled and there's actual history

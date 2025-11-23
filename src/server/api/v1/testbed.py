@@ -248,7 +248,7 @@ def testbed_evaluate(
         return ai_response["choices"][0]["message"]["content"]
 
     evaluated = datetime.now().isoformat()
-    client_settings = utils_settings.get_client_settings(client)
+    client_settings = utils_settings.get_client(client)
     # Change Disable History
     client_settings.ll_model.chat_history = False
     # Change Grade vector_search

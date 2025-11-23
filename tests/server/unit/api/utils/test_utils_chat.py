@@ -38,7 +38,7 @@ class TestChatUtils:
             tools_enabled=[],
         )
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.mcp.prompts.defaults.get_prompt_with_override")
@@ -47,11 +47,11 @@ class TestChatUtils:
     @patch("server.mcp.graph.main")
     @pytest.mark.asyncio
     async def test_completion_generator_success(
-        self, mock_graph_main, mock_get_mcp_client, mock_mcp_client_class, mock_get_prompt_override, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_graph_main, mock_get_mcp_client, mock_mcp_client_class, mock_get_prompt_override, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test successful completion generation"""
         # Setup mocks
-        mock_get_client_settings.return_value = self.sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
         mock_get_prompt_override.return_value = "You are a helpful assistant"
@@ -94,10 +94,10 @@ class TestChatUtils:
         assert results[0] == b"Hello"  # Stream chunks are encoded as bytes
         assert results[1] == b" there"
         assert results[2] == "Hello there"  # Final completion is a string
-        mock_get_client_settings.assert_called_once_with("test_client")
+        mock_get_client.assert_called_once_with("test_client")
         mock_get_oci.assert_called_once_with(client="test_client")
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.mcp.prompts.defaults.get_prompt_with_override")
@@ -106,11 +106,11 @@ class TestChatUtils:
     @patch("server.mcp.graph.main")
     @pytest.mark.asyncio
     async def test_completion_generator_streaming(
-        self, mock_graph_main, mock_get_mcp_client, mock_mcp_client_class, mock_get_prompt_override, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_graph_main, mock_get_mcp_client, mock_mcp_client_class, mock_get_prompt_override, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test streaming completion generation"""
         # Setup mocks
-        mock_get_client_settings.return_value = self.sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
         mock_get_prompt_override.return_value = "You are a helpful assistant"
@@ -146,7 +146,7 @@ class TestChatUtils:
         assert results[1] == b" there"
         assert results[2] == "[stream_finished]"
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.mcp.prompts.defaults.get_prompt_with_override")
@@ -166,7 +166,7 @@ class TestChatUtils:
         mock_get_prompt_override,
         mock_get_litellm_config,
         mock_get_oci,
-        mock_get_client_settings,
+        mock_get_client,
     ):
         """Test completion generation with vector search enabled"""
         # Setup settings with vector search enabled (via tools_enabled)
@@ -174,7 +174,7 @@ class TestChatUtils:
         vector_search_settings.tools_enabled = ["Vector Search"]
 
         # Setup mocks
-        mock_get_client_settings.return_value = vector_search_settings
+        mock_get_client.return_value = vector_search_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
         mock_get_prompt_override.return_value = "You are a helpful assistant"
@@ -211,7 +211,7 @@ class TestChatUtils:
         assert len(results) == 1
         # Note: Database connection is now handled internally by MCP tools, not in chat.py
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.mcp.prompts.defaults.get_prompt_with_override")
@@ -220,14 +220,14 @@ class TestChatUtils:
     @patch("server.mcp.graph.main")
     @pytest.mark.asyncio
     async def test_completion_generator_no_model_specified(
-        self, mock_graph_main, mock_get_mcp_client, mock_mcp_client_class, mock_get_prompt_override, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_graph_main, mock_get_mcp_client, mock_mcp_client_class, mock_get_prompt_override, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test completion generation when no model is specified in request"""
         # Create request without model
         request_no_model = ChatRequest(messages=[self.sample_message], model=None)
 
         # Setup mocks
-        mock_get_client_settings.return_value = self.sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
         mock_get_prompt_override.return_value = "You are a helpful assistant"
@@ -258,7 +258,7 @@ class TestChatUtils:
         # Should use model from client settings
         assert len(results) == 1
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.utils.settings.get_client")
     @patch("server.api.utils.oci.get")
     @patch("server.api.utils.models.get_litellm_config")
     @patch("server.mcp.prompts.defaults.get_prompt_with_override")
@@ -267,7 +267,7 @@ class TestChatUtils:
     @patch("server.mcp.graph.main")
     @pytest.mark.asyncio
     async def test_completion_generator_custom_prompts(
-        self, mock_graph_main, mock_get_mcp_client, mock_mcp_client_class, mock_get_prompt_override, mock_get_litellm_config, mock_get_oci, mock_get_client_settings
+        self, mock_graph_main, mock_get_mcp_client, mock_mcp_client_class, mock_get_prompt_override, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test completion generation with custom prompts"""
         # Setup settings with custom prompts
@@ -276,7 +276,7 @@ class TestChatUtils:
         custom_settings.prompts.ctx = "Custom Context"
 
         # Setup mocks
-        mock_get_client_settings.return_value = custom_settings
+        mock_get_client.return_value = custom_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
         mock_get_prompt_override.return_value = "Custom prompt"  # Return override

@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from fastmcp import FastMCP
 
-from server.api.core import settings
+from server.api.utils import settings
 from server.mcp.prompts import cache
 from common.schema import MCPPrompt
 
@@ -62,8 +62,8 @@ class TestMCPPromptExport:
         mock_default_message.content.text = "You are a helpful assistant."
 
         with patch("server.api.utils.mcp.list_prompts", new=AsyncMock(return_value=[mock_prompt])), \
-             patch("server.api.core.settings.defaults.optimizer_basic_default", return_value=mock_default_message), \
-             patch("server.api.core.settings.cache.get_override", return_value=None):
+             patch("server.api.utils.settings.defaults.optimizer_basic_default", return_value=mock_default_message), \
+             patch("server.api.utils.settings.cache.get_override", return_value=None):
 
             result = await settings.get_mcp_prompts_with_overrides(mock_mcp_engine)
 
@@ -90,8 +90,8 @@ class TestMCPPromptExport:
         mock_default_message.content.text = "Default tools prompt"
 
         with patch("server.api.utils.mcp.list_prompts", new=AsyncMock(return_value=[mock_prompt])), \
-             patch("server.api.core.settings.defaults.optimizer_tools_default", return_value=mock_default_message), \
-             patch("server.api.core.settings.cache.get_override", return_value="Custom tools prompt"):
+             patch("server.api.utils.settings.defaults.optimizer_tools_default", return_value=mock_default_message), \
+             patch("server.api.utils.settings.cache.get_override", return_value="Custom tools prompt"):
 
             result = await settings.get_mcp_prompts_with_overrides(mock_mcp_engine)
 
@@ -107,7 +107,7 @@ class TestMCPPromptExport:
 
         # Create multiple mock prompts
         mock_prompts = []
-        for name in ["optimizer_basic-default", "optimizer_tools-default", "optimizer_vs-grading"]:
+        for name in ["optimizer_basic-default", "optimizer_tools-default", "optimizer_vs-grade"]:
             mock_prompt = MagicMock()
             mock_prompt.name = name
             mock_prompt.title = name.replace("optimizer_", "").replace("-", " ").title()
@@ -126,13 +126,13 @@ class TestMCPPromptExport:
             return "Custom override" if name == "optimizer_tools-default" else None
 
         with patch("server.api.utils.mcp.list_prompts", new=AsyncMock(return_value=mock_prompts)), \
-             patch("server.api.core.settings.defaults.optimizer_basic_default",
+             patch("server.api.utils.settings.defaults.optimizer_basic_default",
                    return_value=mock_default_func("optimizer_basic_default")), \
-             patch("server.api.core.settings.defaults.optimizer_tools_default",
+             patch("server.api.utils.settings.defaults.optimizer_tools_default",
                    return_value=mock_default_func("optimizer_tools_default")), \
-             patch("server.api.core.settings.defaults.optimizer_vs_grading",
-                   return_value=mock_default_func("optimizer_vs_grading")), \
-             patch("server.api.core.settings.cache.get_override", side_effect=mock_get_override):
+             patch("server.api.utils.settings.defaults.optimizer_vs_grade",
+                   return_value=mock_default_func("optimizer_vs_grade")), \
+             patch("server.api.utils.settings.cache.get_override", side_effect=mock_get_override):
 
             result = await settings.get_mcp_prompts_with_overrides(mock_mcp_engine)
 
@@ -156,7 +156,7 @@ class TestMCPPromptExport:
         mock_prompt.meta = None
 
         with patch("server.api.utils.mcp.list_prompts", new=AsyncMock(return_value=[mock_prompt])), \
-             patch("server.api.core.settings.cache.get_override", return_value=None):
+             patch("server.api.utils.settings.cache.get_override", return_value=None):
 
             result = await settings.get_mcp_prompts_with_overrides(mock_mcp_engine)
 
@@ -333,10 +333,10 @@ class TestServerConfigIntegration:
             )
         ]
 
-        with patch("server.api.core.settings.bootstrap.DATABASE_OBJECTS", []), \
-             patch("server.api.core.settings.bootstrap.MODEL_OBJECTS", []), \
-             patch("server.api.core.settings.bootstrap.OCI_OBJECTS", []), \
-             patch("server.api.core.settings.get_mcp_prompts_with_overrides", return_value=mock_prompts):
+        with patch("server.api.utils.settings.bootstrap.DATABASE_OBJECTS", []), \
+             patch("server.api.utils.settings.bootstrap.MODEL_OBJECTS", []), \
+             patch("server.api.utils.settings.bootstrap.OCI_OBJECTS", []), \
+             patch("server.api.utils.settings.get_mcp_prompts_with_overrides", return_value=mock_prompts):
 
             result = await settings.get_server(mock_mcp_engine)
 
@@ -368,10 +368,10 @@ class TestServerConfigIntegration:
             )
         ]
 
-        with patch("server.api.core.settings.bootstrap.DATABASE_OBJECTS", []), \
-             patch("server.api.core.settings.bootstrap.MODEL_OBJECTS", []), \
-             patch("server.api.core.settings.bootstrap.OCI_OBJECTS", []), \
-             patch("server.api.core.settings.get_mcp_prompts_with_overrides", return_value=mock_prompts):
+        with patch("server.api.utils.settings.bootstrap.DATABASE_OBJECTS", []), \
+             patch("server.api.utils.settings.bootstrap.MODEL_OBJECTS", []), \
+             patch("server.api.utils.settings.bootstrap.OCI_OBJECTS", []), \
+             patch("server.api.utils.settings.get_mcp_prompts_with_overrides", return_value=mock_prompts):
 
             result = await settings.get_server(mock_mcp_engine)
 

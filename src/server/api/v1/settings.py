@@ -41,7 +41,7 @@ async def settings_get(
 ) -> Union[schema.Configuration, schema.Settings]:
     """Get settings for a specific client by name"""
     try:
-        client_settings = utils_settings.get_client_settings(client)
+        client_settings = utils_settings.get_client(client)
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
 

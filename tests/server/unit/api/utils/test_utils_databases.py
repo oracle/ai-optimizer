@@ -950,7 +950,7 @@ class TestDatabaseUtilsPublicFunctions:
             databases.DATABASE_OBJECTS.clear()
             databases.DATABASE_OBJECTS.extend(original_db_objects)
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.utils.settings.get_client")
     def test_get_client_database_default(self, mock_get_settings, db_container):
         """Test get_client_database with default settings"""
         assert db_container is not None
@@ -977,7 +977,7 @@ class TestDatabaseUtilsPublicFunctions:
             databases.DATABASE_OBJECTS.clear()
             databases.DATABASE_OBJECTS.extend(original_db_objects)
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.utils.settings.get_client")
     def test_get_client_database_with_vector_search(self, mock_get_settings, db_container):
         """Test get_client_database with vector_search settings"""
         assert db_container is not None
@@ -1006,7 +1006,7 @@ class TestDatabaseUtilsPublicFunctions:
             databases.DATABASE_OBJECTS.clear()
             databases.DATABASE_OBJECTS.extend(original_db_objects)
 
-    @patch("server.api.core.settings.get_client_settings")
+    @patch("server.api.utils.settings.get_client")
     def test_get_client_database_with_validation(self, mock_get_settings, db_container):
         """Test get_client_database with validation enabled"""
         assert db_container is not None

@@ -16,7 +16,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 import litellm
 
-import server.api.core.settings as utils_settings
+import server.api.utils.settings as utils_settings
 import server.api.utils.mcp as utils_mcp
 
 import server.api.utils.oci as utils_oci
@@ -82,7 +82,7 @@ async def completion_generator(
 ) -> AsyncGenerator[str, None]:
     """Generate a completion from agent, stream the results"""
 
-    client_settings = utils_settings.get_client_settings(client)
+    client_settings = utils_settings.get_client(client)
     model = request.model_dump()
     logger.debug("Settings: %s", client_settings)
     logger.debug("Request: %s", model)

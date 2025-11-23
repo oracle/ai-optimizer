@@ -135,7 +135,7 @@ class TestEndpoints:
         assert new_settings["ll_model"]["chat_history"] is False
         assert new_settings["prompts"]["ctx"] == "Updated Context"
         assert new_settings["prompts"]["sys"] == "Updated System"
-        assert new_settings["vector_search"]["grading"] is False
+        assert new_settings["vector_search"]["grade"] is False
         assert new_settings["vector_search"]["top_k"] == 5
         assert new_settings["oci"]["auth_profile"] == "UPDATED"
 

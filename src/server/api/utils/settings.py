@@ -36,7 +36,7 @@ def create_client(client: ClientIdType) -> Settings:
     return client_settings
 
 
-def get_client_settings(client: ClientIdType) -> Settings:
+def get_client(client: ClientIdType) -> Settings:
     """Return client settings"""
     settings_objects = bootstrap.SETTINGS_OBJECTS
     client_settings = next((settings for settings in settings_objects if settings.client == client), None)
@@ -124,13 +124,13 @@ def update_client(payload: Settings, client: ClientIdType) -> Settings:
     """Update a single client settings"""
     settings_objects = bootstrap.SETTINGS_OBJECTS
 
-    client_settings = get_client_settings(client)
+    client_settings = get_client(client)
     settings_objects.remove(client_settings)
 
     payload.client = client
     settings_objects.append(payload)
 
-    return get_client_settings(client)
+    return get_client(client)
 
 
 def update_server_config(config_data: dict) -> None:

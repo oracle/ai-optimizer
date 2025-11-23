@@ -9,7 +9,7 @@ import json
 import oracledb
 from langchain_community.vectorstores import oraclevs as LangchainVS
 
-import server.api.core.settings as utils_settings
+import server.api.utils.settings as utils_settings
 from server.bootstrap.bootstrap import DATABASE_OBJECTS
 
 from common.schema import (
@@ -262,7 +262,7 @@ def get_databases(
 
 def get_client_database(client: ClientIdType, validate: bool = False) -> Database:
     """Return a Database Object based on client settings"""
-    client_settings = utils_settings.get_client_settings(client)
+    client_settings = utils_settings.get_client(client)
 
     # Get database name from client settings, defaulting to "DEFAULT"
     db_name = "DEFAULT"

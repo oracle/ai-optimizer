@@ -36,7 +36,7 @@ This release represents a **major architectural transformation** of the Oracle A
 **New Tools** (`src/server/mcp/tools/`):
 - `optimizer_vs-retriever`: Semantic search across vector stores with smart table selection
 - `optimizer_vs-storage`: List available vector stores filtered by enabled embedding models
-- `optimizer_vs-grading`: Document relevance grading (internal use only)
+- `optimizer_vs-grade`: Document relevance grading (internal use only)
 - `optimizer_vs-rephrase`: Query contextualization with conversation history (internal use only)
 
 **Architecture Pattern**:
@@ -118,7 +118,7 @@ User question → LLM calls external tool (e.g., sqlcl_query)
 - `optimizer_tools-default`: Tool-aware system prompt
 - `optimizer_context-default`: Query rephrasing context
 - `optimizer_vs-table-selection`: Smart table selection
-- `optimizer_vs-grading`: Document relevance grading
+- `optimizer_vs-grade`: Document relevance grading
 - `optimizer_vs-rephrase`: Query rephrasing logic
 
 **New Capabilities**:

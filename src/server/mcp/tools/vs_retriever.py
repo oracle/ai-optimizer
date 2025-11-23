@@ -260,7 +260,7 @@ def _vs_retrieve_impl(
         )
 
         # Get client settings
-        client_settings = utils_settings.get_client_settings(thread_id)
+        client_settings = utils_settings.get_client(thread_id)
         vector_search = client_settings.vector_search
 
         # Tool presence indicates VS is enabled (controlled by chat.py:77-78)

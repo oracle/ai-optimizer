@@ -22,7 +22,7 @@ Complete migration to **Model Context Protocol (MCP)** architecture using FastMC
 2. **Vector Search Tools** (MCP-based)
    - `optimizer_vs-retriever`: Semantic search with smart table selection
    - `optimizer_vs-storage`: List available vector stores
-   - `optimizer_vs-grading`: Document relevance grading (internal)
+   - `optimizer_vs-grade`: Document relevance grading (internal)
    - `optimizer_vs-rephrase`: Query contextualization (internal)
 
 3. **Dual-Path Routing** (Token Efficiency)
