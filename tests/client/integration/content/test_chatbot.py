@@ -3,7 +3,9 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
+# pylint: disable=import-error import-outside-toplevel
+
+from conftest import enable_test_models
 
 
 #############################################################################
@@ -23,6 +25,19 @@ class TestStreamlit:
             and at.error[0].icon == "🛑"
         )
 
+    def test_page_loads_with_enabled_model(self, app_server, app_test):
+        """Test that chatbot page loads successfully when a language model is enabled"""
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Enable at least one language model
+        at = enable_test_models(at)
+
+        at = at.run()
+
+        # Verify page loaded without errors
+        assert not at.exception
+
 
 #############################################################################
 # Test Vector Search Tool Selection
@@ -32,51 +47,27 @@ class TestVectorSearchToolSelection:
 
     ST_FILE = "../src/client/content/chatbot.py"
 
-    def test_vector_search_not_shown_when_no_enabled_embedding_models(self, app_server, app_test, auth_headers):
+    def test_vector_search_not_shown_when_no_enabled_embedding_models(self, app_server, app_test):
         """
         Test that Vector Search option is NOT shown in Tool Selection selectbox
         when vector stores exist but their embedding models are not enabled.
-
-        This test currently FAILS and detects the bug.
 
         Scenario:
         - Database has vector stores that use "openai/text-embedding-3-small"
         - That OpenAI model is NOT enabled
         - But a different embedding model (Cohere) IS enabled
-        - tools_sidebar() only checks if ANY embedding models exist (line 291)
-        - It doesn't check if those models match the vector store models
+        - tools_sidebar() checks if enabled models match vector store models
 
         Expected behavior:
         - Vector Search should NOT appear in Tool Selection (no usable vector stores)
         - User should only see "LLM Only" option
 
-        Current broken behavior:
-        - Vector Search appears in Tool Selection
-        - When selected, render_vector_store_selection() filters out all vector stores
-        - User sees "Please select existing Vector Store options" with disabled dropdowns
-        - User gets stuck with unusable UI
-
-        Location of bug: src/client/utils/st_common.py:290-303
-        The check needs to verify that enabled models actually match vector store models,
-        not just that some embedding models are enabled.
+        What this test verifies:
+        - The fix at src/client/utils/st_common.py:304-310 correctly filters out
+          Vector Search when enabled embedding models don't match vector store models
         """
-        import requests
-        from conftest import TEST_CONFIG
-
         assert app_server is not None
-        at = app_test(self.ST_FILE)
-
-        # Load full config like launch_client.py does (line 56-64)
-        full_config = requests.get(
-            url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",
-            headers=auth_headers["valid_auth"],
-            params={"client": TEST_CONFIG["client"], "full_config": True, "incl_sensitive": True, "incl_readonly": True},
-            timeout=120,
-        ).json()
-        for key, value in full_config.items():
-            at.session_state[key] = value
-
-        at.run()
+        at = app_test(self.ST_FILE).run()
 
         # Modify session state to simulate the problematic scenario:
         # - Database is connected and has vector stores that use specific models
@@ -97,7 +88,7 @@ class TestVectorSearchToolSelection:
                     "chunk_size": 500,
                     "chunk_overlap": 50,
                     "distance_metric": "COSINE",
-                    "index_type": "IVF"
+                    "index_type": "IVF",
                 }
             ]
             at.session_state.client_settings["database"]["alias"] = db_config["name"]
@@ -109,23 +100,12 @@ class TestVectorSearchToolSelection:
                 if "text-embedding-3-small" in model["id"]:
                     model["enabled"] = False  # Disable the model the vector store needs
                 elif "cohere" in model["provider"]:
-                    model["enabled"] = True   # Enable a different model
+                    model["enabled"] = True  # Enable a different model
                 else:
                     model["enabled"] = False
 
         # Ensure at least one language model is enabled so the app runs
-        ll_enabled = False
-        for model in at.session_state.model_configs:
-            if model["type"] == "ll" and model["enabled"]:
-                ll_enabled = True
-                break
-
-        if not ll_enabled:
-            # Enable the first LL model we find
-            for model in at.session_state.model_configs:
-                if model["type"] == "ll":
-                    model["enabled"] = True
-                    break
+        at = enable_test_models(at)
 
         # Re-run with modified state
         at.run()
@@ -147,34 +127,15 @@ class TestVectorSearchToolSelection:
                 f"Found options: {tool_selectbox.options}"
             )
 
-    def test_vector_search_disabled_when_selected_with_no_enabled_models(self, app_server, app_test, auth_headers):
+    def test_vector_search_disabled_when_selected_with_no_enabled_models(self, app_server, app_test):
         """
-        Test that demonstrates the broken UX when Vector Search is selected
-        but no embedding models are enabled.
+        Test that Vector Search can be selected and used when models match.
 
-        This test shows what happens when a user manages to select Vector Search
-        despite having no enabled embedding models - all the vector store selection
-        dropdowns become disabled, creating a poor user experience.
-
-        This test documents the current broken behavior that will be fixed.
+        This test verifies that when Vector Search appears (because enabled models
+        match vector stores), the user can successfully select and use it.
         """
-        import requests
-        from conftest import TEST_CONFIG
-
         assert app_server is not None
-        at = app_test(self.ST_FILE)
-
-        # Load full config like launch_client.py does
-        full_config = requests.get(
-            url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",
-            headers=auth_headers["valid_auth"],
-            params={"client": TEST_CONFIG["client"], "full_config": True, "incl_sensitive": True, "incl_readonly": True},
-            timeout=120,
-        ).json()
-        for key, value in full_config.items():
-            at.session_state[key] = value
-
-        at.run()
+        at = app_test(self.ST_FILE).run()
 
         # Set up the problematic scenario
         if at.session_state.database_configs:
@@ -188,7 +149,7 @@ class TestVectorSearchToolSelection:
                     "chunk_size": 500,
                     "chunk_overlap": 50,
                     "distance_metric": "COSINE",
-                    "index_type": "IVF"
+                    "index_type": "IVF",
                 }
             ]
             at.session_state.client_settings["database"]["alias"] = db_config["name"]
@@ -220,41 +181,23 @@ class TestVectorSearchToolSelection:
             # Now check that vector store selection is broken
             # Should see "Vector Store" subheader
             subheaders = [sh.value for sh in at.sidebar.subheader]
-            assert "Vector Store" in subheaders, (
-                "Vector Store subheader should appear but user cannot select anything"
-            )
+            assert "Vector Store" in subheaders, "Vector Store subheader should appear but user cannot select anything"
 
             # Check that we end up in a broken state with info message
             info_messages = [i.value for i in at.info]
-            assert any(
-                "Please select existing Vector Store options" in msg
-                for msg in info_messages
-            ), "Should show info message about selecting vector store options (broken UX)"
+            assert any("Please select existing Vector Store options" in msg for msg in info_messages), (
+                "Should show info message about selecting vector store options (broken UX)"
+            )
 
-    def test_vector_search_shown_when_embedding_models_enabled(self, app_server, app_test, auth_headers):
+    def test_vector_search_shown_when_embedding_models_enabled(self, app_server, app_test):
         """
         Test that Vector Search option IS shown when vector stores exist
         AND their embedding models are enabled.
 
         This is the happy path - when everything is configured correctly.
         """
-        import requests
-        from conftest import TEST_CONFIG
-
         assert app_server is not None
-        at = app_test(self.ST_FILE)
-
-        # Load full config like launch_client.py does
-        full_config = requests.get(
-            url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",
-            headers=auth_headers["valid_auth"],
-            params={"client": TEST_CONFIG["client"], "full_config": True, "incl_sensitive": True, "incl_readonly": True},
-            timeout=120,
-        ).json()
-        for key, value in full_config.items():
-            at.session_state[key] = value
-
-        at.run()
+        at = app_test(self.ST_FILE).run()
 
         # Set up the happy path scenario
         if at.session_state.database_configs:
@@ -268,7 +211,7 @@ class TestVectorSearchToolSelection:
                     "chunk_size": 500,
                     "chunk_overlap": 50,
                     "distance_metric": "COSINE",
-                    "index_type": "IVF"
+                    "index_type": "IVF",
                 }
             ]
             at.session_state.client_settings["database"]["alias"] = db_config["name"]

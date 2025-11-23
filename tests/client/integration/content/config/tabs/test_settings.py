@@ -6,7 +6,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # pylint: disable=import-error import-outside-toplevel
 
 import json
-import textwrap
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -185,8 +184,8 @@ class TestStreamlit:
 #############################################################################
 # Test Functions Directly
 #############################################################################
-class TestSettingsFunctions:
-    """Test individual functions from settings.py"""
+class TestSettingsGetSave:
+    """Test get_settings and save_settings functions"""
 
     def _setup_get_settings_test(self, app_test, run_app=True):
         """Helper method to set up common test configuration for get_settings tests"""
@@ -196,27 +195,6 @@ class TestSettingsFunctions:
         if run_app:
             at.run()
         return get_settings, at
-
-    def _create_mock_session_state(self):
-        """Helper method to create mock session state for spring_ai tests"""
-        return SimpleNamespace(
-            client_settings={
-                "client": "test-client",
-                "database": {"alias": "DEFAULT"},
-                "vector_search": {"enabled": False},
-            },
-            prompt_configs=[
-                {
-                    "name": "optimizer_basic-default",
-                    "title": "Basic Example",
-                    "description": "Basic default prompt",
-                    "tags": [],
-                    "default_text": "You are a helpful assistant.",
-                    "override_text": None,
-                }
-            ],
-            database_configs=[{"name": "DEFAULT", "user": "test_user", "password": "test_pass"}],
-        )
 
     def test_get_settings_success(self, app_server, app_test):
         """Test get_settings function with successful API call"""
@@ -283,7 +261,7 @@ class TestSettingsFunctions:
 
         with patch("client.content.config.tabs.settings.state", at.session_state):
             with patch("client.utils.api_call.state", at.session_state):
-                with patch("client.content.config.tabs.settings.st.success") as mock_success:
+                with patch("client.content.config.tabs.settings.st.success"):
                     apply_uploaded_settings(uploaded_settings)
                     # Just verify it doesn't crash - the actual API call should work
 
@@ -297,9 +275,71 @@ class TestSettingsFunctions:
 
         with patch("client.content.config.tabs.settings.state", at.session_state):
             with patch("client.utils.api_call.state", at.session_state):
-                with patch("client.content.config.tabs.settings.st.error") as mock_error:
+                with patch("client.content.config.tabs.settings.st.error"):
                     apply_uploaded_settings(uploaded_settings)
                     # Just verify it handles errors gracefully
+
+
+#############################################################################
+# Test Spring AI Configuration Functions
+#############################################################################
+class TestSpringAIFunctions:
+    """Test Spring AI configuration and export functions"""
+
+    def _create_mock_session_state(self):
+        """Helper method to create mock session state for spring_ai tests"""
+        return SimpleNamespace(
+            client_settings={
+                "client": "test-client",
+                "database": {"alias": "DEFAULT"},
+                "vector_search": {"enabled": False},
+            },
+            prompt_configs=[
+                {
+                    "name": "optimizer_basic-default",
+                    "title": "Basic Example",
+                    "description": "Basic default prompt",
+                    "tags": [],
+                    "default_text": "You are a helpful assistant.",
+                    "override_text": None,
+                }
+            ],
+            database_configs=[{"name": "DEFAULT", "user": "test_user", "password": "test_pass"}],
+        )
+
+    def _setup_get_settings_test(self, app_test, run_app=True):
+        """Helper method to set up common test configuration for get_settings tests"""
+        from client.content.config.tabs.settings import get_settings
+
+        at = app_test(ST_FILE)
+
+        at.session_state.client_settings = {
+            "client": "test-client",
+            "ll_model": {"id": "gpt-4o-mini"},
+            "embed_model": {"id": "text-embedding-3-small"},
+            "database": {"alias": "DEFAULT"},
+            "sys_prompt": {"name": "optimizer_basic-default"},
+            "ctx_prompt": {"name": "optimizer_no-examples"},
+            "vector_search": {"enabled": False},
+            "selectai": {"enabled": False},
+        }
+        at.session_state.prompt_configs = [
+            {
+                "name": "optimizer_basic-default",
+                "title": "Basic Example",
+                "description": "Basic default prompt",
+                "tags": [],
+                "default_text": "You are a helpful assistant.",
+                "override_text": None,
+            }
+        ]
+        at.session_state.database_configs = [
+            {"name": "DEFAULT", "user": "test_user", "password": "test_pass"}
+        ]
+
+        if run_app:
+            at.run()
+        return get_settings, at
 
     def test_spring_ai_conf_check_openai(self):
         """Test spring_ai_conf_check with OpenAI models"""
@@ -378,6 +418,7 @@ class TestSettingsFunctions:
     def test_spring_ai_obaas_non_yaml_file(self):
         """Test spring_ai_obaas with non-YAML file"""
         from client.content.config.tabs.settings import spring_ai_obaas
+
         mock_state = SimpleNamespace(
             client_settings={
                 "database": {"alias": "DEFAULT"},
@@ -392,17 +433,22 @@ class TestSettingsFunctions:
                     "default_text": "You are a helpful assistant.",
                     "override_text": None,
                 }
-            ]
+            ],
         )
-        mock_template_content = "Provider: {provider}\nPrompt: {sys_prompt}\nLLM: {ll_model}\nEmbed: {vector_search}\nDB: {database_config}"
+        mock_template_content = (
+            "Provider: {provider}\nPrompt: {sys_prompt}\nLLM: {ll_model}\n"
+            "Embed: {vector_search}\nDB: {database_config}"
+        )
 
-        with patch('client.content.config.tabs.settings.state', mock_state):
-            with patch('client.content.config.tabs.settings.st_common.state_configs_lookup') as mock_lookup:
-                with patch('builtins.open', mock_open(read_data=mock_template_content)):
+        with patch("client.content.config.tabs.settings.state", mock_state):
+            with patch("client.content.config.tabs.settings.st_common.state_configs_lookup") as mock_lookup:
+                with patch("builtins.open", mock_open(read_data=mock_template_content)):
                     mock_lookup.return_value = {"DEFAULT": {"user": "test_user"}}
 
                     src_dir = Path("/test/path")
-                    result = spring_ai_obaas(src_dir, "start.sh", "openai", {"model": "gpt-4"}, {"model": "text-embedding-ada-002"})
+                    result = spring_ai_obaas(
+                        src_dir, "start.sh", "openai", {"model": "gpt-4"}, {"model": "text-embedding-ada-002"}
+                    )
 
                     assert "Provider: openai" in result
                     assert "You are a helpful assistant." in result
@@ -603,6 +649,13 @@ class TestSettingsFunctions:
             assert result_dict["client_settings"]["nested"]["value"] == "test"
             # Other settings should be unchanged
             assert result_dict["other_settings"]["value"] == "unchanged"
+
+
+#############################################################################
+# Test Compare Settings Functions
+#############################################################################
+class TestCompareSettingsFunctions:
+    """Test compare_settings utility function"""
 
     def test_compare_settings_with_none_values(self):
         """Test compare_settings with None values"""

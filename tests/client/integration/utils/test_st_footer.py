@@ -23,7 +23,7 @@ class TestStreamlit:
         assert app_server is not None
 
         # Mock components.html to capture rendered content
-        def mock_html(html, height):
+        def mock_html(html, **_kwargs):
             assert "LLMs can make mistakes. Always verify important information." in html
 
         monkeypatch.setattr(components, "html", mock_html)
@@ -40,7 +40,7 @@ class TestStreamlit:
         assert app_server is not None
 
         # Mock components.html to capture rendered content
-        def mock_html(html, height):
+        def mock_html(html, **_kwargs):
             assert "LLMs can make mistakes. Always verify important information." not in html
 
         monkeypatch.setattr(components, "html", mock_html)

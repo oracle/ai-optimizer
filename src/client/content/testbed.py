@@ -107,21 +107,22 @@ def evaluation_report(eid=None, report=None) -> None:
     # Correctness by Topic
     st.subheader("Correctness By Topic")
     by_topic = pd.DataFrame(report["correct_by_topic"])
-    by_topic["correctness"] = by_topic["correctness"] * 100
-    by_topic.rename(columns={"correctness": "Correctness %"}, inplace=True)
+    if not by_topic.empty:
+        by_topic["correctness"] = by_topic["correctness"] * 100
+        by_topic.rename(columns={"correctness": "Correctness %"}, inplace=True)
     st.dataframe(by_topic)
 
     # Failures
     st.subheader("Failures")
     failures = pd.DataFrame(report["failures"])
-    failures.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True)
+    failures.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True, errors='ignore')
     if not failures.empty:
         st.dataframe(failures, hide_index=True)
 
     # Full Report
     st.subheader("Full Report")
     full_report = pd.DataFrame(report["report"])
-    full_report.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True)
+    full_report.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True, errors='ignore')
     st.dataframe(full_report, hide_index=True)
 
     # Download Button
@@ -172,8 +173,15 @@ def update_record(direction: int = 0) -> None:
 def delete_record() -> None:
     """Delete record from streamlit state"""
     state.testbed_qa.pop(state.testbed["qa_index"])
-    if state.testbed["qa_index"] != 0:
-        state.testbed["qa_index"] += -1
+    # After deletion, ensure index points to a valid record
+    if len(state.testbed_qa) > 0:
+        # If there are records remaining, ensure index is within bounds
+        if state.testbed["qa_index"] >= len(state.testbed_qa):
+            # Index is now out of bounds, point to last record
+            state.testbed["qa_index"] = len(state.testbed_qa) - 1
+    else:
+        # List is empty, reset index to 0
+        state.testbed["qa_index"] = 0
 
 
 def qa_update_gui(qa_testset: list) -> None:
@@ -234,7 +242,7 @@ def qa_update_gui(qa_testset: list) -> None:
 #############################################################################
 # MAIN
 #############################################################################
-def check_prerequisites() -> tuple[bool, list, list, bool]:
+def check_prerequisites() -> tuple[list, list, bool]:
     """Check if prerequisites are met and return configuration data"""
     try:
         get_models()
@@ -309,9 +317,9 @@ def render_testset_generation_ui(available_ll_models: list, available_embed_mode
     )
 
     if state.client_settings["testbed"].get("qa_ll_model") is None:
-        state.client_settings["testbed"]["qa_ll_model"] = available_embed_models[0]
+        state.client_settings["testbed"]["qa_ll_model"] = available_ll_models[0]
     selected_qa_ll_model = state.client_settings["testbed"]["qa_ll_model"]
-    qa_ll_model_idx = available_embed_models.index(selected_qa_ll_model)
+    qa_ll_model_idx = available_ll_models.index(selected_qa_ll_model)
     test_gen_llm = col_center.selectbox(
         "Q&A Language Model:",
         key="selected_test_gen_llm",
@@ -342,7 +350,7 @@ def render_testset_generation_ui(available_ll_models: list, available_embed_mode
     }
 
 
-def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, str, bool]:
+def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, bool]:
     """Render existing testset UI and return configuration"""
     testset_source = st.radio(
         "TestSet Source:",
@@ -382,7 +390,7 @@ def process_testset_request(endpoint: str, api_params: dict, testset_source: str
     try:
         with st.spinner("Processing Q&A... please be patient.", show_time=True):
             if testset_source != "Database":
-                api_params["name"] = (state.testbed["testset_name"],)
+                api_params["name"] = state.testbed["testset_name"]
                 files = st_common.local_file_payload(state[f"selected_uploader_{state.testbed['uploader_key']}"])
                 api_payload = {"files": files}
                 response = api_call.post(endpoint=endpoint, params=api_params, payload=api_payload, timeout=3600)
@@ -547,7 +555,7 @@ def main() -> None:
         button_load_disabled = gen_params["upload_file"] is None
 
     # Process Q&A Request buttons
-    button_load_disabled = button_load_disabled or state.testbed["testset_id"] == "" or "testbed_qa" in state
+    button_load_disabled = button_load_disabled or state.testbed["testset_id"] is None or "testbed_qa" in state
     col_left, col_center, _, col_right = st.columns([3, 3, 4, 3])
 
     if not button_load_disabled:

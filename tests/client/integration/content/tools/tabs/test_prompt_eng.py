@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
+# pylint: disable=import-error import-outside-toplevel
 
 
 #############################################################################
@@ -38,3 +38,15 @@ class TestStreamlit:
         # Try to save without changes - should show "No Changes Detected"
         at.button(key="save_sys_prompt").click().run()
         assert at.info[0].value == "Prompt Instructions - No Changes Detected."
+
+    def test_prompt_page_loads(self, app_server, app_test):
+        """Test that the prompt engineering page loads without errors"""
+        assert app_server is not None
+
+        at = app_test(self.ST_FILE).run()
+
+        # Verify page loaded successfully
+        assert not at.exception
+
+        # Verify key session state exists
+        assert "prompt_configs" in at.session_state

@@ -34,6 +34,7 @@ os.environ["API_SERVER_URL"] = "http://localhost"
 os.environ["API_SERVER_PORT"] = "8015"
 
 # Import rest of required modules
+import sys
 import time
 import socket
 import shutil
@@ -130,7 +131,12 @@ def app_server(request):
 
 @pytest.fixture
 def app_test(auth_headers):
-    """Establish Streamlit State for Client to Operate"""
+    """Establish Streamlit State for Client to Operate
+
+    This fixture mimics what launch_client.py does in init_configs_state(),
+    loading the full configuration including all *_configs (database_configs, model_configs,
+    oci_configs, etc.) into session state, just like the real application does.
+    """
 
     def _app_test(page):
         at = AppTest.from_file(page, default_timeout=30)
@@ -138,18 +144,189 @@ def app_test(auth_headers):
             "key": os.environ.get("API_SERVER_KEY"),
             "url": os.environ.get("API_SERVER_URL"),
             "port": int(os.environ.get("API_SERVER_PORT")),
-            "control": True 
+            "control": True
         }
-        response = requests.get(
+        # Load full config like launch_client.py does in init_configs_state()
+        full_config = requests.get(
             url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",
             headers=auth_headers["valid_auth"],
-            params={"client": TEST_CONFIG["client"]},
+            params={
+                "client": TEST_CONFIG["client"],
+                "full_config": True,
+                "incl_sensitive": True,
+                "incl_readonly": True
+            },
             timeout=120,
-        )
-        at.session_state.client_settings = response.json()
+        ).json()
+        # Load all config items into session state (database_configs, model_configs, oci_configs, etc.)
+        for key, value in full_config.items():
+            at.session_state[key] = value
         return at
 
     return _app_test
+
+
+def setup_test_database(app_test_instance):
+    """Configure and connect to test database for integration tests
+
+    This helper function:
+    1. Updates database config with test credentials
+    2. Patches the database on the server
+    3. Reloads full config to get updated database status
+
+    Args:
+        app_test_instance: The AppTest instance from app_test fixture
+
+    Returns:
+        The updated AppTest instance with database configured
+    """
+    if not app_test_instance.session_state.database_configs:
+        return app_test_instance
+
+    # Update database config with test credentials
+    db_config = app_test_instance.session_state.database_configs[0]
+    db_config["user"] = TEST_CONFIG["db_username"]
+    db_config["password"] = TEST_CONFIG["db_password"]
+    db_config["dsn"] = TEST_CONFIG["db_dsn"]
+
+    # Update the database on the server to establish connection
+    server_url = app_test_instance.session_state.server['url']
+    server_port = app_test_instance.session_state.server['port']
+    server_key = app_test_instance.session_state.server['key']
+    db_name = db_config['name']
+
+    response = requests.patch(
+        url=f"{server_url}:{server_port}/v1/databases/{db_name}",
+        headers={"Authorization": f"Bearer {server_key}", "client": "server"},
+        json={
+            "user": db_config["user"],
+            "password": db_config["password"],
+            "dsn": db_config["dsn"]
+        },
+        timeout=120,
+    )
+
+    if response.status_code != 200:
+        raise RuntimeError(f"Failed to update database: {response.text}")
+
+    # Reload the full config to get the updated database status
+    full_config = requests.get(
+        url=f"{server_url}:{server_port}/v1/settings",
+        headers={"Authorization": f"Bearer {server_key}", "client": TEST_CONFIG["client"]},
+        params={
+            "client": TEST_CONFIG["client"],
+            "full_config": True,
+            "incl_sensitive": True,
+            "incl_readonly": True,
+        },
+        timeout=120,
+    ).json()
+
+    # Update session state with refreshed config
+    for key, value in full_config.items():
+        app_test_instance.session_state[key] = value
+
+    return app_test_instance
+
+
+def enable_test_models(app_test_instance):
+    """Enable at least one LL model for testing
+
+    Args:
+        app_test_instance: The AppTest instance from app_test fixture
+
+    Returns:
+        The updated AppTest instance with models enabled
+    """
+    for model in app_test_instance.session_state.model_configs:
+        if model["type"] == "ll":
+            model["enabled"] = True
+            break
+
+    return app_test_instance
+
+
+def enable_test_embed_models(app_test_instance):
+    """Enable at least one embedding model for testing
+
+    Args:
+        app_test_instance: The AppTest instance from app_test fixture
+
+    Returns:
+        The updated AppTest instance with embed models enabled
+    """
+    for model in app_test_instance.session_state.model_configs:
+        if model["type"] == "embed":
+            model["enabled"] = True
+            break
+
+    return app_test_instance
+
+
+def create_tabs_mock(monkeypatch):
+    """Create a mock for st.tabs that captures what tabs are created
+
+    This is a helper function to reduce code duplication in tests that need
+    to verify which tabs are created by the application.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture
+
+    Returns:
+        A list that will be populated with tab names as they are created
+    """
+    import streamlit as st  # pylint: disable=import-outside-toplevel
+
+    tabs_created = []
+    original_tabs = st.tabs
+
+    def mock_tabs(tab_list):
+        tabs_created.extend(tab_list)
+        return original_tabs(tab_list)
+
+    monkeypatch.setattr(st, "tabs", mock_tabs)
+    return tabs_created
+
+
+@contextmanager
+def temporary_sys_path(path):
+    """Temporarily add a path to sys.path and remove it when done
+
+    This context manager is useful for tests that need to temporarily modify
+    the Python path to import modules from specific locations.
+
+    Args:
+        path: Path to add to sys.path
+
+    Yields:
+        None
+    """
+    sys.path.insert(0, path)
+    try:
+        yield
+    finally:
+        if path in sys.path:
+            sys.path.remove(path)
+
+
+def run_streamlit_test(app_test_instance, run=True):
+    """Helper to run a Streamlit test and verify no exceptions
+
+    This helper reduces code duplication in tests that follow the pattern:
+    1. Run the app test
+    2. Verify no exceptions occurred
+
+    Args:
+        app_test_instance: The AppTest instance to run
+        run: Whether to run the test (default: True)
+
+    Returns:
+        The AppTest instance (run or not based on the run parameter)
+    """
+    if run:
+        app_test_instance = app_test_instance.run()
+    assert not app_test_instance.exception
+    return app_test_instance
 
 
 #################################################

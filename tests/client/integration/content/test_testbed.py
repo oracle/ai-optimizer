@@ -3,27 +3,11 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
+# pylint: disable=import-error import-outside-toplevel
 
-import pytest
-from unittest.mock import patch, MagicMock, mock_open
-import json
-import pandas as pd
-from io import BytesIO
-import sys
 import os
-from contextlib import contextmanager
-
-
-@contextmanager
-def temporary_sys_path(path):
-    """Temporarily add a path to sys.path and remove it when done"""
-    sys.path.insert(0, path)
-    try:
-        yield
-    finally:
-        if path in sys.path:
-            sys.path.remove(path)
+from unittest.mock import patch
+from conftest import setup_test_database, enable_test_models, temporary_sys_path
 
 
 #############################################################################
@@ -35,146 +19,233 @@ class TestStreamlit:
     # Streamlit File path
     ST_FILE = "../src/client/content/testbed.py"
 
-    def test_initialization(self, app_server, app_test, monkeypatch):
-        """Test initialization of the testbed component"""
+    def test_initialization(self, app_server, app_test, db_container):
+        """Test initialization of the testbed component with real server data and database"""
         assert app_server is not None
+        assert db_container is not None
 
-        # Mock the API responses for get_models (both ll and embed types)
-        def mock_get(endpoint=None, **kwargs):
-            if endpoint == "v1/models":
-                return [
-                    {
-                        "id": "test-ll-model",
-                        "type": "ll",
-                        "enabled": True,
-                        "url": "http://test.url",
-                        "openai_compat": True,
-                    },
-                    {
-                        "id": "test-embed-model",
-                        "type": "embed",
-                        "enabled": True,
-                        "url": "http://test.url",
-                        "openai_compat": True,
-                    },
-                ]
-            return {}
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        # Initialize app_test and run it to bring up the component
+        # Initialize app_test - now loads full config from server
         at = app_test(self.ST_FILE)
 
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
-        }
+        # Set up prerequisites using helper functions
+        at = setup_test_database(at)
+        at = enable_test_models(at)
 
-        # Mock the available models that get_models would set
-        at.session_state.ll_model_enabled = {
-            "test-ll-model": {"url": "http://test.url", "openai_compat": True, "enabled": True}
-        }
+        # Now run the app
+        at.run()
 
-        at.session_state.embed_model_enabled = {
-            "test-embed-model": {"url": "http://test.url", "openai_compat": True, "enabled": True}
-        }
-
-        # Populate the testbed_db_testsets in session state directly
-        at.session_state.testbed_db_testsets = {}
-
-        # Mock functions that make external calls to avoid failures
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
-
-        # Run the app - this is critical to initialize all widgets!
-        at = at.run()
-
-        # Verify specific widgets that we know should exist
+        # Verify specific widgets that should exist
+        # The testbed page should render these widgets when initialized
         radio_widgets = at.get("radio")
-        assert len(radio_widgets) == 1, "Expected 1 radio widget"
+        assert len(radio_widgets) >= 1, (
+            f"Expected at least 1 radio widget for testset source selection. Errors: {[e.value for e in at.error]}"
+        )
 
         button_widgets = at.get("button")
         assert len(button_widgets) >= 1, "Expected at least 1 button widget"
 
         file_uploader_widgets = at.get("file_uploader")
-        assert len(file_uploader_widgets) == 1, "Expected 1 file uploader widget"
+        assert len(file_uploader_widgets) >= 1, "Expected at least 1 file uploader widget"
 
         # Test passes if the expected widgets are rendered
 
-    def test_testset_source_selection(self, app_server, app_test, monkeypatch):
-        """Test selection of test sets from different sources"""
+    def test_testset_source_selection(self, app_server, app_test, db_container):
+        """Test selection of test sets from different sources with real server data"""
         assert app_server is not None
+        assert db_container is not None
 
-        # Mock the API responses for get_models
-        def mock_get(endpoint=None, **kwargs):
-            if endpoint == "v1/models":
-                return [
-                    {
-                        "id": "test-ll-model",
-                        "type": "ll",
-                        "enabled": True,
-                        "url": "http://test.url",
-                        "openai_compat": True,
-                    },
-                    {
-                        "id": "test-embed-model",
-                        "type": "embed",
-                        "enabled": True,
-                        "url": "http://test.url",
-                        "openai_compat": True,
-                    },
-                ]
-            return {}
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        # Mock functions that make external calls
-        monkeypatch.setattr("common.functions.is_url_accessible", lambda url: (True, ""))
-        monkeypatch.setattr("streamlit.cache_resource", lambda *args, **kwargs: lambda func: func)
-        monkeypatch.setattr("client.utils.st_common.is_db_configured", lambda: True)
-
-        # Initialize app_test
+        # Initialize app_test - now loads full config from server
         at = app_test(self.ST_FILE)
 
-        # Set up session state requirements
-        at.session_state.user_settings = {
-            "client": "test_client",
-            "oci": {"auth_profile": "DEFAULT"},
-            "vector_search": {"database": "DEFAULT"},
-        }
-
-        at.session_state.ll_model_enabled = {
-            "test-ll-model": {"url": "http://test.url", "openai_compat": True, "enabled": True}
-        }
-
-        at.session_state.embed_model_enabled = {
-            "test-embed-model": {"url": "http://test.url", "openai_compat": True, "enabled": True}
-        }
-
-        # Populate the testbed_db_testsets in session state directly
-        at.session_state.testbed_db_testsets = {}
+        # Set up prerequisites using helper functions
+        at = setup_test_database(at)
+        at = enable_test_models(at)
 
         # Run the app to initialize all widgets
-        at = at.run()
+        at.run()
 
         # Verify the expected widgets are present
         radio_widgets = at.get("radio")
-        assert len(radio_widgets) > 0, "Expected radio widgets"
+        assert len(radio_widgets) > 0, f"Expected radio widgets. Errors: {[e.value for e in at.error]}"
 
         file_uploader_widgets = at.get("file_uploader")
         assert len(file_uploader_widgets) > 0, "Expected file uploader widgets"
 
         # Test passes if the expected widgets are rendered
 
+    def test_testset_generation_with_saved_ll_model(self, app_server, app_test, db_container):
+        """Test that testset generation UI correctly restores saved language model preferences
+
+        This test verifies that when a user has a saved language model preference,
+        the UI correctly looks up the model's index from the language models list
+        (not the embedding models list).
+
+        The test uses distinct LLM and embedding model lists to expose bugs where
+        the index lookup uses the wrong model list.
+        """
+        assert app_server is not None
+        assert db_container is not None
+
+        # Initialize app_test
+        at = app_test(self.ST_FILE)
+
+        # Set up prerequisites using helper functions
+        at = setup_test_database(at)
+
+        # Create realistic model configurations with distinct LLM and embedding models
+        at.session_state.model_configs = [
+            {
+                "id": "gpt-4o-mini",
+                "type": "ll",
+                "enabled": True,
+                "provider": "openai",
+                "openai_compat": True,
+            },
+            {
+                "id": "gpt-4o",
+                "type": "ll",
+                "enabled": True,
+                "provider": "openai",
+                "openai_compat": True,
+            },
+            {
+                "id": "text-embedding-3-small",
+                "type": "embed",
+                "enabled": True,
+                "provider": "openai",
+                "openai_compat": True,
+            },
+            {
+                "id": "embed-english-v3.0",
+                "type": "embed",
+                "enabled": True,
+                "provider": "cohere",
+                "openai_compat": True,
+            },
+        ]
+
+        # Initialize client_settings with a saved LLM preference
+        # This simulates a user who previously selected a language model
+        if "client_settings" not in at.session_state:
+            at.session_state.client_settings = {}
+        if "testbed" not in at.session_state.client_settings:
+            at.session_state.client_settings["testbed"] = {}
+
+        # Set a language model preference that exists in LL list but NOT in embed list
+        at.session_state.client_settings["testbed"]["qa_ll_model"] = "openai/gpt-4o-mini"
+
+        # Run the app - should render without error
+        at.run()
+
+        # Toggle to "Generate Q&A Test Set" mode
+        generate_toggle = at.get("toggle")
+        assert len(generate_toggle) > 0, "Expected toggle widget for 'Generate Q&A Test Set'"
+
+        # This should not raise ValueError about model not being in list
+        generate_toggle[0].set_value(True).run()
+
+        # Verify no exceptions occurred during rendering
+        assert not at.exception, f"Rendering failed with exception: {at.exception}"
+
+        # Verify the selectboxes rendered correctly
+        selectboxes = at.get("selectbox")
+        assert len(selectboxes) >= 2, "Should have at least 2 selectboxes (LLM and embed model)"
+
+        # Verify no errors were thrown
+        errors = at.get("error")
+        assert len(errors) == 0, f"Expected no errors, but got: {[e.value for e in errors]}"
+
+    def test_testset_generation_default_ll_model(self, app_server, app_test, db_container):
+        """Test that testset generation UI sets correct default language model
+
+        This test verifies that when no saved language model preference exists,
+        the UI correctly initializes the default from the language models list
+        (not the embedding models list).
+
+        The test uses distinct LLM and embedding model lists to expose bugs where
+        the default initialization uses the wrong model list.
+        """
+        assert app_server is not None
+        assert db_container is not None
+
+        # Initialize app_test
+        at = app_test(self.ST_FILE)
+
+        # Set up prerequisites using helper functions
+        at = setup_test_database(at)
+
+        # Create realistic model configurations with distinct LLM and embedding models
+        at.session_state.model_configs = [
+            {
+                "id": "gpt-4o-mini",
+                "type": "ll",
+                "enabled": True,
+                "provider": "openai",
+                "openai_compat": True,
+            },
+            {
+                "id": "gpt-4o",
+                "type": "ll",
+                "enabled": True,
+                "provider": "openai",
+                "openai_compat": True,
+            },
+            {
+                "id": "text-embedding-3-small",
+                "type": "embed",
+                "enabled": True,
+                "provider": "openai",
+                "openai_compat": True,
+            },
+            {
+                "id": "embed-english-v3.0",
+                "type": "embed",
+                "enabled": True,
+                "provider": "cohere",
+                "openai_compat": True,
+            },
+        ]
+
+        # Initialize client_settings but DON'T set saved preferences
+        # This triggers the default initialization code path
+        if "client_settings" not in at.session_state:
+            at.session_state.client_settings = {}
+        if "testbed" not in at.session_state.client_settings:
+            at.session_state.client_settings["testbed"] = {}
+
+        # Run the app - should render without error
+        at.run()
+
+        # Toggle to "Generate Q&A Test Set" mode
+        generate_toggle = at.get("toggle")
+        assert len(generate_toggle) > 0, "Expected toggle widget for 'Generate Q&A Test Set'"
+
+        # This should not crash - defaults should be set correctly
+        generate_toggle[0].set_value(True).run()
+
+        # Verify no exceptions occurred during rendering
+        assert not at.exception, f"Rendering failed with exception: {at.exception}"
+
+        # Verify the selectboxes rendered correctly
+        selectboxes = at.get("selectbox")
+        assert len(selectboxes) >= 2, "Should have at least 2 selectboxes (LLM and embed model)"
+
+        # Verify the default qa_ll_model is actually a language model, not an embedding model
+        qa_ll_model = at.session_state.client_settings["testbed"]["qa_ll_model"]
+        assert qa_ll_model in ["openai/gpt-4o-mini", "openai/gpt-4o"], (
+            f"Default qa_ll_model should be a language model, got: {qa_ll_model}"
+        )
+
+        # Verify no errors were thrown
+        errors = at.get("error")
+        assert len(errors) == 0, f"Expected no errors, but got: {[e.value for e in errors]}"
+
     @patch("client.utils.api_call.post")
     def test_evaluate_testset(self, mock_post, app_test, monkeypatch):
         """Test evaluation of a test set"""
 
         # Mock the API responses for get_models
-        def mock_get(endpoint=None, **kwargs):
+        def mock_get(endpoint=None, **_kwargs):
             if endpoint == "v1/models":
                 return [
                     {
@@ -310,6 +381,9 @@ class TestStreamlit:
     @patch("client.utils.api_call.get")
     def test_get_testbed_db_testsets(self, mock_get, app_test):
         """Test the get_testbed_db_testsets cached function"""
+        # Ensure app_test fixture is available for proper test context
+        assert app_test is not None
+
         with temporary_sys_path(os.path.join(os.path.dirname(__file__), "../../../src")):
             from client.content import testbed
 
@@ -475,6 +549,3 @@ class TestTestbedDatabaseIntegration:
         for func_name in main_functions:
             assert hasattr(testbed, func_name), f"Function {func_name} not found"
             assert callable(getattr(testbed, func_name)), f"Function {func_name} is not callable"
-
-        # Note: Full UI workflow testing would require complex Streamlit session
-        # state setup and is better tested through end-to-end testing

@@ -3,7 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=unused-argument
+# pylint: disable=import-error import-outside-toplevel
 
 from unittest.mock import patch
 import re
@@ -119,7 +119,10 @@ class TestStreamlit:
                 "oci_tenancy": "ocid1.tenancy.oc1..aaaaaaaa",
                 "oci_region": "us-ashburn-1",
                 "oci_key_file": "/dev/null",
-                "expected_error": "Update Failed - OCI: The provided key is not a private key, or the provided passphrase is incorrect",
+                "expected_error": (
+                    "Update Failed - OCI: The provided key is not a private key, "
+                    "or the provided passphrase is incorrect"
+                ),
             },
             id="oci_profile_7",
         ),
