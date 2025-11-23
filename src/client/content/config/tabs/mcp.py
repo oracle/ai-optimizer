@@ -128,11 +128,12 @@ def render_configs(mcp_server: str, mcp_type: str, configs: list) -> None:
             value=mcp_name,
             label_visibility="collapsed",
             disabled=True,
+            key=f"{mcp_server}_{mcp_type}_{mcp_name}_input",
         )
         col2.button(
             "Details",
             on_click=mcp_details,
-            key=f"{mcp_server}_{mcp_name}_details",
+            key=f"{mcp_server}_{mcp_type}_{mcp_name}_details",
             kwargs={"mcp_server": mcp_server, "mcp_type": mcp_type, "mcp_name": mcp_name},
         )
 
