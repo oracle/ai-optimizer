@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore litellm giskard ollama llms
 # pylint: disable=unused-argument,protected-access
 
-from typing import TYPE_CHECKING, List, Optional, Any
+from typing import TYPE_CHECKING, List, Any
 import time
 import litellm
 from litellm.llms.ollama.completion.transformation import OllamaConfig
@@ -37,12 +37,15 @@ if not getattr(OllamaConfig.transform_response, "_is_custom_patch", False):
         optional_params: dict,
         litellm_params: dict,
         encoding: str,
-        api_key: Optional[str] = None,
-        json_mode: Optional[bool] = None,
+        **kwargs,
     ):
         """
         Custom transform response from
         .venv/lib/python3.11/site-packages/litellm/llms/ollama/completion/transformation.py
+
+        Additional kwargs:
+            api_key: Optional[str] - API key for authentication
+            json_mode: Optional[bool] - JSON mode flag
         """
         logger.info("Custom transform_response is running")
         response_json = raw_response.json()

@@ -41,6 +41,45 @@ if original_handle_generic_stream_chunk and not getattr(
     )
     from litellm.types.utils import ModelResponseStream, StreamingChoices, Delta
 
+    def _fix_missing_tool_call_fields(tool_call: dict) -> list:
+        """Add missing required fields to tool call and return list of missing fields"""
+        missing_fields = []
+        if "arguments" not in tool_call:
+            tool_call["arguments"] = ""
+            missing_fields.append("arguments")
+        if "id" not in tool_call:
+            tool_call["id"] = ""
+            missing_fields.append("id")
+        if "name" not in tool_call:
+            tool_call["name"] = ""
+            missing_fields.append("name")
+        return missing_fields
+
+    def _patch_tool_calls(dict_chunk: dict) -> None:
+        """Fix missing required fields in tool calls before Pydantic validation"""
+        if dict_chunk.get("message") and dict_chunk["message"].get("toolCalls"):
+            for tool_call in dict_chunk["message"]["toolCalls"]:
+                missing_fields = _fix_missing_tool_call_fields(tool_call)
+                if missing_fields:
+                    logger.debug(
+                        "OCI tool call streaming chunk missing fields: %s (Type: %s) - adding empty defaults",
+                        missing_fields,
+                        tool_call.get("type", "unknown"),
+                    )
+
+    def _extract_text_content(typed_chunk: OCIStreamChunk) -> str:
+        """Extract text content from chunk message"""
+        text = ""
+        if typed_chunk.message and typed_chunk.message.content:
+            for item in typed_chunk.message.content:
+                if isinstance(item, OCITextContentPart):
+                    text += item.text
+                elif isinstance(item, OCIImageContentPart):
+                    raise ValueError("OCI does not support image content in streaming responses")
+                else:
+                    raise ValueError(f"Unsupported content type in OCI response: {item.type}")
+        return text
+
     def custom_handle_generic_stream_chunk(self, dict_chunk: dict):
         """
         Custom handler to fix missing 'arguments' field in OCI tool calls.
@@ -53,25 +92,7 @@ if original_handle_generic_stream_chunk and not getattr(
         """
         # Fix missing required fields in tool calls before Pydantic validation
         # OCI streams tool calls progressively, so early chunks may be missing required fields
-        if dict_chunk.get("message") and dict_chunk["message"].get("toolCalls"):
-            for tool_call in dict_chunk["message"]["toolCalls"]:
-                missing_fields = []
-                if "arguments" not in tool_call:
-                    tool_call["arguments"] = ""
-                    missing_fields.append("arguments")
-                if "id" not in tool_call:
-                    tool_call["id"] = ""
-                    missing_fields.append("id")
-                if "name" not in tool_call:
-                    tool_call["name"] = ""
-                    missing_fields.append("name")
-
-                if missing_fields:
-                    logger.debug(
-                        "OCI tool call streaming chunk missing fields: %s (Type: %s) - adding empty defaults",
-                        missing_fields,
-                        tool_call.get("type", "unknown"),
-                    )
+        _patch_tool_calls(dict_chunk)
 
         # Now proceed with original validation and processing
         try:
@@ -82,15 +103,7 @@ if original_handle_generic_stream_chunk and not getattr(
         if typed_chunk.index is None:
             typed_chunk.index = 0
 
-        text = ""
-        if typed_chunk.message and typed_chunk.message.content:
-            for item in typed_chunk.message.content:
-                if isinstance(item, OCITextContentPart):
-                    text += item.text
-                elif isinstance(item, OCIImageContentPart):
-                    raise ValueError("OCI does not support image content in streaming responses")
-                else:
-                    raise ValueError(f"Unsupported content type in OCI response: {item.type}")
+        text = _extract_text_content(typed_chunk)
 
         tool_calls = None
         if typed_chunk.message and typed_chunk.message.toolCalls:

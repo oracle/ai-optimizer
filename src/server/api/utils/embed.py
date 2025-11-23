@@ -149,6 +149,55 @@ def split_document(
     return doc_split
 
 
+def _get_document_loader(file: str, extension: str):
+    """Get appropriate document loader based on file extension"""
+    match extension.lower():
+        case "pdf":
+            return document_loaders.PyPDFLoader(file), True
+        case "html":
+            return document_loaders.TextLoader(file), True
+        case "md":
+            return document_loaders.TextLoader(file), True
+        case "csv":
+            return document_loaders.CSVLoader(file), True
+        case "png" | "jpg" | "jpeg":
+            return UnstructuredImageLoader(file), False
+        case "txt":
+            return document_loaders.TextLoader(file), True
+        case _:
+            raise ValueError(f"{extension} is not a supported file extension")
+
+
+def _capture_file_metadata(name: str, stat: os.stat_result, file_metadata: dict) -> None:
+    """Capture file metadata if not already provided"""
+    if name not in file_metadata:
+        file_metadata[name] = {
+            "size": stat.st_size,
+            "time_modified": datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc).isoformat(),
+        }
+
+
+def _process_and_split_document(
+    loaded_doc: list,
+    split: bool,
+    model: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    extension: str,
+    file_metadata: dict,
+) -> list[LangchainDocument]:
+    """Process and split a loaded document"""
+    if not split:
+        return loaded_doc
+
+    split_doc = split_document(model, chunk_size, chunk_overlap, loaded_doc, extension)
+    split_docos = []
+    for idx, chunk in enumerate(split_doc, start=1):
+        split_doc_with_mdata = process_metadata(idx, chunk, file_metadata)
+        split_docos += split_doc_with_mdata
+    return split_docos
+
+
 ##########################################
 # Documents
 ##########################################
@@ -179,52 +228,21 @@ def load_and_split_documents(
         extension = os.path.splitext(file)[1][1:]
         logger.info("Loading %s (%i bytes)", name, stat.st_size)
 
-        # Capture file metadata if not already provided (from upload)
-        if name not in file_metadata:
-            file_metadata[name] = {
-                "size": stat.st_size,
-                "time_modified": datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc).isoformat(),
-            }
+        _capture_file_metadata(name, stat, file_metadata)
 
-        split = True
-        match extension.lower():
-            case "pdf":
-                loader = document_loaders.PyPDFLoader(file)
-            case "html":
-                # Use TextLoader to preserve for header split
-                loader = document_loaders.TextLoader(file)
-            case "md":
-                loader = document_loaders.TextLoader(file)
-            case "csv":
-                loader = document_loaders.CSVLoader(file)
-            case "png" | "jpg" | "jpeg":
-                loader = UnstructuredImageLoader(file)
-                split = False
-            case "txt":
-                loader = document_loaders.TextLoader(file)
-            case _:
-                raise ValueError(f"{extension} is not a supported file extension")
-
+        loader, split = _get_document_loader(file, extension)
         loaded_doc = loader.load()
         logger.info("Loaded Pages: %i", len(loaded_doc))
 
-        # Chunk the File
-        if split:
-            split_doc = split_document(model, chunk_size, chunk_overlap, loaded_doc, extension)
-            # Add IDs to metadata
-            split_docos = []
-            for idx, chunk in enumerate(split_doc, start=1):
-                split_doc_with_mdata = process_metadata(idx, chunk, file_metadata)
-                split_docos += split_doc_with_mdata
-        else:
-            split_files = file
-            all_split_docos = loaded_doc
+        split_docos = _process_and_split_document(
+            loaded_doc, split, model, chunk_size, chunk_overlap, extension, file_metadata
+        )
 
         if write_json and output_dir:
             split_files.append(doc_to_json(split_docos, file, output_dir))
         all_split_docos += split_docos
-    logger.info("Total Number of Chunks: %i", len(all_split_docos))
 
+    logger.info("Total Number of Chunks: %i", len(all_split_docos))
     return all_split_docos, split_files
 
 
@@ -270,37 +288,25 @@ def load_and_split_url(
     return split_docos, split_files
 
 
-##########################################
-# Vector Store
-##########################################
-def populate_vs(
-    vector_store: schema.DatabaseVectorStorage,
-    db_details: schema.Database,
-    embed_client: BaseChatModel,
-    input_data: Union[list["LangchainDocument"], list] = None,
-    rate_limit: int = 0,
-) -> None:
-    """Populate the Vector Storage"""
-    # Copy our vector storage object so can process a tmp one
-    vector_store_tmp = copy.copy(vector_store)
-    vector_store_tmp.vector_store = f"{vector_store.vector_store}_TMP"
+def _json_to_doc(file: str) -> list[LangchainDocument]:
+    """Creates a list of LangchainDocument from a JSON file. Returns the list of documents."""
+    logger.info("Converting %s to Document", file)
 
-    def json_to_doc(file: str):
-        """Creates a list of LangchainDocument from a JSON file. Returns the list of documents."""
-        logger.info("Converting %s to Document", file)
+    with open(file, "r", encoding="utf-8") as document:
+        chunks = json.load(document)
+        docs = []
+        for chunk in chunks:
+            page_content = chunk["kwargs"]["page_content"]
+            metadata = chunk["kwargs"]["metadata"]
+            docs.append(LangchainDocument(page_content=str(page_content), metadata=metadata))
 
-        with open(file, "r", encoding="utf-8") as document:
-            chunks = json.load(document)
-            docs = []
-            for chunk in chunks:
-                page_content = chunk["kwargs"]["page_content"]
-                metadata = chunk["kwargs"]["metadata"]
-                docs.append(LangchainDocument(page_content=str(page_content), metadata=metadata))
+    logger.info("Total Chunk Size: %i bytes", docs.__sizeof__())
+    logger.info("Chunks ingested: %i", len(docs))
+    return docs
 
-        logger.info("Total Chunk Size: %i bytes", docs.__sizeof__())
-        logger.info("Chunks ingested: %i", len(docs))
-        return docs
 
+def _prepare_documents(input_data: Union[list[LangchainDocument], list]) -> list[LangchainDocument]:
+    """Convert input data to documents and remove duplicates"""
     # Loop through files and create Documents
     if isinstance(input_data[0], LangchainDocument):
         logger.debug("Processing Documents: %s", input_data)
@@ -309,7 +315,7 @@ def populate_vs(
         documents = []
         for file in input_data:
             logger.info("Processing file: %s into a Document.", file)
-            documents.extend(json_to_doc(file))
+            documents.extend(_json_to_doc(file))
 
     logger.info("Size of Payload: %i bytes", documents.__sizeof__())
     logger.info("Total Chunks: %i", len(documents))
@@ -322,14 +328,20 @@ def populate_vs(
             unique_texts[chunk.page_content] = True
             unique_chunks.append(chunk)
     logger.info("Total Unique Chunks: %i", len(unique_chunks))
+    return unique_chunks
 
-    # Creates a TEMP Vector Store Table; which may already exist
-    # Establish a dedicated connection to the database
-    db_conn = utils_databases.connect(db_details)
-    # This is to allow re-using an existing VS; will merge this over later
+
+def _create_temp_vector_store(
+    db_conn, vector_store: schema.DatabaseVectorStorage, embed_client: BaseChatModel
+) -> tuple[OracleVS, schema.DatabaseVectorStorage]:
+    """Create temporary vector store for staging"""
+    vector_store_tmp = copy.copy(vector_store)
+    vector_store_tmp.vector_store = f"{vector_store.vector_store}_TMP"
+
     utils_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
     logger.info("Establishing initial vector store")
     logger.debug("Embed Client: %s", embed_client)
+
     vs_tmp = OracleVS(
         client=db_conn,
         embedding_function=embed_client,
@@ -337,27 +349,31 @@ def populate_vs(
         distance_strategy=vector_store.distance_metric,
         query="AI Optimizer for Apps - Powered by Oracle",
     )
+    return vs_tmp, vector_store_tmp
 
-    # Batch Size does not have a measurable impact on performance
-    # but does eliminate issues with timeouts
-    # Careful increasing as may break token rate limits
 
+def _embed_documents_in_batches(vs_tmp: OracleVS, unique_chunks: list[LangchainDocument], rate_limit: int) -> None:
+    """Embed documents in batches with rate limiting"""
     batch_size = 500
     logger.info("Embedding chunks in batches of: %i", batch_size)
+
     for i in range(0, len(unique_chunks), batch_size):
         batch = unique_chunks[i : i + batch_size]
-        logger.info(
-            "Processing: %i Chunks of %i (Rate Limit: %i)",
-            len(unique_chunks) if len(unique_chunks) < i + batch_size else i + batch_size,
-            len(unique_chunks),
-            rate_limit,
-        )
+        current_count = min(len(unique_chunks), i + batch_size)
+        logger.info("Processing: %i Chunks of %i (Rate Limit: %i)", current_count, len(unique_chunks), rate_limit)
+
         OracleVS.add_documents(vs_tmp, documents=batch)
+
         if rate_limit > 0:
             interval = 60 / rate_limit
             logger.info("Rate Limiting: sleeping for %i seconds", interval)
             time.sleep(interval)
 
+
+def _merge_and_index_vector_store(
+    db_conn, vector_store: schema.DatabaseVectorStorage, vector_store_tmp: schema.DatabaseVectorStorage, embed_client
+) -> None:
+    """Merge temporary vector store into real one and create index"""
     # Create our real vector storage if doesn't exist
     vs_real = OracleVS(
         client=db_conn,
@@ -366,6 +382,7 @@ def populate_vs(
         distance_strategy=vector_store.distance_metric,
         query="AI Optimizer for Apps - Powered by Oracle",
     )
+
     vector_store_idx = f"{vector_store.vector_store}_IDX"
     if vector_store.index_type == "HNSW":
         LangchainVS.drop_index_if_exists(db_conn, vector_store_idx)
@@ -382,8 +399,7 @@ def populate_vs(
     # Build the Index
     logger.info("Creating index on: %s", vector_store.vector_store)
     try:
-        index_type = vector_store.index_type
-        params = {"idx_name": vector_store_idx, "idx_type": index_type}
+        params = {"idx_name": vector_store_idx, "idx_type": vector_store.index_type}
         LangchainVS.create_index(db_conn, vs_real, params)
     except Exception as ex:
         logger.error("Unable to create vector index: %s", ex)
@@ -392,6 +408,31 @@ def populate_vs(
     _, store_comment = functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
     comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
     utils_databases.execute_sql(db_conn, comment)
+
+
+##########################################
+# Vector Store
+##########################################
+def populate_vs(
+    vector_store: schema.DatabaseVectorStorage,
+    db_details: schema.Database,
+    embed_client: BaseChatModel,
+    input_data: Union[list["LangchainDocument"], list] = None,
+    rate_limit: int = 0,
+) -> None:
+    """Populate the Vector Storage"""
+    unique_chunks = _prepare_documents(input_data)
+
+    # Establish a dedicated connection to the database
+    db_conn = utils_databases.connect(db_details)
+
+    # Create temporary vector store and embed documents
+    vs_tmp, vector_store_tmp = _create_temp_vector_store(db_conn, vector_store, embed_client)
+    _embed_documents_in_batches(vs_tmp, unique_chunks, rate_limit)
+
+    # Merge and index
+    _merge_and_index_vector_store(db_conn, vector_store, vector_store_tmp, embed_client)
+
     utils_databases.disconnect(db_conn)
 
 

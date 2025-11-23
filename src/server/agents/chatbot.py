@@ -24,8 +24,6 @@ from langchain_community.vectorstores.oraclevs import OracleVS
 from litellm import acompletion, completion
 from litellm.exceptions import APIConnectionError
 
-from server.api.utils.databases import execute_sql
-
 import server.mcp.prompts.defaults as default_prompts
 
 from common import logging_config
@@ -238,6 +236,7 @@ async def vs_retrieve(state: OptimizerState, config: RunnableConfig) -> Optimize
     documents_dict = [vars(doc) for doc in documents]
     logger.info("Found Documents: %i", len(documents_dict))
     return {"context_input": retrieve_question, "documents": documents_dict}
+
 
 async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
     """LiteLLM streaming wrapper"""
