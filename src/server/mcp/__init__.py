@@ -40,14 +40,14 @@ async def _discover_and_register(
         # Decide what to register based on available functions
         if hasattr(module, "register"):
             logger.info("Registering via %s.register()", module_info.name)
+            if ".prompts." in module.__name__:
+                logger.info("Registering prompt via %s.register_prompt()", module_info.name)
+                await module.register(mcp)
             if ".tools." in module.__name__:
                 logger.info("Registering tool via %s.register_tool()", module_info.name)
                 await module.register(mcp, auth)
             if ".proxies." in module.__name__:
                 logger.info("Registering proxy via %s.register_proxy()", module_info.name)
-                await module.register(mcp)
-            if ".prompts." in module.__name__:
-                logger.info("Registering prompt via %s.register_prompt()", module_info.name)
                 await module.register(mcp)
             if ".resources." in module.__name__:
                 logger.info("Registering resource via %s.register_resource()", module_info.name)

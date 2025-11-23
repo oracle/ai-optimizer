@@ -49,18 +49,6 @@ def optimizer_basic_default() -> PromptMessage:
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
-def optimizer_vs_no_tools_default() -> PromptMessage:
-    """Vector Search (no tools) system prompt for chatbot."""
-    content = """
-        You are an assistant for question-answering tasks, be concise.
-        Use the retrieved DOCUMENTS to answer the user input as accurately as possible.
-        Keep your answer grounded in the facts of the DOCUMENTS and reference the DOCUMENTS where possible.
-        If there ARE DOCUMENTS, you should be able to answer.
-        If there are NO DOCUMENTS, respond only with 'I am sorry, but cannot find relevant sources.'
-    """
-    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
-
-
 def optimizer_tools_default() -> PromptMessage:
     """Default system prompt with explicit tool selection guidance and examples."""
     content = """
@@ -229,14 +217,6 @@ async def register(mcp):
         Used when no tools are enabled.
         """
         return get_prompt_with_override("optimizer_basic-default")
-
-    @mcp.prompt(name="optimizer_vs-no-tools-default", title="Vector Search (no tools) Prompt", tags=optimizer_tags)
-    def vs_no_tools_default_mcp() -> PromptMessage:
-        """Prompt for Vector Search without Tools.
-
-        Used when no tools are enabled.
-        """
-        return get_prompt_with_override("optimizer_vs_no_tools_default")
 
     @mcp.prompt(name="optimizer_tools-default", title="Default Tools Prompt", tags=optimizer_tags)
     def tools_default_mcp() -> PromptMessage:
