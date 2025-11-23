@@ -79,9 +79,6 @@ class TestStreamlit:
         This test verifies that when a user has a saved language model preference,
         the UI correctly looks up the model's index from the language models list
         (not the embedding models list).
-
-        The test uses distinct LLM and embedding model lists to expose bugs where
-        the index lookup uses the wrong model list.
         """
         assert app_server is not None
         assert db_container is not None
@@ -161,9 +158,6 @@ class TestStreamlit:
         This test verifies that when no saved language model preference exists,
         the UI correctly initializes the default from the language models list
         (not the embedding models list).
-
-        The test uses distinct LLM and embedding model lists to expose bugs where
-        the default initialization uses the wrong model list.
         """
         assert app_server is not None
         assert db_container is not None

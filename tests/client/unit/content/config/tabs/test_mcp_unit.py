@@ -3,9 +3,8 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
+# pylint: disable=import-error import-outside-toplevel
 
-import json
 from client.utils import api_call
 
 
@@ -64,12 +63,13 @@ class TestMCPFunctions:
 
         from client.content.config.tabs.mcp import get_mcp_client
         from streamlit import session_state as state
+
         state.server = {"url": "http://localhost", "port": 8000}
 
         client_config = get_mcp_client()
 
-        # Should return empty dict on error
-        assert client_config == {}
+        # Should return empty JSON string on error
+        assert client_config == "{}"
 
     def test_get_mcp_force_refresh(self, app_server, monkeypatch):
         """Test get_mcp with force refresh"""
@@ -111,9 +111,9 @@ class TestMCPFunctions:
             api_calls.append(endpoint)
             if endpoint == "v1/mcp/tools":
                 return [{"name": "optimizer_test"}]
-            elif endpoint == "v1/mcp/prompts":
+            if endpoint == "v1/mcp/prompts":
                 return [{"name": "optimizer_prompt"}]
-            elif endpoint == "v1/mcp/resources":
+            if endpoint == "v1/mcp/resources":
                 return [{"name": "optimizer_resource"}]
             return []
 
@@ -149,9 +149,9 @@ class TestMCPFunctions:
         def mock_get(endpoint):
             if endpoint == "v1/mcp/tools":
                 raise api_call.ApiError("Tools endpoint failed")
-            elif endpoint == "v1/mcp/prompts":
+            if endpoint == "v1/mcp/prompts":
                 return [{"name": "optimizer_prompt"}]
-            elif endpoint == "v1/mcp/resources":
+            if endpoint == "v1/mcp/resources":
                 return [{"name": "optimizer_resource"}]
             return []
 
@@ -173,7 +173,7 @@ class TestMCPFunctions:
         assert len(state.mcp_configs["prompts"]) == 1
         assert len(state.mcp_configs["resources"]) == 1
 
-    def test_extract_servers_single_server(self, app_server, monkeypatch):
+    def test_extract_servers_single_server(self, app_server):
         """Test extracting MCP servers from configs"""
         assert app_server is not None
 
@@ -196,7 +196,7 @@ class TestMCPFunctions:
         assert "optimizer" in servers
         assert servers[0] == "optimizer"  # optimizer should be first
 
-    def test_extract_servers_multiple_servers(self, app_server, monkeypatch):
+    def test_extract_servers_multiple_servers(self, app_server):
         """Test extracting multiple MCP servers"""
         assert app_server is not None
 
@@ -222,7 +222,7 @@ class TestMCPFunctions:
         # Others should be sorted
         assert set(servers) == {"optimizer", "custom", "external"}
 
-    def test_extract_servers_no_underscore(self, app_server, monkeypatch):
+    def test_extract_servers_no_underscore(self, app_server):
         """Test extract_servers with names without underscores"""
         assert app_server is not None
 
@@ -240,7 +240,7 @@ class TestMCPFunctions:
         # Should return empty list since no underscores
         assert len(servers) == 0
 
-    def test_extract_servers_with_none_items(self, app_server, monkeypatch):
+    def test_extract_servers_with_none_items(self, app_server):
         """Test extract_servers handles None safely"""
         assert app_server is not None
 

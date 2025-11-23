@@ -63,8 +63,7 @@ class TestVectorSearchToolSelection:
         - User should only see "LLM Only" option
 
         What this test verifies:
-        - The fix at src/client/utils/st_common.py:304-310 correctly filters out
-          Vector Search when enabled embedding models don't match vector store models
+        - Vector Search when enabled embedding models don't match vector store models
         """
         assert app_server is not None
         at = app_test(self.ST_FILE).run()
@@ -73,7 +72,6 @@ class TestVectorSearchToolSelection:
         # - Database is connected and has vector stores that use specific models
         # - Those specific models are NOT enabled
         # - But OTHER embedding models ARE enabled (so embed_models_enabled is not empty)
-        # This causes the bug: Vector Search appears but no vector stores are actually usable
 
         # First, ensure we have a connected database with vector stores
         if at.session_state.database_configs:
@@ -113,10 +111,9 @@ class TestVectorSearchToolSelection:
         # Get the Tool Selection selectbox
         selectboxes = [sb for sb in at.selectbox if sb.label == "Tool Selection"]
 
-        # The bug: Vector Search appears as an option even when its vector stores can't be used
+        # Vector Search appears as an option even when its vector stores can't be used
         # Scenario: embed models ARE enabled, but they don't match the vector store models
         # Expected: Vector Search should NOT appear (or should check model compatibility)
-        # Bug: Vector Search appears but render_vector_store_selection filters everything out
         if selectboxes:
             tool_selectbox = selectboxes[0]
             # THIS SHOULD FAIL - Vector Search should NOT be in the options when
@@ -168,11 +165,11 @@ class TestVectorSearchToolSelection:
         # Re-run
         at.run()
 
-        # Try to select Vector Search if it exists in options (this is the bug)
+        # Try to select Vector Search if it exists in options
         selectboxes = [sb for sb in at.selectbox if sb.label == "Tool Selection"]
 
         if selectboxes and "Vector Search" in selectboxes[0].options:
-            # This is the buggy behavior - Vector Search shouldn't be an option
+            # Vector Search shouldn't be an option
             tool_selectbox = selectboxes[0]
 
             # Try to select it

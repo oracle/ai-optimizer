@@ -3,14 +3,15 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
+# pylint: disable=import-error import-outside-toplevel
 
 from io import BytesIO
 from unittest.mock import MagicMock
+
 import pandas as pd
-import pytest
 from streamlit import session_state as state
-from client.utils import st_common, api_call
+
+from client.utils import api_call, st_common
 
 
 #############################################################################
@@ -238,9 +239,15 @@ class TestCommonHelpers:
         # Mock api_call.patch
         patch_called = False
 
-        def mock_patch(endpoint, payload, params, toast=True):
+        def mock_patch(endpoint, payload, params=None, toast=True):
             nonlocal patch_called
             patch_called = True
+            # Parameters are needed for the API call but not validated in this test
+            assert endpoint is not None
+            assert payload is not None
+            # params and toast are optional but accepted for API compatibility
+            _ = params  # Mark as intentionally unused
+            _ = toast   # Mark as intentionally unused
             return {}
 
         monkeypatch.setattr(api_call, "patch", mock_patch)
@@ -256,7 +263,13 @@ class TestCommonHelpers:
         state.client_settings = {"client": "test-client", "ll_model": {}}
 
         # Mock api_call.patch to raise error
-        def mock_patch(endpoint, payload, params, toast=True):
+        def mock_patch(endpoint, payload, params=None, toast=True):
+            # Parameters validated before raising error
+            assert endpoint is not None
+            assert payload is not None
+            # params and toast are optional but accepted for API compatibility
+            _ = params  # Mark as intentionally unused
+            _ = toast   # Mark as intentionally unused
             raise api_call.ApiError("Update failed")
 
         monkeypatch.setattr(api_call, "patch", mock_patch)
@@ -471,5 +484,3 @@ class TestVectorStoreHelpers:
         # Should only return the 1000 chunk_size entry
         assert len(result) == 1
         assert result.iloc[0]["chunk_size"] == 1000
-
-

@@ -138,9 +138,12 @@ def get_testbed_db_testsets() -> dict:
 def qa_delete() -> None:
     """Delete QA from Database"""
     tid = state.testbed["testset_id"]
-    api_call.delete(endpoint=f"v1/testbed/testset_delete/{tid}")
-    st.success(f"Test Set and Evaluations Deleted: {state.testbed['testset_name']}")
-    reset_testset(True)
+    try:
+        api_call.delete(endpoint=f"v1/testbed/testset_delete/{tid}")
+        st.success(f"Test Set and Evaluations Deleted: {state.testbed['testset_name']}")
+        reset_testset(True)
+    except api_call.ApiError as e:
+        st.error(f"Failed to delete test set: {e.message}")
 
 
 def qa_update_db() -> None:

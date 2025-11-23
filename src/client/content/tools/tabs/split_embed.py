@@ -123,23 +123,49 @@ def files_data_editor(files, key):
 
 
 def update_chunk_overlap_slider() -> None:
-    """Keep text and slider input aligned"""
-    state.selected_chunk_overlap_slider = state.selected_chunk_overlap_input
+    """Keep text and slider input aligned and ensure overlap doesn't exceed chunk size"""
+    new_overlap = state.selected_chunk_overlap_input
+    # Ensure overlap doesn't exceed chunk size
+    if hasattr(state, 'selected_chunk_size_slider'):
+        chunk_size = state.selected_chunk_size_slider
+        if new_overlap >= chunk_size:
+            new_overlap = max(0, chunk_size - 1)
+            state.selected_chunk_overlap_input = new_overlap
+    state.selected_chunk_overlap_slider = new_overlap
 
 
 def update_chunk_overlap_input() -> None:
-    """Keep text and slider input aligned"""
-    state.selected_chunk_overlap_input = state.selected_chunk_overlap_slider
+    """Keep text and slider input aligned and ensure overlap doesn't exceed chunk size"""
+    new_overlap = state.selected_chunk_overlap_slider
+    # Ensure overlap doesn't exceed chunk size
+    if hasattr(state, 'selected_chunk_size_slider'):
+        chunk_size = state.selected_chunk_size_slider
+        if new_overlap >= chunk_size:
+            new_overlap = max(0, chunk_size - 1)
+            state.selected_chunk_overlap_slider = new_overlap
+    state.selected_chunk_overlap_input = new_overlap
 
 
 def update_chunk_size_slider() -> None:
-    """Keep text and slider input aligned"""
+    """Keep text and slider input aligned and adjust overlap if needed"""
     state.selected_chunk_size_slider = state.selected_chunk_size_input
+    # If overlap exceeds new chunk size, cap it
+    if hasattr(state, 'selected_chunk_overlap_slider'):
+        if state.selected_chunk_overlap_slider >= state.selected_chunk_size_slider:
+            new_overlap = max(0, state.selected_chunk_size_slider - 1)
+            state.selected_chunk_overlap_slider = new_overlap
+            state.selected_chunk_overlap_input = new_overlap
 
 
 def update_chunk_size_input() -> None:
-    """Keep text and slider input aligned"""
+    """Keep text and slider input aligned and adjust overlap if needed"""
     state.selected_chunk_size_input = state.selected_chunk_size_slider
+    # If overlap exceeds new chunk size, cap it
+    if hasattr(state, 'selected_chunk_overlap_input'):
+        if state.selected_chunk_overlap_input >= state.selected_chunk_size_input:
+            new_overlap = max(0, state.selected_chunk_size_input - 1)
+            state.selected_chunk_overlap_input = new_overlap
+            state.selected_chunk_overlap_slider = new_overlap
 
 
 #############################################################################

@@ -3,11 +3,13 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
+# pylint: disable=import-error import-outside-toplevel
 
-import pytest
+from unittest.mock import AsyncMock, MagicMock
+
 import httpx
-from unittest.mock import AsyncMock, MagicMock, patch
+import pytest
+
 from client.utils.client import Client
 
 
@@ -92,21 +94,21 @@ class TestClientInitialization:
         mock_response = MagicMock()
         mock_response.status_code = 200
 
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.request = MagicMock(return_value=mock_response)
+        mock_http_client = MagicMock()
+        mock_http_client.__enter__ = MagicMock(return_value=mock_http_client)
+        mock_http_client.__exit__ = MagicMock(return_value=False)
+        mock_http_client.request = MagicMock(return_value=mock_response)
 
-        monkeypatch.setattr(httpx, "Client", lambda: mock_client)
+        monkeypatch.setattr(httpx, "Client", lambda: mock_http_client)
 
         server = {"url": "http://localhost", "port": 8000, "key": "test-key"}
         settings = {"client": "test-client", "ll_model": {}}
 
-        client = Client(server, settings)
+        Client(server, settings)
 
         # Should have called PATCH method
-        assert mock_client.request.called
-        first_call_method = mock_client.request.call_args_list[0][1]["method"]
+        assert mock_http_client.request.called
+        first_call_method = mock_http_client.request.call_args_list[0][1]["method"]
         assert first_call_method == "PATCH"
 
     def test_client_init_patch_fails_post_succeeds(self, app_server, monkeypatch):
@@ -142,9 +144,12 @@ class TestClientInitialization:
         # First two calls fail, third succeeds
         call_count = 0
 
-        def mock_request(*args, **kwargs):
+        def mock_request(method, url, **_request_kwargs):
             nonlocal call_count
             call_count += 1
+            # Validate parameters are passed correctly
+            assert method in ["PATCH", "POST"]
+            assert url is not None
             if call_count < 3:
                 raise httpx.HTTPError("Connection failed")
             response = MagicMock()
