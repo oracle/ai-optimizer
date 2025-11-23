@@ -45,6 +45,7 @@ __pycache__/
 *$py.class
 **/*.egg-info
 **/build/
+**/.mypy_cache
 
 # Test coverage artifacts
 .coverage
