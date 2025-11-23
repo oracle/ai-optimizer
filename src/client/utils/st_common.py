@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore isin mult selectbox
 
 from io import BytesIO
-from typing import Any, Union, get_args
+from typing import Any, Union
 import pandas as pd
 
 import streamlit as st
@@ -155,7 +155,6 @@ def ll_sidebar() -> None:
         state.client_settings["ll_model"].update(defaults)
 
     selected_model = state.client_settings["ll_model"]["model"]
-    ll_idx = list(ll_models_enabled.keys()).index(selected_model)
 
     # Temperature
     temperature = ll_models_enabled[selected_model]["temperature"]
@@ -244,10 +243,8 @@ def tools_sidebar() -> None:
     else:
         # Client Settings
         db_alias = state.client_settings.get("database", {}).get("alias")
-        oci_auth_profile = state.client_settings["oci"]["auth_profile"]
 
         # Lookups
-        oci_lookup = state_configs_lookup("oci_configs", "auth_profile")
         database_lookup = state_configs_lookup("database_configs", "name")
 
         tools = [

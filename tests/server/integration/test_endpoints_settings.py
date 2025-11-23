@@ -10,7 +10,6 @@ from common.schema import (
     Settings,
     LargeLanguageSettings,
     VectorSearchSettings,
-    SelectAISettings,
     OciSettings,
 )
 

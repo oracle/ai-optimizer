@@ -7,9 +7,6 @@ It includes a form to input and test database connection settings.
 """
 # spell-checker:ignore selectbox
 
-import json
-import pandas as pd
-
 import streamlit as st
 from streamlit import session_state as state
 
