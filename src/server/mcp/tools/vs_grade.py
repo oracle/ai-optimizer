@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from litellm import acompletion
 from litellm.exceptions import APIConnectionError
 
-import server.api.core.settings as core_settings
+import src.server.api.utils.settings as utils_settings
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
 import server.mcp.prompts.defaults as grading_prompts
@@ -79,7 +79,7 @@ async def _vs_grade_impl(
         )
 
         # Get client settings
-        client_settings = core_settings.get_client_settings(thread_id)
+        client_settings = utils_settings.get_client_settings(thread_id)
         vector_search = client_settings.vector_search
 
         # Format documents

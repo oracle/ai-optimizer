@@ -13,7 +13,7 @@ from langchain_community.vectorstores.oraclevs import OracleVS
 
 from litellm import completion
 
-import server.api.core.settings as core_settings
+import src.server.api.utils.settings as utils_settings
 import server.api.utils.databases as utils_databases
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
@@ -260,7 +260,7 @@ def _vs_retrieve_impl(
         )
 
         # Get client settings
-        client_settings = core_settings.get_client_settings(thread_id)
+        client_settings = utils_settings.get_client_settings(thread_id)
         vector_search = client_settings.vector_search
 
         # Tool presence indicates VS is enabled (controlled by chat.py:77-78)

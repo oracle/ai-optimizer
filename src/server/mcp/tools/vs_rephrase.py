@@ -12,7 +12,7 @@ from litellm import completion
 from litellm.exceptions import APIConnectionError
 from langchain_core.prompts import PromptTemplate
 
-import server.api.core.settings as core_settings
+import src.server.api.utils.settings as utils_settings
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
 
@@ -81,7 +81,7 @@ async def _vs_rephrase_impl(
         )
 
         # Get client settings
-        client_settings = core_settings.get_client_settings(thread_id)
+        client_settings = utils_settings.get_client_settings(thread_id)
         use_history = client_settings.ll_model.chat_history
 
         # Only rephrase if history is enabled and there's actual history

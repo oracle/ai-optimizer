@@ -369,7 +369,7 @@ The LLM can chain tools sequentially:
 
 6. Tool is automatically discovered and registered on server startup
 
-**Thread ID Injection**: Tools prefixed with `"optimizer_"` automatically receive `thread_id` parameter, enabling access to client-specific settings via `core_settings.get_client_settings(thread_id)`.
+**Thread ID Injection**: Tools prefixed with `"optimizer_"` automatically receive `thread_id` parameter, enabling access to client-specific settings via `utils_settings.get_client_settings(thread_id)`.
 
 ### Adding a New Prompt
 
@@ -481,7 +481,7 @@ The LLM can chain tools sequentially:
 ### Accessing Client Configuration
 
 MCP tools can access configuration through the bootstrap system:
-- **Client settings**: `core_settings.get_client_settings(thread_id)`
+- **Client settings**: `utils_settings.get_client_settings(thread_id)`
 - **Database connection**: `utils_databases.get_client_database(thread_id)`
 - **LLM model config**: `utils_models.get(client_settings.model.llm.id)`
 

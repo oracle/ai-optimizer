@@ -20,7 +20,7 @@ from common import logging_config
 logger = logging_config.logging.getLogger("api.core.settings")
 
 
-def create_client_settings(client: ClientIdType) -> Settings:
+def create_client(client: ClientIdType) -> Settings:
     """Create a new client"""
     logger.debug("Creating client (if non-existent): %s", client)
     settings_objects = bootstrap.SETTINGS_OBJECTS
@@ -93,7 +93,7 @@ async def get_mcp_prompts_with_overrides(mcp_engine: FastMCP) -> list[MCPPrompt]
     return prompts_info
 
 
-async def get_server_config(mcp_engine: FastMCP) -> dict:
+async def get_server(mcp_engine: FastMCP) -> dict:
     """Return server configuration"""
     database_objects = bootstrap.DATABASE_OBJECTS
     database_configs = list(database_objects)
@@ -120,7 +120,7 @@ async def get_server_config(mcp_engine: FastMCP) -> dict:
     return full_config
 
 
-def update_client_settings(payload: Settings, client: ClientIdType) -> Settings:
+def update_client(payload: Settings, client: ClientIdType) -> Settings:
     """Update a single client settings"""
     settings_objects = bootstrap.SETTINGS_OBJECTS
 
@@ -173,12 +173,12 @@ def load_config_from_json_data(config_data: dict, client: ClientIdType = None) -
     # Determine clients to update
     if client:
         logger.debug("Updating client settings: %s", client)
-        update_client_settings(client_settings, client)
+        update_client(client_settings, client)
     else:
         server_settings = copy.deepcopy(client_settings)
-        update_client_settings(server_settings, "server")
+        update_client(server_settings, "server")
         default_settings = copy.deepcopy(client_settings)
-        update_client_settings(default_settings, "default")
+        update_client(default_settings, "default")
 
 
 def read_config_from_json_file() -> Configuration:

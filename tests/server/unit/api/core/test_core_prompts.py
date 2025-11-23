@@ -302,11 +302,11 @@ class TestPromptOverrideCache:
 
 
 class TestServerConfigIntegration:
-    """Integration tests for get_server_config with prompts"""
+    """Integration tests for get_server with prompts"""
 
     @pytest.mark.asyncio
-    async def test_get_server_config_includes_prompt_overrides(self):
-        """Test that get_server_config includes prompt_overrides in response"""
+    async def test_get_server_includes_prompt_overrides(self):
+        """Test that get_server includes prompt_overrides in response"""
         cache.clear_all_overrides()
         cache.set_override("optimizer_basic-default", "Custom basic")
         cache.set_override("optimizer_tools-default", "Custom tools")
@@ -338,7 +338,7 @@ class TestServerConfigIntegration:
              patch("server.api.core.settings.bootstrap.OCI_OBJECTS", []), \
              patch("server.api.core.settings.get_mcp_prompts_with_overrides", return_value=mock_prompts):
 
-            result = await settings.get_server_config(mock_mcp_engine)
+            result = await settings.get_server(mock_mcp_engine)
 
         assert "prompt_configs" in result
         assert "prompt_overrides" in result
@@ -351,8 +351,8 @@ class TestServerConfigIntegration:
         cache.clear_all_overrides()
 
     @pytest.mark.asyncio
-    async def test_get_server_config_empty_overrides(self):
-        """Test get_server_config when no overrides exist"""
+    async def test_get_server_empty_overrides(self):
+        """Test get_server when no overrides exist"""
         cache.clear_all_overrides()
 
         mock_mcp_engine = MagicMock()
@@ -373,6 +373,6 @@ class TestServerConfigIntegration:
              patch("server.api.core.settings.bootstrap.OCI_OBJECTS", []), \
              patch("server.api.core.settings.get_mcp_prompts_with_overrides", return_value=mock_prompts):
 
-            result = await settings.get_server_config(mock_mcp_engine)
+            result = await settings.get_server(mock_mcp_engine)
 
         assert result["prompt_overrides"] == {}
