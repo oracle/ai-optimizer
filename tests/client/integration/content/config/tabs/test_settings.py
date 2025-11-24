@@ -299,8 +299,7 @@ class TestSpringAIFunctions:
                     "title": "Basic Example",
                     "description": "Basic default prompt",
                     "tags": [],
-                    "default_text": "You are a helpful assistant.",
-                    "override_text": None,
+                    "text": "You are a helpful assistant.",
                 }
             ],
             database_configs=[{"name": "DEFAULT", "user": "test_user", "password": "test_pass"}],
@@ -331,9 +330,7 @@ class TestSpringAIFunctions:
                 "override_text": None,
             }
         ]
-        at.session_state.database_configs = [
-            {"name": "DEFAULT", "user": "test_user", "password": "test_pass"}
-        ]
+        at.session_state.database_configs = [{"name": "DEFAULT", "user": "test_user", "password": "test_pass"}]
 
         if run_app:
             at.run()
@@ -428,8 +425,7 @@ class TestSpringAIFunctions:
                     "title": "Basic Example",
                     "description": "Basic default prompt",
                     "tags": [],
-                    "default_text": "You are a helpful assistant.",
-                    "override_text": None,
+                    "text": "You are a helpful assistant.",
                 }
             ],
         )
@@ -809,3 +805,100 @@ class TestCompareSettingsFunctions:
 
         # Same values should not appear in differences
         assert "config.name" not in differences["Value Mismatch"]
+
+
+class TestPromptConfigUpload:
+    """Test prompt configuration upload scenarios"""
+
+    def test_upload_prompt_matching_default(self, app_server, client):
+        """Test uploading settings with prompt text that matches default"""
+        assert app_server is not None
+
+        # Get current settings with prompts
+        response = client.get("/v1/settings?client=test_client&full_config=true&incl_sensitive=true")
+        assert response.status_code == 200
+        original_config = response.json()
+
+        if not original_config.get("prompt_configs"):
+            pytest.skip("No prompts available for testing")
+
+        # Modify a prompt to custom text
+        test_prompt = original_config["prompt_configs"][0]
+        original_text = test_prompt["text"]
+        custom_text = "Custom test instruction - pirate"
+        test_prompt["text"] = custom_text
+
+        # Upload with custom text
+        response = client.post(
+            "/v1/settings/load/json?client=test_client",
+            json=original_config
+        )
+        assert response.status_code == 200
+
+        # Verify custom text is active
+        response = client.get("/v1/mcp/prompts?full=true")
+        prompts = response.json()
+        updated_prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert updated_prompt is not None
+        assert updated_prompt["text"] == custom_text
+
+        # Now upload again with text matching the default
+        test_prompt["text"] = original_text
+        response = client.post(
+            "/v1/settings/load/json?client=test_client",
+            json=original_config
+        )
+        assert response.status_code == 200
+
+        # Verify the default text is now active (override was replaced)
+        response = client.get("/v1/mcp/prompts?full=true")
+        prompts = response.json()
+        reverted_prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert reverted_prompt is not None
+        assert reverted_prompt["text"] == original_text
+
+    def test_upload_alternating_prompt_text(self, app_server, client):
+        """Test uploading settings with alternating prompt text"""
+        assert app_server is not None
+
+        # Get current settings
+        response = client.get("/v1/settings?client=test_client&full_config=true&incl_sensitive=true")
+        assert response.status_code == 200
+        config = response.json()
+
+        if not config.get("prompt_configs"):
+            pytest.skip("No prompts available for testing")
+
+        test_prompt = config["prompt_configs"][0]
+        text_a = "Talk like a pirate"
+        text_b = "Talk like a pirate lady"
+
+        # Upload with text A
+        test_prompt["text"] = text_a
+        response = client.post("/v1/settings/load/json?client=test_client", json=config)
+        assert response.status_code == 200
+
+        response = client.get("/v1/mcp/prompts?full=true")
+        prompts = response.json()
+        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert prompt["text"] == text_a
+
+        # Upload with text B
+        test_prompt["text"] = text_b
+        response = client.post("/v1/settings/load/json?client=test_client", json=config)
+        assert response.status_code == 200
+
+        response = client.get("/v1/mcp/prompts?full=true")
+        prompts = response.json()
+        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert prompt["text"] == text_b
+
+        # Upload with text A again
+        test_prompt["text"] = text_a
+        response = client.post("/v1/settings/load/json?client=test_client", json=config)
+        assert response.status_code == 200
+
+        response = client.get("/v1/mcp/prompts?full=true")
+        prompts = response.json()
+        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert prompt["text"] == text_a

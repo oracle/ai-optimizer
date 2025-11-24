@@ -89,7 +89,7 @@ class TestSettings:
         assert "database_configs" in result
         assert "model_configs" in result
         assert "oci_configs" in result
-        assert "prompt_overrides" in result
+        assert "prompt_configs" in result
 
     @patch("server.api.utils.settings.bootstrap.SETTINGS_OBJECTS")
     @patch("server.api.utils.settings.get_client")
@@ -139,7 +139,7 @@ class TestSettings:
     def test_load_config_from_json_data_missing_client_settings(self, _mock_update_server):
         """Test loading config from JSON data without client_settings"""
         # Create config without client_settings
-        invalid_config = {"database_configs": [], "model_configs": [], "oci_configs": [], "prompt_overrides": {}}
+        invalid_config = {"database_configs": [], "model_configs": [], "oci_configs": [], "prompt_configs": []}
 
         with pytest.raises(KeyError, match="Missing client_settings in config file"):
             settings.load_config_from_json_data(invalid_config)
@@ -178,3 +178,67 @@ class TestSettings:
         """Test that logger is properly configured"""
         assert hasattr(settings, "logger")
         assert settings.logger.name == "api.core.settings"
+
+    @patch("server.api.utils.settings.cache")
+    def test_load_prompt_override_with_text(self, mock_cache):
+        """Test loading prompt override when text is provided"""
+        prompt = {"name": "optimizer_test-prompt", "text": "You are a test assistant"}
+
+        result = settings._load_prompt_override(prompt)
+
+        assert result is True
+        mock_cache.set_override.assert_called_once_with("optimizer_test-prompt", "You are a test assistant")
+
+    @patch("server.api.utils.settings.cache")
+    def test_load_prompt_override_without_text(self, mock_cache):
+        """Test loading prompt override when text is not provided"""
+        prompt = {"name": "optimizer_test-prompt"}
+
+        result = settings._load_prompt_override(prompt)
+
+        assert result is False
+        mock_cache.set_override.assert_not_called()
+
+    @patch("server.api.utils.settings.cache")
+    def test_load_prompt_override_empty_text(self, mock_cache):
+        """Test loading prompt override when text is empty string"""
+        prompt = {"name": "optimizer_test-prompt", "text": ""}
+
+        result = settings._load_prompt_override(prompt)
+
+        assert result is False
+        mock_cache.set_override.assert_not_called()
+
+    @patch("server.api.utils.settings._load_prompt_override")
+    def test_load_prompt_configs_success(self, mock_load_override):
+        """Test loading prompt configs successfully"""
+        mock_load_override.side_effect = [True, True, False]
+        config_data = {
+            "prompt_configs": [
+                {"name": "prompt1", "text": "text1"},
+                {"name": "prompt2", "text": "text2"},
+                {"name": "prompt3", "text": "text3"},
+            ]
+        }
+
+        settings._load_prompt_configs(config_data)
+
+        assert mock_load_override.call_count == 3
+
+    @patch("server.api.utils.settings._load_prompt_override")
+    def test_load_prompt_configs_no_prompts_key(self, mock_load_override):
+        """Test loading prompt configs when key is missing"""
+        config_data = {"other_configs": []}
+
+        settings._load_prompt_configs(config_data)
+
+        mock_load_override.assert_not_called()
+
+    @patch("server.api.utils.settings._load_prompt_override")
+    def test_load_prompt_configs_empty_list(self, mock_load_override):
+        """Test loading prompt configs with empty list"""
+        config_data = {"prompt_configs": []}
+
+        settings._load_prompt_configs(config_data)
+
+        mock_load_override.assert_not_called()

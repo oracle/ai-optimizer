@@ -50,3 +50,59 @@ class TestStreamlit:
 
         # Verify key session state exists
         assert "prompt_configs" in at.session_state
+
+    def test_get_prompts_includes_text(self, app_server, app_test):
+        """Test that get_prompts() fetches prompts with text field"""
+        assert app_server is not None
+
+        at = app_test(self.ST_FILE).run()
+
+        # Verify prompt_configs has text field
+        if at.session_state.prompt_configs:
+            first_prompt = at.session_state.prompt_configs[0]
+            assert "text" in first_prompt
+            assert isinstance(first_prompt["text"], str)
+            assert len(first_prompt["text"]) > 0
+
+    def test_get_prompt_instructions_from_cache(self, app_server, app_test):
+        """Test that get_prompt_instructions() reads from cached state"""
+        assert app_server is not None
+
+        at = app_test(self.ST_FILE).run()
+
+        if not at.session_state.prompt_configs:
+            # No prompts available, skip test
+            return
+
+        # Select a prompt
+        first_prompt_title = at.session_state.prompt_configs[0]["title"]
+        at.selectbox(key="selected_prompt").set_value(first_prompt_title).run()
+
+        # Verify instructions were loaded from cache
+        assert "selected_prompt_instructions" in at.session_state
+        expected_text = at.session_state.prompt_configs[0]["text"]
+        assert at.session_state.selected_prompt_instructions == expected_text
+
+    def test_prompt_selection_updates_instructions(self, app_server, app_test):
+        """Test that changing prompt selection updates instructions"""
+        assert app_server is not None
+
+        at = app_test(self.ST_FILE).run()
+
+        if len(at.session_state.prompt_configs) < 2:
+            # Need at least 2 prompts for this test
+            return
+
+        # Select first prompt
+        first_prompt_title = at.session_state.prompt_configs[0]["title"]
+        at.selectbox(key="selected_prompt").set_value(first_prompt_title).run()
+        first_instructions = at.session_state.selected_prompt_instructions
+
+        # Select second prompt
+        second_prompt_title = at.session_state.prompt_configs[1]["title"]
+        at.selectbox(key="selected_prompt").set_value(second_prompt_title).run()
+        second_instructions = at.session_state.selected_prompt_instructions
+
+        # Instructions should be different
+        assert first_instructions != second_instructions
+        assert second_instructions == at.session_state.prompt_configs[1]["text"]

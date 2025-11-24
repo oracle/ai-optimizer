@@ -12,6 +12,7 @@ import mcp
 from server.api.v1.mcp import get_mcp
 from server.mcp.prompts import cache
 import server.api.utils.mcp as utils_mcp
+import server.api.utils.settings as utils_settings
 
 from common import logging_config
 
@@ -25,11 +26,22 @@ auth = APIRouter()
     description="List MCP prompts",
     response_model=list[dict],
 )
-async def mcp_list_prompts(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
-    """List MCP Prompts"""
+async def mcp_list_prompts(mcp_engine: FastMCP = Depends(get_mcp), full: bool = False) -> list[dict]:
+    """List MCP Prompts
 
+    Args:
+        full: If True, include resolved text content. If False, return metadata only (MCP standard).
+    """
+
+    if full:
+        # Return prompts with resolved text (default + overrides)
+        prompts = await utils_settings.get_mcp_prompts_with_overrides(mcp_engine)
+        logger.debug("MCP Prompts (full): %s", prompts)
+        return [prompt.model_dump() for prompt in prompts]
+
+    # Return MCP standard format (metadata only)
     prompts = await utils_mcp.list_prompts(mcp_engine)
-    logger.debug("MCP Resources: %s", prompts)
+    logger.debug("MCP Prompts (metadata): %s", prompts)
 
     prompts_info = []
     for prompts_object in prompts:

@@ -110,9 +110,7 @@ def _render_upload_settings_section() -> None:
                     time.sleep(3)
                     st.rerun()
             else:
-                st.write(
-                    "No differences found. The current configuration matches the saved settings."
-                )
+                st.write("No differences found. The current configuration matches the saved settings.")
         except json.JSONDecodeError:
             st.error("Error: The uploaded file is not a valid.")
     else:
@@ -127,18 +125,14 @@ def _get_model_configs() -> tuple[dict, dict, str]:
     """
     try:
         model_lookup = st_common.enabled_models_lookup(model_type="ll")
-        ll_config = (
-            model_lookup[state.client_settings["ll_model"]["model"]]
-            | state.client_settings["ll_model"]
-        )
+        ll_config = model_lookup[state.client_settings["ll_model"]["model"]] | state.client_settings["ll_model"]
     except KeyError:
         ll_config = {}
 
     try:
         model_lookup = st_common.enabled_models_lookup(model_type="embed")
         embed_config = (
-            model_lookup[state.client_settings["vector_search"]["model"]]
-            | state.client_settings["vector_search"]
+            model_lookup[state.client_settings["vector_search"]["model"]] | state.client_settings["vector_search"]
         )
     except KeyError:
         embed_config = {}
@@ -178,9 +172,7 @@ def _render_source_code_templates_section() -> None:
             if spring_ai_conf != "hosted_vllm":
                 st.download_button(
                     label="Download SpringAI",
-                    data=spring_ai_zip(
-                        spring_ai_conf, ll_config, embed_config
-                    ),  # Generate zip on the fly
+                    data=spring_ai_zip(spring_ai_conf, ll_config, embed_config),  # Generate zip on the fly
                     file_name="spring_ai.zip",  # Zip file name
                     mime="application/zip",  # Mime type for zip file
                     disabled=spring_ai_conf == "hybrid",
@@ -231,6 +223,81 @@ def save_settings(settings):
     return json.dumps(settings, indent=2)
 
 
+def _compare_prompt_configs(current_prompts, uploaded_prompts):
+    """Compare prompt configs by name and text.
+
+    Returns:
+        dict: Dictionary of prompt differences
+    """
+    current_by_name = {p["name"]: p for p in current_prompts}
+    uploaded_by_name = {p["name"]: p for p in uploaded_prompts}
+
+    prompt_diffs = {}
+    for name in set(current_by_name.keys()) | set(uploaded_by_name.keys()):
+        current_prompt = current_by_name.get(name)
+        uploaded_prompt = uploaded_by_name.get(name)
+
+        if not current_prompt:
+            prompt_diffs[name] = {
+                "status": "Missing in Current",
+                "uploaded_text": uploaded_prompt.get("text"),
+            }
+        elif not uploaded_prompt:
+            prompt_diffs[name] = {
+                "status": "Missing in Uploaded",
+                "current_text": current_prompt.get("text"),
+            }
+        elif current_prompt.get("text") != uploaded_prompt.get("text"):
+            prompt_diffs[name] = {
+                "status": "Text differs",
+                "current_text": current_prompt.get("text"),
+                "uploaded_text": uploaded_prompt.get("text"),
+            }
+
+    return prompt_diffs
+
+
+def _compare_dicts(current, uploaded, path, differences, sensitive_keys):
+    """Compare two dictionaries and record differences."""
+    keys = set(current.keys()) | set(uploaded.keys())
+    for key in keys:
+        new_path = f"{path}.{key}" if path else key
+
+        # Skip specific paths
+        if new_path == "client_settings.client" or new_path.endswith(".created"):
+            continue
+
+        # Special handling for prompt_configs
+        if new_path == "prompt_configs":
+            current_prompts = current.get(key) or []
+            uploaded_prompts = uploaded.get(key) or []
+            prompt_diffs = _compare_prompt_configs(current_prompts, uploaded_prompts)
+            if prompt_diffs:
+                differences["Value Mismatch"][new_path] = prompt_diffs
+            continue
+
+        _handle_key_comparison(key, current, uploaded, differences, new_path, sensitive_keys)
+
+
+def _compare_lists(current, uploaded, path, differences):
+    """Compare two lists and record differences."""
+    min_len = min(len(current), len(uploaded))
+
+    for i in range(min_len):
+        new_path = f"{path}[{i}]"
+        child_diff = compare_settings(current[i], uploaded[i], new_path)
+        for diff_type, diff_dict in differences.items():
+            diff_dict.update(child_diff[diff_type])
+
+    for i in range(min_len, len(current)):
+        new_path = f"{path}[{i}]"
+        differences["Missing in Uploaded"][new_path] = {"current": current[i]}
+
+    for i in range(min_len, len(uploaded)):
+        new_path = f"{path}[{i}]"
+        differences["Missing in Current"][new_path] = {"uploaded": uploaded[i]}
+
+
 def compare_settings(current, uploaded, path=""):
     """Compare current settings with uploaded settings."""
     differences = {
@@ -242,48 +309,14 @@ def compare_settings(current, uploaded, path=""):
     sensitive_keys = {"api_key", "password", "wallet_password"}
 
     if isinstance(current, dict) and isinstance(uploaded, dict):
-        keys = set(current.keys()) | set(uploaded.keys())
-        for key in keys:
-            new_path = f"{path}.{key}" if path else key
-
-            # Skip specific paths
-            if new_path == "client_settings.client" or new_path.endswith(".created"):
-                continue
-
-            # Special handling for prompt_overrides (simple dict comparison)
-            if new_path == "prompt_overrides":
-                current_overrides = current.get(key) or {}
-                uploaded_overrides = uploaded.get(key) or {}
-                if current_overrides != uploaded_overrides:
-                    differences["Value Mismatch"][new_path] = {
-                        "current": current_overrides,
-                        "uploaded": uploaded_overrides
-                    }
-                continue
-
-            _handle_key_comparison(
-                key, current, uploaded, differences, new_path, sensitive_keys
-            )
-
+        _compare_dicts(current, uploaded, path, differences, sensitive_keys)
     elif isinstance(current, list) and isinstance(uploaded, list):
-        min_len = min(len(current), len(uploaded))
-        for i in range(min_len):
-            new_path = f"{path}[{i}]"
-            child_diff = compare_settings(current[i], uploaded[i], new_path)
-            for diff_type, diff_dict in differences.items():
-                diff_dict.update(child_diff[diff_type])
-        for i in range(min_len, len(current)):
-            new_path = f"{path}[{i}]"
-            differences["Missing in Uploaded"][new_path] = {"current": current[i]}
-        for i in range(min_len, len(uploaded)):
-            new_path = f"{path}[{i}]"
-            differences["Missing in Current"][new_path] = {"uploaded": uploaded[i]}
-    else:
-        if current != uploaded:
-            differences["Value Mismatch"][path] = {
-                "current": current,
-                "uploaded": uploaded,
-            }
+        _compare_lists(current, uploaded, path, differences)
+    elif current != uploaded:
+        differences["Value Mismatch"][path] = {
+            "current": current,
+            "uploaded": uploaded,
+        }
 
     return differences
 
@@ -299,19 +332,14 @@ def apply_uploaded_settings(uploaded):
             timeout=7200,
         )
         st.success(response["message"], icon="✅")
-        state.client_settings = api_call.get(
-            endpoint="v1/settings", params={"client": client_id}
-        )
-        # Clear States so they are refreshed
-        for key in ["oci_configs", "model_configs", "database_configs", "prompt_configs"]:
-            st_common.clear_state_key(key)
+        state.client_settings = api_call.get(endpoint="v1/settings", params={"client": client_id})
+        # Clear all *_configs states so they are refreshed on rerun
+        for key in list(state.keys()):
+            if key.endswith("_configs"):
+                st_common.clear_state_key(key)
     except api_call.ApiError as ex:
-        st.error(
-            f"Settings for {state.client_settings['client']} - Update Failed", icon="❌"
-        )
-        logger.error(
-            "%s Settings Update failed: %s", state.client_settings["client"], ex
-        )
+        st.error(f"Settings for {state.client_settings['client']} - Update Failed", icon="❌")
+        logger.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
 
 
 def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
@@ -348,14 +376,11 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
         prompt_name = "optimizer_tools-default"
 
     # Find the prompt in configs
-    sys_prompt_obj = next(
-        (item for item in state.prompt_configs if item["name"] == prompt_name),
-        None
-    )
+    sys_prompt_obj = next((item for item in state.prompt_configs if item["name"] == prompt_name), None)
 
     if sys_prompt_obj:
-        # Use override if present, otherwise use default
-        sys_prompt = sys_prompt_obj.get("override_text") or sys_prompt_obj.get("default_text")
+        # Use the effective text (already resolved to override or default)
+        sys_prompt = sys_prompt_obj.get("text")
     else:
         # Fallback to basic prompt if not found
         logger.warning("Prompt %s not found in configs, using fallback", prompt_name)
@@ -377,24 +402,18 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
         sys_prompt=f"{sys_prompt}",
         ll_model=ll_config,
         vector_search=embed_config,
-        database_config=database_lookup[
-            state.client_settings.get("database", {}).get("alias")
-        ],
+        database_config=database_lookup[state.client_settings.get("database", {}).get("alias")],
     )
 
     if file_name.endswith(".yaml"):
-        sys_prompt = json.dumps(
-            sys_prompt, indent=True
-        )  # Converts it into a valid JSON string (preserving quotes)
+        sys_prompt = json.dumps(sys_prompt, indent=True)  # Converts it into a valid JSON string (preserving quotes)
 
         formatted_content = template_content.format(
             provider=provider,
             sys_prompt=sys_prompt,
             ll_model=ll_config,
             vector_search=embed_config,
-            database_config=database_lookup[
-                state.client_settings.get("database", {}).get("alias")
-            ],
+            database_config=database_lookup[state.client_settings.get("database", {}).get("alias")],
         )
 
         yaml_data = yaml.safe_load(formatted_content)
@@ -410,14 +429,9 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
 
             if (
                 file_name.find("obaas") != -1
-                and yaml_data["spring"]["ai"]["openai"]["base-url"].find(
-                    "api.openai.com"
-                )
-                != -1
+                and yaml_data["spring"]["ai"]["openai"]["base-url"].find("api.openai.com") != -1
             ):
-                yaml_data["spring"]["ai"]["openai"][
-                    "base-url"
-                ] = "https://api.openai.com"
+                yaml_data["spring"]["ai"]["openai"]["base-url"] = "https://api.openai.com"
                 logger.info(
                     "in spring_ai_obaas(%s) found openai.base-url and changed with https://api.openai.com",
                     file_name,
@@ -451,20 +465,12 @@ def spring_ai_zip(provider, ll_config, embed_config):
                 for filename in filenames:
                     file_path = os.path.join(foldername, filename)
 
-                    arc_name = os.path.relpath(
-                        file_path, dst_dir
-                    )  # Make the path relative
+                    arc_name = os.path.relpath(file_path, dst_dir)  # Make the path relative
                     zip_file.write(file_path, arc_name)
-            env_content = spring_ai_obaas(
-                src_dir, "start.sh", provider, ll_config, embed_config
-            )
-            yaml_content = spring_ai_obaas(
-                src_dir, "obaas.yaml", provider, ll_config, embed_config
-            )
+            env_content = spring_ai_obaas(src_dir, "start.sh", provider, ll_config, embed_config)
+            yaml_content = spring_ai_obaas(src_dir, "obaas.yaml", provider, ll_config, embed_config)
             zip_file.writestr("start.sh", env_content.encode("utf-8"))
-            zip_file.writestr(
-                "src/main/resources/application-obaas.yml", yaml_content.encode("utf-8")
-            )
+            zip_file.writestr("src/main/resources/application-obaas.yml", yaml_content.encode("utf-8"))
         zip_buffer.seek(0)
     return zip_buffer
 
@@ -493,9 +499,7 @@ def langchain_mcp_zip(settings):
                 for filename in filenames:
                     file_path = os.path.join(foldername, filename)
 
-                    arc_name = os.path.relpath(
-                        file_path, dst_dir
-                    )  # Make the path relative
+                    arc_name = os.path.relpath(file_path, dst_dir)  # Make the path relative
                     zip_file.write(file_path, arc_name)
         zip_buffer.seek(0)
     return zip_buffer
@@ -511,6 +515,7 @@ def display_settings():
     except api_call.ApiError:
         st.stop()
 
+    st.write(state.prompt_configs)
     st.header("Client Settings", divider="red")
 
     if "selected_sensitive_settings" not in state:

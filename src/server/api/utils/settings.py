@@ -74,6 +74,9 @@ async def get_mcp_prompts_with_overrides(mcp_engine: FastMCP) -> list[MCPPrompt]
         # Get override from cache
         override_text = cache.get_override(prompt_obj.name)
 
+        # Use override if exists, otherwise use default
+        effective_text = override_text or default_text
+
         # Extract tags from meta (FastMCP stores tags in meta._fastmcp.tags)
         tags = []
         if prompt_obj.meta and "_fastmcp" in prompt_obj.meta:
@@ -85,8 +88,7 @@ async def get_mcp_prompts_with_overrides(mcp_engine: FastMCP) -> list[MCPPrompt]
                 title=prompt_obj.title or prompt_obj.name,
                 description=prompt_obj.description or "",
                 tags=tags,
-                default_text=default_text,
-                override_text=override_text,
+                text=effective_text,
             )
         )
 
@@ -107,14 +109,11 @@ async def get_server(mcp_engine: FastMCP) -> dict:
     # Get MCP prompts with overrides
     prompt_configs = await get_mcp_prompts_with_overrides(mcp_engine)
 
-    # Extract just the overrides for compact storage
-    prompt_overrides = {p.name: p.override_text for p in prompt_configs if p.override_text is not None}
-
     full_config = {
         "database_configs": database_configs,
         "model_configs": model_configs,
         "oci_configs": oci_configs,
-        "prompt_overrides": prompt_overrides,  # Compact overrides only for export/import
+        "prompt_configs": [p.model_dump() for p in prompt_configs],
     }
     return full_config
 
@@ -132,6 +131,38 @@ def update_client(payload: Settings, client: ClientIdType) -> Settings:
     return get_client(client)
 
 
+def _load_prompt_override(prompt: dict) -> bool:
+    """Load prompt text into cache as override.
+
+    Returns:
+        bool: True if override was set, False otherwise
+    """
+    if prompt.get("text"):
+        cache.set_override(prompt["name"], prompt["text"])
+        logger.debug("Set override for prompt: %s", prompt["name"])
+        return True
+
+    return False
+
+
+def _load_prompt_configs(config_data: dict) -> None:
+    """Load MCP prompt text into cache from prompt_configs.
+
+    When loading from config, we treat the text as an override if it differs from code default.
+    """
+    if "prompt_configs" not in config_data:
+        return
+
+    prompt_configs = config_data["prompt_configs"]
+    if not prompt_configs:
+        return
+
+    override_count = sum(_load_prompt_override(prompt) for prompt in prompt_configs)
+
+    if override_count > 0:
+        logger.info("Loaded %d prompt overrides into cache", override_count)
+
+
 def update_server(config_data: dict) -> None:
     """Update server configuration"""
     config = Configuration(**config_data)
@@ -145,15 +176,8 @@ def update_server(config_data: dict) -> None:
     if "oci_configs" in config_data:
         bootstrap.OCI_OBJECTS = config.oci_configs or []
 
-    # Load MCP prompt overrides into cache
-    if "prompt_overrides" in config_data:
-        overrides = config_data["prompt_overrides"]
-        if overrides:
-            logger.info("Loading %d prompt overrides into cache", len(overrides))
-            for name, text in overrides.items():
-                if text:  # Only set non-null overrides
-                    cache.set_override(name, text)
-                    logger.debug("Set override for prompt: %s", name)
+    # Load MCP prompt text into cache from prompt_configs
+    _load_prompt_configs(config_data)
 
 
 def load_config_from_json_data(config_data: dict, client: ClientIdType = None) -> None:

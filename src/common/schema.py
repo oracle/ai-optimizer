@@ -60,9 +60,6 @@ class VectorStoreRefreshStatus(BaseModel):
     errors: Optional[list[str]] = Field(default=[], description="Any errors encountered")
 
 
-
-
-
 class DatabaseAuth(BaseModel):
     """Patch'able Database Configuration (sent to oracledb)"""
 
@@ -192,8 +189,7 @@ class MCPPrompt(BaseModel):
     title: str = Field(..., description="Human-readable title")
     description: str = Field(default="", description="Prompt purpose and usage")
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
-    default_text: str = Field(..., description="Default prompt text from code")
-    override_text: Optional[str] = Field(None, description="User's custom override (if any)")
+    text: str = Field(..., description="Effective prompt text (override if exists, otherwise default)")
 
 
 #####################################################
@@ -222,8 +218,6 @@ class VectorSearchSettings(DatabaseVectorStorage):
     lambda_mult: Optional[float] = Field(
         default=0.5, ge=0.0, le=1.0, description="Degree of Diversity (for Maximal Marginal Relevance)"
     )
-
-
 
 
 class OciSettings(BaseModel):
@@ -275,7 +269,7 @@ class Configuration(BaseModel):
     database_configs: Optional[list[Database]] = None
     model_configs: Optional[list[Model]] = None
     oci_configs: Optional[list[OracleCloudSettings]] = None
-    prompt_overrides: Optional[dict[str, str]] = None
+    prompt_configs: Optional[list[MCPPrompt]] = None
 
     def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
