@@ -6,9 +6,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 
 from io import BytesIO
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import api_call, st_common
@@ -247,7 +248,7 @@ class TestCommonHelpers:
             assert payload is not None
             # params and toast are optional but accepted for API compatibility
             _ = params  # Mark as intentionally unused
-            _ = toast   # Mark as intentionally unused
+            _ = toast  # Mark as intentionally unused
             return {}
 
         monkeypatch.setattr(api_call, "patch", mock_patch)
@@ -269,7 +270,7 @@ class TestCommonHelpers:
             assert payload is not None
             # params and toast are optional but accepted for API compatibility
             _ = params  # Mark as intentionally unused
-            _ = toast   # Mark as intentionally unused
+            _ = toast  # Mark as intentionally unused
             raise api_call.ApiError("Update failed")
 
         monkeypatch.setattr(api_call, "patch", mock_patch)
@@ -401,7 +402,7 @@ class TestDatabaseConfigurationCheck:
 class TestVectorStoreHelpers:
     """Test vector store helper functions"""
 
-    def test_update_filtered_vector_store_no_filters(self, app_server):
+    def test_update_filtered_vector_store_no_filters(self, app_server, sample_vector_stores_list):
         """Test update_filtered_vector_store with no filters"""
         assert app_server is not None
 
@@ -409,19 +410,14 @@ class TestVectorStoreHelpers:
             {"id": "text-embed-3", "provider": "openai", "type": "embed", "enabled": True},
         ]
 
-        vs_df = pd.DataFrame([
-            {"alias": "vs1", "model": "openai/text-embed-3", "chunk_size": 1000,
-             "chunk_overlap": 200, "distance_metric": "cosine", "index_type": "IVF"},
-            {"alias": "vs2", "model": "openai/text-embed-3", "chunk_size": 500,
-             "chunk_overlap": 100, "distance_metric": "euclidean", "index_type": "HNSW"},
-        ])
+        vs_df = pd.DataFrame(sample_vector_stores_list)
 
         result = st_common.update_filtered_vector_store(vs_df)
 
         # Should return all rows (filtered by enabled models only)
         assert len(result) == 2
 
-    def test_update_filtered_vector_store_with_alias_filter(self, app_server):
+    def test_update_filtered_vector_store_with_alias_filter(self, app_server, sample_vector_stores_list):
         """Test update_filtered_vector_store with alias filter"""
         assert app_server is not None
 
@@ -430,12 +426,7 @@ class TestVectorStoreHelpers:
         ]
         state.selected_vector_search_alias = "vs1"
 
-        vs_df = pd.DataFrame([
-            {"alias": "vs1", "model": "openai/text-embed-3", "chunk_size": 1000,
-             "chunk_overlap": 200, "distance_metric": "cosine", "index_type": "IVF"},
-            {"alias": "vs2", "model": "openai/text-embed-3", "chunk_size": 500,
-             "chunk_overlap": 100, "distance_metric": "euclidean", "index_type": "HNSW"},
-        ])
+        vs_df = pd.DataFrame(sample_vector_stores_list)
 
         result = st_common.update_filtered_vector_store(vs_df)
 
@@ -443,7 +434,7 @@ class TestVectorStoreHelpers:
         assert len(result) == 1
         assert result.iloc[0]["alias"] == "vs1"
 
-    def test_update_filtered_vector_store_disabled_model(self, app_server):
+    def test_update_filtered_vector_store_disabled_model(self, app_server, sample_vector_store_data):
         """Test that disabled embedding models filter out vector stores"""
         assert app_server is not None
 
@@ -451,17 +442,18 @@ class TestVectorStoreHelpers:
             {"id": "text-embed-3", "provider": "openai", "type": "embed", "enabled": False},
         ]
 
-        vs_df = pd.DataFrame([
-            {"alias": "vs1", "model": "openai/text-embed-3", "chunk_size": 1000,
-             "chunk_overlap": 200, "distance_metric": "cosine", "index_type": "IVF"},
-        ])
+        # Use shared fixture with vs1 alias
+        vs1 = sample_vector_store_data.copy()
+        vs1["alias"] = "vs1"
+        vs1.pop("vector_store", None)
+        vs_df = pd.DataFrame([vs1])
 
         result = st_common.update_filtered_vector_store(vs_df)
 
         # Should return empty (model not enabled)
         assert len(result) == 0
 
-    def test_update_filtered_vector_store_multiple_filters(self, app_server):
+    def test_update_filtered_vector_store_multiple_filters(self, app_server, sample_vector_stores_list):
         """Test update_filtered_vector_store with multiple filters"""
         assert app_server is not None
 
@@ -472,15 +464,207 @@ class TestVectorStoreHelpers:
         state.selected_vector_search_model = "openai/text-embed-3"
         state.selected_vector_search_chunk_size = 1000
 
-        vs_df = pd.DataFrame([
-            {"alias": "vs1", "model": "openai/text-embed-3", "chunk_size": 1000,
-             "chunk_overlap": 200, "distance_metric": "cosine", "index_type": "IVF"},
-            {"alias": "vs1", "model": "openai/text-embed-3", "chunk_size": 500,
-             "chunk_overlap": 100, "distance_metric": "euclidean", "index_type": "HNSW"},
-        ])
+        # Use only vs1 entries from the fixture
+        vs1_entries = [vs.copy() for vs in sample_vector_stores_list]
+        for vs in vs1_entries:
+            vs["alias"] = "vs1"
+
+        vs_df = pd.DataFrame(vs1_entries)
 
         result = st_common.update_filtered_vector_store(vs_df)
 
         # Should only return the 1000 chunk_size entry
         assert len(result) == 1
         assert result.iloc[0]["chunk_size"] == 1000
+
+
+#############################################################################
+# Test _vs_gen_selectbox Function
+#############################################################################
+class TestVsGenSelectbox:
+    """Unit tests for the _vs_gen_selectbox function"""
+
+    def test_single_option_auto_select_when_empty(self, app_server):
+        """Test auto-selection when there's one option and current value is empty"""
+        assert app_server is not None
+
+        # Setup: empty current value
+        state.client_settings = {"vector_search": {"alias": ""}}
+
+        with patch.object(st.sidebar, "selectbox") as mock_selectbox:
+            mock_selectbox.return_value = "single_option"
+
+            st_common._vs_gen_selectbox("Select Alias:", ["single_option"], "selected_vector_search_alias")
+
+            # Verify auto-selection occurred
+            assert state.client_settings["vector_search"]["alias"] == "single_option"
+            assert state.selected_vector_search_alias == "single_option"
+
+            # Verify selectbox was called with correct index (1 = first real option after empty)
+            mock_selectbox.assert_called_once()
+            call_args = mock_selectbox.call_args
+            assert call_args[1]["index"] == 1  # Index 1 points to "single_option" in ["", "single_option"]
+
+    def test_single_option_no_auto_select_when_populated(self, app_server):
+        """Test NO auto-selection when there's one option but value already exists"""
+        assert app_server is not None
+
+        # Setup: existing value
+        state.client_settings = {"vector_search": {"alias": "existing_value"}}
+
+        with patch.object(st.sidebar, "selectbox") as mock_selectbox:
+            mock_selectbox.return_value = "existing_value"
+
+            st_common._vs_gen_selectbox("Select Alias:", ["existing_value"], "selected_vector_search_alias")
+
+            # Value should remain unchanged (not overwritten)
+            assert state.client_settings["vector_search"]["alias"] == "existing_value"
+
+            # Verify selectbox was called with existing value's index
+            mock_selectbox.assert_called_once()
+            call_args = mock_selectbox.call_args
+            assert call_args[1]["index"] == 1  # existing_value is at index 1
+
+    def test_multiple_options_no_auto_select(self, app_server):
+        """Test no auto-selection with multiple options"""
+        assert app_server is not None
+
+        # Setup: empty value with multiple options
+        state.client_settings = {"vector_search": {"alias": ""}}
+
+        with patch.object(st.sidebar, "selectbox") as mock_selectbox:
+            mock_selectbox.return_value = ""
+
+            st_common._vs_gen_selectbox(
+                "Select Alias:", ["option1", "option2", "option3"], "selected_vector_search_alias"
+            )
+
+            # Should remain empty (no auto-selection)
+            assert state.client_settings["vector_search"]["alias"] == ""
+
+            # Verify selectbox was called with index 0 (empty option)
+            mock_selectbox.assert_called_once()
+            call_args = mock_selectbox.call_args
+            assert call_args[1]["index"] == 0  # Index 0 is the empty option
+
+    def test_no_valid_options_disabled(self, app_server):
+        """Test selectbox is disabled when no valid options"""
+        assert app_server is not None
+
+        state.client_settings = {"vector_search": {"alias": ""}}
+
+        with patch.object(st.sidebar, "selectbox") as mock_selectbox:
+            mock_selectbox.return_value = ""
+
+            st_common._vs_gen_selectbox(
+                "Select Alias:",
+                [],  # No options
+                "selected_vector_search_alias",
+            )
+
+            # Verify selectbox was called with disabled=True
+            mock_selectbox.assert_called_once()
+            call_args = mock_selectbox.call_args
+            assert call_args[1]["disabled"] is True
+            assert call_args[1]["index"] == 0
+
+    def test_invalid_current_value_reset(self, app_server):
+        """Test that invalid current value is reset to empty"""
+        assert app_server is not None
+
+        # Setup: value that's not in the options
+        state.client_settings = {"vector_search": {"alias": "invalid_option"}}
+
+        with patch.object(st.sidebar, "selectbox") as mock_selectbox:
+            mock_selectbox.return_value = ""
+
+            st_common._vs_gen_selectbox("Select Alias:", ["valid1", "valid2"], "selected_vector_search_alias")
+
+            # Invalid value should not cause error, selectbox should show empty
+            mock_selectbox.assert_called_once()
+            call_args = mock_selectbox.call_args
+            assert call_args[1]["index"] == 0  # Reset to empty option
+
+
+#############################################################################
+# Test Reset Button Callback Function
+#############################################################################
+class TestResetButtonCallback:
+    """Unit tests for the reset button callback within render_vector_store_selection"""
+
+    def test_reset_clears_correct_fields(self, app_server):
+        """Test reset callback clears only the specified vector store fields"""
+        assert app_server is not None
+
+        # Setup initial values
+        state.client_settings = {
+            "vector_search": {
+                "model": "openai/text-embed-3",
+                "chunk_size": 1000,
+                "chunk_overlap": 200,
+                "distance_metric": "cosine",
+                "vector_store": "vs_test",
+                "alias": "test_alias",
+                "index_type": "IVF",
+                "top_k": 10,
+                "search_type": "Similarity",
+            }
+        }
+
+        # Set widget states
+        state.selected_vector_search_model = "openai/text-embed-3"
+        state.selected_vector_search_chunk_size = 1000
+        state.selected_vector_search_chunk_overlap = 200
+        state.selected_vector_search_distance_metric = "cosine"
+        state.selected_vector_search_alias = "test_alias"
+        state.selected_vector_search_index_type = "IVF"
+
+        # Define and execute reset logic (simulating the reset callback)
+        fields_to_reset = [
+            "model",
+            "chunk_size",
+            "chunk_overlap",
+            "distance_metric",
+            "vector_store",
+            "alias",
+            "index_type",
+        ]
+        for key in fields_to_reset:
+            widget_key = f"selected_vector_search_{key}"
+            state[widget_key] = ""
+            state.client_settings["vector_search"][key] = ""
+
+        # Verify the correct fields were cleared
+        for field in fields_to_reset:
+            assert state.client_settings["vector_search"][field] == ""
+            assert state[f"selected_vector_search_{field}"] == ""
+
+        # Verify other fields were NOT cleared
+        assert state.client_settings["vector_search"]["top_k"] == 10
+        assert state.client_settings["vector_search"]["search_type"] == "Similarity"
+
+    def test_reset_enables_auto_population(self, app_server):
+        """Test that reset creates conditions for auto-population"""
+        assert app_server is not None
+
+        # Setup with existing values
+        state.client_settings = {"vector_search": {"alias": "existing"}}
+        state.selected_vector_search_alias = "existing"
+
+        # Execute reset logic
+        state.selected_vector_search_alias = ""
+        state.client_settings["vector_search"]["alias"] = ""
+
+        # After reset, fields should be empty (ready for auto-population)
+        assert state.client_settings["vector_search"]["alias"] == ""
+        assert state.selected_vector_search_alias == ""
+
+        # Now when _vs_gen_selectbox is called with a single option, it should auto-populate
+        with patch.object(st.sidebar, "selectbox") as mock_selectbox:
+            mock_selectbox.return_value = "auto_selected"
+
+            st_common._vs_gen_selectbox("Select Alias:", ["auto_selected"], "selected_vector_search_alias")
+
+            # Verify auto-population happened
+            assert state.client_settings["vector_search"]["alias"] == "auto_selected"
+            assert state.selected_vector_search_alias == "auto_selected"

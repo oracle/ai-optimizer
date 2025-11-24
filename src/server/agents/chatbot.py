@@ -246,11 +246,20 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
 
     messages = state["cleaned_messages"]
     try:
-        if state.get("context_input") and state.get("documents"):
+        # Check if Vector Search is enabled in config
+        vector_search_enabled = config["metadata"]["vector_search"].enabled
+
+        if vector_search_enabled:
+            # Always use VS prompt when Vector Search is enabled
             sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-no-tools-default")
-            documents = state["documents"]
-            new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}\n {documents}")
+            # Include documents if they exist
+            if state.get("context_input") and state.get("documents"):
+                documents = state["documents"]
+                new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}\n {documents}")
+            else:
+                new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}")
         else:
+            # LLM Only mode - use basic prompt
             sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_basic-default")
             new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}")
 

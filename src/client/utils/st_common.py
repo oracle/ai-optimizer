@@ -360,16 +360,24 @@ def _vs_gen_selectbox(label: str, options: list, key: str):
         selected_value = ""
     else:
         disabled = False
-        if len(valid_options) == 1:  # Pre-select if only one unique option
+        setting_key = key.removeprefix("selected_vector_search_")
+        current_value = state.client_settings["vector_search"][setting_key] or ""
+
+        if (
+            len(valid_options) == 1 and not current_value
+        ):  # Auto-select if only one option AND value is empty (e.g., after reset)
             selected_value = valid_options[0]
-            logger.debug("Defaulting %s to %s", key, selected_value)
+            # Also update client_settings and widget state when auto-selecting
+            state.client_settings["vector_search"][setting_key] = selected_value
+            state[key] = selected_value
+            logger.debug("Auto-selecting %s to %s (single option)", key, selected_value)
         else:
-            selected_value = state.client_settings["vector_search"][key.removeprefix("selected_vector_search_")] or ""
+            selected_value = current_value
             # Check if selected_value is actually in valid_options, otherwise reset to empty
             if selected_value and selected_value not in valid_options:
                 logger.debug("Previously selected %s '%s' no longer available, resetting", key, selected_value)
                 selected_value = ""
-            logger.debug("User selected %s to %s", key, selected_value)
+            logger.debug("Current %s value: %s", key, selected_value or "(empty)")
     return st.sidebar.selectbox(
         label,
         options=[""] + valid_options,
@@ -416,7 +424,10 @@ def render_vector_store_selection(vs_df: pd.DataFrame) -> None:
                 "alias",
                 "index_type",
             ):
-                clear_state_key(f"selected_vector_search_{key}")
+                widget_key = f"selected_vector_search_{key}"
+                # Set widget state to empty string to force GUI reset
+                state[widget_key] = ""
+                # Also clear the client settings
                 state.client_settings["vector_search"][key] = ""
 
     filtered_df = update_filtered_vector_store(vs_df)

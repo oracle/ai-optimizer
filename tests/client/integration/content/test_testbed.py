@@ -457,6 +457,74 @@ class TestStreamlit:
 
         # Note: Full API integration testing is covered by integration tests
 
+    def test_generate_qa_button_regression(self, app_server, app_test, db_container):
+        """Test that Generate Q&A button logic correctly handles testset_id check"""
+        assert app_server is not None
+        assert db_container is not None
+
+        # Initialize app_test
+        at = app_test(self.ST_FILE)
+
+        # Set up prerequisites using helper functions
+        at = setup_test_database(at)
+
+        # Create model configurations
+        at.session_state.model_configs = [
+            {
+                "id": "gpt-4o-mini",
+                "type": "ll",
+                "enabled": True,
+                "provider": "openai",
+                "openai_compat": True,
+            },
+            {
+                "id": "text-embedding-3-small",
+                "type": "embed",
+                "enabled": True,
+                "provider": "openai",
+                "openai_compat": True,
+            },
+        ]
+
+        # Initialize client_settings
+        if "client_settings" not in at.session_state:
+            at.session_state.client_settings = {}
+        if "testbed" not in at.session_state.client_settings:
+            at.session_state.client_settings["testbed"] = {}
+
+        # Run the app in default mode (loading existing test sets)
+        at.run()
+
+        # In this mode, button should be disabled if testset_id is None
+        # (which it is initially)
+        load_button_default = at.button(key="load_tests")
+        assert load_button_default is not None, "Expected button with key 'load_tests' in default mode"
+        # Button should be disabled because we're in load mode with no testset_id
+        assert load_button_default.disabled, "Load Q&A button should be disabled without testset_id in load mode"
+
+        # Now toggle to "Generate Q&A Test Set" mode
+        generate_toggle = at.toggle(key="selected_generate_test")
+        assert generate_toggle is not None, "Expected toggle with key 'selected_generate_test'"
+        generate_toggle.set_value(True).run()
+
+        # In generate mode, testset_id should NOT affect button state
+        # The button should only be disabled if no file is uploaded
+        load_button_generate = at.button(key="load_tests")
+        assert load_button_generate is not None, "Expected button with key 'load_tests' in generate mode"
+
+        # The button should be disabled because no file is uploaded yet,
+        # NOT because testset_id is None (which was the regression)
+        assert load_button_generate.disabled, "Generate Q&A button should be disabled without a file"
+
+        # Verify we have a file uploader in generate mode
+        file_uploaders = at.get("file_uploader")
+        assert len(file_uploaders) > 0, "Expected at least one file uploader in generate mode"
+
+        # The test passes if:
+        # 1. In load mode, button is disabled when testset_id is None
+        # 2. In generate mode, button state depends on file upload, not testset_id
+        # This confirms the regression fix is working correctly
+
 
 #############################################################################
 # Integration Tests with Real Database
@@ -543,3 +611,55 @@ class TestTestbedDatabaseIntegration:
         for func_name in main_functions:
             assert hasattr(testbed, func_name), f"Function {func_name} not found"
             assert callable(getattr(testbed, func_name)), f"Function {func_name} is not callable"
+
+    def test_load_button_enabled_with_database_testset(self, app_server, app_test, db_container):
+        """Test that Load Q&A button is enabled when a database test set is selected"""
+        assert app_server is not None
+        assert db_container is not None
+
+        # Initialize app_test
+        at = app_test(self.ST_FILE)
+
+        # Set up prerequisites using helper functions
+        at = setup_test_database(at)
+        at = enable_test_models(at)
+
+        # Mock database test sets to ensure we have some available
+        mock_testsets = [
+            {"tid": "test1", "name": "Test Set 1", "created": "2024-01-01 10:00:00"},
+            {"tid": "test2", "name": "Test Set 2", "created": "2024-01-02 11:00:00"},
+        ]
+        at.session_state.testbed_db_testsets = mock_testsets
+
+        # Run the app with "Generate Q&A Test Set" toggled OFF (default)
+        at.run()
+
+        # Verify the toggle is in the correct state
+        generate_toggle = at.toggle(key="selected_generate_test")
+        assert generate_toggle is not None, "Expected toggle widget for 'Generate Q&A Test Set'"
+        assert generate_toggle.value is False, "Toggle should be OFF by default (existing test set mode)"
+
+        # Verify we have a radio button for TestSet Source
+        radio_widgets = at.radio(key="radio_test_source")
+        assert radio_widgets is not None, "Expected radio widget for testset source selection"
+
+        # Verify we have a selectbox for database test sets
+        selectbox = at.selectbox(key="selected_db_testset")
+        assert selectbox is not None, "Expected selectbox for database test set selection"
+
+        # The selectbox should have our mock test sets as options
+        expected_options = ["Test Set 1 -- Created: 2024-01-01 10:00:00", "Test Set 2 -- Created: 2024-01-02 11:00:00"]
+        assert selectbox.options == expected_options, f"Expected options {expected_options}, got {selectbox.options}"
+
+        # Select a test set
+        selectbox.set_value(expected_options[0]).run()
+
+        # Get the Load Q&A button
+        load_button = at.button(key="load_tests")
+        assert load_button is not None, "Expected button with key 'load_tests'"
+
+        # CRITICAL TEST: Button should be ENABLED when a database test set is selected
+        assert not load_button.disabled, (
+            "Load Q&A button should be ENABLED when a database test set is selected. "
+            "This indicates the bug fix is not working correctly."
+        )

@@ -206,8 +206,8 @@ class LargeLanguageSettings(LanguageModelParameters):
     chat_history: bool = Field(default=True, description="Store Chat History")
 
 
-class VectorSearchSettings(BaseModel):
-    """Store vector_search Settings"""
+class VectorSearchSettings(DatabaseVectorStorage):
+    """Store vector_search Settings incl VectorStorage"""
 
     enabled: bool = Field(default=False, description="vector_search Enabled")
     grading: bool = Field(default=True, description="Grade vector_search Results")

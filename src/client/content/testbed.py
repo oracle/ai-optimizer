@@ -50,29 +50,28 @@ def evaluation_report(eid=None, report=None) -> None:
 
     def create_gauge(value):
         """Create the GUI Gauge"""
+        # Workaround for Plotly bug: use 0.1 to ensure needle visibility
+        gauge_value = max(0.1, value) if value < 1 else value
+
         fig = go.Figure(
             go.Indicator(
                 mode="gauge+number",
-                value=value,
+                value=gauge_value,
                 title={"text": "Overall Correctness Score", "font": {"size": 42}},
-                # Add the '%' suffix here
-                number={"suffix": "%"},
+                number={"suffix": "%", "valueformat": ".0f"},  # Round to whole number
                 gauge={
-                    "axis": {"range": [None, 100]},
+                    "axis": {"range": [0, 100]},
                     "bar": {"color": "blue"},
                     "steps": [
                         {"range": [0, 75], "color": "red"},
                         {"range": [75, 90], "color": "yellow"},
                         {"range": [90, 100], "color": "green"},
                     ],
-                    "threshold": {
-                        "line": {"color": "blue", "width": 4},
-                        "thickness": 0.75,
-                        "value": 95,
-                    },
+                    # REMOVED threshold - it seems to be causing the needle to jump to wrong position
                 },
             )
         )
+
         return fig
 
     # Get the Report
@@ -100,7 +99,13 @@ def evaluation_report(eid=None, report=None) -> None:
         st.markdown("**Evaluated without Vector Search**")
 
     # Show the Gauge
-    gauge_fig = create_gauge(report["correctness"] * 100)
+    correctness_value = report["correctness"]
+    percentage_value = correctness_value * 100
+
+    # Debug output to verify the value
+    st.write(f"Debug: Raw correctness = {correctness_value}, Percentage = {percentage_value:.2f}%")
+
+    gauge_fig = create_gauge(percentage_value)
     # Display gauge
     st.plotly_chart(gauge_fig)
 
@@ -115,14 +120,14 @@ def evaluation_report(eid=None, report=None) -> None:
     # Failures
     st.subheader("Failures")
     failures = pd.DataFrame(report["failures"])
-    failures.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True, errors='ignore')
+    failures.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True, errors="ignore")
     if not failures.empty:
         st.dataframe(failures, hide_index=True)
 
     # Full Report
     st.subheader("Full Report")
     full_report = pd.DataFrame(report["report"])
-    full_report.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True, errors='ignore')
+    full_report.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True, errors="ignore")
     st.dataframe(full_report, hide_index=True)
 
     # Download Button
@@ -353,7 +358,7 @@ def render_testset_generation_ui(available_ll_models: list, available_embed_mode
     }
 
 
-def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, bool]:
+def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, bool, str]:
     """Render existing testset UI and return configuration"""
     testset_source = st.radio(
         "TestSet Source:",
@@ -367,6 +372,7 @@ def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, bool]:
 
     button_load_disabled = True
     endpoint = None
+    selected_testset_id = None
 
     if testset_source == "Local":
         endpoint = "v1/testbed/testset_load"
@@ -385,7 +391,19 @@ def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, bool]:
         )
         button_load_disabled = db_testset is None
 
-    return testset_source, endpoint, button_load_disabled
+        # Extract the testset_id when a database testset is selected
+        if db_testset is not None:
+            testset_name, testset_created = db_testset.split(" -- Created: ", 1)
+            selected_testset_id = next(
+                (
+                    d["tid"]
+                    for d in state.testbed_db_testsets
+                    if d["name"] == testset_name and d["created"] == testset_created
+                ),
+                None,
+            )
+
+    return testset_source, endpoint, button_load_disabled, selected_testset_id
 
 
 def process_testset_request(endpoint: str, api_params: dict, testset_source: str = None) -> None:
@@ -487,12 +505,20 @@ def render_evaluation_ui(available_ll_models: list) -> None:
         on_change=st_common.update_client_settings("testbed"),
     )
 
+    # Check if vector search is enabled but no vector store is selected
+    evaluation_disabled = False
+    if state.client_settings.get("vector_search", {}).get("enabled", False):
+        # If vector search is enabled, check if a vector store is selected
+        if not state.client_settings.get("vector_search", {}).get("vector_store"):
+            evaluation_disabled = True
+
     if col_center.button(
         "Start Evaluation",
         type="primary",
         key="evaluate_button",
         help="Evaluation will automatically save the TestSet to the Database",
         on_click=qa_update_db,
+        disabled=evaluation_disabled,
     ):
         with st.spinner("Starting Q&A evaluation... please be patient.", show_time=True):
             st_common.clear_state_key("testbed_evaluations")
@@ -543,7 +569,9 @@ def main() -> None:
     if not state.selected_generate_test:
         st.subheader("Run Existing Q&A Test Set", divider="red")
         button_text = "Load Q&A"
-        testset_source, endpoint, button_load_disabled = render_existing_testset_ui(testset_sources)
+        testset_source, endpoint, button_load_disabled, _ = render_existing_testset_ui(
+            testset_sources
+        )
     else:
         st.subheader("Generate new Q&A Test Set", divider="red")
         button_text = "Generate Q&A"
@@ -557,7 +585,13 @@ def main() -> None:
         button_load_disabled = gen_params["upload_file"] is None
 
     # Process Q&A Request buttons
-    button_load_disabled = button_load_disabled or state.testbed["testset_id"] is None or "testbed_qa" in state
+    # Only check testset_id when loading existing test sets, not when generating new ones
+    if not state.selected_generate_test:
+        # Use the selected_testset_id from the UI instead of state.testbed["testset_id"]
+        # since state.testbed["testset_id"] is only set after loading
+        button_load_disabled = button_load_disabled or "testbed_qa" in state
+    else:
+        button_load_disabled = button_load_disabled or "testbed_qa" in state
     col_left, col_center, _, col_right = st.columns([3, 3, 4, 3])
 
     if not button_load_disabled:
