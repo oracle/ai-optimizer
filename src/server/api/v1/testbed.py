@@ -162,8 +162,8 @@ async def testbed_generate_qa(
             # Read and save file content
             filename = temp_directory / file.filename
             logger.info("Writing Q&A File to: %s", filename)
-            with open(filename, "wb") as file:
-                file.write(await file.read())
+            with open(filename, "wb") as f:
+                f.write(await file.read())
 
             # Process file for knowledge base and save test set
             test_set = utils_testbed.build_knowledge_base(
