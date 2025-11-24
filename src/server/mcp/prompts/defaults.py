@@ -2,9 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-
-# pylint: disable=unused-argument
 # spell-checker:ignore fastmcp
+
 from fastmcp.prompts.prompt import PromptMessage, TextContent
 from server.mcp.prompts import cache
 

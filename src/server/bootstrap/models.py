@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-NOTE: Provide only one example per API to populate supported API lists; additional models should be
+NOTE: Provide only one example per API; additional models should be
 added via the APIs
 
 WARNING: If you bootstrap additional Ollama Models, you will need to update the IaC to pull those.
