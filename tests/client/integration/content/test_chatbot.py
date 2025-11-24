@@ -236,3 +236,361 @@ class TestVectorSearchToolSelection:
             assert "Vector Search" in tool_selectbox.options, (
                 "Vector Search should appear when embedding models are enabled"
             )
+
+
+#############################################################################
+# Test Language Model Selectbox
+#############################################################################
+class TestLanguageModelSelectbox:
+    """Test that the Language Model selectbox is properly rendered in the sidebar"""
+
+    ST_FILE = "../src/client/content/chatbot.py"
+
+    def test_chat_model_selectbox_is_rendered(self, app_server, app_test):
+        """
+        Test that the Chat Model selectbox is rendered in the sidebar.
+
+        This test ensures that the selectbox added in st_common.py:158-165
+        remains in place and functions correctly. The selectbox should:
+        - Be accessible via its key "selected_ll_model_model"
+        - Show available language models as options
+        - Have the currently selected model as the default value
+        """
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Enable at least one language model
+        at = enable_test_models(at)
+
+        # Run the app
+        at = at.run()
+
+        # Access the chat model selectbox by its key
+        # The selectbox is defined with key="selected_ll_model_model" in st_common.py:163
+        assert hasattr(at.session_state, "selected_ll_model_model"), (
+            "Chat model selectbox with key 'selected_ll_model_model' should be rendered. "
+            "This selectbox was added in st_common.py:158-165 and must remain."
+        )
+
+        # Verify the selectbox value is set in session state
+        selected_model = at.session_state.selected_ll_model_model
+        assert selected_model is not None, "Chat model selectbox should have a selected value"
+
+        # Verify the selected model matches what's in client_settings
+        assert at.session_state.client_settings["ll_model"]["model"] == selected_model, (
+            "Selected model in selectbox should match client_settings"
+        )
+
+    def test_chat_model_selectbox_updates_settings(self, app_server, app_test):
+        """
+        Test that changing the chat model selectbox updates the client settings.
+
+        This verifies the on_change callback properly calls update_client_settings("ll_model").
+        """
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Enable at least two language models for testing
+        enabled_count = 0
+        enabled_models = []
+        for model in at.session_state.model_configs:
+            if model["type"] == "ll" and enabled_count < 2:
+                model["enabled"] = True
+                enabled_models.append(f"{model['provider']}/{model['id']}")
+                enabled_count += 1
+
+        # Run the app
+        at = at.run()
+
+        # Verify we have multiple models available
+        assert len(enabled_models) >= 2, "Need at least 2 models to test switching"
+
+        # Get the initial model and verify it's in session state
+        initial_model = at.session_state.selected_ll_model_model
+        assert initial_model is not None
+
+        # Find a different model to switch to
+        new_model = next(m for m in enabled_models if m != initial_model)
+
+        # Find the chat model selectbox and interact with it
+        # The selectbox has key="selected_ll_model_model"
+        selectboxes = [sb for sb in at.sidebar.selectbox if sb.key == "selected_ll_model_model"]
+
+        assert len(selectboxes) == 1, "Should find exactly one chat model selectbox"
+        chat_model_selectbox = selectboxes[0]
+
+        # Select the new model using the selectbox
+        chat_model_selectbox.select(new_model).run()
+
+        # Verify the session state was updated
+        assert at.session_state.selected_ll_model_model == new_model, (
+            "Selectbox value should be updated in session state"
+        )
+
+        # Verify the client settings were updated by the on_change callback
+        assert at.session_state.client_settings["ll_model"]["model"] == new_model, (
+            "Changing the chat model selectbox should update client_settings via on_change callback"
+        )
+
+    def test_ll_sidebar_temperature_slider(self, app_server, app_test):
+        """
+        Test that the Temperature slider is rendered and functional.
+
+        Verifies the slider in st_common.py:171-179.
+        """
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Enable at least one language model
+        at = enable_test_models(at)
+
+        # Run the app
+        at = at.run()
+
+        # Check that the Temperature slider exists in session state
+        assert hasattr(at.session_state, "selected_ll_model_temperature"), (
+            "Temperature slider with key 'selected_ll_model_temperature' should be rendered"
+        )
+
+        # Verify the temperature value is set
+        temperature = at.session_state.selected_ll_model_temperature
+        assert temperature is not None
+        assert 0.0 <= temperature <= 2.0, "Temperature should be between 0.0 and 2.0"
+
+        # Find the temperature slider by key
+        temperature_sliders = [s for s in at.sidebar.slider if s.key == "selected_ll_model_temperature"]
+        assert len(temperature_sliders) == 1, "Should find exactly one temperature slider"
+
+        temp_slider = temperature_sliders[0]
+
+        # Test changing the temperature
+        new_temp = 1.5
+        temp_slider.set_value(new_temp).run()
+
+        # Verify the value was updated
+        assert at.session_state.selected_ll_model_temperature == new_temp
+        assert at.session_state.client_settings["ll_model"]["temperature"] == new_temp
+
+    def test_ll_sidebar_max_tokens_slider(self, app_server, app_test):
+        """
+        Test that the Maximum Output Tokens slider is rendered and functional.
+
+        Verifies the slider in st_common.py:184-196.
+        """
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Enable at least one language model
+        at = enable_test_models(at)
+
+        # Run the app
+        at = at.run()
+
+        # Check that the Max Tokens slider exists
+        assert hasattr(at.session_state, "selected_ll_model_max_tokens"), (
+            "Max tokens slider with key 'selected_ll_model_max_tokens' should be rendered"
+        )
+
+        # Verify the max tokens value is set
+        max_tokens = at.session_state.selected_ll_model_max_tokens
+        assert max_tokens is not None
+        assert max_tokens >= 1, "Max tokens should be at least 1"
+
+        # Find the max tokens slider by key
+        max_tokens_sliders = [s for s in at.sidebar.slider if s.key == "selected_ll_model_max_tokens"]
+        assert len(max_tokens_sliders) == 1, "Should find exactly one max tokens slider"
+
+        max_tokens_slider = max_tokens_sliders[0]
+
+        # Test changing the value (use a reasonable value like 500)
+        new_tokens = min(500, max_tokens_slider.max)
+        max_tokens_slider.set_value(new_tokens).run()
+
+        # Verify the value was updated
+        assert at.session_state.selected_ll_model_max_tokens == new_tokens
+        assert at.session_state.client_settings["ll_model"]["max_tokens"] == new_tokens
+
+    def test_ll_sidebar_top_p_slider(self, app_server, app_test):
+        """
+        Test that the Top P slider is rendered and functional.
+
+        Verifies the slider in st_common.py:199-207.
+        """
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Enable at least one language model
+        at = enable_test_models(at)
+
+        # Run the app
+        at = at.run()
+
+        # Check that the Top P slider exists
+        assert hasattr(at.session_state, "selected_ll_model_top_p"), (
+            "Top P slider with key 'selected_ll_model_top_p' should be rendered"
+        )
+
+        # Verify the top_p value is set
+        top_p = at.session_state.selected_ll_model_top_p
+        assert top_p is not None
+        assert 0.0 <= top_p <= 1.0, "Top P should be between 0.0 and 1.0"
+
+        # Find the top_p slider by key
+        top_p_sliders = [s for s in at.sidebar.slider if s.key == "selected_ll_model_top_p"]
+        assert len(top_p_sliders) == 1, "Should find exactly one top_p slider"
+
+        top_p_slider = top_p_sliders[0]
+
+        # Test changing the value
+        new_top_p = 0.8
+        top_p_slider.set_value(new_top_p).run()
+
+        # Verify the value was updated
+        assert at.session_state.selected_ll_model_top_p == new_top_p
+        assert at.session_state.client_settings["ll_model"]["top_p"] == new_top_p
+
+    def test_ll_sidebar_frequency_penalty_slider(self, app_server, app_test):
+        """
+        Test that the Frequency Penalty slider is rendered for non-XAI models.
+
+        Verifies the slider in st_common.py:210-221.
+        """
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Enable a non-XAI language model
+        for model in at.session_state.model_configs:
+            if model["type"] == "ll" and "xai" not in model["id"]:
+                model["enabled"] = True
+                break
+
+        # Run the app
+        at = at.run()
+
+        # For non-XAI models, frequency penalty slider should exist
+        current_model = at.session_state.client_settings["ll_model"]["model"]
+
+        if "xai" not in current_model:
+            # Check that the Frequency Penalty slider exists
+            assert hasattr(at.session_state, "selected_ll_model_frequency_penalty"), (
+                "Frequency penalty slider should be rendered for non-XAI models"
+            )
+
+            # Verify the frequency_penalty value is set
+            freq_penalty = at.session_state.selected_ll_model_frequency_penalty
+            assert freq_penalty is not None
+            assert -2.0 <= freq_penalty <= 2.0, "Frequency penalty should be between -2.0 and 2.0"
+
+            # Find the frequency penalty slider by key
+            freq_sliders = [s for s in at.sidebar.slider if s.key == "selected_ll_model_frequency_penalty"]
+            assert len(freq_sliders) == 1, "Should find frequency penalty slider for non-XAI models"
+
+            freq_slider = freq_sliders[0]
+
+            # Test changing the value
+            new_freq = 0.5
+            freq_slider.set_value(new_freq).run()
+
+            # Verify the value was updated
+            assert at.session_state.selected_ll_model_frequency_penalty == new_freq
+            assert at.session_state.client_settings["ll_model"]["frequency_penalty"] == new_freq
+
+    def test_ll_sidebar_presence_penalty_slider(self, app_server, app_test):
+        """
+        Test that the Presence Penalty slider is rendered for non-XAI models.
+
+        Verifies the slider in st_common.py:224-232.
+        """
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Enable a non-XAI language model
+        for model in at.session_state.model_configs:
+            if model["type"] == "ll" and "xai" not in model["id"]:
+                model["enabled"] = True
+                break
+
+        # Run the app
+        at = at.run()
+
+        # For non-XAI models, presence penalty slider should exist
+        current_model = at.session_state.client_settings["ll_model"]["model"]
+
+        if "xai" not in current_model:
+            # Check that the Presence Penalty slider exists
+            assert hasattr(at.session_state, "selected_ll_model_presence_penalty"), (
+                "Presence penalty slider should be rendered for non-XAI models"
+            )
+
+            # Verify the presence_penalty value is set
+            pres_penalty = at.session_state.selected_ll_model_presence_penalty
+            assert pres_penalty is not None
+            assert -2.0 <= pres_penalty <= 2.0, "Presence penalty should be between -2.0 and 2.0"
+
+            # Find the presence penalty slider by key
+            pres_sliders = [s for s in at.sidebar.slider if s.key == "selected_ll_model_presence_penalty"]
+            assert len(pres_sliders) == 1, "Should find presence penalty slider for non-XAI models"
+
+            pres_slider = pres_sliders[0]
+
+            # Test changing the value
+            new_pres = -0.5
+            pres_slider.set_value(new_pres).run()
+
+            # Verify the value was updated
+            assert at.session_state.selected_ll_model_presence_penalty == new_pres
+            assert at.session_state.client_settings["ll_model"]["presence_penalty"] == new_pres
+
+    def test_ll_sidebar_xai_model_hides_penalties(self, app_server, app_test):
+        """
+        Test that frequency and presence penalty sliders are NOT shown for XAI models.
+
+        Verifies the conditional logic in st_common.py:210 that hides penalties for XAI.
+        """
+        assert app_server is not None
+        at = app_test(self.ST_FILE)
+
+        # Create a mock XAI model and enable it
+        xai_model = {
+            "id": "grok-beta",
+            "provider": "xai",
+            "type": "ll",
+            "enabled": True,
+            "temperature": 0.7,
+            "frequency_penalty": 0.0,
+            "max_tokens": 1000,
+            "presence_penalty": 0.0,
+            "top_p": 1.0,
+        }
+
+        # Add XAI model and disable others
+        at.session_state.model_configs.append(xai_model)
+        for model in at.session_state.model_configs:
+            if model["type"] == "ll":
+                model["enabled"] = model["id"] == "grok-beta"
+
+        # Set the client settings to use the XAI model before running
+        at.session_state.client_settings["ll_model"]["model"] = "xai/grok-beta"
+
+        # Run the app
+        at = at.run()
+
+        # Verify XAI model is selected
+        current_model = at.session_state.client_settings["ll_model"]["model"]
+        assert "xai" in current_model, f"XAI model should be selected, got: {current_model}"
+
+        # Check that frequency and presence penalty sliders do NOT exist
+        freq_sliders = [s for s in at.sidebar.slider if s.key == "selected_ll_model_frequency_penalty"]
+        pres_sliders = [s for s in at.sidebar.slider if s.key == "selected_ll_model_presence_penalty"]
+
+        assert len(freq_sliders) == 0, "Frequency penalty slider should NOT be shown for XAI models"
+        assert len(pres_sliders) == 0, "Presence penalty slider should NOT be shown for XAI models"
+
+        # But other sliders should still exist
+        assert hasattr(at.session_state, "selected_ll_model_temperature"), (
+            "Temperature slider should still exist for XAI models"
+        )
+        assert hasattr(at.session_state, "selected_ll_model_max_tokens"), (
+            "Max tokens slider should still exist for XAI models"
+        )
+        assert hasattr(at.session_state, "selected_ll_model_top_p"), "Top P slider should still exist for XAI models"

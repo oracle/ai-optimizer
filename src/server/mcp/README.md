@@ -742,8 +742,6 @@ Test via API endpoints (see `tests/server/test_endpoints.py`). Send HTTP request
 
 ### From Inline Nodes to MCP Tools
 
-The codebase migrated from inline LangGraph nodes to MCP tools for vector search (Nov 2025). Legacy reference file: `pre_mcp_chatbot.py` (root directory).
-
 **Key Changes**:
 - ✅ Vector search now MCP tools (externally accessible)
 - ✅ Graph uses `vs_orchestrate` node for internal pipeline
@@ -755,7 +753,6 @@ The codebase migrated from inline LangGraph nodes to MCP tools for vector search
 
 **Deprecated**:
 - ⚠️ `src/server/agents/chatbot.py` - replaced by `graph.py`
-- ⚠️ `pre_mcp_chatbot.py` - reference only, can be deleted
 
 ### Implementation History
 

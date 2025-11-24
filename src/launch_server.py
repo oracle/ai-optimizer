@@ -81,6 +81,9 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
         return existing_pid
 
     client_args = [sys.executable, __file__, "--port", str(port)]
+
+    # File handle intentionally kept open for subprocess to write logs
+    # Will be closed when subprocess terminates or parent exits
     if logfile:
         log_file = open(f"apiserver_{port}.log", "a", encoding="utf-8")  # pylint: disable=consider-using-with
         stdout = stderr = log_file

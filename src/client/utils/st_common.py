@@ -142,9 +142,12 @@ def history_sidebar() -> None:
 def ll_sidebar() -> None:
     """Language Model Sidebar"""
     st.sidebar.subheader("Language Model Parameters", divider="red")
-    # If no client_settings defined for model, set to the first available_ll_model
+    # If no client_settings defined for model, or model not enabled, set to the first available_ll_model
     ll_models_enabled = enabled_models_lookup("ll")
-    if state.client_settings["ll_model"].get("model") is None:
+    if (
+        state.client_settings["ll_model"].get("model") is None
+        or state.client_settings["ll_model"].get("model") not in ll_models_enabled
+    ):
         default_ll_model = list(ll_models_enabled.keys())[0]
         defaults = {
             "model": default_ll_model,
@@ -155,6 +158,14 @@ def ll_sidebar() -> None:
         state.client_settings["ll_model"].update(defaults)
 
     selected_model = state.client_settings["ll_model"]["model"]
+    ll_idx = list(ll_models_enabled.keys()).index(selected_model)
+    selected_model = st.sidebar.selectbox(
+        "Chat model:",
+        options=list(ll_models_enabled.keys()),
+        index=ll_idx,
+        key="selected_ll_model_model",
+        on_change=update_client_settings("ll_model"),
+    )
 
     # Temperature
     temperature = ll_models_enabled[selected_model]["temperature"]
