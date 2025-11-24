@@ -42,6 +42,30 @@ def sanitize_sensitive_data(data):
     return data
 
 
+def _handle_json_response(response, method: str):
+    """Parse JSON response and handle parsing errors."""
+    try:
+        data = response.json()
+        logger.debug("%s Data: %s", method, data)
+        return response
+    except (json.JSONDecodeError, ValueError) as json_ex:
+        error_msg = f"Server returned invalid JSON response. Status: {response.status_code}"
+        logger.error("Response text: %s", response.text[:500])
+        error_msg += f". Response preview: {response.text[:200]}"
+        raise ApiError(error_msg) from json_ex
+
+
+def _handle_http_error(ex: requests.exceptions.HTTPError):
+    """Extract error message from HTTP error response."""
+    try:
+        failure = ex.response.json().get("detail", "An error occurred.")
+        if not failure and ex.response.status_code == 422:
+            failure = "Not all required fields have been supplied."
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        failure = f"HTTP {ex.response.status_code}: {ex.response.text[:200]}"
+    return failure
+
+
 def send_request(
     method: str,
     endpoint: str,
@@ -85,26 +109,26 @@ def send_request(
     for attempt in range(retries + 1):
         try:
             response = method_map[method](**args)
-            data = response.json()
             logger.info("%s Response: %s", method, response)
-            logger.debug("%s Data: %s", method, data)
             response.raise_for_status()
-            return response
+            return _handle_json_response(response, method)
 
         except requests.exceptions.HTTPError as ex:
-            logger.error(ex)
-            failure = ex.response.json()["detail"]
-            if not failure and ex.response.status_code == 422:
-                failure = "Not all required fields have been supplied."
-            raise ApiError(failure) from ex
-        except requests.exceptions.RequestException as ex:
-            logger.error("Attempt %d: Error: %s", attempt + 1, ex)
-            if "HTTPConnectionPool" in str(ex):
+            logger.error("HTTP Error: %s", ex)
+            raise ApiError(_handle_http_error(ex)) from ex
+
+        except requests.exceptions.ConnectionError as ex:
+            logger.error("Attempt %d: Connection Error: %s", attempt + 1, ex)
+            if attempt < retries:
                 sleep_time = backoff_factor * (2**attempt)
                 logger.info("Retrying in %.1f seconds...", sleep_time)
                 time.sleep(sleep_time)
-            if "Expecting value" in str(ex):
-                raise ApiError("You've found a bug!  Please raise an issue.") from ex
+                continue
+            raise ApiError(f"Connection failed after {retries + 1} attempts: {str(ex)}") from ex
+
+        except requests.exceptions.RequestException as ex:
+            logger.error("Request Error: %s", ex)
+            raise ApiError(f"Request failed: {str(ex)}") from ex
 
     raise ApiError("An unexpected error occurred.")
 
