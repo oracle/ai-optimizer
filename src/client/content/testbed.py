@@ -85,13 +85,18 @@ def evaluation_report(eid=None, report=None) -> None:
     st.dataframe(ll_settings_reversed, hide_index=True)
     if report["settings"]["testbed"]["judge_model"]:
         st.markdown(f"**Judge Model**: {report['settings']['testbed']['judge_model']}")
+    # if discovery; then list out the tables that were discovered (MCP implementation)
+    # if report["settings"]["vector_search"].get("discovery"):
     if report["settings"]["vector_search"]["enabled"]:
         st.subheader("Vector Search Settings")
         st.markdown(f"""**Database**: {report["settings"]["database"]["alias"]};
             **Vector Store**: {report["settings"]["vector_search"]["vector_store"]}
         """)
         embed_settings = pd.DataFrame(report["settings"]["vector_search"], index=[0])
-        embed_settings.drop(["vector_store", "alias", "enabled", "grading"], axis=1, inplace=True)
+        fields_to_drop = ["vector_store", "alias", "enabled", "grading"]
+        existing_fields = [f for f in fields_to_drop if f in embed_settings.columns]
+        if existing_fields:
+            embed_settings.drop(existing_fields, axis=1, inplace=True)
         if report["settings"]["vector_search"]["search_type"] == "Similarity":
             embed_settings.drop(["score_threshold", "fetch_k", "lambda_mult"], axis=1, inplace=True)
         st.dataframe(embed_settings, hide_index=True)
@@ -569,9 +574,7 @@ def main() -> None:
     if not state.selected_generate_test:
         st.subheader("Run Existing Q&A Test Set", divider="red")
         button_text = "Load Q&A"
-        testset_source, endpoint, button_load_disabled, _ = render_existing_testset_ui(
-            testset_sources
-        )
+        testset_source, endpoint, button_load_disabled, _ = render_existing_testset_ui(testset_sources)
     else:
         st.subheader("Generate new Q&A Test Set", divider="red")
         button_text = "Generate Q&A"
