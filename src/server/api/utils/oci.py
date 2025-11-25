@@ -245,7 +245,6 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
             config.genai_compartment_id,
         )
         try:
-            # Get all models and filter for the desired capabilities
             response = client.list_models(
                 compartment_id=config.genai_compartment_id,
                 lifecycle_state="ACTIVE",
@@ -253,21 +252,15 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
                 sort_by="displayName",
                 retry_strategy=oci.retry.NoneRetryStrategy(),
             )
-            all_items = response.data.items
-
-            # If no items were retrieved for any capability, skip this region
-            if not all_items:
-                continue
-
-            # Identify deprecated model names across all responses
+            # Identify deprecated model names
             excluded_display_names = {
                 model.display_name
-                for model in all_items
+                for model in response.data.items
                 if model.time_deprecated or model.time_dedicated_retired or model.time_on_demand_retired
             }
 
             # Build list of models (excluding deprecated ones and duplicates)
-            for model in all_items:
+            for model in response.data.items:
                 model_key = (region["region_name"], model.display_name)
                 # Skip if deprecated and duplicated
                 if model.display_name in excluded_display_names or model_key in seen_models:
