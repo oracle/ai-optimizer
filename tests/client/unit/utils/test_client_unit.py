@@ -293,54 +293,6 @@ class TestClientStreaming:
 
         assert chunks == ["Response"]
 
-    @pytest.mark.asyncio
-    async def test_stream_enables_streaming_flag(self, app_server, monkeypatch):
-        """Test that stream() enables streaming flag in settings"""
-        assert app_server is not None
-
-        # Mock successful initialization
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-
-        mock_sync_client = MagicMock()
-        mock_sync_client.__enter__ = MagicMock(return_value=mock_sync_client)
-        mock_sync_client.__exit__ = MagicMock(return_value=False)
-        mock_sync_client.request = MagicMock(return_value=mock_response)
-
-        monkeypatch.setattr(httpx, "Client", lambda: mock_sync_client)
-
-        # Mock async streaming
-        async def mock_aiter_bytes():
-            yield b"test"
-            yield b"[stream_finished]"
-
-        mock_stream_response = AsyncMock()
-        mock_stream_response.aiter_bytes = mock_aiter_bytes
-        mock_stream_response.__aenter__ = AsyncMock(return_value=mock_stream_response)
-        mock_stream_response.__aexit__ = AsyncMock(return_value=False)
-
-        mock_async_client = AsyncMock()
-        mock_async_client.stream = MagicMock(return_value=mock_stream_response)
-        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-        mock_async_client.__aexit__ = AsyncMock(return_value=False)
-
-        monkeypatch.setattr(httpx, "AsyncClient", lambda: mock_async_client)
-
-        server = {"url": "http://localhost", "port": 8000, "key": "test-key"}
-        settings = {"client": "test-client", "ll_model": {}}
-
-        client = Client(server, settings)
-
-        # Verify streaming is not set initially
-        assert "streaming" not in client.settings["ll_model"]
-
-        # Stream a message
-        async for _ in client.stream("test"):
-            pass
-
-        # Verify streaming was enabled
-        assert client.settings["ll_model"]["streaming"] is True
-
 
 #############################################################################
 # Test Client History

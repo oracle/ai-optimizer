@@ -57,6 +57,7 @@ async def completion_generator(
         return
 
     # Start to establish our LangGraph Args
+    # Streaming is determined by the endpoint called, not client settings
     kwargs = {
         "stream_mode": "custom",
         "input": {"messages": [HumanMessage(content=request.messages[0].content)]},
@@ -65,6 +66,7 @@ async def completion_generator(
             metadata={
                 "use_history": client_settings.ll_model.chat_history,
                 "vector_search": client_settings.vector_search,
+                "streaming": call == "streams",
             },
         ),
     }

@@ -251,9 +251,9 @@ def testbed_evaluate(
 
     evaluated = datetime.now().isoformat()
     client_settings = utils_settings.get_client(client)
-    # Change Disable History
+    # Disable History
     client_settings.ll_model.chat_history = False
-    # Change Grade vector_search
+    # Disable Grade vector_search
     client_settings.vector_search.grading = False
 
     db_conn = utils_databases.get_client_database(client).connection

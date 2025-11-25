@@ -73,8 +73,6 @@ class Client:
 
     async def stream(self, message: str, image_b64: Optional[str] = None) -> AsyncIterator[str]:
         """Call stream endpoint for completion"""
-        # This is called by ChatBot, so enable streaming
-        self.settings["ll_model"]["streaming"] = True
         if image_b64:
             content = [
                 {"type": "text", "text": message},

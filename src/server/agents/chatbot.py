@@ -238,61 +238,77 @@ async def vs_retrieve(state: OptimizerState, config: RunnableConfig) -> Optimize
     return {"context_input": retrieve_question, "documents": documents_dict}
 
 
-async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
-    """LiteLLM streaming wrapper"""
-    writer = get_stream_writer()
+def _build_system_prompt(state: OptimizerState, config: RunnableConfig) -> SystemMessage:
+    """Build the system prompt based on vector search configuration."""
+    vector_search_enabled = config["metadata"]["vector_search"].enabled
+
+    if vector_search_enabled:
+        sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-no-tools-default")
+        if state.get("context_input") and state.get("documents"):
+            return SystemMessage(content=f"{sys_prompt_msg.content.text}\n {state['documents']}")
+        return SystemMessage(content=f"{sys_prompt_msg.content.text}")
+
+    sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_basic-default")
+    return SystemMessage(content=f"{sys_prompt_msg.content.text}")
+
+
+async def _streaming_completion(messages: list, ll_raw: dict, writer) -> str:
+    """Handle streaming completion and return the full response text."""
+    logger.info("Streaming completion...")
     full_response = []
     collected_content = []
 
+    response = await acompletion(messages=convert_to_openai_messages(messages), stream=True, **ll_raw)
+    async for chunk in response:
+        content = chunk.choices[0].delta.content
+        if content is not None:
+            writer({"stream": content})
+            collected_content.append(content)
+        full_response.append(chunk)
+
+    if full_response:
+        last_chunk = full_response[-1]
+        full_text = "".join(collected_content)
+        last_chunk.object = "chat.completion"
+        last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
+        delattr(last_chunk.choices[0], "delta")
+        last_chunk.choices[0].finish_reason = "stop"
+        writer({"completion": last_chunk.model_dump()})
+        return full_text
+
+    return ""
+
+
+async def _non_streaming_completion(messages: list, ll_raw: dict, writer) -> str:
+    """Handle non-streaming completion and return the response text."""
+    logger.info("Non-streaming completion...")
+    response = await acompletion(messages=convert_to_openai_messages(messages), stream=False, **ll_raw)
+    full_text = response.choices[0].message.content
+    writer({"completion": response.model_dump()})
+    return full_text
+
+
+async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
+    """LiteLLM completion wrapper supporting both streaming and non-streaming modes."""
+    writer = get_stream_writer()
+    streaming_enabled = config["metadata"].get("streaming", True)
     messages = state["cleaned_messages"]
+
     try:
-        # Check if Vector Search is enabled in config
-        vector_search_enabled = config["metadata"]["vector_search"].enabled
-
-        if vector_search_enabled:
-            # Always use VS prompt when Vector Search is enabled
-            sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-no-tools-default")
-            # Include documents if they exist
-            if state.get("context_input") and state.get("documents"):
-                documents = state["documents"]
-                new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}\n {documents}")
-            else:
-                new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}")
-        else:
-            # LLM Only mode - use basic prompt
-            sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_basic-default")
-            new_prompt = SystemMessage(content=f"{sys_prompt_msg.content.text}")
-
-        # Insert Prompt into cleaned_messages
-        messages.insert(0, new_prompt)
-        # Await the asynchronous completion with streaming enabled
-        logger.info("Streaming completion...")
+        messages.insert(0, _build_system_prompt(state, config))
         ll_raw = config["configurable"]["ll_config"]
-        response = await acompletion(messages=convert_to_openai_messages(messages), stream=True, **ll_raw)
-        async for chunk in response:
-            content = chunk.choices[0].delta.content
-            if content is not None:
-                writer({"stream": content})
-                collected_content.append(content)
-            full_response.append(chunk)
 
-        # After loop: update last chunk to a full completion with usage details
-        if full_response:
-            last_chunk = full_response[-1]
-            full_text = "".join(collected_content)
-            last_chunk.object = "chat.completion"
-            last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
-            delattr(last_chunk.choices[0], "delta")
-            last_chunk.choices[0].finish_reason = "stop"
-            final_response = last_chunk.model_dump()
-
-            writer({"completion": final_response})
+        if streaming_enabled:
+            full_text = await _streaming_completion(messages, ll_raw, writer)
+        else:
+            full_text = await _non_streaming_completion(messages, ll_raw, writer)
     except APIConnectionError as ex:
         logger.error(ex)
         full_text = "I'm not able to contact the model API; please validate its configuration/availability."
     except Exception as ex:
         logger.error(ex)
         full_text = f"I'm sorry, an unknown completion problem occurred: {str(ex).split('Traceback', 1)[0]}"
+
     return {"messages": [AIMessage(content=full_text)]}
 
 
