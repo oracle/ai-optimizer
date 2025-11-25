@@ -808,97 +808,149 @@ class TestCompareSettingsFunctions:
 
 
 class TestPromptConfigUpload:
-    """Test prompt configuration upload scenarios"""
+    """Test prompt configuration upload scenarios via Streamlit UI"""
 
-    def test_upload_prompt_matching_default(self, app_server, client):
-        """Test uploading settings with prompt text that matches default"""
+    def test_upload_prompt_matching_default_via_ui(self, app_server, app_test):
+        """Test that uploading settings with prompt text matching default shows no differences"""
         assert app_server is not None
+        at = app_test(ST_FILE).run()
 
-        # Get current settings with prompts
-        response = client.get("/v1/settings?client=test_client&full_config=true&incl_sensitive=true")
-        assert response.status_code == 200
-        original_config = response.json()
-
-        if not original_config.get("prompt_configs"):
+        prompt_configs = at.session_state["prompt_configs"] if "prompt_configs" in at.session_state else None
+        if not prompt_configs:
             pytest.skip("No prompts available for testing")
 
-        # Modify a prompt to custom text
-        test_prompt = original_config["prompt_configs"][0]
-        original_text = test_prompt["text"]
+        # Get current settings via the UI's get_settings function
+        from client.content.config.tabs.settings import get_settings, compare_settings
+
+        with patch("client.content.config.tabs.settings.state", at.session_state):
+            with patch("client.utils.api_call.state", at.session_state):
+                current_settings = get_settings(include_sensitive=True)
+
+        # Create uploaded settings with prompt text matching the current text
+        uploaded_settings = json.loads(json.dumps(current_settings))  # Deep copy
+
+        # Compare - should show no differences for prompt_configs when text matches
+        differences = compare_settings(current=current_settings, uploaded=uploaded_settings)
+
+        # Remove empty difference groups
+        differences = {k: v for k, v in differences.items() if v}
+
+        # No differences expected when uploaded matches current
+        assert "prompt_configs" not in differences.get("Value Mismatch", {})
+
+    def test_upload_prompt_with_custom_text_shows_difference(self, app_server, app_test):
+        """Test that uploading settings with different prompt text shows differences"""
+        assert app_server is not None
+        at = app_test(ST_FILE).run()
+
+        prompt_configs = at.session_state["prompt_configs"] if "prompt_configs" in at.session_state else None
+        if not prompt_configs:
+            pytest.skip("No prompts available for testing")
+
+        from client.content.config.tabs.settings import get_settings, compare_settings
+
+        with patch("client.content.config.tabs.settings.state", at.session_state):
+            with patch("client.utils.api_call.state", at.session_state):
+                current_settings = get_settings(include_sensitive=True)
+
+        if not current_settings.get("prompt_configs"):
+            pytest.skip("No prompts in current settings")
+
+        # Create uploaded settings with modified prompt text
+        uploaded_settings = json.loads(json.dumps(current_settings))  # Deep copy
         custom_text = "Custom test instruction - pirate"
-        test_prompt["text"] = custom_text
+        uploaded_settings["prompt_configs"][0]["text"] = custom_text
 
-        # Upload with custom text
-        response = client.post(
-            "/v1/settings/load/json?client=test_client",
-            json=original_config
-        )
-        assert response.status_code == 200
+        # Compare - should show differences for prompt_configs
+        differences = compare_settings(current=current_settings, uploaded=uploaded_settings)
 
-        # Verify custom text is active
-        response = client.get("/v1/mcp/prompts?full=true")
-        prompts = response.json()
-        updated_prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
-        assert updated_prompt is not None
-        assert updated_prompt["text"] == custom_text
+        # Should detect the prompt text difference
+        assert "prompt_configs" in differences.get("Value Mismatch", {})
+        prompt_diffs = differences["Value Mismatch"]["prompt_configs"]
+        prompt_name = current_settings["prompt_configs"][0]["name"]
+        assert prompt_name in prompt_diffs
+        assert prompt_diffs[prompt_name]["status"] == "Text differs"
+        assert prompt_diffs[prompt_name]["uploaded_text"] == custom_text
 
-        # Now upload again with text matching the default
-        test_prompt["text"] = original_text
-        response = client.post(
-            "/v1/settings/load/json?client=test_client",
-            json=original_config
-        )
-        assert response.status_code == 200
-
-        # Verify the default text is now active (override was replaced)
-        response = client.get("/v1/mcp/prompts?full=true")
-        prompts = response.json()
-        reverted_prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
-        assert reverted_prompt is not None
-        assert reverted_prompt["text"] == original_text
-
-    def test_upload_alternating_prompt_text(self, app_server, client):
-        """Test uploading settings with alternating prompt text"""
+    def test_upload_alternating_prompt_text_via_ui(self, app_server, app_test):
+        """Test that compare_settings correctly detects alternating prompt text changes"""
         assert app_server is not None
+        at = app_test(ST_FILE).run()
 
-        # Get current settings
-        response = client.get("/v1/settings?client=test_client&full_config=true&incl_sensitive=true")
-        assert response.status_code == 200
-        config = response.json()
-
-        if not config.get("prompt_configs"):
+        prompt_configs = at.session_state["prompt_configs"] if "prompt_configs" in at.session_state else None
+        if not prompt_configs:
             pytest.skip("No prompts available for testing")
 
-        test_prompt = config["prompt_configs"][0]
-        text_a = "Talk like a pirate"
-        text_b = "Talk like a pirate lady"
+        from client.content.config.tabs.settings import compare_settings
 
-        # Upload with text A
-        test_prompt["text"] = text_a
-        response = client.post("/v1/settings/load/json?client=test_client", json=config)
-        assert response.status_code == 200
+        # Simulate current state with text A
+        current_settings = {
+            "prompt_configs": [
+                {"name": "test_prompt", "text": "Talk like a pirate"}
+            ]
+        }
 
-        response = client.get("/v1/mcp/prompts?full=true")
-        prompts = response.json()
-        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
-        assert prompt["text"] == text_a
+        # Upload with text B - should show difference
+        uploaded_text_b = {
+            "prompt_configs": [
+                {"name": "test_prompt", "text": "Talk like a pirate lady"}
+            ]
+        }
+        differences = compare_settings(current=current_settings, uploaded=uploaded_text_b)
+        assert "prompt_configs" in differences.get("Value Mismatch", {})
+        assert differences["Value Mismatch"]["prompt_configs"]["test_prompt"]["status"] == "Text differs"
 
-        # Upload with text B
-        test_prompt["text"] = text_b
-        response = client.post("/v1/settings/load/json?client=test_client", json=config)
-        assert response.status_code == 200
+        # Now current is text B, upload text A - should still show difference
+        current_settings["prompt_configs"][0]["text"] = "Talk like a pirate lady"
+        uploaded_text_a = {
+            "prompt_configs": [
+                {"name": "test_prompt", "text": "Talk like a pirate"}
+            ]
+        }
+        differences = compare_settings(current=current_settings, uploaded=uploaded_text_a)
+        assert "prompt_configs" in differences.get("Value Mismatch", {})
+        assert differences["Value Mismatch"]["prompt_configs"]["test_prompt"]["uploaded_text"] == "Talk like a pirate"
 
-        response = client.get("/v1/mcp/prompts?full=true")
-        prompts = response.json()
-        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
-        assert prompt["text"] == text_b
+    def test_apply_uploaded_settings_with_prompts(self, app_server, app_test):
+        """Test that apply_uploaded_settings is called correctly when applying prompt changes"""
+        assert app_server is not None
+        at = app_test(ST_FILE).run()
 
-        # Upload with text A again
-        test_prompt["text"] = text_a
-        response = client.post("/v1/settings/load/json?client=test_client", json=config)
-        assert response.status_code == 200
+        # Switch to upload mode
+        at.toggle[0].set_value(True).run()
 
-        response = client.get("/v1/mcp/prompts?full=true")
-        prompts = response.json()
-        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
-        assert prompt["text"] == text_a
+        # Verify file uploader appears
+        file_uploaders = at.get("file_uploader")
+        assert len(file_uploaders) > 0
+
+        # The actual apply functionality is tested via mocking since file upload
+        # in Streamlit testing requires simulation
+        from client.content.config.tabs.settings import apply_uploaded_settings
+
+        client_settings = at.session_state["client_settings"] if "client_settings" in at.session_state else {}
+        uploaded_settings = {
+            "prompt_configs": [
+                {"name": "test_prompt", "text": "New prompt text"}
+            ],
+            "client_settings": client_settings
+        }
+
+        # Create a mock state object that behaves like a dict
+        mock_state = MagicMock()
+        mock_state.client_settings = client_settings
+        mock_state.keys.return_value = ["prompt_configs", "model_configs", "database_configs"]
+
+        with patch("client.content.config.tabs.settings.state", mock_state):
+            with patch("client.content.config.tabs.settings.api_call.post") as mock_post:
+                with patch("client.content.config.tabs.settings.api_call.get") as mock_get:
+                    with patch("client.content.config.tabs.settings.st.success"):
+                        with patch("client.content.config.tabs.settings.st_common.clear_state_key"):
+                            mock_post.return_value = {"message": "Settings updated"}
+                            mock_get.return_value = client_settings
+
+                            apply_uploaded_settings(uploaded_settings)
+
+                            # Verify the API was called with the uploaded settings
+                            mock_post.assert_called_once()
+                            call_kwargs = mock_post.call_args
+                            assert "v1/settings/load/json" in call_kwargs[1]["endpoint"]
