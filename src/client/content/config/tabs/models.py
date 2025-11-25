@@ -200,16 +200,19 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
             value=max_tokens,
         )
     else:
-        output_vector_size = next(
-            (m.get("output_vector_size", 8191) for m in provider_models if m.get("key") == model["id"]),
-            model.get("output_vector_size", 8191),
-        )
+        # First try to get max_chunk_size from the model, then fall back to output_vector_size from provider
+        max_chunk_size = model.get("max_chunk_size")
+        if max_chunk_size is None:
+            max_chunk_size = next(
+                (m.get("max_chunk_size", 8192) for m in provider_models if m.get("key") == model["id"]),
+                8192,
+            )
         model["max_chunk_size"] = st.number_input(
             "Max Chunk Size:",
             help=help_text.help_dict["chunk_size"],
             min_value=0,
             key="add_model_max_chunk_size",
-            value=output_vector_size,
+            value=max_chunk_size,
         )
 
     return model

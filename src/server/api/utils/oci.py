@@ -101,6 +101,7 @@ def get_signer(config: OracleCloudSettings) -> Optional[object]:
     # API key or security token authentication - no signer needed
     return None
 
+
 def init_client(
     client_type: Union[
         oci.object_storage.ObjectStorageClient,
@@ -268,13 +269,8 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
             # Build list of models (excluding deprecated ones and duplicates)
             for model in all_items:
                 model_key = (region["region_name"], model.display_name)
-                # Skip if deprecated, duplicate, doesn't have desired capabilities, or cohere model without TEXT_EMBEDDINGS
-                if (
-                    model.display_name in excluded_display_names
-                    or model_key in seen_models
-                    or ("TEXT_EMBEDDINGS" not in model.capabilities and "CHAT" not in model.capabilities)
-                    or (model.vendor == "cohere" and "TEXT_EMBEDDINGS" not in model.capabilities)
-                ):
+                # Skip if deprecated and duplicated
+                if model.display_name in excluded_display_names or model_key in seen_models:
                     continue
 
                 seen_models.add(model_key)
@@ -381,14 +377,12 @@ def get_bucket_objects_with_metadata(bucket_name: str, config: OracleCloudSettin
     objects_metadata = []
     try:
         response = client.list_objects(
-            namespace_name=config.namespace,
-            bucket_name=bucket_name,
-            fields="name,size,etag,timeModified,md5"
+            namespace_name=config.namespace, bucket_name=bucket_name, fields="name,size,etag,timeModified,md5"
         )
         objects = response.data.objects
 
         # Filter supported file types and add metadata
-        supported_extensions = {'.pdf', '.html', '.md', '.txt', '.csv', '.png', '.jpg', '.jpeg'}
+        supported_extensions = {".pdf", ".html", ".md", ".txt", ".csv", ".png", ".jpg", ".jpeg"}
 
         for obj in objects:
             _, ext = os.path.splitext(obj.name.lower())
@@ -399,7 +393,7 @@ def get_bucket_objects_with_metadata(bucket_name: str, config: OracleCloudSettin
                     "etag": obj.etag,
                     "time_modified": obj.time_modified.isoformat() if obj.time_modified else None,
                     "md5": obj.md5,
-                    "extension": ext[1:]  # Remove the dot
+                    "extension": ext[1:],  # Remove the dot
                 }
                 objects_metadata.append(obj_metadata)
     except oci.exceptions.ServiceError:
@@ -409,10 +403,7 @@ def get_bucket_objects_with_metadata(bucket_name: str, config: OracleCloudSettin
     return objects_metadata
 
 
-def detect_changed_objects(
-    current_objects: list[dict],
-    processed_objects: dict
-) -> tuple[list[dict], list[dict]]:
+def detect_changed_objects(current_objects: list[dict], processed_objects: dict) -> tuple[list[dict], list[dict]]:
     """
     Detect new and modified objects by comparing current bucket state
     with previously processed objects metadata
@@ -443,8 +434,9 @@ def detect_changed_objects(
                 continue
 
             # Compare etag and modification time
-            if (obj["etag"] != last_processed.get("etag") or
-                obj["time_modified"] != last_processed.get("time_modified")):
+            if obj["etag"] != last_processed.get("etag") or obj["time_modified"] != last_processed.get(
+                "time_modified"
+            ):
                 modified_objects.append(obj)
 
     logger.info("Found %d new objects and %d modified objects", len(new_objects), len(modified_objects))

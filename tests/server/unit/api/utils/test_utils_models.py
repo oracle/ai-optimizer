@@ -230,6 +230,69 @@ class TestModelsUtils:
 
         assert result.temperature == 0.8
 
+    @patch("server.api.utils.models.MODEL_OBJECTS", [])
+    @patch("server.api.utils.models.is_url_accessible")
+    def test_update_embedding_model_max_chunk_size(self, mock_url_check):
+        """Test updating max_chunk_size for embedding model (regression test for bug)"""
+        # Create an embedding model with default max_chunk_size
+        embed_model = Model(
+            id="test-embed-model",
+            provider="ollama",
+            type="embed",
+            enabled=True,
+            api_base="http://127.0.0.1:11434",
+            max_chunk_size=8192,
+        )
+        models.MODEL_OBJECTS.append(embed_model)
+        mock_url_check.return_value = (True, None)
+
+        # Update the max_chunk_size to 512
+        update_payload = Model(
+            id="test-embed-model",
+            provider="ollama",
+            type="embed",
+            enabled=True,
+            api_base="http://127.0.0.1:11434",
+            max_chunk_size=512,
+        )
+
+        result = models.update(update_payload)
+
+        # Verify the update was successful
+        assert result.max_chunk_size == 512
+        assert result.id == "test-embed-model"
+        assert result.provider == "ollama"
+
+        # Verify the model in MODEL_OBJECTS was updated
+        (updated_model,) = models.get(model_provider="ollama", model_id="test-embed-model")
+        assert updated_model.max_chunk_size == 512
+
+    @patch("server.api.utils.models.MODEL_OBJECTS", [])
+    @patch("server.api.utils.models.is_url_accessible")
+    def test_update_multiple_fields(self, mock_url_check):
+        """Test updating multiple fields at once"""
+        # Create a model
+        models.MODEL_OBJECTS.append(self.sample_model)
+        mock_url_check.return_value = (True, None)
+
+        # Update multiple fields
+        update_payload = Model(
+            id="test-model",
+            provider="openai",
+            type="ll",
+            enabled=False,  # Changed from True
+            api_base="https://api.openai.com/v2",  # Changed
+            temperature=0.5,  # Changed
+            max_tokens=2048,  # Changed
+        )
+
+        result = models.update(update_payload)
+
+        assert result.enabled is False
+        assert result.api_base == "https://api.openai.com/v2"
+        assert result.temperature == 0.5
+        assert result.max_tokens == 2048
+
     @patch("server.api.utils.models.get")
     def test_get_full_config_success(self, mock_get_model):
         """Test successful full config retrieval"""
