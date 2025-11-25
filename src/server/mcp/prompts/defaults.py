@@ -216,6 +216,47 @@ def optimizer_vs_rephrase() -> PromptMessage:
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
+def optimizer_testbed_judge() -> PromptMessage:
+    """Prompt for testbed evaluation judge.
+
+    Used to evaluate whether a chatbot's answer correctly matches the reference answer.
+    This prompt is more lenient than the default Giskard prompt - it allows additional
+    context in answers and only marks as incorrect when essential information is missing
+    or contradicted.
+    """
+    content = """
+        You are evaluating whether an AI assistant correctly answered a question.
+
+        EVALUATION CRITERIA:
+        1. CORRECT if the agent's answer contains the essential information from the reference answer
+        2. Additional context, elaboration, or helpful details beyond the reference should NOT be penalized
+        3. INCORRECT only if the agent contradicts the reference, provides wrong information, or misses critical facts
+
+        Consider the answer CORRECT if:
+        - The core question is answered accurately
+        - Key facts match the reference
+        - Extra relevant details are provided (this is GOOD, not a penalty)
+
+        Consider the answer INCORRECT if:
+        - The answer contradicts the reference
+        - Essential information is missing
+        - The answer contains factual errors
+        - The agent admits it doesn't know or cannot answer
+
+        You will receive:
+        - AGENT DESCRIPTION: What the agent does
+        - CONVERSATION: The chat history
+        - AGENT ANSWER: What the agent responded
+        - REFERENCE ANSWER: The expected correct answer
+
+        Output ONLY valid JSON:
+        - If correct: {"correctness": true}
+        - If incorrect: {"correctness": false, "correctness_reason": "brief explanation"}
+    """
+
+    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
+
+
 # MCP Registration
 async def register(mcp):
     """Register Out-of-Box Prompts"""
@@ -282,3 +323,14 @@ async def register(mcp):
         based on conversation history before performing retrieval.
         """
         return get_prompt_with_override("optimizer_vs-rephrase")
+
+    @mcp.prompt(name="optimizer_testbed-judge", title="Testbed Judge Prompt", tags=optimizer_tags)
+    def testbed_judge_mcp() -> PromptMessage:
+        """Prompt for testbed evaluation judge.
+
+        Used by the testbed to evaluate whether the chatbot's answer matches the reference.
+        Configurable to adjust evaluation strictness. The default prompt is lenient -
+        it allows additional context in answers and only fails on contradictions or
+        missing essential information.
+        """
+        return get_prompt_with_override("optimizer_testbed-judge")

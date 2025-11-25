@@ -24,6 +24,8 @@ import server.api.utils.embed as utils_embed
 import server.api.utils.testbed as utils_testbed
 import server.api.utils.databases as utils_databases
 import server.api.utils.models as utils_models
+from server.api.utils.testbed_metrics import CustomCorrectnessMetric
+from server.mcp.prompts.defaults import get_prompt_with_override
 
 from server.api.v1 import chat
 
@@ -271,8 +273,20 @@ def testbed_evaluate(
 
     judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
     set_llm_model(llm_model=judge, **judge_config)
+
+    # Get judge prompt from MCP (allows override via Prompt Engineering page)
+    judge_prompt_message = get_prompt_with_override("optimizer_testbed-judge")
+    judge_prompt = judge_prompt_message.content.text
+
+    # Create custom metric with the configurable prompt
+    custom_metric = CustomCorrectnessMetric(
+        name="correctness",
+        system_prompt=judge_prompt,
+        agent_description="A chatbot answering questions.",
+    )
+
     try:
-        report = evaluate(get_answer, testset=loaded_testset, metrics=None)
+        report = evaluate(get_answer, testset=loaded_testset, metrics=[custom_metric])
     except KeyError as ex:
         if str(ex) == "'correctness'":
             raise HTTPException(status_code=500, detail="Unable to determine the correctness; please retry.") from ex
