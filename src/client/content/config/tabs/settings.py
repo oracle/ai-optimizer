@@ -515,7 +515,6 @@ def display_settings():
     except api_call.ApiError:
         st.stop()
 
-    st.write(state.prompt_configs)
     st.header("Client Settings", divider="red")
 
     if "selected_sensitive_settings" not in state:
