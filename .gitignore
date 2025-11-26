@@ -45,6 +45,7 @@ __pycache__/
 *$py.class
 **/*.egg-info
 **/build/
+**/.mypy_cache
 
 # Test coverage artifacts
 .coverage
@@ -56,6 +57,7 @@ test-results.xml
 # AI Code Assists
 ##############################################################################
 **/*[Cc][Ll][Aa][Uu][Dd][Ee]*
+**/memory-bank/**
 
 ##############################################################################
 # Helm

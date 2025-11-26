@@ -28,6 +28,20 @@ logger = logging_config.logging.getLogger("api.v1.embed")
 auth = APIRouter()
 
 
+def _extract_provider_error_message(exception: Exception) -> str:
+    """
+    Extract error message from exception.
+
+    Returns the exception's string representation, which typically contains
+    the provider's error message with all relevant details.
+    """
+    error_message = str(exception)
+    if error_message:
+        return error_message
+    # If str(exception) is empty, return the exception type
+    return f"Error: {type(exception).__name__}"
+
+
 @auth.delete(
     "/{vs}",
     description="Drop Vector Store",
@@ -242,7 +256,9 @@ async def split_embed(
         raise HTTPException(status_code=500, detail=str(ex)) from ex
     except Exception as ex:
         logger.error("An exception occurred: %s", ex)
-        raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
+        # Extract meaningful error messages from common provider exceptions
+        error_message = _extract_provider_error_message(ex)
+        raise HTTPException(status_code=500, detail=error_message) from ex
     finally:
         shutil.rmtree(temp_directory)  # Clean up the temporary directory
 
@@ -349,4 +365,6 @@ async def refresh_vector_store(
         raise HTTPException(status_code=500, detail=f"Database error: {str(ex)}") from ex
     except Exception as ex:
         logger.error("Unexpected error in refresh_vector_store: %s", ex)
-        raise HTTPException(status_code=500, detail="Unexpected error occurred during refresh") from ex
+        # Extract meaningful error messages from common provider exceptions
+        error_message = _extract_provider_error_message(ex)
+        raise HTTPException(status_code=500, detail=error_message) from ex

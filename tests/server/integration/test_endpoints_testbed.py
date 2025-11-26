@@ -2,27 +2,27 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# pylint: disable=too-many-arguments,too-many-positional-arguments,too-few-public-methods, import-error
 # spell-checker: disable
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 import json
 import io
 from unittest.mock import patch, MagicMock
 import pytest
-from conftest import TEST_CONFIG
+from conftest import get_test_db_payload
 from common.schema import TestSetQA as QATestSet, Evaluation, EvaluationReport
 
 
 #############################################################################
-# Test AuthN required and Valid
+# Endpoints Test
 #############################################################################
-class TestInvalidAuthEndpoints:
-    """Test endpoints without Headers and Invalid AuthN"""
+class TestEndpoints:
+    """Test Endpoints"""
 
     @pytest.mark.parametrize(
         "auth_type, status_code",
         [
-            pytest.param("no_auth", 403, id="no_auth"),
+            pytest.param("no_auth", 401, id="no_auth"),
             pytest.param("invalid_auth", 401, id="invalid_auth"),
         ],
     )
@@ -39,26 +39,15 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/testbed/evaluate", "post", id="testbed_evaluate_qa"),
         ],
     )
-    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication."""
+    def test_invalid_auth_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valid authentication."""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
-
-
-#############################################################################
-# Endpoints Test
-#############################################################################
-class TestEndpoints:
-    """Test Endpoints"""
 
     def setup_database(self, client, auth_headers, db_container):
         """Setup database connection for tests"""
         assert db_container is not None
-        payload = {
-            "user": TEST_CONFIG["db_username"],
-            "password": TEST_CONFIG["db_password"],
-            "dsn": TEST_CONFIG["db_dsn"],
-        }
+        payload = get_test_db_payload()
         response = client.patch("/v1/databases/DEFAULT", headers=auth_headers["valid_auth"], json=payload)
         assert response.status_code == 200
 

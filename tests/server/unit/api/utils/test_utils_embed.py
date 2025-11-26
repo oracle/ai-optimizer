@@ -3,6 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from decimal import Decimal
 from pathlib import Path
@@ -17,7 +18,7 @@ from common.schema import Database
 class TestEmbedUtils:
     """Test embed utility functions"""
 
-    def setup_method(self):
+    def __init__(self):
         """Setup test data"""
         self.sample_document = LangchainDocument(
             page_content="This is a test document content.", metadata={"source": "/path/to/test_file.txt", "page": 1}
@@ -89,7 +90,7 @@ class TestEmbedUtils:
 class TestGetVectorStoreFiles:
     """Test get_vector_store_files() function"""
 
-    def setup_method(self):
+    def __init__(self):
         """Setup test data"""
         self.sample_db = Database(
             name="TEST_DB",
@@ -151,7 +152,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_with_decimal_size(self, mock_disconnect, mock_connect):
+    def test_get_vector_store_files_with_decimal_size(self, _mock_disconnect, mock_connect):
         """Test handling of Decimal size from Oracle NUMBER type"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -178,7 +179,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_old_format(self, mock_disconnect, mock_connect):
+    def test_get_vector_store_files_old_format(self, _mock_disconnect, mock_connect):
         """Test retrieving files with old metadata format (source field)"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -202,7 +203,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_with_orphaned_chunks(self, mock_disconnect, mock_connect):
+    def test_get_vector_store_files_with_orphaned_chunks(self, _mock_disconnect, mock_connect):
         """Test detection of orphaned chunks without valid filename"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -229,7 +230,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_empty_store(self, mock_disconnect, mock_connect):
+    def test_get_vector_store_files_empty_store(self, _mock_disconnect, mock_connect):
         """Test retrieving from empty vector store"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -252,7 +253,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_sorts_by_filename(self, mock_disconnect, mock_connect):
+    def test_get_vector_store_files_sorts_by_filename(self, _mock_disconnect, mock_connect):
         """Test that files are sorted alphabetically by filename"""
         # Mock database connection
         mock_conn = MagicMock()

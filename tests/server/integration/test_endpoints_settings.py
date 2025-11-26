@@ -2,30 +2,28 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# pylint: disable=too-many-arguments,too-many-positional-arguments,too-few-public-methods
 # spell-checker: disable
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 import pytest
 from common.schema import (
     Settings,
     LargeLanguageSettings,
-    PromptSettings,
     VectorSearchSettings,
-    SelectAISettings,
     OciSettings,
 )
 
 
 #############################################################################
-# Test AuthN required and Valid
+# Endpoints Test
 #############################################################################
-class TestInvalidAuthEndpoints:
-    """Test endpoints without Headers and Invalid AuthN"""
+class TestEndpoints:
+    """Test Endpoints"""
 
     @pytest.mark.parametrize(
         "auth_type, status_code",
         [
-            pytest.param("no_auth", 403, id="no_auth"),
+            pytest.param("no_auth", 401, id="no_auth"),
             pytest.param("invalid_auth", 401, id="invalid_auth"),
         ],
     )
@@ -39,17 +37,10 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/settings/load/json", "post", id="load_settings_from_json"),
         ],
     )
-    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication"""
+    def test_invalid_auth_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valid authentication."""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
-
-
-#############################################################################
-# Endpoints Test
-#############################################################################
-class TestEndpoints:
-    """Test Endpoints"""
 
     def test_settings_get(self, client, auth_headers):
         """Test getting settings for a client"""
@@ -61,10 +52,10 @@ class TestEndpoints:
         # Verify the response contains the expected structure
         assert settings["client"] == "default"
         assert "ll_model" in settings
-        assert "prompts" in settings
         assert "vector_search" in settings
-        assert "selectai" in settings
         assert "oci" in settings
+        assert "database" in settings
+        assert "testbed" in settings
 
     def test_settings_get_nonexistent_client(self, client, auth_headers):
         """Test getting settings for a non-existent client"""
@@ -114,9 +105,7 @@ class TestEndpoints:
         updated_settings = Settings(
             client="default",
             ll_model=LargeLanguageSettings(model="updated-model", chat_history=False),
-            prompts=PromptSettings(ctx="Updated Context", sys="Updated System"),
             vector_search=VectorSearchSettings(enabled=True, grading=False, search_type="Similarity", top_k=5),
-            selectai=SelectAISettings(enabled=True),
             oci=OciSettings(auth_profile="UPDATED"),
         )
 
@@ -136,12 +125,9 @@ class TestEndpoints:
         # Check that the values were updated
         assert new_settings["ll_model"]["model"] == "updated-model"
         assert new_settings["ll_model"]["chat_history"] is False
-        assert new_settings["prompts"]["ctx"] == "Updated Context"
-        assert new_settings["prompts"]["sys"] == "Updated System"
         assert new_settings["vector_search"]["enabled"] is True
         assert new_settings["vector_search"]["grading"] is False
         assert new_settings["vector_search"]["top_k"] == 5
-        assert new_settings["selectai"]["enabled"] is True
         assert new_settings["oci"]["auth_profile"] == "UPDATED"
 
     def test_settings_copy(self, client, auth_headers):
@@ -183,6 +169,122 @@ class TestEndpoints:
         )
         assert response.status_code == 404
         assert response.json() == {"detail": "Settings: client nonexistent_client not found."}
+
+    def test_load_json_with_prompt_matching_default(self, client, auth_headers):
+        """Test uploading settings with prompt text that matches default"""
+        # Get current settings with prompts
+        response = client.get(
+            "/v1/settings",
+            headers=auth_headers["valid_auth"],
+            params={"client": "server", "full_config": True, "incl_sensitive": True},
+        )
+        assert response.status_code == 200
+        original_config = response.json()
+
+        if not original_config.get("prompt_configs"):
+            pytest.skip("No prompts available for testing")
+
+        # Modify a prompt to custom text
+        test_prompt = original_config["prompt_configs"][0]
+        original_text = test_prompt["text"]
+        custom_text = "Custom test instruction - pirate"
+        test_prompt["text"] = custom_text
+
+        # Upload with custom text (payload is Configuration schema directly)
+        response = client.post(
+            "/v1/settings/load/json",
+            headers=auth_headers["valid_auth"],
+            params={"client": "server"},
+            json=original_config,
+        )
+        assert response.status_code == 200
+
+        # Verify custom text is active
+        response = client.get("/v1/mcp/prompts", headers=auth_headers["valid_auth"], params={"full": True})
+        prompts = response.json()
+        updated_prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert updated_prompt is not None
+        assert updated_prompt["text"] == custom_text
+
+        # Now upload again with text matching the original
+        test_prompt["text"] = original_text
+        response = client.post(
+            "/v1/settings/load/json",
+            headers=auth_headers["valid_auth"],
+            params={"client": "server"},
+            json=original_config,
+        )
+        assert response.status_code == 200
+
+        # Verify the original text is now active (override was replaced)
+        response = client.get("/v1/mcp/prompts", headers=auth_headers["valid_auth"], params={"full": True})
+        prompts = response.json()
+        reverted_prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert reverted_prompt is not None
+        assert reverted_prompt["text"] == original_text
+
+    def test_load_json_with_alternating_prompt_text(self, client, auth_headers):
+        """Test uploading settings with alternating prompt text"""
+        # Get current settings
+        response = client.get(
+            "/v1/settings",
+            headers=auth_headers["valid_auth"],
+            params={"client": "server", "full_config": True, "incl_sensitive": True},
+        )
+        assert response.status_code == 200
+        config = response.json()
+
+        if not config.get("prompt_configs"):
+            pytest.skip("No prompts available for testing")
+
+        test_prompt = config["prompt_configs"][0]
+        text_a = "Talk like a pirate"
+        text_b = "Talk like a pirate lady"
+
+        # Upload with text A (payload is Configuration schema directly)
+        test_prompt["text"] = text_a
+        response = client.post(
+            "/v1/settings/load/json",
+            headers=auth_headers["valid_auth"],
+            params={"client": "server"},
+            json=config,
+        )
+        assert response.status_code == 200
+
+        response = client.get("/v1/mcp/prompts", headers=auth_headers["valid_auth"], params={"full": True})
+        prompts = response.json()
+        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert prompt["text"] == text_a
+
+        # Upload with text B
+        test_prompt["text"] = text_b
+        response = client.post(
+            "/v1/settings/load/json",
+            headers=auth_headers["valid_auth"],
+            params={"client": "server"},
+            json=config,
+        )
+        assert response.status_code == 200
+
+        response = client.get("/v1/mcp/prompts", headers=auth_headers["valid_auth"], params={"full": True})
+        prompts = response.json()
+        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert prompt["text"] == text_b
+
+        # Upload with text A again
+        test_prompt["text"] = text_a
+        response = client.post(
+            "/v1/settings/load/json",
+            headers=auth_headers["valid_auth"],
+            params={"client": "server"},
+            json=config,
+        )
+        assert response.status_code == 200
+
+        response = client.get("/v1/mcp/prompts", headers=auth_headers["valid_auth"], params={"full": True})
+        prompts = response.json()
+        prompt = next((p for p in prompts if p["name"] == test_prompt["name"]), None)
+        assert prompt["text"] == text_a
 
     @pytest.mark.parametrize("app_server", ["/tmp/settings.json"], indirect=True)
     def test_user_supplied_settings(self, app_server):

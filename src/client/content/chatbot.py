@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Session States Set:
 - user_client: Stores the Client
 """
-# spell-checker:ignore streamlit oraclevs selectai
+# spell-checker:ignore streamlit oraclevs
 
 import asyncio
 import inspect
@@ -62,7 +62,6 @@ def setup_sidebar():
     st_common.tools_sidebar()
     st_common.history_sidebar()
     st_common.ll_sidebar()
-    st_common.selectai_sidebar()
     st_common.vector_search_sidebar()
 
     if not state.enable_client:
@@ -114,11 +113,10 @@ def display_chat_history(history):
 
 async def handle_chat_input(user_client):
     """Handle user chat input and streaming response"""
-    sys_prompt = state.client_settings["prompts"]["sys"]
     render_chat_footer()
 
     if human_request := st.chat_input(
-        f"Ask your question here... (current prompt: {sys_prompt})",
+        "Ask your question here... ",
         accept_file=True,
         file_type=["jpg", "jpeg", "png"],
     ):

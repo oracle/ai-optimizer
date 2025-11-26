@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore acompletion checkpointer litellm mult oraclevs vectorstores selectai
+# spell-checker:ignore acompletion checkpointer litellm mult oraclevs vectorstores
 
 import copy
 import decimal
@@ -24,7 +24,7 @@ from langchain_community.vectorstores.oraclevs import OracleVS
 from litellm import acompletion, completion
 from litellm.exceptions import APIConnectionError
 
-from server.api.utils.databases import execute_sql
+import server.mcp.prompts.defaults as default_prompts
 
 from common import logging_config
 
@@ -74,13 +74,8 @@ def clean_messages(state: OptimizerState, config: RunnableConfig) -> list:
     return state_messages
 
 
-def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "selectai_completion", "stream_completion"]:
-    """Conditional edge to determine if using SelectAI, Vector Search or not"""
-    selectai_enabled = config["metadata"]["selectai"].enabled
-    if selectai_enabled:
-        logger.info("Invoking Chatbot with SelectAI: %s", selectai_enabled)
-        return "selectai_completion"
-
+def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "stream_completion"]:
+    """Conditional edge to determine if using Vector Search or not"""
     enabled = config["metadata"]["vector_search"].enabled
     if enabled:
         logger.info("Invoking Chatbot with Vector Search: %s", enabled)
@@ -91,28 +86,18 @@ def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "selectai_comp
 
 def rephrase(state: OptimizerState, config: RunnableConfig) -> str:
     """Take our contextualization prompt and reword the last user prompt"""
-    ctx_prompt = config.get("metadata", {}).get("ctx_prompt")
     retrieve_question = state["messages"][-1].content
 
-    if config["metadata"]["use_history"] and ctx_prompt and len(state["messages"]) > 2:
-        ctx_template = """
-            {prompt}
-            Here is the context and history:
-            -------
-            {history}
-            -------
-            Here is the user input:
-            -------
-            {question}
-            -------
-            Return ONLY the rephrased query without any explanation or additional text.
-        """
+    if config["metadata"]["use_history"] and len(state["messages"]) > 2:
+        rephrase_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-rephrase")
+        rephrase_template_text = rephrase_prompt_msg.content.text
+
         rephrase_template = PromptTemplate(
-            template=ctx_template,
+            template=rephrase_template_text,
             input_variables=["ctx_prompt", "history", "question"],
         )
         formatted_prompt = rephrase_template.format(
-            prompt=ctx_prompt.prompt, history=state["messages"], question=retrieve_question
+            prompt=rephrase_template_text, history=state["messages"], question=retrieve_question
         )
         ll_raw = config["configurable"]["ll_config"]
         try:
@@ -154,21 +139,11 @@ async def vs_grade(state: OptimizerState, config: RunnableConfig) -> OptimizerSt
     relevant = "yes"
     documents_dict = document_formatter(state["documents"])
     if config["metadata"]["vector_search"].grading and state.get("documents"):
-        grade_template = """
-        You are a Grader assessing the relevance of retrieved text to the user's input.
-        You MUST respond with a only a binary score of 'yes' or 'no'.
-        If you DO find ANY relevant retrieved text to the user's input, return 'yes' immediately and stop grading.
-        If you DO NOT find relevant retrieved text to the user's input, return 'no'.
-        Here is the user input:
-        -------
-        {question}
-        -------
-        Here is the retrieved text:
-        -------
-        {documents}
-        """
+        grade_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-grade")
+        grade_template_text = grade_prompt_msg.content.text
+
         grade_template = PromptTemplate(
-            template=grade_template,
+            template=grade_template_text,
             input_variables=["question", "documents"],
         )
         question = state["context_input"]
@@ -263,83 +238,77 @@ async def vs_retrieve(state: OptimizerState, config: RunnableConfig) -> Optimize
     return {"context_input": retrieve_question, "documents": documents_dict}
 
 
-async def selectai_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
-    """Generate answer when SelectAI enabled; modify state with response"""
-    selectai_prompt = state["cleaned_messages"][-1:][0].content
+def _build_system_prompt(state: OptimizerState, config: RunnableConfig) -> SystemMessage:
+    """Build the system prompt based on vector search configuration."""
+    vector_search_enabled = config["metadata"]["vector_search"].enabled
 
-    logger.info("Generating SelectAI Response on %s", selectai_prompt)
-    sql = """
-        SELECT DBMS_CLOUD_AI.GENERATE(
-            prompt       => :query,
-            profile_name => :profile,
-            action       => :action)
-        FROM dual
-    """
-    binds = {
-        "query": selectai_prompt,
-        "profile": config["metadata"]["selectai"].profile,
-        "action": config["metadata"]["selectai"].action,
-    }
-    # Execute the SQL using the connection
-    db_conn = config["configurable"]["db_conn"]
-    try:
-        response = execute_sql(db_conn, sql, binds)
-    except Exception as ex:
-        logger.error("SelectAI has hit an issue: %s", ex)
-        response = [{sql: f"I'm sorry, I ran into an error: str({ex})"}]
-    # Response will be [{sql:, completion}]; return the completion
-    logger.debug("SelectAI Responded: %s", response)
-    response = list(response[0].values())[0]
+    if vector_search_enabled:
+        sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-no-tools-default")
+        if state.get("context_input") and state.get("documents"):
+            return SystemMessage(content=f"{sys_prompt_msg.content.text}\n {state['documents']}")
+        return SystemMessage(content=f"{sys_prompt_msg.content.text}")
 
-    return {"messages": [AIMessage(content=response)]}
+    sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_basic-default")
+    return SystemMessage(content=f"{sys_prompt_msg.content.text}")
 
 
-async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
-    """LiteLLM streaming wrapper"""
-    writer = get_stream_writer()
+async def _streaming_completion(messages: list, ll_raw: dict, writer) -> str:
+    """Handle streaming completion and return the full response text."""
+    logger.info("Streaming completion...")
     full_response = []
     collected_content = []
 
+    response = await acompletion(messages=convert_to_openai_messages(messages), stream=True, **ll_raw)
+    async for chunk in response:
+        content = chunk.choices[0].delta.content
+        if content is not None:
+            writer({"stream": content})
+            collected_content.append(content)
+        full_response.append(chunk)
+
+    if full_response:
+        last_chunk = full_response[-1]
+        full_text = "".join(collected_content)
+        last_chunk.object = "chat.completion"
+        last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
+        delattr(last_chunk.choices[0], "delta")
+        last_chunk.choices[0].finish_reason = "stop"
+        writer({"completion": last_chunk.model_dump()})
+        return full_text
+
+    return ""
+
+
+async def _non_streaming_completion(messages: list, ll_raw: dict, writer) -> str:
+    """Handle non-streaming completion and return the response text."""
+    logger.info("Non-streaming completion...")
+    response = await acompletion(messages=convert_to_openai_messages(messages), stream=False, **ll_raw)
+    full_text = response.choices[0].message.content
+    writer({"completion": response.model_dump()})
+    return full_text
+
+
+async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
+    """LiteLLM completion wrapper supporting both streaming and non-streaming modes."""
+    writer = get_stream_writer()
+    streaming_enabled = config["metadata"].get("streaming", True)
     messages = state["cleaned_messages"]
+
     try:
-        # Get our Prompt
-        sys_prompt = config.get("metadata", {}).get("sys_prompt")
-        if state.get("context_input") and state.get("documents"):
-            documents = state["documents"]
-            new_prompt = SystemMessage(content=f"{sys_prompt.prompt}\n {documents}")
-        else:
-            new_prompt = SystemMessage(content=f"{sys_prompt.prompt}")
-
-        # Insert Prompt into cleaned_messages
-        messages.insert(0, new_prompt)
-        # Await the asynchronous completion with streaming enabled
-        logger.info("Streaming completion...")
+        messages.insert(0, _build_system_prompt(state, config))
         ll_raw = config["configurable"]["ll_config"]
-        response = await acompletion(messages=convert_to_openai_messages(messages), stream=True, **ll_raw)
-        async for chunk in response:
-            content = chunk.choices[0].delta.content
-            if content is not None:
-                writer({"stream": content})
-                collected_content.append(content)
-            full_response.append(chunk)
 
-        # After loop: update last chunk to a full completion with usage details
-        if full_response:
-            last_chunk = full_response[-1]
-            full_text = "".join(collected_content)
-            last_chunk.object = "chat.completion"
-            last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
-            delattr(last_chunk.choices[0], "delta")
-            last_chunk.choices[0].finish_reason = "stop"
-            final_response = last_chunk.model_dump()
-
-            writer({"completion": final_response})
+        if streaming_enabled:
+            full_text = await _streaming_completion(messages, ll_raw, writer)
+        else:
+            full_text = await _non_streaming_completion(messages, ll_raw, writer)
     except APIConnectionError as ex:
         logger.error(ex)
         full_text = "I'm not able to contact the model API; please validate its configuration/availability."
     except Exception as ex:
         logger.error(ex)
         full_text = f"I'm sorry, an unknown completion problem occurred: {str(ex).split('Traceback', 1)[0]}"
+
     return {"messages": [AIMessage(content=full_text)]}
 
 
@@ -349,17 +318,15 @@ workflow.add_node("initialise", initialise)
 workflow.add_node("rephrase", rephrase)
 workflow.add_node("vs_retrieve", vs_retrieve)
 workflow.add_node("vs_grade", vs_grade)
-workflow.add_node("selectai_completion", selectai_completion)
 workflow.add_node("stream_completion", stream_completion)
 
 # Start the chatbot with clean messages
 workflow.add_edge(START, "initialise")
 
-# Branch to either "selectai_completion", "vs_retrieve", or "stream_completion"
+# Branch to either "vs_retrieve", or "stream_completion"
 workflow.add_conditional_edges("initialise", use_tool)
 workflow.add_edge("vs_retrieve", "vs_grade")
 workflow.add_edge("vs_grade", "stream_completion")
-workflow.add_edge("selectai_completion", END)
 
 # End the workflow
 workflow.add_edge("stream_completion", END)

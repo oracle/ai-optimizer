@@ -7,7 +7,6 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 import json
 import pickle
 import pandas as pd
-from bs4 import BeautifulSoup
 
 from pypdf import PdfReader
 from oracledb import Connection
@@ -274,26 +273,6 @@ def build_knowledge_base(
 def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.EvaluationReport:
     """Process an evaluate report"""
 
-    def clean(orig_html):
-        """Remove elements from html output"""
-        soup = BeautifulSoup(orig_html, "html.parser")
-        titles_to_remove = [
-            "GENERATOR",
-            "RETRIEVER",
-            "REWRITER",
-            "ROUTING",
-            "KNOWLEDGE_BASE",
-            "KNOWLEDGE BASE OVERVIEW",
-        ]
-        for title in titles_to_remove:
-            component_cards = soup.find_all("div", class_="component-card")
-            for card in component_cards:
-                title_element = card.find("div", class_="component-title")
-                if title_element and title in title_element.text.strip().upper():
-                    card.decompose()
-
-        return soup.prettify()
-
     # Main
     binds = {"eid": eid}
     sql = """
@@ -304,7 +283,6 @@ def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.Ev
     results = utils_databases.execute_sql(db_conn, sql, binds)
     report = pickle.loads(results[0]["RAG_REPORT"])
     full_report = report.to_pandas()
-    html_report = report.to_html()
     by_topic = report.correctness_by_topic()
     failures = report.failures
 

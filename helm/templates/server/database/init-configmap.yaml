@@ -1,0 +1,67 @@
+## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent freepdb1 oserror sidb spfile sqlplus adbs oraclevcn 
+# spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace
+
+{{- if .Values.server.database }}
+---
+# Database Initialization Scripts ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "global.fullname" . }}-db-init
+  labels:
+    app.kubernetes.io/component: database
+    {{- include "global.labels" . | nindent 4 }}
+data:
+  init.sh: |
+    {{ if eq (include "server.database.isSIDB" .) "true" }}sqlplus{{ else }}sql{{ end }} /nolog <<- EOF
+    WHENEVER SQLERROR EXIT 1
+    WHENEVER OSERROR EXIT 1
+    {{- if eq (include "server.database.needsPrivAuth" .) "true" }}
+    connect $PRIV_USERNAME/$PRIV_PASSWORD@$DB_DSN
+    {{- else }}
+    connect / as sysdba
+    ALTER SYSTEM SET VECTOR_MEMORY_SIZE=512M SCOPE=SPFILE;
+    ALTER SESSION SET CONTAINER=FREEPDB1;
+    {{- end }}
+    DECLARE
+      l_conn_user VARCHAR2(255);
+      l_user      VARCHAR2(255);
+      l_tblspace  VARCHAR2(255);
+    BEGIN
+      BEGIN
+          SELECT user INTO l_conn_user FROM DUAL;
+          SELECT username INTO l_user FROM DBA_USERS WHERE USERNAME='$DB_USERNAME';
+      EXCEPTION WHEN no_data_found THEN
+          EXECUTE IMMEDIATE 'CREATE USER "$DB_USERNAME" IDENTIFIED BY "$DB_PASSWORD"';
+      END;
+      SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = '$DB_USERNAME';
+      EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" QUOTA UNLIMITED ON ' || l_tblspace;
+      EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "$DB_USERNAME"';
+      {{- if eq (include "server.database.isADB" .) "true" }}
+      EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_AI TO "$DB_USERNAME"';
+      EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO "$DB_USERNAME"';
+      {{- end }}
+      EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" DEFAULT ROLE ALL';
+    END;
+    /
+    {{- if eq (include "server.database.isADBS" .) "true" }}
+    BEGIN
+      DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
+        host => '*.oraclevcn.com',
+        ace  => xs\$ace_type(
+          privilege_list => xs\$name_list('http', 'connect', 'resolve'),
+          principal_name => '$DB_USERNAME',
+          principal_type => xs_acl.ptype_db
+        )
+      );
+    END;
+    /
+    {{- end }}
+    {{- if eq (include "server.database.isSIDB" .) "true" }}
+    STARTUP FORCE;
+    ALTER SYSTEM REGISTER;
+    {{- end }}
+    EOF
+{{- end }}

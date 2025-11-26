@@ -2,42 +2,11 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# pylint: disable=too-many-arguments,too-many-positional-arguments,too-few-public-methods
 # spell-checker: disable
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from unittest.mock import patch, MagicMock
 import pytest
-
-
-#############################################################################
-# Test AuthN required and Valid
-#############################################################################
-class TestInvalidAuthEndpoints:
-    """Test endpoints without Headers and Invalid AuthN"""
-
-    @pytest.mark.parametrize(
-        "auth_type, status_code",
-        [
-            pytest.param("no_auth", 403, id="no_auth"),
-            pytest.param("invalid_auth", 401, id="invalid_auth"),
-        ],
-    )
-    @pytest.mark.parametrize(
-        "endpoint, api_method",
-        [
-            pytest.param("/v1/oci", "get", id="oci_list"),
-            pytest.param("/v1/oci/DEFAULT", "get", id="oci_get"),
-            pytest.param("/v1/oci/compartments/DEFAULT", "get", id="oci_list_compartments"),
-            pytest.param("/v1/oci/buckets/ocid/DEFAULT", "get", id="oci_list_buckets"),
-            pytest.param("/v1/oci/objects/bucket/DEFAULT", "get", id="oci_list_bucket_objects"),
-            pytest.param("/v1/oci/DEFAULT", "patch", id="oci_profile_update"),
-            pytest.param("/v1/oci/objects/download/bucket/DEFAULT", "post", id="oci_download_objects"),
-        ],
-    )
-    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication"""
-        response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
-        assert response.status_code == status_code
 
 
 ############################################################################
@@ -122,6 +91,30 @@ def _mock_get_object():
 ############################################################################
 class TestEndpoints:
     """Test Endpoints"""
+
+    @pytest.mark.parametrize(
+        "auth_type, status_code",
+        [
+            pytest.param("no_auth", 401, id="no_auth"),
+            pytest.param("invalid_auth", 401, id="invalid_auth"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "endpoint, api_method",
+        [
+            pytest.param("/v1/oci", "get", id="oci_list"),
+            pytest.param("/v1/oci/DEFAULT", "get", id="oci_get"),
+            pytest.param("/v1/oci/compartments/DEFAULT", "get", id="oci_list_compartments"),
+            pytest.param("/v1/oci/buckets/ocid/DEFAULT", "get", id="oci_list_buckets"),
+            pytest.param("/v1/oci/objects/bucket/DEFAULT", "get", id="oci_list_bucket_objects"),
+            pytest.param("/v1/oci/DEFAULT", "patch", id="oci_profile_update"),
+            pytest.param("/v1/oci/objects/download/bucket/DEFAULT", "post", id="oci_download_objects"),
+        ],
+    )
+    def test_invalid_auth_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valid authentication."""
+        response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
+        assert response.status_code == status_code
 
     def test_oci_list(self, client, auth_headers):
         """List OCI Configuration"""

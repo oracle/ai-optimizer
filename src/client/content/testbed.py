@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore mult selectai selectbox testset testsets
+# spell-checker:ignore mult selectbox testset testsets
 
 import random
 import string
@@ -50,29 +50,28 @@ def evaluation_report(eid=None, report=None) -> None:
 
     def create_gauge(value):
         """Create the GUI Gauge"""
+        # Workaround for Plotly bug: use 0.1 to ensure needle visibility
+        gauge_value = max(0.1, value) if value < 1 else value
+
         fig = go.Figure(
             go.Indicator(
                 mode="gauge+number",
-                value=value,
+                value=gauge_value,
                 title={"text": "Overall Correctness Score", "font": {"size": 42}},
-                # Add the '%' suffix here
-                number={"suffix": "%"},
+                number={"suffix": "%", "valueformat": ".0f"},  # Round to whole number
                 gauge={
-                    "axis": {"range": [None, 100]},
+                    "axis": {"range": [0, 100]},
                     "bar": {"color": "blue"},
                     "steps": [
                         {"range": [0, 75], "color": "red"},
                         {"range": [75, 90], "color": "yellow"},
                         {"range": [90, 100], "color": "green"},
                     ],
-                    "threshold": {
-                        "line": {"color": "blue", "width": 4},
-                        "thickness": 0.75,
-                        "value": 95,
-                    },
+                    # REMOVED threshold - it seems to be causing the needle to jump to wrong position
                 },
             )
         )
+
         return fig
 
     # Get the Report
@@ -81,18 +80,23 @@ def evaluation_report(eid=None, report=None) -> None:
     # Settings
     st.subheader("Evaluation Settings")
     ll_settings = pd.DataFrame(report["settings"]["ll_model"], index=[0])
-    ll_settings.drop(["streaming", "chat_history", "max_input_tokens"], axis=1, inplace=True)
+    ll_settings.drop(["chat_history", "max_input_tokens"], axis=1, inplace=True)
     ll_settings_reversed = ll_settings.iloc[:, ::-1]
     st.dataframe(ll_settings_reversed, hide_index=True)
     if report["settings"]["testbed"]["judge_model"]:
         st.markdown(f"**Judge Model**: {report['settings']['testbed']['judge_model']}")
+    # if discovery; then list out the tables that were discovered (MCP implementation)
+    # if report["settings"]["vector_search"].get("discovery"):
     if report["settings"]["vector_search"]["enabled"]:
         st.subheader("Vector Search Settings")
         st.markdown(f"""**Database**: {report["settings"]["database"]["alias"]};
             **Vector Store**: {report["settings"]["vector_search"]["vector_store"]}
         """)
         embed_settings = pd.DataFrame(report["settings"]["vector_search"], index=[0])
-        embed_settings.drop(["vector_store", "alias", "enabled", "grading"], axis=1, inplace=True)
+        fields_to_drop = ["vector_store", "alias", "enabled", "grading"]
+        existing_fields = [f for f in fields_to_drop if f in embed_settings.columns]
+        if existing_fields:
+            embed_settings.drop(existing_fields, axis=1, inplace=True)
         if report["settings"]["vector_search"]["search_type"] == "Similarity":
             embed_settings.drop(["score_threshold", "fetch_k", "lambda_mult"], axis=1, inplace=True)
         st.dataframe(embed_settings, hide_index=True)
@@ -100,28 +104,35 @@ def evaluation_report(eid=None, report=None) -> None:
         st.markdown("**Evaluated without Vector Search**")
 
     # Show the Gauge
-    gauge_fig = create_gauge(report["correctness"] * 100)
+    correctness_value = report["correctness"]
+    percentage_value = correctness_value * 100
+
+    # Debug output to verify the value
+    st.write(f"Debug: Raw correctness = {correctness_value}, Percentage = {percentage_value:.2f}%")
+
+    gauge_fig = create_gauge(percentage_value)
     # Display gauge
     st.plotly_chart(gauge_fig)
 
     # Correctness by Topic
     st.subheader("Correctness By Topic")
     by_topic = pd.DataFrame(report["correct_by_topic"])
-    by_topic["correctness"] = by_topic["correctness"] * 100
-    by_topic.rename(columns={"correctness": "Correctness %"}, inplace=True)
+    if not by_topic.empty:
+        by_topic["correctness"] = by_topic["correctness"] * 100
+        by_topic.rename(columns={"correctness": "Correctness %"}, inplace=True)
     st.dataframe(by_topic)
 
     # Failures
     st.subheader("Failures")
     failures = pd.DataFrame(report["failures"])
-    failures.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True)
+    failures.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True, errors="ignore")
     if not failures.empty:
         st.dataframe(failures, hide_index=True)
 
     # Full Report
     st.subheader("Full Report")
     full_report = pd.DataFrame(report["report"])
-    full_report.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True)
+    full_report.drop(["conversation_history", "metadata", "correctness"], axis=1, inplace=True, errors="ignore")
     st.dataframe(full_report, hide_index=True)
 
     # Download Button
@@ -137,9 +148,12 @@ def get_testbed_db_testsets() -> dict:
 def qa_delete() -> None:
     """Delete QA from Database"""
     tid = state.testbed["testset_id"]
-    api_call.delete(endpoint=f"v1/testbed/testset_delete/{tid}")
-    st.success(f"Test Set and Evaluations Deleted: {state.testbed['testset_name']}")
-    reset_testset(True)
+    try:
+        api_call.delete(endpoint=f"v1/testbed/testset_delete/{tid}")
+        st.success(f"Test Set and Evaluations Deleted: {state.testbed['testset_name']}")
+        reset_testset(True)
+    except api_call.ApiError as e:
+        st.error(f"Failed to delete test set: {e.message}")
 
 
 def qa_update_db() -> None:
@@ -172,8 +186,15 @@ def update_record(direction: int = 0) -> None:
 def delete_record() -> None:
     """Delete record from streamlit state"""
     state.testbed_qa.pop(state.testbed["qa_index"])
-    if state.testbed["qa_index"] != 0:
-        state.testbed["qa_index"] += -1
+    # After deletion, ensure index points to a valid record
+    if len(state.testbed_qa) > 0:
+        # If there are records remaining, ensure index is within bounds
+        if state.testbed["qa_index"] >= len(state.testbed_qa):
+            # Index is now out of bounds, point to last record
+            state.testbed["qa_index"] = len(state.testbed_qa) - 1
+    else:
+        # List is empty, reset index to 0
+        state.testbed["qa_index"] = 0
 
 
 def qa_update_gui(qa_testset: list) -> None:
@@ -234,7 +255,7 @@ def qa_update_gui(qa_testset: list) -> None:
 #############################################################################
 # MAIN
 #############################################################################
-def check_prerequisites() -> tuple[bool, list, list, bool]:
+def check_prerequisites() -> tuple[list, list, bool]:
     """Check if prerequisites are met and return configuration data"""
     try:
         get_models()
@@ -309,9 +330,9 @@ def render_testset_generation_ui(available_ll_models: list, available_embed_mode
     )
 
     if state.client_settings["testbed"].get("qa_ll_model") is None:
-        state.client_settings["testbed"]["qa_ll_model"] = available_embed_models[0]
+        state.client_settings["testbed"]["qa_ll_model"] = available_ll_models[0]
     selected_qa_ll_model = state.client_settings["testbed"]["qa_ll_model"]
-    qa_ll_model_idx = available_embed_models.index(selected_qa_ll_model)
+    qa_ll_model_idx = available_ll_models.index(selected_qa_ll_model)
     test_gen_llm = col_center.selectbox(
         "Q&A Language Model:",
         key="selected_test_gen_llm",
@@ -342,7 +363,7 @@ def render_testset_generation_ui(available_ll_models: list, available_embed_mode
     }
 
 
-def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, str, bool]:
+def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, bool, str]:
     """Render existing testset UI and return configuration"""
     testset_source = st.radio(
         "TestSet Source:",
@@ -356,6 +377,7 @@ def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, str, bo
 
     button_load_disabled = True
     endpoint = None
+    selected_testset_id = None
 
     if testset_source == "Local":
         endpoint = "v1/testbed/testset_load"
@@ -374,7 +396,19 @@ def render_existing_testset_ui(testset_sources: list) -> tuple[str, str, str, bo
         )
         button_load_disabled = db_testset is None
 
-    return testset_source, endpoint, button_load_disabled
+        # Extract the testset_id when a database testset is selected
+        if db_testset is not None:
+            testset_name, testset_created = db_testset.split(" -- Created: ", 1)
+            selected_testset_id = next(
+                (
+                    d["tid"]
+                    for d in state.testbed_db_testsets
+                    if d["name"] == testset_name and d["created"] == testset_created
+                ),
+                None,
+            )
+
+    return testset_source, endpoint, button_load_disabled, selected_testset_id
 
 
 def process_testset_request(endpoint: str, api_params: dict, testset_source: str = None) -> None:
@@ -382,7 +416,7 @@ def process_testset_request(endpoint: str, api_params: dict, testset_source: str
     try:
         with st.spinner("Processing Q&A... please be patient.", show_time=True):
             if testset_source != "Database":
-                api_params["name"] = (state.testbed["testset_name"],)
+                api_params["name"] = state.testbed["testset_name"]
                 files = st_common.local_file_payload(state[f"selected_uploader_{state.testbed['uploader_key']}"])
                 api_payload = {"files": files}
                 response = api_call.post(endpoint=endpoint, params=api_params, payload=api_payload, timeout=3600)
@@ -459,7 +493,6 @@ def render_evaluation_ui(available_ll_models: list) -> None:
     st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
     st_common.tools_sidebar()
     st_common.ll_sidebar()
-    st_common.selectai_sidebar()
     st_common.vector_search_sidebar()
     st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
     col_left, col_center, _ = st.columns([4, 3, 3])
@@ -477,12 +510,20 @@ def render_evaluation_ui(available_ll_models: list) -> None:
         on_change=st_common.update_client_settings("testbed"),
     )
 
+    # Check if vector search is enabled but no vector store is selected
+    evaluation_disabled = False
+    if state.client_settings.get("vector_search", {}).get("enabled", False):
+        # If vector search is enabled, check if a vector store is selected
+        if not state.client_settings.get("vector_search", {}).get("vector_store"):
+            evaluation_disabled = True
+
     if col_center.button(
         "Start Evaluation",
         type="primary",
         key="evaluate_button",
         help="Evaluation will automatically save the TestSet to the Database",
         on_click=qa_update_db,
+        disabled=evaluation_disabled,
     ):
         with st.spinner("Starting Q&A evaluation... please be patient.", show_time=True):
             st_common.clear_state_key("testbed_evaluations")
@@ -533,7 +574,7 @@ def main() -> None:
     if not state.selected_generate_test:
         st.subheader("Run Existing Q&A Test Set", divider="red")
         button_text = "Load Q&A"
-        testset_source, endpoint, button_load_disabled = render_existing_testset_ui(testset_sources)
+        testset_source, endpoint, button_load_disabled, _ = render_existing_testset_ui(testset_sources)
     else:
         st.subheader("Generate new Q&A Test Set", divider="red")
         button_text = "Generate Q&A"
@@ -547,7 +588,13 @@ def main() -> None:
         button_load_disabled = gen_params["upload_file"] is None
 
     # Process Q&A Request buttons
-    button_load_disabled = button_load_disabled or state.testbed["testset_id"] == "" or "testbed_qa" in state
+    # Only check testset_id when loading existing test sets, not when generating new ones
+    if not state.selected_generate_test:
+        # Use the selected_testset_id from the UI instead of state.testbed["testset_id"]
+        # since state.testbed["testset_id"] is only set after loading
+        button_load_disabled = button_load_disabled or "testbed_qa" in state
+    else:
+        button_load_disabled = button_load_disabled or "testbed_qa" in state
     col_left, col_center, _, col_right = st.columns([3, 3, 4, 3])
 
     if not button_load_disabled:

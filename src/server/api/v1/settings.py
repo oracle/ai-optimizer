@@ -6,10 +6,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import json
 from typing import Union
 
-from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile
+from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile, Request
 from fastapi.responses import JSONResponse
 
-import server.api.core.settings as core_settings
+import server.api.utils.settings as utils_settings
 
 from common import schema
 from common import logging_config
@@ -33,6 +33,7 @@ def _incl_readonly_param(incl_readonly: bool = Query(False, include_in_schema=Fa
     response_model=Union[schema.Configuration, schema.Settings],
 )
 async def settings_get(
+    request: Request,
     client: schema.ClientIdType,
     full_config: bool = False,
     incl_sensitive: bool = Depends(_incl_sensitive_param),
@@ -40,14 +41,17 @@ async def settings_get(
 ) -> Union[schema.Configuration, schema.Settings]:
     """Get settings for a specific client by name"""
     try:
-        client_settings = core_settings.get_client_settings(client)
+        client_settings = utils_settings.get_client(client)
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=str(ex)) from ex
 
     if not full_config:
         return client_settings
 
-    config = core_settings.get_server_config()
+    # Get MCP engine for prompt retrieval
+    mcp_engine = request.app.state.fastmcp_app
+    config = await utils_settings.get_server(mcp_engine)
+
     response = schema.Configuration(
         client_settings=client_settings,
         database_configs=config.get("database_configs"),
@@ -70,7 +74,7 @@ async def settings_update(
     logger.debug("Received %s Client Payload: %s", client, payload)
 
     try:
-        return core_settings.update_client_settings(payload, client)
+        return utils_settings.update_client(payload, client)
     except ValueError as ex:
         raise HTTPException(status_code=404, detail=f"Settings: {str(ex)}.") from ex
 
@@ -87,7 +91,7 @@ async def settings_create(
     logger.debug("Received %s Client create request.", client)
 
     try:
-        new_client = core_settings.create_client_settings(client)
+        new_client = utils_settings.create_client(client)
     except ValueError as ex:
         raise HTTPException(status_code=409, detail=f"Settings: {str(ex)}.") from ex
 
@@ -108,7 +112,7 @@ async def load_settings_from_file(
     """
     logger.debug("Received %s Client File: %s", client, file)
     try:
-        core_settings.create_client_settings(client)
+        utils_settings.create_client(client)
     except ValueError:  # Client already exists
         pass
 
@@ -117,7 +121,7 @@ async def load_settings_from_file(
             raise HTTPException(status_code=400, detail="Settings: Only JSON files are supported.")
         contents = await file.read()
         config_data = json.loads(contents)
-        core_settings.load_config_from_json_data(config_data, client)
+        utils_settings.load_config_from_json_data(config_data, client)
         return {"message": "Configuration loaded successfully."}
     except json.JSONDecodeError as ex:
         raise HTTPException(status_code=400, detail="Settings: Invalid JSON file.") from ex
@@ -141,12 +145,12 @@ async def load_settings_from_json(
     """
     logger.debug("Received %s Client Payload: %s", client, payload)
     try:
-        core_settings.create_client_settings(client)
+        utils_settings.create_client(client)
     except ValueError:  # Client already exists
         pass
 
     try:
-        core_settings.load_config_from_json_data(payload.model_dump(), client)
+        utils_settings.load_config_from_json_data(payload.model_dump(), client)
         return {"message": "Configuration loaded successfully."}
     except json.JSONDecodeError as ex:
         raise HTTPException(status_code=400, detail="Settings: Invalid JSON file.") from ex

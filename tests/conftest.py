@@ -3,11 +3,24 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
-# pylint: disable=import-error
-# pylint: disable=wrong-import-position
-# pylint: disable=import-outside-toplevel
+# pylint: disable=protected-access import-error import-outside-toplevel consider-using-with
 
 import os
+import sys
+import time
+import socket
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Generator, Optional
+from contextlib import contextmanager
+
+import requests
+import numpy as np
+import pytest
+import docker
+from docker.errors import DockerException
+from docker.models.containers import Container
 
 # This contains all the environment variables we consume on startup (add as required)
 # Used to clear testing environment from users env; Do before any additional imports
@@ -34,23 +47,8 @@ os.environ["API_SERVER_URL"] = "http://localhost"
 os.environ["API_SERVER_PORT"] = "8015"
 
 # Import rest of required modules
-import time
-import socket
-import shutil
-import subprocess
-from pathlib import Path
-from typing import Generator, Optional
-from contextlib import contextmanager
-import requests
-import numpy as np
-import pytest
-from fastapi.testclient import TestClient
-from streamlit.testing.v1 import AppTest
-
-# For Database Container
-import docker
-from docker.errors import DockerException
-from docker.models.containers import Container
+from fastapi.testclient import TestClient  # pylint: disable=wrong-import-position
+from streamlit.testing.v1 import AppTest  # pylint: disable=wrong-import-position
 
 
 #################################################
@@ -91,6 +89,20 @@ def mock_embedding_model():
     return mock_embed_documents
 
 
+@pytest.fixture
+def db_objects_manager():
+    """
+    Fixture to manage DATABASE_OBJECTS save/restore operations.
+    This reduces code duplication across tests that need to manipulate DATABASE_OBJECTS.
+    """
+    from server.bootstrap.bootstrap import DATABASE_OBJECTS
+
+    original_db_objects = DATABASE_OBJECTS.copy()
+    yield DATABASE_OBJECTS
+    DATABASE_OBJECTS.clear()
+    DATABASE_OBJECTS.extend(original_db_objects)
+
+
 #################################################
 # Fixures for tests/client
 #################################################
@@ -109,28 +121,33 @@ def app_server(request):
     if config_file:
         cmd.extend(["-c", config_file])
 
-    server_process = subprocess.Popen(cmd, cwd="src")  # pylint: disable=consider-using-with
+    server_process = subprocess.Popen(cmd, cwd="src")
 
-    # Wait for server to be ready (up to 30 seconds)
-    max_wait = 30
-    start_time = time.time()
-    while not is_port_in_use(8015):
-        if time.time() - start_time > max_wait:
-            server_process.terminate()
-            server_process.wait()
-            raise TimeoutError("Server failed to start within 30 seconds")
-        time.sleep(0.5)
+    try:
+        # Wait for server to be ready (up to 30 seconds)
+        max_wait = 30
+        start_time = time.time()
+        while not is_port_in_use(8015):
+            if time.time() - start_time > max_wait:
+                raise TimeoutError("Server failed to start within 30 seconds")
+            time.sleep(0.5)
 
-    yield server_process
+        yield server_process
 
-    # Terminate the server after tests
-    server_process.terminate()
-    server_process.wait()
+    finally:
+        # Terminate the server after tests
+        server_process.terminate()
+        server_process.wait()
 
 
 @pytest.fixture
 def app_test(auth_headers):
-    """Establish Streamlit State for Client to Operate"""
+    """Establish Streamlit State for Client to Operate
+
+    This fixture mimics what launch_client.py does in init_configs_state(),
+    loading the full configuration including all *_configs (database_configs, model_configs,
+    oci_configs, etc.) into session state, just like the real application does.
+    """
 
     def _app_test(page):
         at = AppTest.from_file(page, default_timeout=30)
@@ -138,18 +155,217 @@ def app_test(auth_headers):
             "key": os.environ.get("API_SERVER_KEY"),
             "url": os.environ.get("API_SERVER_URL"),
             "port": int(os.environ.get("API_SERVER_PORT")),
-            "control": True 
+            "control": True,
         }
-        response = requests.get(
+        # Load full config like launch_client.py does in init_configs_state()
+        full_config = requests.get(
             url=f"{at.session_state.server['url']}:{at.session_state.server['port']}/v1/settings",
             headers=auth_headers["valid_auth"],
-            params={"client": TEST_CONFIG["client"]},
+            params={
+                "client": TEST_CONFIG["client"],
+                "full_config": True,
+                "incl_sensitive": True,
+                "incl_readonly": True,
+            },
             timeout=120,
-        )
-        at.session_state.client_settings = response.json()
+        ).json()
+        # Load all config items into session state (database_configs, model_configs, oci_configs, etc.)
+        for key, value in full_config.items():
+            at.session_state[key] = value
         return at
 
     return _app_test
+
+
+def setup_test_database(app_test_instance):
+    """Configure and connect to test database for integration tests
+
+    This helper function:
+    1. Updates database config with test credentials
+    2. Patches the database on the server
+    3. Reloads full config to get updated database status
+
+    Args:
+        app_test_instance: The AppTest instance from app_test fixture
+
+    Returns:
+        The updated AppTest instance with database configured
+    """
+    if not app_test_instance.session_state.database_configs:
+        return app_test_instance
+
+    # Update database config with test credentials
+    db_config = app_test_instance.session_state.database_configs[0]
+    db_config["user"] = TEST_CONFIG["db_username"]
+    db_config["password"] = TEST_CONFIG["db_password"]
+    db_config["dsn"] = TEST_CONFIG["db_dsn"]
+
+    # Update the database on the server to establish connection
+    server_url = app_test_instance.session_state.server["url"]
+    server_port = app_test_instance.session_state.server["port"]
+    server_key = app_test_instance.session_state.server["key"]
+    db_name = db_config["name"]
+
+    response = requests.patch(
+        url=f"{server_url}:{server_port}/v1/databases/{db_name}",
+        headers={"Authorization": f"Bearer {server_key}", "client": "server"},
+        json={"user": db_config["user"], "password": db_config["password"], "dsn": db_config["dsn"]},
+        timeout=120,
+    )
+
+    if response.status_code != 200:
+        raise RuntimeError(f"Failed to update database: {response.text}")
+
+    # Reload the full config to get the updated database status
+    full_config = requests.get(
+        url=f"{server_url}:{server_port}/v1/settings",
+        headers={"Authorization": f"Bearer {server_key}", "client": TEST_CONFIG["client"]},
+        params={
+            "client": TEST_CONFIG["client"],
+            "full_config": True,
+            "incl_sensitive": True,
+            "incl_readonly": True,
+        },
+        timeout=120,
+    ).json()
+
+    # Update session state with refreshed config
+    for key, value in full_config.items():
+        app_test_instance.session_state[key] = value
+
+    return app_test_instance
+
+
+def enable_test_models(app_test_instance):
+    """Enable at least one LL model for testing
+
+    Args:
+        app_test_instance: The AppTest instance from app_test fixture
+
+    Returns:
+        The updated AppTest instance with models enabled
+    """
+    for model in app_test_instance.session_state.model_configs:
+        if model["type"] == "ll":
+            model["enabled"] = True
+            break
+
+    return app_test_instance
+
+
+def enable_test_embed_models(app_test_instance):
+    """Enable at least one embedding model for testing
+
+    Args:
+        app_test_instance: The AppTest instance from app_test fixture
+
+    Returns:
+        The updated AppTest instance with embed models enabled
+    """
+    for model in app_test_instance.session_state.model_configs:
+        if model["type"] == "embed":
+            model["enabled"] = True
+            break
+
+    return app_test_instance
+
+
+def create_tabs_mock(monkeypatch):
+    """Create a mock for st.tabs that captures what tabs are created
+
+    This is a helper function to reduce code duplication in tests that need
+    to verify which tabs are created by the application.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture
+
+    Returns:
+        A list that will be populated with tab names as they are created
+    """
+    import streamlit as st
+
+    tabs_created = []
+    original_tabs = st.tabs
+
+    def mock_tabs(tab_list):
+        tabs_created.extend(tab_list)
+        return original_tabs(tab_list)
+
+    monkeypatch.setattr(st, "tabs", mock_tabs)
+    return tabs_created
+
+
+@contextmanager
+def temporary_sys_path(path):
+    """Temporarily add a path to sys.path and remove it when done
+
+    This context manager is useful for tests that need to temporarily modify
+    the Python path to import modules from specific locations.
+
+    Args:
+        path: Path to add to sys.path
+
+    Yields:
+        None
+    """
+    sys.path.insert(0, path)
+    try:
+        yield
+    finally:
+        if path in sys.path:
+            sys.path.remove(path)
+
+
+def run_streamlit_test(app_test_instance, run=True):
+    """Helper to run a Streamlit test and verify no exceptions
+
+    This helper reduces code duplication in tests that follow the pattern:
+    1. Run the app test
+    2. Verify no exceptions occurred
+
+    Args:
+        app_test_instance: The AppTest instance to run
+        run: Whether to run the test (default: True)
+
+    Returns:
+        The AppTest instance (run or not based on the run parameter)
+    """
+    if run:
+        app_test_instance = app_test_instance.run()
+    assert not app_test_instance.exception
+    return app_test_instance
+
+
+def get_test_db_payload():
+    """Get standard test database payload for integration tests
+
+    Returns:
+        dict: Database configuration payload with test credentials
+    """
+    return {
+        "user": TEST_CONFIG["db_username"],
+        "password": TEST_CONFIG["db_password"],
+        "dsn": TEST_CONFIG["db_dsn"],
+    }
+
+
+def get_sample_oci_config():
+    """Get sample OCI configuration for unit tests
+
+    Returns:
+        OracleCloudSettings: Sample OCI configuration object
+    """
+    from common.schema import OracleCloudSettings
+
+    return OracleCloudSettings(
+        auth_profile="DEFAULT",
+        compartment_id="ocid1.compartment.oc1..test",
+        genai_region="us-ashburn-1",
+        user="ocid1.user.oc1..testuser",
+        fingerprint="test-fingerprint",
+        tenancy="ocid1.tenancy.oc1..testtenant",
+        key_file="/path/to/key.pem",
+    )
 
 
 #################################################
@@ -246,3 +462,48 @@ def db_container() -> Generator[Container, None, None]:
                 container.remove()
             except DockerException as e:
                 print(f"Warning: Failed to cleanup database container: {str(e)}")
+
+
+#################################################
+# Shared Test Data for Vector Store Tests
+#################################################
+@pytest.fixture
+def sample_vector_store_data():
+    """Sample vector store data for testing - standard configuration"""
+    return {
+        "alias": "test_alias",
+        "model": "openai/text-embed-3",
+        "chunk_size": 1000,
+        "chunk_overlap": 200,
+        "distance_metric": "cosine",
+        "index_type": "IVF",
+        "vector_store": "vs_test"
+    }
+
+
+@pytest.fixture
+def sample_vector_store_data_alt():
+    """Alternative sample vector store data for testing - different configuration"""
+    return {
+        "alias": "alias2",
+        "model": "openai/text-embed-3",
+        "chunk_size": 500,
+        "chunk_overlap": 100,
+        "distance_metric": "euclidean",
+        "index_type": "HNSW",
+        "vector_store": "vs2"
+    }
+
+
+@pytest.fixture
+def sample_vector_stores_list(sample_vector_store_data, sample_vector_store_data_alt):  # pylint: disable=redefined-outer-name
+    """List of sample vector stores with different aliases for filtering tests"""
+    vs1 = sample_vector_store_data.copy()
+    vs1["alias"] = "vs1"
+    vs1.pop("vector_store", None)  # Remove vector_store field for filtering tests
+
+    vs2 = sample_vector_store_data_alt.copy()
+    vs2["alias"] = "vs2"
+    vs2.pop("vector_store", None)  # Remove vector_store field for filtering tests
+
+    return [vs1, vs2]

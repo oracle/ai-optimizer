@@ -3,12 +3,14 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker: disable
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from unittest.mock import patch, MagicMock
 
 import pytest
 import oci
 
+from conftest import get_sample_oci_config
 from server.api.utils import oci as oci_utils
 from server.api.utils.oci import OciException
 from common.schema import OracleCloudSettings, Settings, OciSettings
@@ -28,8 +30,8 @@ class TestOciException:
 class TestOciGet:
     """Test OCI get() function"""
 
-    def setup_method(self):
-        """Setup test data before each test"""
+    def __init__(self):
+        """Setup test data for all tests"""
         self.sample_oci_default = OracleCloudSettings(
             auth_profile="DEFAULT", compartment_id="ocid1.compartment.oc1..default"
         )
@@ -117,7 +119,7 @@ class TestOciGet:
 
     @patch("server.bootstrap.bootstrap.OCI_OBJECTS")
     @patch("server.bootstrap.bootstrap.SETTINGS_OBJECTS")
-    def test_get_by_client_not_found(self, mock_settings_objects, mock_oci_objects):
+    def test_get_by_client_not_found(self, mock_settings_objects, _mock_oci_objects):
         """Test getting OCI settings when client doesn't exist"""
         mock_settings_objects.__iter__ = MagicMock(return_value=iter([]))
 
@@ -137,7 +139,8 @@ class TestOciGet:
             bootstrap.SETTINGS_OBJECTS = [self.sample_client_settings]
             bootstrap.OCI_OBJECTS = [self.sample_oci_default]  # Only DEFAULT profile
 
-            with pytest.raises(ValueError, match="No settings found for client 'test_client' with auth_profile 'CUSTOM'"):
+            expected_error = "No settings found for client 'test_client' with auth_profile 'CUSTOM'"
+            with pytest.raises(ValueError, match=expected_error):
                 oci_utils.get(client="test_client")
         finally:
             # Restore originals
@@ -199,7 +202,7 @@ class TestGetSigner:
 class TestInitClient:
     """Test init_client() function"""
 
-    def setup_method(self):
+    def __init__(self):
         """Setup test data"""
         self.api_key_config = OracleCloudSettings(
             auth_profile="DEFAULT",
@@ -226,7 +229,7 @@ class TestInitClient:
 
     @patch("oci.generative_ai_inference.GenerativeAiInferenceClient")
     @patch.object(oci_utils, "get_signer", return_value=None)
-    def test_init_client_genai_with_endpoint(self, mock_get_signer, mock_client_class):
+    def test_init_client_genai_with_endpoint(self, _mock_get_signer, mock_client_class):
         """Test init_client for GenAI sets correct service endpoint"""
         genai_config = self.api_key_config.model_copy()
         genai_config.genai_compartment_id = "ocid1.compartment.oc1..test"
@@ -251,7 +254,7 @@ class TestInitClient:
             auth_profile="DEFAULT",
             authentication="instance_principal",
             region="us-ashburn-1",
-            tenancy=None  # Will be set from signer
+            tenancy=None,  # Will be set from signer
         )
 
         mock_signer = MagicMock()
@@ -278,12 +281,13 @@ class TestInitClient:
             auth_profile="DEFAULT",
             authentication="oke_workload_identity",
             region="us-ashburn-1",
-            tenancy=None  # Will be extracted from token
+            tenancy=None,  # Will be extracted from token
         )
 
         # Mock JWT token with tenant claim
         import base64
         import json
+
         payload = {"tenant": "ocid1.tenancy.oc1..workload"}
         payload_json = json.dumps(payload)
         payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode().rstrip("=")
@@ -308,7 +312,7 @@ class TestInitClient:
     @patch("oci.signer.load_private_key_from_file")
     @patch("oci.auth.signers.SecurityTokenSigner")
     def test_init_client_with_security_token(
-        self, mock_sec_token_signer, mock_load_key, mock_open, mock_get_signer, mock_client_class
+        self, mock_sec_token_signer, mock_load_key, mock_open, _mock_get_signer, mock_client_class
     ):
         """Test init_client with security token authentication"""
         token_config = OracleCloudSettings(
@@ -316,7 +320,7 @@ class TestInitClient:
             authentication="security_token",
             region="us-ashburn-1",
             security_token_file="/path/to/token",
-            key_file="/path/to/key.pem"
+            key_file="/path/to/key.pem",
         )
 
         # Mock file reading
@@ -337,7 +341,7 @@ class TestInitClient:
 
     @patch("oci.object_storage.ObjectStorageClient")
     @patch.object(oci_utils, "get_signer", return_value=None)
-    def test_init_client_invalid_config(self, mock_get_signer, mock_client_class):
+    def test_init_client_invalid_config(self, _mock_get_signer, mock_client_class):
         """Test init_client with invalid config raises OciException"""
         mock_client_class.side_effect = oci.exceptions.InvalidConfig("Bad config")
 
@@ -351,17 +355,9 @@ class TestInitClient:
 class TestOciUtils:
     """Test OCI utility functions"""
 
-    def setup_method(self):
+    def __init__(self):
         """Setup test data"""
-        self.sample_oci_config = OracleCloudSettings(
-            auth_profile="DEFAULT",
-            compartment_id="ocid1.compartment.oc1..test",
-            genai_region="us-ashburn-1",
-            user="ocid1.user.oc1..testuser",
-            fingerprint="test-fingerprint",
-            tenancy="ocid1.tenancy.oc1..testtenant",
-            key_file="/path/to/key.pem",
-        )
+        self.sample_oci_config = get_sample_oci_config()
 
     def test_init_genai_client(self):
         """Test GenAI client initialization"""

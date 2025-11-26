@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 import litellm
 from langchain_core.messages import ChatMessage
 
-import server.api.core.settings as core_settings
+import server.api.utils.settings as utils_settings
 import server.api.utils.oci as utils_oci
 import server.api.utils.embed as utils_embed
 import server.api.utils.testbed as utils_testbed
@@ -90,7 +90,9 @@ async def testbed_testset_qa(
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.TestSetQA:
     """Get TestSet Q&A"""
-    return utils_testbed.get_testset_qa(db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper())
+    return utils_testbed.get_testset_qa(
+        db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper()
+    )
 
 
 @auth.delete(
@@ -134,6 +136,59 @@ async def testbed_upsert_testsets(
     return testset_qa
 
 
+async def _process_file_for_testset(
+    file, temp_directory, full_testsets, name, questions, ll_model, embed_model, oci_config
+):
+    """Process a single uploaded file and generate testset"""
+    # Read and save file content
+    file_content = await file.read()
+    filename = temp_directory / file.filename
+    logger.info("Writing Q&A File to: %s", filename)
+    with open(filename, "wb") as file_handle:
+        file_handle.write(file_content)
+
+    # Process file for knowledge base
+    text_nodes = utils_testbed.load_and_split(filename)
+    test_set = utils_testbed.build_knowledge_base(text_nodes, questions, ll_model, embed_model, oci_config)
+
+    # Save test set
+    test_set_filename = temp_directory / f"{name}.jsonl"
+    test_set.save(test_set_filename)
+    with (
+        open(test_set_filename, "r", encoding="utf-8") as source,
+        open(full_testsets, "a", encoding="utf-8") as destination,
+    ):
+        destination.write(source.read())
+
+
+def _handle_testset_error(ex: Exception, temp_directory, ll_model: str):
+    """Handle errors during testset generation"""
+    shutil.rmtree(temp_directory)
+
+    if isinstance(ex, KeyError):
+        if "None of" in str(ex) and "are in the columns" in str(ex):
+            error_message = (
+                f"Failed to generate any questions using model '{ll_model}'. "
+                "This may indicate the model is unavailable, retired, or not found. "
+                "Please verify the model name and try a different model."
+            )
+            logger.error("TestSet Generation Failed: %s", error_message)
+            raise HTTPException(status_code=400, detail=error_message) from ex
+        # Re-raise other KeyErrors
+        raise ex
+
+    if isinstance(ex, ValueError):
+        logger.error("TestSet Validation Error: %s", str(ex))
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
+
+    if isinstance(ex, litellm.APIConnectionError):
+        logger.error("APIConnectionError Exception: %s", str(ex))
+        raise HTTPException(status_code=424, detail=f"Model API error: {str(ex)}") from ex
+
+    logger.error("Unknown TestSet Exception: %s", str(ex))
+    raise HTTPException(status_code=500, detail=f"Unexpected TestSet error: {str(ex)}.") from ex
+
+
 @auth.post(
     "/testset_generate",
     description="Generate Q&A Test Set.",
@@ -159,52 +214,11 @@ async def testbed_generate_qa(
 
     for file in files:
         try:
-            # Read and save file content
-            file_content = await file.read()
-            filename = temp_directory / file.filename
-            logger.info("Writing Q&A File to: %s", filename)
-            with open(filename, "wb") as file:
-                file.write(file_content)
-
-            # Process file for knowledge base
-            text_nodes = utils_testbed.load_and_split(filename)
-            test_set = utils_testbed.build_knowledge_base(text_nodes, questions, ll_model, embed_model, oci_config)
-            # Save test set
-            test_set_filename = temp_directory / f"{name}.jsonl"
-            test_set.save(test_set_filename)
-            with (
-                open(test_set_filename, "r", encoding="utf-8") as source,
-                open(full_testsets, "a", encoding="utf-8") as destination,
-            ):
-                destination.write(source.read())
-        except KeyError as ex:
-            # Handle empty testset error (when no questions are generated due to model issues)
-            shutil.rmtree(temp_directory)
-            if "None of" in str(ex) and "are in the columns" in str(ex):
-                error_message = (
-                    f"Failed to generate any questions using model '{ll_model}'. "
-                    "This may indicate the model is unavailable, retired, or not found. "
-                    "Please verify the model name and try a different model."
-                )
-                logger.error("TestSet Generation Failed: %s", error_message)
-                raise HTTPException(status_code=400, detail=error_message) from ex
-            # Re-raise other KeyErrors
-            raise
-        except ValueError as ex:
-            # Handle model validation errors (e.g., empty testset due to model issues)
-            shutil.rmtree(temp_directory)
-            error_message = str(ex)
-            logger.error("TestSet Validation Error: %s", error_message)
-            raise HTTPException(status_code=400, detail=error_message) from ex
-        except litellm.APIConnectionError as ex:
-            shutil.rmtree(temp_directory)
-            error_message = str(ex)
-            logger.error("APIConnectionError Exception: %s", error_message)
-            raise HTTPException(status_code=424, detail=f"Model API error: {error_message}") from ex
-        except Exception as ex:
-            shutil.rmtree(temp_directory)
-            logger.error("Unknown TestSet Exception: %s", str(ex))
-            raise HTTPException(status_code=500, detail=f"Unexpected TestSet error: {str(ex)}.") from ex
+            await _process_file_for_testset(
+                file, temp_directory, full_testsets, name, questions, ll_model, embed_model, oci_config
+            )
+        except (KeyError, ValueError, litellm.APIConnectionError, Exception) as ex:
+            _handle_testset_error(ex, temp_directory, ll_model)
 
     # Store tests in database (only if we successfully generated testsets)
     with open(full_testsets, "rb") as file:
@@ -236,10 +250,10 @@ def testbed_evaluate(
         return ai_response["choices"][0]["message"]["content"]
 
     evaluated = datetime.now().isoformat()
-    client_settings = core_settings.get_client_settings(client)
-    # Change Disable History
+    client_settings = utils_settings.get_client(client)
+    # Disable History
     client_settings.ll_model.chat_history = False
-    # Change Grade vector_search
+    # Disable Grade vector_search
     client_settings.vector_search.grading = False
 
     db_conn = utils_databases.get_client_database(client).connection
