@@ -17,10 +17,15 @@ from server.api.utils import testbed
 class TestTestbedUtils:
     """Test testbed utility functions"""
 
-    def __init__(self):
-        """Setup test data"""
-        self.mock_connection = MagicMock(spec=Connection)
-        self.sample_qa_data = {
+    @pytest.fixture
+    def mock_connection(self):
+        """Mock database connection fixture"""
+        return MagicMock(spec=Connection)
+
+    @pytest.fixture
+    def sample_qa_data(self):
+        """Sample QA data fixture"""
+        return {
             "question": "What is the capital of France?",
             "answer": "Paris",
             "context": "France is a country in Europe.",
@@ -73,11 +78,11 @@ class TestTestbedUtils:
             testbed.jsonl_to_json_content(content)
 
     @patch("server.api.utils.databases.execute_sql")
-    def test_create_testset_objects(self, mock_execute_sql):
+    def test_create_testset_objects(self, mock_execute_sql, mock_connection):
         """Test creating testset database objects"""
         mock_execute_sql.return_value = []
 
-        testbed.create_testset_objects(self.mock_connection)
+        testbed.create_testset_objects(mock_connection)
 
         # Should execute 3 SQL statements (testsets, testset_qa, evaluations tables)
         assert mock_execute_sql.call_count == 3

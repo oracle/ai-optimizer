@@ -64,6 +64,7 @@ async def completion_generator(
         "config": RunnableConfig(
             configurable={"thread_id": client, "ll_config": ll_config},
             metadata={
+                "tools_enabled": client_settings.tools_enabled,
                 "use_history": client_settings.ll_model.chat_history,
                 "vector_search": client_settings.vector_search,
                 "streaming": call == "streams",
@@ -72,7 +73,7 @@ async def completion_generator(
     }
 
     # Add DB Conn to KWargs when needed
-    if client_settings.vector_search.enabled:
+    if "Vector Search" in client_settings.tools_enabled:
         db_conn = utils_databases.get_client_database(client, False).connection
         kwargs["config"]["configurable"]["db_conn"] = db_conn
         kwargs["config"]["configurable"]["embed_client"] = utils_models.get_client_embed(

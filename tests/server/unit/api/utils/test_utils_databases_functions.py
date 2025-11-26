@@ -20,10 +20,6 @@ from common.schema import Database
 class TestDatabaseUtilsPrivateFunctions:
     """Test private utility functions"""
 
-    def __init__(self):
-        """Initialize test data"""
-        self.sample_database = None
-
     def setup_method(self):
         """Setup test data"""
         self.sample_database = Database(
@@ -171,10 +167,6 @@ class TestDatabaseUtilsPrivateFunctions:
 
 class TestDatabaseUtilsPublicFunctions:
     """Test public utility functions - connection and execution"""
-
-    def __init__(self):
-        """Initialize test data"""
-        self.sample_database = None
 
     def setup_method(self):
         """Setup test data"""
@@ -444,10 +436,6 @@ class TestDatabaseUtilsPublicFunctions:
 
 class TestDatabaseUtilsQueryFunctions:
     """Test public utility functions - get and client database functions"""
-
-    def __init__(self):
-        """Initialize test data"""
-        self.sample_database = None
 
     def setup_method(self):
         """Setup test data"""

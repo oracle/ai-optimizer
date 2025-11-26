@@ -76,7 +76,7 @@ def clean_messages(state: OptimizerState, config: RunnableConfig) -> list:
 
 def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "stream_completion"]:
     """Conditional edge to determine if using Vector Search or not"""
-    enabled = config["metadata"]["vector_search"].enabled
+    enabled = "Vector Search" in config.get("metadata", {}).get("tools_enabled", [])
     if enabled:
         logger.info("Invoking Chatbot with Vector Search: %s", enabled)
         return "vs_retrieve"
@@ -138,7 +138,7 @@ async def vs_grade(state: OptimizerState, config: RunnableConfig) -> OptimizerSt
     # Initialise documents as relevant
     relevant = "yes"
     documents_dict = document_formatter(state["documents"])
-    if config["metadata"]["vector_search"].grading and state.get("documents"):
+    if config["metadata"]["vector_search"].grade and state.get("documents"):
         grade_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-grade")
         grade_template_text = grade_prompt_msg.content.text
 
@@ -240,7 +240,7 @@ async def vs_retrieve(state: OptimizerState, config: RunnableConfig) -> Optimize
 
 def _build_system_prompt(state: OptimizerState, config: RunnableConfig) -> SystemMessage:
     """Build the system prompt based on vector search configuration."""
-    vector_search_enabled = config["metadata"]["vector_search"].enabled
+    vector_search_enabled = "Vector Search" in config.get("metadata", {}).get("tools_enabled", [])
 
     if vector_search_enabled:
         sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-no-tools-default")

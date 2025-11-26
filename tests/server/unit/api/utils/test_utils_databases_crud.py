@@ -17,11 +17,6 @@ from common.schema import Database
 class TestDatabases:
     """Test databases module functionality"""
 
-    def __init__(self):
-        """Initialize test data"""
-        self.sample_database = None
-        self.sample_database_2 = None
-
     def setup_method(self):
         """Setup test data before each test"""
         self.sample_database = Database(name="test_db", user="test_user", password="test_password", dsn="test_dsn")

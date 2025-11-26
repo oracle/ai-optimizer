@@ -8,6 +8,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from server.api.utils import oci as oci_utils
 from common.schema import OracleCloudSettings
 
@@ -15,9 +17,10 @@ from common.schema import OracleCloudSettings
 class TestGetBucketObjectsWithMetadata:
     """Test get_bucket_objects_with_metadata() function"""
 
-    def __init__(self):
-        """Setup test data"""
-        self.sample_oci_config = OracleCloudSettings(
+    @pytest.fixture
+    def sample_oci_config(self):
+        """Sample OCI config fixture"""
+        return OracleCloudSettings(
             auth_profile="DEFAULT",
             namespace="test-namespace",
             compartment_id="ocid1.compartment.oc1..test",
@@ -35,7 +38,7 @@ class TestGetBucketObjectsWithMetadata:
         return mock_obj
 
     @patch.object(oci_utils, "init_client")
-    def test_get_bucket_objects_with_metadata_success(self, mock_init_client):
+    def test_get_bucket_objects_with_metadata_success(self, mock_init_client, sample_oci_config):
         """Test successful retrieval of bucket objects with metadata"""
         # Create mock objects
         time1 = datetime(2025, 11, 1, 10, 0, 0)
@@ -56,7 +59,7 @@ class TestGetBucketObjectsWithMetadata:
         mock_init_client.return_value = mock_client
 
         # Execute
-        result = oci_utils.get_bucket_objects_with_metadata("test-bucket", self.sample_oci_config)
+        result = oci_utils.get_bucket_objects_with_metadata("test-bucket", sample_oci_config)
 
         # Verify
         assert len(result) == 2
@@ -78,7 +81,7 @@ class TestGetBucketObjectsWithMetadata:
         assert "etag" in call_kwargs["fields"]
 
     @patch.object(oci_utils, "init_client")
-    def test_get_bucket_objects_filters_unsupported_types(self, mock_init_client):
+    def test_get_bucket_objects_filters_unsupported_types(self, mock_init_client, sample_oci_config):
         """Test that unsupported file types are filtered out"""
         # Create mock objects with various file types
         mock_pdf = self.create_mock_object("doc.pdf", 1000, "etag1", datetime.now(), "md5-1")
@@ -94,7 +97,7 @@ class TestGetBucketObjectsWithMetadata:
         mock_init_client.return_value = mock_client
 
         # Execute
-        result = oci_utils.get_bucket_objects_with_metadata("test-bucket", self.sample_oci_config)
+        result = oci_utils.get_bucket_objects_with_metadata("test-bucket", sample_oci_config)
 
         # Verify only supported types are included
         assert len(result) == 2
@@ -105,7 +108,7 @@ class TestGetBucketObjectsWithMetadata:
         assert "archive.zip" not in names
 
     @patch.object(oci_utils, "init_client")
-    def test_get_bucket_objects_empty_bucket(self, mock_init_client):
+    def test_get_bucket_objects_empty_bucket(self, mock_init_client, sample_oci_config):
         """Test handling of empty bucket"""
         # Mock empty bucket
         mock_client = MagicMock()
@@ -115,13 +118,13 @@ class TestGetBucketObjectsWithMetadata:
         mock_init_client.return_value = mock_client
 
         # Execute
-        result = oci_utils.get_bucket_objects_with_metadata("empty-bucket", self.sample_oci_config)
+        result = oci_utils.get_bucket_objects_with_metadata("empty-bucket", sample_oci_config)
 
         # Verify
         assert len(result) == 0
 
     @patch.object(oci_utils, "init_client")
-    def test_get_bucket_objects_none_time_modified(self, mock_init_client):
+    def test_get_bucket_objects_none_time_modified(self, mock_init_client, sample_oci_config):
         """Test handling of objects with None time_modified"""
         # Create mock object with None time_modified
         mock_obj = self.create_mock_object(
@@ -136,7 +139,7 @@ class TestGetBucketObjectsWithMetadata:
         mock_init_client.return_value = mock_client
 
         # Execute
-        result = oci_utils.get_bucket_objects_with_metadata("test-bucket", self.sample_oci_config)
+        result = oci_utils.get_bucket_objects_with_metadata("test-bucket", sample_oci_config)
 
         # Verify time_modified is None
         assert len(result) == 1
