@@ -164,17 +164,26 @@ def _load_prompt_configs(config_data: dict) -> None:
 
 
 def update_server(config_data: dict) -> None:
-    """Update server configuration"""
+    """Update server configuration.
+
+    Note: We mutate the existing lists (clear + extend) rather than replacing them.
+    This is critical because other modules import these lists directly
+    (e.g., `from server.bootstrap.bootstrap import DATABASE_OBJECTS`).
+    Replacing the list would leave those modules with stale references.
+    """
     config = Configuration(**config_data)
 
     if "database_configs" in config_data:
-        bootstrap.DATABASE_OBJECTS = config.database_configs or []
+        bootstrap.DATABASE_OBJECTS.clear()
+        bootstrap.DATABASE_OBJECTS.extend(config.database_configs or [])
 
     if "model_configs" in config_data:
-        bootstrap.MODEL_OBJECTS = config.model_configs or []
+        bootstrap.MODEL_OBJECTS.clear()
+        bootstrap.MODEL_OBJECTS.extend(config.model_configs or [])
 
     if "oci_configs" in config_data:
-        bootstrap.OCI_OBJECTS = config.oci_configs or []
+        bootstrap.OCI_OBJECTS.clear()
+        bootstrap.OCI_OBJECTS.extend(config.oci_configs or [])
 
     # Load MCP prompt text into cache from prompt_configs
     _load_prompt_configs(config_data)
