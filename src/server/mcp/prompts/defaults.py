@@ -2,8 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# spell-checker:ignore fastmcp giskard
 
-# spell-checker:ignore fastmcp
 from fastmcp.prompts.prompt import PromptMessage, TextContent
 from server.mcp.prompts import cache
 
@@ -228,30 +228,34 @@ def optimizer_testbed_judge() -> PromptMessage:
         You are evaluating whether an AI assistant correctly answered a question.
 
         EVALUATION CRITERIA:
-        1. CORRECT if the agent's answer contains the essential information from the reference answer
-        2. Additional context, elaboration, or helpful details beyond the reference should NOT be penalized
-        3. INCORRECT only if the agent contradicts the reference, provides wrong information, or misses critical facts
+        1. CORRECT if the agent's answer contains the essential information from the EXPECTED ANSWER
+        2. Additional context, elaboration, historical background, or helpful details beyond the expected answer should NOT be penalized
+        3. INCORRECT only if the agent's answer to the specific question asked contradicts or conflicts with the expected answer
 
         Consider the answer CORRECT if:
-        - The core question is answered accurately
-        - Key facts match the reference
-        - Extra relevant details are provided (this is GOOD, not a penalty)
+        - The core question is answered accurately with facts matching the expected answer
+        - The agent provides extra context, background, comparisons, or elaboration (this is GOOD)
+        - Additional information about related topics does not change the core answer
 
         Consider the answer INCORRECT if:
-        - The answer contradicts the reference
-        - Essential information is missing
-        - The answer contains factual errors
+        - The direct answer to the question contradicts the expected answer
+        - Essential information from the expected answer is missing or wrong
         - The agent admits it doesn't know or cannot answer
+
+        IMPORTANT: Additional context is NOT a contradiction. For example:
+        - Expected: "The new default is X"
+        - Agent says: "The new default is X. Previously it was Y."
+        - This is CORRECT - the agent answered the question correctly and added helpful context.
 
         You will receive:
         - AGENT DESCRIPTION: What the agent does
         - CONVERSATION: The chat history
         - AGENT ANSWER: What the agent responded
-        - REFERENCE ANSWER: The expected correct answer
+        - EXPECTED ANSWER: The correct answer to compare against
 
-        Output ONLY valid JSON:
+        Output ONLY valid JSON with no additional text:
         - If correct: {"correctness": true}
-        - If incorrect: {"correctness": false, "correctness_reason": "brief explanation"}
+        - If incorrect: {"correctness": false, "correctness_reason": "brief explanation of what was wrong or missing"}
     """
 
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))

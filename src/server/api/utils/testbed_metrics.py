@@ -10,7 +10,7 @@ hardcoded prompt, this allows the system prompt to be configured via MCP prompts
 """
 # spell-checker:ignore giskard
 
-from giskard.rag.metrics.base import Metric
+from giskard.rag.metrics import CorrectnessMetric
 from giskard.llm.client import ChatMessage, LLMClient, get_default_client
 from giskard.llm.errors import LLMGenerationError
 from giskard.rag.base import AgentAnswer
@@ -18,17 +18,8 @@ from giskard.rag.question_generators.utils import parse_json_output
 
 
 def format_conversation(conversation: list[dict]) -> str:
-    """Format conversation history for the evaluation prompt.
-
-    Args:
-        conversation: List of message dicts with 'role' and 'content' keys.
-
-    Returns:
-        Formatted string with XML-style role tags.
-    """
-    return "\n\n".join(
-        [f"<{msg['role'].lower()}>{msg['content']}</{msg['role'].lower()}>" for msg in conversation]
-    )
+    """Format conversation history for the evaluation prompt."""
+    return "\n\n".join([f"<{msg['role'].lower()}>{msg['content']}</{msg['role'].lower()}>" for msg in conversation])
 
 
 CORRECTNESS_INPUT_TEMPLATE = """
@@ -41,23 +32,13 @@ CORRECTNESS_INPUT_TEMPLATE = """
 ### AGENT ANSWER
 {answer}
 
-### REFERENCE ANSWER
+### EXPECTED ANSWER
 {reference_answer}
 """
 
 
-class CustomCorrectnessMetric(Metric):  # pylint: disable=too-few-public-methods
-    """Custom correctness metric with configurable system prompt.
-
-    This metric evaluates whether an agent's answer correctly matches a reference answer.
-    Unlike Giskard's built-in CorrectnessMetric, this allows the evaluation prompt to be
-    customized, enabling different levels of strictness for different use cases.
-
-    The default prompt (configured via MCP) is more lenient than Giskard's default:
-    - Allows additional context beyond the reference answer
-    - Only marks incorrect if essential information is missing or contradicted
-    - Treats "I don't know" responses as incorrect (important for RAG evaluation)
-    """
+class CustomCorrectnessMetric(CorrectnessMetric):  # pylint: disable=too-few-public-methods
+    """Custom correctness metric with configurable system prompt."""
 
     def __init__(
         self,
@@ -74,26 +55,13 @@ class CustomCorrectnessMetric(Metric):  # pylint: disable=too-few-public-methods
             llm_client: Optional LLM client. If not provided, uses Giskard's default.
             agent_description: Description of the agent being evaluated.
         """
+        # Call parent with name and llm_client only (CorrectnessMetric signature)
         super().__init__(name=name, llm_client=llm_client)
         self.system_prompt = system_prompt
         self.agent_description = agent_description or "A chatbot answering questions."
 
     def __call__(self, question_sample: dict, answer: AgentAnswer) -> dict:
-        """Evaluate correctness of agent answer vs reference.
-
-        Args:
-            question_sample: A question sample from a QATestset containing:
-                - question: The question asked
-                - reference_answer: The expected correct answer
-                - conversation_history: Prior conversation context
-            answer: The agent's answer (AgentAnswer object with .message attribute).
-
-        Returns:
-            Dict with 'correctness' (bool) and optionally 'correctness_reason' (str).
-
-        Raises:
-            LLMGenerationError: If the evaluation fails.
-        """
+        """Evaluate correctness of agent answer vs reference."""
         llm_client = self._llm_client or get_default_client()
         try:
             out = llm_client.complete(
@@ -128,6 +96,10 @@ class CustomCorrectnessMetric(Metric):  # pylint: disable=too-few-public-methods
                     f"Error in correctness evaluation: {json_output['correctness']}. "
                     "Expected boolean value for 'correctness' key."
                 )
+
+            # Strip correctness_reason when correct (LLM sometimes includes it anyway)
+            if json_output.get("correctness") is True:
+                json_output.pop("correctness_reason", None)
 
             return json_output
 
