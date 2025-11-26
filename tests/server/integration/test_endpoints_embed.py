@@ -46,7 +46,7 @@ class TestEndpoints:
     @pytest.mark.parametrize(
         "auth_type, status_code",
         [
-            pytest.param("no_auth", 403, id="no_auth"),
+            pytest.param("no_auth", 401, id="no_auth"),
             pytest.param("invalid_auth", 401, id="invalid_auth"),
         ],
     )
