@@ -130,9 +130,9 @@ class TestChatUtils:
         sample_client_settings,
     ):
         """Test completion generation with vector search enabled"""
-        # Setup settings with vector search enabled
+        # Setup settings with vector search enabled via tools_enabled
         vector_search_settings = sample_client_settings.model_copy()
-        vector_search_settings.vector_search.enabled = True
+        vector_search_settings.tools_enabled = ["Vector Search"]
 
         # Setup mocks
         mock_get_client.return_value = vector_search_settings
