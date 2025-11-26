@@ -97,9 +97,20 @@ def get_vectorstore(data, embeddings):
     user=db_config["user"]
     password=db_config["password"]
     dsn=db_config["dsn"]
+    
+    # ADB connection with wallet 
+
+    wallet_pwd= db_config["wallet_password"]
+    wallet_location = db_config["wallet_location"]
 
     logger.info(f"{db_table}: {user} - {dsn}")
-    conn23c = oracledb.connect(user=user, password=password, dsn=dsn)
+    
+    if wallet_pwd and wallet_location:
+        logger.info("ADB connection starting..")
+        conn23c = oracledb.connect(user=user, password=password, dsn=dsn,wallet_location=wallet_location,wallet_password=wallet_pwd)
+    else:
+        conn23c = oracledb.connect(user=user, password=password, dsn=dsn)
+
 
     logger.info("DB Connection successful!")
     metric = data["client_settings"]["vector_search"]["distance_metric"]
@@ -109,7 +120,7 @@ def get_vectorstore(data, embeddings):
         dist_strategy = DistanceStrategy.COSINE
     elif metric == "EUCLIDEAN":
         dist_strategy = DistanceStrategy.EUCLIDEAN
-
+    
     logger.info(embeddings)
     knowledge_base = OracleVS(client=conn23c,table_name=db_table, embedding_function=embeddings, distance_strategy=dist_strategy)
 

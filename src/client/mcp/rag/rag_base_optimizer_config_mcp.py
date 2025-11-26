@@ -29,7 +29,7 @@ CHUNKS_DIR = "chunks_temp"
 data = {}
 
 # Initialize FastMCP server
-mcp = FastMCP("rag", port=9090) #Remote client
+mcp = FastMCP("rag",host="0.0.0.0", port=9090) #Remote client
 #mcp = FastMCP("rag") #Local
 
 

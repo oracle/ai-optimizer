@@ -4,9 +4,9 @@
 **Version:** *Developer preview*
 
 ## Introduction
-This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop** and how to setup as a remote MCP server. This early draft implementation utilizes the `stdio` and `sse` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. 
+This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop** and how to setup as a remote MCP server. This early draft implementation utilizes the `stdio`, `sse` and, by default, the `streamable-http` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. 
 
-**NOTICE**: Only `Ollama` or `OpenAI` configurations are currently supported. Full support will come.
+**NOTICE**: Only `Ollama`, `OpenAI`, `hosted_vllm` configurations are currently supported. Full support will come. `DB23ai`, `26ai` and `Autonomous DB` with wallet configuration is also supported. 
 
 ## Pre-requisites.
 You need:
@@ -34,12 +34,14 @@ In the **AI Optimizer & Toolkit** web interface, after tested a configuration, i
 * press button `Download LangchainMCP` to download an VectorSearch MCP Agent built on current configuration.
 * unzip the file in a `<PROJECT_DIR>` dir.
 
+**NOTICE**: if you want to run the application in another server, remember to change in the `optimizer_settings.json` any reference no more local, like hostname for LLM servers, Database, wallet dir and so on.
+
 
 ## Standalone client
 There is a client that you can run without MCP via command-line to test it:
 
 ```bash
-uv run rag_base_optimizer_config.py "[YOUR_QUESTION]"
+uv run rag_base_optimizer_config_direct.py "[YOUR_QUESTION]"
 ```
 In `rag_base_optimizer_config_mcp.py`:
 
@@ -117,15 +119,15 @@ uv run rag_base_optimizer_config_mcp.py
    		}
 	}
 	```
-	* Set `Local` with `Remote client` line in `<PROJECT_DIR>/rag_base_optimizer_config_mcp.py`:
+	* Set `Remote client` line of code with `Local` in `<PROJECT_DIR>/rag_base_optimizer_config_mcp.py`:
 
 	```python
-	#mcp.run(transport='stdio')
-    #mcp.run(transport='sse')
-    mcp.run(transport='streamable-http')
+	# Initialize FastMCP server
+	#mcp = FastMCP("rag", port=9090) #Remote client
+	mcp = FastMCP("rag") #Local
 	```
 
-	* Substitute `stdio` with `streamable-http` line of code:
+	* Substitute  line of code `streamable-http` with  `stdio`:
 
 	```python
 	mcp.run(transport='stdio')
@@ -144,7 +146,7 @@ uv run rag_base_optimizer_config_mcp.py
 * Run the inspector:
 
 ```bash
-npx @modelcontextprotocol/inspector 
+npx @modelcontextprotocol/inspector@0.15.0
 ```
 
 * connect the browser to `http://127.0.0.1:6274` 
@@ -158,9 +160,8 @@ npx @modelcontextprotocol/inspector
 
 
 **Optional:** run with local **stdio** protocol
-* Set as shown before the protolo to run locally in `<PROJECT_DIR>/rag_base_optimizer_config_mcp.py`:
+* Set as shown before the protocol to run locally in `<PROJECT_DIR>/rag_base_optimizer_config_mcp.py`:
 
-	```
 	* Set `Local` with `Remote client` line:
 
 	```python
@@ -168,27 +169,28 @@ npx @modelcontextprotocol/inspector
 	mcp = FastMCP("rag") #Local
 	```
 
-	* Substitute `stdio` with `sse` line of code:
+	* Substitute `streamable-http` with `stdio` line of code:
 	```python
 	mcp.run(transport='stdio')
-	#mcp.run(transport='sse')
+    #mcp.run(transport='sse')
+    #mcp.run(transport='streamable-http')
 	```
 
 * Run the inspector:
 
-```bash
-npx @modelcontextprotocol/inspector uv run rag_base_optimizer_config_mcp.py
-```
+	```bash
+	npx @modelcontextprotocol/inspector@0.15.0 uv run rag_base_optimizer_config_mcp.py
+	```
 
 * connect to the port `http://localhost:6274/` with your browser on the link printed, like in the following example:
-```bash
-..
-Open inspector with token pre-filled:
-http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=cb2ef7521aaf2050ad9620bfb5e5df42dc958889e6e99ce4e9b18003eb93fffd
-..
-```
+	```bash
+	..
+	Open inspector with token pre-filled:
+	http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=cb2ef7521aaf2050ad9620bfb5e5df42dc958889e6e99ce4e9b18003eb93fffd
+	..
+	```
 
-* setup the `Inspector Proxy Address` with `http://127.0.0.1:6277` 
+* setup the Transport Type: `STDIO`
 * test the tool developed.
 
 
