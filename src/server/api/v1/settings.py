@@ -9,7 +9,7 @@ from typing import Union
 from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile, Request
 from fastapi.responses import JSONResponse
 
-import src.server.api.utils.settings as utils_settings
+import server.api.utils.settings as utils_settings
 
 from common import schema
 from common import logging_config

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from litellm import acompletion
 from litellm.exceptions import APIConnectionError
 
-import src.server.api.utils.settings as utils_settings
+import server.api.utils.settings as utils_settings
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
 import server.mcp.prompts.defaults as grading_prompts
