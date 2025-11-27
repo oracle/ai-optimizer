@@ -2,23 +2,23 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# pylint: disable=too-many-arguments,too-many-positional-arguments,too-few-public-methods, import-error
 # spell-checker: disable
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 import pytest
-from conftest import TEST_CONFIG
+from conftest import TEST_CONFIG, get_test_db_payload
 
 
 #############################################################################
-# Test AuthN required and Valid
+# Endpoints Test
 #############################################################################
-class TestInvalidAuthEndpoints:
-    """Test endpoints without Headers and Invalid AuthN"""
+class TestEndpoints:
+    """Test Endpoints"""
 
     @pytest.mark.parametrize(
         "auth_type, status_code",
         [
-            pytest.param("no_auth", 403, id="no_auth"),
+            pytest.param("no_auth", 401, id="no_auth"),
             pytest.param("invalid_auth", 401, id="invalid_auth"),
         ],
     )
@@ -30,17 +30,10 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/databases/DEFAULT", "patch", id="databases_update"),
         ],
     )
-    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication."""
+    def test_invalid_auth_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valid authentication."""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
-
-
-#############################################################################
-# Endpoints Test
-#############################################################################
-class TestEndpoints:
-    """Test Endpoints"""
 
     def test_databases_list_initial(self, client, auth_headers):
         """Test initial database listing before any updates"""
@@ -75,11 +68,8 @@ class TestEndpoints:
 
     def test_databases_update_db_down(self, client, auth_headers):
         """Test updating the DB when it is down"""
-        payload = {
-            "user": TEST_CONFIG["db_username"],
-            "password": TEST_CONFIG["db_password"],
-            "dsn": "//localhost:1521/DOWNDB_TP",
-        }
+        payload = get_test_db_payload()
+        payload["dsn"] = "//localhost:1521/DOWNDB_TP"  # Override with invalid DSN
         response = client.patch("/v1/databases/DEFAULT", headers=auth_headers["valid_auth"], json=payload)
         assert response.status_code == 503
         assert "cannot connect to database" in response.json().get("detail", "")
@@ -88,11 +78,7 @@ class TestEndpoints:
         pytest.param(
             TEST_CONFIG["db_dsn"].split("/")[3],
             404,
-            {
-                "user": TEST_CONFIG["db_username"],
-                "password": TEST_CONFIG["db_password"],
-                "dsn": TEST_CONFIG["db_dsn"],
-            },
+            get_test_db_payload(),
             {"detail": f"Database: {TEST_CONFIG['db_dsn'].split('/')[3]} not found."},
             id="non_existent_database",
         ),
@@ -140,11 +126,7 @@ class TestEndpoints:
         pytest.param(
             "DEFAULT",
             200,
-            {
-                "user": TEST_CONFIG["db_username"],
-                "password": TEST_CONFIG["db_password"],
-                "dsn": TEST_CONFIG["db_dsn"],
-            },
+            get_test_db_payload(),
             {
                 "connected": True,
                 "dsn": TEST_CONFIG["db_dsn"],
@@ -199,9 +181,7 @@ class TestEndpoints:
         """Test updating database with invalid wallet configuration"""
         assert db_container is not None
         payload = {
-            "user": TEST_CONFIG["db_username"],
-            "password": TEST_CONFIG["db_password"],
-            "dsn": TEST_CONFIG["db_dsn"],
+            **get_test_db_payload(),
             "wallet_location": "/nonexistent/path",
             "wallet_password": "invalid",
         }
@@ -213,11 +193,7 @@ class TestEndpoints:
         """Test concurrent database connections"""
         assert db_container is not None
         # Make multiple concurrent connection attempts
-        payload = {
-            "user": TEST_CONFIG["db_username"],
-            "password": TEST_CONFIG["db_password"],
-            "dsn": TEST_CONFIG["db_dsn"],
-        }
+        payload = get_test_db_payload()
         responses = []
         for _ in range(5):  # Try 5 concurrent connections
             response = client.patch("/v1/databases/DEFAULT", headers=auth_headers["valid_auth"], json=payload)

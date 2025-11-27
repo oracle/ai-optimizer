@@ -2,8 +2,8 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# pylint: disable=too-many-arguments,too-many-positional-arguments,too-few-public-methods, import-error
 # spell-checker: disable
+# pylint: disable=protected-access import-error import-outside-toplevel
 
 from unittest.mock import patch, MagicMock
 import warnings
@@ -14,15 +14,15 @@ from common.schema import ChatRequest
 
 
 #############################################################################
-# Test AuthN required and Valid
+# Endpoints Test
 #############################################################################
-class TestInvalidAuthEndpoints:
-    """Test endpoints without Headers and Invalid AuthN"""
+class TestEndpoints:
+    """Test Endpoints"""
 
     @pytest.mark.parametrize(
         "auth_type, status_code",
         [
-            pytest.param("no_auth", 403, id="no_auth"),
+            pytest.param("no_auth", 401, id="no_auth"),
             pytest.param("invalid_auth", 401, id="invalid_auth"),
         ],
     )
@@ -35,42 +35,32 @@ class TestInvalidAuthEndpoints:
             pytest.param("/v1/chat/history", "get", id="chat_history_return"),
         ],
     )
-    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
-        """Test endpoints require valide authentication."""
+    def test_invalid_auth_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valid authentication."""
         response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
         assert response.status_code == status_code
 
-
-#############################################################################
-# Endpoints Test
-#############################################################################
-class TestEndpoints:
-    """Test Endpoints"""
-
     def test_chat_completion_no_model(self, client, auth_headers):
-        """Test chat completion with mocked completion generator"""
+        """Test no model chat completion request"""
         with warnings.catch_warnings():
             # Enable the catch_warnings context
             warnings.simplefilter("ignore", category=UserWarning)
+            request = ChatRequest(
+                messages=[ChatMessage(content="Hello", role="user")],
+                model="test-provider/test-model",
+                temperature=1.0,
+                max_tokens=256,
+            )
+            response = client.post(
+                "/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump()
+            )
 
-            # Mock completion_generator to return a simple response
-            async def mock_completion_generator(*args, **kwargs):
-                yield {"choices": [{"message": {"role": "assistant", "content": "Test response"}}]}
-
-            with patch("server.api.v1.chat.utils_chat.completion_generator", side_effect=mock_completion_generator):
-                request = ChatRequest(
-                    messages=[ChatMessage(content="Hello", role="user")],
-                    model="test-provider/test-model",
-                    temperature=1.0,
-                    max_tokens=256,
-                )
-                response = client.post(
-                    "/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump()
-                )
-
-            assert response.status_code == 200
-            assert "choices" in response.json()
-            assert response.json()["choices"][0]["message"]["content"] == "Test response"
+        assert response.status_code == 200
+        assert "choices" in response.json()
+        assert (
+            response.json()["choices"][0]["message"]["content"]
+            == "I'm unable to initialise the Language Model. Please refresh the application."
+        )
 
     def test_chat_completion_valid_mock(self, client, auth_headers):
         """Test valid chat completion request"""
@@ -157,13 +147,9 @@ class TestEndpoints:
             assert history[0]["content"] == "Hello"
 
     def test_chat_history_clean(self, client, auth_headers):
-        """Test chat history clean (delete all history)"""
-        with patch("server.mcp.graph.main") as mock_graph_main:
-            # Mock the graph instance
-            mock_graph = MagicMock()
-            mock_graph_main.return_value = mock_graph
+        """Test chat history with no history"""
+        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
             mock_graph.get_state.side_effect = KeyError()
-
             response = client.patch("/v1/chat/history", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             history = response.json()
@@ -172,13 +158,9 @@ class TestEndpoints:
             assert "forgotten" in history[0]["content"].lower()
 
     def test_chat_history_empty(self, client, auth_headers):
-        """Test chat history GET with no history"""
-        with patch("server.mcp.graph.main") as mock_graph_main:
-            # Mock the graph instance
-            mock_graph = MagicMock()
-            mock_graph_main.return_value = mock_graph
+        """Test chat history with no history"""
+        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
             mock_graph.get_state.side_effect = KeyError()
-
             response = client.get("/v1/chat/history", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             history = response.json()
@@ -199,10 +181,7 @@ class TestEndpoints:
 
         This prevents RAG documents from persisting across conversation resets.
         """
-        with patch("server.mcp.graph.main") as mock_graph_main:
-            # Mock the graph instance
-            mock_graph = MagicMock()
-            mock_graph_main.return_value = mock_graph
+        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
             # Create a mock state snapshot that simulates a conversation with RAG documents
             mock_state = MagicMock()
             mock_state.values = {

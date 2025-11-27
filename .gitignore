@@ -45,6 +45,7 @@ __pycache__/
 *$py.class
 **/*.egg-info
 **/build/
+**/.mypy_cache
 
 # Test coverage artifacts
 .coverage
@@ -56,6 +57,7 @@ test-results.xml
 # AI Code Assists
 ##############################################################################
 **/*[Cc][Ll][Aa][Uu][Dd][Ee]*
+**/memory-bank/**
 
 ##############################################################################
 # Helm
@@ -85,7 +87,4 @@ spring_ai/create_user.sql
 spring_ai/drop.sql
 src/client/spring_ai/target/classes/*
 api_server_key
-src/.env
-src/start_server.sh
-src/start_client.sh
 DEVELOPMENT_NOTES.md
