@@ -23,7 +23,7 @@ COPY --chown=$RUNUSER:$RUNUSER src /opt/package/src
 COPY pyproject.toml /opt/package/pyproject.toml
 
 RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
-    ${VIRTUAL_ENV}/bin/uv pip install torch==2.9.0+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    ${VIRTUAL_ENV}/bin/uv pip install torch==2.9.1+cpu -f https://download.pytorch.org/whl/cpu/torch && \
     ${VIRTUAL_ENV}/bin/uv pip install "/opt/package[server]"
 
 ##################################################

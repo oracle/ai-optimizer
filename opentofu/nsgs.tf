@@ -55,7 +55,7 @@ resource "oci_core_network_security_group_security_rule" "lb_egress" {
 
 // ADB
 resource "oci_core_network_security_group" "adb" {
-  count          = var.byo_vcn_ocid != "" && var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? 1 : 0
+  count          = var.byo_vcn_ocid == "" ? 1 : 0
   compartment_id = local.compartment_ocid
   vcn_id         = local.vcn_ocid
   display_name   = format("%s-adb", local.label_prefix)
@@ -65,7 +65,7 @@ resource "oci_core_network_security_group" "adb" {
 }
 
 resource "oci_core_network_security_group_security_rule" "adb_ingress" {
-  count                     = var.byo_vcn_ocid != "" && var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? 1 : 0
+  count                     = var.byo_vcn_ocid == "" ? 1 : 0
   network_security_group_id = oci_core_network_security_group.adb[0].id
   description               = "ADB from Workers."
   direction                 = "INGRESS"
