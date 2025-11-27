@@ -304,7 +304,7 @@ def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.Ev
     results = utils_databases.execute_sql(db_conn, sql, binds)
     report = pickle.loads(results[0]["RAG_REPORT"])
     full_report = report.to_pandas()
-    html_report = report.to_html()
+    # html_report = report.to_html()  # Disabled: causes TypeError with mixed data types
     by_topic = report.correctness_by_topic()
     failures = report.failures
 
