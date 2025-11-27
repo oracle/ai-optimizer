@@ -125,7 +125,7 @@ async def store_web_file(
 
                 elif "text" in content_type or "html" in content_type:
                     sections = await web_parse.fetch_and_extract_sections(url)
-                    base = web_parse.slugify(str(url).rsplit('/', maxsplit=1)[-1]) or "page"
+                    base = web_parse.slugify(str(url).rsplit("/", maxsplit=1)[-1]) or "page"
                     out_files = []
                     for idx, sec in enumerate(sections, 1):
                         # filename includes section number and optional slugified title for clarity
