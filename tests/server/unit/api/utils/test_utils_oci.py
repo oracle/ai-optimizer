@@ -19,12 +19,7 @@ from common.schema import OracleCloudSettings, Settings, OciSettings
 class TestOciException:
     """Test custom OCI exception class"""
 
-    def test_oci_exception_initialization(self):
-        """Test OciException initialization"""
-        exc = OciException(status_code=400, detail="Invalid configuration")
-        assert exc.status_code == 400
-        assert exc.detail == "Invalid configuration"
-        assert str(exc) == "Invalid configuration"
+    # test_oci_exception_initialization: See test/unit/server/api/utils/test_utils_oci.py::TestOciException::test_oci_exception_init
 
 
 class TestOciGet:
@@ -49,38 +44,10 @@ class TestOciGet:
         """Sample client settings fixture"""
         return Settings(client="test_client", oci=OciSettings(auth_profile="CUSTOM"))
 
-    @patch("server.bootstrap.bootstrap.OCI_OBJECTS", [])
-    def test_get_no_objects_configured(self):
-        """Test getting OCI settings when none are configured"""
-        with pytest.raises(ValueError, match="not configured"):
-            oci_utils.get()
-
-    @patch("server.bootstrap.bootstrap.OCI_OBJECTS", new_callable=list)
-    def test_get_all(self, mock_oci_objects, sample_oci_default, sample_oci_custom):
-        """Test getting all OCI settings when no filters are provided"""
-        all_oci = [sample_oci_default, sample_oci_custom]
-        mock_oci_objects.extend(all_oci)
-
-        result = oci_utils.get()
-
-        assert result == all_oci
-
-    @patch("server.bootstrap.bootstrap.OCI_OBJECTS")
-    def test_get_by_auth_profile_found(self, mock_oci_objects, sample_oci_default, sample_oci_custom):
-        """Test getting OCI settings by auth_profile when it exists"""
-        mock_oci_objects.__iter__ = MagicMock(return_value=iter([sample_oci_default, sample_oci_custom]))
-
-        result = oci_utils.get(auth_profile="CUSTOM")
-
-        assert result == sample_oci_custom
-
-    @patch("server.bootstrap.bootstrap.OCI_OBJECTS")
-    def test_get_by_auth_profile_not_found(self, mock_oci_objects, sample_oci_default):
-        """Test getting OCI settings by auth_profile when it doesn't exist"""
-        mock_oci_objects.__iter__ = MagicMock(return_value=iter([sample_oci_default]))
-
-        with pytest.raises(ValueError, match="profile 'NONEXISTENT' not found"):
-            oci_utils.get(auth_profile="NONEXISTENT")
+    # test_get_no_objects_configured: See test/unit/server/api/utils/test_utils_oci.py::TestGet::test_get_raises_value_error_when_not_configured
+    # test_get_all: See test/unit/server/api/utils/test_utils_oci.py::TestGet::test_get_returns_all_oci_objects
+    # test_get_by_auth_profile_found: See test/unit/server/api/utils/test_utils_oci.py::TestGet::test_get_by_auth_profile
+    # test_get_by_auth_profile_not_found: See test/unit/server/api/utils/test_utils_oci.py::TestGet::test_get_raises_value_error_profile_not_found
 
     def test_get_by_client_with_oci_settings(self, sample_client_settings, sample_oci_default, sample_oci_custom):
         """Test getting OCI settings by client when client has OCI settings"""
@@ -126,14 +93,7 @@ class TestOciGet:
             bootstrap.SETTINGS_OBJECTS = orig_settings
             bootstrap.OCI_OBJECTS = orig_oci
 
-    @patch("server.bootstrap.bootstrap.OCI_OBJECTS")
-    @patch("server.bootstrap.bootstrap.SETTINGS_OBJECTS")
-    def test_get_by_client_not_found(self, mock_settings_objects, _mock_oci_objects):
-        """Test getting OCI settings when client doesn't exist"""
-        mock_settings_objects.__iter__ = MagicMock(return_value=iter([]))
-
-        with pytest.raises(ValueError, match="client test_client not found"):
-            oci_utils.get(client="test_client")
+    # test_get_by_client_not_found: See test/unit/server/api/utils/test_utils_oci.py::TestGet::test_get_raises_value_error_client_not_found
 
     def test_get_by_client_no_matching_profile(self, sample_client_settings, sample_oci_default):
         """Test getting OCI settings by client when no matching profile exists"""
@@ -156,48 +116,15 @@ class TestOciGet:
             bootstrap.SETTINGS_OBJECTS = orig_settings
             bootstrap.OCI_OBJECTS = orig_oci
 
-    def test_get_both_client_and_auth_profile(self):
-        """Test that providing both client and auth_profile raises an error"""
-        with pytest.raises(ValueError, match="provide either 'client' or 'auth_profile', not both"):
-            oci_utils.get(client="test_client", auth_profile="CUSTOM")
+    # test_get_both_client_and_auth_profile: See test/unit/server/api/utils/test_utils_oci.py::TestGet::test_get_raises_value_error_both_params
 
 
 class TestGetSigner:
     """Test get_signer() function"""
 
-    def test_get_signer_instance_principal(self):
-        """Test get_signer with instance_principal authentication"""
-        config = OracleCloudSettings(auth_profile="DEFAULT", authentication="instance_principal")
-
-        with patch("oci.auth.signers.InstancePrincipalsSecurityTokenSigner") as mock_signer:
-            mock_instance = MagicMock()
-            mock_signer.return_value = mock_instance
-
-            result = oci_utils.get_signer(config)
-
-            assert result == mock_instance
-            mock_signer.assert_called_once()
-
-    def test_get_signer_oke_workload_identity(self):
-        """Test get_signer with oke_workload_identity authentication"""
-        config = OracleCloudSettings(auth_profile="DEFAULT", authentication="oke_workload_identity")
-
-        with patch("oci.auth.signers.get_oke_workload_identity_resource_principal_signer") as mock_signer:
-            mock_instance = MagicMock()
-            mock_signer.return_value = mock_instance
-
-            result = oci_utils.get_signer(config)
-
-            assert result == mock_instance
-            mock_signer.assert_called_once()
-
-    def test_get_signer_api_key(self):
-        """Test get_signer with api_key authentication (returns None)"""
-        config = OracleCloudSettings(auth_profile="DEFAULT", authentication="api_key")
-
-        result = oci_utils.get_signer(config)
-
-        assert result is None
+    # test_get_signer_instance_principal: See test/unit/server/api/utils/test_utils_oci.py::TestGetSigner::test_get_signer_instance_principal
+    # test_get_signer_oke_workload_identity: See test/unit/server/api/utils/test_utils_oci.py::TestGetSigner::test_get_signer_oke_workload_identity
+    # test_get_signer_api_key: See test/unit/server/api/utils/test_utils_oci.py::TestGetSigner::test_get_signer_api_key_returns_none
 
     def test_get_signer_security_token(self):
         """Test get_signer with security_token authentication (returns None)"""
@@ -224,18 +151,7 @@ class TestInitClient:
             key_file="/path/to/key.pem",
         )
 
-    @patch("oci.object_storage.ObjectStorageClient")
-    @patch.object(oci_utils, "get_signer", return_value=None)
-    def test_init_client_api_key(self, mock_get_signer, mock_client_class, api_key_config):
-        """Test init_client with API key authentication"""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
-        result = oci_utils.init_client(oci.object_storage.ObjectStorageClient, api_key_config)
-
-        assert result == mock_client
-        mock_get_signer.assert_called_once_with(api_key_config)
-        mock_client_class.assert_called_once()
+    # test_init_client_api_key: See test/unit/server/api/utils/test_utils_oci.py::TestInitClient::test_init_client_standard_auth
 
     @patch("oci.generative_ai_inference.GenerativeAiInferenceClient")
     @patch.object(oci_utils, "get_signer", return_value=None)
@@ -349,17 +265,7 @@ class TestInitClient:
         mock_load_key.assert_called_once_with("/path/to/key.pem")
         mock_sec_token_signer.assert_called_once_with("mock_token_content", mock_private_key)
 
-    @patch("oci.object_storage.ObjectStorageClient")
-    @patch.object(oci_utils, "get_signer", return_value=None)
-    def test_init_client_invalid_config(self, _mock_get_signer, mock_client_class, api_key_config):
-        """Test init_client with invalid config raises OciException"""
-        mock_client_class.side_effect = oci.exceptions.InvalidConfig("Bad config")
-
-        with pytest.raises(OciException) as exc_info:
-            oci_utils.init_client(oci.object_storage.ObjectStorageClient, api_key_config)
-
-        assert exc_info.value.status_code == 400
-        assert "Invalid Config" in str(exc_info.value)
+    # test_init_client_invalid_config: See test/unit/server/api/utils/test_utils_oci.py::TestInitClient::test_init_client_raises_oci_exception_on_invalid_config
 
 
 class TestOciUtils:
@@ -370,30 +276,8 @@ class TestOciUtils:
         """Sample OCI config fixture"""
         return get_sample_oci_config()
 
-    def test_init_genai_client(self, sample_oci_config):
-        """Test GenAI client initialization"""
-        with patch.object(oci_utils, "init_client") as mock_init_client:
-            mock_client = MagicMock()
-            mock_init_client.return_value = mock_client
-
-            result = oci_utils.init_genai_client(sample_oci_config)
-
-            assert result == mock_client
-            mock_init_client.assert_called_once_with(
-                oci.generative_ai_inference.GenerativeAiInferenceClient, sample_oci_config
-            )
-
-    @patch.object(oci_utils, "init_client")
-    def test_get_namespace_success(self, mock_init_client, sample_oci_config):
-        """Test successful namespace retrieval"""
-        mock_client = MagicMock()
-        mock_client.get_namespace.return_value.data = "test-namespace"
-        mock_init_client.return_value = mock_client
-
-        result = oci_utils.get_namespace(sample_oci_config)
-
-        assert result == "test-namespace"
-        assert sample_oci_config.namespace == "test-namespace"
+    # test_init_genai_client: See test/unit/server/api/utils/test_utils_oci.py::TestInitGenaiClient::test_init_genai_client_calls_init_client
+    # test_get_namespace_success: See test/unit/server/api/utils/test_utils_oci.py::TestGetNamespace::test_get_namespace_success
 
     @patch.object(oci_utils, "init_client")
     def test_get_namespace_invalid_config(self, mock_init_client, sample_oci_config):
@@ -408,31 +292,8 @@ class TestOciUtils:
         assert exc_info.value.status_code == 400
         assert "Invalid Config" in str(exc_info.value)
 
-    @patch.object(oci_utils, "init_client")
-    def test_get_namespace_file_not_found(self, mock_init_client, sample_oci_config):
-        """Test namespace retrieval with file not found error"""
-        mock_init_client.side_effect = FileNotFoundError("Key file not found")
-
-        with pytest.raises(OciException) as exc_info:
-            oci_utils.get_namespace(sample_oci_config)
-
-        assert exc_info.value.status_code == 400
-        assert "Invalid Key Path" in str(exc_info.value)
-
-    @patch.object(oci_utils, "init_client")
-    def test_get_namespace_service_error(self, mock_init_client, sample_oci_config):
-        """Test namespace retrieval with service error"""
-        mock_client = MagicMock()
-        mock_client.get_namespace.side_effect = oci.exceptions.ServiceError(
-            status=401, code="NotAuthenticated", headers={}, message="Auth failed"
-        )
-        mock_init_client.return_value = mock_client
-
-        with pytest.raises(OciException) as exc_info:
-            oci_utils.get_namespace(sample_oci_config)
-
-        assert exc_info.value.status_code == 401
-        assert "AuthN Error" in str(exc_info.value)
+    # test_get_namespace_file_not_found: See test/unit/server/api/utils/test_utils_oci.py::TestGetNamespace::test_get_namespace_raises_on_file_not_found
+    # test_get_namespace_service_error: See test/unit/server/api/utils/test_utils_oci.py::TestGetNamespace::test_get_namespace_raises_on_service_error
 
     @patch.object(oci_utils, "init_client")
     def test_get_namespace_unbound_local_error(self, mock_init_client, sample_oci_config):
@@ -472,27 +333,5 @@ class TestOciUtils:
         assert exc_info.value.status_code == 500
         assert "Unexpected error" in str(exc_info.value)
 
-    @patch.object(oci_utils, "init_client")
-    def test_get_regions_success(self, mock_init_client, sample_oci_config):
-        """Test successful regions retrieval"""
-        mock_client = MagicMock()
-        mock_region = MagicMock()
-        mock_region.is_home_region = True
-        mock_region.region_key = "IAD"
-        mock_region.region_name = "us-ashburn-1"
-        mock_region.status = "READY"
-        mock_client.list_region_subscriptions.return_value.data = [mock_region]
-        mock_init_client.return_value = mock_client
-
-        result = oci_utils.get_regions(sample_oci_config)
-
-        assert len(result) == 1
-        assert result[0]["is_home_region"] is True
-        assert result[0]["region_key"] == "IAD"
-        assert result[0]["region_name"] == "us-ashburn-1"
-        assert result[0]["status"] == "READY"
-
-    def test_logger_exists(self):
-        """Test that logger is properly configured"""
-        assert hasattr(oci_utils, "logger")
-        assert oci_utils.logger.name == "api.utils.oci"
+    # test_get_regions_success: See test/unit/server/api/utils/test_utils_oci.py::TestGetRegions::test_get_regions_returns_list
+    # test_logger_exists: See test/unit/server/api/utils/test_utils_oci.py::TestLoggerConfiguration::test_logger_exists

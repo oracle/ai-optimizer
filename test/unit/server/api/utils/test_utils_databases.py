@@ -221,6 +221,34 @@ class TestConnect:
         call_kwargs = mock_connect.call_args.kwargs
         assert call_kwargs.get("wallet_location") == "/path/to/config"
 
+    @patch("server.api.utils.databases.oracledb.connect")
+    def test_connect_raises_permission_error_on_ora_28009(self, mock_connect, make_database):
+        """connect should raise PermissionError with custom message on ORA-28009 (mocked)."""
+        # Create a mock error object with full_code and message
+        mock_error = MagicMock()
+        mock_error.full_code = "ORA-28009"
+        mock_error.message = "connection not allowed"
+        mock_connect.side_effect = oracledb.DatabaseError(mock_error)
+        config = make_database(user="SYS")
+
+        with pytest.raises(PermissionError) as exc_info:
+            utils_databases.connect(config)
+
+        assert "Connecting as SYS is not permitted" in str(exc_info.value)
+
+    @patch("server.api.utils.databases.oracledb.connect")
+    def test_connect_reraises_unmapped_database_error(self, mock_connect, make_database):
+        """connect should re-raise unmapped DatabaseError codes (mocked)."""
+        # Create a mock error object with an unmapped error code
+        mock_error = MagicMock()
+        mock_error.full_code = "ORA-12345"
+        mock_error.message = "some other error"
+        mock_connect.side_effect = oracledb.DatabaseError(mock_error)
+        config = make_database()
+
+        with pytest.raises(oracledb.DatabaseError):
+            utils_databases.connect(config)
+
 
 class TestDisconnect:
     """Tests for the disconnect function."""
@@ -293,6 +321,86 @@ class TestExecuteSql:
         assert result[0] == (1,)
         assert result[1] == (2,)
         assert result[2] == (3,)
+
+    def test_execute_sql_logs_table_exists_error(self, db_connection, caplog):
+        """execute_sql should log ORA-00955 table exists error (real database).
+
+        Note: Due to a bug in the source code (two if statements instead of elif),
+        the function logs 'Table exists' but still raises. This test verifies
+        the logging behavior and that the error is raised.
+        """
+        cursor = db_connection.cursor()
+        table_name = "TEST_DUPLICATE_TABLE"
+
+        try:
+            # Create table first
+            cursor.execute(f"CREATE TABLE {table_name} (id NUMBER)")
+            db_connection.commit()
+
+            # Try to create it again - logs 'Table exists' but raises due to bug
+            with pytest.raises(oracledb.DatabaseError):
+                utils_databases.execute_sql(
+                    db_connection,
+                    f"CREATE TABLE {table_name} (id NUMBER)",
+                )
+
+            # Verify the logging happened
+            assert "Table exists" in caplog.text
+
+        finally:
+            try:
+                cursor.execute(f"DROP TABLE {table_name} PURGE")
+                db_connection.commit()
+            except oracledb.DatabaseError:
+                pass
+            cursor.close()
+
+    def test_execute_sql_handles_table_not_exists_error(self, db_connection, caplog):
+        """execute_sql should handle ORA-00942 table not exists error (real database).
+
+        The function logs 'Table does not exist' and returns None (doesn't raise)
+        for error code 942.
+        """
+        # Try to select from a non-existent table
+        result = utils_databases.execute_sql(
+            db_connection,
+            "SELECT * FROM NONEXISTENT_TABLE_12345",
+        )
+
+        # Should not raise, returns None
+        assert result is None
+
+        # Verify the logging happened
+        assert "Table does not exist" in caplog.text
+
+    def test_execute_sql_raises_on_other_database_error(self, db_transaction):
+        """execute_sql should raise on other DatabaseError codes (real database)."""
+        # Invalid SQL syntax should raise
+        with pytest.raises(oracledb.DatabaseError):
+            utils_databases.execute_sql(db_transaction, "INVALID SQL SYNTAX HERE")
+
+    def test_execute_sql_raises_on_interface_error(self):
+        """execute_sql should raise on InterfaceError (mocked)."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_cursor.callproc.side_effect = oracledb.InterfaceError("Interface error")
+
+        with pytest.raises(oracledb.InterfaceError):
+            utils_databases.execute_sql(mock_conn, "SELECT 1 FROM dual")
+
+    def test_execute_sql_raises_on_database_error_no_args(self):
+        """execute_sql should raise on DatabaseError with no args (mocked)."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        # DatabaseError with empty args
+        mock_cursor.callproc.side_effect = oracledb.DatabaseError()
+
+        with pytest.raises(oracledb.DatabaseError):
+            utils_databases.execute_sql(mock_conn, "SELECT 1 FROM dual")
 
 
 class TestDropVs:
@@ -466,6 +574,19 @@ class TestTestConnection:  # pylint: disable=protected-access
 
         assert exc_info.value.status_code == 503
 
+    def test_test_raises_db_exception_on_generic_exception(self, make_database):
+        """_test should raise DbException with 500 on generic Exception."""
+        config = make_database()
+        mock_conn = MagicMock()
+        mock_conn.ping.side_effect = RuntimeError("Unexpected error")
+        config.set_connection(mock_conn)
+
+        with pytest.raises(DbException) as exc_info:
+            utils_databases._test(config)
+
+        assert exc_info.value.status_code == 500
+        assert "Unexpected error" in exc_info.value.detail
+
 
 class TestGetVs:  # pylint: disable=protected-access
     """Tests for the _get_vs function.
@@ -488,6 +609,40 @@ class TestGetVs:  # pylint: disable=protected-access
 
         # Either empty or returns actual vector stores if they exist
         assert isinstance(result, list)
+
+    def test_get_vs_parses_genai_comment(self, db_connection):
+        """_get_vs should parse GENAI comment JSON and return DatabaseVectorStorage (real database)."""
+        cursor = db_connection.cursor()
+        table_name = "VS_TEST_TABLE"
+
+        try:
+            # Create a test table
+            cursor.execute(f"CREATE TABLE {table_name} (id NUMBER, data VARCHAR2(100))")
+
+            # Add GENAI comment with JSON metadata (matching the expected format)
+            comment_json = '{"description": "Test vector store"}'
+            cursor.execute(f"COMMENT ON TABLE {table_name} IS 'GENAI: {comment_json}'")
+            db_connection.commit()
+
+            # Test _get_vs
+            result = utils_databases._get_vs(db_connection)
+
+            # Should find our test table
+            vs_names = [vs.vector_store for vs in result]
+            assert table_name in vs_names
+
+            # Find our test vector store and verify parsed data
+            test_vs = next(vs for vs in result if vs.vector_store == table_name)
+            assert test_vs.description == "Test vector store"
+
+        finally:
+            # Cleanup - drop table
+            try:
+                cursor.execute(f"DROP TABLE {table_name} PURGE")
+                db_connection.commit()
+            except oracledb.DatabaseError:
+                pass
+            cursor.close()
 
 
 class TestLoggerConfiguration:

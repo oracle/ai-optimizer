@@ -27,36 +27,9 @@ class TestDatabases:
             name="test_db_2", user="test_user_2", password="test_password_2", dsn="test_dsn_2"
         )
 
-    @patch("server.api.utils.databases.DATABASE_OBJECTS")
-    def test_get_all(self, mock_database_objects):
-        """Test getting all databases when no name is provided"""
-        mock_database_objects.__iter__ = MagicMock(return_value=iter([self.sample_database, self.sample_database_2]))
-        mock_database_objects.__len__ = MagicMock(return_value=2)
-
-        result = databases.get()
-
-        assert result == [self.sample_database, self.sample_database_2]
-        assert len(result) == 2
-
-    @patch("server.api.utils.databases.DATABASE_OBJECTS")
-    def test_get_by_name_found(self, mock_database_objects):
-        """Test getting database by name when it exists"""
-        mock_database_objects.__iter__ = MagicMock(return_value=iter([self.sample_database, self.sample_database_2]))
-        mock_database_objects.__len__ = MagicMock(return_value=2)
-
-        result = databases.get(name="test_db")
-
-        assert result == [self.sample_database]
-        assert len(result) == 1
-
-    @patch("server.api.utils.databases.DATABASE_OBJECTS")
-    def test_get_by_name_not_found(self, mock_database_objects):
-        """Test getting database by name when it doesn't exist"""
-        mock_database_objects.__iter__ = MagicMock(return_value=iter([self.sample_database]))
-        mock_database_objects.__len__ = MagicMock(return_value=1)
-
-        with pytest.raises(ValueError, match="nonexistent not found"):
-            databases.get(name="nonexistent")
+    # test_get_all: See test/unit/server/api/utils/test_utils_databases.py::TestGet::test_get_all_databases
+    # test_get_by_name_found: See test/unit/server/api/utils/test_utils_databases.py::TestGet::test_get_specific_database
+    # test_get_by_name_not_found: See test/unit/server/api/utils/test_utils_databases.py::TestGet::test_get_raises_unknown_error
 
     @patch("server.api.utils.databases.DATABASE_OBJECTS")
     def test_get_empty_list(self, mock_database_objects):
@@ -77,54 +50,9 @@ class TestDatabases:
         with pytest.raises(ValueError, match="test_db not found"):
             databases.get(name="test_db")
 
-    def test_create_success(self, db_container, db_objects_manager):
-        """Test successful database creation when database doesn't exist"""
-        assert db_container is not None
-        assert db_objects_manager is not None
-        # Clear the list to start fresh
-        databases.DATABASE_OBJECTS.clear()
-
-        # Create a new database
-        new_database = Database(name="new_test_db", user="test_user", password="test_password", dsn="test_dsn")
-
-        result = databases.create(new_database)
-
-        # Verify database was added
-        assert len(databases.DATABASE_OBJECTS) == 1
-        assert databases.DATABASE_OBJECTS[0].name == "new_test_db"
-        assert result == [new_database]
-
-    def test_create_already_exists(self, db_container, db_objects_manager):
-        """Test database creation when database already exists"""
-        assert db_container is not None
-        assert db_objects_manager is not None
-        # Add a database to the list
-        databases.DATABASE_OBJECTS.clear()
-        existing_db = Database(name="existing_db", user="test_user", password="test_password", dsn="test_dsn")
-        databases.DATABASE_OBJECTS.append(existing_db)
-
-        # Try to create a database with the same name
-        duplicate_db = Database(name="existing_db", user="other_user", password="other_password", dsn="other_dsn")
-
-        # Should raise an error for duplicate database
-        with pytest.raises(ValueError, match="Database: existing_db already exists"):
-            databases.create(duplicate_db)
-
-        # Verify only original database exists
-        assert len(databases.DATABASE_OBJECTS) == 1
-        assert databases.DATABASE_OBJECTS[0] == existing_db
-
-    def test_create_missing_user(self, db_container, db_objects_manager):
-        """Test database creation with missing user field"""
-        assert db_container is not None
-        assert db_objects_manager is not None
-        databases.DATABASE_OBJECTS.clear()
-
-        # Create database with missing user
-        incomplete_db = Database(name="incomplete_db", password="test_password", dsn="test_dsn")
-
-        with pytest.raises(ValueError, match="'user', 'password', and 'dsn' are required"):
-            databases.create(incomplete_db)
+    # test_create_success: See test/unit/server/api/utils/test_utils_databases.py::TestCreate::test_create_success
+    # test_create_already_exists: See test/unit/server/api/utils/test_utils_databases.py::TestCreate::test_create_raises_exists_error
+    # test_create_missing_user: See test/unit/server/api/utils/test_utils_databases.py::TestCreate::test_create_raises_value_error_missing_fields
 
     def test_create_missing_password(self, db_container, db_objects_manager):
         """Test database creation with missing password field"""
@@ -162,27 +90,7 @@ class TestDatabases:
         with pytest.raises(ValueError, match="'user', 'password', and 'dsn' are required"):
             databases.create(incomplete_db)
 
-    def test_delete(self, db_container, db_objects_manager):
-        """Test database deletion"""
-        assert db_container is not None
-        assert db_objects_manager is not None
-        # Setup test data
-        db1 = Database(name="test_db_1", user="user1", password="pass1", dsn="dsn1")
-        db2 = Database(name="test_db_2", user="user2", password="pass2", dsn="dsn2")
-        db3 = Database(name="test_db_3", user="user3", password="pass3", dsn="dsn3")
-
-        databases.DATABASE_OBJECTS.clear()
-        databases.DATABASE_OBJECTS.extend([db1, db2, db3])
-
-        # Delete middle database
-        databases.delete("test_db_2")
-
-        # Verify deletion
-        assert len(databases.DATABASE_OBJECTS) == 2
-        names = [db.name for db in databases.DATABASE_OBJECTS]
-        assert "test_db_1" in names
-        assert "test_db_2" not in names
-        assert "test_db_3" in names
+    # test_delete: See test/unit/server/api/utils/test_utils_databases.py::TestDelete::test_delete_removes_database
 
     def test_delete_nonexistent(self, db_container, db_objects_manager):
         """Test deleting non-existent database"""
@@ -234,10 +142,7 @@ class TestDatabases:
         assert len(databases.DATABASE_OBJECTS) == 1
         assert databases.DATABASE_OBJECTS[0].name == "other"
 
-    def test_logger_exists(self):
-        """Test that logger is properly configured"""
-        assert hasattr(databases, "logger")
-        assert databases.logger.name == "api.utils.database"
+    # test_logger_exists: See test/unit/server/api/utils/test_utils_databases.py::TestLoggerConfiguration::test_logger_exists
 
     def test_get_filters_correctly(self, db_container, db_objects_manager):
         """Test that get correctly filters by name"""
@@ -321,12 +226,7 @@ class TestDatabases:
 class TestDbException:
     """Test custom database exception class"""
 
-    def test_db_exception_initialization(self):
-        """Test DbException initialization"""
-        exc = DbException(status_code=500, detail="Database error")
-        assert exc.status_code == 500
-        assert exc.detail == "Database error"
-        assert str(exc) == "Database error"
+    # test_db_exception_initialization: See test/unit/server/api/utils/test_utils_databases.py::TestDbException::test_db_exception_init
 
     def test_db_exception_inheritance(self):
         """Test DbException inherits from Exception"""

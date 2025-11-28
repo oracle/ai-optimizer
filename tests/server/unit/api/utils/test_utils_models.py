@@ -21,29 +21,11 @@ from common.schema import Model
 class TestModelsExceptions:
     """Test custom exception classes"""
 
-    def test_url_unreachable_error(self):
-        """Test URLUnreachableError exception"""
-        error = URLUnreachableError("URL is unreachable")
-        assert str(error) == "URL is unreachable"
-        assert isinstance(error, ValueError)
-
-    def test_invalid_model_error(self):
-        """Test InvalidModelError exception"""
-        error = InvalidModelError("Invalid model data")
-        assert str(error) == "Invalid model data"
-        assert isinstance(error, ValueError)
-
-    def test_exists_model_error(self):
-        """Test ExistsModelError exception"""
-        error = ExistsModelError("Model already exists")
-        assert str(error) == "Model already exists"
-        assert isinstance(error, ValueError)
-
-    def test_unknown_model_error(self):
-        """Test UnknownModelError exception"""
-        error = UnknownModelError("Model not found")
-        assert str(error) == "Model not found"
-        assert isinstance(error, ValueError)
+    # test_url_unreachable_error: See test/unit/server/api/utils/test_utils_models.py::TestExceptions::test_url_unreachable_error_is_value_error
+    # test_invalid_model_error: See test/unit/server/api/utils/test_utils_models.py::TestExceptions::test_invalid_model_error_is_value_error
+    # test_exists_model_error: See test/unit/server/api/utils/test_utils_models.py::TestExceptions::test_exists_model_error_is_value_error
+    # test_unknown_model_error: See test/unit/server/api/utils/test_utils_models.py::TestExceptions::test_unknown_model_error_is_value_error
+    pass
 
 
 #####################################################
@@ -64,15 +46,7 @@ class TestModelsCRUD:
         """Disabled model fixture"""
         return Model(id="disabled-model", provider="anthropic", type="ll", enabled=False)
 
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    def test_get_model_all_models(self, mock_model_objects, sample_model, disabled_model):
-        """Test getting all models without filters"""
-        mock_model_objects.__iter__ = MagicMock(return_value=iter([sample_model, disabled_model]))
-        mock_model_objects.__len__ = MagicMock(return_value=2)
-
-        result = models.get()
-
-        assert result == [sample_model, disabled_model]
+    # test_get_model_all_models: See test/unit/server/api/utils/test_utils_models.py::TestGet::test_get_all_models
 
     @patch("server.api.utils.models.MODEL_OBJECTS")
     def test_get_model_by_id_found(self, mock_model_objects, sample_model):
@@ -93,58 +67,12 @@ class TestModelsCRUD:
         with pytest.raises(UnknownModelError, match="nonexistent not found"):
             models.get(model_id="nonexistent")
 
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    def test_get_model_by_provider(self, mock_model_objects, sample_model, disabled_model):
-        """Test filtering models by provider"""
-        all_models = [sample_model, disabled_model]
-        mock_model_objects.__iter__ = MagicMock(return_value=iter(all_models))
-        mock_model_objects.__len__ = MagicMock(return_value=len(all_models))
+    # test_get_model_by_provider: See test/unit/server/api/utils/test_utils_models.py::TestGet::test_get_by_provider
+    # test_get_model_by_type: See test/unit/server/api/utils/test_utils_models.py::TestGet::test_get_by_type
+    # test_get_model_exclude_disabled: See test/unit/server/api/utils/test_utils_models.py::TestGet::test_get_exclude_disabled
 
-        (result,) = models.get(model_provider="openai")
-
-        # Since only one model matches provider="openai", it will return a list of single model
-        assert result == sample_model
-
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    def test_get_model_by_type(self, mock_model_objects, sample_model, disabled_model):
-        """Test filtering models by type"""
-        all_models = [sample_model, disabled_model]
-        mock_model_objects.__iter__ = MagicMock(return_value=iter(all_models))
-        mock_model_objects.__len__ = MagicMock(return_value=len(all_models))
-
-        result = models.get(model_type="ll")
-
-        assert result == all_models
-
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    def test_get_model_exclude_disabled(self, mock_model_objects, sample_model, disabled_model):
-        """Test excluding disabled models"""
-        all_models = [sample_model, disabled_model]
-        mock_model_objects.__iter__ = MagicMock(return_value=iter(all_models))
-        mock_model_objects.__len__ = MagicMock(return_value=len(all_models))
-
-        (result,) = models.get(include_disabled=False)
-        assert result == sample_model
-
-    @patch("server.api.utils.models.MODEL_OBJECTS", [])
-    @patch("server.api.utils.models.is_url_accessible")
-    def test_create_model_success(self, mock_url_check, sample_model):
-        """Test successful model creation"""
-        mock_url_check.return_value = (True, None)
-
-        result = models.create(sample_model)
-
-        assert result == sample_model
-        assert result in models.MODEL_OBJECTS
-
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    @patch("server.api.utils.models.get")
-    def test_create_model_already_exists(self, mock_get_model, _mock_model_objects, sample_model):
-        """Test creating model that already exists"""
-        mock_get_model.return_value = sample_model  # Model already exists
-
-        with pytest.raises(ExistsModelError, match="Model: openai/test-model already exists"):
-            models.create(sample_model)
+    # test_create_model_success: See test/unit/server/api/utils/test_utils_models.py::TestCreate::test_create_success
+    # test_create_model_already_exists: See test/unit/server/api/utils/test_utils_models.py::TestCreate::test_create_raises_exists_error
 
     @patch("server.api.utils.models.MODEL_OBJECTS", [])
     @patch("server.api.utils.models.is_url_accessible")
@@ -173,25 +101,9 @@ class TestModelsCRUD:
         assert result == sample_model
         assert result in models.MODEL_OBJECTS
 
-    @patch("server.api.utils.models.MODEL_OBJECTS")
-    def test_delete_model(self, mock_model_objects):
-        """Test model deletion"""
-        test_models = [
-            Model(id="test-model", provider="openai", type="ll"),
-            Model(id="other-model", provider="anthropic", type="ll"),
-        ]
-        mock_model_objects.__setitem__ = MagicMock()
-        mock_model_objects.__iter__ = MagicMock(return_value=iter(test_models))
-
-        models.delete("openai", "test-model")
-
-        # Verify the slice assignment was called
-        mock_model_objects.__setitem__.assert_called_once()
-
-    def test_logger_exists(self):
-        """Test that logger is properly configured"""
-        assert hasattr(models, "logger")
-        assert models.logger.name == "api.utils.models"
+    # test_delete_model: See test/unit/server/api/utils/test_utils_models.py::TestDelete::test_delete_removes_model
+    # test_logger_exists: See test/unit/server/api/utils/test_utils_models.py::TestLoggerConfiguration::test_logger_exists
+    pass
 
 
 #####################################################
@@ -212,26 +124,7 @@ class TestModelsUtils:
         """Sample OCI config fixture"""
         return get_sample_oci_config()
 
-    @patch("server.api.utils.models.MODEL_OBJECTS", [])
-    @patch("server.api.utils.models.is_url_accessible")
-    def test_update_success(self, mock_url_check, sample_model):
-        """Test successful model update"""
-        # First create the model
-        models.MODEL_OBJECTS.append(sample_model)
-        mock_url_check.return_value = (True, None)
-
-        update_payload = Model(
-            id="test-model",
-            provider="openai",
-            type="ll",
-            enabled=True,
-            api_base="https://api.openai.com",
-            temperature=0.8,
-        )
-
-        result = models.update(update_payload)
-
-        assert result.temperature == 0.8
+    # test_update_success: See test/unit/server/api/utils/test_utils_models.py::TestUpdate::test_update_success
 
     @patch("server.api.utils.models.MODEL_OBJECTS", [])
     @patch("server.api.utils.models.is_url_accessible")
@@ -296,45 +189,9 @@ class TestModelsUtils:
         assert result.temperature == 0.5
         assert result.max_tokens == 2048
 
-    @patch("server.api.utils.models.get")
-    def test_get_full_config_success(self, mock_get_model, sample_model, sample_oci_config):
-        """Test successful full config retrieval"""
-        mock_get_model.return_value = [sample_model]
-        model_config = {"model": "openai/gpt-4", "temperature": 0.8}
-
-        full_config, provider = models._get_full_config(model_config, sample_oci_config)
-
-        assert provider == "openai"
-        assert full_config["temperature"] == 0.8
-        assert full_config["id"] == "test-model"
-        mock_get_model.assert_called_once_with(model_provider="openai", model_id="gpt-4", include_disabled=False)
-
-    @patch("server.api.utils.models.get")
-    def test_get_full_config_unknown_model(self, mock_get_model, sample_oci_config):
-        """Test full config retrieval with unknown model"""
-        mock_get_model.side_effect = UnknownModelError("Model not found")
-        model_config = {"model": "unknown/model"}
-
-        with pytest.raises(UnknownModelError):
-            models._get_full_config(model_config, sample_oci_config)
-
-    @patch("server.api.utils.models._get_full_config")
-    @patch("litellm.get_supported_openai_params")
-    def test_get_litellm_config_basic(self, mock_get_params, mock_get_full_config, sample_oci_config):
-        """Test basic LiteLLM config generation"""
-        mock_get_full_config.return_value = (
-            {"temperature": 0.7, "max_tokens": 4096, "api_base": "https://api.openai.com"},
-            "openai",
-        )
-        mock_get_params.return_value = ["temperature", "max_tokens"]
-        model_config = {"model": "openai/gpt-4"}
-
-        result = models.get_litellm_config(model_config, sample_oci_config)
-
-        assert result["model"] == "openai/gpt-4"
-        assert result["temperature"] == 0.7
-        assert result["max_tokens"] == 4096
-        assert result["drop_params"] is True
+    # test_get_full_config_success: See test/unit/server/api/utils/test_utils_models.py::TestGetFullConfig::test_get_full_config_success
+    # test_get_full_config_unknown_model: See test/unit/server/api/utils/test_utils_models.py::TestGetFullConfig::test_get_full_config_raises_unknown_model
+    # test_get_litellm_config_basic: See test/unit/server/api/utils/test_utils_models.py::TestGetLitellmConfig::test_get_litellm_config_basic
 
     @patch("server.api.utils.models._get_full_config")
     @patch("litellm.get_supported_openai_params")
@@ -366,21 +223,7 @@ class TestModelsUtils:
         assert "presence_penalty" not in result
         assert "frequency_penalty" not in result
 
-    @patch("server.api.utils.models._get_full_config")
-    @patch("litellm.get_supported_openai_params")
-    def test_get_litellm_config_oci(self, mock_get_params, mock_get_full_config, sample_oci_config):
-        """Test LiteLLM config generation for OCI"""
-        mock_get_full_config.return_value = ({"temperature": 0.7}, "oci")
-        mock_get_params.return_value = ["temperature"]
-        model_config = {"model": "oci/cohere.command"}
-
-        result = models.get_litellm_config(model_config, sample_oci_config)
-
-        assert result["oci_user"] == "ocid1.user.oc1..testuser"
-        assert result["oci_fingerprint"] == "test-fingerprint"
-        assert result["oci_tenancy"] == "ocid1.tenancy.oc1..testtenant"
-        assert result["oci_region"] == "us-ashburn-1"
-        assert result["oci_key_file"] == "/path/to/key.pem"
+    # test_get_litellm_config_oci: See test/unit/server/api/utils/test_utils_models.py::TestGetLitellmConfig::test_get_litellm_config_oci_provider
 
     @patch("server.api.utils.models._get_full_config")
     @patch("litellm.get_supported_openai_params")
@@ -395,7 +238,4 @@ class TestModelsUtils:
         assert "model" not in result
         assert "temperature" not in result
 
-    def test_logger_exists(self):
-        """Test that logger is properly configured"""
-        assert hasattr(models, "logger")
-        assert models.logger.name == "api.utils.models"
+    # test_logger_exists: See test/unit/server/api/utils/test_utils_models.py::TestLoggerConfiguration::test_logger_exists
