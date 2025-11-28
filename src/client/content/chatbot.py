@@ -16,7 +16,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.content.config.tabs.models import get_models
-from client.utils import st_common, api_call, client
+from client.utils import st_common, api_call, client, vs_options
 from client.utils.st_footer import render_chat_footer
 from common import logging_config
 
@@ -61,6 +61,8 @@ def show_vector_search_refs(context, vs_metadata=None):
 
             if vs_metadata and vs_metadata.get("context_input"):
                 st.markdown(f"**Search Query:** {vs_metadata.get('context_input')}")
+            elif context.get("context_input"):
+                st.markdown(f"**Search Query:** {context.get('context_input')}")
 
 
 def show_token_usage(token_usage):
@@ -83,7 +85,7 @@ def setup_sidebar():
     st_common.tools_sidebar()
     st_common.history_sidebar()
     st_common.ll_sidebar()
-    st_common.vector_search_sidebar()
+    vs_options.vector_search_sidebar()
 
     if not state.enable_client:
         st.stop()
@@ -145,11 +147,10 @@ def display_chat_history(history):
 
 async def handle_chat_input(user_client):
     """Handle user chat input and streaming response"""
-    sys_prompt = state.client_settings["prompts"]["sys"]
     render_chat_footer()
 
     if human_request := st.chat_input(
-        f"Ask your question here... (current prompt: {sys_prompt})",
+        "Ask your question here... ",
         accept_file=True,
         file_type=["jpg", "jpeg", "png"],
     ):
