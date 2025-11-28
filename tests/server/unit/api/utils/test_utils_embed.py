@@ -9,7 +9,6 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch, mock_open, MagicMock
 
-import pytest
 from langchain.docstore.document import Document as LangchainDocument
 
 from server.api.utils import embed
@@ -19,17 +18,12 @@ from common.schema import Database
 class TestEmbedUtils:
     """Test embed utility functions"""
 
-    @pytest.fixture
-    def sample_document(self):
-        """Sample document fixture"""
-        return LangchainDocument(
+    def __init__(self):
+        """Setup test data"""
+        self.sample_document = LangchainDocument(
             page_content="This is a test document content.", metadata={"source": "/path/to/test_file.txt", "page": 1}
         )
-
-    @pytest.fixture
-    def sample_split_doc(self):
-        """Sample split document fixture"""
-        return LangchainDocument(
+        self.sample_split_doc = LangchainDocument(
             page_content="This is a chunk of content.", metadata={"source": "/path/to/test_file.txt", "start_index": 0}
         )
 
@@ -60,12 +54,12 @@ class TestEmbedUtils:
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.path.getsize")
     @patch("json.dumps")
-    def test_doc_to_json_default_output(self, mock_json_dumps, mock_getsize, mock_file, sample_document):
+    def test_doc_to_json_default_output(self, mock_json_dumps, mock_getsize, mock_file):
         """Test document to JSON conversion with default output directory"""
         mock_json_dumps.return_value = '{"test": "data"}'
         mock_getsize.return_value = 100
 
-        result = embed.doc_to_json([sample_document], "/path/to/test_file.txt", "/tmp")
+        result = embed.doc_to_json([self.sample_document], "/path/to/test_file.txt", "/tmp")
 
         mock_file.assert_called_once()
         mock_json_dumps.assert_called_once()
@@ -75,12 +69,12 @@ class TestEmbedUtils:
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.path.getsize")
     @patch("json.dumps")
-    def test_doc_to_json_custom_output(self, mock_json_dumps, mock_getsize, mock_file, sample_document):
+    def test_doc_to_json_custom_output(self, mock_json_dumps, mock_getsize, mock_file):
         """Test document to JSON conversion with custom output directory"""
         mock_json_dumps.return_value = '{"test": "data"}'
         mock_getsize.return_value = 100
 
-        result = embed.doc_to_json([sample_document], "/path/to/test_file.txt", "/custom/output")
+        result = embed.doc_to_json([self.sample_document], "/path/to/test_file.txt", "/custom/output")
 
         mock_file.assert_called_once()
         mock_json_dumps.assert_called_once()
@@ -96,10 +90,9 @@ class TestEmbedUtils:
 class TestGetVectorStoreFiles:
     """Test get_vector_store_files() function"""
 
-    @pytest.fixture
-    def sample_db(self):
-        """Sample database fixture"""
-        return Database(
+    def __init__(self):
+        """Setup test data"""
+        self.sample_db = Database(
             name="TEST_DB",
             user="test_user",
             password="",
@@ -108,7 +101,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_with_metadata(self, mock_disconnect, mock_connect, sample_db):
+    def test_get_vector_store_files_with_metadata(self, mock_disconnect, mock_connect):
         """Test retrieving file list with complete metadata"""
         # Mock database connection and cursor
         mock_conn = MagicMock()
@@ -139,7 +132,7 @@ class TestGetVectorStoreFiles:
         ]
 
         # Execute
-        result = embed.get_vector_store_files(sample_db, "TEST_VS")
+        result = embed.get_vector_store_files(self.sample_db, "TEST_VS")
 
         # Verify
         assert result["vector_store"] == "TEST_VS"
@@ -159,7 +152,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_with_decimal_size(self, _mock_disconnect, mock_connect, sample_db):
+    def test_get_vector_store_files_with_decimal_size(self, _mock_disconnect, mock_connect):
         """Test handling of Decimal size from Oracle NUMBER type"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -178,7 +171,7 @@ class TestGetVectorStoreFiles:
         ]
 
         # Execute
-        result = embed.get_vector_store_files(sample_db, "TEST_VS")
+        result = embed.get_vector_store_files(self.sample_db, "TEST_VS")
 
         # Verify Decimal was converted to int
         assert result["files"][0]["size"] == 1024000
@@ -186,7 +179,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_old_format(self, _mock_disconnect, mock_connect, sample_db):
+    def test_get_vector_store_files_old_format(self, _mock_disconnect, mock_connect):
         """Test retrieving files with old metadata format (source field)"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -201,7 +194,7 @@ class TestGetVectorStoreFiles:
         ]
 
         # Execute
-        result = embed.get_vector_store_files(sample_db, "TEST_VS")
+        result = embed.get_vector_store_files(self.sample_db, "TEST_VS")
 
         # Verify fallback to source field worked
         assert result["total_files"] == 1
@@ -210,7 +203,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_with_orphaned_chunks(self, _mock_disconnect, mock_connect, sample_db):
+    def test_get_vector_store_files_with_orphaned_chunks(self, _mock_disconnect, mock_connect):
         """Test detection of orphaned chunks without valid filename"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -227,7 +220,7 @@ class TestGetVectorStoreFiles:
         ]
 
         # Execute
-        result = embed.get_vector_store_files(sample_db, "TEST_VS")
+        result = embed.get_vector_store_files(self.sample_db, "TEST_VS")
 
         # Verify
         assert result["total_files"] == 1
@@ -237,7 +230,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_empty_store(self, _mock_disconnect, mock_connect, sample_db):
+    def test_get_vector_store_files_empty_store(self, _mock_disconnect, mock_connect):
         """Test retrieving from empty vector store"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -249,7 +242,7 @@ class TestGetVectorStoreFiles:
         mock_cursor.fetchall.return_value = []
 
         # Execute
-        result = embed.get_vector_store_files(sample_db, "EMPTY_VS")
+        result = embed.get_vector_store_files(self.sample_db, "EMPTY_VS")
 
         # Verify
         assert result["vector_store"] == "EMPTY_VS"
@@ -260,7 +253,7 @@ class TestGetVectorStoreFiles:
 
     @patch("server.api.utils.databases.connect")
     @patch("server.api.utils.databases.disconnect")
-    def test_get_vector_store_files_sorts_by_filename(self, _mock_disconnect, mock_connect, sample_db):
+    def test_get_vector_store_files_sorts_by_filename(self, _mock_disconnect, mock_connect):
         """Test that files are sorted alphabetically by filename"""
         # Mock database connection
         mock_conn = MagicMock()
@@ -276,7 +269,7 @@ class TestGetVectorStoreFiles:
         ]
 
         # Execute
-        result = embed.get_vector_store_files(sample_db, "TEST_VS")
+        result = embed.get_vector_store_files(self.sample_db, "TEST_VS")
 
         # Verify sorted order
         filenames = [f["filename"] for f in result["files"]]

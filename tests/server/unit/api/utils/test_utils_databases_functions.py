@@ -20,7 +20,9 @@ from common.schema import Database
 class TestDatabaseUtilsPrivateFunctions:
     """Test private utility functions"""
 
-    sample_database: Database
+    def __init__(self):
+        """Initialize test data"""
+        self.sample_database = None
 
     def setup_method(self):
         """Setup test data"""
@@ -31,13 +33,90 @@ class TestDatabaseUtilsPrivateFunctions:
             dsn=TEST_CONFIG["db_dsn"],
         )
 
-    # test_test_function_success: See test/unit/server/api/utils/test_utils_databases.py::TestTestConnection::test_test_connection_active
-    # test_test_function_reconnect: See test/unit/server/api/utils/test_utils_databases.py::TestTestConnection::test_test_connection_refreshes_on_database_error
-    # test_test_function_value_error: See test/unit/server/api/utils/test_utils_databases.py::TestTestConnection::test_test_raises_db_exception_on_value_error
-    # test_test_function_permission_error: See test/unit/server/api/utils/test_utils_databases.py::TestTestConnection::test_test_raises_db_exception_on_permission_error
-    # test_test_function_connection_error: See test/unit/server/api/utils/test_utils_databases.py::TestTestConnection::test_test_raises_db_exception_on_connection_error
-    # test_test_function_generic_exception: See test/unit/server/api/utils/test_utils_databases.py::TestTestConnection::test_test_raises_db_exception_on_generic_exception
-    # test_get_vs_with_real_database: See test/unit/server/api/utils/test_utils_databases.py::TestGetVs::test_get_vs_returns_list
+    def test_test_function_success(self, db_container):
+        """Test successful database connection test with real database"""
+        assert db_container is not None
+        # Connect to real database
+        conn = databases.connect(self.sample_database)
+        self.sample_database.set_connection(conn)
+
+        try:
+            # Test the connection
+            databases._test(self.sample_database)
+            assert self.sample_database.connected is True
+        finally:
+            databases.disconnect(conn)
+
+    @patch("oracledb.Connection")
+    def test_test_function_reconnect(self, mock_connection):
+        """Test database reconnection when ping fails"""
+        mock_connection.ping.side_effect = oracledb.DatabaseError("Connection lost")
+        self.sample_database.set_connection(mock_connection)
+
+        with patch("server.api.utils.databases.connect") as mock_connect:
+            databases._test(self.sample_database)
+            mock_connect.assert_called_once_with(self.sample_database)
+
+    @patch("oracledb.Connection")
+    def test_test_function_value_error(self, mock_connection):
+        """Test handling of value errors"""
+        mock_connection.ping.side_effect = ValueError("Invalid value")
+        self.sample_database.set_connection(mock_connection)
+
+        with pytest.raises(DbException) as exc_info:
+            databases._test(self.sample_database)
+
+        assert exc_info.value.status_code == 400
+        assert "Database: Invalid value" in str(exc_info.value)
+
+    @patch("oracledb.Connection")
+    def test_test_function_permission_error(self, mock_connection):
+        """Test handling of permission errors"""
+        mock_connection.ping.side_effect = PermissionError("Access denied")
+        self.sample_database.set_connection(mock_connection)
+
+        with pytest.raises(DbException) as exc_info:
+            databases._test(self.sample_database)
+
+        assert exc_info.value.status_code == 401
+        assert "Database: Access denied" in str(exc_info.value)
+
+    @patch("oracledb.Connection")
+    def test_test_function_connection_error(self, mock_connection):
+        """Test handling of connection errors"""
+        mock_connection.ping.side_effect = ConnectionError("Connection failed")
+        self.sample_database.set_connection(mock_connection)
+
+        with pytest.raises(DbException) as exc_info:
+            databases._test(self.sample_database)
+
+        assert exc_info.value.status_code == 503
+        assert "Database: Connection failed" in str(exc_info.value)
+
+    @patch("oracledb.Connection")
+    def test_test_function_generic_exception(self, mock_connection):
+        """Test handling of generic exceptions"""
+        mock_connection.ping.side_effect = RuntimeError("Unknown error")
+        self.sample_database.set_connection(mock_connection)
+
+        with pytest.raises(DbException) as exc_info:
+            databases._test(self.sample_database)
+
+        assert exc_info.value.status_code == 500
+        assert "Unknown error" in str(exc_info.value)
+
+    def test_get_vs_with_real_database(self, db_container):
+        """Test vector storage retrieval with real database"""
+        assert db_container is not None
+        conn = databases.connect(self.sample_database)
+
+        try:
+            # Test with empty result (no vector stores initially)
+            result = databases._get_vs(conn)
+            assert isinstance(result, list)
+            assert len(result) == 0  # Initially no vector stores
+        finally:
+            databases.disconnect(conn)
 
     @patch("server.api.utils.databases.execute_sql")
     def test_get_vs_with_mock_data(self, mock_execute_sql):
@@ -93,7 +172,9 @@ class TestDatabaseUtilsPrivateFunctions:
 class TestDatabaseUtilsPublicFunctions:
     """Test public utility functions - connection and execution"""
 
-    sample_database: Database
+    def __init__(self):
+        """Initialize test data"""
+        self.sample_database = None
 
     def setup_method(self):
         """Setup test data"""
@@ -104,10 +185,54 @@ class TestDatabaseUtilsPublicFunctions:
             dsn=TEST_CONFIG["db_dsn"],
         )
 
-    # test_connect_success_with_real_database: See test/unit/server/api/utils/test_utils_databases.py::TestConnect::test_connect_success_real_db
-    # test_connect_missing_user: See test/unit/server/api/utils/test_utils_databases.py::TestConnect::test_connect_raises_value_error_missing_details
-    # test_connect_missing_password: See test/unit/server/api/utils/test_utils_databases.py::TestConnect::test_connect_raises_value_error_missing_details
-    # test_connect_missing_dsn: See test/unit/server/api/utils/test_utils_databases.py::TestConnect::test_connect_raises_value_error_missing_details
+    def test_connect_success_with_real_database(self, db_container):
+        """Test successful database connection with real database"""
+        assert db_container is not None
+        result = databases.connect(self.sample_database)
+
+        try:
+            assert result is not None
+            assert isinstance(result, oracledb.Connection)
+            # Test that connection is active
+            result.ping()
+        finally:
+            databases.disconnect(result)
+
+    def test_connect_missing_user(self):
+        """Test connection with missing user"""
+        incomplete_db = Database(
+            name="test_db",
+            user="",  # Missing user
+            password=TEST_CONFIG["db_password"],
+            dsn=TEST_CONFIG["db_dsn"],
+        )
+
+        with pytest.raises(ValueError, match="missing connection details"):
+            databases.connect(incomplete_db)
+
+    def test_connect_missing_password(self):
+        """Test connection with missing password"""
+        incomplete_db = Database(
+            name="test_db",
+            user=TEST_CONFIG["db_username"],
+            password="",  # Missing password
+            dsn=TEST_CONFIG["db_dsn"],
+        )
+
+        with pytest.raises(ValueError, match="missing connection details"):
+            databases.connect(incomplete_db)
+
+    def test_connect_missing_dsn(self):
+        """Test connection with missing DSN"""
+        incomplete_db = Database(
+            name="test_db",
+            user=TEST_CONFIG["db_username"],
+            password=TEST_CONFIG["db_password"],
+            dsn="",  # Missing DSN
+        )
+
+        with pytest.raises(ValueError, match="missing connection details"):
+            databases.connect(incomplete_db)
 
     def test_connect_with_wallet_configuration(self, db_container):
         """Test connection with wallet configuration"""
@@ -150,7 +275,18 @@ class TestDatabaseUtilsPublicFunctions:
             # Expected if wallet doesn't exist
             pass
 
-    # test_connect_invalid_credentials: See test/unit/server/api/utils/test_utils_databases.py::TestConnect::test_connect_raises_permission_error_invalid_credentials
+    def test_connect_invalid_credentials(self, db_container):
+        """Test connection with invalid credentials"""
+        assert db_container is not None
+        invalid_db = Database(
+            name="test_db",
+            user="invalid_user",
+            password="invalid_password",
+            dsn=TEST_CONFIG["db_dsn"],
+        )
+
+        with pytest.raises(PermissionError):
+            databases.connect(invalid_db)
 
     def test_connect_invalid_dsn(self, db_container):
         """Test connection with invalid DSN"""
@@ -166,9 +302,45 @@ class TestDatabaseUtilsPublicFunctions:
         with pytest.raises(Exception):  # Catch any exception - DNS resolution errors vary by environment
             databases.connect(invalid_db)
 
-    # test_disconnect_success: See test/unit/server/api/utils/test_utils_databases.py::TestDisconnect::test_disconnect_closes_connection
-    # test_execute_sql_success_with_real_database: See test/unit/server/api/utils/test_utils_databases.py::TestExecuteSql::test_execute_sql_returns_rows
-    # test_execute_sql_with_binds: See test/unit/server/api/utils/test_utils_databases.py::TestExecuteSql::test_execute_sql_with_binds
+    def test_disconnect_success(self, db_container):
+        """Test successful database disconnection"""
+        assert db_container is not None
+        conn = databases.connect(self.sample_database)
+
+        result = databases.disconnect(conn)
+
+        assert result is None
+        # Try to use connection after disconnect - should fail
+        with pytest.raises(oracledb.InterfaceError):
+            conn.ping()
+
+    def test_execute_sql_success_with_real_database(self, db_container):
+        """Test successful SQL execution with real database"""
+        assert db_container is not None
+        conn = databases.connect(self.sample_database)
+
+        try:
+            # Test simple query
+            result = databases.execute_sql(conn, "SELECT 1 FROM DUAL")
+            assert result is not None
+            assert len(result) == 1
+            assert result[0][0] == 1
+        finally:
+            databases.disconnect(conn)
+
+    def test_execute_sql_with_binds(self, db_container):
+        """Test SQL execution with bind variables using real database"""
+        assert db_container is not None
+        conn = databases.connect(self.sample_database)
+
+        try:
+            binds = {"test_value": 42}
+            result = databases.execute_sql(conn, "SELECT :test_value FROM DUAL", binds)
+            assert result is not None
+            assert len(result) == 1
+            assert result[0][0] == 42
+        finally:
+            databases.disconnect(conn)
 
     def test_execute_sql_no_rows(self, db_container):
         """Test SQL execution that returns no rows"""
@@ -243,20 +415,39 @@ class TestDatabaseUtilsPublicFunctions:
         finally:
             databases.disconnect(conn)
 
-    # test_execute_sql_invalid_syntax: See test/unit/server/api/utils/test_utils_databases.py::TestExecuteSql::test_execute_sql_raises_on_other_database_error
+    def test_execute_sql_invalid_syntax(self, db_container):
+        """Test SQL execution with invalid syntax"""
+        assert db_container is not None
+        conn = databases.connect(self.sample_database)
+
+        try:
+            with pytest.raises(oracledb.DatabaseError):
+                databases.execute_sql(conn, "INVALID SQL STATEMENT")
+        finally:
+            databases.disconnect(conn)
 
     def test_drop_vs_function_exists(self):
         """Test that drop_vs function exists and is callable"""
         assert hasattr(databases, "drop_vs")
         assert callable(databases.drop_vs)
 
-    # test_drop_vs_calls_langchain: See test/unit/server/api/utils/test_utils_databases.py::TestDropVs::test_drop_vs_calls_langchain
+    @patch("langchain_community.vectorstores.oraclevs.drop_table_purge")
+    def test_drop_vs_calls_langchain(self, mock_drop_table):
+        """Test drop_vs calls LangChain drop_table_purge"""
+        mock_connection = MagicMock()
+        vs_name = "TEST_VECTOR_STORE"
+
+        databases.drop_vs(mock_connection, vs_name)
+
+        mock_drop_table.assert_called_once_with(mock_connection, vs_name)
 
 
 class TestDatabaseUtilsQueryFunctions:
     """Test public utility functions - get and client database functions"""
 
-    sample_database: Database
+    def __init__(self):
+        """Initialize test data"""
+        self.sample_database = None
 
     def setup_method(self):
         """Setup test data"""
@@ -410,4 +601,7 @@ class TestDatabaseUtilsQueryFunctions:
             if db.connection:
                 databases.disconnect(db.connection)
 
-    # test_logger_exists: See test/unit/server/api/utils/test_utils_databases.py::TestLoggerConfiguration::test_logger_exists
+    def test_logger_exists(self):
+        """Test that logger is properly configured"""
+        assert hasattr(databases, "logger")
+        assert databases.logger.name == "api.utils.database"

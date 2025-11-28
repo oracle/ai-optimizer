@@ -1,1 +1,0 @@
-# Bootstrap integration test package

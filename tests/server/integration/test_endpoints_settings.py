@@ -105,8 +105,7 @@ class TestEndpoints:
         updated_settings = Settings(
             client="default",
             ll_model=LargeLanguageSettings(model="updated-model", chat_history=False),
-            tools_enabled=["Vector Search"],
-            vector_search=VectorSearchSettings(grade=False, search_type="Similarity", top_k=5),
+            vector_search=VectorSearchSettings(enabled=True, grading=False, search_type="Similarity", top_k=5),
             oci=OciSettings(auth_profile="UPDATED"),
         )
 
@@ -126,8 +125,8 @@ class TestEndpoints:
         # Check that the values were updated
         assert new_settings["ll_model"]["model"] == "updated-model"
         assert new_settings["ll_model"]["chat_history"] is False
-        assert new_settings["tools_enabled"] == ["Vector Search"]
-        assert new_settings["vector_search"]["grade"] is False
+        assert new_settings["vector_search"]["enabled"] is True
+        assert new_settings["vector_search"]["grading"] is False
         assert new_settings["vector_search"]["top_k"] == 5
         assert new_settings["oci"]["auth_profile"] == "UPDATED"
 

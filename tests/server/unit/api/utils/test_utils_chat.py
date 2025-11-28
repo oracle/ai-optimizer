@@ -23,23 +23,14 @@ from common.schema import (
 class TestChatUtils:
     """Test chat utility functions"""
 
-    @pytest.fixture
-    def sample_message(self):
-        """Sample chat message fixture"""
-        return ChatMessage(role="user", content="Hello, how are you?")
-
-    @pytest.fixture
-    def sample_request(self, sample_message):
-        """Sample chat request fixture"""
-        return ChatRequest(messages=[sample_message], model="openai/gpt-4")
-
-    @pytest.fixture
-    def sample_client_settings(self):
-        """Sample client settings fixture"""
-        return Settings(
+    def __init__(self):
+        """Setup test data"""
+        self.sample_message = ChatMessage(role="user", content="Hello, how are you?")
+        self.sample_request = ChatRequest(messages=[self.sample_message], model="openai/gpt-4")
+        self.sample_client_settings = Settings(
             client="test_client",
             ll_model=LargeLanguageSettings(model="openai/gpt-4", chat_history=True, temperature=0.7, max_tokens=4096),
-            vector_search=VectorSearchSettings(),
+            vector_search=VectorSearchSettings(enabled=False),
             oci=OciSettings(auth_profile="DEFAULT"),
         )
 
@@ -49,12 +40,11 @@ class TestChatUtils:
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_success(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client,
-        sample_request, sample_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test successful completion generation"""
         # Setup mocks
-        mock_get_client.return_value = sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
 
@@ -68,7 +58,7 @@ class TestChatUtils:
 
         # Test the function
         results = []
-        async for result in chat.completion_generator("test_client", sample_request, "completions"):
+        async for result in chat.completion_generator("test_client", self.sample_request, "completions"):
             results.append(result)
 
         # Verify results - for "completions" mode, we get stream chunks + final completion
@@ -85,12 +75,11 @@ class TestChatUtils:
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_streaming(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client,
-        sample_request, sample_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test streaming completion generation"""
         # Setup mocks
-        mock_get_client.return_value = sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
 
@@ -104,7 +93,7 @@ class TestChatUtils:
 
         # Test the function
         results = []
-        async for result in chat.completion_generator("test_client", sample_request, "streams"):
+        async for result in chat.completion_generator("test_client", self.sample_request, "streams"):
             results.append(result)
 
         # Verify results - should include encoded stream chunks and finish marker
@@ -128,13 +117,11 @@ class TestChatUtils:
         mock_get_litellm_config,
         mock_get_oci,
         mock_get_client,
-        sample_request,
-        sample_client_settings,
     ):
         """Test completion generation with vector search enabled"""
-        # Setup settings with vector search enabled via tools_enabled
-        vector_search_settings = sample_client_settings.model_copy()
-        vector_search_settings.tools_enabled = ["Vector Search"]
+        # Setup settings with vector search enabled
+        vector_search_settings = self.sample_client_settings.model_copy()
+        vector_search_settings.vector_search.enabled = True
 
         # Setup mocks
         mock_get_client.return_value = vector_search_settings
@@ -154,7 +141,7 @@ class TestChatUtils:
 
         # Test the function
         results = []
-        async for result in chat.completion_generator("test_client", sample_request, "completions"):
+        async for result in chat.completion_generator("test_client", self.sample_request, "completions"):
             results.append(result)
 
         # Verify vector search setup
@@ -168,15 +155,14 @@ class TestChatUtils:
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_no_model_specified(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client,
-        sample_message, sample_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client
     ):
         """Test completion generation when no model is specified in request"""
         # Create request without model
-        request_no_model = ChatRequest(messages=[sample_message], model=None)
+        request_no_model = ChatRequest(messages=[self.sample_message], model=None)
 
         # Setup mocks
-        mock_get_client.return_value = sample_client_settings
+        mock_get_client.return_value = self.sample_client_settings
         mock_get_oci.return_value = MagicMock()
         mock_get_litellm_config.return_value = {"model": "gpt-4", "temperature": 0.7}
 

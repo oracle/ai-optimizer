@@ -138,7 +138,7 @@ class TestSetupSidebar:
     def test_setup_sidebar_with_models(self, monkeypatch):
         """Test setup_sidebar with enabled language models"""
         from client.content import chatbot
-        from client.utils import st_common, vs_options
+        from client.utils import st_common
         from streamlit import session_state as state
 
         # Mock enabled_models_lookup to return models
@@ -148,7 +148,7 @@ class TestSetupSidebar:
         monkeypatch.setattr(st_common, "tools_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "history_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "ll_sidebar", MagicMock())
-        monkeypatch.setattr(vs_options, "vector_search_sidebar", MagicMock())
+        monkeypatch.setattr(st_common, "vector_search_sidebar", MagicMock())
 
         # Initialize state
         state.enable_client = True
@@ -162,7 +162,7 @@ class TestSetupSidebar:
     def test_setup_sidebar_client_disabled(self, monkeypatch):
         """Test setup_sidebar when client gets disabled"""
         from client.content import chatbot
-        from client.utils import st_common, vs_options
+        from client.utils import st_common
         from streamlit import session_state as state
         import streamlit as st
 
@@ -175,7 +175,7 @@ class TestSetupSidebar:
         monkeypatch.setattr(st_common, "tools_sidebar", disable_client)
         monkeypatch.setattr(st_common, "history_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "ll_sidebar", MagicMock())
-        monkeypatch.setattr(vs_options, "vector_search_sidebar", MagicMock())
+        monkeypatch.setattr(st_common, "vector_search_sidebar", MagicMock())
 
         # Mock st.stop
         mock_stop = MagicMock(side_effect=SystemExit)
