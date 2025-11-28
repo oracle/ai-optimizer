@@ -125,7 +125,7 @@ def render_configs(mcp_server: str, mcp_type: str, configs: list) -> None:
     for mcp_name in configs:
         # The key prefix is to give each widget a unique key in the loop; the key itself is never used
         key_prefix = f"{mcp_server}_{mcp_type}_{mcp_name}"
-        col1.text(
+        col1.text_input(
             "Name",
             value=mcp_name,
             label_visibility="collapsed",
