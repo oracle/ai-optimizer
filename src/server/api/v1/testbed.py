@@ -4,7 +4,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore testsets testset giskard litellm
 
-import asyncio
 import pickle
 import shutil
 
@@ -12,6 +11,7 @@ from datetime import datetime
 import json
 from typing import Optional
 from giskard.rag import evaluate, QATestset
+from giskard.rag.base import AgentAnswer
 from giskard.llm import set_llm_model
 from fastapi import APIRouter, HTTPException, Header, UploadFile
 from fastapi.responses import JSONResponse
@@ -24,6 +24,8 @@ import server.api.utils.embed as utils_embed
 import server.api.utils.testbed as utils_testbed
 import server.api.utils.databases as utils_databases
 import server.api.utils.models as utils_models
+from server.api.utils.testbed_metrics import CustomCorrectnessMetric
+from server.mcp.prompts.defaults import get_prompt_with_override
 
 from server.api.v1 import chat
 
@@ -229,26 +231,29 @@ async def testbed_generate_qa(
     return testset_qa
 
 
+async def _collect_testbed_answers(loaded_testset: QATestset, client: str) -> list[AgentAnswer]:
+    """Collect answers from the chatbot for all questions in the testset."""
+    answers = []
+    for sample in loaded_testset.to_pandas().itertuples():
+        request = schema.ChatRequest(
+            messages=[ChatMessage(role="human", content=sample.question)],
+        )
+        ai_response = await chat.chat_post(client=client, request=request)
+        answers.append(AgentAnswer(message=ai_response["choices"][0]["message"]["content"]))
+    return answers
+
+
 @auth.post(
     "/evaluate",
     description="Evaluate Q&A Test Set.",
     response_model=schema.EvaluationReport,
 )
-def testbed_evaluate(
+async def testbed_evaluate(
     tid: schema.TestSetsIdType,
     judge: str,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Run evaluate against a testset"""
-
-    def get_answer(question: str):
-        """Submit question against the chatbot"""
-        request = schema.ChatRequest(
-            messages=[ChatMessage(role="human", content=question)],
-        )
-        ai_response = asyncio.run(chat.chat_post(client=client, request=request))
-        return ai_response["choices"][0]["message"]["content"]
-
     evaluated = datetime.now().isoformat()
     client_settings = utils_settings.get_client(client)
     # Disable History
@@ -271,8 +276,23 @@ def testbed_evaluate(
 
     judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
     set_llm_model(llm_model=judge, **judge_config)
+
+    # Get judge prompt from MCP (allows override via Prompt Engineering page)
+    judge_prompt_message = get_prompt_with_override("optimizer_testbed-judge")
+    judge_prompt = judge_prompt_message.content.text
+
+    # Create custom metric with the configurable prompt
+    custom_metric = CustomCorrectnessMetric(
+        name="correctness",
+        system_prompt=judge_prompt,
+        agent_description="A chatbot answering questions.",
+    )
+
+    # Pre-compute answers asynchronously to avoid event loop conflicts with LiteLLM
+    answers = await _collect_testbed_answers(loaded_testset, client)
+
     try:
-        report = evaluate(get_answer, testset=loaded_testset, metrics=None)
+        report = evaluate(answers, testset=loaded_testset, metrics=[custom_metric])
     except KeyError as ex:
         if str(ex) == "'correctness'":
             raise HTTPException(status_code=500, detail="Unable to determine the correctness; please retry.") from ex
