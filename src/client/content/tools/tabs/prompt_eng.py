@@ -23,10 +23,10 @@ logger = logging_config.logging.getLogger("client.tools.tabs.prompt_eng")
 #####################################################
 def get_prompts(force: bool = False) -> None:
     """Get Prompts from API Server"""
-    if "prompt_configs" not in state or not state.prompt_configs or force:
+    if force or "prompt_configs" not in state or not state.prompt_configs:
         try:
             logger.info("Refreshing state.prompt_configs")
-            state.prompt_configs = api_call.get(endpoint="v1/mcp/prompts")
+            state.prompt_configs = api_call.get(endpoint="v1/mcp/prompts", params={"full": True})
         except api_call.ApiError as ex:
             logger.error("Unable to populate state.prompt_configs: %s", ex)
             state.prompt_configs = []
@@ -37,13 +37,16 @@ def _get_prompt_name(prompt_title: str) -> str:
 
 
 def get_prompt_instructions() -> str:
-    """Retrieve selected prompt instructions"""
+    """Retrieve selected prompt instructions from cached configs"""
     logger.info("Retrieving Prompt Instructions for %s", state.selected_prompt)
     try:
-        prompt_name = _get_prompt_name(state.selected_prompt)
-        prompt_instructions = api_call.get(endpoint=f"v1/mcp/prompts/{prompt_name}")
-        state.selected_prompt_instructions = prompt_instructions["messages"][0]["content"]["text"]
-    except api_call.ApiError as ex:
+        prompt = next((item for item in state.prompt_configs if item["title"] == state.selected_prompt), None)
+        if prompt:
+            state.selected_prompt_instructions = prompt.get("text", "")
+        else:
+            logger.warning("Prompt %s not found in configs", state.selected_prompt)
+            state.selected_prompt_instructions = ""
+    except Exception as ex:
         logger.error("Unable to retrieve prompt instructions: %s", ex)
         st_common.clear_state_key("selected_prompt_instructions")
 

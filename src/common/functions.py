@@ -2,7 +2,6 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-
 # spell-checker:ignore genai hnsw
 
 from typing import Tuple
@@ -78,7 +77,7 @@ def get_vs_table(
             f'"chunk_size": {chunk_size}',
             f'"chunk_overlap": {chunk_overlap_ceil}',
             f'"distance_metric": "{distance_metric}"',
-            f'"index_type": "{index_type}"'
+            f'"index_type": "{index_type}"',
         ]
         store_comment = "{" + ", ".join(comment_parts) + "}"
 
@@ -180,7 +179,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
         else:
             ok = False
             return_msg = ""
-    
+
         return ok, return_msg
 
     except oracledb.Error as e:
