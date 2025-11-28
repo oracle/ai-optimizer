@@ -49,7 +49,8 @@ class TestChatUtils:
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_success(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client, sample_request, sample_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client,
+        sample_request, sample_client_settings
     ):
         """Test successful completion generation"""
         # Setup mocks
@@ -84,7 +85,8 @@ class TestChatUtils:
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_streaming(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client, sample_request, sample_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client,
+        sample_request, sample_client_settings
     ):
         """Test streaming completion generation"""
         # Setup mocks
@@ -166,7 +168,8 @@ class TestChatUtils:
     @patch("server.agents.chatbot.chatbot_graph.astream")
     @pytest.mark.asyncio
     async def test_completion_generator_no_model_specified(
-        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client, sample_message, sample_client_settings
+        self, mock_astream, mock_get_litellm_config, mock_get_oci, mock_get_client,
+        sample_message, sample_client_settings
     ):
         """Test completion generation when no model is specified in request"""
         # Create request without model

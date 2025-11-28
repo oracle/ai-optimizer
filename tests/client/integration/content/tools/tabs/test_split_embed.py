@@ -621,18 +621,18 @@ class TestUIComponents:
 
         # Ensure database has vector stores
         if at.session_state.database_configs:
-            # Find matching model ID for the vector store
-            model_id = None
+            # Find matching model ID for the vector store (format: provider/id)
+            model_key = None
             for model in at.session_state.model_configs:
                 if model["type"] == "embed" and model.get("enabled"):
-                    model_id = model["id"]
+                    model_key = f"{model.get('provider')}/{model['id']}"
                     break
 
-            if model_id:
+            if model_key:
                 at.session_state.database_configs[0]["vector_stores"] = [
                     {
                         "alias": "existing_vs",
-                        "model": model_id,
+                        "model": model_key,
                         "vector_store": "VECTOR_STORE_TABLE",
                         "chunk_size": 500,
                         "chunk_overlap": 50,
