@@ -87,15 +87,19 @@ class Client:
         )
         logger.debug("Sending Request: %s", request.model_dump_json())
         client_call = {"json": request.model_dump(), **self.request_defaults}
-        async with httpx.AsyncClient() as client:
-            async with client.stream(
-                method="POST", url=self.server_url + "/v1/chat/streams", **client_call
-            ) as response:
-                async for chunk in response.aiter_bytes():
-                    content = chunk.decode("utf-8")
-                    if content == "[stream_finished]":
-                        break
-                    yield content
+        try:
+            async with httpx.AsyncClient() as client:
+                async with client.stream(
+                    method="POST", url=self.server_url + "/v1/chat/streams", **client_call
+                ) as response:
+                    async for chunk in response.aiter_bytes():
+                        content = chunk.decode("utf-8")
+                        if content == "[stream_finished]":
+                            break
+                        yield content
+        except httpx.HTTPError as ex:
+            logger.exception("HTTP error during streaming: %s", ex)
+            raise ConnectionError(f"Streaming connection failed: {ex}") from ex
 
     async def get_history(self) -> list[ChatMessage]:
         """Output all chat history"""

@@ -45,6 +45,12 @@ class ConfigStore:
         """Return the configuration stored in memory"""
         return cls._config
 
+    @classmethod
+    def reset(cls):
+        """Reset the configuration state. Used for testing."""
+        with cls._lock:
+            cls._config = None
+
 
 def config_file_path() -> str:
     """Return the path where settings should be stored."""

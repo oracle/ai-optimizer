@@ -39,6 +39,7 @@ async def databases_list() -> list[schema.Database]:
     return database_objects
 
 
+
 @auth.get(
     "/{name}",
     description="Get single database configuration and vector storage",
@@ -101,7 +102,7 @@ async def databases_update(
     database_objects = utils_databases.get_databases()
     for other_db in database_objects:
         if other_db.name != name and other_db.connection:
-            other_db.set_connection(utils_databases.disconnect(db.connection))
+            other_db.set_connection(utils_databases.disconnect(other_db.connection))
             other_db.connected = False
 
     return db

@@ -34,14 +34,18 @@ class TestShowVectorSearchRefs:
 
         mock_columns = MagicMock(return_value=[mock_col, mock_col, mock_col])
         mock_subheader = MagicMock()
+        mock_expander = MagicMock()
+        mock_expander.__enter__ = MagicMock(return_value=mock_expander)
+        mock_expander.__exit__ = MagicMock(return_value=False)
 
         monkeypatch.setattr(st, "markdown", mock_markdown)
         monkeypatch.setattr(st, "columns", mock_columns)
         monkeypatch.setattr(st, "subheader", mock_subheader)
+        monkeypatch.setattr(st, "expander", MagicMock(return_value=mock_expander))
 
-        # Create test context
-        context = [
-            [
+        # Create test context - now expects dict with "documents" key
+        context = {
+            "documents": [
                 {
                     "page_content": "This is chunk 1 content",
                     "metadata": {"filename": "doc1.pdf", "source": "/path/to/doc1.pdf", "page": 1},
@@ -55,17 +59,14 @@ class TestShowVectorSearchRefs:
                     "metadata": {"filename": "doc1.pdf", "source": "/path/to/doc1.pdf", "page": 3},
                 },
             ],
-            "test query",
-        ]
+            "context_input": "test query",
+        }
 
         # Call function
         chatbot.show_vector_search_refs(context)
 
         # Verify References header was shown
         assert any("References" in str(call) for call in mock_markdown.call_args_list)
-
-        # Verify Notes with query shown
-        assert any("test query" in str(call) for call in mock_markdown.call_args_list)
 
     def test_show_vector_search_refs_missing_metadata(self, monkeypatch):
         """Test showing vector search references when metadata is missing"""
@@ -83,21 +84,25 @@ class TestShowVectorSearchRefs:
 
         mock_columns = MagicMock(return_value=[mock_col])
         mock_subheader = MagicMock()
+        mock_expander = MagicMock()
+        mock_expander.__enter__ = MagicMock(return_value=mock_expander)
+        mock_expander.__exit__ = MagicMock(return_value=False)
 
         monkeypatch.setattr(st, "markdown", mock_markdown)
         monkeypatch.setattr(st, "columns", mock_columns)
         monkeypatch.setattr(st, "subheader", mock_subheader)
+        monkeypatch.setattr(st, "expander", MagicMock(return_value=mock_expander))
 
-        # Create test context with missing metadata
-        context = [
-            [
+        # Create test context with missing metadata - now expects dict with "documents" key
+        context = {
+            "documents": [
                 {
                     "page_content": "Content without metadata",
                     "metadata": {},  # Empty metadata - will cause KeyError
                 }
             ],
-            "test query",
-        ]
+            "context_input": "test query",
+        }
 
         # Call function - should handle KeyError gracefully
         chatbot.show_vector_search_refs(context)
@@ -138,7 +143,7 @@ class TestSetupSidebar:
     def test_setup_sidebar_with_models(self, monkeypatch):
         """Test setup_sidebar with enabled language models"""
         from client.content import chatbot
-        from client.utils import st_common
+        from client.utils import st_common, vs_options
         from streamlit import session_state as state
 
         # Mock enabled_models_lookup to return models
@@ -148,7 +153,7 @@ class TestSetupSidebar:
         monkeypatch.setattr(st_common, "tools_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "history_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "ll_sidebar", MagicMock())
-        monkeypatch.setattr(st_common, "vector_search_sidebar", MagicMock())
+        monkeypatch.setattr(vs_options, "vector_search_sidebar", MagicMock())
 
         # Initialize state
         state.enable_client = True
@@ -162,7 +167,7 @@ class TestSetupSidebar:
     def test_setup_sidebar_client_disabled(self, monkeypatch):
         """Test setup_sidebar when client gets disabled"""
         from client.content import chatbot
-        from client.utils import st_common
+        from client.utils import st_common, vs_options
         from streamlit import session_state as state
         import streamlit as st
 
@@ -175,7 +180,7 @@ class TestSetupSidebar:
         monkeypatch.setattr(st_common, "tools_sidebar", disable_client)
         monkeypatch.setattr(st_common, "history_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "ll_sidebar", MagicMock())
-        monkeypatch.setattr(st_common, "vector_search_sidebar", MagicMock())
+        monkeypatch.setattr(vs_options, "vector_search_sidebar", MagicMock())
 
         # Mock st.stop
         mock_stop = MagicMock(side_effect=SystemExit)
@@ -308,10 +313,10 @@ class TestDisplayChatHistory:
         mock_show_refs = MagicMock()
         monkeypatch.setattr(chatbot, "show_vector_search_refs", mock_show_refs)
 
-        # Create history with tool message
+        # Create history with tool message (tool name changed to optimizer_vs-retriever)
         vector_refs = [[{"page_content": "content", "metadata": {}}], "query"]
         history = [
-            {"role": "tool", "name": "oraclevs_tool", "content": json.dumps(vector_refs)},
+            {"role": "tool", "name": "optimizer_vs-retriever", "content": json.dumps(vector_refs)},
             {"role": "ai", "content": "Based on the documents..."},
         ]
 

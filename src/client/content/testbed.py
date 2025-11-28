@@ -17,7 +17,7 @@ from streamlit import session_state as state
 
 from client.content.config.tabs.models import get_models
 
-from client.utils import st_common, api_call
+from client.utils import st_common, api_call, vs_options
 
 from common import logging_config
 
@@ -493,7 +493,7 @@ def render_evaluation_ui(available_ll_models: list) -> None:
     st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
     st_common.tools_sidebar()
     st_common.ll_sidebar()
-    st_common.vector_search_sidebar()
+    vs_options.vector_search_sidebar()
     st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")
     col_left, col_center, _ = st.columns([4, 3, 3])
 
@@ -510,20 +510,13 @@ def render_evaluation_ui(available_ll_models: list) -> None:
         on_change=st_common.update_client_settings("testbed"),
     )
 
-    # Check if vector search is enabled but no vector store is selected
-    evaluation_disabled = False
-    if state.client_settings.get("vector_search", {}).get("enabled", False):
-        # If vector search is enabled, check if a vector store is selected
-        if not state.client_settings.get("vector_search", {}).get("vector_store"):
-            evaluation_disabled = True
-
     if col_center.button(
         "Start Evaluation",
         type="primary",
         key="evaluate_button",
         help="Evaluation will automatically save the TestSet to the Database",
         on_click=qa_update_db,
-        disabled=evaluation_disabled,
+        disabled=not state.enable_client,
     ):
         with st.spinner("Starting Q&A evaluation... please be patient.", show_time=True):
             st_common.clear_state_key("testbed_evaluations")
