@@ -266,8 +266,8 @@ def get_client_database(client: ClientIdType, validate: bool = False) -> Databas
 
     # Get database name from client settings, defaulting to "DEFAULT"
     db_name = "DEFAULT"
-    if hasattr(client_settings, "vector_search") and client_settings.vector_search:
-        db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
+    if hasattr(client_settings, "database") and client_settings.database:
+        db_name = getattr(client_settings.database, "alias", "DEFAULT")
 
     # Return Single the Database Object
     return get_databases(db_name=db_name, validate=validate)
