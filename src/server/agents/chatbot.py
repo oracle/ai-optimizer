@@ -74,11 +74,16 @@ def clean_messages(state: OptimizerState, config: RunnableConfig) -> list:
     return state_messages
 
 
-def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "stream_completion"]:
-    """Conditional edge to determine if using Vector Search or not"""
-    enabled = "Vector Search" in config.get("metadata", {}).get("tools_enabled", [])
-    if enabled:
-        logger.info("Invoking Chatbot with Vector Search: %s", enabled)
+def use_tool(_, config: RunnableConfig) -> Literal["vs_retrieve", "nl2sql", "stream_completion"]:
+    """Conditional edge to determine which tool path to use"""
+    tools_enabled = config.get("metadata", {}).get("tools_enabled", [])
+
+    if "NL2SQL" in tools_enabled:
+        logger.info("Invoking Chatbot with NL2SQL")
+        return "nl2sql"
+
+    if "Vector Search" in tools_enabled:
+        logger.info("Invoking Chatbot with Vector Search")
         return "vs_retrieve"
 
     return "stream_completion"
@@ -237,6 +242,122 @@ async def vs_retrieve(state: OptimizerState, config: RunnableConfig) -> Optimize
     logger.info("Found Documents: %i", len(documents_dict))
     return {"context_input": retrieve_question, "documents": documents_dict}
 
+async def nl2sql(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
+    """Execute NL2SQL tool calling flow with streaming response.
+
+    This node handles the complete NL2SQL agentic loop:
+    1. Calls the LLM with NL2SQL tools bound
+    2. If the LLM requests tool calls, executes them via MCP
+    3. Calls LLM again with tool results to generate final response
+    4. Streams the final response to the client
+    """
+    writer = get_stream_writer()
+    tools = config["metadata"].get("tools", [])
+    if not tools:
+        logger.warning("NL2SQL enabled but no tools provided")
+        return {}
+
+    messages = copy.deepcopy(state["cleaned_messages"])
+    sys_prompt_msg = default_prompts.get_prompt_with_override("optimizer_basic-default")
+    messages.insert(0, SystemMessage(content=sys_prompt_msg.content.text))
+
+    ll_raw = config["configurable"]["ll_config"]
+    mcp_client = config["metadata"].get("mcp_client")
+    streaming_enabled = config["metadata"].get("streaming", True)
+
+    try:
+        # Agentic loop - continue until LLM produces final response (no tool calls)
+        max_iterations = 10  # Safety limit
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+            logger.info("NL2SQL: Iteration %d", iteration)
+
+            # Call LLM with tools
+            response = await acompletion(
+                messages=convert_to_openai_messages(messages),
+                tools=tools,
+                stream=False,
+                **ll_raw,
+            )
+
+            choice = response.choices[0]
+            tool_calls = getattr(choice.message, "tool_calls", None)
+
+            # If no tool calls, we have the final response
+            if not tool_calls:
+                content = choice.message.content or ""
+                logger.info("NL2SQL: Final response received (no tool calls)")
+
+                # Stream the response if streaming is enabled
+                if streaming_enabled and content:
+                    for char in content:
+                        writer({"stream": char})
+
+                # Build completion response
+                response.object = "chat.completion"
+                writer({"completion": response.model_dump()})
+
+                return {"messages": [AIMessage(content=content)]}
+
+            # Execute tool calls
+            logger.info("NL2SQL: Executing %d tool calls", len(tool_calls))
+
+            # Add assistant message with tool calls to conversation
+            ai_message = AIMessage(
+                content=choice.message.content or "",
+                tool_calls=[
+                    {
+                        "name": tc.function.name,
+                        "args": json.loads(tc.function.arguments) if tc.function.arguments else {},
+                        "id": tc.id,
+                        "type": "tool_call",
+                    }
+                    for tc in tool_calls
+                ],
+            )
+            messages.append(ai_message)
+
+            # Execute each tool call and add results
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+                tool_id = tool_call.id
+
+                logger.info("NL2SQL: Calling tool %s with args %s", tool_name, tool_args)
+
+                try:
+                    if mcp_client:
+                        mcp_tools = await mcp_client.get_tools()
+                        tool = next((t for t in mcp_tools if t.name == tool_name), None)
+                        if tool:
+                            result = await tool.ainvoke(tool_args)
+                            if isinstance(result, dict):
+                                result = json.dumps(result, indent=2, cls=DecimalEncoder)
+                            elif not isinstance(result, str):
+                                result = str(result)
+                        else:
+                            result = f"Unknown tool: {tool_name}"
+                    else:
+                        result = f"MCP client not available for tool: {tool_name}"
+                except Exception as ex:
+                    logger.error("NL2SQL: Tool %s failed: %s", tool_name, ex)
+                    result = f"Error executing {tool_name}: {str(ex)}"
+
+                messages.append(ToolMessage(content=result, tool_call_id=tool_id, name=tool_name))
+
+        # If we hit max iterations, return what we have
+        logger.warning("NL2SQL: Max iterations reached")
+        return {"messages": [AIMessage(content="I'm sorry, I wasn't able to complete the request.")]}
+
+    except APIConnectionError as ex:
+        logger.error("NL2SQL: API connection error: %s", ex)
+        return {"messages": [AIMessage(content="I'm not able to contact the model API.")]}
+    except Exception as ex:
+        logger.error("NL2SQL: Unexpected error: %s", ex)
+        return {"messages": [AIMessage(content=f"An error occurred: {str(ex)}")]}
+
 
 def _build_system_prompt(state: OptimizerState, config: RunnableConfig) -> SystemMessage:
     """Build the system prompt based on vector search configuration."""
@@ -318,15 +439,17 @@ workflow.add_node("initialise", initialise)
 workflow.add_node("rephrase", rephrase)
 workflow.add_node("vs_retrieve", vs_retrieve)
 workflow.add_node("vs_grade", vs_grade)
+workflow.add_node("nl2sql", nl2sql)
 workflow.add_node("stream_completion", stream_completion)
 
 # Start the chatbot with clean messages
 workflow.add_edge(START, "initialise")
 
-# Branch to either "vs_retrieve", or "stream_completion"
+# Branch to "vs_retrieve", "nl2sql", or "stream_completion"
 workflow.add_conditional_edges("initialise", use_tool)
 workflow.add_edge("vs_retrieve", "vs_grade")
 workflow.add_edge("vs_grade", "stream_completion")
+workflow.add_edge("nl2sql", END)  # nl2sql handles its own completion and streaming
 
 # End the workflow
 workflow.add_edge("stream_completion", END)

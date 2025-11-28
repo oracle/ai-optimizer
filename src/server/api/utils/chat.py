@@ -7,11 +7,15 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Literal, AsyncGenerator
 
 from litellm import completion
+
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_core.utils.function_calling import convert_to_openai_function
+
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 import server.api.utils.settings as utils_settings
-
+import server.api.utils.mcp as utils_mcp
 import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
 import server.api.utils.databases as utils_databases
@@ -79,6 +83,19 @@ async def completion_generator(
         kwargs["config"]["configurable"]["embed_client"] = utils_models.get_client_embed(
             client_settings.vector_search.model_dump(), oci_config
         )
+
+    if "NL2SQL" in client_settings.tools_enabled:
+        mcp_client = MultiServerMCPClient(
+            {"optimizer": utils_mcp.get_client(client="langgraph")["mcpServers"]["optimizer"]}
+        )
+        tools = await mcp_client.get_tools()
+        nl2sql_tools = [tool for tool in tools if tool.name.startswith("sqlcl_")]
+        # Convert LangChain tools to OpenAI Functions for binding to LiteLLM model
+        kwargs["config"]["metadata"]["tools"] = [
+            {"type": "function", "function": convert_to_openai_function(t)} for t in nl2sql_tools
+        ]
+        # Pass MCP client for tool execution in nl2sql node
+        kwargs["config"]["metadata"]["mcp_client"] = mcp_client
 
     logger.debug("Completion Kwargs: %s", kwargs)
     final_response = None
