@@ -21,7 +21,7 @@ sbin/**
 !opentofu/examples/manual-test.sh
 !src/entrypoint.sh
 !src/client/spring_ai/templates/env.sh
-tests/db_startup_temp/**
+test*/db_startup_temp
 
 ##############################################################################
 # Environment (PyVen, IDE, etc.)

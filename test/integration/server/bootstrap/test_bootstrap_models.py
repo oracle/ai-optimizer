@@ -13,10 +13,11 @@ and environment variables.
 import os
 from unittest.mock import patch
 
+from test.shared_fixtures import assert_model_list_valid, get_model_by_id
+
 import pytest
 
 from server.bootstrap import models as models_module
-from common.schema import Model
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_bootstrap_env")
@@ -28,9 +29,7 @@ class TestModelsBootstrapBasic:
         with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
             mock_accessible.return_value = (True, "OK")
             result = models_module.main()
-
-        assert isinstance(result, list)
-        assert all(isinstance(m, Model) for m in result)
+        assert_model_list_valid(result)
 
     def test_bootstrap_includes_base_models(self):
         """models.main() should include base model configurations."""
@@ -66,8 +65,7 @@ class TestModelsBootstrapWithApiKeys:
             with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
                 mock_accessible.return_value = (True, "OK")
                 result = models_module.main()
-
-            openai_model = next(m for m in result if m.id == "gpt-4o-mini")
+            openai_model = get_model_by_id(result, "gpt-4o-mini")
             assert openai_model.enabled is True
             assert openai_model.api_key == "test-openai-key"
         finally:
@@ -81,8 +79,7 @@ class TestModelsBootstrapWithApiKeys:
             with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
                 mock_accessible.return_value = (True, "OK")
                 result = models_module.main()
-
-            cohere_model = next(m for m in result if m.id == "command-r")
+            cohere_model = get_model_by_id(result, "command-r")
             assert cohere_model.enabled is True
             assert cohere_model.api_key == "test-cohere-key"
         finally:
@@ -93,10 +90,8 @@ class TestModelsBootstrapWithApiKeys:
         with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
             mock_accessible.return_value = (True, "OK")
             result = models_module.main()
-
-        # Without OPENAI_API_KEY, the model should be disabled
-        openai_model = next(m for m in result if m.id == "gpt-4o-mini")
-        assert openai_model.enabled is False
+        openai_model = get_model_by_id(result, "gpt-4o-mini")
+        assert openai_model.enabled is False  # Without OPENAI_API_KEY
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_bootstrap_env")
@@ -111,8 +106,7 @@ class TestModelsBootstrapWithOnPremUrls:
             with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
                 mock_accessible.return_value = (True, "OK")
                 result = models_module.main()
-
-            ollama_model = next(m for m in result if m.id == "llama3.1")
+            ollama_model = get_model_by_id(result, "llama3.1")
             assert ollama_model.enabled is True
             assert ollama_model.api_base == "http://localhost:11434"
         finally:
@@ -126,10 +120,8 @@ class TestModelsBootstrapWithOnPremUrls:
             with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
                 mock_accessible.return_value = (False, "Connection refused")
                 result = models_module.main()
-
-            ollama_model = next(m for m in result if m.id == "llama3.1")
-            # Should be disabled if URL is not accessible
-            assert ollama_model.enabled is False
+            ollama_model = get_model_by_id(result, "llama3.1")
+            assert ollama_model.enabled is False  # Should be disabled if URL not accessible
         finally:
             del os.environ["ON_PREM_OLLAMA_URL"]
 
@@ -163,7 +155,7 @@ class TestModelsBootstrapWithConfigStore:
             model_ids = [m.id for m in result]
             assert "custom-model" in model_ids
 
-            custom_model = next(m for m in result if m.id == "custom-model")
+            custom_model = get_model_by_id(result, "custom-model")
             assert custom_model.provider == "custom"
             assert custom_model.api_base == "https://custom.api/v1"
         finally:
@@ -191,8 +183,7 @@ class TestModelsBootstrapWithConfigStore:
             with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
                 mock_accessible.return_value = (True, "OK")
                 result = models_module.main()
-
-            openai_model = next(m for m in result if m.id == "gpt-4o-mini")
+            openai_model = get_model_by_id(result, "gpt-4o-mini")
             assert openai_model.api_key == "override-key"
             assert openai_model.max_tokens == 9999
         finally:

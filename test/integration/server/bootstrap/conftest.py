@@ -9,16 +9,24 @@ file I/O, environment variables, and configuration loading. These tests
 verify end-to-end behavior of the bootstrap system.
 """
 
-# pylint: disable=redefined-outer-name protected-access
+# pylint: disable=redefined-outer-name unused-import
 
 import json
-import os
 import tempfile
 from pathlib import Path
 
+# Re-export shared fixtures for pytest discovery
+from test.shared_fixtures import (
+    reset_config_store,
+    clean_env,
+    BOOTSTRAP_ENV_VARS,
+    DEFAULT_LL_MODEL_CONFIG,
+)
+
 import pytest
 
-from server.bootstrap.configfile import ConfigStore
+# Alias for backwards compatibility
+clean_bootstrap_env = clean_env
 
 
 @pytest.fixture
@@ -95,68 +103,6 @@ def make_oci_config_file(temp_dir):
 
 
 @pytest.fixture
-def clean_bootstrap_env():
-    """Fixture to clean environment variables that affect bootstrap.
-
-    This fixture saves current env vars, clears them for the test,
-    and restores them afterward.
-    """
-    env_vars = [
-        # Database vars
-        "DB_USERNAME",
-        "DB_PASSWORD",
-        "DB_DSN",
-        "DB_WALLET_PASSWORD",
-        "TNS_ADMIN",
-        # Model API keys
-        "OPENAI_API_KEY",
-        "COHERE_API_KEY",
-        "PPLX_API_KEY",
-        # On-prem model URLs
-        "ON_PREM_OLLAMA_URL",
-        "ON_PREM_VLLM_URL",
-        "ON_PREM_HF_URL",
-        # OCI vars
-        "OCI_CLI_CONFIG_FILE",
-        "OCI_CLI_TENANCY",
-        "OCI_CLI_REGION",
-        "OCI_CLI_USER",
-        "OCI_CLI_FINGERPRINT",
-        "OCI_CLI_KEY_FILE",
-        "OCI_CLI_SECURITY_TOKEN_FILE",
-        "OCI_CLI_AUTH",
-        "OCI_GENAI_COMPARTMENT_ID",
-        "OCI_GENAI_REGION",
-        "OCI_GENAI_SERVICE_ENDPOINT",
-    ]
-
-    original_values = {}
-    for var in env_vars:
-        original_values[var] = os.environ.pop(var, None)
-
-    yield
-
-    # Restore original values
-    for var, value in original_values.items():
-        if value is not None:
-            os.environ[var] = value
-        elif var in os.environ:
-            del os.environ[var]
-
-
-@pytest.fixture
-def reset_config_store():
-    """Reset ConfigStore singleton state before and after each test."""
-    # Reset before test
-    ConfigStore._config = None
-
-    yield ConfigStore
-
-    # Reset after test
-    ConfigStore._config = None
-
-
-@pytest.fixture
 def sample_database_config():
     """Sample database configuration dict."""
     return {
@@ -197,10 +143,5 @@ def sample_settings_config():
     """Sample settings configuration dict."""
     return {
         "client": "integration_client",
-        "ll_model": {
-            "model": "gpt-4o-mini",
-            "temperature": 0.7,
-            "max_tokens": 4096,
-            "chat_history": True,
-        },
+        "ll_model": DEFAULT_LL_MODEL_CONFIG.copy(),
     }

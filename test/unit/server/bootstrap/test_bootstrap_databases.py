@@ -10,10 +10,15 @@ Tests for database bootstrap functionality.
 
 import os
 
+from test.shared_fixtures import (
+    assert_database_list_valid,
+    assert_has_default_database,
+    get_database_by_name,
+)
+
 import pytest
 
 from server.bootstrap import databases as databases_module
-from common.schema import Database
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_env")
@@ -23,16 +28,12 @@ class TestDatabasesMain:
     def test_main_returns_list_of_databases(self):
         """main() should return a list of Database objects."""
         result = databases_module.main()
-
-        assert isinstance(result, list)
-        assert all(isinstance(db, Database) for db in result)
+        assert_database_list_valid(result)
 
     def test_main_creates_default_database_when_no_config(self):
         """main() should create DEFAULT database when no config is loaded."""
         result = databases_module.main()
-
-        db_names = [db.name for db in result]
-        assert "DEFAULT" in db_names
+        assert_has_default_database(result)
 
     def test_main_uses_env_vars_for_default_database(self):
         """main() should use environment variables for DEFAULT database."""
@@ -42,13 +43,12 @@ class TestDatabasesMain:
         os.environ["TNS_ADMIN"] = "/env/tns_admin"
 
         try:
-            result = databases_module.main()
-
-            default_db = next(db for db in result if db.name == "DEFAULT")
-            assert default_db.user == "env_user"
-            assert default_db.password == "env_password"
-            assert default_db.dsn == "env_dsn:1521/ENVPDB"
-            assert default_db.config_dir == "/env/tns_admin"
+            db_list = databases_module.main()
+            default_entry = get_database_by_name(db_list, "DEFAULT")
+            assert default_entry.user == "env_user"
+            assert default_entry.password == "env_password"
+            assert default_entry.dsn == "env_dsn:1521/ENVPDB"
+            assert default_entry.config_dir == "/env/tns_admin"
         finally:
             del os.environ["DB_USERNAME"]
             del os.environ["DB_PASSWORD"]
@@ -62,8 +62,7 @@ class TestDatabasesMain:
 
         try:
             result = databases_module.main()
-
-            default_db = next(db for db in result if db.name == "DEFAULT")
+            default_db = get_database_by_name(result, "DEFAULT")
             assert default_db.wallet_password == "wallet_pass"
             assert default_db.wallet_location == "/wallet/path"
         finally:
@@ -81,9 +80,9 @@ class TestDatabasesMain:
 
         try:
             reset_config_store.load_from_file(config_path)
-            result = databases_module.main()
+            integration_result = databases_module.main()
 
-            db_names = [db.name for db in result]
+            db_names = [db.name for db in integration_result]
             assert "CONFIG_DB1" in db_names
             assert "CONFIG_DB2" in db_names
         finally:
@@ -93,24 +92,22 @@ class TestDatabasesMain:
         self, reset_config_store, temp_config_file, make_settings, make_database
     ):
         """main() should override DEFAULT database from config with env vars."""
-        settings = make_settings()
-        db = make_database(name="DEFAULT", user="config_user", password="config_pass", dsn="config_dsn")
-        config_path = temp_config_file(client_settings=settings, database_configs=[db])
+        test_settings = make_settings()
+        test_db = make_database(name="DEFAULT", user="config_user", password="config_pass", dsn="config_dsn")
+        cfg_path = temp_config_file(client_settings=test_settings, database_configs=[test_db])
 
         os.environ["DB_USERNAME"] = "env_user"
         os.environ["DB_PASSWORD"] = "env_password"
 
         try:
-            reset_config_store.load_from_file(config_path)
-            result = databases_module.main()
-
-            default_db = next(db for db in result if db.name == "DEFAULT")
-            assert default_db.user == "env_user"
-            assert default_db.password == "env_password"
-            # DSN not in env, should keep config value
-            assert default_db.dsn == "config_dsn"
+            reset_config_store.load_from_file(cfg_path)
+            db_list = databases_module.main()
+            default_entry = get_database_by_name(db_list, "DEFAULT")
+            assert default_entry.user == "env_user"
+            assert default_entry.password == "env_password"
+            assert default_entry.dsn == "config_dsn"  # DSN not in env, keep config value
         finally:
-            os.unlink(config_path)
+            os.unlink(cfg_path)
             del os.environ["DB_USERNAME"]
             del os.environ["DB_PASSWORD"]
 
@@ -135,24 +132,21 @@ class TestDatabasesMain:
         self, reset_config_store, temp_config_file, make_settings, make_database
     ):
         """main() should create DEFAULT database from env when not in config."""
-        settings = make_settings()
-        db = make_database(name="OTHER_DB", user="other_user")
-        config_path = temp_config_file(client_settings=settings, database_configs=[db])
+        test_settings = make_settings()
+        other_db = make_database(name="OTHER_DB", user="other_user")
+        cfg_path = temp_config_file(client_settings=test_settings, database_configs=[other_db])
 
         os.environ["DB_USERNAME"] = "default_env_user"
 
         try:
-            reset_config_store.load_from_file(config_path)
-            result = databases_module.main()
-
-            db_names = [db.name for db in result]
-            assert "DEFAULT" in db_names
-            assert "OTHER_DB" in db_names
-
-            default_db = next(db for db in result if db.name == "DEFAULT")
-            assert default_db.user == "default_env_user"
+            reset_config_store.load_from_file(cfg_path)
+            db_list = databases_module.main()
+            assert_has_default_database(db_list)
+            assert "OTHER_DB" in [d.name for d in db_list]
+            default_entry = get_database_by_name(db_list, "DEFAULT")
+            assert default_entry.user == "default_env_user"
         finally:
-            os.unlink(config_path)
+            os.unlink(cfg_path)
             del os.environ["DB_USERNAME"]
 
     def test_main_handles_case_insensitive_default_name(
@@ -180,28 +174,26 @@ class TestDatabasesMain:
         self, reset_config_store, temp_config_file, make_settings, make_database
     ):
         """main() should not modify non-DEFAULT databases."""
-        settings = make_settings()
-        db = make_database(name="CUSTOM_DB", user="custom_user", password="custom_pass")
-        config_path = temp_config_file(client_settings=settings, database_configs=[db])
+        test_settings = make_settings()
+        custom_db_config = make_database(name="CUSTOM_DB", user="custom_user", password="custom_pass")
+        cfg_path = temp_config_file(client_settings=test_settings, database_configs=[custom_db_config])
 
         os.environ["DB_USERNAME"] = "should_not_apply"
 
         try:
-            reset_config_store.load_from_file(config_path)
-            result = databases_module.main()
-
-            custom_db = next(db for db in result if db.name == "CUSTOM_DB")
-            assert custom_db.user == "custom_user"
-            assert custom_db.password == "custom_pass"
+            reset_config_store.load_from_file(cfg_path)
+            db_list = databases_module.main()
+            custom_entry = get_database_by_name(db_list, "CUSTOM_DB")
+            assert custom_entry.user == "custom_user"
+            assert custom_entry.password == "custom_pass"
         finally:
-            os.unlink(config_path)
+            os.unlink(cfg_path)
             del os.environ["DB_USERNAME"]
 
     def test_main_default_config_dir_fallback(self):
         """main() should use 'tns_admin' as default config_dir when not specified."""
         result = databases_module.main()
-
-        default_db = next(db for db in result if db.name == "DEFAULT")
+        default_db = get_database_by_name(result, "DEFAULT")
         assert default_db.config_dir == "tns_admin"
 
 

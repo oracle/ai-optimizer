@@ -6,149 +6,43 @@ Pytest fixtures for server/api unit tests.
 Provides factory fixtures for creating test objects.
 """
 
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name unused-import
 # Pytest fixtures use parameter injection where fixture names match parameters
 
 from unittest.mock import MagicMock, AsyncMock
+
+# Re-export shared fixtures for pytest discovery (before third-party imports per pylint)
+from test.shared_fixtures import (
+    make_database,
+    make_model,
+    make_oci_config,
+    make_ll_settings,
+    make_settings,
+    make_configuration,
+)
+
 import pytest
 
 from common.schema import (
-    Database,
     DatabaseAuth,
-    Model,
-    OracleCloudSettings,
-    Settings,
-    LargeLanguageSettings,
     DatabaseVectorStorage,
     ChatRequest,
-    Configuration,
 )
-
-
-@pytest.fixture
-def make_database():
-    """Factory fixture to create Database objects."""
-
-    def _make_database(
-        name: str = "TEST_DB",
-        user: str = "test_user",
-        password: str = "test_password",
-        dsn: str = "localhost:1521/TESTPDB",
-        wallet_password: str = None,
-        **kwargs,
-    ) -> Database:
-        return Database(
-            name=name,
-            user=user,
-            password=password,
-            dsn=dsn,
-            wallet_password=wallet_password,
-            **kwargs,
-        )
-
-    return _make_database
-
-
-@pytest.fixture
-def make_model():
-    """Factory fixture to create Model objects."""
-
-    def _make_model(
-        model_id: str = "gpt-4o-mini",
-        model_type: str = "ll",
-        provider: str = "openai",
-        enabled: bool = True,
-        **kwargs,
-    ) -> Model:
-        return Model(
-            id=model_id,
-            type=model_type,
-            provider=provider,
-            enabled=enabled,
-            **kwargs,
-        )
-
-    return _make_model
-
-
-@pytest.fixture
-def make_oci_config():
-    """Factory fixture to create OracleCloudSettings objects."""
-
-    def _make_oci_config(
-        auth_profile: str = "DEFAULT",
-        genai_region: str = "us-ashburn-1",
-        **kwargs,
-    ) -> OracleCloudSettings:
-        return OracleCloudSettings(
-            auth_profile=auth_profile,
-            genai_region=genai_region,
-            **kwargs,
-        )
-
-    return _make_oci_config
-
-
-@pytest.fixture
-def make_ll_settings():
-    """Factory fixture to create LargeLanguageSettings objects."""
-
-    def _make_ll_settings(
-        model: str = "gpt-4o-mini",
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-        chat_history: bool = True,
-        **kwargs,
-    ) -> LargeLanguageSettings:
-        return LargeLanguageSettings(
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            chat_history=chat_history,
-            **kwargs,
-        )
-
-    return _make_ll_settings
-
-
-@pytest.fixture
-def make_settings(make_ll_settings):
-    """Factory fixture to create Settings objects."""
-
-    def _make_settings(
-        client: str = "test_client",
-        ll_model: LargeLanguageSettings = None,
-        **kwargs,
-    ) -> Settings:
-        if ll_model is None:
-            ll_model = make_ll_settings()
-        return Settings(
-            client=client,
-            ll_model=ll_model,
-            **kwargs,
-        )
-
-    return _make_settings
 
 
 @pytest.fixture
 def make_database_auth():
     """Factory fixture to create DatabaseAuth objects."""
 
-    def _make_database_auth(
-        user: str = "test_user",
-        password: str = "test_password",
-        dsn: str = "localhost:1521/TESTPDB",
-        wallet_password: str = None,
-        **kwargs,
-    ) -> DatabaseAuth:
-        return DatabaseAuth(
-            user=user,
-            password=password,
-            dsn=dsn,
-            wallet_password=wallet_password,
-            **kwargs,
-        )
+    def _make_database_auth(**overrides) -> DatabaseAuth:
+        defaults = {
+            "user": "test_user",
+            "password": "test_password",
+            "dsn": "localhost:1521/TESTPDB",
+            "wallet_password": None,
+        }
+        defaults.update(overrides)
+        return DatabaseAuth(**defaults)
 
     return _make_database_auth
 
@@ -213,29 +107,6 @@ def make_mcp_prompt():
         return mock_prompt
 
     return _make_mcp_prompt
-
-
-@pytest.fixture
-def make_configuration(make_settings):
-    """Factory fixture to create Configuration objects."""
-
-    def _make_configuration(
-        client: str = "test_client",
-        client_settings: Settings = None,
-        **kwargs,
-    ) -> Configuration:
-        if client_settings is None:
-            client_settings = make_settings(client=client)
-        return Configuration(
-            client_settings=client_settings,
-            database_configs=[],
-            model_configs=[],
-            oci_configs=[],
-            prompt_configs=[],
-            **kwargs,
-        )
-
-    return _make_configuration
 
 
 @pytest.fixture

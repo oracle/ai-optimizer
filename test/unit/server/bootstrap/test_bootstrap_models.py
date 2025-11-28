@@ -11,10 +11,11 @@ Tests for model bootstrap functionality.
 import os
 from unittest.mock import patch
 
+from test.shared_fixtures import assert_model_list_valid, get_model_by_id
+
 import pytest
 
 from server.bootstrap import models as models_module
-from common.schema import Model
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_env", "mock_is_url_accessible")
@@ -24,9 +25,7 @@ class TestModelsMain:
     def test_main_returns_list_of_models(self):
         """main() should return a list of Model objects."""
         result = models_module.main()
-
-        assert isinstance(result, list)
-        assert all(isinstance(m, Model) for m in result)
+        assert_model_list_valid(result)
 
     def test_main_includes_base_models(self):
         """main() should include base model configurations."""
@@ -42,20 +41,18 @@ class TestModelsMain:
         os.environ["OPENAI_API_KEY"] = "test-openai-key"
 
         try:
-            result = models_module.main()
-
-            openai_model = next(m for m in result if m.id == "gpt-4o-mini")
-            assert openai_model.enabled is True
-            assert openai_model.api_key == "test-openai-key"
+            model_list = models_module.main()
+            gpt_model = get_model_by_id(model_list, "gpt-4o-mini")
+            assert gpt_model.enabled is True
+            assert gpt_model.api_key == "test-openai-key"
         finally:
             del os.environ["OPENAI_API_KEY"]
 
     def test_main_disables_models_without_api_keys(self):
         """main() should disable models when API keys are not present."""
-        result = models_module.main()
-
-        openai_model = next(m for m in result if m.id == "gpt-4o-mini")
-        assert openai_model.enabled is False
+        model_list = models_module.main()
+        gpt_model = get_model_by_id(model_list, "gpt-4o-mini")
+        assert gpt_model.enabled is False
 
     @pytest.mark.usefixtures("reset_config_store", "clean_env")
     def test_main_checks_url_accessibility(self):
@@ -67,10 +64,8 @@ class TestModelsMain:
 
             try:
                 result = models_module.main()
-
-                # Model should be disabled if URL is not accessible
-                openai_model = next(m for m in result if m.id == "gpt-4o-mini")
-                assert openai_model.enabled is False
+                openai_model = get_model_by_id(result, "gpt-4o-mini")
+                assert openai_model.enabled is False  # Model disabled if URL not accessible
                 mock_accessible.assert_called()
             finally:
                 del os.environ["OPENAI_API_KEY"]

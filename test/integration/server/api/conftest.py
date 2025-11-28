@@ -10,19 +10,24 @@ testing the full request/response cycle through the API layer.
 Note: db_container fixture is inherited from test/conftest.py - do not import here.
 """
 
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name unused-import
 # Pytest fixtures use parameter injection where fixture names match parameters
 
 import os
 import asyncio
 from typing import Generator
 
+# Re-export shared fixtures for pytest discovery (before third-party imports per pylint)
 from test.db_fixtures import TEST_DB_CONFIG
+from test.shared_fixtures import (
+    make_database,
+    make_model,
+    DEFAULT_LL_MODEL_CONFIG,
+)
 
 import pytest
 from fastapi.testclient import TestClient
 
-from common.schema import Database, Model
 from server.bootstrap.bootstrap import DATABASE_OBJECTS, MODEL_OBJECTS, SETTINGS_OBJECTS
 
 
@@ -119,46 +124,8 @@ def sample_settings_payload():
     """Sample settings configuration for testing."""
     return {
         "client": TEST_CONFIG["client"],
-        "ll_model": {
-            "model": "gpt-4o-mini",
-            "temperature": 0.7,
-            "max_tokens": 4096,
-            "chat_history": True,
-        },
+        "ll_model": DEFAULT_LL_MODEL_CONFIG.copy(),
     }
-
-
-#################################################
-# Schema Factory Fixtures
-#################################################
-@pytest.fixture
-def make_database():
-    """Factory fixture for creating Database objects."""
-    def _make_database(**kwargs):
-        defaults = {
-            "name": "TEST_DB",
-            "user": "test_user",
-            "password": "test_password",
-            "dsn": "localhost:1521/TEST",
-        }
-        defaults.update(kwargs)
-        return Database(**defaults)
-    return _make_database
-
-
-@pytest.fixture
-def make_model():
-    """Factory fixture for creating Model objects."""
-    def _make_model(**kwargs):
-        defaults = {
-            "id": "test-model",
-            "type": "ll",
-            "provider": "openai",
-            "enabled": True,
-        }
-        defaults.update(kwargs)
-        return Model(**defaults)
-    return _make_model
 
 
 #################################################
