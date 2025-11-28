@@ -226,6 +226,44 @@ class TestUpdateServer:
 
         mock_load_prompts.assert_called_once_with(config_data)
 
+    @patch("server.api.utils.settings.bootstrap")
+    def test_update_server_mutates_lists_not_replaces(self, mock_bootstrap, make_settings):
+        """update_server should mutate existing lists rather than replacing them.
+
+        This is critical because other modules import these lists directly
+        (e.g., `from server.bootstrap.bootstrap import DATABASE_OBJECTS`).
+        If we replace the list, those modules would hold stale references.
+        """
+        original_db_list = []
+        original_model_list = []
+        original_oci_list = []
+
+        mock_bootstrap.DATABASE_OBJECTS = original_db_list
+        mock_bootstrap.MODEL_OBJECTS = original_model_list
+        mock_bootstrap.OCI_OBJECTS = original_oci_list
+
+        config_data = {
+            "client_settings": make_settings().model_dump(),
+            "database_configs": [{"name": "test_db", "user": "user", "password": "pass", "dsn": "dsn"}],
+            "model_configs": [{"id": "test-model", "provider": "openai", "type": "ll"}],
+            "oci_configs": [{"auth_profile": "DEFAULT", "compartment_id": "ocid1.compartment.oc1..test"}],
+        }
+
+        utils_settings.update_server(config_data)
+
+        # Verify the lists are the SAME objects (mutated, not replaced)
+        assert mock_bootstrap.DATABASE_OBJECTS is original_db_list, "DATABASE_OBJECTS was replaced instead of mutated"
+        assert mock_bootstrap.MODEL_OBJECTS is original_model_list, "MODEL_OBJECTS was replaced instead of mutated"
+        assert mock_bootstrap.OCI_OBJECTS is original_oci_list, "OCI_OBJECTS was replaced instead of mutated"
+
+        # Verify the lists now contain the new data
+        assert len(original_db_list) == 1
+        assert original_db_list[0].name == "test_db"
+        assert len(original_model_list) == 1
+        assert original_model_list[0].id == "test-model"
+        assert len(original_oci_list) == 1
+        assert original_oci_list[0].auth_profile == "DEFAULT"
+
 
 class TestLoadPromptOverride:  # pylint: disable=protected-access
     """Tests for the _load_prompt_override function."""
@@ -244,6 +282,16 @@ class TestLoadPromptOverride:  # pylint: disable=protected-access
     def test_load_prompt_override_without_text(self, mock_set_override):
         """_load_prompt_override should return False without text."""
         prompt = {"name": "test_prompt"}
+
+        result = utils_settings._load_prompt_override(prompt)
+
+        assert result is False
+        mock_set_override.assert_not_called()
+
+    @patch("server.api.utils.settings.cache.set_override")
+    def test_load_prompt_override_with_empty_text(self, mock_set_override):
+        """_load_prompt_override should return False when text is empty string."""
+        prompt = {"name": "test_prompt", "text": ""}
 
         result = utils_settings._load_prompt_override(prompt)
 
