@@ -19,21 +19,6 @@ logger = logging_config.logging.getLogger("client.content.config.tabs.database")
 #####################################################
 # Functions
 #####################################################
-def get_databases(force: bool = False) -> None:
-    """Get Databases from API Server"""
-    if force or "database_configs" not in state or not state.database_configs:
-        try:
-            logger.info("Refreshing state.database_configs")
-            # Validation will be done on currently configured client database
-            # validation includes new vector_stores, etc.
-            client_database = state.client_settings.get("database", {}).get("alias", {})
-            _ = api_call.get(endpoint=f"v1/databases/{client_database}")
-
-            # Update state
-            state.database_configs = api_call.get(endpoint="v1/databases")
-        except api_call.ApiError as ex:
-            logger.error("Unable to populate state.database_configs: %s", ex)
-            state.database_configs = {}
 
 
 def _render_database_configuration_form(database_lookup: dict, selected_database_alias: str) -> dict:
@@ -125,6 +110,23 @@ def _render_vector_stores_section(database_lookup: dict, selected_database_alias
             st.write("No Vector Stores Found")
 
 
+def get_databases(force: bool = False) -> None:
+    """Get Databases from API Server"""
+    if force or "database_configs" not in state or not state.database_configs:
+        try:
+            logger.info("Refreshing state.database_configs")
+            # Validation will be done on currently configured client database
+            # validation includes new vector_stores, etc.
+            client_database = state.client_settings.get("database", {}).get("alias", {})
+            _ = api_call.get(endpoint=f"v1/databases/{client_database}")
+
+            # Update state
+            state.database_configs = api_call.get(endpoint="v1/databases")
+        except api_call.ApiError as ex:
+            logger.error("Unable to populate state.database_configs: %s", ex)
+            state.database_configs = {}
+
+
 def patch_database(name: str, supplied: dict, connected: bool) -> bool:
     """Update Database"""
     # Check if the database configuration is changed, or if not CONNECTED
@@ -163,7 +165,6 @@ def drop_vs(vs: dict) -> None:
 def display_databases() -> None:
     """Streamlit GUI"""
     st.header("Database", divider="red")
-    st.write("Configure the database used for Vector Storage.")
 
     try:
         get_databases()

@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-from client.utils import api_call, st_common, vs_selector
+from client.utils import api_call, st_common, vs_options
 
 from client.content.config.tabs.databases import get_databases
 from client.content.config.tabs.models import get_models
@@ -243,7 +243,7 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict) -> FileSourceDa
         data.sql_query = st.text_input("SQL:", key="sql_query")
 
         is_invalid, msg = functions.is_sql_accessible(data.sql_connection, data.sql_query)
-        if not(is_invalid) or msg:
+        if not (is_invalid) or msg:
             st.error(f"Error: {msg}")
 
     ######################################
@@ -295,7 +295,7 @@ def _display_file_list_expander(file_list_response: dict) -> None:
     # Build expander title
     total_files = file_list_response["total_files"]
     total_chunks = file_list_response["total_chunks"]
-    expander_title = f"📁 Exiting Embeddings ({total_files} files, {total_chunks} chunks)"
+    expander_title = f"📁 Existing Embeddings ({total_files} files, {total_chunks} chunks)"
     orphaned = file_list_response.get("orphaned_chunks", 0)
     if orphaned > 0:
         expander_title += f" ⚠️ {orphaned} orphaned"
@@ -343,6 +343,19 @@ def _display_file_list_expander(file_list_response: dict) -> None:
             st.info("No files found in this vector store.")
 
 
+def _validate_new_alias(alias: str) -> bool:
+    """Validate a new vector store alias and display appropriate messages."""
+    alias_pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
+    if not alias:
+        return True
+    if not re.match(alias_pattern, alias):
+        st.error(
+            "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
+        )
+        return True
+    return False
+
+
 def _render_populate_vs_section(
     embed_request: DatabaseVectorStorage, create_new_vs: bool
 ) -> tuple[DatabaseVectorStorage, int]:
@@ -361,13 +374,9 @@ def _render_populate_vs_section(
     embed_alias_invalid = False
     if not create_new_vs:
         # Using existing Vector Store
-        embed_request.alias = state.selected_vector_search_alias
-        embed_request.description = state.selected_vector_search_description
-        embed_request.model = state.selected_vector_search_model
-        embed_request.chunk_size = state.selected_vector_search_chunk_size
-        embed_request.chunk_overlap = state.selected_vector_search_chunk_overlap
-        embed_request.distance_metric = state.selected_vector_search_distance_metric
-        embed_request.index_type = state.selected_vector_search_index_type
+        vs_settings = state.client_settings["vector_search"]
+        for field in ["alias", "description", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]:
+            setattr(embed_request, field, vs_settings.get(field, ""))
 
     if create_new_vs:
         # Creating new vector store: just show text input for new VS name
@@ -378,15 +387,7 @@ def _render_populate_vs_section(
             key="selected_embed_alias",
             placeholder="Enter a name for the new vector store",
         )
-        alias_pattern = r"^[A-Za-z][A-Za-z0-9_]*$"
-        if not embed_request.alias:
-            st.warning("Please enter a Vector Store Alias to continue.")
-            embed_alias_invalid = True
-        elif not re.match(alias_pattern, embed_request.alias):
-            st.error(
-                "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
-            )
-            embed_alias_invalid = True
+        embed_alias_invalid = _validate_new_alias(embed_request.alias)
 
     if not embed_alias_invalid and embed_request.alias:
         embed_request.vector_store, _ = functions.get_vs_table(
@@ -401,41 +402,38 @@ def _render_populate_vs_section(
             for store in db.get("vector_stores", [])
         )
         if vs_exists:
-            st.caption("Vector store already exists. New chunks will be added to existing Vector Store.")
+            try:
+                file_list_response = api_call.get(endpoint=f"v1/embed/{embed_request.vector_store}/files")
+                if file_list_response and "files" in file_list_response:
+                    _display_file_list_expander(file_list_response)
+            except api_call.ApiError as e:
+                logger.warning("Could not retrieve file list for %s: %s", embed_request.vector_store, e)
         else:
-            st.caption("New vector store will be created.")
+            st.caption("A new vector store will be created.")
 
-    # Get Description
-    st.markdown("**Vector Store Description (Provide a description to help the retriever find relevant tables):**")
+    # Vector Store Description
+    st.divider()
     col1, col2 = st.columns([4, 1])
     with col1:
         embed_request.description = st.text_input(
-            "Vector Store Description:",
+            "Provide a description to help AI understand this purpose of this Vector Store:",
             max_chars=255,
             value=embed_request.description,
-            placeholder="Enter a description for the new vector store",
-            label_visibility="collapsed",
+            placeholder="Enter a description for the Vector Store.",
+            # label_visibility="collapsed",
         )
+    col2.space("small")
     with col2:
-        if not create_new_vs and embed_request.description:
+        if not create_new_vs:
             if st.button(
                 "Update Description",
                 type="secondary",
                 key="comment_update",
-                help="Update the description of an existing Vector Store.",
+                help="Update the description of the Vector Store.",
             ):
                 _ = api_call.patch(
                     endpoint="v1/embed/comment", payload={"json": embed_request.model_dump()}, toast=True
                 )
-
-    # Display files in existing vector store
-    if not create_new_vs and embed_request.vector_store:
-        try:
-            file_list_response = api_call.get(endpoint=f"v1/embed/{embed_request.vector_store}/files")
-            if file_list_response and "files" in file_list_response:
-                _display_file_list_expander(file_list_response)
-        except api_call.ApiError as e:
-            logger.warning("Could not retrieve file list for %s: %s", embed_request.vector_store, e)
 
     # Always render rate limit input to ensure session state is initialized
     rate_size, _ = st.columns([0.28, 0.72])
@@ -511,7 +509,7 @@ def _handle_vector_store_population(
     is_source_valid = source_data.is_valid()
 
     if not embed_request.alias and create_new_vs:
-        st.info("Please provide a Vector Store Alias.")
+        st.info("Please provide a Vector Store Alias.", icon="⚠️")
 
     refresh_clicked = False
     populate_clicked = False
@@ -631,18 +629,15 @@ def display_split_embed() -> None:
         )
         if not create_new_vs:
             # Render vector store selection controls
-            vs_selector.render_vector_store_selection()
+            vs_options.vector_store_selection(location="main")
 
     # Render embedding configuration for new VS
     if create_new_vs:
         _render_embedding_config_section(embed_models_enabled, embed_request)
     else:
+        vs_settings = state.client_settings.get("vector_search", {})
         vs_fields = ["alias", "model", "chunk_size", "chunk_overlap", "distance_metric", "index_type"]
-        vs_missing = [
-            f"selected_vector_search_{field}"
-            for field in vs_fields
-            if not getattr(state, f"selected_vector_search_{field}", None)
-        ]
+        vs_missing = [field for field in vs_fields if not vs_settings.get(field)]
         if vs_missing:
             st.stop()
 

@@ -12,6 +12,7 @@ from client.content.config.tabs.oci import get_oci, display_oci
 from client.content.config.tabs.databases import get_databases, display_databases
 from client.content.config.tabs.models import get_models, display_models
 from client.content.config.tabs.mcp import get_mcp, display_mcp
+from client.content.tools.tabs.prompt_eng import get_prompts
 
 
 def main() -> None:
@@ -22,6 +23,7 @@ def main() -> None:
     get_models()
     get_oci()
     get_mcp()
+    get_prompts()
 
     tabs_list = []
     if not state.disabled["settings"]:
