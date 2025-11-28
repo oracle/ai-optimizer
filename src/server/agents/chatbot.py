@@ -97,12 +97,15 @@ def rephrase(state: OptimizerState, config: RunnableConfig) -> str:
         rephrase_prompt_msg = default_prompts.get_prompt_with_override("optimizer_vs-rephrase")
         rephrase_template_text = rephrase_prompt_msg.content.text
 
+        context_prompt_msg = default_prompts.get_prompt_with_override("optimizer_context-default")
+        context_prompt_text = context_prompt_msg.content.text
+
         rephrase_template = PromptTemplate(
             template=rephrase_template_text,
-            input_variables=["ctx_prompt", "history", "question"],
+            input_variables=["prompt", "history", "question"],
         )
         formatted_prompt = rephrase_template.format(
-            prompt=rephrase_template_text, history=state["messages"], question=retrieve_question
+            prompt=context_prompt_text, history=state["messages"], question=retrieve_question
         )
         ll_raw = config["configurable"]["ll_config"]
         try:
@@ -177,8 +180,10 @@ async def vs_grade(state: OptimizerState, config: RunnableConfig) -> OptimizerSt
 
         state["messages"].append(
             ToolMessage(
-                content=json.dumps([state["documents"], state["context_input"]], cls=DecimalEncoder),
-                name="oraclevs_tool",
+                content=json.dumps(
+                    {"documents": state["documents"], "context_input": state["context_input"]}, cls=DecimalEncoder
+                ),
+                name="optimizer_vs-retriever",
                 tool_call_id="tool_placeholder",
             )
         )
