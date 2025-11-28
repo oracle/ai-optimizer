@@ -123,19 +123,17 @@ def render_configs(mcp_server: str, mcp_type: str, configs: list) -> None:
     col1.markdown("Name", unsafe_allow_html=True)
     col2.markdown("&#x200B;")
     for mcp_name in configs:
-        # The key prefix is to give each widget a unique key in the loop; the key itself is never used
-        key_prefix = f"{mcp_server}_{mcp_type}_{mcp_name}"
         col1.text_input(
             "Name",
             value=mcp_name,
             label_visibility="collapsed",
             disabled=True,
-            key=f"{key_prefix}_name",
+            key=f"{mcp_server}_{mcp_type}_{mcp_name}_input",
         )
         col2.button(
             "Details",
             on_click=mcp_details,
-            key=f"{key_prefix}_details",
+            key=f"{mcp_server}_{mcp_type}_{mcp_name}_details",
             kwargs={"mcp_server": mcp_server, "mcp_type": mcp_type, "mcp_name": mcp_name},
         )
 
