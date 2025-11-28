@@ -404,15 +404,20 @@ def _merge_and_index_vector_store(
     except Exception as ex:
         logger.error("Unable to create vector index: %s", ex)
 
-    # Comment the VS table
-    _, store_comment = functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
-    comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
-    utils_databases.execute_sql(db_conn, comment)
-
 
 ##########################################
 # Vector Store
 ##########################################
+def update_vs_comment(vector_store: schema.DatabaseVectorStorage, db_details: schema.Database) -> None:
+    """Comment on Existing Vector Store"""
+    db_conn = utils_databases.connect(db_details)
+
+    _, store_comment = functions.get_vs_table(**vector_store.model_dump(exclude={"database", "vector_store"}))
+    comment = f"COMMENT ON TABLE {vector_store.vector_store} IS 'GENAI: {store_comment}'"
+    utils_databases.execute_sql(db_conn, comment)
+    utils_databases.disconnect(db_conn)
+
+
 def populate_vs(
     vector_store: schema.DatabaseVectorStorage,
     db_details: schema.Database,
@@ -433,7 +438,8 @@ def populate_vs(
     # Merge and index
     _merge_and_index_vector_store(db_conn, vector_store, vector_store_tmp, embed_client)
 
-    utils_databases.disconnect(db_conn)
+    # Comment the VS table
+    update_vs_comment(vector_store, db_details)
 
 
 ##########################################
