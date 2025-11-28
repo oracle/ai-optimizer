@@ -583,6 +583,231 @@ class TestInitGenaiClient:
         assert result == mock_client
 
 
+class TestInitClientSecurityToken:
+    """Tests for init_client with security token authentication."""
+
+    @patch("server.api.utils.oci.get_signer")
+    @patch("server.api.utils.oci.oci.signer.load_private_key_from_file")
+    @patch("server.api.utils.oci.oci.auth.signers.SecurityTokenSigner")
+    @patch("server.api.utils.oci.oci.object_storage.ObjectStorageClient")
+    @patch("builtins.open", create=True)
+    def test_init_client_security_token_auth(
+        self, mock_open, mock_client_class, mock_sec_token_signer, mock_load_key, mock_get_signer, make_oci_config
+    ):
+        """init_client should use security token authentication when configured."""
+        mock_get_signer.return_value = None
+        mock_open.return_value.__enter__ = MagicMock(return_value=MagicMock(read=MagicMock(return_value="token_data")))
+        mock_open.return_value.__exit__ = MagicMock(return_value=False)
+        mock_private_key = MagicMock()
+        mock_load_key.return_value = mock_private_key
+        mock_signer = MagicMock()
+        mock_sec_token_signer.return_value = mock_signer
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        config = make_oci_config()
+        config.authentication = "security_token"
+        config.security_token_file = "/path/to/token"
+        config.key_file = "/path/to/key"
+        config.region = "us-ashburn-1"
+
+        result = utils_oci.init_client(oci.object_storage.ObjectStorageClient, config)
+
+        assert result == mock_client
+        mock_sec_token_signer.assert_called_once()
+
+
+class TestInitClientOkeWorkloadIdentityTenancy:
+    """Tests for init_client OKE workload identity tenancy extraction."""
+
+    @patch("server.api.utils.oci.get_signer")
+    @patch("server.api.utils.oci.oci.object_storage.ObjectStorageClient")
+    def test_init_client_oke_workload_extracts_tenancy(self, mock_client_class, mock_get_signer, make_oci_config):
+        """init_client should extract tenancy from OKE workload identity token."""
+        import base64
+        import json
+
+        # Create a mock JWT token with tenant claim
+        payload = {"tenant": "ocid1.tenancy.oc1..test"}
+        payload_json = json.dumps(payload)
+        payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode().rstrip("=")
+        mock_token = f"header.{payload_b64}.signature"
+
+        mock_signer = MagicMock()
+        mock_signer.get_security_token.return_value = mock_token
+        mock_get_signer.return_value = mock_signer
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        config = make_oci_config()
+        config.authentication = "oke_workload_identity"
+        config.region = "us-ashburn-1"
+        config.tenancy = None  # Not set, should be extracted from token
+
+        utils_oci.init_client(oci.object_storage.ObjectStorageClient, config)
+
+        assert config.tenancy == "ocid1.tenancy.oc1..test"
+
+
+class TestGetNamespaceExceptionHandling:
+    """Tests for get_namespace exception handling."""
+
+    @patch("server.api.utils.oci.init_client")
+    def test_get_namespace_raises_on_unbound_local_error(self, mock_init_client, make_oci_config):
+        """get_namespace should raise OciException on UnboundLocalError."""
+        mock_init_client.side_effect = UnboundLocalError("Client not initialized")
+        config = make_oci_config()
+
+        with pytest.raises(OciException) as exc_info:
+            utils_oci.get_namespace(config)
+
+        assert exc_info.value.status_code == 500
+        assert "No Configuration" in exc_info.value.detail
+
+    @patch("server.api.utils.oci.init_client")
+    def test_get_namespace_raises_on_request_exception(self, mock_init_client, make_oci_config):
+        """get_namespace should raise OciException on RequestException."""
+        mock_client = MagicMock()
+        mock_client.get_namespace.side_effect = oci.exceptions.RequestException("Connection timeout")
+        mock_init_client.return_value = mock_client
+        config = make_oci_config()
+
+        with pytest.raises(OciException) as exc_info:
+            utils_oci.get_namespace(config)
+
+        assert exc_info.value.status_code == 503
+
+    @patch("server.api.utils.oci.init_client")
+    def test_get_namespace_raises_on_generic_exception(self, mock_init_client, make_oci_config):
+        """get_namespace should raise OciException on generic Exception."""
+        mock_client = MagicMock()
+        mock_client.get_namespace.side_effect = RuntimeError("Unexpected error")
+        mock_init_client.return_value = mock_client
+        config = make_oci_config()
+
+        with pytest.raises(OciException) as exc_info:
+            utils_oci.get_namespace(config)
+
+        assert exc_info.value.status_code == 500
+        assert "Unexpected error" in exc_info.value.detail
+
+
+class TestGetGenaiModelsExceptionHandling:
+    """Tests for get_genai_models exception handling."""
+
+    @patch("server.api.utils.oci.init_client")
+    def test_get_genai_models_handles_service_error(self, mock_init_client, make_oci_config):
+        """get_genai_models should handle ServiceError gracefully."""
+        mock_client = MagicMock()
+        mock_client.list_models.side_effect = oci.exceptions.ServiceError(
+            status=403, code="NotAuthorized", headers={}, message="Not authorized"
+        )
+        mock_init_client.return_value = mock_client
+
+        config = make_oci_config(genai_region="us-chicago-1")
+        config.genai_compartment_id = "ocid1.compartment.oc1..test"
+
+        result = utils_oci.get_genai_models(config, regional=True)
+
+        # Should return empty list instead of raising
+        assert result == []
+
+    @patch("server.api.utils.oci.init_client")
+    def test_get_genai_models_handles_request_exception(self, mock_init_client, make_oci_config):
+        """get_genai_models should handle RequestException gracefully."""
+        import urllib3.exceptions
+
+        mock_client = MagicMock()
+        mock_client.list_models.side_effect = urllib3.exceptions.MaxRetryError(None, "url")
+        mock_init_client.return_value = mock_client
+
+        config = make_oci_config(genai_region="us-chicago-1")
+        config.genai_compartment_id = "ocid1.compartment.oc1..test"
+
+        result = utils_oci.get_genai_models(config, regional=True)
+
+        # Should return empty list instead of raising
+        assert result == []
+
+    @patch("server.api.utils.oci.init_client")
+    def test_get_genai_models_excludes_deprecated(self, mock_init_client, make_oci_config):
+        """get_genai_models should exclude deprecated models."""
+        mock_active_model = MagicMock()
+        mock_active_model.display_name = "active-model"
+        mock_active_model.capabilities = ["TEXT_GENERATION"]
+        mock_active_model.vendor = "cohere"
+        mock_active_model.id = "ocid1.model.active"
+        mock_active_model.time_deprecated = None
+        mock_active_model.time_dedicated_retired = None
+        mock_active_model.time_on_demand_retired = None
+
+        mock_deprecated_model = MagicMock()
+        mock_deprecated_model.display_name = "deprecated-model"
+        mock_deprecated_model.capabilities = ["TEXT_GENERATION"]
+        mock_deprecated_model.vendor = "cohere"
+        mock_deprecated_model.id = "ocid1.model.deprecated"
+        mock_deprecated_model.time_deprecated = datetime(2024, 1, 1)
+        mock_deprecated_model.time_dedicated_retired = None
+        mock_deprecated_model.time_on_demand_retired = None
+
+        mock_response = MagicMock()
+        mock_response.data.items = [mock_active_model, mock_deprecated_model]
+
+        mock_client = MagicMock()
+        mock_client.list_models.return_value = mock_response
+        mock_init_client.return_value = mock_client
+
+        config = make_oci_config(genai_region="us-chicago-1")
+        config.genai_compartment_id = "ocid1.compartment.oc1..test"
+
+        result = utils_oci.get_genai_models(config, regional=True)
+
+        assert len(result) == 1
+        assert result[0]["model_name"] == "active-model"
+
+
+class TestGetBucketObjectsWithMetadataServiceError:
+    """Tests for get_bucket_objects_with_metadata service error handling."""
+
+    @patch("server.api.utils.oci.init_client")
+    def test_get_bucket_objects_with_metadata_returns_empty_on_service_error(self, mock_init_client, make_oci_config):
+        """get_bucket_objects_with_metadata should return empty list on ServiceError."""
+        mock_client = MagicMock()
+        mock_client.list_objects.side_effect = oci.exceptions.ServiceError(
+            status=404, code="BucketNotFound", headers={}, message="Bucket not found"
+        )
+        mock_init_client.return_value = mock_client
+
+        config = make_oci_config()
+        config.namespace = "test-namespace"
+
+        result = utils_oci.get_bucket_objects_with_metadata("nonexistent-bucket", config)
+
+        assert result == []
+
+
+class TestGetClientDerivedAuthProfileNoMatch:
+    """Tests for get function when derived auth profile has no matching OCI config."""
+
+    @patch("server.api.utils.oci.bootstrap.SETTINGS_OBJECTS")
+    @patch("server.api.utils.oci.bootstrap.OCI_OBJECTS")
+    def test_get_raises_when_derived_profile_not_found(self, mock_oci, mock_settings, make_oci_config, make_settings):
+        """get should raise ValueError when client's derived auth_profile has no matching OCI config."""
+        settings = make_settings(client="test_client")
+        settings.oci.auth_profile = "MISSING_PROFILE"
+        mock_settings.__iter__ = lambda _: iter([settings])
+        mock_settings.__len__ = lambda _: 1
+
+        # OCI config with different profile
+        oci_config = make_oci_config(auth_profile="OTHER_PROFILE")
+        mock_oci.__iter__ = lambda _: iter([oci_config])
+
+        with pytest.raises(ValueError) as exc_info:
+            utils_oci.get(client="test_client")
+
+        assert "No settings found for client" in str(exc_info.value)
+
+
 class TestLoggerConfiguration:
     """Tests for logger configuration."""
 

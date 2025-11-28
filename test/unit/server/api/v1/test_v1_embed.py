@@ -315,7 +315,6 @@ class TestStoreWebFile:
 
         assert result.status_code == 200
 
-
 class TestStoreLocalFile:
     """Tests for the store_local_file endpoint."""
 
@@ -456,6 +455,109 @@ class TestSplitEmbed:
 
         assert exc_info.value.status_code == 500
 
+    @pytest.mark.asyncio
+    @patch("server.api.v1.embed.utils_oci.get")
+    @patch("server.api.v1.embed.utils_embed.get_temp_directory")
+    @patch("server.api.v1.embed.utils_embed.load_and_split_documents")
+    @patch("shutil.rmtree")
+    async def test_split_embed_raises_500_on_runtime_error(
+        self, _mock_rmtree, mock_load_split, mock_get_temp, mock_oci_get, tmp_path, make_oci_config
+    ):
+        """split_embed should raise 500 on RuntimeError during processing."""
+        mock_oci_get.return_value = make_oci_config()
+        mock_get_temp.return_value = tmp_path
+        mock_load_split.side_effect = RuntimeError("Processing failed")
+
+        # Create a test file
+        (tmp_path / "test.txt").write_text("Test content")
+
+        request = DatabaseVectorStorage(model="text-embedding-3", chunk_size=1000, chunk_overlap=200)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await embed.split_embed(request=request, rate_limit=0, client="test_client")
+
+        assert exc_info.value.status_code == 500
+        assert "Processing failed" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    @patch("server.api.v1.embed.utils_oci.get")
+    @patch("server.api.v1.embed.utils_embed.get_temp_directory")
+    @patch("server.api.v1.embed.utils_embed.load_and_split_documents")
+    @patch("shutil.rmtree")
+    async def test_split_embed_raises_500_on_generic_exception(
+        self, _mock_rmtree, mock_load_split, mock_get_temp, mock_oci_get, tmp_path, make_oci_config
+    ):
+        """split_embed should raise 500 on generic Exception during processing."""
+        mock_oci_get.return_value = make_oci_config()
+        mock_get_temp.return_value = tmp_path
+        mock_load_split.side_effect = Exception("Unexpected error occurred")
+
+        # Create a test file
+        (tmp_path / "test.txt").write_text("Test content")
+
+        request = DatabaseVectorStorage(model="text-embedding-3", chunk_size=1000, chunk_overlap=200)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await embed.split_embed(request=request, rate_limit=0, client="test_client")
+
+        assert exc_info.value.status_code == 500
+        assert "Unexpected error occurred" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_split_embed_loads_file_metadata(
+        self, split_embed_mocks, tmp_path, make_oci_config, make_database
+    ):
+        """split_embed should load file metadata when available."""
+        mocks = split_embed_mocks
+        mocks["oci_get"].return_value = make_oci_config()
+        mocks["get_temp"].return_value = tmp_path
+        mocks["load_split"].return_value = (["doc1"], None)
+        mocks["get_embed"].return_value = MagicMock()
+        mocks["get_vs_table"].return_value = ("VS_TEST", "test_alias")
+        mocks["populate"].return_value = None
+        mocks["get_db"].return_value = make_database()
+
+        # Create a test file and metadata
+        (tmp_path / "test.txt").write_text("Test content")
+        metadata = {"test.txt": {"size": 12, "time_modified": "2024-01-01T00:00:00Z"}}
+        (tmp_path / ".file_metadata.json").write_text(json.dumps(metadata))
+
+        request = DatabaseVectorStorage(model="text-embedding-3", chunk_size=1000, chunk_overlap=200)
+
+        result = await embed.split_embed(request=request, rate_limit=0, client="test_client")
+
+        assert result.status_code == 200
+        # Verify load_and_split_documents was called with file_metadata
+        call_kwargs = mocks["load_split"].call_args.kwargs
+        assert call_kwargs.get("file_metadata") == metadata
+
+    @pytest.mark.asyncio
+    async def test_split_embed_handles_corrupt_metadata(
+        self, split_embed_mocks, tmp_path, make_oci_config, make_database
+    ):
+        """split_embed should handle corrupt metadata file gracefully."""
+        mocks = split_embed_mocks
+        mocks["oci_get"].return_value = make_oci_config()
+        mocks["get_temp"].return_value = tmp_path
+        mocks["load_split"].return_value = (["doc1"], None)
+        mocks["get_embed"].return_value = MagicMock()
+        mocks["get_vs_table"].return_value = ("VS_TEST", "test_alias")
+        mocks["populate"].return_value = None
+        mocks["get_db"].return_value = make_database()
+
+        # Create a test file and corrupt metadata
+        (tmp_path / "test.txt").write_text("Test content")
+        (tmp_path / ".file_metadata.json").write_text("{ invalid json }")
+
+        request = DatabaseVectorStorage(model="text-embedding-3", chunk_size=1000, chunk_overlap=200)
+
+        result = await embed.split_embed(request=request, rate_limit=0, client="test_client")
+
+        # Should still succeed, falling back to None for metadata
+        assert result.status_code == 200
+        call_kwargs = mocks["load_split"].call_args.kwargs
+        assert call_kwargs.get("file_metadata") is None
+
 
 class TestRefreshVectorStore:
     """Tests for the refresh_vector_store endpoint."""
@@ -518,6 +620,137 @@ class TestRefreshVectorStore:
             await embed.refresh_vector_store(request=request, client="test_client")
 
         assert exc_info.value.status_code == 500
+
+    @pytest.mark.asyncio
+    @patch("server.api.v1.embed.utils_oci.get")
+    @patch("server.api.v1.embed.utils_databases.get_client_database")
+    @patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias")
+    @patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata")
+    @patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata")
+    @patch("server.api.v1.embed.utils_oci.detect_changed_objects")
+    @patch("server.api.v1.embed.utils_embed.get_total_chunks_count")
+    async def test_refresh_vector_store_no_changes(
+        self,
+        mock_get_chunks,
+        mock_detect_changed,
+        mock_get_processed,
+        mock_get_objects,
+        mock_get_vs,
+        mock_get_db,
+        mock_oci_get,
+        make_oci_config,
+        make_database,
+        make_vector_store,
+    ):
+        """refresh_vector_store should return success when no changes detected."""
+        mock_oci_get.return_value = make_oci_config()
+        mock_get_db.return_value = make_database()
+        mock_get_vs.return_value = make_vector_store()
+        mock_get_objects.return_value = [{"name": "file.pdf", "etag": "abc123"}]
+        mock_get_processed.return_value = {"file.pdf": {"etag": "abc123"}}
+        mock_detect_changed.return_value = ([], [])  # No new, no modified
+        mock_get_chunks.return_value = 100
+
+        request = VectorStoreRefreshRequest(vector_store_alias="test_alias", bucket_name="test-bucket")
+
+        result = await embed.refresh_vector_store(request=request, client="test_client")
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["message"] == "No new or modified files to process"
+        assert body["total_chunks_in_store"] == 100
+
+    @pytest.mark.asyncio
+    @patch("server.api.v1.embed.utils_oci.get")
+    @patch("server.api.v1.embed.utils_databases.get_client_database")
+    @patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias")
+    @patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata")
+    @patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata")
+    @patch("server.api.v1.embed.utils_oci.detect_changed_objects")
+    @patch("server.api.v1.embed.utils_models.get_client_embed")
+    @patch("server.api.v1.embed.utils_embed.refresh_vector_store_from_bucket")
+    @patch("server.api.v1.embed.utils_embed.get_total_chunks_count")
+    async def test_refresh_vector_store_with_changes(
+        self,
+        mock_get_chunks,
+        mock_refresh,
+        mock_get_embed,
+        mock_detect_changed,
+        mock_get_processed,
+        mock_get_objects,
+        mock_get_vs,
+        mock_get_db,
+        mock_oci_get,
+        make_oci_config,
+        make_database,
+        make_vector_store,
+    ):
+        """refresh_vector_store should process changed files."""
+        mock_oci_get.return_value = make_oci_config()
+        mock_get_db.return_value = make_database()
+        mock_get_vs.return_value = make_vector_store(model="text-embedding-3-small")
+        mock_get_objects.return_value = [
+            {"name": "new_file.pdf", "etag": "new123"},
+            {"name": "modified.pdf", "etag": "mod456"},
+        ]
+        mock_get_processed.return_value = {"modified.pdf": {"etag": "old_etag"}}
+        mock_detect_changed.return_value = (
+            [{"name": "new_file.pdf", "etag": "new123"}],  # new
+            [{"name": "modified.pdf", "etag": "mod456"}],  # modified
+        )
+        mock_get_embed.return_value = MagicMock()
+        mock_refresh.return_value = {"message": "Processed 2 files", "processed_files": 2, "total_chunks": 50}
+        mock_get_chunks.return_value = 150
+
+        request = VectorStoreRefreshRequest(vector_store_alias="test_alias", bucket_name="test-bucket")
+
+        result = await embed.refresh_vector_store(request=request, client="test_client")
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["status"] == "completed"
+        assert body["new_files"] == 1
+        assert body["updated_files"] == 1
+        assert body["total_chunks_in_store"] == 150
+        mock_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("server.api.v1.embed.utils_oci.get")
+    @patch("server.api.v1.embed.utils_databases.get_client_database")
+    @patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias")
+    @patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata")
+    @patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata")
+    @patch("server.api.v1.embed.utils_oci.detect_changed_objects")
+    @patch("server.api.v1.embed.utils_models.get_client_embed")
+    async def test_refresh_vector_store_raises_500_on_generic_exception(
+        self,
+        mock_get_embed,
+        mock_detect_changed,
+        mock_get_processed,
+        mock_get_objects,
+        mock_get_vs,
+        mock_get_db,
+        mock_oci_get,
+        make_oci_config,
+        make_database,
+        make_vector_store,
+    ):
+        """refresh_vector_store should raise 500 on generic Exception."""
+        mock_oci_get.return_value = make_oci_config()
+        mock_get_db.return_value = make_database()
+        mock_get_vs.return_value = make_vector_store()
+        mock_get_objects.return_value = [{"name": "file.pdf", "etag": "abc123"}]
+        mock_get_processed.return_value = {}
+        mock_detect_changed.return_value = ([{"name": "file.pdf"}], [])
+        mock_get_embed.side_effect = RuntimeError("Embedding service unavailable")
+
+        request = VectorStoreRefreshRequest(vector_store_alias="test_alias", bucket_name="test-bucket")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await embed.refresh_vector_store(request=request, client="test_client")
+
+        assert exc_info.value.status_code == 500
+        assert "Embedding service unavailable" in exc_info.value.detail
 
 
 class TestRouterConfiguration:
