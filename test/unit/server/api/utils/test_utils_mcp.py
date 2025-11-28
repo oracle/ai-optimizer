@@ -10,13 +10,15 @@ from unittest.mock import patch, MagicMock, AsyncMock
 import os
 import pytest
 
+from test.shared_fixtures import TEST_API_KEY, TEST_API_KEY_ALT
+
 from server.api.utils import mcp
 
 
 class TestGetClient:
     """Tests for the get_client function."""
 
-    @patch.dict(os.environ, {"API_SERVER_KEY": "test-api-key"})
+    @patch.dict(os.environ, {"API_SERVER_KEY": TEST_API_KEY_ALT})
     def test_get_client_default_values(self):
         """get_client should return default configuration."""
         result = mcp.get_client()
@@ -27,23 +29,23 @@ class TestGetClient:
         assert result["mcpServers"]["optimizer"]["transport"] == "streamable_http"
         assert "http://127.0.0.1:8000/mcp/" in result["mcpServers"]["optimizer"]["url"]
 
-    @patch.dict(os.environ, {"API_SERVER_KEY": "test-api-key"})
+    @patch.dict(os.environ, {"API_SERVER_KEY": TEST_API_KEY_ALT})
     def test_get_client_custom_server_port(self):
         """get_client should use custom server and port."""
         result = mcp.get_client(server="http://custom.server", port=9000)
 
         assert "http://custom.server:9000/mcp/" in result["mcpServers"]["optimizer"]["url"]
 
-    @patch.dict(os.environ, {"API_SERVER_KEY": "secret-key"})
+    @patch.dict(os.environ, {"API_SERVER_KEY": TEST_API_KEY_ALT})
     def test_get_client_includes_auth_header(self):
         """get_client should include authorization header."""
         result = mcp.get_client()
 
         headers = result["mcpServers"]["optimizer"]["headers"]
         assert "Authorization" in headers
-        assert headers["Authorization"] == "Bearer secret-key"
+        assert headers["Authorization"] == f"Bearer {TEST_API_KEY_ALT}"
 
-    @patch.dict(os.environ, {"API_SERVER_KEY": "test-key"})
+    @patch.dict(os.environ, {"API_SERVER_KEY": TEST_API_KEY})
     def test_get_client_langgraph_removes_type(self):
         """get_client should remove type field for langgraph client."""
         result = mcp.get_client(client="langgraph")
@@ -51,14 +53,14 @@ class TestGetClient:
         assert "type" not in result["mcpServers"]["optimizer"]
         assert "transport" in result["mcpServers"]["optimizer"]
 
-    @patch.dict(os.environ, {"API_SERVER_KEY": "test-key"})
+    @patch.dict(os.environ, {"API_SERVER_KEY": TEST_API_KEY})
     def test_get_client_non_langgraph_keeps_type(self):
         """get_client should keep type field for non-langgraph clients."""
         result = mcp.get_client(client="other")
 
         assert "type" in result["mcpServers"]["optimizer"]
 
-    @patch.dict(os.environ, {"API_SERVER_KEY": "test-key"})
+    @patch.dict(os.environ, {"API_SERVER_KEY": TEST_API_KEY})
     def test_get_client_none_client_keeps_type(self):
         """get_client should keep type field when client is None."""
         result = mcp.get_client(client=None)
@@ -73,7 +75,7 @@ class TestGetClient:
         headers = result["mcpServers"]["optimizer"]["headers"]
         assert headers["Authorization"] == "Bearer "
 
-    @patch.dict(os.environ, {"API_SERVER_KEY": "key"})
+    @patch.dict(os.environ, {"API_SERVER_KEY": TEST_API_KEY})
     def test_get_client_structure(self):
         """get_client should return expected structure."""
         result = mcp.get_client()

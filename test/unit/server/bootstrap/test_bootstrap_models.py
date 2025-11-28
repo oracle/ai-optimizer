@@ -11,7 +11,7 @@ Tests for model bootstrap functionality.
 import os
 from unittest.mock import patch
 
-from test.shared_fixtures import assert_model_list_valid, get_model_by_id
+from test.shared_fixtures import assert_model_list_valid, get_model_by_id, TEST_API_KEY
 
 import pytest
 
@@ -38,13 +38,13 @@ class TestModelsMain:
 
     def test_main_enables_models_with_api_keys(self):
         """main() should enable models when API keys are present."""
-        os.environ["OPENAI_API_KEY"] = "test-openai-key"
+        os.environ["OPENAI_API_KEY"] = TEST_API_KEY
 
         try:
             model_list = models_module.main()
             gpt_model = get_model_by_id(model_list, "gpt-4o-mini")
             assert gpt_model.enabled is True
-            assert gpt_model.api_key == "test-openai-key"
+            assert gpt_model.api_key == TEST_API_KEY
         finally:
             del os.environ["OPENAI_API_KEY"]
 
@@ -57,7 +57,7 @@ class TestModelsMain:
     @pytest.mark.usefixtures("reset_config_store", "clean_env")
     def test_main_checks_url_accessibility(self):
         """main() should check URL accessibility for enabled models."""
-        os.environ["OPENAI_API_KEY"] = "test-key"
+        os.environ["OPENAI_API_KEY"] = TEST_API_KEY
 
         with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
             mock_accessible.return_value = (False, "Connection refused")
@@ -73,8 +73,8 @@ class TestModelsMain:
     @pytest.mark.usefixtures("reset_config_store", "clean_env")
     def test_main_caches_url_accessibility_results(self):
         """main() should cache URL accessibility results for same URLs."""
-        os.environ["OPENAI_API_KEY"] = "test-key"
-        os.environ["COHERE_API_KEY"] = "test-key"
+        os.environ["OPENAI_API_KEY"] = TEST_API_KEY
+        os.environ["COHERE_API_KEY"] = TEST_API_KEY
 
         with patch("server.bootstrap.models.is_url_accessible") as mock_accessible:
             mock_accessible.return_value = (True, "OK")

@@ -19,6 +19,9 @@ from test.shared_fixtures import (
     make_ll_settings,
     make_settings,
     make_configuration,
+    TEST_DB_USER,
+    TEST_DB_PASSWORD,
+    TEST_DB_DSN,
 )
 
 import pytest
@@ -36,9 +39,9 @@ def make_database_auth():
 
     def _make_database_auth(**overrides) -> DatabaseAuth:
         defaults = {
-            "user": "test_user",
-            "password": "test_password",
-            "dsn": "localhost:1521/TESTPDB",
+            "user": TEST_DB_USER,
+            "password": TEST_DB_PASSWORD,
+            "dsn": TEST_DB_DSN,
             "wallet_password": None,
         }
         defaults.update(overrides)

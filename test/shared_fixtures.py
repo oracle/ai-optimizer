@@ -28,6 +28,31 @@ from common.schema import (
 from server.bootstrap.configfile import ConfigStore
 
 
+#################################################
+# Test Credentials Constants
+#################################################
+# Centralized fake credentials for testing.
+# These are NOT real secrets - they are placeholder values used in tests.
+# Using constants ensures consistent values across tests and allows
+# security scanners to be configured to ignore this single location.
+
+# Database credentials (fake - for testing only)
+TEST_DB_USER = "test_user"
+TEST_DB_PASSWORD = "test_password"  # noqa: S105 - not a real password
+TEST_DB_DSN = "localhost:1521/TESTPDB"
+TEST_DB_WALLET_PASSWORD = "test_wallet_pass"  # noqa: S105 - not a real password
+
+# API keys (fake - for testing only)
+TEST_API_KEY = "test-key"  # noqa: S105 - not a real API key
+TEST_API_KEY_ALT = "test-api-key"  # noqa: S105 - not a real API key
+TEST_AUTH_TOKEN = "integration-test-token"  # noqa: S105 - not a real token
+
+# Integration test database credentials (fake - for testing only)
+TEST_INTEGRATION_DB_USER = "integration_user"
+TEST_INTEGRATION_DB_PASSWORD = "integration_pass"  # noqa: S105 - not a real password
+TEST_INTEGRATION_DB_DSN = "localhost:1521/INTPDB"
+
+
 # Default test model settings - shared across test fixtures
 DEFAULT_LL_MODEL_CONFIG = {
     "model": "gpt-4o-mini",
@@ -78,9 +103,9 @@ def make_database():
 
     def _make_database(
         name: str = "TEST_DB",
-        user: str = "test_user",
-        password: str = "test_password",
-        dsn: str = "localhost:1521/TESTPDB",
+        user: str = TEST_DB_USER,
+        password: str = TEST_DB_PASSWORD,
+        dsn: str = TEST_DB_DSN,
         wallet_password: str = None,
         **kwargs,
     ) -> Database:
@@ -108,7 +133,7 @@ def make_model():
         model_type: str = "ll",
         provider: str = "openai",
         enabled: bool = True,
-        api_key: str = "test-key",
+        api_key: str = TEST_API_KEY,
         api_base: str = "https://api.openai.com/v1",
         **kwargs,
     ) -> Model:

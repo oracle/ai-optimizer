@@ -11,6 +11,8 @@ Tests for MCP (Model Context Protocol) endpoints.
 from unittest.mock import patch, MagicMock, AsyncMock
 import pytest
 
+from test.shared_fixtures import TEST_API_KEY
+
 from server.api.v1 import mcp
 
 
@@ -41,7 +43,7 @@ class TestGetClient:
                     "type": "streamableHttp",
                     "transport": "streamable_http",
                     "url": "http://127.0.0.1:8000/mcp/",
-                    "headers": {"Authorization": "Bearer test-key"},
+                    "headers": {"Authorization": f"Bearer {TEST_API_KEY}"},
                 }
             }
         }

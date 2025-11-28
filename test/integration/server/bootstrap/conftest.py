@@ -21,6 +21,10 @@ from test.shared_fixtures import (
     clean_env,
     BOOTSTRAP_ENV_VARS,
     DEFAULT_LL_MODEL_CONFIG,
+    TEST_INTEGRATION_DB_USER,
+    TEST_INTEGRATION_DB_PASSWORD,
+    TEST_INTEGRATION_DB_DSN,
+    TEST_API_KEY_ALT,
 )
 
 import pytest
@@ -107,9 +111,9 @@ def sample_database_config():
     """Sample database configuration dict."""
     return {
         "name": "INTEGRATION_DB",
-        "user": "integration_user",
-        "password": "integration_pass",
-        "dsn": "localhost:1521/INTPDB",
+        "user": TEST_INTEGRATION_DB_USER,
+        "password": TEST_INTEGRATION_DB_PASSWORD,
+        "dsn": TEST_INTEGRATION_DB_DSN,
     }
 
 
@@ -121,7 +125,7 @@ def sample_model_config():
         "type": "ll",
         "provider": "openai",
         "enabled": True,
-        "api_key": "test-api-key",
+        "api_key": TEST_API_KEY_ALT,
         "api_base": "https://api.openai.com/v1",
         "max_tokens": 4096,
     }

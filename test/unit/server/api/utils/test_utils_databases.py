@@ -13,6 +13,7 @@ Uses hybrid approach:
 # pylint: disable=too-few-public-methods
 
 from test.conftest import TEST_CONFIG
+from test.shared_fixtures import TEST_DB_WALLET_PASSWORD
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -177,7 +178,7 @@ class TestConnect:
         # pylint: disable=unused-argument
         config = make_database(
             user="INVALID_USER",
-            password="wrong_password",
+            password=TEST_DB_WALLET_PASSWORD,  # Using a fake password for invalid login test
             dsn=TEST_CONFIG["db_dsn"],
         )
 
@@ -214,7 +215,7 @@ class TestConnect:
         """connect should default wallet_location to config_dir if not set (mocked - verifies call args)."""
         mock_conn = MagicMock()
         mock_connect.return_value = mock_conn
-        config = make_database(wallet_password="secret", config_dir="/path/to/config")
+        config = make_database(wallet_password=TEST_DB_WALLET_PASSWORD, config_dir="/path/to/config")
 
         utils_databases.connect(config)
 

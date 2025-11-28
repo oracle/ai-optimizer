@@ -23,6 +23,7 @@ from test.shared_fixtures import (
     make_database,
     make_model,
     DEFAULT_LL_MODEL_CONFIG,
+    TEST_AUTH_TOKEN,
 )
 
 import pytest
@@ -42,7 +43,7 @@ for env_var in [*API_VARS, *DB_VARS, *MODEL_VARS, *[var for var in os.environ if
 # Test configuration - extends shared DB config with integration-specific settings
 TEST_CONFIG = {
     "client": "integration_test",
-    "auth_token": "integration-test-token",
+    "auth_token": TEST_AUTH_TOKEN,
     **TEST_DB_CONFIG,
 }
 
