@@ -5,8 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Unit tests for server/api/v1/embed.py
 Tests for document embedding and vector store endpoints.
 """
-# pylint: disable=protected-access
-# pylint: disable=redefined-outer-name
+# pylint: disable=protected-access redefined-outer-name
 # Pytest fixtures use parameter injection where fixture names match parameters
 
 from io import BytesIO
@@ -27,14 +26,16 @@ from server.api.utils.databases import DbException
 @pytest.fixture
 def split_embed_mocks():
     """Fixture providing bundled mocks for split_embed tests."""
-    with patch("server.api.v1.embed.utils_oci.get") as mock_oci_get, \
-         patch("server.api.v1.embed.utils_embed.get_temp_directory") as mock_get_temp, \
-         patch("server.api.v1.embed.utils_embed.load_and_split_documents") as mock_load_split, \
-         patch("server.api.v1.embed.utils_models.get_client_embed") as mock_get_embed, \
-         patch("server.api.v1.embed.functions.get_vs_table") as mock_get_vs_table, \
-         patch("server.api.v1.embed.utils_embed.populate_vs") as mock_populate, \
-         patch("server.api.v1.embed.utils_databases.get_client_database") as mock_get_db, \
-         patch("shutil.rmtree") as mock_rmtree:
+    with (
+        patch("server.api.v1.embed.utils_oci.get") as mock_oci_get,
+        patch("server.api.v1.embed.utils_embed.get_temp_directory") as mock_get_temp,
+        patch("server.api.v1.embed.utils_embed.load_and_split_documents") as mock_load_split,
+        patch("server.api.v1.embed.utils_models.get_client_embed") as mock_get_embed,
+        patch("server.api.v1.embed.functions.get_vs_table") as mock_get_vs_table,
+        patch("server.api.v1.embed.utils_embed.populate_vs") as mock_populate,
+        patch("server.api.v1.embed.utils_databases.get_client_database") as mock_get_db,
+        patch("shutil.rmtree") as mock_rmtree,
+    ):
         yield {
             "oci_get": mock_oci_get,
             "get_temp": mock_get_temp,
@@ -50,15 +51,17 @@ def split_embed_mocks():
 @pytest.fixture
 def refresh_vector_store_mocks():
     """Fixture providing bundled mocks for refresh_vector_store tests."""
-    with patch("server.api.v1.embed.utils_oci.get") as mock_oci_get, \
-         patch("server.api.v1.embed.utils_databases.get_client_database") as mock_get_db, \
-         patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias") as mock_get_vs, \
-         patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata") as mock_get_objects, \
-         patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata") as mock_get_processed, \
-         patch("server.api.v1.embed.utils_oci.detect_changed_objects") as mock_detect_changed, \
-         patch("server.api.v1.embed.utils_embed.get_total_chunks_count") as mock_get_chunks, \
-         patch("server.api.v1.embed.utils_models.get_client_embed") as mock_get_embed, \
-         patch("server.api.v1.embed.utils_embed.refresh_vector_store_from_bucket") as mock_refresh:
+    with (
+        patch("server.api.v1.embed.utils_oci.get") as mock_oci_get,
+        patch("server.api.v1.embed.utils_databases.get_client_database") as mock_get_db,
+        patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias") as mock_get_vs,
+        patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata") as mock_get_objects,
+        patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata") as mock_get_processed,
+        patch("server.api.v1.embed.utils_oci.detect_changed_objects") as mock_detect_changed,
+        patch("server.api.v1.embed.utils_embed.get_total_chunks_count") as mock_get_chunks,
+        patch("server.api.v1.embed.utils_models.get_client_embed") as mock_get_embed,
+        patch("server.api.v1.embed.utils_embed.refresh_vector_store_from_bucket") as mock_refresh,
+    ):
         yield {
             "oci_get": mock_oci_get,
             "get_db": mock_get_db,
@@ -340,6 +343,7 @@ class TestStoreWebFile:
 
         assert result.status_code == 200
 
+
 class TestStoreLocalFile:
     """Tests for the store_local_file endpoint."""
 
@@ -434,9 +438,7 @@ class TestSplitEmbed:
         assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_split_embed_success(
-        self, split_embed_mocks, tmp_path, make_oci_config, make_database
-    ):
+    async def test_split_embed_success(self, split_embed_mocks, tmp_path, make_oci_config, make_database):
         """split_embed should process files and populate vector store."""
         mocks = split_embed_mocks
         mocks["oci_get"].return_value = make_oci_config()
@@ -529,9 +531,7 @@ class TestSplitEmbed:
         assert "Unexpected error occurred" in exc_info.value.detail
 
     @pytest.mark.asyncio
-    async def test_split_embed_loads_file_metadata(
-        self, split_embed_mocks, tmp_path, make_oci_config, make_database
-    ):
+    async def test_split_embed_loads_file_metadata(self, split_embed_mocks, tmp_path, make_oci_config, make_database):
         """split_embed should load file metadata when available."""
         mocks = split_embed_mocks
         mocks["oci_get"].return_value = make_oci_config()

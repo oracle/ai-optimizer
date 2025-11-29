@@ -3,146 +3,18 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Unit tests for SQL validation functions in common.functions
+Unit tests for client-side SQL validation integration
+
+Note: Tests for common.functions.is_sql_accessible have been migrated to
+test/unit/common/test_functions.py. This file contains only client-side tests
+for FileSourceData and UI error display logic.
 """
 # spell-checker: disable
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 import pytest
-import oracledb
 
 from common import functions
-
-
-class TestIsSQLAccessible:
-    """Tests for the is_sql_accessible function"""
-
-    def test_valid_sql_connection_and_query(self):
-        """Test that a valid SQL connection and query returns (True, '')"""
-        # Mock the oracledb connection and cursor
-        mock_cursor = Mock()
-        mock_cursor.description = [Mock(type=oracledb.DB_TYPE_VARCHAR)]
-        mock_cursor.fetchmany.return_value = [("row1",), ("row2",), ("row3",)]
-
-        mock_connection = Mock()
-        mock_connection.__enter__ = Mock(return_value=mock_connection)
-        mock_connection.__exit__ = Mock(return_value=None)
-        mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
-        mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-
-        with patch("oracledb.connect", return_value=mock_connection):
-            ok, msg = functions.is_sql_accessible("testuser/testpass@testdsn", "SELECT text FROM documents")
-
-        assert ok is True, "Expected SQL validation to succeed with valid connection and query"
-        assert msg == "", f"Expected no error message, got: {msg}"
-
-    def test_invalid_connection_string_format(self):
-        """Test that an invalid connection string format returns (False, error_msg)"""
-        ok, msg = functions.is_sql_accessible("invalid_connection_string", "SELECT * FROM table")
-
-        assert ok is False, "Expected SQL validation to fail with invalid connection string"
-        # The function logs "Wrong connection string" but returns the connection error
-        assert msg != "", "Expected an error message, got empty string"
-        # Either the ValueError message or the connection error should be present
-        assert "connection error" in msg.lower() or "Wrong connection string" in msg, \
-            f"Expected connection error or 'Wrong connection string' in error, got: {msg}"
-
-    def test_empty_result_set(self):
-        """Test that a query returning no rows returns (False, error_msg)"""
-        mock_cursor = Mock()
-        mock_cursor.description = [Mock(type=oracledb.DB_TYPE_VARCHAR)]
-        mock_cursor.fetchmany.return_value = []  # Empty result set
-
-        mock_connection = Mock()
-        mock_connection.__enter__ = Mock(return_value=mock_connection)
-        mock_connection.__exit__ = Mock(return_value=None)
-        mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
-        mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-
-        with patch("oracledb.connect", return_value=mock_connection):
-            ok, msg = functions.is_sql_accessible("testuser/testpass@testdsn", "SELECT text FROM empty_table")
-
-        assert ok is False, "Expected SQL validation to fail with empty result set"
-        assert "empty table" in msg, f"Expected 'empty table' in error, got: {msg}"
-
-    def test_multiple_columns_returned(self):
-        """Test that a query returning multiple columns returns (False, error_msg)"""
-        mock_cursor = Mock()
-        mock_cursor.description = [
-            Mock(type=oracledb.DB_TYPE_VARCHAR),
-            Mock(type=oracledb.DB_TYPE_VARCHAR),
-        ]
-        mock_cursor.fetchmany.return_value = [("col1", "col2")]
-
-        mock_connection = Mock()
-        mock_connection.__enter__ = Mock(return_value=mock_connection)
-        mock_connection.__exit__ = Mock(return_value=None)
-        mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
-        mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-
-        with patch("oracledb.connect", return_value=mock_connection):
-            ok, msg = functions.is_sql_accessible("testuser/testpass@testdsn", "SELECT col1, col2 FROM table")
-
-        assert ok is False, "Expected SQL validation to fail with multiple columns"
-        assert "2 columns" in msg, f"Expected '2 columns' in error, got: {msg}"
-
-    def test_invalid_column_type(self):
-        """Test that a query returning non-VARCHAR column returns (False, error_msg)"""
-        mock_cursor = Mock()
-        mock_cursor.description = [Mock(type=oracledb.DB_TYPE_NUMBER)]
-        mock_cursor.fetchmany.return_value = [(123,)]
-
-        mock_connection = Mock()
-        mock_connection.__enter__ = Mock(return_value=mock_connection)
-        mock_connection.__exit__ = Mock(return_value=None)
-        mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
-        mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-
-        with patch("oracledb.connect", return_value=mock_connection):
-            ok, msg = functions.is_sql_accessible("testuser/testpass@testdsn", "SELECT id FROM table")
-
-        assert ok is False, "Expected SQL validation to fail with non-VARCHAR column type"
-        assert "VARCHAR" in msg, f"Expected 'VARCHAR' in error, got: {msg}"
-
-    def test_database_connection_error(self):
-        """Test that a database connection error returns (False, error_msg)"""
-        with patch("oracledb.connect", side_effect=oracledb.Error("Connection failed")):
-            ok, msg = functions.is_sql_accessible("testuser/testpass@testdsn", "SELECT text FROM table")
-
-        assert ok is False, "Expected SQL validation to fail with connection error"
-        assert "connection error" in msg.lower(), f"Expected 'connection error' in message, got: {msg}"
-
-    def test_empty_connection_string(self):
-        """Test that empty connection string returns (False, '')"""
-        ok, msg = functions.is_sql_accessible("", "SELECT * FROM table")
-
-        assert ok is False, "Expected SQL validation to fail with empty connection string"
-        assert msg == "", f"Expected empty error message, got: {msg}"
-
-    def test_empty_query(self):
-        """Test that empty query returns (False, '')"""
-        ok, msg = functions.is_sql_accessible("testuser/testpass@testdsn", "")
-
-        assert ok is False, "Expected SQL validation to fail with empty query"
-        assert msg == "", f"Expected empty error message, got: {msg}"
-
-    def test_nvarchar_column_type_accepted(self):
-        """Test that NVARCHAR column type is accepted as valid"""
-        mock_cursor = Mock()
-        mock_cursor.description = [Mock(type=oracledb.DB_TYPE_NVARCHAR)]
-        mock_cursor.fetchmany.return_value = [("text1",), ("text2",)]
-
-        mock_connection = Mock()
-        mock_connection.__enter__ = Mock(return_value=mock_connection)
-        mock_connection.__exit__ = Mock(return_value=None)
-        mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
-        mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-
-        with patch("oracledb.connect", return_value=mock_connection):
-            ok, msg = functions.is_sql_accessible("testuser/testpass@testdsn", "SELECT ntext FROM table")
-
-        assert ok is True, "Expected SQL validation to succeed with NVARCHAR column type"
-        assert msg == "", f"Expected no error message, got: {msg}"
 
 
 class TestFileSourceDataSQLValidation:
