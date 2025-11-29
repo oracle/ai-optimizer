@@ -8,11 +8,14 @@ Tests for OCI utility functions.
 
 # pylint: disable=too-few-public-methods
 
+import base64
+import json
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import pytest
 import oci
+import pytest
+from urllib3.exceptions import MaxRetryError
 
 from server.api.utils import oci as utils_oci
 from server.api.utils.oci import OciException
@@ -624,9 +627,6 @@ class TestInitClientOkeWorkloadIdentityTenancy:
     @patch("server.api.utils.oci.oci.object_storage.ObjectStorageClient")
     def test_init_client_oke_workload_extracts_tenancy(self, mock_client_class, mock_get_signer, make_oci_config):
         """init_client should extract tenancy from OKE workload identity token."""
-        import base64
-        import json
-
         # Create a mock JWT token with tenant claim
         payload = {"tenant": "ocid1.tenancy.oc1..test"}
         payload_json = json.dumps(payload)
@@ -710,15 +710,13 @@ class TestGetGenaiModelsExceptionHandling:
         result = utils_oci.get_genai_models(config, regional=True)
 
         # Should return empty list instead of raising
-        assert result == []
+        assert not result
 
     @patch("server.api.utils.oci.init_client")
     def test_get_genai_models_handles_request_exception(self, mock_init_client, make_oci_config):
         """get_genai_models should handle RequestException gracefully."""
-        import urllib3.exceptions
-
         mock_client = MagicMock()
-        mock_client.list_models.side_effect = urllib3.exceptions.MaxRetryError(None, "url")
+        mock_client.list_models.side_effect = MaxRetryError(None, "url")
         mock_init_client.return_value = mock_client
 
         config = make_oci_config(genai_region="us-chicago-1")
@@ -727,7 +725,7 @@ class TestGetGenaiModelsExceptionHandling:
         result = utils_oci.get_genai_models(config, regional=True)
 
         # Should return empty list instead of raising
-        assert result == []
+        assert not result
 
     @patch("server.api.utils.oci.init_client")
     def test_get_genai_models_excludes_deprecated(self, mock_init_client, make_oci_config):
@@ -783,7 +781,7 @@ class TestGetBucketObjectsWithMetadataServiceError:
 
         result = utils_oci.get_bucket_objects_with_metadata("nonexistent-bucket", config)
 
-        assert result == []
+        assert not result
 
 
 class TestGetClientDerivedAuthProfileNoMatch:

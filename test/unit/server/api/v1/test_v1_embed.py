@@ -47,6 +47,31 @@ def split_embed_mocks():
         }
 
 
+@pytest.fixture
+def refresh_vector_store_mocks():
+    """Fixture providing bundled mocks for refresh_vector_store tests."""
+    with patch("server.api.v1.embed.utils_oci.get") as mock_oci_get, \
+         patch("server.api.v1.embed.utils_databases.get_client_database") as mock_get_db, \
+         patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias") as mock_get_vs, \
+         patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata") as mock_get_objects, \
+         patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata") as mock_get_processed, \
+         patch("server.api.v1.embed.utils_oci.detect_changed_objects") as mock_detect_changed, \
+         patch("server.api.v1.embed.utils_embed.get_total_chunks_count") as mock_get_chunks, \
+         patch("server.api.v1.embed.utils_models.get_client_embed") as mock_get_embed, \
+         patch("server.api.v1.embed.utils_embed.refresh_vector_store_from_bucket") as mock_refresh:
+        yield {
+            "oci_get": mock_oci_get,
+            "get_db": mock_get_db,
+            "get_vs": mock_get_vs,
+            "get_objects": mock_get_objects,
+            "get_processed": mock_get_processed,
+            "detect_changed": mock_detect_changed,
+            "get_chunks": mock_get_chunks,
+            "get_embed": mock_get_embed,
+            "refresh": mock_refresh,
+        }
+
+
 class TestExtractProviderErrorMessage:
     """Tests for the _extract_provider_error_message helper function."""
 
@@ -622,34 +647,22 @@ class TestRefreshVectorStore:
         assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio
-    @patch("server.api.v1.embed.utils_oci.get")
-    @patch("server.api.v1.embed.utils_databases.get_client_database")
-    @patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias")
-    @patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata")
-    @patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata")
-    @patch("server.api.v1.embed.utils_oci.detect_changed_objects")
-    @patch("server.api.v1.embed.utils_embed.get_total_chunks_count")
     async def test_refresh_vector_store_no_changes(
         self,
-        mock_get_chunks,
-        mock_detect_changed,
-        mock_get_processed,
-        mock_get_objects,
-        mock_get_vs,
-        mock_get_db,
-        mock_oci_get,
+        refresh_vector_store_mocks,
         make_oci_config,
         make_database,
         make_vector_store,
     ):
         """refresh_vector_store should return success when no changes detected."""
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_db.return_value = make_database()
-        mock_get_vs.return_value = make_vector_store()
-        mock_get_objects.return_value = [{"name": "file.pdf", "etag": "abc123"}]
-        mock_get_processed.return_value = {"file.pdf": {"etag": "abc123"}}
-        mock_detect_changed.return_value = ([], [])  # No new, no modified
-        mock_get_chunks.return_value = 100
+        mocks = refresh_vector_store_mocks
+        mocks["oci_get"].return_value = make_oci_config()
+        mocks["get_db"].return_value = make_database()
+        mocks["get_vs"].return_value = make_vector_store()
+        mocks["get_objects"].return_value = [{"name": "file.pdf", "etag": "abc123"}]
+        mocks["get_processed"].return_value = {"file.pdf": {"etag": "abc123"}}
+        mocks["detect_changed"].return_value = ([], [])  # No new, no modified
+        mocks["get_chunks"].return_value = 100
 
         request = VectorStoreRefreshRequest(vector_store_alias="test_alias", bucket_name="test-bucket")
 
@@ -661,46 +674,30 @@ class TestRefreshVectorStore:
         assert body["total_chunks_in_store"] == 100
 
     @pytest.mark.asyncio
-    @patch("server.api.v1.embed.utils_oci.get")
-    @patch("server.api.v1.embed.utils_databases.get_client_database")
-    @patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias")
-    @patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata")
-    @patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata")
-    @patch("server.api.v1.embed.utils_oci.detect_changed_objects")
-    @patch("server.api.v1.embed.utils_models.get_client_embed")
-    @patch("server.api.v1.embed.utils_embed.refresh_vector_store_from_bucket")
-    @patch("server.api.v1.embed.utils_embed.get_total_chunks_count")
     async def test_refresh_vector_store_with_changes(
         self,
-        mock_get_chunks,
-        mock_refresh,
-        mock_get_embed,
-        mock_detect_changed,
-        mock_get_processed,
-        mock_get_objects,
-        mock_get_vs,
-        mock_get_db,
-        mock_oci_get,
+        refresh_vector_store_mocks,
         make_oci_config,
         make_database,
         make_vector_store,
     ):
         """refresh_vector_store should process changed files."""
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_db.return_value = make_database()
-        mock_get_vs.return_value = make_vector_store(model="text-embedding-3-small")
-        mock_get_objects.return_value = [
+        mocks = refresh_vector_store_mocks
+        mocks["oci_get"].return_value = make_oci_config()
+        mocks["get_db"].return_value = make_database()
+        mocks["get_vs"].return_value = make_vector_store(model="text-embedding-3-small")
+        mocks["get_objects"].return_value = [
             {"name": "new_file.pdf", "etag": "new123"},
             {"name": "modified.pdf", "etag": "mod456"},
         ]
-        mock_get_processed.return_value = {"modified.pdf": {"etag": "old_etag"}}
-        mock_detect_changed.return_value = (
+        mocks["get_processed"].return_value = {"modified.pdf": {"etag": "old_etag"}}
+        mocks["detect_changed"].return_value = (
             [{"name": "new_file.pdf", "etag": "new123"}],  # new
             [{"name": "modified.pdf", "etag": "mod456"}],  # modified
         )
-        mock_get_embed.return_value = MagicMock()
-        mock_refresh.return_value = {"message": "Processed 2 files", "processed_files": 2, "total_chunks": 50}
-        mock_get_chunks.return_value = 150
+        mocks["get_embed"].return_value = MagicMock()
+        mocks["refresh"].return_value = {"message": "Processed 2 files", "processed_files": 2, "total_chunks": 50}
+        mocks["get_chunks"].return_value = 150
 
         request = VectorStoreRefreshRequest(vector_store_alias="test_alias", bucket_name="test-bucket")
 
@@ -712,37 +709,25 @@ class TestRefreshVectorStore:
         assert body["new_files"] == 1
         assert body["updated_files"] == 1
         assert body["total_chunks_in_store"] == 150
-        mock_refresh.assert_called_once()
+        mocks["refresh"].assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("server.api.v1.embed.utils_oci.get")
-    @patch("server.api.v1.embed.utils_databases.get_client_database")
-    @patch("server.api.v1.embed.utils_embed.get_vector_store_by_alias")
-    @patch("server.api.v1.embed.utils_oci.get_bucket_objects_with_metadata")
-    @patch("server.api.v1.embed.utils_embed.get_processed_objects_metadata")
-    @patch("server.api.v1.embed.utils_oci.detect_changed_objects")
-    @patch("server.api.v1.embed.utils_models.get_client_embed")
     async def test_refresh_vector_store_raises_500_on_generic_exception(
         self,
-        mock_get_embed,
-        mock_detect_changed,
-        mock_get_processed,
-        mock_get_objects,
-        mock_get_vs,
-        mock_get_db,
-        mock_oci_get,
+        refresh_vector_store_mocks,
         make_oci_config,
         make_database,
         make_vector_store,
     ):
         """refresh_vector_store should raise 500 on generic Exception."""
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_db.return_value = make_database()
-        mock_get_vs.return_value = make_vector_store()
-        mock_get_objects.return_value = [{"name": "file.pdf", "etag": "abc123"}]
-        mock_get_processed.return_value = {}
-        mock_detect_changed.return_value = ([{"name": "file.pdf"}], [])
-        mock_get_embed.side_effect = RuntimeError("Embedding service unavailable")
+        mocks = refresh_vector_store_mocks
+        mocks["oci_get"].return_value = make_oci_config()
+        mocks["get_db"].return_value = make_database()
+        mocks["get_vs"].return_value = make_vector_store()
+        mocks["get_objects"].return_value = [{"name": "file.pdf", "etag": "abc123"}]
+        mocks["get_processed"].return_value = {}
+        mocks["detect_changed"].return_value = ([{"name": "file.pdf"}], [])
+        mocks["get_embed"].side_effect = RuntimeError("Embedding service unavailable")
 
         request = VectorStoreRefreshRequest(vector_store_alias="test_alias", bucket_name="test-bucket")
 

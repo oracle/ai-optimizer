@@ -8,10 +8,10 @@ Tests for MCP (Model Context Protocol) endpoints.
 
 # pylint: disable=too-few-public-methods
 
-from unittest.mock import patch, MagicMock, AsyncMock
-import pytest
-
 from test.shared_fixtures import TEST_API_KEY
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from server.api.v1 import mcp
 

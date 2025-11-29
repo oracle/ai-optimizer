@@ -6,11 +6,11 @@ Unit tests for server/api/utils/mcp.py
 Tests for MCP utility functions.
 """
 
-from unittest.mock import patch, MagicMock, AsyncMock
 import os
-import pytest
-
 from test.shared_fixtures import TEST_API_KEY, TEST_API_KEY_ALT
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from server.api.utils import mcp
 
