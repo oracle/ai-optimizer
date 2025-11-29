@@ -269,3 +269,138 @@ class TestModelsDelete:
 
         assert response.status_code == 200
         assert "deleted" in response.json()["message"].lower()
+
+    def test_models_delete_nonexistent_succeeds(self, client, auth_headers):
+        """DELETE /v1/models/{provider}/{id} should succeed for non-existent model."""
+        response = client.delete(
+            "/v1/models/test_provider/nonexistent_model",
+            headers=auth_headers["valid_auth"],
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"message": "Model: test_provider/nonexistent_model deleted."}
+
+
+class TestModelsValidation:
+    """Integration tests for model validation and edge cases."""
+
+    def test_models_list_invalid_type_returns_422(self, client, auth_headers):
+        """GET /v1/models?model_type=invalid should return 422 validation error."""
+        response = client.get("/v1/models?model_type=invalid", headers=auth_headers["valid_auth"])
+        assert response.status_code == 422
+
+    def test_models_supported_invalid_provider_returns_empty(self, client, auth_headers):
+        """GET /v1/models/supported?model_provider=invalid returns empty list."""
+        response = client.get(
+            "/v1/models/supported?model_provider=invalid_provider",
+            headers=auth_headers["valid_auth"],
+        )
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_models_update_max_chunk_size(self, client, auth_headers, model_objects_manager):
+        """Test updating max_chunk_size for embedding models (regression test)."""
+        # pylint: disable=unused-argument
+        # Create an embedding model with default max_chunk_size
+        payload = {
+            "id": "test-embed-chunk-size",
+            "enabled": False,
+            "type": "embed",
+            "provider": "test_provider",
+            "api_base": "http://127.0.0.1:11434",
+            "max_chunk_size": 8192,
+        }
+
+        # Create the model
+        response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
+        assert response.status_code == 201
+        assert response.json()["max_chunk_size"] == 8192
+
+        # Update the max_chunk_size to 512
+        payload["max_chunk_size"] = 512
+        response = client.patch(
+            f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"], json=payload
+        )
+        assert response.status_code == 200
+        assert response.json()["max_chunk_size"] == 512
+
+        # Verify the update persists by fetching the model again
+        response = client.get(f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"])
+        assert response.status_code == 200
+        assert response.json()["max_chunk_size"] == 512
+
+        # Update to a different value to ensure it's not cached
+        payload["max_chunk_size"] = 1024
+        response = client.patch(
+            f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"], json=payload
+        )
+        assert response.status_code == 200
+        assert response.json()["max_chunk_size"] == 1024
+
+        # Verify again
+        response = client.get(f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"])
+        assert response.status_code == 200
+        assert response.json()["max_chunk_size"] == 1024
+
+        # Clean up
+        client.delete(f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"])
+
+    def test_models_response_schema_validation(self, client, auth_headers):
+        """Test response schema validation for models list."""
+        response = client.get("/v1/models", headers=auth_headers["valid_auth"])
+        assert response.status_code == 200
+        models = response.json()
+        assert isinstance(models, list)
+
+        for model in models:
+            # Validate required fields
+            assert "id" in model
+            assert "type" in model
+            assert "provider" in model
+            assert "enabled" in model
+            assert "object" in model
+            assert "created" in model
+            assert "owned_by" in model
+
+            # Validate field types
+            assert isinstance(model["id"], str)
+            assert model["type"] in ["ll", "embed", "rerank"]
+            assert isinstance(model["provider"], str)
+            assert isinstance(model["enabled"], bool)
+            assert model["object"] == "model"
+            assert isinstance(model["created"], int)
+            assert model["owned_by"] == "aioptimizer"
+
+    def test_models_create_response_validation(self, client, auth_headers, model_objects_manager):
+        """Test model creation response validation."""
+        # pylint: disable=unused-argument
+        payload = {
+            "id": "test-response-validation-model",
+            "enabled": False,
+            "type": "ll",
+            "provider": "test_provider",
+            "api_key": "test-key",
+            "api_base": "https://api.test.com/v1",
+            "max_input_tokens": 4096,
+            "temperature": 0.7,
+        }
+
+        response = client.post("/v1/models", headers=auth_headers["valid_auth"], json=payload)
+        if response.status_code == 201:
+            created_model = response.json()
+
+            # Validate all payload fields are in response
+            for key, value in payload.items():
+                assert key in created_model
+                assert created_model[key] == value
+
+            # Validate additional required fields are added
+            assert "object" in created_model
+            assert "created" in created_model
+            assert "owned_by" in created_model
+            assert created_model["object"] == "model"
+            assert created_model["owned_by"] == "aioptimizer"
+            assert isinstance(created_model["created"], int)
+
+            # Clean up
+            client.delete(f"/v1/models/{payload['provider']}/{payload['id']}", headers=auth_headers["valid_auth"])

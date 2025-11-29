@@ -15,6 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 from server.api.v1 import databases
+from server.api.utils import databases as utils_databases
 
 
 class TestDatabasesList:
@@ -142,13 +143,15 @@ class TestDatabasesUpdate:
     @pytest.mark.asyncio
     @patch("server.api.v1.databases.utils_databases.get_databases")
     @patch("server.api.v1.databases.utils_databases.connect")
-    async def test_databases_update_raises_400_on_value_error(
+    async def test_databases_update_raises_400_on_db_exception(
         self, mock_connect, mock_get_databases, make_database, make_database_auth
     ):
-        """databases_update should raise 400 on ValueError during connect."""
+        """databases_update should raise 400 on DbException with status 400 during connect."""
         existing_db = make_database(name="TEST_DB")
         mock_get_databases.return_value = existing_db
-        mock_connect.side_effect = ValueError("Invalid parameters")
+        mock_connect.side_effect = utils_databases.DbException(
+            status_code=400, detail="Missing connection details"
+        )
 
         payload = make_database_auth()
 
@@ -156,11 +159,12 @@ class TestDatabasesUpdate:
             await databases.databases_update(name="TEST_DB", payload=payload)
 
         assert exc_info.value.status_code == 400
+        assert "Missing connection details" in exc_info.value.detail
 
         # Verify get_databases was called to retrieve the target database
         mock_get_databases.assert_called_once_with(db_name="TEST_DB", validate=False)
 
-        # Verify connect was called with the payload
+        # Verify connect was called with the test config
         mock_connect.assert_called_once()
         connect_arg = mock_connect.call_args[0][0]
         assert connect_arg.user == payload.user

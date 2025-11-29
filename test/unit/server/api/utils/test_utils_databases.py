@@ -164,14 +164,15 @@ class TestConnect:
         assert result.is_healthy()
         result.close()
 
-    def test_connect_raises_value_error_missing_details(self, make_database):
-        """connect should raise ValueError if connection details missing."""
+    def test_connect_raises_db_exception_missing_details(self, make_database):
+        """connect should raise DbException if connection details missing."""
         config = make_database(user=None, password=None, dsn=None)
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(DbException) as exc_info:
             utils_databases.connect(config)
 
-        assert "missing connection details" in str(exc_info.value)
+        assert exc_info.value.status_code == 400
+        assert "missing connection details" in str(exc_info.value.detail)
 
     def test_connect_raises_permission_error_invalid_credentials(self, db_container, make_database):
         """connect should raise PermissionError on invalid credentials (real database)."""

@@ -1,6 +1,11 @@
 """
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+Integration tests for server/api/v1/mcp_prompts.py
+
+Tests the MCP prompts endpoints through the full API stack.
+These endpoints require authentication.
 """
 # spell-checker: disable
 # pylint: disable=protected-access,import-error,import-outside-toplevel

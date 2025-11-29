@@ -185,6 +185,9 @@ def get_namespace(config: OracleCloudSettings) -> str:
         client = init_client(client_type, config)
         config.namespace = client.get_namespace().data
         logger.info("OCI: Namespace = %s", config.namespace)
+    except OciException:
+        # Re-raise OciException from init_client without wrapping
+        raise
     except oci.exceptions.InvalidConfig as ex:
         raise OciException(status_code=400, detail="Invalid Config") from ex
     except oci.exceptions.ServiceError as ex:

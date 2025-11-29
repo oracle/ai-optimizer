@@ -26,6 +26,8 @@ from test.shared_fixtures import (
     TEST_AUTH_TOKEN,
 )
 
+import numpy as np
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -63,6 +65,20 @@ def auth_headers():
         "no_auth": {},
         "invalid_auth": {"Authorization": "Bearer invalid-token", "client": TEST_CONFIG["client"]},
         "valid_auth": {"Authorization": f"Bearer {TEST_CONFIG['auth_token']}", "client": TEST_CONFIG["client"]},
+    }
+
+
+@pytest.fixture
+def test_client_auth_headers(test_client_settings):
+    """Auth headers using test_client for endpoints that require client settings.
+
+    Use this fixture for endpoints that look up client settings via the client header.
+    It ensures the test_client exists in SETTINGS_OBJECTS before returning headers.
+    """
+    return {
+        "no_auth": {},
+        "invalid_auth": {"Authorization": "Bearer invalid-token", "client": test_client_settings},
+        "valid_auth": {"Authorization": f"Bearer {TEST_CONFIG['auth_token']}", "client": test_client_settings},
     }
 
 
@@ -129,6 +145,20 @@ def sample_settings_payload():
     }
 
 
+@pytest.fixture
+def mock_embedding_model():
+    """Provides a mock embedding model for testing.
+
+    Returns a function that simulates embedding generation by returning random vectors.
+    """
+
+    def mock_embed_documents(texts: list[str]) -> list[list[float]]:
+        """Mock function that returns random embeddings for testing"""
+        return [np.random.rand(384).tolist() for _ in texts]  # 384 is a common embedding dimension
+
+    return mock_embed_documents
+
+
 #################################################
 # State Management Helpers
 #################################################
@@ -143,6 +173,28 @@ def db_objects_manager():
     yield DATABASE_OBJECTS
     DATABASE_OBJECTS.clear()
     DATABASE_OBJECTS.extend(original_db_objects)
+
+
+@pytest.fixture
+def test_client_settings(settings_objects_manager):
+    """Ensure test_client exists in SETTINGS_OBJECTS for integration tests.
+
+    Many endpoints use the client header to look up client settings.
+    This fixture adds a test_client to SETTINGS_OBJECTS if not present.
+    """
+    # Import here to avoid circular imports
+    from common.schema import Settings  # pylint: disable=import-outside-toplevel
+
+    # Check if test_client already exists
+    existing = next((s for s in settings_objects_manager if s.client == "test_client"), None)
+    if not existing:
+        # Create test_client settings based on default
+        default = next((s for s in settings_objects_manager if s.client == "default"), None)
+        if default:
+            test_settings = Settings(**default.model_dump())
+            test_settings.client = "test_client"
+            settings_objects_manager.append(test_settings)
+    return "test_client"
 
 
 @pytest.fixture

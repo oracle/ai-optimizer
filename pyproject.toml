@@ -70,6 +70,7 @@ test = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
+    "types-jsonschema",
     "yamllint"
 ]
 

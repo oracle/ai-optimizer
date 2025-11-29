@@ -305,3 +305,110 @@ class TestSettingsLoadFromJson:
 
         assert response.status_code == 200
         assert "loaded successfully" in response.json()["message"].lower()
+
+
+class TestSettingsAdvanced:
+    """Integration tests for advanced settings operations."""
+
+    def test_settings_update_with_full_payload(self, client, auth_headers, settings_objects_manager):
+        """Test updating settings with a complete Settings payload."""
+        # pylint: disable=unused-argument,import-outside-toplevel
+        from common.schema import (
+            Settings,
+            LargeLanguageSettings,
+            VectorSearchSettings,
+            OciSettings,
+        )
+
+        # First get the current settings
+        response = client.get("/v1/settings", headers=auth_headers["valid_auth"], params={"client": "default"})
+        assert response.status_code == 200
+        old_settings = response.json()
+
+        # Modify some settings
+        updated_settings = Settings(
+            client="default",
+            ll_model=LargeLanguageSettings(model="updated-model", chat_history=False),
+            tools_enabled=["Vector Search"],
+            vector_search=VectorSearchSettings(grade=False, search_type="Similarity", top_k=5),
+            oci=OciSettings(auth_profile="UPDATED"),
+        )
+
+        # Update the settings
+        response = client.patch(
+            "/v1/settings",
+            headers=auth_headers["valid_auth"],
+            json=updated_settings.model_dump(),
+            params={"client": "default"},
+        )
+        assert response.status_code == 200
+        new_settings = response.json()
+
+        # Check old do not match update
+        assert old_settings != new_settings
+
+        # Check that the values were updated
+        assert new_settings["ll_model"]["model"] == "updated-model"
+        assert new_settings["ll_model"]["chat_history"] is False
+        assert new_settings["tools_enabled"] == ["Vector Search"]
+        assert new_settings["vector_search"]["grade"] is False
+        assert new_settings["vector_search"]["top_k"] == 5
+        assert new_settings["oci"]["auth_profile"] == "UPDATED"
+
+    def test_settings_copy_between_clients(self, client, auth_headers, settings_objects_manager):
+        """Test copying settings from one client to another."""
+        # pylint: disable=unused-argument
+        # First modify the default settings to make them different
+        response = client.patch(
+            "/v1/settings",
+            headers=auth_headers["valid_auth"],
+            params={"client": "default"},
+            json={
+                "client": "default",
+                "ll_model": {"model": "copy-test-model", "temperature": 0.99},
+            },
+        )
+        assert response.status_code == 200
+
+        # Get the modified default settings
+        response = client.get("/v1/settings", headers=auth_headers["valid_auth"], params={"client": "default"})
+        assert response.status_code == 200
+        default_settings = response.json()
+        assert default_settings["ll_model"]["model"] == "copy-test-model"
+
+        response = client.get("/v1/settings", headers=auth_headers["valid_auth"], params={"client": "server"})
+        assert response.status_code == 200
+        old_server_settings = response.json()
+
+        # Server settings should be different from modified default
+        assert old_server_settings["ll_model"]["model"] != default_settings["ll_model"]["model"]
+
+        # Copy the client settings to the server settings
+        response = client.patch(
+            "/v1/settings",
+            headers=auth_headers["valid_auth"],
+            json=default_settings,
+            params={"client": "server"},
+        )
+        assert response.status_code == 200
+        response = client.get("/v1/settings", headers=auth_headers["valid_auth"], params={"client": "server"})
+        new_server_settings = response.json()
+
+        # After copy, server settings should match default (except client name)
+        del new_server_settings["client"]
+        del default_settings["client"]
+        assert new_server_settings == default_settings
+
+    def test_settings_get_returns_expected_structure(self, client, auth_headers):
+        """Test that settings response has expected structure."""
+        response = client.get("/v1/settings", headers=auth_headers["valid_auth"], params={"client": "default"})
+        assert response.status_code == 200
+        settings = response.json()
+
+        # Verify the response contains the expected structure
+        assert settings["client"] == "default"
+        assert "ll_model" in settings
+        assert "vector_search" in settings
+        assert "oci" in settings
+        assert "database" in settings
+        assert "testbed" in settings
