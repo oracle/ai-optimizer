@@ -5,8 +5,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker: disable
 
-from tests.db_fixtures import TEST_DB_CONFIG
 import pytest
+
+from tests.db_fixtures import TEST_DB_CONFIG
 
 
 #############################################################################

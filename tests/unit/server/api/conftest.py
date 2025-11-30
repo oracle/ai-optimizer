@@ -14,20 +14,18 @@ and helper functions that are needed in this file.
 
 from unittest.mock import MagicMock, AsyncMock
 
-# Import constants needed by fixtures in this file
-from tests.shared_fixtures import (
-    TEST_DB_USER,
-    TEST_DB_PASSWORD,
-    TEST_DB_DSN,
-)
-from tests.db_fixtures import TEST_DB_CONFIG
-
 import pytest
 
 from common.schema import (
     DatabaseAuth,
     DatabaseVectorStorage,
     ChatRequest,
+)
+# Import constants needed by fixtures in this file
+from tests.shared_fixtures import (
+    TEST_DB_USER,
+    TEST_DB_PASSWORD,
+    TEST_DB_DSN,
 )
 
 

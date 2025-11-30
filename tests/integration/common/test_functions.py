@@ -11,11 +11,10 @@ These tests may require network access or database connectivity.
 import os
 import tempfile
 
-from tests.db_fixtures import TEST_DB_CONFIG
-
 import pytest
 
 from common import functions
+from tests.db_fixtures import TEST_DB_CONFIG
 
 
 class TestIsUrlAccessibleIntegration:

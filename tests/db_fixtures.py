@@ -79,7 +79,7 @@ DB_FIXTURE_NAMES = {
 }
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(items):
     """Automatically mark tests using database fixtures with 'db' and 'slow' markers.
 
     This hook inspects each test's fixture requirements and adds markers
@@ -144,7 +144,7 @@ def wait_for_container_ready(
 
 
 @contextmanager
-def temp_sql_setup(temp_dir_path: str = "test/db_startup_temp"):
+def temp_sql_setup(temp_dir_path: str = "tests/db_startup_temp"):
     """Context manager for temporary SQL setup files.
 
     Creates a temporary directory with SQL initialization scripts
@@ -182,7 +182,7 @@ def temp_sql_setup(temp_dir_path: str = "test/db_startup_temp"):
             shutil.rmtree(temp_dir)
 
 
-def create_db_container(temp_dir_name: str = "test/db_startup_temp") -> Generator[Container, None, None]:
+def create_db_container(temp_dir_name: str = "tests/db_startup_temp") -> Generator[Container, None, None]:
     """Create and manage an Oracle database container for testing.
 
     This generator function handles the full lifecycle of a Docker-based

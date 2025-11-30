@@ -10,7 +10,6 @@ Tests for document embedding and vector store endpoints.
 
 from io import BytesIO
 from pathlib import Path
-from test.unit.server.api.conftest import create_mock_aiohttp_session
 from unittest.mock import patch, MagicMock, AsyncMock
 import json
 
@@ -21,6 +20,7 @@ from pydantic import HttpUrl
 from common.schema import DatabaseVectorStorage, VectorStoreRefreshRequest
 from server.api.v1 import embed
 from server.api.utils.databases import DbException
+from tests.unit.server.api.conftest import create_mock_aiohttp_session
 
 
 @pytest.fixture

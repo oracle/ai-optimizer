@@ -5,9 +5,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore configfile fastmcp noauth getpid procs litellm giskard ollama
 # spell-checker:ignore dotenv apiserver laddr
 
-# Patch litellm for Giskard/Ollama issue
-import server.patches.litellm_patch  # pylint: disable=unused-import, wrong-import-order
-
 # Set OS Environment before importing other modules
 # Set OS Environment (Don't move their position to reflect on imports)
 # pylint: disable=wrong-import-position

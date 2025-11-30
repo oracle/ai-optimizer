@@ -15,7 +15,7 @@ from fastapi import HTTPException, UploadFile
 import litellm
 
 from server.api.v1 import testbed
-from common.schema import TestSets, TestSetQA, Evaluation, EvaluationReport
+from common.schema import QASets, QASetData, Evaluation, EvaluationReport
 
 
 class TestTestbedTestsets:
@@ -33,8 +33,8 @@ class TestTestbedTestsets:
         mock_get_db.return_value = mock_db
 
         mock_testsets = [
-            TestSets(tid="TS001", name="Test Set 1", created="2024-01-01"),
-            TestSets(tid="TS002", name="Test Set 2", created="2024-01-02"),
+            QASets(tid="TS001", name="Test Set 1", created="2024-01-01"),
+            QASets(tid="TS002", name="Test Set 2", created="2024-01-02"),
         ]
         mock_get_testsets.return_value = mock_testsets
 
@@ -139,7 +139,7 @@ class TestTestbedTestsetQa:
         mock_db.connection = mock_db_connection
         mock_get_db.return_value = mock_db
 
-        mock_qa = TestSetQA(qa_data=[{"question": "Q1", "answer": "A1"}])
+        mock_qa = QASetData(qa_data=[{"question": "Q1", "answer": "A1"}])
         mock_get_qa.return_value = mock_qa
 
         result = await testbed.testbed_testset_qa(tid="ts001", client="test_client")
@@ -186,7 +186,7 @@ class TestTestbedUpsertTestsets:
         mock_get_db.return_value = mock_db
         mock_jsonl.return_value = [{"question": "Q1", "answer": "A1"}]
         mock_upsert.return_value = "TS001"
-        mock_testset_qa.return_value = TestSetQA(qa_data=[{"question": "Q1"}])
+        mock_testset_qa.return_value = QASetData(qa_data=[{"question": "Q1"}])
 
         mock_file = UploadFile(file=BytesIO(b'{"question": "Q1"}'), filename="test.jsonl")
 
@@ -194,7 +194,7 @@ class TestTestbedUpsertTestsets:
             files=[mock_file], name="Test Set", tid=None, client="test_client"
         )
 
-        assert isinstance(result, TestSetQA)
+        assert isinstance(result, QASetData)
         mock_db_connection.commit.assert_called_once()
 
     @pytest.mark.asyncio

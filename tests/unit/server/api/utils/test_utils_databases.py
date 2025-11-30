@@ -12,8 +12,6 @@ Uses hybrid approach:
 
 # pylint: disable=too-few-public-methods
 
-from tests.db_fixtures import TEST_DB_CONFIG
-from tests.shared_fixtures import TEST_DB_WALLET_PASSWORD
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -22,6 +20,8 @@ import oracledb
 from common.schema import DatabaseSettings
 from server.api.utils import databases as utils_databases
 from server.api.utils.databases import DbException, ExistsDatabaseError, UnknownDatabaseError
+from tests.db_fixtures import TEST_DB_CONFIG
+from tests.shared_fixtures import TEST_DB_WALLET_PASSWORD
 
 
 class TestDbException:

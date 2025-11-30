@@ -13,11 +13,10 @@ and environment variables.
 import os
 from unittest.mock import patch
 
-from tests.shared_fixtures import assert_model_list_valid, get_model_by_id
-
 import pytest
 
 from server.bootstrap import models as models_module
+from tests.shared_fixtures import assert_model_list_valid, get_model_by_id
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_bootstrap_env")

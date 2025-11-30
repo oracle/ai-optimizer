@@ -15,7 +15,7 @@ with the 'unit' marker, enabling selective test execution:
 import pytest
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(items):
     """Automatically add 'unit' marker to all tests in this directory."""
     for item in items:
         # Check if the test is under test/unit/

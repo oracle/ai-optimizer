@@ -18,24 +18,25 @@ Environment Setup:
 
 # pylint: disable=redefined-outer-name
 
-import os
 import asyncio
+import os
 from typing import Generator
 
-# Import constants needed by fixtures and test configuration in this file
-from tests.db_fixtures import TEST_DB_CONFIG
-from tests.shared_fixtures import (
-    DEFAULT_LL_MODEL_CONFIG,
-    TEST_AUTH_TOKEN,
-    ALL_TEST_ENV_VARS,
-)
-
 import numpy as np
-
 import pytest
 from fastapi.testclient import TestClient
 
 from server.bootstrap.bootstrap import DATABASE_OBJECTS, MODEL_OBJECTS, SETTINGS_OBJECTS
+# Import constants and helpers needed by fixtures in this file
+from tests.db_fixtures import TEST_DB_CONFIG
+from tests.shared_fixtures import (
+    DEFAULT_LL_MODEL_CONFIG,
+    TEST_AUTH_TOKEN,
+    make_auth_headers,
+    save_env_state,
+    clear_env_state,
+    restore_env_state,
+)
 
 # Test configuration - extends shared DB config with integration-specific settings
 TEST_CONFIG = {
@@ -61,33 +62,17 @@ def server_test_env():
     The `app` fixture depends on this to ensure environment is configured
     before the FastAPI application is created.
     """
-    # Save original environment state
-    original_env = {var: os.environ.get(var) for var in ALL_TEST_ENV_VARS}
-
-    # Also capture dynamic OCI_ vars
-    dynamic_oci_vars = [v for v in os.environ if v.startswith("OCI_") and v not in ALL_TEST_ENV_VARS]
-    for var in dynamic_oci_vars:
-        original_env[var] = os.environ.get(var)
-
-    # Clear all test-related vars
-    for var in ALL_TEST_ENV_VARS:
-        os.environ.pop(var, None)
-    for var in dynamic_oci_vars:
-        os.environ.pop(var, None)
+    original_env = save_env_state()
+    clear_env_state(original_env)
 
     # Set required environment variables for test server
-    os.environ["CONFIG_FILE"] = "/non/existent/path/config.json"  # Use empty config
-    os.environ["OCI_CLI_CONFIG_FILE"] = "/non/existent/path"  # Prevent OCI config pickup
+    os.environ["CONFIG_FILE"] = "/non/existent/path/config.json"
+    os.environ["OCI_CLI_CONFIG_FILE"] = "/non/existent/path"
     os.environ["API_SERVER_KEY"] = TEST_CONFIG["auth_token"]
 
     yield
 
-    # Restore original environment state
-    for var, value in original_env.items():
-        if value is not None:
-            os.environ[var] = value
-        elif var in os.environ:
-            del os.environ[var]
+    restore_env_state(original_env)
 
 
 #################################################
@@ -96,11 +81,7 @@ def server_test_env():
 @pytest.fixture
 def auth_headers():
     """Return common header configurations for testing."""
-    return {
-        "no_auth": {},
-        "invalid_auth": {"Authorization": "Bearer invalid-token", "client": TEST_CONFIG["client"]},
-        "valid_auth": {"Authorization": f"Bearer {TEST_CONFIG['auth_token']}", "client": TEST_CONFIG["client"]},
-    }
+    return make_auth_headers(TEST_CONFIG["auth_token"], TEST_CONFIG["client"])
 
 
 @pytest.fixture
@@ -110,11 +91,7 @@ def test_client_auth_headers(test_client_settings):
     Use this fixture for endpoints that look up client settings via the client header.
     It ensures the test_client exists in SETTINGS_OBJECTS before returning headers.
     """
-    return {
-        "no_auth": {},
-        "invalid_auth": {"Authorization": "Bearer invalid-token", "client": test_client_settings},
-        "valid_auth": {"Authorization": f"Bearer {TEST_CONFIG['auth_token']}", "client": test_client_settings},
-    }
+    return make_auth_headers(TEST_CONFIG["auth_token"], test_client_settings)
 
 
 #################################################

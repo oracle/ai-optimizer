@@ -516,6 +516,84 @@ def setup_test_env_vars(
 
 
 #################################################
+# Session-scoped Environment Helpers
+#################################################
+# These helpers are for session-scoped fixtures that can't use monkeypatch.
+# They manually save/restore environment state.
+
+
+def save_env_state() -> dict:
+    """Save the current state of test-related environment variables.
+
+    Returns a dict mapping var names to their values (or None if not set).
+    Also captures dynamic OCI_ vars not in our static list.
+
+    Usage:
+        original_env = save_env_state()
+        # ... modify environment ...
+        restore_env_state(original_env)
+    """
+    original_env = {var: os.environ.get(var) for var in ALL_TEST_ENV_VARS}
+
+    # Also capture dynamic OCI_ vars
+    for var in _get_dynamic_oci_vars():
+        original_env[var] = os.environ.get(var)
+
+    return original_env
+
+
+def clear_env_state(original_env: dict) -> None:
+    """Clear all test-related environment variables.
+
+    Clears all vars in ALL_TEST_ENV_VARS plus any dynamic OCI_ vars
+    that were captured in original_env.
+
+    Args:
+        original_env: Dict from save_env_state() (used to get dynamic var names)
+    """
+    for var in ALL_TEST_ENV_VARS:
+        os.environ.pop(var, None)
+
+    # Clear dynamic OCI vars that were in original_env
+    for var in original_env:
+        if var not in ALL_TEST_ENV_VARS:
+            os.environ.pop(var, None)
+
+
+def restore_env_state(original_env: dict) -> None:
+    """Restore environment variables to their original state.
+
+    Args:
+        original_env: Dict from save_env_state()
+    """
+    for var, value in original_env.items():
+        if value is not None:
+            os.environ[var] = value
+        elif var in os.environ:
+            del os.environ[var]
+
+
+def make_auth_headers(auth_token: str, client_id: str) -> dict:
+    """Create standard auth headers dict for testing.
+
+    Returns a dict with 'no_auth', 'invalid_auth', and 'valid_auth' keys,
+    each containing the appropriate headers for that auth scenario.
+
+    Args:
+        auth_token: Valid authentication token
+        client_id: Client identifier for the client header
+
+    Returns:
+        Dict with auth header configurations for testing
+    """
+    return {
+        "no_auth": {},
+        "invalid_auth": {"Authorization": "Bearer invalid-token", "client": client_id},
+        "valid_auth": {"Authorization": f"Bearer {auth_token}", "client": client_id},
+    }
+
+
+#################################################
 # Vector Store Test Data
 #################################################
 

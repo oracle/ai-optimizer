@@ -8,13 +8,13 @@ Tests for web scraping and content extraction utilities.
 
 # pylint: disable=too-few-public-methods
 
-from test.unit.server.api.conftest import create_mock_aiohttp_session
 from unittest.mock import patch, AsyncMock
 
 import pytest
 from bs4 import BeautifulSoup
 
 from server.api.utils import webscrape
+from tests.unit.server.api.conftest import create_mock_aiohttp_session
 
 
 class TestNormalizeWs:

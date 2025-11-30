@@ -18,6 +18,8 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 # Import constants needed by fixtures in this file
 from tests.shared_fixtures import (
     DEFAULT_LL_MODEL_CONFIG,
@@ -27,11 +29,10 @@ from tests.shared_fixtures import (
     TEST_API_KEY_ALT,
 )
 
-import pytest
-
 
 @pytest.fixture
-def clean_bootstrap_env(clean_env):
+@pytest.mark.usefixtures("clean_env")
+def clean_bootstrap_env():
     """Alias for clean_env fixture for backwards compatibility.
 
     This fixture name is used in existing tests. It delegates to the

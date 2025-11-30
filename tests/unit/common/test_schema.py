@@ -40,8 +40,8 @@ from common.schema import (
     # Completions
     ChatRequest,
     # Testbed
-    TestSets,
-    TestSetQA,
+    QASets,
+    QASetData,
     Evaluation,
     EvaluationReport,
     # Types
@@ -549,23 +549,23 @@ class TestChatRequest:
         assert request.model is None
 
 
-class TestTestbedModels:
-    """Tests for Testbed-related models."""
+class TestQAModels:
+    """Tests for QA testbed-related models."""
 
-    def test_test_sets_required_fields(self):
-        """TestSets should require tid, name, and created."""
+    def test_qa_sets_required_fields(self):
+        """QASets should require tid, name, and created."""
         with pytest.raises(ValidationError):
-            TestSets()
+            QASets()
 
-        test_set = TestSets(tid="123", name="Test Set", created="2024-01-01")
-        assert test_set.tid == "123"
+        qa_set = QASets(tid="123", name="Test Set", created="2024-01-01")
+        assert qa_set.tid == "123"
 
-    def test_test_set_qa_required_fields(self):
-        """TestSetQA should require qa_data."""
+    def test_qa_set_data_required_fields(self):
+        """QASetData should require qa_data."""
         with pytest.raises(ValidationError):
-            TestSetQA()
+            QASetData()
 
-        qa = TestSetQA(qa_data=[{"q": "question", "a": "answer"}])
+        qa = QASetData(qa_data=[{"q": "question", "a": "answer"}])
         assert len(qa.qa_data) == 1
 
     def test_evaluation_required_fields(self):

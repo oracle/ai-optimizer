@@ -10,15 +10,14 @@ Tests for database bootstrap functionality.
 
 import os
 
+import pytest
+
+from server.bootstrap import databases as databases_module
 from tests.shared_fixtures import (
     assert_database_list_valid,
     assert_has_default_database,
     get_database_by_name,
 )
-
-import pytest
-
-from server.bootstrap import databases as databases_module
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_env")

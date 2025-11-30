@@ -23,26 +23,28 @@ import time
 import socket
 import subprocess
 from contextlib import contextmanager
-
-# Import constants needed by fixtures and helper functions in this file
-from tests.shared_fixtures import TEST_AUTH_TOKEN, ALL_TEST_ENV_VARS
-from tests.db_fixtures import TEST_DB_CONFIG
+from functools import lru_cache
 
 import pytest
 import requests
 
-# Lazy import to avoid circular imports - stored in module-level variable
-_app_test_class = None
+# Import constants and helpers needed by fixtures in this file
+from tests.db_fixtures import TEST_DB_CONFIG
+from tests.shared_fixtures import (
+    TEST_AUTH_TOKEN,
+    make_auth_headers,
+    save_env_state,
+    clear_env_state,
+    restore_env_state,
+)
 
 
+@lru_cache(maxsize=1)
 def get_app_test():
     """Lazy import of Streamlit's AppTest."""
-    global _app_test_class  # pylint: disable=global-statement
-    if _app_test_class is None:
-        from streamlit.testing.v1 import AppTest  # pylint: disable=import-outside-toplevel
+    from streamlit.testing.v1 import AppTest  # pylint: disable=import-outside-toplevel
 
-        _app_test_class = AppTest
-    return _app_test_class
+    return AppTest
 
 
 #################################################
@@ -68,19 +70,8 @@ def client_test_env():
     The `app_server` fixture depends on this to ensure environment is configured
     before the subprocess server is started.
     """
-    # Save original environment state
-    original_env = {var: os.environ.get(var) for var in ALL_TEST_ENV_VARS}
-
-    # Also capture dynamic OCI_ vars
-    dynamic_oci_vars = [v for v in os.environ if v.startswith("OCI_") and v not in ALL_TEST_ENV_VARS]
-    for var in dynamic_oci_vars:
-        original_env[var] = os.environ.get(var)
-
-    # Clear all test-related vars
-    for var in ALL_TEST_ENV_VARS:
-        os.environ.pop(var, None)
-    for var in dynamic_oci_vars:
-        os.environ.pop(var, None)
+    original_env = save_env_state()
+    clear_env_state(original_env)
 
     # Set required environment variables for client tests
     os.environ["CONFIG_FILE"] = "/non/existent/path/config.json"
@@ -91,12 +82,7 @@ def client_test_env():
 
     yield
 
-    # Restore original environment state
-    for var, value in original_env.items():
-        if value is not None:
-            os.environ[var] = value
-        elif var in os.environ:
-            del os.environ[var]
+    restore_env_state(original_env)
 
 
 #################################################
@@ -107,11 +93,7 @@ def client_test_env():
 @pytest.fixture(name="auth_headers")
 def _auth_headers():
     """Return common header configurations for testing."""
-    return {
-        "no_auth": {},
-        "invalid_auth": {"Authorization": "Bearer invalid-token", "client": TEST_CLIENT},
-        "valid_auth": {"Authorization": f"Bearer {TEST_AUTH_TOKEN}", "client": TEST_CLIENT},
-    }
+    return make_auth_headers(TEST_AUTH_TOKEN, TEST_CLIENT)
 
 
 @pytest.fixture(scope="session")
@@ -140,12 +122,12 @@ def app_server(request, client_test_env):
     server_process = subprocess.Popen(cmd, cwd="src", env=env)  # pylint: disable=consider-using-with
 
     try:
-        # Wait for server to be ready (up to 30 seconds)
-        max_wait = 30
+        # Wait for server to be ready (up to 120 seconds)
+        max_wait = 120
         start_time = time.time()
         while not is_port_in_use(TEST_SERVER_PORT):
             if time.time() - start_time > max_wait:
-                raise TimeoutError("Server failed to start within 30 seconds")
+                raise TimeoutError("Server failed to start within 120 seconds")
             time.sleep(0.5)
 
         yield server_process

@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from common.schema import TestSetQA as QATestSet, Evaluation, EvaluationReport
+from common.schema import QASetData, Evaluation, EvaluationReport
 
 
 class TestAuthentication:
@@ -297,7 +297,7 @@ class TestTestbedWithDatabase:
         # This is a complex operation that requires a model to generate Q&A, so we'll mock this part
         with patch.object(client, "post") as mock_post:
             # Configure the mock to return a successful response
-            mock_qa_data = QATestSet(
+            mock_qa_data = QASetData(
                 qa_data=[
                     {"question": "Generated Q1?", "answer": "Generated A1"},
                     {"question": "Generated Q2?", "answer": "Generated A2"},

@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker: disable
 
-from test.integration.client.conftest import run_page_with_models_enabled
+from tests.integration.client.conftest import run_page_with_models_enabled
 
 
 #############################################################################

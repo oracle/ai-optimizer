@@ -8,7 +8,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import os
 from unittest.mock import MagicMock, patch
 
-from test.integration.client.conftest import temporary_sys_path
+from tests.integration.client.conftest import temporary_sys_path
 
 # Streamlit File
 ST_FILE = "../src/client/content/config/tabs/models.py"

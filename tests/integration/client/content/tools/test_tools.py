@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker: disable
 
-from test.integration.client.conftest import create_tabs_mock, run_streamlit_test
+from tests.integration.client.conftest import create_tabs_mock, run_streamlit_test
 
 
 #############################################################################

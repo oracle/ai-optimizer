@@ -1,13 +1,15 @@
-# pylint: disable=protected-access,import-error,import-outside-toplevel
 """
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
+# pylint: disable=protected-access import-error import-outside-toplevel
 # spell-checker: disable
 
 from unittest.mock import patch
-from test.integration.client.conftest import enable_test_embed_models
+
 import pandas as pd
+
+from tests.integration.client.conftest import enable_test_embed_models
 
 
 #############################################################################
