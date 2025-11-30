@@ -353,3 +353,55 @@ def clean_env():
             os.environ[var] = value
         elif var in os.environ:
             del os.environ[var]
+
+
+#################################################
+# Vector Store Test Data
+#################################################
+
+# Shared vector store test data used across client tests
+SAMPLE_VECTOR_STORE_DATA = {
+    "alias": "test_alias",
+    "model": "openai/text-embed-3",
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "distance_metric": "cosine",
+    "index_type": "IVF",
+    "vector_store": "vs_test",
+}
+
+SAMPLE_VECTOR_STORE_DATA_ALT = {
+    "alias": "alias2",
+    "model": "openai/text-embed-3",
+    "chunk_size": 500,
+    "chunk_overlap": 100,
+    "distance_metric": "euclidean",
+    "index_type": "HNSW",
+    "vector_store": "vs2",
+}
+
+
+@pytest.fixture
+def sample_vector_store_data():
+    """Sample vector store data for testing - standard configuration."""
+    return SAMPLE_VECTOR_STORE_DATA.copy()
+
+
+@pytest.fixture
+def sample_vector_store_data_alt():
+    """Alternative sample vector store data for testing - different configuration."""
+    return SAMPLE_VECTOR_STORE_DATA_ALT.copy()
+
+
+@pytest.fixture
+def sample_vector_stores_list():
+    """List of sample vector stores with different aliases for filtering tests."""
+    vs1 = SAMPLE_VECTOR_STORE_DATA.copy()
+    vs1["alias"] = "vs1"
+    vs1.pop("vector_store", None)
+
+    vs2 = SAMPLE_VECTOR_STORE_DATA_ALT.copy()
+    vs2["alias"] = "vs2"
+    vs2.pop("vector_store", None)
+
+    return [vs1, vs2]

@@ -24,6 +24,11 @@ from test.shared_fixtures import (
     TEST_DB_DSN,
 )
 
+# Import TEST_DB_CONFIG for use in this file
+# Note: db_container, db_connection, db_transaction fixtures are inherited
+# from test/conftest.py - do not re-import here to avoid multiple containers
+from test.db_fixtures import TEST_DB_CONFIG
+
 import pytest
 
 from common.schema import (
