@@ -14,7 +14,7 @@ import tempfile
 import pytest
 
 from common import functions
-from tests.db_fixtures import TEST_DB_CONFIG
+from db_fixtures import TEST_DB_CONFIG
 
 
 class TestIsUrlAccessibleIntegration:

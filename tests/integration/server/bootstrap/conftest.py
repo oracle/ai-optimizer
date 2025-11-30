@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 # Import constants needed by fixtures in this file
-from tests.shared_fixtures import (
+from shared_fixtures import (
     DEFAULT_LL_MODEL_CONFIG,
     TEST_INTEGRATION_DB_USER,
     TEST_INTEGRATION_DB_PASSWORD,

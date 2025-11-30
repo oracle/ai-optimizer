@@ -22,7 +22,7 @@ from common.schema import (
     ChatRequest,
 )
 # Import constants needed by fixtures in this file
-from tests.shared_fixtures import (
+from shared_fixtures import (
     TEST_DB_USER,
     TEST_DB_PASSWORD,
     TEST_DB_DSN,

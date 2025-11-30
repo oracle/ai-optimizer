@@ -20,7 +20,7 @@ from pydantic import HttpUrl
 from common.schema import DatabaseVectorStorage, VectorStoreRefreshRequest
 from server.api.v1 import embed
 from server.api.utils.databases import DbException
-from tests.unit.server.api.conftest import create_mock_aiohttp_session
+from unit.server.api.conftest import create_mock_aiohttp_session
 
 
 @pytest.fixture

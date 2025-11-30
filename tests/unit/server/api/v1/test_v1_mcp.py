@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.api.v1 import mcp
-from tests.shared_fixtures import TEST_API_KEY
+from shared_fixtures import TEST_API_KEY
 
 
 class TestGetMcp:

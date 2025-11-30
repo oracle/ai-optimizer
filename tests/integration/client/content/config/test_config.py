@@ -7,7 +7,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import streamlit as st
 
-from tests.integration.client.conftest import create_tabs_mock, run_streamlit_test
+from integration.client.conftest import create_tabs_mock, run_streamlit_test
 
 
 #############################################################################

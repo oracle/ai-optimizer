@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from tests.integration.client.conftest import enable_test_embed_models
+from integration.client.conftest import enable_test_embed_models
 
 
 #############################################################################

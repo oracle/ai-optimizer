@@ -20,8 +20,8 @@ import oracledb
 from common.schema import DatabaseSettings
 from server.api.utils import databases as utils_databases
 from server.api.utils.databases import DbException, ExistsDatabaseError, UnknownDatabaseError
-from tests.db_fixtures import TEST_DB_CONFIG
-from tests.shared_fixtures import TEST_DB_WALLET_PASSWORD
+from db_fixtures import TEST_DB_CONFIG
+from shared_fixtures import TEST_DB_WALLET_PASSWORD
 
 
 class TestDbException:

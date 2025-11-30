@@ -8,7 +8,7 @@ Tests the database configuration endpoints through the full API stack.
 These endpoints require authentication.
 """
 
-from tests.db_fixtures import TEST_DB_CONFIG
+from db_fixtures import TEST_DB_CONFIG
 
 
 class TestAuthentication:

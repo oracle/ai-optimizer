@@ -29,8 +29,8 @@ import pytest
 import requests
 
 # Import constants and helpers needed by fixtures in this file
-from tests.db_fixtures import TEST_DB_CONFIG
-from tests.shared_fixtures import (
+from db_fixtures import TEST_DB_CONFIG
+from shared_fixtures import (
     TEST_AUTH_TOKEN,
     make_auth_headers,
     save_env_state,

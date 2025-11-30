@@ -14,7 +14,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from server.api.utils import webscrape
-from tests.unit.server.api.conftest import create_mock_aiohttp_session
+from unit.server.api.conftest import create_mock_aiohttp_session
 
 
 class TestNormalizeWs:

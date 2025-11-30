@@ -28,8 +28,8 @@ from fastapi.testclient import TestClient
 
 from server.bootstrap.bootstrap import DATABASE_OBJECTS, MODEL_OBJECTS, SETTINGS_OBJECTS
 # Import constants and helpers needed by fixtures in this file
-from tests.db_fixtures import TEST_DB_CONFIG
-from tests.shared_fixtures import (
+from db_fixtures import TEST_DB_CONFIG
+from shared_fixtures import (
     DEFAULT_LL_MODEL_CONFIG,
     TEST_AUTH_TOKEN,
     make_auth_headers,
