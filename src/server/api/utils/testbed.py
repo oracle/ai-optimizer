@@ -95,14 +95,14 @@ def get_testsets(db_conn: Connection) -> list:
     sql = "SELECT tid, name, to_char(created) FROM oai_testsets ORDER BY created"
     results = utils_databases.execute_sql(db_conn, sql)
     try:
-        testsets = [schema.TestSets(tid=tid.hex(), name=name, created=created) for tid, name, created in results]
+        testsets = [schema.QASets(tid=tid.hex(), name=name, created=created) for tid, name, created in results]
     except TypeError:
         create_testset_objects(db_conn)
 
     return testsets
 
 
-def get_testset_qa(db_conn: Connection, tid: schema.TestSetsIdType) -> schema.TestSetQA:
+def get_testset_qa(db_conn: Connection, tid: schema.QASetsIdType) -> schema.QASetData:
     """Get list of TestSet Q&A"""
     logger.info("Getting TestSet Q&A for TID: %s", tid)
     binds = {"tid": tid}
@@ -110,10 +110,10 @@ def get_testset_qa(db_conn: Connection, tid: schema.TestSetsIdType) -> schema.Te
     results = utils_databases.execute_sql(db_conn, sql, binds)
     qa_data = [qa_data[0] for qa_data in results]
 
-    return schema.TestSetQA(qa_data=qa_data)
+    return schema.QASetData(qa_data=qa_data)
 
 
-def get_evaluations(db_conn: Connection, tid: schema.TestSetsIdType) -> list[schema.Evaluation]:
+def get_evaluations(db_conn: Connection, tid: schema.QASetsIdType) -> list[schema.Evaluation]:
     """Get list of Evaluations for a TID"""
     logger.info("Getting Evaluations for: %s", tid)
     evaluations = []
@@ -133,7 +133,7 @@ def get_evaluations(db_conn: Connection, tid: schema.TestSetsIdType) -> list[sch
 
 def delete_qa(
     db_conn: Connection,
-    tid: schema.TestSetsIdType,
+    tid: schema.QASetsIdType,
 ) -> None:
     """Delete Q&A"""
     binds = {"tid": tid}
@@ -144,11 +144,11 @@ def delete_qa(
 
 def upsert_qa(
     db_conn: Connection,
-    name: schema.TestSetsNameType,
-    created: schema.TestSetDateType,
+    name: schema.QASetsNameType,
+    created: schema.QASetsDateType,
     json_data: json,
-    tid: schema.TestSetsIdType = None,
-) -> schema.TestSetsIdType:
+    tid: schema.QASetsIdType = None,
+) -> schema.QASetsIdType:
     """Upsert Q&A"""
     logger.info("Upsert TestSet: %s - %s", name, created)
     parsed_data = json.loads(json_data)
@@ -270,7 +270,7 @@ def build_knowledge_base(
     return testset
 
 
-def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.EvaluationReport:
+def process_report(db_conn: Connection, eid: schema.QASetsIdType) -> schema.EvaluationReport:
     """Process an evaluate report"""
 
     # Main

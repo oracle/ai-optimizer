@@ -346,18 +346,18 @@ class ChatRequest(LanguageModelParameters):
 #####################################################
 # Testbed
 #####################################################
-class TestSets(BaseModel):
-    """TestSets"""
+class QASets(BaseModel):
+    """QA Sets - Collection of Q&A test sets for testbed evaluation"""
 
     tid: str = Field(description="Test ID")
-    name: str = Field(description="Name of TestSet")
-    created: str = Field(description="Date TestSet Loaded")
+    name: str = Field(description="Name of QA Set")
+    created: str = Field(description="Date QA Set Loaded")
 
 
-class TestSetQA(BaseModel):
-    """TestSet Q&A"""
+class QASetData(BaseModel):
+    """QA Set Data - Question/Answer pairs for testbed evaluation"""
 
-    qa_data: list = Field(description="TestSet Q&A Data")
+    qa_data: list = Field(description="QA Set Data")
 
 
 class Evaluation(BaseModel):
@@ -390,6 +390,6 @@ ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]
 OCIResourceOCID = OracleResource.__annotations__["ocid"]
-TestSetsIdType = TestSets.__annotations__["tid"]
-TestSetsNameType = TestSets.__annotations__["name"]
-TestSetDateType = TestSets.__annotations__["created"]
+QASetsIdType = QASets.__annotations__["tid"]
+QASetsNameType = QASets.__annotations__["name"]
+QASetsDateType = QASets.__annotations__["created"]
