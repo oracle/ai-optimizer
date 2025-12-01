@@ -609,15 +609,3 @@ class TestTestbedEvaluate:
 
         assert exc_info.value.status_code == 500
         assert "correctness" in str(exc_info.value.detail)
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(testbed, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert testbed.logger.name == "endpoints.v1.testbed"

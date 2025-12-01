@@ -594,6 +594,41 @@ def make_auth_headers(auth_token: str, client_id: str) -> dict:
 
 
 #################################################
+# Spring AI Test Helpers
+#################################################
+
+
+def call_spring_ai_obaas_with_mocks(mock_state, template_content, spring_ai_obaas_func):
+    """Call spring_ai_obaas with standard mocking setup.
+
+    This helper encapsulates the common patching pattern for spring_ai_obaas tests,
+    reducing code duplication between unit and integration tests.
+
+    Args:
+        mock_state: The state object to use (mock or real session_state)
+        template_content: The template file content to return from mock open
+        spring_ai_obaas_func: The spring_ai_obaas function to call
+
+    Returns:
+        The result from calling spring_ai_obaas
+    """
+    # pylint: disable=import-outside-toplevel
+    from unittest.mock import patch, mock_open
+
+    with patch("client.content.config.tabs.settings.state", mock_state):
+        with patch("client.content.config.tabs.settings.st_common.state_configs_lookup") as mock_lookup:
+            with patch("builtins.open", mock_open(read_data=template_content)):
+                mock_lookup.return_value = {"DEFAULT": {"user": "test_user"}}
+                return spring_ai_obaas_func(
+                    Path("/test/path"),
+                    "start.sh",
+                    "openai",
+                    {"model": "gpt-4"},
+                    {"model": "text-embedding-ada-002"},
+                )
+
+
+#################################################
 # Vector Store Test Data
 #################################################
 

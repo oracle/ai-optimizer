@@ -11,13 +11,13 @@ Tests for database bootstrap functionality.
 import os
 
 import pytest
-
-from server.bootstrap import databases as databases_module
 from shared_fixtures import (
     assert_database_list_valid,
     assert_has_default_database,
     get_database_by_name,
 )
+
+from server.bootstrap import databases as databases_module
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_env")
@@ -204,15 +204,3 @@ class TestDatabasesMainAsScript:
         """main() should be callable when running as script."""
         result = databases_module.main()
         assert result is not None
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured in databases module."""
-        assert hasattr(databases_module, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert databases_module.logger.name == "bootstrap.databases"

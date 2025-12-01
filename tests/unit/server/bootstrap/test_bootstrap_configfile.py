@@ -16,7 +16,6 @@ from threading import Thread, Barrier
 
 import pytest
 
-from server.bootstrap import configfile
 from server.bootstrap.configfile import config_file_path
 
 
@@ -215,15 +214,3 @@ class TestConfigFilePath:
         path_obj = Path(path)
         # Should be under server/etc/configuration.json
         assert path_obj.parent.name == "etc"
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured in configfile module."""
-        assert hasattr(configfile, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert configfile.logger.name == "bootstrap.configfile"

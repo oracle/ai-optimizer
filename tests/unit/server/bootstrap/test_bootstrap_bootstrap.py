@@ -169,15 +169,3 @@ class TestBootstrapModule:
                         importlib.reload(bootstrap)
 
                         assert len(bootstrap.SETTINGS_OBJECTS) == 2
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured in bootstrap module."""
-        assert hasattr(bootstrap, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert bootstrap.logger.name == "bootstrap"

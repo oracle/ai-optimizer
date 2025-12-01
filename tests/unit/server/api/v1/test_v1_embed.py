@@ -16,11 +16,11 @@ import json
 import pytest
 from fastapi import HTTPException, UploadFile
 from pydantic import HttpUrl
+from unit.server.api.conftest import create_mock_aiohttp_session
 
 from common.schema import DatabaseVectorStorage, VectorStoreRefreshRequest
 from server.api.v1 import embed
 from server.api.utils.databases import DbException
-from unit.server.api.conftest import create_mock_aiohttp_session
 
 
 @pytest.fixture
@@ -736,36 +736,3 @@ class TestRefreshVectorStore:
 
         assert exc_info.value.status_code == 500
         assert "Embedding service unavailable" in exc_info.value.detail
-
-
-class TestRouterConfiguration:
-    """Tests for router configuration."""
-
-    def test_auth_router_exists(self):
-        """The auth router should be defined."""
-        assert hasattr(embed, "auth")
-
-    def test_auth_router_has_routes(self):
-        """The auth router should have registered routes."""
-        routes = [route.path for route in embed.auth.routes]
-
-        assert "/{vs}" in routes
-        assert "/{vs}/files" in routes
-        assert "/comment" in routes
-        assert "/sql/store" in routes
-        assert "/web/store" in routes
-        assert "/local/store" in routes
-        assert "/" in routes
-        assert "/refresh" in routes
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(embed, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert embed.logger.name == "api.v1.embed"

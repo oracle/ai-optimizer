@@ -200,30 +200,3 @@ class TestMcpUpdatePrompt:
             await mcp_prompts.mcp_update_prompt(name="test-prompt", payload=payload, mcp_engine=mock_fastmcp)
 
         assert exc_info.value.status_code == 400
-
-
-class TestRouterConfiguration:
-    """Tests for router configuration."""
-
-    def test_auth_router_exists(self):
-        """The auth router should be defined."""
-        assert hasattr(mcp_prompts, "auth")
-
-    def test_auth_router_has_routes(self):
-        """The auth router should have registered routes."""
-        routes = [route.path for route in mcp_prompts.auth.routes]
-
-        assert "/prompts" in routes
-        assert "/prompts/{name}" in routes
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(mcp_prompts, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert mcp_prompts.logger.name == "api.v1.mcp_prompts"

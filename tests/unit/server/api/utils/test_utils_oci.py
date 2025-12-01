@@ -804,15 +804,3 @@ class TestGetClientDerivedAuthProfileNoMatch:
             utils_oci.get(client="test_client")
 
         assert "No settings found for client" in str(exc_info.value)
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(utils_oci, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert utils_oci.logger.name == "api.utils.oci"

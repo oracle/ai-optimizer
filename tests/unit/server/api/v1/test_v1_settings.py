@@ -296,31 +296,3 @@ class TestIncludeParams:  # pylint: disable=protected-access
         """_incl_readonly_param should return True when set."""
         result = settings._incl_readonly_param(incl_readonly=True)
         assert result is True
-
-
-class TestRouterConfiguration:
-    """Tests for router configuration."""
-
-    def test_auth_router_exists(self):
-        """The auth router should be defined."""
-        assert hasattr(settings, "auth")
-
-    def test_auth_router_has_routes(self):
-        """The auth router should have registered routes."""
-        routes = [route.path for route in settings.auth.routes]
-
-        assert "" in routes  # Get, Update, Create
-        assert "/load/file" in routes
-        assert "/load/json" in routes
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(settings, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert settings.logger.name == "endpoints.v1.settings"

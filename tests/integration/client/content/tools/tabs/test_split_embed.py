@@ -13,23 +13,6 @@ from integration.client.conftest import enable_test_embed_models
 
 
 #############################################################################
-# Test Helpers
-#############################################################################
-class MockState:
-    """Mock session state for testing OCI-related functionality"""
-
-    def __init__(self):
-        self.client_settings = {"oci": {"auth_profile": "DEFAULT"}}
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def get(self, key, default=None):
-        """Get method for dict-like access"""
-        return getattr(self, key, default)
-
-
-#############################################################################
 # Test Streamlit UI
 #############################################################################
 class TestStreamlit:
@@ -310,58 +293,6 @@ class TestStreamlit:
                 assert "Local" in file_source_radio.options, "Local option missing from radio button"
                 assert "Web" in file_source_radio.options, "Web option missing from radio button"
                 # OCI may or may not appear depending on namespace availability
-
-
-#############################################################################
-# Test Split & Embed Functions
-#############################################################################
-class TestSplitEmbedFunctions:
-    """Test individual functions from split_embed.py"""
-
-    # Streamlit File path
-    ST_FILE = "../src/client/content/tools/tabs/split_embed.py"
-
-    def test_get_buckets_success(self, monkeypatch):
-        """Test get_buckets function with successful API call"""
-        from client.content.tools.tabs.split_embed import get_buckets
-
-        # Mock session state with proper attribute access
-        monkeypatch.setattr("client.content.tools.tabs.split_embed.state", MockState())
-
-        mock_buckets = ["bucket1", "bucket2", "bucket3"]
-        monkeypatch.setattr("client.utils.api_call.get", lambda endpoint: mock_buckets)
-
-        result = get_buckets("test-compartment")
-        assert result == mock_buckets
-
-    def test_get_buckets_api_error(self, monkeypatch):
-        """Test get_buckets function when API call fails"""
-        from client.content.tools.tabs.split_embed import get_buckets
-        from client.utils.api_call import ApiError
-
-        # Mock session state with proper attribute access
-        monkeypatch.setattr("client.content.tools.tabs.split_embed.state", MockState())
-
-        def mock_get_with_error(endpoint):
-            raise ApiError("Access denied")
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get_with_error)
-
-        result = get_buckets("test-compartment")
-        assert result == ["No Access to Buckets in this Compartment"]
-
-    def test_get_bucket_objects(self, monkeypatch):
-        """Test get_bucket_objects function"""
-        from client.content.tools.tabs.split_embed import get_bucket_objects
-
-        # Mock session state with proper attribute access
-        monkeypatch.setattr("client.content.tools.tabs.split_embed.state", MockState())
-
-        mock_objects = ["file1.txt", "file2.pdf", "document.docx"]
-        monkeypatch.setattr("client.utils.api_call.get", lambda endpoint: mock_objects)
-
-        result = get_bucket_objects("test-bucket")
-        assert result == mock_objects
 
 
 #############################################################################
@@ -670,38 +601,3 @@ class TestUIComponents:
             # NOTE: This may not be present if embedding models aren't accessible
             # Just checking the button logic - verification happens implicitly via page load
             pass
-
-    def test_get_compartments(self, monkeypatch):
-        """Test get_compartments function with successful API call"""
-        from client.content.tools.tabs.split_embed import get_compartments
-
-        # Mock session state using module-level MockState
-        monkeypatch.setattr("client.content.tools.tabs.split_embed.state", MockState())
-
-        # Mock API response
-        def mock_get(**_kwargs):
-            return {"comp1": "ocid1.compartment.oc1..test1", "comp2": "ocid1.compartment.oc1..test2"}
-
-        monkeypatch.setattr("client.utils.api_call.get", mock_get)
-
-        result = get_compartments()
-        assert isinstance(result, dict)
-        assert len(result) == 2
-        assert "comp1" in result
-
-    def test_files_data_editor(self, monkeypatch):
-        """Test files_data_editor function"""
-        from client.content.tools.tabs.split_embed import files_data_editor
-
-        # Create test dataframe
-        test_df = pd.DataFrame({"File": ["file1.txt", "file2.txt"], "Process": [True, False]})
-
-        # Mock st.data_editor
-        def mock_data_editor(data, **_kwargs):
-            return data
-
-        monkeypatch.setattr("streamlit.data_editor", mock_data_editor)
-
-        result = files_data_editor(test_df, key="test_key")
-        assert isinstance(result, pd.DataFrame)
-        assert len(result) == 2

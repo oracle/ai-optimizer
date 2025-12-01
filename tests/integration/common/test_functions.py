@@ -12,9 +12,9 @@ import os
 import tempfile
 
 import pytest
+from db_fixtures import TEST_DB_CONFIG
 
 from common import functions
-from db_fixtures import TEST_DB_CONFIG
 
 
 class TestIsUrlAccessibleIntegration:

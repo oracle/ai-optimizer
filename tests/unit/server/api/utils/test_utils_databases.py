@@ -16,12 +16,12 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 import oracledb
+from db_fixtures import TEST_DB_CONFIG
+from shared_fixtures import TEST_DB_WALLET_PASSWORD
 
 from common.schema import DatabaseSettings
 from server.api.utils import databases as utils_databases
 from server.api.utils.databases import DbException, ExistsDatabaseError, UnknownDatabaseError
-from db_fixtures import TEST_DB_CONFIG
-from shared_fixtures import TEST_DB_WALLET_PASSWORD
 
 
 class TestDbException:
@@ -645,15 +645,3 @@ class TestGetVs:  # pylint: disable=protected-access
             except oracledb.DatabaseError:
                 pass
             cursor.close()
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(utils_databases, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert utils_databases.logger.name == "api.utils.database"

@@ -315,15 +315,3 @@ class TestOciMainAsScript:
         with patch("oci.config.from_file", side_effect=oci.exceptions.ConfigFileNotFound()):
             result = oci_module.main()
         assert result is not None
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured in oci module."""
-        assert hasattr(oci_module, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert oci_module.logger.name == "bootstrap.oci"

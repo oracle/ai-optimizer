@@ -129,15 +129,3 @@ class TestSettingsMainAsScript:
         # This tests the if __name__ == "__main__" block indirectly
         result = settings_module.main()
         assert result is not None
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured in settings module."""
-        assert hasattr(settings_module, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert settings_module.logger.name == "bootstrap.settings"

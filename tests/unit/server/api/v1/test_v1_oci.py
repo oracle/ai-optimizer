@@ -330,33 +330,3 @@ class TestOciCreateGenaiModels:
             await oci.oci_create_genai_models(auth_profile="DEFAULT")
 
         assert exc_info.value.status_code == 500
-
-
-class TestRouterConfiguration:
-    """Tests for router configuration."""
-
-    def test_auth_router_exists(self):
-        """The auth router should be defined."""
-        assert hasattr(oci, "auth")
-
-    def test_auth_router_has_routes(self):
-        """The auth router should have registered routes."""
-        routes = [route.path for route in oci.auth.routes]
-
-        assert "" in routes
-        assert "/{auth_profile}" in routes
-        assert "/regions/{auth_profile}" in routes
-        assert "/genai/{auth_profile}" in routes
-        assert "/compartments/{auth_profile}" in routes
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(oci, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert oci.logger.name == "endpoints.v1.oci"

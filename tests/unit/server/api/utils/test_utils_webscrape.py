@@ -12,9 +12,9 @@ from unittest.mock import patch, AsyncMock
 
 import pytest
 from bs4 import BeautifulSoup
+from unit.server.api.conftest import create_mock_aiohttp_session
 
 from server.api.utils import webscrape
-from unit.server.api.conftest import create_mock_aiohttp_session
 
 
 class TestNormalizeWs:

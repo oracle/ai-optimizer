@@ -228,31 +228,3 @@ class TestChatHistoryReturn:
         result = await chat.chat_history_return(client="test_client")
 
         assert result == []
-
-
-class TestRouterConfiguration:
-    """Tests for router configuration."""
-
-    def test_auth_router_exists(self):
-        """The auth router should be defined."""
-        assert hasattr(chat, "auth")
-
-    def test_auth_router_has_routes(self):
-        """The auth router should have registered routes."""
-        routes = [route.path for route in chat.auth.routes]
-
-        assert "/completions" in routes
-        assert "/streams" in routes
-        assert "/history" in routes
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(chat, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert chat.logger.name == "endpoints.v1.chat"

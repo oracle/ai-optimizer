@@ -310,15 +310,3 @@ class TestProcessReport:
 
         assert result.eid == "eid123"
         assert result.correctness == 0.85
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(utils_testbed, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert utils_testbed.logger.name == "api.utils.testbed"

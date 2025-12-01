@@ -363,17 +363,23 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
 def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     """Get the system prompt for SpringAI export"""
 
+    ## FUTURE FEATURE:
     # Determine which system prompt would be active based on tools_enabled
-    tools_enabled = state.client_settings.get("tools_enabled", [])
+    # tools_enabled = state.client_settings.get("tools_enabled", [])
 
     # Select prompt name based on tools configuration
-    if not tools_enabled:
-        prompt_name = "optimizer_basic-default"
-        if state.client_settings["vector_search"]["enabled"]:
-            prompt_name = "optimizer_vs-no-tools-default"
+    # if not tools_enabled:
+    #     prompt_name = "optimizer_basic-default"
+    #     if state.client_settings["vector_search"]["enabled"]:
+    #         prompt_name = "optimizer_vs-no-tools-default"
+    # else:
+    #     # Tools are enabled, use tools-default prompt
+    #     prompt_name = "optimizer_tools-default"
+    ## Legacy Feature:
+    if "Vector Search" in state.client_settings.get("tools_enabled", []):
+        prompt_name = "optimizer_vs-no-tools-default"
     else:
-        # Tools are enabled, use tools-default prompt
-        prompt_name = "optimizer_tools-default"
+        prompt_name = "optimizer_basic-default"
 
     # Find the prompt in configs
     sys_prompt_obj = next((item for item in state.prompt_configs if item["name"] == prompt_name), None)

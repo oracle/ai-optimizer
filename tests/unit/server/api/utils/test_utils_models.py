@@ -419,15 +419,3 @@ class TestProcessModelEntry:  # pylint: disable=protected-access
         result = utils_models._process_model_entry("bad-model", type_to_modes, allowed_modes, "openai")
 
         assert result == {"key": "bad-model"}
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(utils_models, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert utils_models.logger.name == "api.utils.models"

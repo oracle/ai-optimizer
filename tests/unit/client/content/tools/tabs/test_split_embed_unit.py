@@ -124,6 +124,24 @@ class TestOCIFunctions:
         assert isinstance(result, list)
         assert len(result) == 3
 
+    def test_get_buckets_api_error(self, monkeypatch):
+        """Test get_buckets function when API call fails"""
+        from client.content.tools.tabs.split_embed import get_buckets
+        from client.utils import api_call
+        from client.utils.api_call import ApiError
+        from streamlit import session_state as state
+
+        # Setup state with OCI config
+        state.client_settings = {"oci": {"auth_profile": "DEFAULT"}}
+
+        def mock_get_with_error(endpoint):
+            raise ApiError("Access denied")
+
+        monkeypatch.setattr(api_call, "get", mock_get_with_error)
+
+        result = get_buckets("test-compartment")
+        assert result == ["No Access to Buckets in this Compartment"]
+
     def test_get_bucket_objects_success(self, monkeypatch):
         """Test get_bucket_objects with successful API call"""
         from client.content.tools.tabs.split_embed import get_bucket_objects
@@ -199,6 +217,24 @@ class TestFileDataFrame:
         assert isinstance(result, pd.DataFrame)
         assert "Process" in result.columns
         assert bool(result["Process"][0]) is True
+
+    def test_files_data_editor(self, monkeypatch):
+        """Test files_data_editor function"""
+        from client.content.tools.tabs.split_embed import files_data_editor
+        import streamlit as st
+
+        # Create test dataframe
+        test_df = pd.DataFrame({"File": ["file1.txt", "file2.txt"], "Process": [True, False]})
+
+        # Mock st.data_editor to return the input data
+        def mock_data_editor(data, **_kwargs):
+            return data
+
+        monkeypatch.setattr(st, "data_editor", mock_data_editor)
+
+        result = files_data_editor(test_df, key="test_key")
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 2
 
 
 #############################################################################

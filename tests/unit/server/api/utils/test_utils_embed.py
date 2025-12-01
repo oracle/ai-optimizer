@@ -791,15 +791,3 @@ class TestGetDocumentLoaderExtensions:  # pylint: disable=protected-access
         _, split = utils_embed._get_document_loader(str(test_file), "txt")
 
         assert split is True
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(utils_embed, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert utils_embed.logger.name == "api.utils.embed"

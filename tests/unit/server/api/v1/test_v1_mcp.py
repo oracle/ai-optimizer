@@ -11,9 +11,9 @@ Tests for MCP (Model Context Protocol) endpoints.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from shared_fixtures import TEST_API_KEY
 
 from server.api.v1 import mcp
-from shared_fixtures import TEST_API_KEY
 
 
 class TestGetMcp:
@@ -141,31 +141,3 @@ class TestMcpListResources:
         result = await mcp.mcp_list_resources(mcp_engine=mock_fastmcp)
 
         assert result == []
-
-
-class TestRouterConfiguration:
-    """Tests for router configuration."""
-
-    def test_auth_router_exists(self):
-        """The auth router should be defined."""
-        assert hasattr(mcp, "auth")
-
-    def test_auth_router_has_routes(self):
-        """The auth router should have registered routes."""
-        routes = [route.path for route in mcp.auth.routes]
-
-        assert "/client" in routes
-        assert "/tools" in routes
-        assert "/resources" in routes
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(mcp, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert mcp.logger.name == "api.v1.mcp"

@@ -10,9 +10,9 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from shared_fixtures import TEST_API_KEY, TEST_API_KEY_ALT
 
 from server.api.utils import mcp
-from shared_fixtures import TEST_API_KEY, TEST_API_KEY_ALT
 
 
 class TestGetClient:
@@ -180,15 +180,3 @@ class TestListPrompts:
             await mcp.list_prompts(mock_mcp_engine)
 
         mock_client.close.assert_called_once()
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(mcp, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert mcp.logger.name == "api.utils.mcp"

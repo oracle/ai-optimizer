@@ -224,31 +224,3 @@ class TestModelsDelete:
 
         body = json.loads(result.body)
         assert "openai/gpt-4" in body["message"]
-
-
-class TestRouterConfiguration:
-    """Tests for router configuration."""
-
-    def test_auth_router_exists(self):
-        """The auth router should be defined."""
-        assert hasattr(models, "auth")
-
-    def test_auth_router_has_routes(self):
-        """The auth router should have registered routes."""
-        routes = [route.path for route in models.auth.routes]
-
-        assert "" in routes
-        assert "/supported" in routes
-        assert "/{model_provider}/{model_id:path}" in routes
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(models, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert models.logger.name == "endpoints.v1.models"

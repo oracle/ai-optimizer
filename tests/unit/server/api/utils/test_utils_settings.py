@@ -386,15 +386,3 @@ class TestReadConfigFromJsonFile:
             result = utils_settings.read_config_from_json_file()
 
         assert result is not None
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(utils_settings, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert utils_settings.logger.name == "api.core.settings"

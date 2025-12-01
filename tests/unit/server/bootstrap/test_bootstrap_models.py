@@ -12,9 +12,9 @@ import os
 from unittest.mock import patch
 
 import pytest
+from shared_fixtures import assert_model_list_valid, get_model_by_id, TEST_API_KEY
 
 from server.bootstrap import models as models_module
-from shared_fixtures import assert_model_list_valid, get_model_by_id, TEST_API_KEY
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_env", "mock_is_url_accessible")
@@ -398,15 +398,3 @@ class TestModelsMainAsScript:
         """main() should be callable when running as script."""
         result = models_module.main()
         assert result is not None
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured in models module."""
-        assert hasattr(models_module, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert models_module.logger.name == "bootstrap.models"

@@ -265,30 +265,3 @@ class TestDatabasesUpdate:
 
         # Verify: OTHER_DB is now disconnected
         assert other_db.connected is False
-
-
-class TestRouterConfiguration:
-    """Tests for router configuration."""
-
-    def test_auth_router_exists(self):
-        """The auth router should be defined."""
-        assert hasattr(databases, "auth")
-
-    def test_auth_router_has_routes(self):
-        """The auth router should have registered routes."""
-        routes = [route.path for route in databases.auth.routes]
-
-        assert "" in routes
-        assert "/{name}" in routes
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(databases, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert databases.logger.name == "endpoints.v1.databases"

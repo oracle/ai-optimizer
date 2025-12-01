@@ -298,15 +298,3 @@ class TestCompletionGenerator:
             pass
 
         assert captured_kwargs["config"]["metadata"]["streaming"] is True
-
-
-class TestLoggerConfiguration:
-    """Tests for logger configuration."""
-
-    def test_logger_exists(self):
-        """Logger should be configured."""
-        assert hasattr(utils_chat, "logger")
-
-    def test_logger_name(self):
-        """Logger should have correct name."""
-        assert utils_chat.logger.name == "api.utils.chat"

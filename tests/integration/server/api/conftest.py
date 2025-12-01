@@ -25,8 +25,6 @@ from typing import Generator
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-
-from server.bootstrap.bootstrap import DATABASE_OBJECTS, MODEL_OBJECTS, SETTINGS_OBJECTS
 # Import constants and helpers needed by fixtures in this file
 from db_fixtures import TEST_DB_CONFIG
 from shared_fixtures import (
@@ -37,6 +35,8 @@ from shared_fixtures import (
     clear_env_state,
     restore_env_state,
 )
+
+from server.bootstrap.bootstrap import DATABASE_OBJECTS, MODEL_OBJECTS, SETTINGS_OBJECTS
 
 # Test configuration - extends shared DB config with integration-specific settings
 TEST_CONFIG = {

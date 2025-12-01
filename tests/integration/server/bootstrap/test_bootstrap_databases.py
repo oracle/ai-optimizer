@@ -13,13 +13,13 @@ and environment variables.
 import os
 
 import pytest
-
-from server.bootstrap import databases as databases_module
 from shared_fixtures import (
     assert_database_list_valid,
     assert_has_default_database,
     get_database_by_name,
 )
+
+from server.bootstrap import databases as databases_module
 
 
 @pytest.mark.usefixtures("reset_config_store", "clean_bootstrap_env")
