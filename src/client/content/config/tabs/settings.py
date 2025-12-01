@@ -376,8 +376,10 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     #     # Tools are enabled, use tools-default prompt
     #     prompt_name = "optimizer_tools-default"
     ## Legacy Feature:
-    if "Vector Search" in state.client_settings["tools_enabled"]:
+    if "Vector Search" in state.client_settings.get("tools_enabled", []):
         prompt_name = "optimizer_vs-no-tools-default"
+    else:
+        prompt_name = "optimizer_basic-default"
 
     # Find the prompt in configs
     sys_prompt_obj = next((item for item in state.prompt_configs if item["name"] == prompt_name), None)
