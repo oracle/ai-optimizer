@@ -7,6 +7,8 @@ Integration tests for common/functions.py
 Tests functions that interact with external systems (URLs, databases).
 These tests may require network access or database connectivity.
 """
+# spell-checker: disable
+# pylint: disable=protected-access,import-error,import-outside-toplevel
 
 import os
 import tempfile
