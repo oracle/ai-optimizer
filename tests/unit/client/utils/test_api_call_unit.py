@@ -3,23 +3,24 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Unit tests for api_call module - focusing on graceful error handling when
+Unit tests for api_call module - focusing on error handling when
 API server is disconnected or returns errors.
 """
 # spell-checker: disable
 
 from unittest.mock import MagicMock
+import pytest
 import requests
 
 
 #############################################################################
-# Test Graceful Error Handling on Server Errors
+# Test Error Handling Raises ApiError
 #############################################################################
-class TestGracefulErrorHandling:
-    """Test that API call functions handle server errors gracefully."""
+class TestErrorHandlingRaisesApiError:
+    """Test that API call functions raise ApiError on server errors."""
 
-    def test_get_handles_http_500_gracefully(self, app_server, monkeypatch):
-        """Test that get() handles HTTP 500 errors gracefully without raising."""
+    def test_get_raises_api_error_on_http_500(self, app_server, monkeypatch):
+        """Test that get() raises ApiError on HTTP 500 errors."""
         assert app_server is not None
 
         from client.utils import api_call
@@ -41,17 +42,18 @@ class TestGracefulErrorHandling:
         mock_error = MagicMock()
         monkeypatch.setattr(st, "error", mock_error)
 
-        # Call get() - should NOT raise, should return error dict and show error
-        result = api_call.get(endpoint="v1/test", retries=0)
+        # Call get() - should raise ApiError
+        with pytest.raises(api_call.ApiError) as exc_info:
+            api_call.get(endpoint="v1/test", retries=0)
 
-        # Should return error dict (not raise)
-        assert "error" in result
+        # Should have the error message
+        assert "Internal Server Error" in str(exc_info.value)
 
         # Should have shown error to user
         assert mock_error.called
 
-    def test_delete_handles_http_500_gracefully(self, app_server, monkeypatch):
-        """Test that delete() handles HTTP 500 errors gracefully without raising."""
+    def test_delete_raises_api_error_on_http_500(self, app_server, monkeypatch):
+        """Test that delete() raises ApiError on HTTP 500 errors."""
         assert app_server is not None
 
         from client.utils import api_call
@@ -73,17 +75,18 @@ class TestGracefulErrorHandling:
         mock_error = MagicMock()
         monkeypatch.setattr(st, "error", mock_error)
 
-        # Call delete() - should NOT raise, should return error dict and show error
-        result = api_call.delete(endpoint="v1/test", retries=0, toast=False)
+        # Call delete() - should raise ApiError
+        with pytest.raises(api_call.ApiError) as exc_info:
+            api_call.delete(endpoint="v1/test", retries=0, toast=False)
 
-        # Should return error dict (not raise)
-        assert "error" in result
+        # Should have the error message
+        assert "Internal Server Error" in str(exc_info.value)
 
         # Should have shown error to user
         assert mock_error.called
 
-    def test_post_handles_http_500_gracefully(self, app_server, monkeypatch):
-        """Test that post() handles HTTP 500 errors gracefully without raising."""
+    def test_post_raises_api_error_on_http_500(self, app_server, monkeypatch):
+        """Test that post() raises ApiError on HTTP 500 errors."""
         assert app_server is not None
 
         from client.utils import api_call
@@ -105,17 +108,18 @@ class TestGracefulErrorHandling:
         mock_error = MagicMock()
         monkeypatch.setattr(st, "error", mock_error)
 
-        # Call post() - should NOT raise, should return error dict and show error
-        result = api_call.post(endpoint="v1/test", retries=0)
+        # Call post() - should raise ApiError
+        with pytest.raises(api_call.ApiError) as exc_info:
+            api_call.post(endpoint="v1/test", retries=0)
 
-        # Should return error dict (not raise)
-        assert "error" in result
+        # Should have the error message
+        assert "Internal Server Error" in str(exc_info.value)
 
         # Should have shown error to user
         assert mock_error.called
 
-    def test_patch_handles_http_500_gracefully(self, app_server, monkeypatch):
-        """Test that patch() handles HTTP 500 errors gracefully without raising."""
+    def test_patch_raises_api_error_on_http_500(self, app_server, monkeypatch):
+        """Test that patch() raises ApiError on HTTP 500 errors."""
         assert app_server is not None
 
         from client.utils import api_call
@@ -137,17 +141,18 @@ class TestGracefulErrorHandling:
         mock_error = MagicMock()
         monkeypatch.setattr(st, "error", mock_error)
 
-        # Call patch() - should NOT raise, should return error dict and show error
-        result = api_call.patch(endpoint="v1/test", retries=0, toast=False)
+        # Call patch() - should raise ApiError
+        with pytest.raises(api_call.ApiError) as exc_info:
+            api_call.patch(endpoint="v1/test", retries=0, toast=False)
 
-        # Should return error dict (not raise)
-        assert "error" in result
+        # Should have the error message
+        assert "Internal Server Error" in str(exc_info.value)
 
         # Should have shown error to user
         assert mock_error.called
 
-    def test_get_handles_connection_error_gracefully(self, app_server, monkeypatch):
-        """Test that get() handles connection errors gracefully after retries exhausted."""
+    def test_get_raises_api_error_on_connection_error(self, app_server, monkeypatch):
+        """Test that get() raises ApiError on connection errors after retries exhausted."""
         assert app_server is not None
 
         from client.utils import api_call
@@ -161,17 +166,18 @@ class TestGracefulErrorHandling:
         mock_error = MagicMock()
         monkeypatch.setattr(st, "error", mock_error)
 
-        # Call get() with no retries - should NOT raise, should return error dict and show error
-        result = api_call.get(endpoint="v1/test", retries=0)
+        # Call get() with no retries - should raise ApiError
+        with pytest.raises(api_call.ApiError) as exc_info:
+            api_call.get(endpoint="v1/test", retries=0)
 
-        # Should return error dict (not raise)
-        assert "error" in result
+        # Should have connection failure message
+        assert "Connection failed" in str(exc_info.value)
 
         # Should have shown error to user
         assert mock_error.called
 
-    def test_delete_handles_connection_error_gracefully(self, app_server, monkeypatch):
-        """Test that delete() handles connection errors gracefully after retries exhausted."""
+    def test_delete_raises_api_error_on_connection_error(self, app_server, monkeypatch):
+        """Test that delete() raises ApiError on connection errors after retries exhausted."""
         assert app_server is not None
 
         from client.utils import api_call
@@ -185,11 +191,12 @@ class TestGracefulErrorHandling:
         mock_error = MagicMock()
         monkeypatch.setattr(st, "error", mock_error)
 
-        # Call delete() with no retries - should NOT raise, should return error dict and show error
-        result = api_call.delete(endpoint="v1/test", retries=0, toast=False)
+        # Call delete() with no retries - should raise ApiError
+        with pytest.raises(api_call.ApiError) as exc_info:
+            api_call.delete(endpoint="v1/test", retries=0, toast=False)
 
-        # Should return error dict (not raise)
-        assert "error" in result
+        # Should have connection failure message
+        assert "Connection failed" in str(exc_info.value)
 
         # Should have shown error to user
         assert mock_error.called

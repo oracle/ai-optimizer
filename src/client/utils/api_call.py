@@ -53,10 +53,10 @@ def _handle_http_error(ex: requests.exceptions.HTTPError):
     return failure
 
 
-def _error_response(message: str) -> dict:
-    """Display error to user and return error dict."""
+def _error_response(message: str) -> None:
+    """Display error to user and raise ApiError."""
     st.error(f"API Error: {message}")
-    return {"error": message}
+    raise ApiError(message)
 
 
 def send_request(
@@ -108,20 +108,18 @@ def send_request(
 
         except requests.exceptions.HTTPError as ex:
             logger.error("HTTP Error: %s", ex)
-            result = _error_response(_handle_http_error(ex))
-            break
+            _error_response(_handle_http_error(ex))
 
         except requests.exceptions.ConnectionError as ex:
             logger.error("Attempt %d: Connection Error: %s", attempt + 1, ex)
             if attempt < retries:
                 time.sleep(backoff_factor * (2**attempt))
                 continue
-            result = _error_response(f"Connection failed after {retries + 1} attempts")
+            _error_response(f"Connection failed after {retries + 1} attempts")
 
         except (requests.exceptions.RequestException, json.JSONDecodeError, ValueError) as ex:
             logger.error("Request/JSON Error: %s", ex)
-            result = _error_response(f"Request failed: {str(ex)}")
-            break
+            _error_response(f"Request failed: {str(ex)}")
 
     return result if result is not None else _error_response("An unexpected error occurred.")
 
@@ -170,7 +168,7 @@ def patch(
         retries=retries,
         backoff_factor=backoff_factor,
     )
-    if toast and "error" not in result:
+    if toast:
         st.toast("Update Successful.", icon="✅")
         time.sleep(1)
     return result
@@ -179,7 +177,7 @@ def patch(
 def delete(endpoint: str, timeout: int = 60, retries: int = 5, backoff_factor: float = 1.5, toast=True) -> dict:
     """DELETE Requests"""
     result = send_request("DELETE", endpoint, timeout=timeout, retries=retries, backoff_factor=backoff_factor)
-    if toast and "error" not in result:
+    if toast:
         st.toast(result.get("message", "Deleted."), icon="✅")
         time.sleep(1)
     return result
