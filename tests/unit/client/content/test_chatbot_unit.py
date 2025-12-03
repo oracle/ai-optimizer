@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 
 
-
 #############################################################################
 # Test show_vector_search_refs Function
 #############################################################################
@@ -135,14 +134,14 @@ class TestSetupSidebar:
     def test_setup_sidebar_with_models(self, monkeypatch):
         """Test setup_sidebar with enabled language models"""
         from client.content import chatbot
-        from client.utils import st_common, vs_options
+        from client.utils import st_common, vs_options, tool_options
         from streamlit import session_state as state
 
         # Mock enabled_models_lookup to return models
         monkeypatch.setattr(st_common, "enabled_models_lookup", lambda x: {"gpt-4": {}})
 
         # Mock sidebar functions
-        monkeypatch.setattr(st_common, "tools_sidebar", MagicMock())
+        monkeypatch.setattr(tool_options, "tools_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "history_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "ll_sidebar", MagicMock())
         monkeypatch.setattr(vs_options, "vector_search_sidebar", MagicMock())
@@ -159,7 +158,7 @@ class TestSetupSidebar:
     def test_setup_sidebar_client_disabled(self, monkeypatch):
         """Test setup_sidebar when client gets disabled"""
         from client.content import chatbot
-        from client.utils import st_common, vs_options
+        from client.utils import st_common, vs_options, tool_options
         from streamlit import session_state as state
         import streamlit as st
 
@@ -169,7 +168,7 @@ class TestSetupSidebar:
         def disable_client():
             state.enable_client = False
 
-        monkeypatch.setattr(st_common, "tools_sidebar", disable_client)
+        monkeypatch.setattr(tool_options, "tools_sidebar", disable_client)
         monkeypatch.setattr(st_common, "history_sidebar", MagicMock())
         monkeypatch.setattr(st_common, "ll_sidebar", MagicMock())
         monkeypatch.setattr(vs_options, "vector_search_sidebar", MagicMock())
@@ -219,9 +218,7 @@ class TestCreateClient:
         assert state.user_client == mock_client_instance
 
         # Verify Client was called with correct parameters
-        mock_client_class.assert_called_once_with(
-            server=state.server, settings=state.client_settings, timeout=1200
-        )
+        mock_client_class.assert_called_once_with(server=state.server, settings=state.client_settings, timeout=1200)
 
     def test_create_client_existing(self):
         """Test getting existing client"""
