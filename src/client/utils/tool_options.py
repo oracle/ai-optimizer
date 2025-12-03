@@ -57,6 +57,8 @@ def tools_sidebar() -> None:
 
     tool_box = [key for key, val in state.tool_box.items() if val["enabled"]]
     current_tool = state.client_settings["tools_enabled"][0]
+    if current_tool not in tool_box:
+        state.client_settings["tools_enabled"] = ["LLM Only"]
     tool_index = tool_box.index(current_tool) if current_tool in tool_box else 0
     st.sidebar.selectbox(
         "Tool Selection",
