@@ -25,8 +25,8 @@ class TestIsUrlAccessibleIntegration:
     @pytest.mark.integration
     def test_real_accessible_url(self):
         """is_url_accessible should return True for known accessible URLs."""
-        # Using httpbin.org which is a testing service
-        result, msg = functions.is_url_accessible("https://httpbin.org/status/200")
+        # Using example.com - IANA-maintained domain specifically for testing/documentation
+        result, msg = functions.is_url_accessible("https://example.com")
 
         assert result is True
         assert msg is None
