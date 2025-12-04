@@ -16,7 +16,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.content.config.tabs.models import get_models
-from client.utils import st_common, api_call, client, vs_options
+from client.utils import st_common, api_call, client, vs_options, tool_options
 from client.utils.st_footer import render_chat_footer
 from common import logging_config
 
@@ -82,7 +82,7 @@ def setup_sidebar():
         st.stop()
 
     state.enable_client = True
-    st_common.tools_sidebar()
+    tool_options.tools_sidebar()
     st_common.history_sidebar()
     st_common.ll_sidebar()
     vs_options.vector_search_sidebar()

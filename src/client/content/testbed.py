@@ -17,7 +17,7 @@ from streamlit import session_state as state
 
 from client.content.config.tabs.models import get_models
 
-from client.utils import st_common, api_call, vs_options
+from client.utils import st_common, api_call, vs_options, tool_options
 
 from common import logging_config
 
@@ -496,7 +496,7 @@ def render_evaluation_ui(available_ll_models: list) -> None:
 
     st.subheader("Q&A Evaluation", divider="red")
     st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
-    st_common.tools_sidebar()
+    tool_options.tools_sidebar()
     st_common.ll_sidebar()
     vs_options.vector_search_sidebar()
     st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")

@@ -42,19 +42,6 @@ def sanitize_sensitive_data(data):
     return data
 
 
-def _handle_json_response(response, method: str):
-    """Parse JSON response and handle parsing errors."""
-    try:
-        data = response.json()
-        logger.debug("%s Data: %s", method, data)
-        return response
-    except (json.JSONDecodeError, ValueError) as json_ex:
-        error_msg = f"Server returned invalid JSON response. Status: {response.status_code}"
-        logger.error("Response text: %s", response.text[:500])
-        error_msg += f". Response preview: {response.text[:200]}"
-        raise ApiError(error_msg) from json_ex
-
-
 def _handle_http_error(ex: requests.exceptions.HTTPError):
     """Extract error message from HTTP error response."""
     try:
@@ -66,6 +53,12 @@ def _handle_http_error(ex: requests.exceptions.HTTPError):
     return failure
 
 
+def _error_response(message: str) -> None:
+    """Display error to user and raise ApiError."""
+    st.error(f"API Error: {message}")
+    raise ApiError(message)
+
+
 def send_request(
     method: str,
     endpoint: str,
@@ -75,30 +68,26 @@ def send_request(
     retries: int = 3,
     backoff_factor: float = 2.0,
 ) -> dict:
-    """Send API requests with retry logic."""
+    """Send API requests with retry logic. Returns JSON response or error dict."""
+    method_map = {"GET": requests.get, "POST": requests.post, "PATCH": requests.patch, "DELETE": requests.delete}
+    if method not in method_map:
+        return _error_response(f"Unsupported HTTP method: {method}")
+
     url = urljoin(f"{state.server['url']}:{state.server['port']}/", endpoint)
     payload = payload or {}
-    token = state.server["key"]
-    headers = {"Authorization": f"Bearer {token}"}
-    # Send client in header if it exists
+    headers = {"Authorization": f"Bearer {state.server['key']}"}
     if getattr(state, "client_settings", {}).get("client"):
         headers["Client"] = state.client_settings["client"]
 
-    method_map = {"GET": requests.get, "POST": requests.post, "PATCH": requests.patch, "DELETE": requests.delete}
-
-    if method not in method_map:
-        raise ApiError(f"Unsupported HTTP method: {method}")
-
-    args = {
+    args = {k: v for k, v in {
         "url": url,
         "headers": headers,
         "timeout": timeout,
         "params": params,
         "files": payload.get("files") if method == "POST" else None,
         "json": payload.get("json") if method in ["POST", "PATCH"] else None,
-    }
-    args = {k: v for k, v in args.items() if v is not None}
-    # Avoid logging out binary data in files
+    }.items() if v is not None}
+
     log_args = sanitize_sensitive_data(args.copy())
     try:
         if log_args.get("files"):
@@ -106,37 +95,38 @@ def send_request(
     except (ValueError, IndexError):
         pass
     logger.info("%s Request: %s", method, log_args)
+
+    result = None
     for attempt in range(retries + 1):
         try:
             response = method_map[method](**args)
             logger.info("%s Response: %s", method, response)
             response.raise_for_status()
-            return _handle_json_response(response, method)
+            result = response.json()
+            logger.debug("%s Data: %s", method, result)
+            break
 
         except requests.exceptions.HTTPError as ex:
             logger.error("HTTP Error: %s", ex)
-            raise ApiError(_handle_http_error(ex)) from ex
+            _error_response(_handle_http_error(ex))
 
         except requests.exceptions.ConnectionError as ex:
             logger.error("Attempt %d: Connection Error: %s", attempt + 1, ex)
             if attempt < retries:
-                sleep_time = backoff_factor * (2**attempt)
-                logger.info("Retrying in %.1f seconds...", sleep_time)
-                time.sleep(sleep_time)
+                time.sleep(backoff_factor * (2**attempt))
                 continue
-            raise ApiError(f"Connection failed after {retries + 1} attempts: {str(ex)}") from ex
+            _error_response(f"Connection failed after {retries + 1} attempts")
 
-        except requests.exceptions.RequestException as ex:
-            logger.error("Request Error: %s", ex)
-            raise ApiError(f"Request failed: {str(ex)}") from ex
+        except (requests.exceptions.RequestException, json.JSONDecodeError, ValueError) as ex:
+            logger.error("Request/JSON Error: %s", ex)
+            _error_response(f"Request failed: {str(ex)}")
 
-    raise ApiError("An unexpected error occurred.")
+    return result if result is not None else _error_response("An unexpected error occurred.")
 
 
-def get(endpoint: str, params: Optional[dict] = None, retries: int = 3, backoff_factor: float = 2.0) -> json:
+def get(endpoint: str, params: Optional[dict] = None, retries: int = 3, backoff_factor: float = 2.0) -> dict:
     """GET Requests"""
-    response = send_request("GET", endpoint, params=params, retries=retries, backoff_factor=backoff_factor)
-    return response.json()
+    return send_request("GET", endpoint, params=params, retries=retries, backoff_factor=backoff_factor)
 
 
 def post(
@@ -146,9 +136,9 @@ def post(
     timeout: int = 60,
     retries: int = 5,
     backoff_factor: float = 1.5,
-) -> json:
+) -> dict:
     """POST Requests"""
-    response = send_request(
+    return send_request(
         "POST",
         endpoint,
         params=params,
@@ -157,7 +147,6 @@ def post(
         retries=retries,
         backoff_factor=backoff_factor,
     )
-    return response.json()
 
 
 def patch(
@@ -168,9 +157,9 @@ def patch(
     retries: int = 5,
     backoff_factor: float = 1.5,
     toast=True,
-) -> None:
+) -> dict:
     """PATCH Requests"""
-    response = send_request(
+    result = send_request(
         "PATCH",
         endpoint,
         params=params,
@@ -182,13 +171,13 @@ def patch(
     if toast:
         st.toast("Update Successful.", icon="✅")
         time.sleep(1)
-    return response.json()
+    return result
 
 
-def delete(endpoint: str, timeout: int = 60, retries: int = 5, backoff_factor: float = 1.5, toast=True) -> None:
+def delete(endpoint: str, timeout: int = 60, retries: int = 5, backoff_factor: float = 1.5, toast=True) -> dict:
     """DELETE Requests"""
-    response = send_request("DELETE", endpoint, timeout=timeout, retries=retries, backoff_factor=backoff_factor)
-    success = response.json()["message"]
+    result = send_request("DELETE", endpoint, timeout=timeout, retries=retries, backoff_factor=backoff_factor)
     if toast:
-        st.toast(success, icon="✅")
+        st.toast(result.get("message", "Deleted."), icon="✅")
         time.sleep(1)
+    return result

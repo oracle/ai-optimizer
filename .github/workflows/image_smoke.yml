@@ -92,7 +92,7 @@ jobs:
       # Upload security results to GitHub Security tab
       - name: Upload Trivy Results to GitHub Security
         if: matrix.build.name == 'aio'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results-aio.sarif
           category: trivy-aio
