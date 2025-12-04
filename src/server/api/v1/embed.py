@@ -80,6 +80,23 @@ async def embed_get_files(
         raise HTTPException(status_code=400, detail=f"Could not retrieve file list: {str(ex)}") from ex
 
 
+@auth.patch(
+    "/comment",
+    description="Update existing Vector Store Comment.",
+)
+async def comment_vs(
+    request: schema.DatabaseVectorStorage,
+    client: schema.ClientIdType = Header(default="server"),
+) -> Response:
+    """Update the comment on an existing Vector Store"""
+    logger.info("Received comment_vs - request: %s", request)
+    utils_embed.update_vs_comment(
+        vector_store=request,
+        db_details=utils_databases.get_client_database(client),
+    )
+    return Response(content=json.dumps({"message": "Vector Store comment updated."}), media_type="application/json")
+
+
 @auth.post(
     "/sql/store",
     description="Store SQL field for Embedding.",
@@ -125,7 +142,7 @@ async def store_web_file(
 
                 elif "text" in content_type or "html" in content_type:
                     sections = await web_parse.fetch_and_extract_sections(url)
-                    base = web_parse.slugify(str(url).rsplit('/', maxsplit=1)[-1]) or "page"
+                    base = web_parse.slugify(str(url).rsplit("/", maxsplit=1)[-1]) or "page"
                     out_files = []
                     for idx, sec in enumerate(sections, 1):
                         # filename includes section number and optional slugified title for clarity

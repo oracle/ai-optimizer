@@ -10,7 +10,7 @@ import io
 from unittest.mock import patch, MagicMock
 import pytest
 from conftest import get_test_db_payload
-from common.schema import TestSetQA as QATestSet, Evaluation, EvaluationReport
+from common.schema import QASetData as QATestSet, Evaluation, EvaluationReport
 
 
 #############################################################################

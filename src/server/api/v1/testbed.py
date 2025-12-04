@@ -40,11 +40,11 @@ auth = APIRouter()
 @auth.get(
     "/testsets",
     description="Get Stored TestSets.",
-    response_model=list[schema.TestSets],
+    response_model=list[schema.QASets],
 )
 async def testbed_testsets(
     client: schema.ClientIdType = Header(default="server"),
-) -> list[schema.TestSets]:
+) -> list[schema.QASets]:
     """Get a list of stored TestSets, create TestSet objects if they don't exist"""
     testsets = utils_testbed.get_testsets(db_conn=utils_databases.get_client_database(client).connection)
     return testsets
@@ -56,7 +56,7 @@ async def testbed_testsets(
     response_model=list[schema.Evaluation],
 )
 async def testbed_evaluations(
-    tid: schema.TestSetsIdType,
+    tid: schema.QASetsIdType,
     client: schema.ClientIdType = Header(default="server"),
 ) -> list[schema.Evaluation]:
     """Get Evaluations"""
@@ -72,7 +72,7 @@ async def testbed_evaluations(
     response_model=schema.EvaluationReport,
 )
 async def testbed_evaluation(
-    eid: schema.TestSetsIdType,
+    eid: schema.QASetsIdType,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Get Evaluations"""
@@ -84,13 +84,13 @@ async def testbed_evaluation(
 
 @auth.get(
     "/testset_qa",
-    description="Get Stored schema.TestSets Q&A.",
-    response_model=schema.TestSetQA,
+    description="Get Stored Testbed Q&A.",
+    response_model=schema.QASetData,
 )
 async def testbed_testset_qa(
-    tid: schema.TestSetsIdType,
+    tid: schema.QASetsIdType,
     client: schema.ClientIdType = Header(default="server"),
-) -> schema.TestSetQA:
+) -> schema.QASetData:
     """Get TestSet Q&A"""
     return utils_testbed.get_testset_qa(
         db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper()
@@ -102,7 +102,7 @@ async def testbed_testset_qa(
     description="Delete a TestSet",
 )
 async def testbed_delete_testset(
-    tid: Optional[schema.TestSetsIdType] = None,
+    tid: Optional[schema.QASetsIdType] = None,
     client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Delete TestSet"""
@@ -113,14 +113,14 @@ async def testbed_delete_testset(
 @auth.post(
     "/testset_load",
     description="Upsert TestSets.",
-    response_model=schema.TestSetQA,
+    response_model=schema.QASetData,
 )
 async def testbed_upsert_testsets(
     files: list[UploadFile],
-    name: schema.TestSetsNameType,
-    tid: Optional[schema.TestSetsIdType] = None,
+    name: schema.QASetsNameType,
+    tid: Optional[schema.QASetsIdType] = None,
     client: schema.ClientIdType = Header(default="server"),
-) -> schema.TestSetQA:
+) -> schema.QASetData:
     """Update stored TestSet data"""
     created = datetime.now().isoformat()
     db_conn = utils_databases.get_client_database(client).connection
@@ -194,16 +194,16 @@ def _handle_testset_error(ex: Exception, temp_directory, ll_model: str):
 @auth.post(
     "/testset_generate",
     description="Generate Q&A Test Set.",
-    response_model=schema.TestSetQA,
+    response_model=schema.QASetData,
 )
 async def testbed_generate_qa(
     files: list[UploadFile],
-    name: schema.TestSetsNameType,
+    name: schema.QASetsNameType,
     ll_model: str,
     embed_model: str,
     questions: int = 2,
     client: schema.ClientIdType = Header(default="server"),
-) -> schema.TestSetQA:
+) -> schema.QASetData:
     """Retrieve contents from a local file uploaded and generate Q&A"""
     # Get the Model Configuration
     try:
@@ -249,7 +249,7 @@ async def _collect_testbed_answers(loaded_testset: QATestset, client: str) -> li
     response_model=schema.EvaluationReport,
 )
 async def testbed_evaluate(
-    tid: schema.TestSetsIdType,
+    tid: schema.QASetsIdType,
     judge: str,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
@@ -259,7 +259,7 @@ async def testbed_evaluate(
     # Disable History
     client_settings.ll_model.chat_history = False
     # Disable Grade vector_search
-    client_settings.vector_search.grading = False
+    client_settings.vector_search.grade = False
 
     db_conn = utils_databases.get_client_database(client).connection
     testset = utils_testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())

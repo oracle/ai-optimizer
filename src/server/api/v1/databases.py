@@ -39,6 +39,7 @@ async def databases_list() -> list[schema.Database]:
     return database_objects
 
 
+
 @auth.get(
     "/{name}",
     description="Get single database configuration and vector storage",
@@ -75,24 +76,25 @@ async def databases_update(
 
     db.connected = False
     try:
-        payload.config_dir = db.config_dir
-        payload.wallet_location = db.wallet_location
-        logger.debug("Testing Payload: %s", payload)
-        db_conn = utils_databases.connect(payload)
-    except (ValueError, PermissionError, ConnectionError, LookupError) as ex:
+        # Create a test config with payload values to test connection
+        # Only update the actual db object after successful connection
+        test_config = db.model_copy(update=payload.model_dump(exclude_unset=True))
+        logger.debug("Testing Database: %s", test_config)
+        db_conn = utils_databases.connect(test_config)
+    except utils_databases.DbException as ex:
+        raise HTTPException(status_code=ex.status_code, detail=ex.detail) from ex
+    except (PermissionError, ConnectionError, LookupError) as ex:
         status_code = 500
-        if isinstance(ex, ValueError):
-            status_code = 400
-        elif isinstance(ex, PermissionError):
+        if isinstance(ex, PermissionError):
             status_code = 401
         elif isinstance(ex, LookupError):
             status_code = 404
         elif isinstance(ex, ConnectionError):
             status_code = 503
-        else:
-            raise
         raise HTTPException(status_code=status_code, detail=f"Database: {db.name} {ex}.") from ex
-    for key, value in payload.model_dump().items():
+
+    # Connection successful - now update the actual db object
+    for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(db, key, value)
 
     # Manage Connections; Unset and disconnect other databases
@@ -101,7 +103,7 @@ async def databases_update(
     database_objects = utils_databases.get_databases()
     for other_db in database_objects:
         if other_db.name != name and other_db.connection:
-            other_db.set_connection(utils_databases.disconnect(db.connection))
+            other_db.set_connection(utils_databases.disconnect(other_db.connection))
             other_db.connected = False
 
     return db

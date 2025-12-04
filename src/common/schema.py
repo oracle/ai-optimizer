@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama showsql rerank
 
 import time
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, List, Any
 from pydantic import BaseModel, Field, PrivateAttr, ConfigDict
 
 from langchain_core.messages import ChatMessage
@@ -31,6 +31,7 @@ class DatabaseVectorStorage(BaseModel):
         json_schema_extra={"readOnly": True},
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
+    description: Optional[str] = Field(default=None, description="Human-readable description of table contents")
     model: Optional[str] = Field(default=None, description="Embedding Model")
     chunk_size: Optional[int] = Field(default=0, description="Chunk Size")
     chunk_overlap: Optional[int] = Field(default=0, description="Chunk Overlap")
@@ -202,10 +203,11 @@ class LargeLanguageSettings(LanguageModelParameters):
 
 
 class VectorSearchSettings(DatabaseVectorStorage):
-    """Store vector_search Settings incl VectorStorage"""
+    """Store vector_search Settings"""
 
-    enabled: bool = Field(default=False, description="vector_search Enabled")
-    grading: bool = Field(default=True, description="Grade vector_search Results")
+    discovery: bool = Field(default=True, description="Auto-discover Vector Stores")
+    rephrase: bool = Field(default=True, description="Rephrase User Prompt")
+    grade: bool = Field(default=True, description="Grade Vector Search Results")
     search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
         default="Similarity", description="Search Type"
     )
@@ -252,6 +254,10 @@ class Settings(BaseModel):
     )
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
     database: Optional[DatabaseSettings] = Field(default_factory=DatabaseSettings, description="Database Settings")
+    tools_enabled: List[str] = Field(
+        default_factory=lambda: ["LLM Only"],
+        description="List of enabled MCP tools for this client",
+    )
     vector_search: Optional[VectorSearchSettings] = Field(
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
@@ -340,18 +346,18 @@ class ChatRequest(LanguageModelParameters):
 #####################################################
 # Testbed
 #####################################################
-class TestSets(BaseModel):
-    """TestSets"""
+class QASets(BaseModel):
+    """QA Sets - Collection of Q&A test sets for testbed evaluation"""
 
     tid: str = Field(description="Test ID")
-    name: str = Field(description="Name of TestSet")
-    created: str = Field(description="Date TestSet Loaded")
+    name: str = Field(description="Name of QA Set")
+    created: str = Field(description="Date QA Set Loaded")
 
 
-class TestSetQA(BaseModel):
-    """TestSet Q&A"""
+class QASetData(BaseModel):
+    """QA Set Data - Question/Answer pairs for testbed evaluation"""
 
-    qa_data: list = Field(description="TestSet Q&A Data")
+    qa_data: list = Field(description="QA Set Data")
 
 
 class Evaluation(BaseModel):
@@ -384,6 +390,6 @@ ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]
 OCIResourceOCID = OracleResource.__annotations__["ocid"]
-TestSetsIdType = TestSets.__annotations__["tid"]
-TestSetsNameType = TestSets.__annotations__["name"]
-TestSetDateType = TestSets.__annotations__["created"]
+QASetsIdType = QASets.__annotations__["tid"]
+QASetsNameType = QASets.__annotations__["name"]
+QASetsDateType = QASets.__annotations__["created"]

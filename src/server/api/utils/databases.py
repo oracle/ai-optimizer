@@ -100,12 +100,14 @@ def _test(config: Database) -> None:
     except oracledb.DatabaseError:
         logger.info("Refreshing %s database connection.", config.name)
         _ = connect(config)
-    except ValueError as ex:
-        raise DbException(status_code=400, detail=f"Database: {str(ex)}") from ex
+    except DbException:
+        raise
     except PermissionError as ex:
         raise DbException(status_code=401, detail=f"Database: {str(ex)}") from ex
     except ConnectionError as ex:
         raise DbException(status_code=503, detail=f"Database: {str(ex)}") from ex
+    except ValueError as ex:
+        raise DbException(status_code=400, detail=f"Database: {str(ex)}") from ex
     except Exception as ex:
         raise DbException(status_code=500, detail=str(ex)) from ex
 
@@ -136,7 +138,7 @@ def connect(config: Database) -> oracledb.Connection:
     include_fields = set(DatabaseAuth.model_fields.keys())
     db_authn = config.model_dump(include=include_fields)
     if any(not db_authn[key] for key in ("user", "password", "dsn")):
-        raise ValueError("missing connection details")
+        raise DbException(status_code=400, detail=f"Database: {config.name} missing connection details.")
 
     logger.info("Connecting to Database: %s", config.dsn)
     # If a wallet password is provided but no wallet location is set
@@ -249,7 +251,7 @@ def get_databases(
         for db in databases:
             try:
                 db_conn = connect(config=db)
-            except (ValueError, PermissionError, ConnectionError, LookupError):
+            except (DbException, PermissionError, ConnectionError, LookupError):
                 continue
             db.vector_stores = _get_vs(db_conn)
             db.connected = True
@@ -266,8 +268,8 @@ def get_client_database(client: ClientIdType, validate: bool = False) -> Databas
 
     # Get database name from client settings, defaulting to "DEFAULT"
     db_name = "DEFAULT"
-    if hasattr(client_settings, "vector_search") and client_settings.vector_search:
-        db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
+    if hasattr(client_settings, "database") and client_settings.database:
+        db_name = getattr(client_settings.database, "alias", "DEFAULT")
 
     # Return Single the Database Object
     return get_databases(db_name=db_name, validate=validate)
