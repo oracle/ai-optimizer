@@ -247,6 +247,7 @@ async def vs_retrieve(state: OptimizerState, config: RunnableConfig) -> Optimize
     logger.info("Found Documents: %i", len(documents_dict))
     return {"context_input": retrieve_question, "documents": documents_dict}
 
+
 async def nl2sql(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
     """Execute NL2SQL tool calling flow with streaming response.
 
@@ -354,7 +355,16 @@ async def nl2sql(state: OptimizerState, config: RunnableConfig) -> OptimizerStat
 
         # If we hit max iterations, return what we have
         logger.warning("NL2SQL: Max iterations reached")
-        return {"messages": [AIMessage(content="I'm sorry, I wasn't able to complete the request.")]}
+        return {
+            "messages": [
+                AIMessage(
+                    content="""
+                    I'm sorry, I wasn't able to complete the request due to the selected model's lack of MCP support. 
+                    Please, try again with a different model.
+                    """
+                )
+            ]
+        }
 
     except APIConnectionError as ex:
         logger.error("NL2SQL: API connection error: %s", ex)
