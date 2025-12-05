@@ -496,7 +496,7 @@ def render_evaluation_ui(available_ll_models: list) -> None:
 
     st.subheader("Q&A Evaluation", divider="red")
     st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
-    tool_options.tools_sidebar()
+    tool_options.tools_sidebar(show_vs_subtools=False)
     st_common.ll_sidebar()
     vs_options.vector_search_sidebar()
     st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")

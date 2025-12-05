@@ -293,6 +293,16 @@ def _prepare_messages_for_completion(state: OptimizerState, config: RunnableConf
     if state.get("messages") and any(isinstance(msg, ToolMessage) for msg in state["messages"]):
         messages = copy.deepcopy(state["messages"])
         messages = _remove_system_prompt(messages)
+        # Minimize internal VS ToolMessages - documents go via system prompt, not message history
+        # Keep the ToolMessage (satisfies API contract) but strip document content to prevent bloat
+        # Content reports factual outcome - user's prompt decides how LLM should respond
+        docs_are_relevant = bool(state.get("documents"))
+        for msg in messages:
+            if isinstance(msg, ToolMessage) and msg.additional_kwargs.get("internal_vs", False):
+                if docs_are_relevant:
+                    msg.content = '{"status": "success", "result": "Relevant documents found and added to context."}'
+                else:
+                    msg.content = '{"status": "success", "result": "No relevant documents found for this query."}'
     else:
         messages = state["cleaned_messages"]
 
@@ -629,8 +639,13 @@ def _vs_step_retrieve(thread_id: str, rephrased_question: str):
     return retrieval_result
 
 
-async def _vs_step_grade(thread_id: str, question: str, documents: list, rephrased_question: str) -> dict:
+async def _vs_step_grade(thread_id: str, documents: list, rephrased_question: str) -> dict:
     """Execute grade step of VS pipeline
+
+    Args:
+        thread_id: Client thread ID for settings lookup
+        documents: Retrieved documents to grade
+        rephrased_question: The contextualized query (used for both grading and context_input)
 
     Returns dict with context_input and documents if relevant, empty dict otherwise
     """
@@ -638,7 +653,7 @@ async def _vs_step_grade(thread_id: str, question: str, documents: list, rephras
     try:
         grading_result = await _vs_grade_impl(
             thread_id=thread_id,
-            question=question,
+            question=rephrased_question,
             documents=documents,
             mcp_client="Optimizer-Internal",
             model="graph-orchestrated",
@@ -773,19 +788,24 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig) -> dict:
     # Execute VS pipeline
     result, raw_documents, searched_tables = await _execute_vs_pipeline(thread_id, messages, config, empty_result)
 
+    # Only include documents for GUI if grading said they're relevant
+    # When not relevant, documents should not be shown to user (transparent completion)
+    docs_are_relevant = bool(result.get("documents"))
+    docs_for_gui = raw_documents if docs_are_relevant else []
+
     # Build and emit VS metadata via stream writer for client display
     vs_metadata = {}
     if searched_tables or result.get("context_input"):
         vs_metadata = {
             "searched_tables": searched_tables,
             "context_input": result.get("context_input", ""),
-            "num_documents": len(raw_documents),
+            "num_documents": len(docs_for_gui),
         }
         writer({"vs_metadata": vs_metadata})
         logger.info("VS metadata written to stream: %s", vs_metadata)
 
     # Create ToolMessages
-    tool_responses = _create_vs_tool_messages(messages, raw_documents, result)
+    tool_responses = _create_vs_tool_messages(messages, docs_for_gui, result)
 
     # If tool message creation returned error, return it
     if tool_responses and isinstance(tool_responses[0], AIMessage):
@@ -839,8 +859,8 @@ async def _execute_vs_pipeline(
         raw_documents = retrieval_result.documents
         searched_tables = retrieval_result.searched_tables
 
-        # Step 3: Grade
-        result = await _vs_step_grade(thread_id, question, retrieval_result.documents, rephrased_question)
+        # Step 3: Grade (uses rephrased question for relevance assessment)
+        result = await _vs_step_grade(thread_id, retrieval_result.documents, rephrased_question)
         return result, raw_documents, searched_tables
 
     except Exception as ex:

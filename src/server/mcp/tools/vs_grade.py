@@ -71,11 +71,12 @@ async def _vs_grade_impl(
 ) -> VectorGradeResponse:
     try:
         logger.info(
-            "Grading Vector Search Response (Thread ID: %s, MCP: %s, Model: %s, Docs: %d)",
+            "Grading Vector Search Response (Thread ID: %s, MCP: %s, Model: %s, Docs: %d) against question: %s",
             thread_id,
             mcp_client,
             model,
             len(documents),
+            question,
         )
 
         # Get client settings
@@ -88,7 +89,7 @@ async def _vs_grade_impl(
         grading_performed = False
 
         # Only grade if grading is enabled and we have documents
-        if vector_search.grading and documents:
+        if vector_search.grade and documents:
             grading_performed = True
             # Get LLM config
             oci_config = utils_oci.get(client=thread_id)

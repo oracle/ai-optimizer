@@ -189,6 +189,9 @@ def vector_store_selection(location: str = "sidebar") -> None:
     Args:
         location: "sidebar" (default) or "main"
     """
+    if location == "sidebar" and state.client_settings["vector_search"].get("discovery", False):
+        return
+
     container = st.sidebar if location == "sidebar" else st
     container.subheader("Vector Store", divider="red")
     info_placeholder = st.empty()

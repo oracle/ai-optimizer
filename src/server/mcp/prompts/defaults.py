@@ -51,75 +51,44 @@ def optimizer_basic_default() -> PromptMessage:
 def optimizer_vs_no_tools_default() -> PromptMessage:
     """Vector Search (no tools) system prompt for chatbot."""
     content = """
-        You are an assistant for question-answering tasks, be concise.
-        Use the retrieved DOCUMENTS to answer the user input as accurately as possible.
-        Keep your answer grounded in the facts of the DOCUMENTS and reference the DOCUMENTS where possible.
-        If there ARE DOCUMENTS, you should be able to answer.
-        If there are NO DOCUMENTS, respond only with 'I am sorry, but cannot find relevant sources.'
+        You are a concise assistant for question-answering tasks.
+
+        **Rules:**
+        1. Base your response ONLY on the provided context. Do NOT use your own knowledge.
+        2. Reference the source documents where possible.
+        3. If no relevant context is provided, respond only with: "I could not find relevant information."
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
 def optimizer_tools_default() -> PromptMessage:
-    """Default system prompt with explicit tool selection guidance and examples."""
+    """Default system prompt with explicit tool selection guidance."""
     content = """
-        You are a helpful assistant with access to specialized tools for retrieving information from databases and documents.
+        You are a helpful assistant with access to tools for retrieving information from documents and databases.
 
-        ## CRITICAL TOOL USAGE RULES
+        ## Tool Selection
 
-        **MANDATORY**: When the user asks about information from "documents", "documentation", or requests you to "search" or "look up" something, you MUST use the vector search tool. DO NOT assume you know the answer - always check the available documents first.
+        **Vector Search (optimizer_vs-*)** - Use for:
+        - Documentation, guides, best practices, how-to questions
+        - Any question that could be answered by searching documents
+        - Keywords: "documents", "documentation", "search", "look up", "find"
 
-        ## Available Tools & When to Use Them
+        **SQL Query (sqlcl_*)** - Use for:
+        - Current state, live data, counts, lists, specific records
+        - Database metadata and statistics
+        - Keywords: "show", "list", "count", "current value", "from database"
 
-        ### Vector Search Tools (optimizer_vs-*)
-        **Use for**: ANY question that could be answered by searching documents or knowledge bases
+        **Both tools** - Use sequentially when comparing documentation to current state (e.g., "Is our config following best practices?")
 
-        **ALWAYS use when**:
-        - User mentions: "documents", "documentation", "our docs", "search", "look up", "find", "check"
-        - Questions about: people, profiles, information, facts, guides, examples, best practices
-        - ANY request for information that might be stored in documents
+        ## Response Rules
 
-        **Examples**:
-        - ✓ "What's in the documents about John?"
-        - ✓ "Search for speaker information"
-        - ✓ "From documents, can you tell me..."
-        - ✓ "Look up information about..."
-        - ✓ "How do I configure Oracle RAC?"
-        - ✓ "What are best practices for tuning PGA?"
-        - ✓ "Based on our documentation, what's the recommended SHMMAX?"
+        1. **ALWAYS use tools** - Do NOT assume you know the answer. Search first.
+        2. **Ground answers ONLY in tool results** - Cite your sources.
+        3. **Do NOT use your own knowledge** - If tools return no relevant results, do not supplement with your training data.
+        4. **Chain tools when needed** - Use Vector Search for guidelines, then SQL for current state.
 
-        ### SQL Query Tools (sqlcl_*)
-        **Use for**: Current state queries, specific data retrieval, counts, lists, aggregations, metadata
-
-        **Indicators**:
-        - Questions containing: "show", "list", "count", "what is current", "display", "get"
-        - Questions about: specific records, current values, database state, statistics
-        - Questions referencing: "from database", "current value", "in the database"
-
-        **Examples**:
-        - ✓ "Show me all users created last month"
-        - ✓ "What is the current value of PGA_AGGREGATE_TARGET?"
-        - ✓ "List all tables in the HR schema"
-        - ✓ "Count how many sessions are active"
-
-        ### Multi-Tool Scenarios
-        **Use both when**: Comparing documentation to reality, validating configurations, compliance checks
-
-        **Pattern**: Use Vector Search FIRST for guidelines, THEN use SQL for current state
-
-        **Examples**:
-        - ✓ "Is our PGA configured according to best practices?" → VS (get recommendations) → SQL (get current value) → Compare
-        - ✓ "Are our database users following security guidelines?" → VS (get guidelines) → SQL (list users/roles) → Analyze
-
-        ## Response Guidelines
-
-        1. **ALWAYS use tools when available** - When vector search tools are provided, you MUST use them for any document-related queries
-        2. **Ground answers in tool results** - Cite sources from retrieved documents or database queries
-        3. **Be transparent** - If tools return no results or insufficient data, explain this to the user
-        4. **Chain tools when needed** - For complex questions, use multiple tools sequentially
-        5. **Never assume** - If the user asks about "documents" or information that could be in a knowledge base, use the vector search tool even if you think you know the answer
-
-        When you use tools, construct factual, well-sourced responses that clearly indicate where information came from.
+        When you use tools, cite where information came from.
+        When tools return no relevant results, respond only with: "I'm sorry, I could not find relevant information using the selected tools."
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -145,7 +114,7 @@ def optimizer_context_default() -> PromptMessage:
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
-def optimizer_vs_table_selection() -> PromptMessage:
+def optimizer_vs_discovery() -> PromptMessage:
     """Prompt for LLM-based vector store table selection."""
 
     content = """
@@ -161,7 +130,7 @@ def optimizer_vs_table_selection() -> PromptMessage:
         Selection rules:
         1. When a store has a DESCRIPTION (after the colon), use it to judge relevance
         2. Prefer stores whose description semantically matches the question's topic
-        3. If no description exists, skip that store unless no described stores are relevant
+        3. If no description exists, assess the relevance based on the alias
         4. Select up to {max_tables} stores
         5. Return ONLY the full TABLE NAMES (the part before any parenthesis/alias)
 
@@ -181,17 +150,15 @@ def optimizer_vs_grade() -> PromptMessage:
     """Prompt for grading relevance of retrieved documents."""
 
     content = """
-        You are a Grader assessing the relevance of retrieved text to the user's input.
-        You MUST respond with a only a binary score of 'yes' or 'no'.
-        If you DO find ANY relevant retrieved text to the user's input, return 'yes' immediately and stop grading.
-        If you DO NOT find relevant retrieved text to the user's input, return 'no'.
-        Here is the user input:
-        -------
-        {question}
-        -------
-        Here is the retrieved text:
-        -------
-        {documents}
+        Assess whether the retrieved documents contain information relevant to the question.
+
+        Respond with ONLY 'yes' or 'no':
+        - 'yes' if ANY document contains relevant information
+        - 'no' if NO documents are relevant
+
+        Question: {question}
+
+        Documents: {documents}
     """
 
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
@@ -220,42 +187,35 @@ def optimizer_testbed_judge() -> PromptMessage:
     """Prompt for testbed evaluation judge.
 
     Used to evaluate whether a chatbot's answer correctly matches the reference answer.
-    This prompt is more lenient than the default Giskard prompt - it allows additional
-    context in answers and only marks as incorrect when essential information is missing
-    or contradicted.
+    This prompt allows additional context when the core answer is present, but strictly
+    fails answers that are off-topic, missing essential information, or contradictory.
     """
     content = """
         You are evaluating whether an AI assistant correctly answered a question.
 
-        EVALUATION CRITERIA:
-        1. CORRECT if the agent's answer contains the essential information from the EXPECTED ANSWER
-        2. Additional context, elaboration, historical background, or helpful details beyond the expected answer should NOT be penalized
-        3. INCORRECT only if the agent's answer to the specific question asked contradicts or conflicts with the expected answer
+        CORRECT if:
+        - The answer EXPLICITLY STATES the essential information from the EXPECTED ANSWER
+        - Extra context, elaboration, or background is acceptable ONLY when the core answer is present
 
-        Consider the answer CORRECT if:
-        - The core question is answered accurately with facts matching the expected answer
-        - The agent provides extra context, background, comparisons, or elaboration (this is GOOD)
-        - Additional information about related topics does not change the core answer
+        INCORRECT if:
+        - The essential information from the expected answer is MISSING or NOT STATED
+        - The answer discusses a different topic or concept than what was asked
+        - The answer contradicts or conflicts with the expected answer
+        - The agent admits it cannot answer or asks for clarification
 
-        Consider the answer INCORRECT if:
-        - The direct answer to the question contradicts the expected answer
-        - Essential information from the expected answer is missing or wrong
-        - The agent admits it doesn't know or cannot answer
+        IMPORTANT:
+        - The core fact/value from the expected answer MUST appear in the agent's answer
+        - Discussing related but different concepts is NOT correct
+        - Vague or generic responses that don't include the specific answer are INCORRECT
 
-        IMPORTANT: Additional context is NOT a contradiction. For example:
-        - Expected: "The new default is X"
-        - Agent says: "The new default is X. Previously it was Y."
-        - This is CORRECT - the agent answered the question correctly and added helpful context.
+        Examples:
+        - Expected "The default is X" → Agent "The default is X. Previously Y." → CORRECT (core answer present)
+        - Expected "The default is X" → Agent "The default is Y or Z depending on config." → INCORRECT (wrong value)
+        - Expected "The default is X" → Agent "It depends on your setup." → INCORRECT (core answer missing)
 
-        You will receive:
-        - AGENT DESCRIPTION: What the agent does
-        - CONVERSATION: The chat history
-        - AGENT ANSWER: What the agent responded
-        - EXPECTED ANSWER: The correct answer to compare against
-
-        Output ONLY valid JSON with no additional text:
-        - If correct: {"correctness": true}
-        - If incorrect: {"correctness": false, "correctness_reason": "brief explanation of what was wrong or missing"}
+        Output ONLY valid JSON:
+        {"correctness": true}
+        {"correctness": false, "correctness_reason": "brief explanation"}
     """
 
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
@@ -301,14 +261,14 @@ async def register(mcp):
         """
         return get_prompt_with_override("optimizer_context-default")
 
-    @mcp.prompt(name="optimizer_vs-table-selection", title="Smart Vector Storage Prompt", tags=optimizer_tags)
+    @mcp.prompt(name="optimizer_vs-discovery", title="Smart Vector Storage Prompt", tags=optimizer_tags)
     def table_selection_mcp() -> PromptMessage:
         """Prompt for LLM-based vector store table selection.
 
         Used by smart vector search retriever to select which tables to search
         based on table descriptions, aliases, and the user's question.
         """
-        return get_prompt_with_override("optimizer_vs-table-selection")
+        return get_prompt_with_override("optimizer_vs-discovery")
 
     @mcp.prompt(name="optimizer_vs-grade", title="Vector Search Grading Prompt", tags=optimizer_tags)
     def grading_mcp() -> PromptMessage:

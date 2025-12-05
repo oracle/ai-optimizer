@@ -236,7 +236,7 @@ See [Complete Tool Reference](#9-complete-tool-reference) for detailed tool list
 | `optimizer_basic-default` | Basic chatbot | No tools enabled |
 | `optimizer_tools-default` | Tool-aware system prompt | Any tools enabled (VS, SQLcl, etc.) |
 | `optimizer_context-default` | Query rephrasing | VS rephrase tool needs context |
-| `optimizer_vs-table-selection` | Table selection | Smart retriever selecting vector stores |
+| `optimizer_vs-discovery` | Table selection | Smart retriever selecting vector stores |
 | `optimizer_vs-grade` | Document grading | Grading retrieved documents |
 | `optimizer_vs-rephrase` | Query rephrasing | Rephrasing with chat history |
 

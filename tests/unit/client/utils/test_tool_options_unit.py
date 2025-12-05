@@ -160,6 +160,11 @@ class TestToolsSidebar:
         state.client_settings = {
             "tools_enabled": ["Vector Search"],
             "database": {"alias": "DEFAULT"},
+            "vector_search": {
+                "discovery": True,
+                "rephrase": True,
+                "grade": True,
+            },
         }
 
         # Mock: Everything is properly configured

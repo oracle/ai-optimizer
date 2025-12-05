@@ -48,10 +48,14 @@ class TestChatAuthenticationRequired:
 class TestChatCompletions:
     """Integration tests for chat completion endpoints."""
 
-    def test_chat_completion_no_model(self, client, test_client_auth_headers):
-        """Test chat completion request when no model is configured."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=UserWarning)
+    def test_chat_completion_graph_error_handling(self, client, test_client_auth_headers):
+        """Test chat completion handles graph execution errors gracefully."""
+        # Mock the completion_generator to simulate a graph execution error
+        async def mock_error_generator(*args, **kwargs):
+            # Simulate error response format from utils_chat.completion_generator
+            yield {"choices": [{"message": {"role": "assistant", "content": "I'm sorry, I've run into a problem"}}]}
+
+        with patch("server.api.v1.chat.utils_chat.completion_generator", side_effect=mock_error_generator):
             request = ChatRequest(
                 messages=[ChatMessage(content="Hello", role="user")],
                 model="test-provider/test-model",
@@ -64,10 +68,8 @@ class TestChatCompletions:
 
         assert response.status_code == 200
         assert "choices" in response.json()
-        assert (
-            response.json()["choices"][0]["message"]["content"]
-            == "I'm unable to initialise the Language Model. Please refresh the application."
-        )
+        content = response.json()["choices"][0]["message"]["content"]
+        assert "problem" in content.lower() or "sorry" in content.lower()
 
     def test_chat_completion_valid_mock(self, client, test_client_auth_headers):
         """Test valid chat completion request with mocked response."""
@@ -157,8 +159,26 @@ class TestChatHistory:
 
     def test_chat_history_clean(self, client, test_client_auth_headers):
         """Test clearing chat history when no prior history exists."""
-        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
-            mock_graph.get_state.side_effect = KeyError()
+        with patch("server.mcp.graph.main") as mock_graph_main:
+            mock_agent = MagicMock()
+            mock_agent.update_state.side_effect = KeyError()
+            mock_graph_main.return_value = mock_agent
+
+            response = client.patch("/v1/chat/history", headers=test_client_auth_headers["valid_auth"])
+            assert response.status_code == 200
+            history = response.json()
+            assert len(history) == 1
+            assert history[0]["role"] == "system"
+            # KeyError returns "no history" message
+            assert "no history" in history[0]["content"].lower()
+
+    def test_chat_history_clean_success(self, client, test_client_auth_headers):
+        """Test clearing chat history successfully."""
+        with patch("server.mcp.graph.main") as mock_graph_main:
+            mock_agent = MagicMock()
+            mock_agent.update_state.return_value = None
+            mock_graph_main.return_value = mock_agent
+
             response = client.patch("/v1/chat/history", headers=test_client_auth_headers["valid_auth"])
             assert response.status_code == 200
             history = response.json()
@@ -168,8 +188,11 @@ class TestChatHistory:
 
     def test_chat_history_empty(self, client, test_client_auth_headers):
         """Test retrieving chat history when no history exists."""
-        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
-            mock_graph.get_state.side_effect = KeyError()
+        with patch("server.mcp.graph.main") as mock_graph_main:
+            mock_agent = MagicMock()
+            mock_agent.get_state.side_effect = KeyError()
+            mock_graph_main.return_value = mock_agent
+
             response = client.get("/v1/chat/history", headers=test_client_auth_headers["valid_auth"])
             assert response.status_code == 200
             history = response.json()
@@ -190,7 +213,8 @@ class TestChatHistory:
 
         This prevents RAG documents from persisting across conversation resets.
         """
-        with patch("server.agents.chatbot.chatbot_graph") as mock_graph:
+        with patch("server.mcp.graph.main") as mock_graph_main:
+            mock_agent = MagicMock()
             mock_state = MagicMock()
             mock_state.values = {
                 "messages": [
@@ -211,8 +235,9 @@ class TestChatHistory:
                 },
             }
 
-            mock_graph.get_state.return_value = mock_state
-            mock_graph.update_state.return_value = None
+            mock_agent.get_state.return_value = mock_state
+            mock_agent.update_state.return_value = None
+            mock_graph_main.return_value = mock_agent
 
             response = client.patch("/v1/chat/history", headers=test_client_auth_headers["valid_auth"])
 
@@ -222,8 +247,8 @@ class TestChatHistory:
             assert history[0]["role"] == "system"
             assert "forgotten" in history[0]["content"].lower()
 
-            mock_graph.update_state.assert_called_once()
-            call_args = mock_graph.update_state.call_args
+            mock_agent.update_state.assert_called_once()
+            call_args = mock_agent.update_state.call_args
 
             values = call_args.kwargs["values"]
             assert "messages" in values

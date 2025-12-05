@@ -82,6 +82,17 @@ async def _vs_rephrase_impl(
 
         # Get client settings
         client_settings = utils_settings.get_client(thread_id)
+
+        # Check if rephrasing is enabled in vector search settings
+        if not client_settings.vector_search.rephrase:
+            logger.info("Rephrasing disabled in vector search settings")
+            return RephrasePrompt(
+                original_prompt=question,
+                rephrased_prompt=question,
+                was_rephrased=False,
+                status="success",
+            )
+
         use_history = client_settings.ll_model.chat_history
 
         # Only rephrase if history is enabled and there's actual history

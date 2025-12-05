@@ -24,6 +24,7 @@ def vector_store_state(sample_vector_store_data):
     state.client_settings = {
         "vector_search": {
             "enabled": True,
+            "discovery": False,
             **sample_vector_store_data,
             "top_k": 10,
             "search_type": "Similarity",
@@ -48,6 +49,125 @@ def vector_store_state(sample_vector_store_data):
     for key in list(state.keys()):
         if key.startswith("vs_") or key.startswith("_vs_"):
             del state[key]
+
+
+#############################################################################
+# Test Discovery Mode - Integration Tests
+#############################################################################
+class TestDiscoveryModeIntegration:
+    """Integration tests for discovery mode skipping vector store selection"""
+
+    def test_discovery_true_sidebar_skips_selection(self, app_server, vector_store_state):
+        """Test that discovery=True with sidebar location skips vector store selection UI"""
+        assert app_server is not None
+
+        # Enable discovery mode
+        vector_store_state.client_settings["vector_search"]["discovery"] = True
+
+        subheader_called = False
+
+        def mock_subheader(*_args, **_kwargs):
+            nonlocal subheader_called
+            subheader_called = True
+
+        with patch.object(st.sidebar, "subheader", side_effect=mock_subheader):
+            vs_options.vector_store_selection(location="sidebar")
+
+        # UI should NOT be rendered when discovery=True and location=sidebar
+        assert not subheader_called
+
+    def test_discovery_true_main_renders_selection(self, app_server, vector_store_state):
+        """Test that discovery=True with main location still renders vector store selection UI"""
+        assert app_server is not None
+
+        # Enable discovery mode
+        vector_store_state.client_settings["vector_search"]["discovery"] = True
+
+        subheader_called = False
+
+        def mock_subheader(*_args, **_kwargs):
+            nonlocal subheader_called
+            subheader_called = True
+
+        # Create mock columns with selectbox method
+        def create_mock_columns(spec):
+            return [MagicMock(selectbox=MagicMock(return_value="")) for _ in spec]
+
+        with (
+            patch.object(st, "subheader", side_effect=mock_subheader),
+            patch.object(st, "button"),
+            patch.object(st, "selectbox", return_value=""),
+            patch.object(st, "empty", return_value=MagicMock()),
+            patch.object(st, "columns", side_effect=create_mock_columns),
+        ):
+            vs_options.vector_store_selection(location="main")
+
+        # UI SHOULD be rendered when location=main (regardless of discovery setting)
+        assert subheader_called
+
+    def test_discovery_false_sidebar_renders_selection(self, app_server, vector_store_state):
+        """Test that discovery=False with sidebar location renders vector store selection UI"""
+        assert app_server is not None
+
+        # Explicitly disable discovery mode
+        vector_store_state.client_settings["vector_search"]["discovery"] = False
+
+        subheader_called = False
+
+        def mock_subheader(*_args, **_kwargs):
+            nonlocal subheader_called
+            subheader_called = True
+
+        with (
+            patch.object(st.sidebar, "subheader", side_effect=mock_subheader),
+            patch.object(st.sidebar, "button"),
+            patch.object(st.sidebar, "selectbox", return_value=""),
+            patch.object(st, "empty", return_value=MagicMock()),
+        ):
+            vs_options.vector_store_selection(location="sidebar")
+
+        # UI SHOULD be rendered when discovery=False
+        assert subheader_called
+
+    def test_discovery_missing_sidebar_renders_selection(self, app_server, sample_vector_store_data):
+        """Test that missing discovery key (defaults to False) renders vector store selection UI"""
+        assert app_server is not None
+
+        # Setup state WITHOUT discovery key
+        state.client_settings = {
+            "vector_search": {
+                "enabled": True,
+                **sample_vector_store_data,
+                "top_k": 10,
+                "search_type": "Similarity",
+                # NOTE: no "discovery" key
+            },
+            "database": {"alias": "DEFAULT"},
+        }
+        state.database_configs = [
+            {"name": "DEFAULT", "vector_stores": [sample_vector_store_data]}
+        ]
+        state.model_configs = [
+            {"id": "text-embed-3", "provider": "openai", "type": "embed", "enabled": True}
+        ]
+        state["_vs_key_version"] = 0
+
+        subheader_called = False
+
+        def mock_subheader(*_args, **_kwargs):
+            nonlocal subheader_called
+            subheader_called = True
+
+        with (
+            patch.object(st.sidebar, "subheader", side_effect=mock_subheader),
+            patch.object(st.sidebar, "button"),
+            patch.object(st.sidebar, "selectbox", return_value=""),
+            patch.object(st, "empty", return_value=MagicMock()),
+        ):
+            vs_options.vector_store_selection(location="sidebar")
+
+        # UI SHOULD be rendered when discovery key is missing (defaults to False)
+        assert subheader_called
 
 
 #############################################################################

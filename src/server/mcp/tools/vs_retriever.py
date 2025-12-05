@@ -17,8 +17,8 @@ import server.api.utils.settings as utils_settings
 import server.api.utils.databases as utils_databases
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
-import server.mcp.tools.vs_tables as vs_tables_tool
 import server.mcp.prompts.defaults as table_selection_prompts
+from server.mcp.tools.vs_discovery import _vs_discovery_impl
 
 from common import logging_config
 
@@ -50,22 +50,28 @@ class VectorSearchResponse(BaseModel):
 
 
 def _get_available_vector_stores(thread_id: str):
-    """Get list of available vector stores with enabled embedding models"""
-    try:
-        response = vs_tables_tool.execute_vector_table_query(thread_id)
-        parsed_tables = [vs_tables_tool.parse_vector_table_row(row) for row in response]
+    """Get list of available vector stores with enabled embedding models.
 
-        # Filter by enabled models
-        available = []
-        for table in parsed_tables:
-            model_id = table.parsed.model
-            alias = table.parsed.alias
-            logger.info("Checking table %s (alias: %s) with model: %s", table.table_name, alias, model_id)
-            if vs_tables_tool.is_model_enabled(model_id):
-                available.append(table)
-                logger.info("  -> Enabled")
-            else:
-                logger.info("  -> Skipped (not enabled or legacy)")
+    Delegates to vs_discovery which handles:
+    - Discovery enabled: queries database for all vector tables with enabled models
+    - Discovery disabled: returns configured vector store from settings
+    """
+    try:
+        response = _vs_discovery_impl(thread_id=thread_id, filter_enabled_models=True)
+
+        if response.status != "success":
+            logger.error("Discovery failed: %s", response.error)
+            return []
+
+        available = response.parsed_tables
+        for table in available:
+            logger.info(
+                "Checking table %s (alias: %s) with model: %s",
+                table.table_name,
+                table.parsed.alias,
+                table.parsed.model,
+            )
+            logger.info("  -> Enabled")
 
         logger.info(
             "Found %d available vector stores with enabled models",
@@ -109,9 +115,6 @@ def _select_tables_with_llm(
             desc_parts.append(f" (alias: {table.parsed.alias})")
         if table.parsed.description:
             desc_parts.append(f": {table.parsed.description}")
-        else:
-            desc_parts.append(f" - {table.num_rows} documents")
-
         if table.parsed.model:
             desc_parts.append(f" [model: {table.parsed.model}]")
 
@@ -120,7 +123,7 @@ def _select_tables_with_llm(
     tables_info = "\n".join(table_descriptions)
 
     # Get table selection prompt from MCP prompts (user customizable)
-    prompt_msg = table_selection_prompts.get_prompt_with_override("optimizer_vs-table-selection")
+    prompt_msg = table_selection_prompts.get_prompt_with_override("optimizer_vs-discovery")
     prompt_template = prompt_msg.content.text
 
     # Format the template with actual values
@@ -370,7 +373,7 @@ async def register(mcp, auth):
         model: str = "UNKNOWN-LLM",
     ) -> VectorSearchResponse:
         """
-        Smart semantic search using Oracle Vector Search with automatic table selection.
+        Smart semantic search using Oracle Vector Search.
 
         SMART TABLE SELECTION:
         - Automatically discovers available vector stores and selects the most

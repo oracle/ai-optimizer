@@ -8,9 +8,10 @@ Session States Set:
 # spell-checker:ignore streamlit oraclevs
 
 import asyncio
+import base64
 import inspect
 import json
-import base64
+import re
 
 import streamlit as st
 from streamlit import session_state as state
@@ -26,6 +27,19 @@ logger = logging_config.logging.getLogger("client.content.chatbot")
 #############################################################################
 # Functions
 #############################################################################
+def escape_markdown_latex(text: str) -> str:
+    """Escape characters to prevent Streamlit markdown/LaTeX interpretation issues.
+
+    Handles:
+    - Dollar signs ($) that trigger LaTeX math mode
+    - Avoids double-escaping already escaped sequences
+    """
+    if not text:
+        return text
+    # Escape $ not already escaped (negative lookbehind for backslash)
+    return re.sub(r"(?<!\\)\$", r"\\$", text)
+
+
 def show_vector_search_refs(context, vs_metadata=None):
     """When Vector Search Content Found, show the references"""
     st.markdown("**References:**")
@@ -61,8 +75,6 @@ def show_vector_search_refs(context, vs_metadata=None):
 
             if vs_metadata and vs_metadata.get("context_input"):
                 st.markdown(f"**Search Query:** {vs_metadata.get('context_input')}")
-            elif context.get("context_input"):
-                st.markdown(f"**Search Query:** {context.get('context_input')}")
 
 
 def show_token_usage(token_usage):
@@ -105,7 +117,7 @@ def create_client():
 def display_chat_history(history):
     """Display chat history messages with metadata"""
     st.chat_message("ai").write("Hello, how can I help you?")
-    vector_search_refs = []
+    vector_search_refs = {}
 
     for message in history or []:
         if not message["content"]:
@@ -116,7 +128,7 @@ def display_chat_history(history):
 
         elif message["role"] in ("ai", "assistant"):
             with st.chat_message("ai"):
-                st.markdown(message["content"])
+                st.markdown(escape_markdown_latex(message["content"]))
 
                 # Extract metadata from response_metadata
                 response_metadata = message.get("response_metadata", {})
@@ -128,9 +140,9 @@ def display_chat_history(history):
                     show_token_usage(token_usage)
 
                 # Show vector search references if available
-                if vector_search_refs:
+                if vector_search_refs and vector_search_refs.get("documents"):
                     show_vector_search_refs(vector_search_refs, vs_metadata)
-                    vector_search_refs = []
+                    vector_search_refs = {}
 
         elif message["role"] in ("human", "user"):
             with st.chat_message("human"):
@@ -185,7 +197,7 @@ async def handle_chat_input(user_client):
                         thinking_task.cancel()
                         thinking_task = None
                     full_answer += chunk
-                    message_placeholder.markdown(full_answer)
+                    message_placeholder.markdown(escape_markdown_latex(full_answer))
             finally:
                 # Ensure thinking task is cancelled
                 if thinking_task and not thinking_task.done():
