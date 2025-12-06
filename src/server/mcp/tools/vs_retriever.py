@@ -364,6 +364,7 @@ def _vs_retrieve_impl(
 async def register(mcp, auth):
     """Invoke Registration of Vector Search Retriever"""
 
+    # Note: Keep docstring SHORT for small LLMs. See _vs_retrieve_impl for full documentation.
     @mcp.tool(name="optimizer_vs-retriever")
     @auth.get("/vs_retriever", operation_id="vs_retriever", include_in_schema=False)
     def retriever(
@@ -372,43 +373,5 @@ async def register(mcp, auth):
         mcp_client: str = "Optimizer",
         model: str = "UNKNOWN-LLM",
     ) -> VectorSearchResponse:
-        """
-        Smart semantic search using Oracle Vector Search.
-
-        SMART TABLE SELECTION:
-        - Automatically discovers available vector stores and selects the most
-          relevant ones based on table descriptions, aliases, and the user's question
-        - Only considers tables with enabled embedding models
-        - Searches multiple relevant tables and merges results
-
-        BEHAVIOR:
-        1. Discovers all vector stores with enabled embedding models
-        2. Uses LLM to analyze question and select up to 3 most relevant tables
-        3. Searches all selected tables in parallel
-        4. Deduplicates results and returns top_k documents
-        5. Returns searched_tables list for transparency
-
-        The question should be a standalone query (optionally rephrased by a separate
-        rephrase tool). Results should be graded by a separate grading tool unless
-        disabled.
-
-        Args:
-            thread_id: Optimizer Client ID (chat thread), used for looking up
-                configuration (required)
-            question: The user's question to search for (required, may be
-                pre-rephrased)
-            mcp_client: Name of the MCP client implementation being used
-                (Default: Optimizer)
-            model: Name and version of the language model being used (optional)
-
-        Returns:
-            VectorSearchResponse object containing:
-            - context_input: The question used for retrieval
-            - documents: List of retrieved documents with page_content and metadata
-                (includes 'searched_table' in metadata)
-            - num_documents: Number of documents retrieved
-            - searched_tables: List of table names that were searched
-            - status: "success" or "error"
-            - error: Error message if status is "error" (optional)
-        """
+        """Search documentation using vector similarity. Returns relevant documents."""
         return _vs_retrieve_impl(thread_id, question, mcp_client, model)

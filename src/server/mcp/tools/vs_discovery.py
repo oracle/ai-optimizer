@@ -241,6 +241,7 @@ def _vs_discovery_impl(
 async def register(mcp, auth):
     """Invoke Registration of Vector Storage discovery"""
 
+    # Note: Keep docstring SHORT for small LLMs. See _vs_discovery_impl for full documentation.
     @mcp.tool(name="optimizer_vs-discovery")
     @auth.get("/vs_discovery", operation_id="vs_discovery", include_in_schema=False)
     def vector_storage_discovery(
@@ -249,33 +250,7 @@ async def register(mcp, auth):
         mcp_client: str = "Optimizer",
         model: str = "UNKNOWN-LLM",
     ) -> VectorStoreListResponse:
-        """
-        Discover Oracle AI Database Vector Storage.
-
-        Searches the Oracle data dictionary to identify tables with VECTOR data type
-        columns. Filters to only include tables whose embedding models are currently
-        enabled.
-
-        Used by the retriever to identify relevant Vector Stores for a user prompt.
-
-        Args:
-            thread_id: Optimizer Client ID (chat thread), used for looking up
-                configuration (required)
-            filter_enabled_models: Only return tables with enabled embedding models
-                (default: True)
-            mcp_client: Name of the MCP client implementation being used
-                (Default: Optimizer)
-            model: Name and version of the language model being used (optional)
-
-        Returns:
-            VectorStoreListResponse object containing:
-            - raw_results: List of tuples from SQL query
-                (schema_name, table_name, num_rows, last_analyzed, table_comment)
-            - parsed_tables: List of structured objects with schema info and
-                parsed metadata, filtered by embedding model enabled status
-            - status: "success" or "error"
-            - error: Error message if status is "error" (optional)
-        """
+        """List available vector storage tables in the database."""
         logger.info(
             "VS Discovery (Thread ID: %s, Filter: %s, MCP: %s, Model: %s)",
             thread_id,

@@ -68,36 +68,37 @@ def optimizer_tools_default() -> PromptMessage:
           considering changing this prompt, evaluate the impact on <8b models.
     """
     content = """
-        You are a helpful assistant with access to search tools. When asked questions, use the available tools to find information.
+        You are a helpful assistant. Answer questions by searching with the available tools.
 
-        Use **optimizer_vs-retriever** to search documentation for answers.
-        Use **sqlcl_*** tools to query database for live data and statistics.
+        Tools:
+        - optimizer_vs-retriever: Search documentation
+        - sqlcl_*: Query database for live data
 
-        Important:
-        - Only use information from tool results. Do not use your own knowledge.
-        - If tools return no relevant results, say "I could not find relevant information."
-        - Do not make up or guess information that was not in the tool results.
+        Rules:
+        - Answer using only the exact information from tool results
+        - Do not add information that is not in the results
+        - If results do not answer the question, say "I could not find relevant information."
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
 def optimizer_context_default() -> PromptMessage:
-    """Default Context system prompt for vector search."""
+    """
+    Default Context system prompt for vector search.
+    Note: Keep this prompt simple for smaller models (<8b parameters).
+    """
     content = """
-        Rephrase the latest user input into a standalone search query optimized for vector retrieval.
+        Rephrase the user's question into a standalone search query.
 
-        CRITICAL INSTRUCTIONS:
-        1. **Detect Topic Changes**: If the latest input introduces NEW, UNRELATED topics or keywords that differ significantly from the conversation history, treat it as a TOPIC CHANGE.
-        2. **Topic Change Handling**: For topic changes, use ONLY the latest input's keywords and ignore prior context. Do NOT blend unrelated prior topics into the new query.
-        3. **Topic Continuation**: Only incorporate prior context if the latest input is clearly continuing or refining the same topic (e.g., follow-up questions, clarifications, or pronoun references like "it", "that", "this").
-        4. **Remove Conversational Elements**: Strip confirmations, clarifications, and conversational phrases while preserving core technical terms and intent.
+        Rules:
+        - If the question uses "it", "this", "that", replace with the actual topic from history
+        - If the question is about a new topic, ignore the history
+        - Remove conversational words, keep technical terms
+        - Output only the rephrased query, nothing else
 
-        EXAMPLES:
-        - History: "topic A", Latest: "topic B" → Rephrase as: "topic B" (TOPIC CHANGE - ignore topic A)
-        - History: "topic A", Latest: "how do I use it?" → Rephrase as: "how to use topic A" (CONTINUATION - use context)
-        - History: "feature X", Latest: "using documents, tell me about feature Y" → Rephrase as: "feature Y documentation" (TOPIC CHANGE)
-
-        Use only the user's prior inputs for context, ignoring system responses.
+        Examples:
+        - History: "Tell me about Python" + Question: "How do I install it?" → "How to install Python"
+        - History: "Tell me about Python" + Question: "What is Java?" → "What is Java"
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
