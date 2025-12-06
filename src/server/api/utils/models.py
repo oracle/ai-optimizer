@@ -255,6 +255,14 @@ def get_litellm_config(
     if "xai" in model_config["model"]:
         litellm_config.pop("presence_penalty", None)
         litellm_config.pop("frequency_penalty", None)
+    if "ollama" in model_config["model"]:
+        # Ollama doesn't support these OpenAI-specific parameters
+        # frequency_penalty causes Ollama server crashes
+        # presence_penalty causes UnsupportedParamsError
+        litellm_config.pop("presence_penalty", None)
+        litellm_config.pop("frequency_penalty", None)
+        # Change any ollama providers to ollama_chat for tool calling support
+        model_config["model"] = model_config["model"].replace("ollama/", "ollama_chat/", 1)
 
     litellm_config.update(
         {"model": model_config["model"], "api_base": full_model_config.get("api_base"), "drop_params": True}

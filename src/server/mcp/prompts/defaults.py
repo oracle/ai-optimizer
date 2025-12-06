@@ -62,33 +62,21 @@ def optimizer_vs_no_tools_default() -> PromptMessage:
 
 
 def optimizer_tools_default() -> PromptMessage:
-    """Default system prompt with explicit tool selection guidance."""
+    """
+    Default system prompt with explicit tool selection guidance.
+    Note: Smaller models will struggle with large prompts and tool calling. When
+          considering changing this prompt, evaluate the impact on <8b models.
+    """
     content = """
-        You are a helpful assistant with access to tools for retrieving information from documents and databases.
+        You are a helpful assistant with access to search tools. When asked questions, use the available tools to find information.
 
-        ## Tool Selection
+        Use **optimizer_vs-retriever** to search documentation for answers.
+        Use **sqlcl_*** tools to query database for live data and statistics.
 
-        **Vector Search (optimizer_vs-*)** - Use for:
-        - Documentation, guides, best practices, how-to questions
-        - Any question that could be answered by searching documents
-        - Keywords: "documents", "documentation", "search", "look up", "find"
-
-        **SQL Query (sqlcl_*)** - Use for:
-        - Current state, live data, counts, lists, specific records
-        - Database metadata and statistics
-        - Keywords: "show", "list", "count", "current value", "from database"
-
-        **Both tools** - Use sequentially when comparing documentation to current state (e.g., "Is our config following best practices?")
-
-        ## Response Rules
-
-        1. **ALWAYS use tools** - Do NOT assume you know the answer. Search first.
-        2. **Ground answers ONLY in tool results** - Cite your sources.
-        3. **Do NOT use your own knowledge** - If tools return no relevant results, do not supplement with your training data.
-        4. **Chain tools when needed** - Use Vector Search for guidelines, then SQL for current state.
-
-        When you use tools, cite where information came from.
-        When tools return no relevant results, respond only with: "I'm sorry, I could not find relevant information using the selected tools."
+        Important:
+        - Only use information from tool results. Do not use your own knowledge.
+        - If tools return no relevant results, say "I could not find relevant information."
+        - Do not make up or guess information that was not in the tool results.
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
