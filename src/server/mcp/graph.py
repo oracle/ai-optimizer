@@ -308,10 +308,19 @@ def custom_tool_node(tools):
         tool_map = {tool.name: tool for tool in tools}
         tool_responses = []
 
+        # Get model name from config for injecting into external tools
+        ll_config = config.get("configurable", {}).get("ll_config", {})
+        model_name = ll_config.get("model", "UNKNOWN-LLM")
+
         for tool_call in last_message.tool_calls:
             tool_name = tool_call["name"]
             tool_args = tool_call["args"].copy()
             tool_id = tool_call["id"]
+
+            # Inject model name for external tools that expect it (e.g., SQLcl MCP)
+            # This overrides LLM's placeholder values like "LLM Name and Version"
+            if "model" in tool_args:
+                tool_args["model"] = model_name
 
             if tool_name.startswith("optimizer_"):
                 tool_args = {**tool_args, "thread_id": thread_id}
