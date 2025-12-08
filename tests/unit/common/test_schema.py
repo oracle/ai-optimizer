@@ -390,7 +390,7 @@ class TestSettings:
         assert settings.ll_model is not None
         assert settings.oci is not None
         assert settings.database is not None
-        assert settings.tools_enabled == ["LLM Only"]
+        assert settings.tools_enabled == []
         assert settings.vector_search is not None
         assert settings.testbed is not None
 

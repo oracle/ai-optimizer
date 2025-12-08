@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectbox subtool
+# spell-checker:ignore selectbox subtools
 
 import streamlit as st
 from streamlit import session_state as state
@@ -25,17 +25,16 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
 
     # Setup Tool Box
     state.tool_box = {
-        "LLM Only": {"description": "Do not use tools", "enabled": True},
         "Vector Search": {"description": "Use AI with Unstructured Data", "enabled": True},
         "NL2SQL": {"description": "Use AI with Structured Data", "enabled": True},
     }
 
     def _update_set_tool():
         """Update user settings as to which tool is being used"""
-        state.client_settings["tools_enabled"] = [state.selected_tool]
+        state.client_settings["tools_enabled"] = [state.selected_tools]
 
-    def _update_vs_subtool():
-        """Update user settings as to which vector search subtool is enabled"""
+    def _update_vs_subtools():
+        """Update user settings as to which vector search subtools are enabled"""
         state.client_settings["vector_search"]["discovery"] = state.selected_vs_discovery
         state.client_settings["vector_search"]["rephrase"] = state.selected_vs_rephrase
         state.client_settings["vector_search"]["grade"] = state.selected_vs_grade
@@ -69,19 +68,23 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
                 _disable_tool("Vector Search", "No vector stores match the enabled embedding models")
 
     tool_box = [key for key, val in state.tool_box.items() if val["enabled"]]
-    current_tool = state.client_settings["tools_enabled"][0]
-    if current_tool not in tool_box:
-        state.client_settings["tools_enabled"] = ["LLM Only"]
 
-    tool_index = tool_box.index(current_tool) if current_tool in tool_box else 0
-    st.sidebar.selectbox(
+    # Remove any tools_enabled entries that are no longer available in tool_box
+    tools_enabled = state.client_settings.get("tools_enabled", [])
+    valid_tools = [tool for tool in tools_enabled if tool in tool_box]
+    if valid_tools != tools_enabled:
+        state.client_settings["tools_enabled"] = valid_tools
+
+    st.sidebar.multiselect(
         "Tool Selection",
-        tool_box,
-        index=tool_index,
+        options=tool_box,
+        default=state.client_settings["tools_enabled"],
+        placeholder="Language Model Only",
         label_visibility="collapsed",
         on_change=_update_set_tool,
-        key="selected_tool",
+        key="selected_tools",
     )
+    state.client_settings["tools_enabled"] = state.selected_tools
 
     # Vector Search Sub-Tools
     if "Vector Search" in state.client_settings["tools_enabled"]:
@@ -90,7 +93,7 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
             help=help_text.help_dict["vector_search_discovery"],
             value=state.client_settings["vector_search"]["discovery"],
             key="selected_vs_discovery",
-            on_change=_update_vs_subtool,
+            on_change=_update_vs_subtools,
         )
         if show_vs_subtools:
             st.sidebar.checkbox(
@@ -98,12 +101,12 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
                 help=help_text.help_dict["vector_search_rephrase"],
                 value=state.client_settings["vector_search"]["rephrase"],
                 key="selected_vs_rephrase",
-                on_change=_update_vs_subtool,
+                on_change=_update_vs_subtools,
             )
             st.sidebar.checkbox(
                 "Document Grading",
                 help=help_text.help_dict["vector_search_grade"],
                 value=state.client_settings["vector_search"]["grade"],
                 key="selected_vs_grade",
-                on_change=_update_vs_subtool,
+                on_change=_update_vs_subtools,
             )

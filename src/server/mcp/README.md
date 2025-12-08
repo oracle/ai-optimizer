@@ -271,7 +271,7 @@ Tools are filtered based on client settings before being presented to the LLM:
 - **Vector Search enabled**: Internal-only tools (`optimizer_vs-grade`, `optimizer_vs-rephrase`) hidden from LLM
 - **NL2SQL disabled**: All `sqlcl_*` tools removed
 
-**Configuration**: `Settings.tools_enabled` list (default: `["Vector Search", "NL2SQL"]`)
+**Configuration**: `Settings.tools_enabled` list (default: `[]` - empty means LLM only)
 
 **Effect on Tool Availability**:
 - **Both enabled**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-storage`, `sqlcl_*` tools

@@ -255,8 +255,8 @@ class Settings(BaseModel):
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
     database: Optional[DatabaseSettings] = Field(default_factory=DatabaseSettings, description="Database Settings")
     tools_enabled: List[str] = Field(
-        default_factory=lambda: ["LLM Only"],
-        description="List of enabled MCP tools for this client",
+        default_factory=list,
+        description="List of enabled MCP tools for this client (empty means LLM only)",
     )
     vector_search: Optional[VectorSearchSettings] = Field(
         default_factory=VectorSearchSettings, description="Vector Search Settings"
