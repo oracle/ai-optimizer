@@ -236,6 +236,60 @@ def should_continue(state: OptimizerState) -> Literal["vs_orchestrate", "tools",
     return "tools"
 
 
+def after_vs_orchestrate(state: OptimizerState) -> Literal["tools", "stream_completion"]:
+    """Check if external tools remain pending after VS orchestration.
+
+    When LLM requests both VS and external tools in a single turn, VS runs first.
+    This function checks if external tools still need execution before returning to LLM.
+
+    Returns:
+        "tools" if external tools are pending, "stream_completion" otherwise
+    """
+    messages = state["messages"]
+
+    # Find the most recent AIMessage with tool_calls
+    ai_message_with_tools = None
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+            ai_message_with_tools = msg
+            break
+
+    if not ai_message_with_tools:
+        return "stream_completion"
+
+    # Get all tool call IDs from that AIMessage
+    tool_call_ids = {
+        tc.get("id") for tc in ai_message_with_tools.tool_calls
+        if isinstance(tc, dict) and tc.get("id")
+    }
+
+    # Get all responded tool IDs
+    responded_tool_ids = {
+        msg.tool_call_id for msg in messages
+        if isinstance(msg, ToolMessage) and hasattr(msg, "tool_call_id")
+    }
+
+    # Check for pending tools
+    pending_tool_ids = tool_call_ids - responded_tool_ids
+    if not pending_tool_ids:
+        return "stream_completion"
+
+    # Check if any pending tools are external (non-VS)
+    vs_tools = {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grade"}
+    pending_tool_names = {
+        tc.get("name") for tc in ai_message_with_tools.tool_calls
+        if isinstance(tc, dict) and tc.get("id") in pending_tool_ids
+    }
+
+    has_pending_external = bool(pending_tool_names - vs_tools)
+
+    if has_pending_external:
+        logger.info("External tools pending after VS orchestration: %s", pending_tool_names - vs_tools)
+        return "tools"
+
+    return "stream_completion"
+
+
 #############################################################################
 # NODES and EDGES
 #############################################################################
@@ -295,14 +349,21 @@ def _prepare_messages_for_completion(state: OptimizerState, config: RunnableConf
         messages = _remove_system_prompt(messages)
         # Minimize internal VS ToolMessages - documents go via system prompt, not message history
         # Keep the ToolMessage (satisfies API contract) but strip document content to prevent bloat
-        # Content reports factual outcome - user's prompt decides how LLM should respond
+        # Content reports factual outcome and actual query used (may differ from LLM's request)
         docs_are_relevant = bool(state.get("documents"))
+        context_input = state.get("context_input", "")
         for msg in messages:
             if isinstance(msg, ToolMessage) and msg.additional_kwargs.get("internal_vs", False):
                 if docs_are_relevant:
-                    msg.content = '{"status": "success", "result": "Relevant documents found and added to context."}'
+                    msg.content = json.dumps({
+                        "status": "success",
+                        "result": f"Relevant documents found for: '{context_input}'"
+                    })
                 else:
-                    msg.content = '{"status": "success", "result": "No relevant documents found for this query."}'
+                    msg.content = json.dumps({
+                        "status": "success",
+                        "result": f"No relevant documents found for: '{context_input}'"
+                    })
     else:
         messages = state["cleaned_messages"]
 
@@ -680,7 +741,8 @@ async def _vs_step_grade(thread_id: str, documents: list, rephrased_question: st
             }
 
         logger.info("Documents deemed NOT relevant - transparent completion (no VS context)")
-        return {"context_input": "", "documents": ""}
+        # Preserve context_input so ToolMessage can communicate what was searched
+        return {"context_input": rephrased_question, "documents": ""}
     except Exception as ex:
         logger.error("Grading exception: %s (defaulting to not relevant)", ex)
         return {"context_input": "", "documents": ""}
@@ -892,14 +954,20 @@ def main(tools: list):
         should_continue,
     )
 
-    # Both paths return to stream_completion for final response
-    workflow.add_edge("tools", "stream_completion")  # External tools path
-    workflow.add_edge("vs_orchestrate", "stream_completion")  # VS orchestration path
+    # External tools always return to stream_completion
+    workflow.add_edge("tools", "stream_completion")
+
+    # VS orchestration checks for pending external tools before returning to LLM
+    # This enables parallel tool execution: VS first, then external tools, then final response
+    workflow.add_conditional_edges(
+        "vs_orchestrate",
+        after_vs_orchestrate,
+    )
 
     # Compile the graph and return it
     mcp_graph = workflow.compile(checkpointer=graph_memory)
     logger.debug("Chatbot Graph Built with tools: %s", tools)
-    logger.info("Dual-path routing enabled: VS tools → vs_orchestrate, External tools → tools")
+    logger.info("Multi-tool routing enabled: VS → (external tools if pending) → stream_completion")
     ## This will output the Graph in ascii; don't deliver uncommented
     # mcp_graph.get_graph(xray=True).print_ascii()
 

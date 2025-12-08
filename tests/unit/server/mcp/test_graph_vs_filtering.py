@@ -42,10 +42,7 @@ class TestPrepareMessagesForCompletion:
             {"page_content": "Document 2 content about updates"},
         ]
         return ToolMessage(
-            content=json.dumps({
-                "documents": documents,
-                "context_input": "new features"
-            }),
+            content=json.dumps({"documents": documents, "context_input": "new features"}),
             tool_call_id="call_123",
             name="optimizer_vs-retriever",
             additional_kwargs={"internal_vs": True},
@@ -60,9 +57,7 @@ class TestPrepareMessagesForCompletion:
             name="external_tool",
         )
 
-    def test_internal_vs_toolmessage_content_minimized(
-        self, mock_config, internal_vs_tool_message
-    ):
+    def test_internal_vs_toolmessage_content_minimized(self, mock_config, internal_vs_tool_message):
         """Test that internal_vs ToolMessages have content minimized (not full documents).
 
         This simulates the scenario where:
@@ -80,11 +75,7 @@ class TestPrepareMessagesForCompletion:
         # - but messages still contains the internal_vs ToolMessage with full doc content
         ai_with_tool_call = AIMessage(
             content="",
-            tool_calls=[{
-                "id": "call_123",
-                "name": "optimizer_vs-retriever",
-                "args": {"question": "tell me more"}
-            }]
+            tool_calls=[{"id": "call_123", "name": "optimizer_vs-retriever", "args": {"question": "tell me more"}}],
         )
 
         state = {
@@ -99,7 +90,7 @@ class TestPrepareMessagesForCompletion:
                 HumanMessage(content="tell me more"),
             ],
             "documents": "",  # Empty - grading said not relevant
-            "context_input": "",  # Empty - grading said not relevant
+            "context_input": "new features follow-up",  # Preserved even when docs not relevant
         }
 
         # Call the function under test
@@ -107,19 +98,17 @@ class TestPrepareMessagesForCompletion:
 
         # Assert: internal_vs ToolMessage should be present but with minimal content
         tool_messages = [msg for msg in result if isinstance(msg, ToolMessage)]
-        internal_vs_messages = [
-            msg for msg in tool_messages
-            if msg.additional_kwargs.get("internal_vs", False)
-        ]
+        internal_vs_messages = [msg for msg in tool_messages if msg.additional_kwargs.get("internal_vs", False)]
 
         # ToolMessage should still exist (satisfies API contract)
-        assert len(internal_vs_messages) == 1, (
-            "Internal VS ToolMessage should be present (for API contract)"
-        )
+        assert len(internal_vs_messages) == 1, "Internal VS ToolMessage should be present (for API contract)"
 
         # But content should be minimized - reports "no relevant docs" since state["documents"] is empty
+        # Format includes the search query (context_input) so LLM knows what was searched
         msg_content = internal_vs_messages[0].content
-        expected_content = '{"status": "success", "result": "No relevant documents found for this query."}'
+        expected_content = (
+            '{"status": "success", "result": "No relevant documents found for: \'new features follow-up\'"}'
+        )
         assert msg_content == expected_content, (
             f"Internal VS ToolMessage content should report no relevant docs, got: {msg_content}"
         )
@@ -128,22 +117,13 @@ class TestPrepareMessagesForCompletion:
         assert "Document 1 content" not in msg_content
         assert "Document 2 content" not in msg_content
 
-    def test_external_toolmessages_preserved(
-        self, mock_config, external_tool_message
-    ):
+    def test_external_toolmessages_preserved(self, mock_config, external_tool_message):
         """Test that external (non-VS) ToolMessages are NOT filtered.
 
         External tools should always have their ToolMessages preserved in the
         conversation, as the LLM needs to see the results.
         """
-        ai_with_tool_call = AIMessage(
-            content="",
-            tool_calls=[{
-                "id": "call_456",
-                "name": "external_tool",
-                "args": {}
-            }]
-        )
+        ai_with_tool_call = AIMessage(content="", tool_calls=[{"id": "call_456", "name": "external_tool", "args": {}}])
 
         state = {
             "messages": [
@@ -171,19 +151,10 @@ class TestPrepareMessagesForCompletion:
         """Test mixed scenario: internal_vs content minimized, external content preserved."""
         ai_with_vs_call = AIMessage(
             content="",
-            tool_calls=[{
-                "id": "call_123",
-                "name": "optimizer_vs-retriever",
-                "args": {"question": "tell me more"}
-            }]
+            tool_calls=[{"id": "call_123", "name": "optimizer_vs-retriever", "args": {"question": "tell me more"}}],
         )
         ai_with_external_call = AIMessage(
-            content="",
-            tool_calls=[{
-                "id": "call_456",
-                "name": "external_tool",
-                "args": {}
-            }]
+            content="", tool_calls=[{"id": "call_456", "name": "external_tool", "args": {}}]
         )
 
         state = {
@@ -198,7 +169,7 @@ class TestPrepareMessagesForCompletion:
                 HumanMessage(content="Query with both tools"),
             ],
             "documents": "",  # Grading said not relevant
-            "context_input": "",
+            "context_input": "query with both tools search",  # Preserved even when docs not relevant
         }
 
         result = _prepare_messages_for_completion(state, mock_config)
@@ -206,16 +177,17 @@ class TestPrepareMessagesForCompletion:
         tool_messages = [msg for msg in result if isinstance(msg, ToolMessage)]
 
         # Should have both tool messages
-        assert len(tool_messages) == 2, (
-            f"Expected 2 tool messages, got {len(tool_messages)}"
-        )
+        assert len(tool_messages) == 2, f"Expected 2 tool messages, got {len(tool_messages)}"
 
         # Find each by name
         internal_vs_msg = next(m for m in tool_messages if m.name == "optimizer_vs-retriever")
         external_msg = next(m for m in tool_messages if m.name == "external_tool")
 
         # Internal VS content should report no relevant docs (state["documents"] is empty)
-        expected_content = '{"status": "success", "result": "No relevant documents found for this query."}'
+        # Format includes the search query (context_input) so LLM knows what was searched
+        expected_content = (
+            '{"status": "success", "result": "No relevant documents found for: \'query with both tools search\'"}'
+        )
         assert internal_vs_msg.content == expected_content, (
             f"Internal VS content should report no relevant docs, got: {internal_vs_msg.content}"
         )
@@ -276,17 +248,11 @@ class TestPrepareMessagesForCompletion:
         system_content = system_messages[0].content
         assert "Relevant Context:" not in system_content
 
-    def test_toolmessage_content_when_docs_relevant(
-        self, mock_config, internal_vs_tool_message
-    ):
+    def test_toolmessage_content_when_docs_relevant(self, mock_config, internal_vs_tool_message):
         """Test ToolMessage content reports success when documents ARE relevant."""
         ai_with_tool_call = AIMessage(
             content="",
-            tool_calls=[{
-                "id": "call_123",
-                "name": "optimizer_vs-retriever",
-                "args": {"question": "new features"}
-            }]
+            tool_calls=[{"id": "call_123", "name": "optimizer_vs-retriever", "args": {"question": "new features"}}],
         )
 
         state = {
@@ -305,11 +271,9 @@ class TestPrepareMessagesForCompletion:
         result = _prepare_messages_for_completion(state, mock_config)
 
         tool_messages = [msg for msg in result if isinstance(msg, ToolMessage)]
-        internal_vs_messages = [
-            msg for msg in tool_messages
-            if msg.additional_kwargs.get("internal_vs", False)
-        ]
+        internal_vs_messages = [msg for msg in tool_messages if msg.additional_kwargs.get("internal_vs", False)]
 
         assert len(internal_vs_messages) == 1
-        expected_content = '{"status": "success", "result": "Relevant documents found and added to context."}'
+        # Format includes the search query (context_input)
+        expected_content = '{"status": "success", "result": "Relevant documents found for: \'new features\'"}'
         assert internal_vs_messages[0].content == expected_content

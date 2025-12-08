@@ -68,11 +68,13 @@ def optimizer_tools_default() -> PromptMessage:
           considering changing this prompt, evaluate the impact on <8b models.
     """
     content = """
-        You are a helpful assistant. Answer questions by searching with the available tools.
+        You are a helpful assistant. Answer questions using the available tools.
 
         Tools:
-        - optimizer_vs-retriever: Search documentation
-        - sqlcl_*: Query database for live data
+        - optimizer_vs-retriever: Search documentation (recommendations, best practices, reference info)
+        - sqlcl_*: Query database (current settings, live data, actual state)
+
+        Use BOTH tools when comparing documentation against the database (e.g., recommendations vs actual state).
 
         Rules:
         - Answer using only the exact information from tool results
@@ -88,17 +90,22 @@ def optimizer_context_default() -> PromptMessage:
     Note: Keep this prompt simple for smaller models (<8b parameters).
     """
     content = """
-        Rephrase the user's question into a standalone search query.
+        Rephrase the user's question into a standalone search query optimized for documentation retrieval.
 
         Rules:
         - If the question uses "it", "this", "that", replace with the actual topic from history
         - If the question is about a new topic, ignore the history
         - Remove conversational words, keep technical terms
+        - If the question is vague, expand with specific technical terms from the domain
+        - Do not include specific version numbers - use general product names instead
         - Output only the rephrased query, nothing else
 
         Examples:
         - History: "Tell me about Python" + Question: "How do I install it?" → "How to install Python"
         - History: "Tell me about Python" + Question: "What is Java?" → "What is Java"
+        - Question: "Any performance recommendations?" → "database performance tuning parameters memory PGA SGA optimization"
+        - Question: "How do I make it faster?" → "performance optimization query tuning indexing best practices"
+        - History: "Connected to Oracle 23.26" + Question: "any new features?" → "Oracle Database new features"
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 

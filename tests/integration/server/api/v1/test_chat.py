@@ -11,7 +11,6 @@ streaming, and history management.
 # pylint: disable=protected-access too-few-public-methods
 
 from unittest.mock import patch, MagicMock
-import warnings
 
 import pytest
 from langchain_core.messages import ChatMessage
@@ -51,7 +50,7 @@ class TestChatCompletions:
     def test_chat_completion_graph_error_handling(self, client, test_client_auth_headers):
         """Test chat completion handles graph execution errors gracefully."""
         # Mock the completion_generator to simulate a graph execution error
-        async def mock_error_generator(*args, **kwargs):
+        async def mock_error_generator(*_args, **_kwargs):
             # Simulate error response format from utils_chat.completion_generator
             yield {"choices": [{"message": {"role": "assistant", "content": "I'm sorry, I've run into a problem"}}]}
 

@@ -5,12 +5,27 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Unit tests for server/api/utils/chat.py
 Tests for chat completion utility functions.
 """
+# pylint: disable=too-few-public-methods protected-access
 
+from dataclasses import dataclass
 from unittest.mock import patch, MagicMock, AsyncMock
 import pytest
 
 from server.api.utils import chat as utils_chat
 from common.schema import ChatRequest
+
+
+@dataclass
+class CompletionMocks:
+    """Container for completion_generator test mocks."""
+
+    get_client: MagicMock
+    oci_get: MagicMock
+    get_config: MagicMock
+    get_mcp: MagicMock
+    mcp_client_class: MagicMock
+    graph_main: MagicMock
+    get_prompt: MagicMock
 
 
 #############################################################################
@@ -207,38 +222,44 @@ class TestFilterToolsByEnabled:
 class TestCompletionGenerator:
     """Tests for the completion_generator function."""
 
+    @pytest.fixture
+    def completion_mocks(self):
+        """Fixture providing all mocks needed for completion_generator tests."""
+        with (
+            patch("server.api.utils.chat.utils_settings.get_client") as mock_get_client,
+            patch("server.api.utils.chat.utils_oci.get") as mock_oci_get,
+            patch("server.api.utils.chat.utils_models.get_litellm_config") as mock_get_config,
+            patch("server.api.utils.chat.utils_mcp.get_client") as mock_get_mcp,
+            patch("server.api.utils.chat.MultiServerMCPClient") as mock_mcp_client_class,
+            patch("server.api.utils.chat.graph.main") as mock_graph_main,
+            patch("server.api.utils.chat._get_system_prompt") as mock_get_prompt,
+        ):
+            yield CompletionMocks(
+                get_client=mock_get_client,
+                oci_get=mock_oci_get,
+                get_config=mock_get_config,
+                get_mcp=mock_get_mcp,
+                mcp_client_class=mock_mcp_client_class,
+                graph_main=mock_graph_main,
+                get_prompt=mock_get_prompt,
+            )
+
     @pytest.mark.asyncio
-    @patch("server.api.utils.chat.utils_settings.get_client")
-    @patch("server.api.utils.chat.utils_oci.get")
-    @patch("server.api.utils.chat.utils_models.get_litellm_config")
-    @patch("server.api.utils.chat.utils_mcp.get_client")
-    @patch("server.api.utils.chat.MultiServerMCPClient")
-    @patch("server.api.utils.chat.graph.main")
-    @patch("server.api.utils.chat._get_system_prompt")
     async def test_completion_generator_completions_mode(
-        self,
-        mock_get_prompt,
-        mock_graph_main,
-        mock_mcp_client_class,
-        mock_get_mcp,
-        mock_get_config,
-        mock_oci_get,
-        mock_get_client,
-        make_settings,
-        make_chat_request,
-        make_oci_config,
+        self, completion_mocks, make_settings, make_chat_request, make_oci_config
     ):
         """completion_generator should yield final response in completions mode."""
-        mock_get_client.return_value = make_settings()
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_config.return_value = {"model": "gpt-4o-mini"}
-        mock_get_prompt.return_value = "System prompt"
-        mock_get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
+        mocks = completion_mocks
+        mocks.get_client.return_value = make_settings()
+        mocks.oci_get.return_value = make_oci_config()
+        mocks.get_config.return_value = {"model": "gpt-4o-mini"}
+        mocks.get_prompt.return_value = "System prompt"
+        mocks.get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
 
         # Setup MCP client mock
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.get_tools = AsyncMock(return_value=[])
-        mock_mcp_client_class.return_value = mock_mcp_instance
+        mocks.mcp_client_class.return_value = mock_mcp_instance
 
         # Setup graph mock
         mock_agent = MagicMock()
@@ -247,7 +268,7 @@ class TestCompletionGenerator:
             yield {"completion": {"choices": [{"message": {"content": "Hello!"}}]}}
 
         mock_agent.astream = mock_astream
-        mock_graph_main.return_value = mock_agent
+        mocks.graph_main.return_value = mock_agent
 
         request = make_chat_request(content="Hi")
         results = []
@@ -258,36 +279,20 @@ class TestCompletionGenerator:
         assert results[0]["choices"][0]["message"]["content"] == "Hello!"
 
     @pytest.mark.asyncio
-    @patch("server.api.utils.chat.utils_settings.get_client")
-    @patch("server.api.utils.chat.utils_oci.get")
-    @patch("server.api.utils.chat.utils_models.get_litellm_config")
-    @patch("server.api.utils.chat.utils_mcp.get_client")
-    @patch("server.api.utils.chat.MultiServerMCPClient")
-    @patch("server.api.utils.chat.graph.main")
-    @patch("server.api.utils.chat._get_system_prompt")
     async def test_completion_generator_streams_mode(
-        self,
-        mock_get_prompt,
-        mock_graph_main,
-        mock_mcp_client_class,
-        mock_get_mcp,
-        mock_get_config,
-        mock_oci_get,
-        mock_get_client,
-        make_settings,
-        make_chat_request,
-        make_oci_config,
+        self, completion_mocks, make_settings, make_chat_request, make_oci_config
     ):
         """completion_generator should yield stream chunks in streams mode."""
-        mock_get_client.return_value = make_settings()
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_config.return_value = {"model": "gpt-4o-mini"}
-        mock_get_prompt.return_value = "System prompt"
-        mock_get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
+        mocks = completion_mocks
+        mocks.get_client.return_value = make_settings()
+        mocks.oci_get.return_value = make_oci_config()
+        mocks.get_config.return_value = {"model": "gpt-4o-mini"}
+        mocks.get_prompt.return_value = "System prompt"
+        mocks.get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
 
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.get_tools = AsyncMock(return_value=[])
-        mock_mcp_client_class.return_value = mock_mcp_instance
+        mocks.mcp_client_class.return_value = mock_mcp_instance
 
         mock_agent = MagicMock()
 
@@ -297,7 +302,7 @@ class TestCompletionGenerator:
             yield {"completion": {"choices": []}}
 
         mock_agent.astream = mock_astream
-        mock_graph_main.return_value = mock_agent
+        mocks.graph_main.return_value = mock_agent
 
         request = make_chat_request(content="Hi")
         results = []
@@ -311,35 +316,20 @@ class TestCompletionGenerator:
         assert results[2] == utils_chat.STREAM_FINISHED_MARKER
 
     @pytest.mark.asyncio
-    @patch("server.api.utils.chat.utils_settings.get_client")
-    @patch("server.api.utils.chat.utils_oci.get")
-    @patch("server.api.utils.chat.utils_models.get_litellm_config")
-    @patch("server.api.utils.chat.utils_mcp.get_client")
-    @patch("server.api.utils.chat.MultiServerMCPClient")
-    @patch("server.api.utils.chat.graph.main")
-    @patch("server.api.utils.chat._get_system_prompt")
     async def test_completion_generator_uses_request_model(
-        self,
-        mock_get_prompt,
-        mock_graph_main,
-        mock_mcp_client_class,
-        mock_get_mcp,
-        mock_get_config,
-        mock_oci_get,
-        mock_get_client,
-        make_settings,
-        make_oci_config,
+        self, completion_mocks, make_settings, make_oci_config
     ):
         """completion_generator should use model from request if provided."""
-        mock_get_client.return_value = make_settings()
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_config.return_value = {"model": "claude-3"}
-        mock_get_prompt.return_value = "System prompt"
-        mock_get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
+        mocks = completion_mocks
+        mocks.get_client.return_value = make_settings()
+        mocks.oci_get.return_value = make_oci_config()
+        mocks.get_config.return_value = {"model": "claude-3"}
+        mocks.get_prompt.return_value = "System prompt"
+        mocks.get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
 
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.get_tools = AsyncMock(return_value=[])
-        mock_mcp_client_class.return_value = mock_mcp_instance
+        mocks.mcp_client_class.return_value = mock_mcp_instance
 
         mock_agent = MagicMock()
 
@@ -347,49 +337,32 @@ class TestCompletionGenerator:
             yield {"completion": {}}
 
         mock_agent.astream = mock_astream
-        mock_graph_main.return_value = mock_agent
+        mocks.graph_main.return_value = mock_agent
 
         request = ChatRequest(messages=[{"role": "user", "content": "Hi"}], model="claude-3")
         async for _ in utils_chat.completion_generator("test_client", request, "completions"):
             pass
 
         # get_litellm_config should be called with the request model
-        call_args = mock_get_config.call_args[0]
+        call_args = mocks.get_config.call_args[0]
         assert call_args[0]["model"] == "claude-3"
 
     @pytest.mark.asyncio
-    @patch("server.api.utils.chat.utils_settings.get_client")
-    @patch("server.api.utils.chat.utils_oci.get")
-    @patch("server.api.utils.chat.utils_models.get_litellm_config")
-    @patch("server.api.utils.chat.utils_mcp.get_client")
-    @patch("server.api.utils.chat.MultiServerMCPClient")
-    @patch("server.api.utils.chat.graph.main")
-    @patch("server.api.utils.chat._get_system_prompt")
     async def test_completion_generator_uses_settings_model_when_not_in_request(
-        self,
-        mock_get_prompt,
-        mock_graph_main,
-        mock_mcp_client_class,
-        mock_get_mcp,
-        mock_get_config,
-        mock_oci_get,
-        mock_get_client,
-        make_settings,
-        make_chat_request,
-        make_oci_config,
-        make_ll_settings,
+        self, completion_mocks, make_settings, make_chat_request, make_oci_config, make_ll_settings
     ):
         """completion_generator should use model from settings when not in request."""
+        mocks = completion_mocks
         settings = make_settings(ll_model=make_ll_settings(model="gpt-4-turbo"))
-        mock_get_client.return_value = settings
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_config.return_value = {"model": "gpt-4-turbo"}
-        mock_get_prompt.return_value = "System prompt"
-        mock_get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
+        mocks.get_client.return_value = settings
+        mocks.oci_get.return_value = make_oci_config()
+        mocks.get_config.return_value = {"model": "gpt-4-turbo"}
+        mocks.get_prompt.return_value = "System prompt"
+        mocks.get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
 
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.get_tools = AsyncMock(return_value=[])
-        mock_mcp_client_class.return_value = mock_mcp_instance
+        mocks.mcp_client_class.return_value = mock_mcp_instance
 
         mock_agent = MagicMock()
 
@@ -397,48 +370,32 @@ class TestCompletionGenerator:
             yield {"completion": {}}
 
         mock_agent.astream = mock_astream
-        mock_graph_main.return_value = mock_agent
+        mocks.graph_main.return_value = mock_agent
 
         request = make_chat_request(content="Hi")  # No model specified
         async for _ in utils_chat.completion_generator("test_client", request, "completions"):
             pass
 
         # get_litellm_config should be called with settings model
-        call_args = mock_get_config.call_args[0]
+        call_args = mocks.get_config.call_args[0]
         assert call_args[0]["model"] == "gpt-4-turbo"
 
     @pytest.mark.asyncio
-    @patch("server.api.utils.chat.utils_settings.get_client")
-    @patch("server.api.utils.chat.utils_oci.get")
-    @patch("server.api.utils.chat.utils_models.get_litellm_config")
-    @patch("server.api.utils.chat.utils_mcp.get_client")
-    @patch("server.api.utils.chat.MultiServerMCPClient")
-    @patch("server.api.utils.chat.graph.main")
-    @patch("server.api.utils.chat._get_system_prompt")
     async def test_completion_generator_passes_correct_config(
-        self,
-        mock_get_prompt,
-        mock_graph_main,
-        mock_mcp_client_class,
-        mock_get_mcp,
-        mock_get_config,
-        mock_oci_get,
-        mock_get_client,
-        make_settings,
-        make_chat_request,
-        make_oci_config,
+        self, completion_mocks, make_settings, make_chat_request, make_oci_config
     ):
         """completion_generator should pass correct config to graph."""
+        mocks = completion_mocks
         settings = make_settings()
-        mock_get_client.return_value = settings
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_config.return_value = {"model": "gpt-4o-mini"}
-        mock_get_prompt.return_value = "System prompt"
-        mock_get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
+        mocks.get_client.return_value = settings
+        mocks.oci_get.return_value = make_oci_config()
+        mocks.get_config.return_value = {"model": "gpt-4o-mini"}
+        mocks.get_prompt.return_value = "System prompt"
+        mocks.get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
 
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.get_tools = AsyncMock(return_value=[])
-        mock_mcp_client_class.return_value = mock_mcp_instance
+        mocks.mcp_client_class.return_value = mock_mcp_instance
 
         captured_kwargs = {}
         mock_agent = MagicMock()
@@ -448,7 +405,7 @@ class TestCompletionGenerator:
             yield {"completion": {}}
 
         mock_agent.astream = mock_astream
-        mock_graph_main.return_value = mock_agent
+        mocks.graph_main.return_value = mock_agent
 
         request = make_chat_request(content="Test message")
         async for _ in utils_chat.completion_generator("test_client", request, "completions"):
@@ -460,36 +417,20 @@ class TestCompletionGenerator:
         assert "sys_prompt" in captured_kwargs["config"]["metadata"]
 
     @pytest.mark.asyncio
-    @patch("server.api.utils.chat.utils_settings.get_client")
-    @patch("server.api.utils.chat.utils_oci.get")
-    @patch("server.api.utils.chat.utils_models.get_litellm_config")
-    @patch("server.api.utils.chat.utils_mcp.get_client")
-    @patch("server.api.utils.chat.MultiServerMCPClient")
-    @patch("server.api.utils.chat.graph.main")
-    @patch("server.api.utils.chat._get_system_prompt")
     async def test_completion_generator_handles_graph_exception_streams(
-        self,
-        mock_get_prompt,
-        mock_graph_main,
-        mock_mcp_client_class,
-        mock_get_mcp,
-        mock_get_config,
-        mock_oci_get,
-        mock_get_client,
-        make_settings,
-        make_chat_request,
-        make_oci_config,
+        self, completion_mocks, make_settings, make_chat_request, make_oci_config
     ):
         """completion_generator should handle exceptions in streams mode."""
-        mock_get_client.return_value = make_settings()
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_config.return_value = {"model": "gpt-4o-mini"}
-        mock_get_prompt.return_value = "System prompt"
-        mock_get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
+        mocks = completion_mocks
+        mocks.get_client.return_value = make_settings()
+        mocks.oci_get.return_value = make_oci_config()
+        mocks.get_config.return_value = {"model": "gpt-4o-mini"}
+        mocks.get_prompt.return_value = "System prompt"
+        mocks.get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
 
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.get_tools = AsyncMock(return_value=[])
-        mock_mcp_client_class.return_value = mock_mcp_instance
+        mocks.mcp_client_class.return_value = mock_mcp_instance
 
         mock_agent = MagicMock()
 
@@ -498,7 +439,7 @@ class TestCompletionGenerator:
             yield  # Make it a generator  # pylint: disable=unreachable
 
         mock_agent.astream = mock_astream
-        mock_graph_main.return_value = mock_agent
+        mocks.graph_main.return_value = mock_agent
 
         request = make_chat_request(content="Hi")
         results = []
@@ -511,36 +452,20 @@ class TestCompletionGenerator:
         assert results[1] == utils_chat.STREAM_FINISHED_MARKER
 
     @pytest.mark.asyncio
-    @patch("server.api.utils.chat.utils_settings.get_client")
-    @patch("server.api.utils.chat.utils_oci.get")
-    @patch("server.api.utils.chat.utils_models.get_litellm_config")
-    @patch("server.api.utils.chat.utils_mcp.get_client")
-    @patch("server.api.utils.chat.MultiServerMCPClient")
-    @patch("server.api.utils.chat.graph.main")
-    @patch("server.api.utils.chat._get_system_prompt")
     async def test_completion_generator_handles_graph_exception_completions(
-        self,
-        mock_get_prompt,
-        mock_graph_main,
-        mock_mcp_client_class,
-        mock_get_mcp,
-        mock_get_config,
-        mock_oci_get,
-        mock_get_client,
-        make_settings,
-        make_chat_request,
-        make_oci_config,
+        self, completion_mocks, make_settings, make_chat_request, make_oci_config
     ):
         """completion_generator should handle exceptions in completions mode."""
-        mock_get_client.return_value = make_settings()
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_config.return_value = {"model": "gpt-4o-mini"}
-        mock_get_prompt.return_value = "System prompt"
-        mock_get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
+        mocks = completion_mocks
+        mocks.get_client.return_value = make_settings()
+        mocks.oci_get.return_value = make_oci_config()
+        mocks.get_config.return_value = {"model": "gpt-4o-mini"}
+        mocks.get_prompt.return_value = "System prompt"
+        mocks.get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
 
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.get_tools = AsyncMock(return_value=[])
-        mock_mcp_client_class.return_value = mock_mcp_instance
+        mocks.mcp_client_class.return_value = mock_mcp_instance
 
         mock_agent = MagicMock()
 
@@ -549,7 +474,7 @@ class TestCompletionGenerator:
             yield  # Make it a generator  # pylint: disable=unreachable
 
         mock_agent.astream = mock_astream
-        mock_graph_main.return_value = mock_agent
+        mocks.graph_main.return_value = mock_agent
 
         request = make_chat_request(content="Hi")
         results = []
@@ -562,38 +487,26 @@ class TestCompletionGenerator:
         assert "Graph execution failed" in results[0]["choices"][0]["message"]["content"]
 
     @pytest.mark.asyncio
-    @patch("server.api.utils.chat.utils_settings.get_client")
-    @patch("server.api.utils.chat.utils_oci.get")
-    @patch("server.api.utils.chat.utils_models.get_litellm_config")
-    @patch("server.api.utils.chat.utils_mcp.get_client")
-    @patch("server.api.utils.chat.MultiServerMCPClient")
-    @patch("server.api.utils.chat.graph.main")
-    @patch("server.api.utils.chat._get_system_prompt")
     @patch("server.api.utils.chat._filter_tools_by_enabled")
     @patch("server.api.utils.chat.convert_to_openai_function")
     async def test_completion_generator_filters_tools(
         self,
         mock_convert,
         mock_filter_tools,
-        mock_get_prompt,
-        mock_graph_main,
-        mock_mcp_client_class,
-        mock_get_mcp,
-        mock_get_config,
-        mock_oci_get,
-        mock_get_client,
+        completion_mocks,
         make_settings,
         make_chat_request,
         make_oci_config,
     ):
         """completion_generator should filter tools based on enabled settings."""
+        mocks = completion_mocks
         settings = make_settings()
         settings.tools_enabled = ["Vector Search"]
-        mock_get_client.return_value = settings
-        mock_oci_get.return_value = make_oci_config()
-        mock_get_config.return_value = {"model": "gpt-4o-mini"}
-        mock_get_prompt.return_value = "System prompt"
-        mock_get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
+        mocks.get_client.return_value = settings
+        mocks.oci_get.return_value = make_oci_config()
+        mocks.get_config.return_value = {"model": "gpt-4o-mini"}
+        mocks.get_prompt.return_value = "System prompt"
+        mocks.get_mcp.return_value = {"mcpServers": {"optimizer": {}}}
         mock_convert.return_value = {"name": "optimizer_vs-retriever", "parameters": {}}
 
         mock_tool = MagicMock()
@@ -601,7 +514,7 @@ class TestCompletionGenerator:
 
         mock_mcp_instance = MagicMock()
         mock_mcp_instance.get_tools = AsyncMock(return_value=[mock_tool])
-        mock_mcp_client_class.return_value = mock_mcp_instance
+        mocks.mcp_client_class.return_value = mock_mcp_instance
 
         mock_filter_tools.return_value = [mock_tool]
 
@@ -611,7 +524,7 @@ class TestCompletionGenerator:
             yield {"completion": {}}
 
         mock_agent.astream = mock_astream
-        mock_graph_main.return_value = mock_agent
+        mocks.graph_main.return_value = mock_agent
 
         request = make_chat_request(content="Hi")
         async for _ in utils_chat.completion_generator("test_client", request, "completions"):

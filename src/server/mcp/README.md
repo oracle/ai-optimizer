@@ -46,11 +46,21 @@ The MCP implementation provides:
 │        - Grade relevance                            │
 │        - State storage                              │
 │                ↓                      ↓             │
-│         stream_completion      stream_completion    │
-│                ↓                      ↓             │
-│               END                    END            │
+│        after_vs_orchestrate?   stream_completion    │
+│         ↓              ↓              ↓             │
+│      "tools"    "stream_completion"  END            │
+│         ↓              ↓                            │
+│    (execute)     stream_completion                  │
+│         ↓              ↓                            │
+│  stream_completion    END                           │
+│         ↓                                           │
+│        END                                          │
 └─────────────────────────────────────────────────────┘
 ```
+
+**Key Feature**: When the LLM requests both VS and external tools in a single turn,
+VS executes first, then external tools execute, then the LLM generates the final response.
+This enables efficient multi-tool collaboration without extra LLM round-trips.
 
 ### Directory Structure
 
@@ -312,9 +322,18 @@ The LLM (e.g., GPT-4o-mini, Claude) decides which tool to invoke based on questi
 
 **Multi-Tool Scenarios**:
 
-The LLM can chain tools sequentially:
-1. **Documentation first, then database**: "Based on our docs, what's the recommended SHMMAX? Then show me the current value."
-2. **Database first, then analysis**: "List all DBA users, then check if this matches security guidelines."
+The LLM can use multiple tools in two ways:
+
+1. **Parallel Execution** (single turn): LLM requests both VS and SQL tools at once
+   - Graph executes VS first (rephrase → retrieve → grade)
+   - Then executes SQL tools
+   - LLM receives all results and generates single synthesized response
+   - Example: "What tuning recommendations apply to my database?" → VS gets docs, SQL gets current values
+
+2. **Sequential Execution** (multiple turns): LLM chains tools across turns
+   - "Based on our docs, what's the recommended SHMMAX? Then show me the current value."
+   - First turn: VS returns recommendations
+   - Second turn: SQL returns current value
 
 ### 9. Complete Tool Reference
 
@@ -348,7 +367,8 @@ The LLM can chain tools sequentially:
 | "Show me all users created last month" | `sqlcl_query` | Specific data query with filter |
 | "What are the recommended PGA settings?" | `optimizer_vs-retriever` | Best practices from docs |
 | "What is the current value of PGA_AGGREGATE_TARGET?" | `sqlcl_query` | Current state query |
-| "Is our PGA configured per best practices?" | Both (sequential) | Docs for guidelines + DB for current value |
+| "Is our PGA configured per best practices?" | Both (parallel) | Docs for guidelines + DB for current value |
+| "Any tuning recommendations for my database?" | Both (parallel) | Docs for recommendations + DB for current state |
 
 ## Usage
 
@@ -438,24 +458,34 @@ The LLM can chain tools sequentially:
 
 ### Pattern 3: Multi-Tool Collaboration (Best Practices + Current State)
 
-**User Query**: *"Based on our documentation, what should PGA_AGGREGATE_TARGET be set to? Then show me the current value in our database."*
+**User Query**: *"What tuning recommendations apply to my database?"*
 
-**LLM Decision**: Requires both documentation AND database query → Sequential tool invocation
+**LLM Decision**: Requires both documentation AND database query → Parallel tool invocation
 
-**Flow**:
+**Flow** (Parallel Execution):
 ```
-1. LLM calls optimizer_vs-retriever(question="What should PGA_AGGREGATE_TARGET be set to?")
-2. VS Pipeline returns best practices (20% RAM for OLTP, 40-50% for DW)
-3. LLM generates partial response with recommendations
-4. LLM calls sqlcl_query(sql="SELECT value FROM v$parameter WHERE name = 'pga_aggregate_target'")
-5. SQL returns current value (e.g., 8GB)
-6. LLM synthesizes both results:
-   - Recommendations from docs: 13GB for OLTP @ 64GB RAM
-   - Current value: 8GB
-   - Analysis: Below recommended minimum
+1. LLM requests BOTH tools in single response:
+   - optimizer_vs-retriever(question="tuning recommendations")
+   - sqlcl_query(sql="SELECT name, value FROM v$parameter WHERE name LIKE '%pga%'")
+2. Graph routes to vs_orchestrate (VS tools detected)
+3. VS Pipeline executes:
+   - Rephrase → Retrieve → Grade
+   - Documents stored in state
+4. after_vs_orchestrate() detects pending SQL tools → routes to "tools"
+5. Tools node executes sqlcl_query
+   - ToolMessage with current values added to history
+6. stream_completion called ONCE with all results:
+   - VS documents injected into system prompt
+   - SQL ToolMessage in history
+7. LLM synthesizes both results in single response:
+   - Recommendations from docs: 3GB PGA optimal for OLTP
+   - Current value: 1.5GB
+   - Analysis: Below recommended, consider increasing
 ```
 
 **Result**: Comparison of best practices vs current configuration with actionable recommendations
+
+**Efficiency**: Single LLM call for final synthesis (vs 2+ calls in sequential pattern)
 
 ### Best Practices for Users
 

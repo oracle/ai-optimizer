@@ -52,7 +52,7 @@ class TestToolsSidebar:
         tool_options.tools_sidebar()
 
         # Verify the settings were reset to empty (LLM only)
-        assert state.client_settings["tools_enabled"] == []
+        assert not state.client_settings["tools_enabled"]
 
         # Verify multiselect was called with empty options (no tools available)
         mock_multiselect.assert_called_once()
@@ -87,7 +87,7 @@ class TestToolsSidebar:
         tool_options.tools_sidebar()
 
         # Verify the settings were reset to empty (LLM only)
-        assert state.client_settings["tools_enabled"] == []
+        assert not state.client_settings["tools_enabled"]
 
     def test_vector_search_disabled_no_embedding_models(self, app_server, monkeypatch):
         """Test Vector Search is disabled when no embedding models are configured."""
@@ -121,7 +121,7 @@ class TestToolsSidebar:
         tool_options.tools_sidebar()
 
         # Verify the settings were reset to empty (Vector Search disabled, only NL2SQL available)
-        assert state.client_settings["tools_enabled"] == []
+        assert not state.client_settings["tools_enabled"]
 
     def test_vector_search_disabled_no_matching_vector_stores(self, app_server, monkeypatch):
         """Test Vector Search is disabled when vector stores don't match enabled embedding models."""
@@ -154,7 +154,7 @@ class TestToolsSidebar:
         tool_options.tools_sidebar()
 
         # Verify the settings were reset to empty (Vector Search disabled, only NL2SQL available)
-        assert state.client_settings["tools_enabled"] == []
+        assert not state.client_settings["tools_enabled"]
 
     def test_all_tools_enabled_when_configured(self, app_server, monkeypatch):
         """Test all tools remain enabled when properly configured."""
@@ -228,7 +228,7 @@ class TestToolsSidebar:
         tool_options.tools_sidebar()
 
         # Verify tools_enabled remains empty (LLM only)
-        assert state.client_settings["tools_enabled"] == []
+        assert not state.client_settings["tools_enabled"]
 
         # Verify multiselect has no options available (all tools disabled)
         call_args = mock_sidebar.multiselect.call_args
@@ -266,7 +266,7 @@ class TestToolsSidebar:
         tool_options.tools_sidebar()
 
         # Verify the settings were reset to empty (Vector Search disabled, only NL2SQL available)
-        assert state.client_settings["tools_enabled"] == []
+        assert not state.client_settings["tools_enabled"]
 
     def test_multiple_tools_one_becomes_unavailable(self, app_server, monkeypatch):
         """Test that when multiple tools are selected and one becomes unavailable, only that one is removed."""
@@ -334,7 +334,7 @@ class TestToolsSidebar:
         tool_options.tools_sidebar()
 
         # Verify both tools were removed
-        assert state.client_settings["tools_enabled"] == []
+        assert not state.client_settings["tools_enabled"]
 
         # Verify multiselect was called with no options
         call_args = mock_sidebar.multiselect.call_args
