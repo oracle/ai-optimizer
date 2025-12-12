@@ -40,7 +40,18 @@ def _get_system_prompt(tools_enabled: list) -> str:
     if not tools_enabled:
         return default_prompts.get_prompt_with_override("optimizer_basic-default")
 
-    # Use tools-default prompt when tools are enabled
+    has_vs = "Vector Search" in tools_enabled
+    has_nl2sql = "NL2SQL" in tools_enabled
+
+    # Select prompt based on which tools are enabled
+    if has_vs and has_nl2sql:
+        return default_prompts.get_prompt_with_override("optimizer_tools-default")
+    if has_vs:
+        return default_prompts.get_prompt_with_override("optimizer_vs_tools-default")
+    if has_nl2sql:
+        return default_prompts.get_prompt_with_override("optimizer_nl2sql_tools-default")
+
+    # Fallback for unknown tool combinations
     return default_prompts.get_prompt_with_override("optimizer_tools-default")
 
 

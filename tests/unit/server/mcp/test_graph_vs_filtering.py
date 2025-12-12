@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-from server.mcp.graph import _prepare_messages_for_completion
+from server.mcp.graph import _prepare_messages_for_completion, initialise
 
 
 class TestPrepareMessagesForCompletion:
@@ -277,3 +277,116 @@ class TestPrepareMessagesForCompletion:
         # Format includes the search query (context_input)
         expected_content = '{"status": "success", "result": "Relevant documents found for: \'new features\'"}'
         assert internal_vs_messages[0].content == expected_content
+
+
+class TestInitialise:
+    """Tests for the initialise function - particularly history disabled scenarios."""
+
+    @pytest.fixture
+    def config_history_enabled(self):
+        """Config with history enabled."""
+        return {
+            "metadata": {
+                "use_history": True,
+            }
+        }
+
+    @pytest.fixture
+    def config_history_disabled(self):
+        """Config with history disabled."""
+        return {
+            "metadata": {
+                "use_history": False,
+            }
+        }
+
+    @pytest.fixture
+    def state_with_previous_context(self):
+        """State simulating previous request with documents and context."""
+        return {
+            "messages": [
+                HumanMessage(content="What are the new features?"),
+                AIMessage(content="Here are the new features based on the documentation..."),
+                HumanMessage(content="Tell me more"),  # New request - vague follow-up
+            ],
+            "documents": "Previous document content about new features",
+            "context_input": "new features",
+        }
+
+    @pytest.mark.asyncio
+    async def test_initialise_clears_documents_when_history_disabled(
+        self, config_history_disabled, state_with_previous_context
+    ):
+        """When history is disabled, initialise should clear documents from previous requests.
+
+        This prevents stale document context from being injected into new requests.
+        Bug scenario this tests:
+        1. User asks "Any new features?" - VS retrieves docs, stored in state["documents"]
+        2. User asks "Tell me more" with history DISABLED
+        3. Without fix: old documents persist and get injected, model responds with old context
+        4. With fix: documents cleared, model correctly says "no relevant information"
+        """
+        result = await initialise(state_with_previous_context, config_history_disabled)
+
+        assert "documents" in result, "initialise should return documents key when history disabled"
+        assert result["documents"] == "", "documents should be cleared when history is disabled"
+
+    @pytest.mark.asyncio
+    async def test_initialise_clears_context_input_when_history_disabled(
+        self, config_history_disabled, state_with_previous_context
+    ):
+        """When history is disabled, initialise should clear context_input from previous requests."""
+        result = await initialise(state_with_previous_context, config_history_disabled)
+
+        assert "context_input" in result, "initialise should return context_input key when history disabled"
+        assert result["context_input"] == "", "context_input should be cleared when history is disabled"
+
+    @pytest.mark.asyncio
+    async def test_initialise_preserves_documents_when_history_enabled(
+        self, config_history_enabled, state_with_previous_context
+    ):
+        """When history is enabled, initialise should NOT clear documents.
+
+        Documents from previous requests should remain available for context.
+        """
+        result = await initialise(state_with_previous_context, config_history_enabled)
+
+        # documents should NOT be in result (not overwritten)
+        assert "documents" not in result, "initialise should not touch documents when history is enabled"
+
+    @pytest.mark.asyncio
+    async def test_initialise_preserves_context_input_when_history_enabled(
+        self, config_history_enabled, state_with_previous_context
+    ):
+        """When history is enabled, initialise should NOT clear context_input."""
+        result = await initialise(state_with_previous_context, config_history_enabled)
+
+        # context_input should NOT be in result (not overwritten)
+        assert "context_input" not in result, "initialise should not touch context_input when history is enabled"
+
+    @pytest.mark.asyncio
+    async def test_initialise_cleaned_messages_only_last_human_when_history_disabled(
+        self, config_history_disabled, state_with_previous_context
+    ):
+        """When history is disabled, cleaned_messages should only contain the last HumanMessage."""
+        result = await initialise(state_with_previous_context, config_history_disabled)
+
+        assert "cleaned_messages" in result
+        cleaned = result["cleaned_messages"]
+
+        assert len(cleaned) == 1, "Should only have one message when history disabled"
+        assert isinstance(cleaned[0], HumanMessage), "Should be HumanMessage"
+        assert cleaned[0].content == "Tell me more", "Should be the last HumanMessage"
+
+    @pytest.mark.asyncio
+    async def test_initialise_cleaned_messages_includes_history_when_enabled(
+        self, config_history_enabled, state_with_previous_context
+    ):
+        """When history is enabled, cleaned_messages should include conversation history."""
+        result = await initialise(state_with_previous_context, config_history_enabled)
+
+        assert "cleaned_messages" in result
+        cleaned = result["cleaned_messages"]
+
+        # Should include all messages (minus internal VS tool messages which are filtered separately)
+        assert len(cleaned) == 3, "Should have all 3 messages when history enabled"

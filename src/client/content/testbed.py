@@ -112,9 +112,6 @@ def evaluation_report(eid=None, report=None) -> None:
     correctness_value = report["correctness"]
     percentage_value = correctness_value * 100
 
-    # Debug output to verify the value
-    st.write(f"Debug: Raw correctness = {correctness_value}, Percentage = {percentage_value:.2f}%")
-
     gauge_fig = create_gauge(percentage_value)
     # Display gauge
     st.plotly_chart(gauge_fig)

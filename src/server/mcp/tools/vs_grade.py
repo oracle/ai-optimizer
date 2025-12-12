@@ -52,14 +52,16 @@ async def _grade_documents_with_llm(question: str, documents_str: str, ll_config
         stream=False,
         **ll_config,
     )
-    relevant = response["choices"][0]["message"]["content"]
+    relevant = response["choices"][0]["message"]["content"].lower()
     logger.info("Grading completed. Relevant: %s", relevant)
 
-    if relevant.lower() not in ("yes", "no"):
-        logger.error("LLM did not return binary relevant in grader; assuming all results relevant.")
+    if "yes" in relevant:
         return "yes"
+    if "no" in relevant:
+        return "no"
 
-    return relevant.lower()
+    logger.error("LLM did not return binary relevant in grader; assuming all results relevant.")
+    return "yes"
 
 
 async def _vs_grade_impl(
