@@ -200,7 +200,7 @@ def _render_embedding_config_section(embed_models_enabled: dict, embed_request: 
     col1_1, col1_2 = st.columns([0.8, 0.2])
     with col1_1:
         st.slider(
-            "Chunk Size (tokens):",
+            label="Chunk Size (tokens):",
             min_value=0,
             max_value=chunk_size_max,
             value=chunk_size_max,
@@ -209,7 +209,7 @@ def _render_embedding_config_section(embed_models_enabled: dict, embed_request: 
             help=help_text.help_dict["chunk_size"],
         )
         st.slider(
-            "Chunk Overlap (% of Chunk Size)",
+            label="Chunk Overlap (% of Chunk Size)",
             min_value=0,
             max_value=100,
             value=20,
@@ -221,8 +221,9 @@ def _render_embedding_config_section(embed_models_enabled: dict, embed_request: 
         )
 
     with col1_2:
+        # Labels are on purpose to avoid UI strangeness
         embed_request.chunk_size = st.number_input(
-            "Chunk Size (tokens):",
+            label="_chunk_size",
             label_visibility="hidden",
             min_value=0,
             max_value=chunk_size_max,
@@ -231,7 +232,7 @@ def _render_embedding_config_section(embed_models_enabled: dict, embed_request: 
             on_change=update_chunk_size_slider,
         )
         chunk_overlap_pct = st.number_input(
-            "Chunk Overlap (% of Chunk Size):",
+            label="_chunk_overlap",
             label_visibility="hidden",
             min_value=0,
             max_value=100,
