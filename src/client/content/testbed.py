@@ -96,7 +96,7 @@ def evaluation_report(eid=None, report=None) -> None:
             **Vector Store**: {report["settings"]["vector_search"]["vector_store"]}
         """)
         embed_settings = pd.DataFrame(report["settings"]["vector_search"], index=[0])
-        fields_to_drop = ["vector_store", "alias", "enabled", "grading"]
+        fields_to_drop = ["vector_store", "alias", "enabled", "grade", "discovery", "rephrase"]
         existing_fields = [f for f in fields_to_drop if f in embed_settings.columns]
         if existing_fields:
             embed_settings.drop(existing_fields, axis=1, inplace=True)
