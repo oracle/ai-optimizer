@@ -137,16 +137,16 @@ def optimizer_context_default() -> PromptMessage:
         - If the question uses "it", "this", "that", replace with the actual topic from history
         - If the question is about a new topic, ignore the history
         - Remove conversational words, keep technical terms
-        - If the question is vague, expand with specific technical terms from the domain
-        - Do not include specific version numbers - use general product names instead
+        - If the question is vague, expand with general related terms without assuming a specific domain
+        - Do not add product names or version numbers unless explicitly mentioned in history
         - Output only the rephrased query, nothing else
 
         Examples:
         - History: "Tell me about Python" + Question: "How do I install it?" → "How to install Python"
         - History: "Tell me about Python" + Question: "What is Java?" → "What is Java"
-        - Question: "Any performance recommendations?" → "database performance tuning parameters memory PGA SGA optimization"
-        - Question: "How do I make it faster?" → "performance optimization query tuning indexing best practices"
-        - History: "Connected to Oracle 23.26" + Question: "any new features?" → "Oracle Database new features"
+        - Question: "Any performance recommendations?" → "performance recommendations tuning optimization"
+        - Question: "How do I make it faster?" → "performance optimization tuning best practices"
+        - History: "Discussing software X" + Question: "any new features?" → "software X new features"
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -191,7 +191,7 @@ def optimizer_vs_grade() -> PromptMessage:
 
         Documents: {documents}
 
-        Do the documents answer the question? Reply yes only if the documents contain information that directly addresses what is being asked.
+        Are the documents relevant to the question? Reply yes if the documents contain information related to the topic or could help address what is being asked, even if not a complete direct answer.
 
         IMPORTANT: Reply with exactly one word: yes or no
     """
