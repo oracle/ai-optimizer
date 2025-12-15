@@ -78,10 +78,14 @@ def _render_download_settings_section() -> None:
     settings = get_settings(state.selected_sensitive_settings)
     st.json(settings, expanded=False)
     col_left, col_centre, _ = st.columns([3, 4, 3])
+    now = datetime.now()
+    filename = f"optimizer_settings_{now.strftime('%Y%m%d_%H%M%S')}.json"
     col_left.download_button(
-        label="Download Settings",
+        label="📥 Download Settings",
         data=save_settings(settings),
-        file_name="optimizer_settings.json",
+        file_name=filename,
+        mime="application/json",
+        key="download_settings",
     )
     col_centre.checkbox(
         "Include Sensitive Settings",
@@ -105,7 +109,11 @@ def _render_upload_settings_section() -> None:
             if differences:
                 st.subheader("Differences found:")
                 st.json(differences, expanded=True)
-                if st.button("Apply New Settings"):
+                if st.button(
+                    "📤 Apply New Settings",
+                    key="upload_settings",
+                    help="Import settings from the uploaded JSON file",
+                ):
                     apply_uploaded_settings(uploaded_settings)
                     time.sleep(3)
                     st.rerun()
@@ -321,7 +329,7 @@ def compare_settings(current, uploaded, path=""):
     return differences
 
 
-def apply_uploaded_settings(uploaded):
+def apply_uploaded_settings(uploaded) -> None:
     """Patch configuration to update the server side"""
     client_id = state.client_settings["client"]
     try:

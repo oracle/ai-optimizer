@@ -38,7 +38,7 @@ class TestStreamlit:
         # Verify download button is present using label search
         download_buttons = at.get("download_button")
         assert len(download_buttons) > 0
-        assert any(btn.label == "Download Settings" for btn in download_buttons)
+        assert any(btn.label == "📥 Download Settings" for btn in download_buttons)
 
     def test_checkbox_exists(self, app_server, app_test):
         """Test that sensitive settings checkbox exists"""

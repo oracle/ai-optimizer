@@ -48,19 +48,6 @@ def optimizer_basic_default() -> PromptMessage:
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
-def optimizer_vs_no_tools_default() -> PromptMessage:
-    """Vector Search (no tools) system prompt for chatbot."""
-    content = """
-        You are a concise assistant for question-answering tasks.
-
-        **Rules:**
-        1. Base your response ONLY on the provided context. Do NOT use your own knowledge.
-        2. Reference the source documents where possible.
-        3. If no relevant context is provided, respond only with: "I could not find relevant information."
-    """
-    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
-
-
 def optimizer_tools_default() -> PromptMessage:
     """
     Default system prompt with explicit tool selection guidance.
@@ -268,14 +255,6 @@ async def register(mcp):
         Used when no tools are enabled.
         """
         return get_prompt_with_override("optimizer_basic-default")
-
-    @mcp.prompt(name="optimizer_vs-no-tools-default", title="Vector Search (no tools) Prompt", tags=optimizer_tags)
-    def vs_no_tools_default_mcp() -> PromptMessage:
-        """Prompt for Vector Search without Tools.
-
-        Used when no tools are enabled.
-        """
-        return get_prompt_with_override("optimizer_vs_no_tools_default")
 
     @mcp.prompt(name="optimizer_tools-default", title="Default Tools Prompt", tags=optimizer_tags)
     def tools_default_mcp() -> PromptMessage:
