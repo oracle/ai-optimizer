@@ -79,6 +79,47 @@ def optimizer_tools_default() -> PromptMessage:
         Rules:
         - Answer using only the exact information from tool results
         - Do not add information that is not in the results
+        - Do NOT mention tool names in your response
+        - If results do not answer the question, say "I could not find relevant information."
+    """
+    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
+
+
+def optimizer_vs_tools_default() -> PromptMessage:
+    """
+    System prompt for Vector Search tools only.
+    Simplified for smaller models when only Vector Search is enabled.
+    """
+    content = """
+        You are a helpful assistant. Answer questions using the available tool.
+
+        Tool:
+        - optimizer_vs-retriever: Search documentation (recommendations, best practices, reference info)
+
+        Rules:
+        - Answer using only the exact information from tool results
+        - Do not add information that is not in the results
+        - Do NOT mention tool names in your response
+        - If results do not answer the question, say "I could not find relevant information."
+    """
+    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
+
+
+def optimizer_nl2sql_tools_default() -> PromptMessage:
+    """
+    System prompt for NL2SQL tools only.
+    Simplified for smaller models when only NL2SQL is enabled.
+    """
+    content = """
+        You are a helpful assistant. Answer questions using the available tools.
+
+        Tools:
+        - sqlcl_*: Query database (current settings, live data, actual state)
+
+        Rules:
+        - Answer using only the exact information from tool results
+        - Do not add information that is not in the results
+        - Do NOT mention tool names in your response
         - If results do not answer the question, say "I could not find relevant information."
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
@@ -96,16 +137,16 @@ def optimizer_context_default() -> PromptMessage:
         - If the question uses "it", "this", "that", replace with the actual topic from history
         - If the question is about a new topic, ignore the history
         - Remove conversational words, keep technical terms
-        - If the question is vague, expand with specific technical terms from the domain
-        - Do not include specific version numbers - use general product names instead
+        - If the question is vague, expand with general related terms without assuming a specific domain
+        - Do not add product names or version numbers unless explicitly mentioned in history
         - Output only the rephrased query, nothing else
 
         Examples:
         - History: "Tell me about Python" + Question: "How do I install it?" → "How to install Python"
         - History: "Tell me about Python" + Question: "What is Java?" → "What is Java"
-        - Question: "Any performance recommendations?" → "database performance tuning parameters memory PGA SGA optimization"
-        - Question: "How do I make it faster?" → "performance optimization query tuning indexing best practices"
-        - History: "Connected to Oracle 23.26" + Question: "any new features?" → "Oracle Database new features"
+        - Question: "Any performance recommendations?" → "performance recommendations tuning optimization"
+        - Question: "How do I make it faster?" → "performance optimization tuning best practices"
+        - History: "Discussing software X" + Question: "any new features?" → "software X new features"
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -146,15 +187,13 @@ def optimizer_vs_grade() -> PromptMessage:
     """Prompt for grading relevance of retrieved documents."""
 
     content = """
-        Assess whether the retrieved documents contain information relevant to the question.
-
-        Respond with ONLY 'yes' or 'no':
-        - 'yes' if ANY document contains relevant information
-        - 'no' if NO documents are relevant
-
         Question: {question}
 
         Documents: {documents}
+
+        Are the documents relevant to the question? Reply yes if the documents contain information related to the topic or could help address what is being asked, even if not a complete direct answer.
+
+        IMPORTANT: Reply with exactly one word: yes or no
     """
 
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
@@ -246,6 +285,22 @@ async def register(mcp):
         Includes examples and decision criteria for Vector Search vs NL2SQL tools.
         """
         return get_prompt_with_override("optimizer_tools-default")
+
+    @mcp.prompt(name="optimizer_vs-tools-default", title="Vector Search Tools Prompt", tags=optimizer_tags)
+    def vs_tools_default_mcp() -> PromptMessage:
+        """Prompt for Vector Search with tools.
+
+        Used when only Vector Search is enabled. Simplified and directive for smaller models.
+        """
+        return get_prompt_with_override("optimizer_vs_tools-default")
+
+    @mcp.prompt(name="optimizer_nl2sql-tools-default", title="NL2SQL Tools Prompt", tags=optimizer_tags)
+    def nl2sql_tools_default_mcp() -> PromptMessage:
+        """Prompt for NL2SQL with tools.
+
+        Used when only NL2SQL is enabled. Simplified and directive for smaller models.
+        """
+        return get_prompt_with_override("optimizer_nl2sql_tools-default")
 
     @mcp.prompt(name="optimizer_context-default", title="Contextualize Prompt", tags=optimizer_tags)
     def context_default_mcp() -> PromptMessage:

@@ -436,8 +436,16 @@ async def _accumulate_tool_calls(response, initial_chunk, initial_choice):
 
 
 async def initialise(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
-    """Initialize cleaned messages"""
-    return {"cleaned_messages": clean_messages(state, config)}
+    """Initialize cleaned messages and clear stale context when history is disabled"""
+    use_history = config.get("metadata", {}).get("use_history", True)
+    result = {"cleaned_messages": clean_messages(state, config)}
+
+    # Clear document context when history is disabled to prevent stale data injection
+    if not use_history:
+        result["documents"] = ""
+        result["context_input"] = ""
+
+    return result
 
 
 def _build_completion_kwargs(messages: list, ll_raw: dict, tools: list) -> dict:
