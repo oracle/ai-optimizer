@@ -45,18 +45,28 @@ class TestGetSystemPrompt:
         assert result == "Basic prompt"
 
     @patch("server.api.utils.chat.default_prompts.get_prompt_with_override")
-    def test_returns_tools_prompt_when_tools_enabled(self, mock_get_prompt):
-        """Should return tools-default prompt when tools are enabled."""
-        mock_get_prompt.return_value = "Tools prompt"
+    def test_returns_vs_tools_prompt_when_only_vector_search_enabled(self, mock_get_prompt):
+        """Should return vs_tools-default prompt when only Vector Search is enabled."""
+        mock_get_prompt.return_value = "VS Tools prompt"
 
         result = utils_chat._get_system_prompt(["Vector Search"])
 
-        mock_get_prompt.assert_called_once_with("optimizer_tools-default")
-        assert result == "Tools prompt"
+        mock_get_prompt.assert_called_once_with("optimizer_vs_tools-default")
+        assert result == "VS Tools prompt"
+
+    @patch("server.api.utils.chat.default_prompts.get_prompt_with_override")
+    def test_returns_nl2sql_tools_prompt_when_only_nl2sql_enabled(self, mock_get_prompt):
+        """Should return nl2sql_tools-default prompt when only NL2SQL is enabled."""
+        mock_get_prompt.return_value = "NL2SQL Tools prompt"
+
+        result = utils_chat._get_system_prompt(["NL2SQL"])
+
+        mock_get_prompt.assert_called_once_with("optimizer_nl2sql_tools-default")
+        assert result == "NL2SQL Tools prompt"
 
     @patch("server.api.utils.chat.default_prompts.get_prompt_with_override")
     def test_returns_tools_prompt_with_multiple_tools(self, mock_get_prompt):
-        """Should return tools-default prompt when multiple tools are enabled."""
+        """Should return tools-default prompt when both tools are enabled."""
         mock_get_prompt.return_value = "Tools prompt"
 
         result = utils_chat._get_system_prompt(["Vector Search", "NL2SQL"])

@@ -36,8 +36,10 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
     def _update_vs_subtools():
         """Update user settings as to which vector search subtools are enabled"""
         state.client_settings["vector_search"]["discovery"] = state.selected_vs_discovery
-        state.client_settings["vector_search"]["rephrase"] = state.selected_vs_rephrase
-        state.client_settings["vector_search"]["grade"] = state.selected_vs_grade
+        if "selected_vs_rephrase" in state:
+            state.client_settings["vector_search"]["rephrase"] = state.selected_vs_rephrase
+        if "selected_vs_grade" in state:
+            state.client_settings["vector_search"]["grade"] = state.selected_vs_grade
 
     def _disable_tool(tool: str, reason: str = None) -> None:
         """Disable a tool in the tool box"""
