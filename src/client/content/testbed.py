@@ -319,7 +319,7 @@ def render_testset_generation_ui(available_ll_models: list, available_embed_mode
         ),
         key=f"selected_uploader_{state.testbed['uploader_key']}",
         accept_multiple_files=False,
-        type="pdf",
+        type=["pdf"],
     )
 
     col_left, col_center, col_right = st.columns([0.2, 0.35, 0.35])

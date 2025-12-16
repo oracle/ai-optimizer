@@ -279,9 +279,11 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict) -> FileSourceDa
     if data.file_source == "Local":
         st.subheader("Local Files", divider=False)
         st.file_uploader(
-            "Choose a file:",
+            "Choose files or a zip archive:",
             key="local_file_uploader",
-            help="Large or many files?  Consider OCI Object Storage or invoking the API directly.",
+            help="Upload individual files or a zip archive containing multiple documents. "
+            "Large or many files? Consider OCI Object Storage.",
+            type=["pdf","html","md","csv","txt","png","jpeg","zip"],
             accept_multiple_files=True,
         )
 
@@ -529,10 +531,10 @@ def _process_refresh_request(embed_request: DatabaseVectorStorage, src_bucket: s
     return response
 
 
-def _handle_vector_store_population(
-    embed_request: DatabaseVectorStorage, source_data: FileSourceData, rate_limit: int, create_new_vs: bool
-) -> None:
-    """Handle vector store population button and processing"""
+def _render_population_button(
+    embed_request: DatabaseVectorStorage, source_data: FileSourceData, create_new_vs: bool
+) -> tuple[bool, bool]:
+    """Render the appropriate button and return click states"""
     is_source_valid = source_data.is_valid()
 
     if not embed_request.alias and create_new_vs:
@@ -540,6 +542,7 @@ def _handle_vector_store_population(
 
     refresh_clicked = False
     populate_clicked = False
+
     if source_data.file_source == "OCI" and not create_new_vs:
         state.running = (
             not (is_source_valid and embed_request.vector_store) and state.get("button_refresh") is not True
@@ -563,12 +566,73 @@ def _handle_vector_store_population(
             help=source_data.get_button_help(),
         )
 
+    return populate_clicked, refresh_clicked
+
+
+def _handle_populate_success(response: dict) -> None:
+    """Handle successful population response display"""
+    # Display success message
+    st.success(f"{response.get('message', 'Vector store populated successfully')}", icon="✅")
+
+    # Display processing summary
+    total_chunks = response.get('total_chunks', 0)
+    processed_files = response.get('processed_files', [])
+    skipped_files = response.get('skipped_files', [])
+
+    with st.expander("📊 Processing Summary", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Chunks", total_chunks)
+        with col2:
+            st.metric("Files Processed", len(processed_files))
+        with col3:
+            st.metric("Files Skipped", len(skipped_files))
+
+        if processed_files:
+            st.subheader("✅ Processed Files")
+            processed_df = pd.DataFrame(processed_files)
+            st.dataframe(processed_df, use_container_width=True, hide_index=True)
+
+        if skipped_files:
+            st.subheader("⚠️ Skipped Files")
+            skipped_df = pd.DataFrame(skipped_files)
+            st.dataframe(skipped_df, use_container_width=True, hide_index=True)
+
+    get_databases(force=True)
+
+
+def _handle_refresh_success(response: dict) -> None:
+    """Handle successful refresh response display"""
+    # Display results
+    if response.get("new_files", 0) > 0 or response.get("updated_files", 0) > 0:
+        st.success(
+            f"Refresh Complete!\n\n"
+            f"- New files: {response.get('new_files', 0)}\n"
+            f"- Updated files: {response.get('updated_files', 0)}\n"
+            f"- Chunks added: {response.get('total_chunks', 0)}\n"
+            f"- Total chunks in store: {response.get('total_chunks_in_store', 0)}",
+            icon="✅",
+        )
+    else:
+        st.info(
+            f"No new or modified files found in the bucket.\n\n"
+            f"Total chunks in store: {response.get('total_chunks_in_store', 0)}",
+            icon="ℹ️",
+        )
+    get_databases(force=True)
+
+
+def _handle_vector_store_population(
+    embed_request: DatabaseVectorStorage, source_data: FileSourceData, rate_limit: int, create_new_vs: bool
+) -> None:
+    """Handle vector store population button and processing"""
+    populate_clicked, refresh_clicked = _render_population_button(embed_request, source_data, create_new_vs)
+
     if populate_clicked:
         try:
             with st.spinner("Populating Vector Store... please be patient.", show_time=True):
                 response = _process_populate_request(embed_request, source_data, rate_limit)
-            st.success(f"Vector Store Populated: {response['message']}", icon="✅")
-            get_databases(force=True)
+            _handle_populate_success(response)
         except api_call.ApiError as ex:
             st.error(ex, icon="🚨")
     elif refresh_clicked:
@@ -576,34 +640,15 @@ def _handle_vector_store_population(
         try:
             with st.spinner("Refreshing Vector Store... checking for new/modified files.", show_time=True):
                 response = _process_refresh_request(embed_request, source_data.oci_bucket, rate_limit)
-            # Display results
-            if response.get("new_files", 0) > 0 or response.get("updated_files", 0) > 0:
-                st.success(
-                    f"✅ Refresh Complete!\n\n"
-                    f"- New files: {response.get('new_files', 0)}\n"
-                    f"- Updated files: {response.get('updated_files', 0)}\n"
-                    f"- Chunks added: {response.get('total_chunks', 0)}\n"
-                    f"- Total chunks in store: {response.get('total_chunks_in_store', 0)}",
-                    icon="✅",
-                )
-            else:
-                st.info(
-                    f"No new or modified files found in the bucket.\n\n"
-                    f"Total chunks in store: {response.get('total_chunks_in_store', 0)}",
-                    icon="ℹ️",
-                )
-            get_databases(force=True)
+            _handle_refresh_success(response)
         except api_call.ApiError as ex:
             st.error(f"Refresh failed: {ex}", icon="🚨")
         finally:
             state.running = False
 
 
-#############################################################################
-# MAIN
-#############################################################################
-def display_split_embed() -> None:
-    """Streamlit GUI"""
+def _initialize_and_validate_config() -> tuple[dict, list]:
+    """Initialize configuration and validate prerequisites"""
     try:
         get_models()
         get_databases()
@@ -632,7 +677,11 @@ def display_split_embed() -> None:
         st.warning("OCI is not fully configured, some functionality is disabled", icon="⚠️")
         file_sources.remove("OCI")
 
-    # Setup Model for Embedding Request
+    return embed_models_enabled, file_sources, oci_setup
+
+
+def _configure_vector_store_mode(embed_models_enabled: dict) -> tuple[bool, DatabaseVectorStorage]:
+    """Configure vector store creation mode and return request object"""
     embed_request = DatabaseVectorStorage()
 
     # Check for existing Vector Stores with corresponding enabled embedding models
@@ -667,6 +716,18 @@ def display_split_embed() -> None:
         vs_missing = [field for field in vs_fields if not vs_settings.get(field)]
         if vs_missing:
             st.stop()
+
+    return create_new_vs, embed_request
+
+
+#############################################################################
+# MAIN
+#############################################################################
+def display_split_embed() -> None:
+    """Streamlit GUI"""
+    embed_models_enabled, file_sources, oci_setup = _initialize_and_validate_config()
+
+    create_new_vs, embed_request = _configure_vector_store_mode(embed_models_enabled)
 
     source_data = _render_load_kb_section(file_sources, oci_setup)
 

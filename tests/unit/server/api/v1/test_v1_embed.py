@@ -443,7 +443,11 @@ class TestSplitEmbed:
         mocks = split_embed_mocks
         mocks["oci_get"].return_value = make_oci_config()
         mocks["get_temp"].return_value = tmp_path
-        mocks["load_split"].return_value = (["doc1", "doc2"], None)
+        mocks["load_split"].return_value = (
+            ["doc1", "doc2"],
+            [],
+            {"processed_files": [], "skipped_files": [], "total_chunks": 0},
+        )
         mocks["get_embed"].return_value = MagicMock()
         mocks["get_vs_table"].return_value = ("VS_TEST", "test_alias")
         mocks["populate"].return_value = None
@@ -536,7 +540,11 @@ class TestSplitEmbed:
         mocks = split_embed_mocks
         mocks["oci_get"].return_value = make_oci_config()
         mocks["get_temp"].return_value = tmp_path
-        mocks["load_split"].return_value = (["doc1"], None)
+        mocks["load_split"].return_value = (
+            ["doc1"],
+            [],
+            {"processed_files": [], "skipped_files": [], "total_chunks": 0},
+        )
         mocks["get_embed"].return_value = MagicMock()
         mocks["get_vs_table"].return_value = ("VS_TEST", "test_alias")
         mocks["populate"].return_value = None
@@ -564,7 +572,11 @@ class TestSplitEmbed:
         mocks = split_embed_mocks
         mocks["oci_get"].return_value = make_oci_config()
         mocks["get_temp"].return_value = tmp_path
-        mocks["load_split"].return_value = (["doc1"], None)
+        mocks["load_split"].return_value = (
+            ["doc1"],
+            [],
+            {"processed_files": [], "skipped_files": [], "total_chunks": 0},
+        )
         mocks["get_embed"].return_value = MagicMock()
         mocks["get_vs_table"].return_value = ("VS_TEST", "test_alias")
         mocks["populate"].return_value = None

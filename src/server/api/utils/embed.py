@@ -73,7 +73,7 @@ def process_metadata(idx: int, chunk: str, file_metadata: dict = None) -> str:
     split_doc_with_mdata = []
     chunk_metadata = chunk.metadata.copy()
     # Add More Metadata as Required
-    chunk_metadata["id"] = f"{file}_{idx}"
+    chunk_metadata["id"] = f"{filename}_{idx}"  # Use filename (with extension) instead of file
     chunk_metadata["filename"] = filename
 
     # Add file size and timestamp if available
@@ -209,14 +209,19 @@ def load_and_split_documents(
     write_json: bool = False,
     output_dir: str = None,
     file_metadata: dict = None,
-) -> list[LangchainDocument]:
+) -> tuple[list[LangchainDocument], list, dict]:
     """
     Loads file into a Langchain Document.  Calls the Splitter (split_document) function
-    Returns the list of the chunks in a LangchainDocument.
+    Returns the list of the chunks in a LangchainDocument, list of json files, and processing results.
     If output_dir, a list of written json files
     """
     split_files = []
     all_split_docos = []
+    processing_results = {
+        "processed_files": [],
+        "skipped_files": [],
+        "total_chunks": 0
+    }
 
     # If no metadata provided, create from file system
     if file_metadata is None:
@@ -230,20 +235,48 @@ def load_and_split_documents(
 
         _capture_file_metadata(name, stat, file_metadata)
 
-        loader, split = _get_document_loader(file, extension)
-        loaded_doc = loader.load()
-        logger.info("Loaded Pages: %i", len(loaded_doc))
+        try:
+            loader, split = _get_document_loader(file, extension)
+            loaded_doc = loader.load()
+            logger.info("Loaded Pages: %i", len(loaded_doc))
 
-        split_docos = _process_and_split_document(
-            loaded_doc, split, model, chunk_size, chunk_overlap, extension, file_metadata
-        )
+            split_docos = _process_and_split_document(
+                loaded_doc, split, model, chunk_size, chunk_overlap, extension, file_metadata
+            )
 
-        if write_json and output_dir:
-            split_files.append(doc_to_json(split_docos, file, output_dir))
-        all_split_docos += split_docos
+            if write_json and output_dir:
+                split_files.append(doc_to_json(split_docos, file, output_dir))
 
+            all_split_docos += split_docos
+            processing_results["processed_files"].append({
+                "filename": name,
+                "chunks": len(split_docos)
+            })
+
+        except ValueError as e:
+            # Skip unsupported file types
+            logger.warning("Skipping unsupported file %s: %s", name, str(e))
+            processing_results["skipped_files"].append({
+                "filename": name,
+                "reason": f"Unsupported file type: {extension}"
+            })
+            continue
+        except Exception as e:
+            # Skip files with other processing errors
+            logger.warning("Skipping file %s due to processing error: %s", name, str(e))
+            processing_results["skipped_files"].append({
+                "filename": name,
+                "reason": f"Processing error: {str(e)}"
+            })
+            continue
+
+    processing_results["total_chunks"] = len(all_split_docos)
     logger.info("Total Number of Chunks: %i", len(all_split_docos))
-    return all_split_docos, split_files
+    logger.info("Processed files: %i, Skipped files: %i",
+                len(processing_results["processed_files"]),
+                len(processing_results["skipped_files"]))
+
+    return all_split_docos, split_files, processing_results
 
 
 ##########################################
@@ -724,7 +757,7 @@ def refresh_vector_store_from_bucket(
         logger.info("Built metadata dict for %d files from bucket objects", len(file_metadata))
 
         # Process documents with metadata
-        split_docos, _ = load_and_split_documents(
+        split_docos, _, _ = load_and_split_documents(
             downloaded_files,
             vector_store_config.model,
             vector_store_config.chunk_size,
