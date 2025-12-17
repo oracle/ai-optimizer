@@ -9,6 +9,10 @@ Session States Set:
 """
 # spell-checker:ignore selectbox
 
+import json
+import time
+from datetime import datetime
+
 import streamlit as st
 from streamlit import session_state as state
 
@@ -77,6 +81,88 @@ def patch_prompt(new_prompt_instructions: str) -> bool:
     return rerun
 
 
+def save_all_prompts() -> str:
+    """Export all prompts to JSON format"""
+    try:
+        # Refresh prompts to get latest data
+        get_prompts(force=True)
+
+        now = datetime.now()
+        saved_time = now.strftime("%d-%b-%YT%H%M").upper()
+
+        prompts_data = {"export_timestamp": saved_time, "prompts": state.prompt_configs}
+
+        return json.dumps(prompts_data, indent=2)
+    except Exception as ex:
+        logger.error("Failed to export prompts: %s", ex)
+        st.error(f"Failed to export prompts: {ex}")
+        return ""
+
+
+def apply_uploaded_prompts(uploaded_file) -> None:
+    """Import prompts from uploaded JSON file"""
+    try:
+        # Parse uploaded JSON
+        uploaded_data = json.loads(uploaded_file.read().decode("utf-8"))
+
+        # Extract prompts from the uploaded data
+        uploaded_prompts = uploaded_data.get("prompts", [])
+        if not uploaded_prompts:
+            st.error("No prompts found in uploaded file")
+            return
+
+        # Validate prompt structure
+        for prompt in uploaded_prompts:
+            if not all(key in prompt for key in ["name", "text"]):
+                st.error(f"Invalid prompt structure in uploaded file. Missing required fields: {prompt}")
+                return
+
+        # Apply each prompt override
+        success_count = 0
+        for prompt in uploaded_prompts:
+            try:
+                api_call.patch(
+                    endpoint=f"v1/mcp/prompts/{prompt['name']}",
+                    payload={"json": {"instructions": prompt["text"]}},
+                )
+                logger.info("Updated prompt: %s", prompt["name"])
+                success_count += 1
+            except api_call.ApiError as ex:
+                logger.warning("Failed to update prompt %s: %s", prompt["name"], ex)
+                st.warning(f"Failed to update prompt '{prompt['name']}': {ex}")
+
+        if success_count > 0:
+            st.success(f"Successfully imported {success_count} prompt(s)", icon="✅")
+            # Clear cache and refresh
+            st_common.clear_state_key("prompt_configs")
+            time.sleep(1)  # Brief pause for cache to update
+            return
+        st.error("No prompts were successfully imported")
+    except json.JSONDecodeError:
+        st.error("Invalid JSON file format")
+    except Exception as ex:
+        logger.error("Failed to import prompts: %s", ex)
+        st.error(f"Failed to import prompts: {ex}")
+
+
+def reset_all_prompts() -> bool:
+    """Reset all prompts to their default values"""
+    try:
+        response = api_call.post(endpoint="v1/mcp/prompts/reset")
+        logger.info("Reset prompts response: %s", response)
+        st.toast(response["message"], icon="✅")
+
+        # Clear cache and refresh
+        st_common.clear_state_key("prompt_configs")
+        time.sleep(1)  # Brief pause for cache to update
+        return True
+
+    except api_call.ApiError as ex:
+        st.error(f"Failed to reset prompts: {ex}")
+        logger.error("Failed to reset prompts: %s", ex)
+        return False
+
+
 #############################################################################
 # MAIN
 #############################################################################
@@ -109,6 +195,47 @@ def display_prompt_eng():
         )
         if st.button("Save Instructions", key="save_sys_prompt"):
             if patch_prompt(new_prompt_instructions):
+                st.rerun()
+
+    # Bulk operations section
+    st.header("Bulk Prompt Operations", divider="red")
+    col_left, col_right = st.columns([8, 2])
+    upload_prompts = col_left.toggle(
+        "Upload", key="selected_upload_prompts", value=False, help="Save or Upload Prompts.", width="stretch"
+    )
+    with col_right:
+        if st.button(
+            "🔄 Reset Prompts", key="reset_prompts", help="Reset all prompts to their default values", width="stretch"
+        ):
+            if reset_all_prompts():
+                st.rerun()
+
+    if not upload_prompts:
+        prompts_json = save_all_prompts()
+        now = datetime.now()
+        filename = f"optimizer_prompts_{now.strftime('%Y%m%d_%H%M%S')}.json"
+        st.download_button(
+            label="📥 Download Prompts",
+            data=prompts_json,
+            file_name=filename,
+            mime="application/json",
+            key="download_prompts",
+        )
+    else:
+        uploaded_file = st.file_uploader(
+            "Upload Prompts",
+            type="json",
+            key="upload_prompts_file",
+            help="Upload a JSON file containing prompts to import",
+        )
+        if uploaded_file is not None:
+            if st.button(
+                "📤 Upload Prompts",
+                key="upload_prompts",
+                help="Import prompts from the uploaded JSON file",
+            ):
+                apply_uploaded_prompts(uploaded_file)
+                time.sleep(3)
                 st.rerun()
 
 
