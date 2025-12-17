@@ -34,7 +34,7 @@ uv pip install -e ".[all-test]"
 
 # Run application
 cd src/ && streamlit run launch_client.py --server.port 8501  # Client (must be in src/)
-python src/launch_server.py --port 8000                        # Server
+python3 src/launch_server.py --port 8000                        # Server
 
 # Test & Lint
 pytest tests -v
