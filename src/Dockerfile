@@ -22,8 +22,8 @@ COPY pyproject.toml /opt/package/pyproject.toml
 # Generate requirements and install deps only (cached layer)
 RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
     ${VIRTUAL_ENV}/bin/uv pip install torch==2.9.1+cpu -f https://download.pytorch.org/whl/cpu/torch && \
-    echo "torch==2.9.1+cpu" > /tmp/override.txt && \
-    ${VIRTUAL_ENV}/bin/uv pip compile /opt/package/pyproject.toml --extra all -o /tmp/requirements.txt --override /tmp/override.txt --find-links https://download.pytorch.org/whl/cpu && \
+    ${VIRTUAL_ENV}/bin/uv pip compile /opt/package/pyproject.toml --extra all -o /tmp/requirements.txt && \
+    sed -i '/^torch==/d' /tmp/requirements.txt && \
     ${VIRTUAL_ENV}/bin/uv pip install -r /tmp/requirements.txt
 
 # Copy source
