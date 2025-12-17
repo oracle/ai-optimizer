@@ -169,7 +169,7 @@ class TestProcessMetadata:
         result = utils_embed.process_metadata(1, chunk)
 
         assert len(result) == 1
-        assert result[0].metadata["id"] == "test_1"
+        assert result[0].metadata["id"] == "test.pdf_1"
         assert result[0].metadata["filename"] == "test.pdf"
 
     def test_process_metadata_includes_file_metadata(self):
