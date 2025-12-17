@@ -7,8 +7,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import datetime
 import json
 from urllib.parse import urlparse
+import os
 from pathlib import Path
 import shutil
+import zipfile
 
 from fastapi import APIRouter, HTTPException, Response, Header, UploadFile
 from fastapi.responses import JSONResponse
@@ -186,11 +188,42 @@ async def store_local_file(
         with filename.open("wb") as f:
             f.write(file_content)
 
-        # Capture metadata for this file
-        file_metadata[upload_file.filename] = {
-            "size": len(file_content),
-            "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        }
+        # Check if this is a zip file and extract it
+        if upload_file.filename.lower().endswith(".zip"):
+            try:
+                logger.info("Extracting zip file: %s", upload_file.filename)
+                with zipfile.ZipFile(filename, "r") as zip_ref:
+                    # Extract all files to temp directory root (flatten directory structure)
+                    for member in zip_ref.namelist():
+                        # Skip directories, only extract files
+                        if not member.endswith("/"):
+                            # Get just the filename without path
+                            member_name = os.path.basename(member)
+                            if member_name:  # Skip if basename is empty (shouldn't happen)
+                                extracted_path = temp_directory / member_name
+                                with zip_ref.open(member) as source, extracted_path.open("wb") as target:
+                                    target.write(source.read())
+
+                                # Add metadata for extracted file
+                                file_stat = extracted_path.stat()
+                                file_metadata[member_name] = {
+                                    "size": file_stat.st_size,
+                                    "time_modified": datetime.datetime.fromtimestamp(
+                                        file_stat.st_mtime, datetime.timezone.utc
+                                    ).isoformat(),
+                                }
+                # Remove the zip file after extraction
+                filename.unlink()
+                logger.info("Successfully extracted zip file: %s", upload_file.filename)
+            except Exception as e:
+                logger.error("Failed to extract zip file %s: %s", upload_file.filename, str(e))
+                # Continue processing - zip file will be treated as regular file or skipped
+        else:
+            # Capture metadata for regular files
+            file_metadata[upload_file.filename] = {
+                "size": len(file_content),
+                "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
 
     # Store metadata in JSON file for later use
     metadata_file = temp_directory / ".file_metadata.json"
@@ -242,7 +275,7 @@ async def split_embed(
             file_metadata = None
 
     try:
-        split_docos, _ = utils_embed.load_and_split_documents(
+        split_docos, _, processing_results = utils_embed.load_and_split_documents(
             files,
             request.model,
             request.chunk_size,
@@ -264,9 +297,16 @@ async def split_embed(
             input_data=split_docos,
             rate_limit=rate_limit,
         )
-        return Response(
-            content=json.dumps({"message": f"{len(split_docos)} chunks embedded."}), media_type="application/json"
-        )
+
+        # Prepare response with processing results
+        response_data = {
+            "message": "Vector store populated successfully",
+            "total_chunks": processing_results["total_chunks"],
+            "processed_files": processing_results["processed_files"],
+            "skipped_files": processing_results["skipped_files"],
+        }
+
+        return Response(content=json.dumps(response_data), media_type="application/json")
     except ValueError as ex:
         raise HTTPException(status_code=500, detail=str(ex)) from ex
     except RuntimeError as ex:
