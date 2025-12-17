@@ -24,8 +24,7 @@ from langchain_community.vectorstores import oraclevs as LangchainVS
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_core.documents import Document as LangchainDocument
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter
+from langchain_text_splitters import HTMLHeaderTextSplitter, CharacterTextSplitter, RecursiveCharacterTextSplitter
 
 import server.api.utils.databases as utils_databases
 import server.api.utils.oci as utils_oci
