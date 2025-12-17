@@ -68,7 +68,6 @@ def doc_to_json(document: LangchainDocument, file: str, output_dir: str = None) 
 def process_metadata(idx: int, chunk: str, file_metadata: dict = None) -> str:
     """Add Metadata to Split Document"""
     filename = os.path.basename(chunk.metadata["source"])
-    file = os.path.splitext(filename)[0]
 
     split_doc_with_mdata = []
     chunk_metadata = chunk.metadata.copy()
@@ -217,11 +216,7 @@ def load_and_split_documents(
     """
     split_files = []
     all_split_docos = []
-    processing_results = {
-        "processed_files": [],
-        "skipped_files": [],
-        "total_chunks": 0
-    }
+    processing_results = {"processed_files": [], "skipped_files": [], "total_chunks": 0}
 
     # If no metadata provided, create from file system
     if file_metadata is None:
@@ -248,33 +243,28 @@ def load_and_split_documents(
                 split_files.append(doc_to_json(split_docos, file, output_dir))
 
             all_split_docos += split_docos
-            processing_results["processed_files"].append({
-                "filename": name,
-                "chunks": len(split_docos)
-            })
+            processing_results["processed_files"].append({"filename": name, "chunks": len(split_docos)})
 
         except ValueError as e:
             # Skip unsupported file types
             logger.warning("Skipping unsupported file %s: %s", name, str(e))
-            processing_results["skipped_files"].append({
-                "filename": name,
-                "reason": f"Unsupported file type: {extension}"
-            })
+            processing_results["skipped_files"].append(
+                {"filename": name, "reason": f"Unsupported file type: {extension}"}
+            )
             continue
         except Exception as e:
             # Skip files with other processing errors
             logger.warning("Skipping file %s due to processing error: %s", name, str(e))
-            processing_results["skipped_files"].append({
-                "filename": name,
-                "reason": f"Processing error: {str(e)}"
-            })
+            processing_results["skipped_files"].append({"filename": name, "reason": f"Processing error: {str(e)}"})
             continue
 
     processing_results["total_chunks"] = len(all_split_docos)
     logger.info("Total Number of Chunks: %i", len(all_split_docos))
-    logger.info("Processed files: %i, Skipped files: %i",
-                len(processing_results["processed_files"]),
-                len(processing_results["skipped_files"]))
+    logger.info(
+        "Processed files: %i, Skipped files: %i",
+        len(processing_results["processed_files"]),
+        len(processing_results["skipped_files"]),
+    )
 
     return all_split_docos, split_files, processing_results
 
