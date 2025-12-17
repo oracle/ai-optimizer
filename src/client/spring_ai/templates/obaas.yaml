@@ -38,7 +38,7 @@ spring:
         options: 
           model: {vector_search[id]}        
 aims:
-  sys_instr: \"{sys_prompt}\"
+  sys_instr: {sys_prompt}
   vectortable:
     name: {vector_search[vector_store]}
     user: {database_config[user]}

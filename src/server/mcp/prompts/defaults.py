@@ -53,10 +53,10 @@ def optimizer_vs_no_tools_default() -> PromptMessage:
     content = """
         You are a concise assistant for question-answering tasks.
 
-        **Rules:**
+        Rules:
         1. Base your response ONLY on the provided context. Do NOT use your own knowledge.
         2. Reference the source documents where possible.
-        3. If no relevant context is provided, respond only with: "I could not find relevant information."
+        3. If no relevant context is provided, respond only with: 'I could not find relevant information.'
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -80,7 +80,7 @@ def optimizer_tools_default() -> PromptMessage:
         - Answer using only the exact information from tool results
         - Do not add information that is not in the results
         - Do NOT mention tool names in your response
-        - If results do not answer the question, say "I could not find relevant information."
+        - If results do not answer the question, say 'I could not find relevant information.'
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -100,7 +100,7 @@ def optimizer_vs_tools_default() -> PromptMessage:
         - Answer using only the exact information from tool results
         - Do not add information that is not in the results
         - Do NOT mention tool names in your response
-        - If results do not answer the question, say "I could not find relevant information."
+        - If results do not answer the question, say 'I could not find relevant information.'
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -120,7 +120,7 @@ def optimizer_nl2sql_tools_default() -> PromptMessage:
         - Answer using only the exact information from tool results
         - Do not add information that is not in the results
         - Do NOT mention tool names in your response
-        - If results do not answer the question, say "I could not find relevant information."
+        - If results do not answer the question, say 'I could not find relevant information.'
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -142,11 +142,11 @@ def optimizer_context_default() -> PromptMessage:
         - Output only the rephrased query, nothing else
 
         Examples:
-        - History: "Tell me about Python" + Question: "How do I install it?" → "How to install Python"
-        - History: "Tell me about Python" + Question: "What is Java?" → "What is Java"
-        - Question: "Any performance recommendations?" → "performance recommendations tuning optimization"
-        - Question: "How do I make it faster?" → "performance optimization tuning best practices"
-        - History: "Discussing software X" + Question: "any new features?" → "software X new features"
+        - History: 'Tell me about Python' + Question: 'How do I install it?' → 'How to install Python'
+        - History: 'Tell me about Python' + Question: 'What is Java?' → 'What is Java'
+        - Question: 'Any performance recommendations?' → 'performance recommendations tuning optimization'
+        - Question: 'How do I make it faster?' → 'performance optimization tuning best practices'
+        - History: 'Discussing software X' + Question: 'any new features?' → 'software X new features'
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -160,7 +160,7 @@ def optimizer_vs_discovery() -> PromptMessage:
         Available stores:
         {tables_info}
 
-        Question: "{question}"
+        Question: '{question}'
 
         CRITICAL: Your response must be ONLY a valid JSON array. No explanation, no markdown, no additional text.
 
@@ -172,10 +172,10 @@ def optimizer_vs_discovery() -> PromptMessage:
         5. Return ONLY the full TABLE NAMES (the part before any parenthesis/alias)
 
         Output format (JSON array only):
-        ["FULL_TABLE_NAME_1", "FULL_TABLE_NAME_2"]
+        ['FULL_TABLE_NAME_1', 'FULL_TABLE_NAME_2']
 
         Example valid output:
-        ["VECTOR_USERS_OPENAI_TEXT_EMBEDDING_3_SMALL_1536_308_COSINE_HNSW"]
+        ['VECTOR_USERS_OPENAI_TEXT_EMBEDDING_3_SMALL_1536_308_COSINE_HNSW']
 
         Your JSON array:
     """
@@ -244,13 +244,13 @@ def optimizer_testbed_judge() -> PromptMessage:
         - Vague or generic responses that don't include the specific answer are INCORRECT
 
         Examples:
-        - Expected "The default is X" → Agent "The default is X. Previously Y." → CORRECT (core answer present)
-        - Expected "The default is X" → Agent "The default is Y or Z depending on config." → INCORRECT (wrong value)
-        - Expected "The default is X" → Agent "It depends on your setup." → INCORRECT (core answer missing)
+        - Expected 'The default is X' → Agent 'The default is X. Previously Y.' → CORRECT (core answer present)
+        - Expected 'The default is X' → Agent 'The default is Y or Z depending on config.' → INCORRECT (wrong value)
+        - Expected 'The default is X' → Agent 'It depends on your setup.' → INCORRECT (core answer missing)
 
         Output ONLY valid JSON:
-        {"correctness": true}
-        {"correctness": false, "correctness_reason": "brief explanation"}
+        {'correctness': true}
+        {'correctness': false, 'correctness_reason': 'brief explanation'}
     """
 
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
