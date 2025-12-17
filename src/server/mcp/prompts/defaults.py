@@ -48,23 +48,6 @@ def optimizer_basic_default() -> PromptMessage:
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
-def optimizer_vs_no_tools_default() -> PromptMessage:
-    """Vector Search (no tools) system prompt for chatbot."""
-    content = """
-        You are a helpful assistant.
-
-        You are given documentation excerpts.
-
-        Rules:
-        - You MUST answer the question using the provided documentation.
-        - Use only information found in the documentation.
-        - Do not use outside knowledge or assumptions.
-        - Do not mention the documentation, tools, or retrieval.
-        - If the documentation does not fully answer the question, answer using the closest relevant information available.
-    """
-    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
-
-
 def optimizer_tools_default() -> PromptMessage:
     """
     Default system prompt with explicit tool selection guidance.
@@ -95,16 +78,16 @@ def optimizer_vs_tools_default() -> PromptMessage:
     Simplified for smaller models when only Vector Search is enabled.
     """
     content = """
-        You are a helpful assistant. Answer questions using the available tool.
+        You are a helpful assistant.
 
-        Tool:
-        - optimizer_vs-retriever: Search documentation (recommendations, best practices, reference info)
+        You are given documentation excerpts.
 
         Rules:
-        - Answer using only the exact information from tool results
-        - Do not add information that is not in the results
-        - Do NOT mention tool names in your response
-        - If results do not answer the question, say 'I could not find relevant information.'
+        - You MUST answer the question using the provided documentation.
+        - Use only information found in the documentation.
+        - Do not use outside knowledge or assumptions.
+        - Do not mention the documentation, tools, or retrieval.
+        - If the documentation does not fully answer the question, answer using the closest relevant information available.
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
