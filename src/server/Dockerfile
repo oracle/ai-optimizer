@@ -23,7 +23,7 @@ COPY pyproject.toml /opt/package/pyproject.toml
 RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
     ${VIRTUAL_ENV}/bin/uv pip install torch==2.9.1+cpu -f https://download.pytorch.org/whl/cpu/torch && \
     echo "torch==2.9.1+cpu" > /tmp/override.txt && \
-    ${VIRTUAL_ENV}/bin/uv pip compile /opt/package/pyproject.toml --extra server -o /tmp/requirements.txt --override /tmp/override.txt && \
+    ${VIRTUAL_ENV}/bin/uv pip compile /opt/package/pyproject.toml --extra server -o /tmp/requirements.txt --override /tmp/override.txt --find-links https://download.pytorch.org/whl/cpu && \
     ${VIRTUAL_ENV}/bin/uv pip install -r /tmp/requirements.txt
 
 # Copy source
