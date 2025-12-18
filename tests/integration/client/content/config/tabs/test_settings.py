@@ -329,7 +329,7 @@ class TestSpringAIIntegration:
         at.session_state.client_settings["database"] = {"alias": "DEFAULT"}
 
         # Get the prompt_configs from session state
-        prompt_configs = at.session_state.get("prompt_configs", [])
+        prompt_configs = at.session_state["prompt_configs"] if "prompt_configs" in at.session_state else []
         prompt_names = [p["name"] for p in prompt_configs]
 
         # The expected prompt name when Vector Search is enabled
