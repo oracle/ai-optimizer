@@ -342,27 +342,35 @@ class TestInitialise:
         assert result["context_input"] == "", "context_input should be cleared when history is disabled"
 
     @pytest.mark.asyncio
-    async def test_initialise_preserves_documents_when_history_enabled(
+    async def test_initialise_clears_documents_when_history_enabled(
         self, config_history_enabled, state_with_previous_context
     ):
-        """When history is enabled, initialise should NOT clear documents.
+        """When history is enabled, initialise should still clear documents.
 
-        Documents from previous requests should remain available for context.
+        Documents are always ephemeral per turn to prevent exponential context growth.
+        This is a core architectural principle: documents are injected fresh each turn,
+        while message history (cleaned_messages) respects the use_history setting.
         """
         result = await initialise(state_with_previous_context, config_history_enabled)
 
-        # documents should NOT be in result (not overwritten)
-        assert "documents" not in result, "initialise should not touch documents when history is enabled"
+        # documents should be cleared even when history is enabled
+        assert "documents" in result, "initialise should return documents key"
+        assert result["documents"] == "", "documents should be cleared (ephemeral per turn)"
 
     @pytest.mark.asyncio
-    async def test_initialise_preserves_context_input_when_history_enabled(
+    async def test_initialise_clears_context_input_when_history_enabled(
         self, config_history_enabled, state_with_previous_context
     ):
-        """When history is enabled, initialise should NOT clear context_input."""
+        """When history is enabled, initialise should still clear context_input.
+
+        Like documents, context_input is ephemeral and repopulated each turn by VS retrieval.
+        This prevents stale search context from being reused across different queries.
+        """
         result = await initialise(state_with_previous_context, config_history_enabled)
 
-        # context_input should NOT be in result (not overwritten)
-        assert "context_input" not in result, "initialise should not touch context_input when history is enabled"
+        # context_input should be cleared even when history is enabled
+        assert "context_input" in result, "initialise should return context_input key"
+        assert result["context_input"] == "", "context_input should be cleared (ephemeral per turn)"
 
     @pytest.mark.asyncio
     async def test_initialise_cleaned_messages_only_last_human_when_history_disabled(

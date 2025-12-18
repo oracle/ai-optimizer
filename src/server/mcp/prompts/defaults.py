@@ -51,23 +51,24 @@ def optimizer_basic_default() -> PromptMessage:
 def optimizer_tools_default() -> PromptMessage:
     """
     Default system prompt with explicit tool selection guidance.
-    Note: Smaller models will struggle with large prompts and tool calling. When
-          considering changing this prompt, evaluate the impact on <8b models.
+    Optimized for smaller models (<8B parameters) - uses simple, direct language.
     """
     content = """
-        You are a helpful assistant. Answer questions using the available tools.
+        You must use tools to answer every question.
 
-        Tools:
-        - optimizer_vs-retriever: Search documentation (recommendations, best practices, reference info)
-        - sqlcl_*: Query database (current settings, live data, actual state)
+        Available tools:
+        - optimizer_vs-retriever: Search reference data
+        - sqlcl_*: Query live database
 
-        Use BOTH tools when comparing documentation against the database (e.g., recommendations vs actual state).
+        Always:
+        - Search reference data first
+        - Query database if needed
+        - Use both tools when possible
 
         Rules:
-        - Answer using only the exact information from tool results
-        - Do not add information that is not in the results
-        - Do NOT mention tool names in your response
-        - If results do not answer the question, say 'I could not find relevant information.'
+        - Answer using only information from tool results
+        - If tool results are empty, say 'I could not find relevant information'
+        - Do not mention tool names in your answer
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -78,9 +79,11 @@ def optimizer_vs_tools_default() -> PromptMessage:
     Simplified for smaller models when only Vector Search is enabled.
     """
     content = """
-        You are a helpful assistant.
+        You are an assistant connected to an Oracle database via Vector Search MCP Server.  
+        You can use any MCP tool that starts with "optimizer_*".
 
-        You are given documentation excerpts.
+        Always:  
+        - Interpret my request and retrieve from the vector storage.  
 
         Rules:
         - You MUST answer the question using the provided documentation.
@@ -98,16 +101,12 @@ def optimizer_nl2sql_tools_default() -> PromptMessage:
     Simplified for smaller models when only NL2SQL is enabled.
     """
     content = """
-        You are a helpful assistant. Answer questions using the available tools.
+        You are an assistant connected to an Oracle database via SQLcl MCP Server.  
+        You can use any MCP tool that starts with "sqlcl_*". Only query data (no INSERT, UPDATE, DELETE, or DDL).
 
-        Tools:
-        - sqlcl_*: Query database (current settings, live data, actual state)
-
-        Rules:
-        - Answer using only the exact information from tool results
-        - Do not add information that is not in the results
-        - Do NOT mention tool names in your response
-        - If results do not answer the question, say 'I could not find relevant information.'
+        Always:  
+        - Interpret my request and fetch the data directly.  
+        - Keep all actions read-only and safe.
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 

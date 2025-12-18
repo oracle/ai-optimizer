@@ -28,16 +28,49 @@ logger = logging_config.logging.getLogger("client.content.chatbot")
 # Functions
 #############################################################################
 def escape_markdown_latex(text: str) -> str:
-    """Escape characters to prevent Streamlit markdown/LaTeX interpretation issues.
+    r"""Convert LaTeX math delimiters to markdown-compatible format.
 
     Handles:
-    - Dollar signs ($) that trigger LaTeX math mode
-    - Avoids double-escaping already escaped sequences
+    - LaTeX display math \[ \] → $$ $$
+    - LaTeX inline math \( \) → $ $
+    - Square brackets with LaTeX commands [ ... ] → $$ $$ (fallback for missing backslashes)
+    - Cleans up stray $ signs within LaTeX expressions
     """
     if not text:
         return text
-    # Escape $ not already escaped (negative lookbehind for backslash)
-    return re.sub(r"(?<!\\)\$", r"\\$", text)
+
+    # Convert LaTeX display math delimiters: \[ \] → $$ $$
+    text = re.sub(r'\\\[', '$$', text)
+    text = re.sub(r'\\\]', '$$', text)
+
+    # Convert LaTeX inline math delimiters: \( \) → $ $
+    text = re.sub(r'\\\(', '$', text)
+    text = re.sub(r'\\\)', '$', text)
+
+    # Fallback: Convert [ ... ] to $$ $$ if it contains LaTeX commands
+    # This handles cases where backslashes are stripped before reaching here
+    text = re.sub(r'\[\s*(\\[a-zA-Z]+)', r'$$ \1', text)
+    text = re.sub(r'(\\[a-zA-Z]+[^\]]*)\s*\]', r'\1 $$', text)
+
+    # Clean up stray $ signs within LaTeX expressions that break rendering
+    # Find sequences that have LaTeX commands with partial $ wrapping and fix them
+    # Pattern: matches text with LaTeX commands that have $ signs interspersed incorrectly
+    def clean_stray_dollars(match):
+        """Remove $ signs from within LaTeX expression and wrap the whole thing"""
+        content = match.group(1)
+        # Remove all $ signs from within the expression
+        cleaned = content.replace('$', '')
+        return f'${cleaned}$'
+
+    # Match sequences that contain LaTeX commands mixed with $ signs
+    # This catches: "M = 330,000 $\times \frac{...}$"
+    text = re.sub(
+        r'(?<!\$)([^$\n]*\\[a-zA-Z]+[^$\n]*\$[^$\n]*\\[a-zA-Z]+[^$\n]*?)(?=\s|$|\n)',
+        clean_stray_dollars,
+        text
+    )
+
+    return text
 
 
 def show_vector_search_refs(context, vs_metadata=None):
@@ -47,9 +80,28 @@ def show_vector_search_refs(context, vs_metadata=None):
     ref_cols = st.columns([3, 3, 3])
     # Create a button in each column
     for i, (ref_col, chunk) in enumerate(zip(ref_cols, context["documents"])):
-        with ref_col.popover(f"Reference: {i + 1}"):
-            chunk = context["documents"][i]
+        chunk = context["documents"][i]
+
+        # Get similarity score if available
+        similarity_score = chunk.get("metadata", {}).get("similarity_score")
+
+        # Create popover label with score if available
+        if similarity_score is not None:
+            popover_label = f"Reference {i + 1} ({similarity_score:.2f})"
+        else:
+            popover_label = f"Reference: {i + 1}"
+
+        with ref_col.popover(popover_label):
             logger.debug("Chunk Content: %s", chunk)
+
+            # Show score metric if available
+            if similarity_score is not None:
+                st.metric(
+                    "Similarity Score",
+                    f"{similarity_score:.3f}",
+                    help="Higher score = more relevant (1.0 = perfect match)",
+                )
+
             st.subheader("Reference Text", divider="red")
             st.markdown(chunk["page_content"])
             try:
@@ -57,6 +109,8 @@ def show_vector_search_refs(context, vs_metadata=None):
                 st.subheader("Metadata", divider="red")
                 st.markdown(f"File:  {chunk['metadata']['source']}")
                 st.markdown(f"Chunk: {chunk['metadata']['page']}")
+                if similarity_score is not None:
+                    st.markdown(f"Score: {similarity_score:.3f}")
             except KeyError:
                 logger.error("Chunk Metadata NOT FOUND!!")
 
@@ -215,6 +269,28 @@ async def handle_chat_input(user_client):
 #############################################################################
 # MAIN
 #############################################################################
+def show_prompt_engineering_notice():
+    """Show notice when both tools are enabled and default prompt is being used"""
+    tools_enabled = state.client_settings.get("tools_enabled", [])
+    both_tools_enabled = "Vector Search" in tools_enabled and "NL2SQL" in tools_enabled
+
+    if both_tools_enabled:
+        try:
+            # Check if the prompt has been customized
+            response = api_call.get(endpoint="v1/mcp/prompts/optimizer_tools-default/has-override")
+            has_override = response.get("has_override", False)
+
+            # Only show notice if using default prompt (no customization)
+            if not has_override:
+                st.info(
+                    "📝 **Responses not as you expected?** Default Tools Prompt Engineering is required.",
+                    icon="💡"
+                )
+        except (api_call.ApiError, KeyError):
+            # Silently fail - don't show notice if we can't check
+            pass
+
+
 async def main() -> None:
     """Streamlit GUI"""
     try:
@@ -226,6 +302,7 @@ async def main() -> None:
     user_client = create_client()
     history = await user_client.get_history()
     display_chat_history(history)
+    show_prompt_engineering_notice()
     await handle_chat_input(user_client)
 
 

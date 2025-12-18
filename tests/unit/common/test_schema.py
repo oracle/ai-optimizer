@@ -406,14 +406,14 @@ class TestVectorSearchSettings:
         assert settings.rephrase is True
         assert settings.grade is True
         assert settings.search_type == "Similarity"
-        assert settings.top_k == 4
-        assert settings.score_threshold == 0.0
+        assert settings.top_k == 8
+        assert settings.score_threshold == 0.65
         assert settings.fetch_k == 20
         assert settings.lambda_mult == 0.5
 
     def test_search_type_literals(self):
         """VectorSearchSettings search_type should only accept valid values."""
-        valid_types = ["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"]
+        valid_types = ["Similarity", "Maximal Marginal Relevance"]
         for search_type in valid_types:
             settings = VectorSearchSettings(search_type=search_type)
             assert settings.search_type == search_type

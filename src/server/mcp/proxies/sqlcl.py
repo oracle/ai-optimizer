@@ -7,11 +7,12 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import os
 import shutil
 import subprocess
+from fastmcp import Client
 
 import server.api.utils.databases as utils_databases
 
 from common import logging_config
-from fastmcp import Client
+
 
 logger = logging_config.logging.getLogger("mcp.proxies.sqlcl")
 

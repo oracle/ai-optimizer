@@ -44,14 +44,14 @@ def vector_search_sidebar() -> None:
         key="selected_vector_search_top_k",
         on_change=st_common.update_client_settings("vector_search"),
     )
-    if vector_search_type == "Similarity Score Threshold":
+    if vector_search_type == "Similarity":
         st.sidebar.slider(
-            "Minimum Relevance Threshold:",
+            "Score Threshold:",
             help=help_text.help_dict["score_threshold"],
             value=state.client_settings["vector_search"]["score_threshold"],
             min_value=0.0,
             max_value=1.0,
-            step=0.1,
+            step=0.05,
             key="selected_vector_search_score_threshold",
             on_change=st_common.update_client_settings("vector_search"),
         )

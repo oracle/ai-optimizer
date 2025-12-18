@@ -137,6 +137,16 @@ async def completion_generator(
     kwargs["config"]["metadata"]["tools"] = [
         {"type": "function", "function": convert_to_openai_function(t)} for t in graph_tools
     ]
+
+    # Force VS retriever tool only when Vector Search is the ONLY enabled tool
+    # When both VS and NL2SQL are enabled, let the LLM choose based on the prompt
+    # This prevents forcing VS for administrative queries (connect, disconnect, etc.)
+    forced_tool = None
+    if len(client_settings.tools_enabled) == 1 and "Vector Search" in client_settings.tools_enabled:
+        forced_tool = "optimizer_vs-retriever"
+        logger.info("VS-only mode: Will force optimizer_vs-retriever when documents empty")
+
+    kwargs["config"]["metadata"]["forced_tool"] = forced_tool
     logger.debug("Completion Kwargs: %s", kwargs)
 
     # Establish the graph
