@@ -170,8 +170,10 @@ def should_continue(state: OptimizerState) -> Literal["vs_orchestrate", "tools",
     vs_tools = {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grade"}
 
     if tool_names & vs_tools:
+        logger.info("Routing to vs_orchestrate for VS tools: %s", tool_names & vs_tools)
         return "vs_orchestrate"
 
+    logger.info("Routing to tools node for: %s", tool_names)
     return "tools"
 
 
@@ -453,17 +455,45 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
     try:
         ll_raw = config["configurable"]["ll_config"]
         tools = config["metadata"].get("tools", [])
+        forced_tool = config["metadata"].get("forced_tool")
+        documents_empty = not state.get("documents")
+
+        # Single-tool mode: if forcing a tool and no documents yet, skip LLM and directly invoke tool
+        # Only do this if we haven't already called the tool (check for ToolMessages in state)
+        has_tool_results = any(isinstance(msg, ToolMessage) for msg in state.get("messages", []))
+
+        if forced_tool and documents_empty and tools and not has_tool_results:
+            logger.info("Single-tool mode: directly invoking %s (skipping LLM)", forced_tool)
+
+            # Extract question from last human message
+            question = ""
+            for msg in reversed(messages):
+                if isinstance(msg, HumanMessage):
+                    question = msg.content
+                    break
+
+            # Create tool call directly without LLM
+            result_message = AIMessage(content="", tool_calls=[{
+                "name": forced_tool,
+                "args": {"question": question},
+                "id": f"direct_{forced_tool}",
+                "type": "tool_call"
+            }])
+
+            return {"messages": [result_message]}
+
+        # Normal LLM call (multi-tool or documents already present)
         model_name = ll_raw.get("model", "unknown")
 
-        # Determine if we should force a specific tool (single-tool mode + no documents yet)
-        tool_choice = None
-        if config["metadata"].get("forced_tool") and not state.get("documents") and tools:
-            tool_choice = {"type": "function", "function": {"name": config["metadata"]["forced_tool"]}}
-            logger.debug("Forcing %s (single-tool mode, documents empty)", config["metadata"]["forced_tool"])
+        # If in single-tool mode and no documents found (transparent completion), don't pass tools
+        tools_for_llm = tools
+        if forced_tool and documents_empty and has_tool_results:
+            logger.info("Single-tool mode with no documents found - transparent completion (no tools)")
+            tools_for_llm = []
 
         # Make LLM API call
         try:
-            response = await acompletion(**_build_completion_kwargs(messages, ll_raw, tools, tool_choice))
+            response = await acompletion(**_build_completion_kwargs(messages, ll_raw, tools_for_llm, None))
         except Exception as ex:
             logger.exception("Error calling LLM API")
             raise ex
@@ -471,7 +501,9 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig) -> Op
         # Stream and accumulate response
         full_text, full_response, tool_calls = await _stream_llm_response(response, writer)
 
-        # Build response based on LLM output
+        logger.info("LLM response type: full_text=%s, tool_calls=%s",
+                   "yes" if full_text else "no", "yes" if tool_calls else "no")
+
         if full_text is None and tool_calls is None:
             result_message = AIMessage(content="I'm sorry, I was unable to produce a response.")
         elif tool_calls:
@@ -502,7 +534,6 @@ async def _vs_step_rephrase(thread_id: str, question: str, chat_history: list, u
         )
 
         if rephrase_result.status == "success" and rephrase_result.was_rephrased:
-            logger.debug("Question rephrased: '%s' -> '%s'", question, rephrase_result.rephrased_prompt)
             return rephrase_result.rephrased_prompt
 
         return question
@@ -540,7 +571,7 @@ def _vs_step_retrieve(thread_id: str, rephrased_question: str):
 
         return None
 
-    logger.debug("Retrieved %d documents from %s", retrieval_result.num_documents, retrieval_result.searched_tables)
+    logger.info("Retrieved %d documents from tables: %s", retrieval_result.num_documents, retrieval_result.searched_tables)
     return retrieval_result
 
 
@@ -562,15 +593,16 @@ async def _vs_step_grade(thread_id: str, documents: list, rephrased_question: st
                 "documents": grading_result.formatted_documents,
             }
 
-        logger.debug("Grading: %s (performed: %s)", grading_result.relevant, grading_result.grading_performed)
+        logger.info("Grading result: %s (grading_performed: %s)", grading_result.relevant, grading_result.grading_performed)
 
         if grading_result.relevant == "yes":
+            logger.info("Documents deemed relevant - storing in state")
             return {
                 "context_input": rephrased_question,
                 "documents": grading_result.formatted_documents,
             }
 
-        # Not relevant - preserve context_input for ToolMessage
+        logger.info("Documents deemed NOT relevant - transparent completion")
         return {"context_input": rephrased_question, "documents": ""}
     except Exception as ex:
         logger.error("Grading exception: %s (defaulting to not relevant)", ex)
@@ -637,6 +669,8 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig) -> dict:
     thread_id, error_msg = _validate_vs_config(config)
     if error_msg:
         return {"context_input": "", "documents": "", "messages": [error_msg]}
+
+    logger.info("VS Orchestration started for thread: %s", thread_id)
 
     # Validate state
     messages, error_msg = _validate_vs_state(state)
