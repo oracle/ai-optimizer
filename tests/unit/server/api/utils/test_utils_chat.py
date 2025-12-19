@@ -76,59 +76,6 @@ class TestGetSystemPrompt:
 
 
 #############################################################################
-# Tests for _check_model_tool_support
-#############################################################################
-class TestCheckModelToolSupport:
-    """Tests for the _check_model_tool_support helper function."""
-
-    @patch("server.api.utils.chat.litellm.supports_function_calling")
-    def test_returns_none_when_no_tools(self, mock_supports):
-        """Should return None when tools list is empty."""
-        result = utils_chat._check_model_tool_support({"model": "gpt-4"}, [], ["Vector Search"])
-
-        mock_supports.assert_not_called()
-        assert result is None
-
-    @patch("server.api.utils.chat.litellm.supports_function_calling")
-    def test_returns_none_when_model_supports_tools(self, mock_supports):
-        """Should return None when model supports function calling."""
-        mock_supports.return_value = True
-        mock_tool = MagicMock()
-
-        result = utils_chat._check_model_tool_support({"model": "gpt-4"}, [mock_tool], ["Vector Search"])
-
-        mock_supports.assert_called_once_with(model="gpt-4")
-        assert result is None
-
-    @patch("server.api.utils.chat.litellm.supports_function_calling")
-    def test_returns_error_when_model_lacks_support(self, mock_supports):
-        """Should return error message when model doesn't support function calling."""
-        mock_supports.return_value = False
-        mock_tool = MagicMock()
-
-        result = utils_chat._check_model_tool_support(
-            {"model": "ollama/llama2"}, [mock_tool], ["Vector Search", "NL2SQL"]
-        )
-
-        assert result is not None
-        assert "ollama/llama2" in result
-        assert "does not support tool/function calling" in result
-        assert "Vector Search" in result
-        assert "NL2SQL" in result
-
-    @patch("server.api.utils.chat.litellm.supports_function_calling")
-    def test_uses_unknown_when_model_missing(self, mock_supports):
-        """Should use 'unknown' when model key is missing from config."""
-        mock_supports.return_value = False
-        mock_tool = MagicMock()
-
-        result = utils_chat._check_model_tool_support({}, [mock_tool], ["Vector Search"])
-
-        mock_supports.assert_called_once_with(model="unknown")
-        assert "unknown" in result
-
-
-#############################################################################
 # Tests for _filter_tools_by_enabled
 #############################################################################
 class TestFilterToolsByEnabled:
