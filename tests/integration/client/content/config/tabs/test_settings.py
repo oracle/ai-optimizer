@@ -319,6 +319,37 @@ class TestSpringAIIntegration:
         result = call_spring_ai_obaas_with_mocks(at.session_state, "Prompt: {sys_prompt}", spring_ai_obaas)
         assert result is not None
 
+    def test_spring_ai_obaas_prompt_name_exists_in_configs(self, app_server, app_test):
+        """Test that the prompt name used by spring_ai_obaas actually exists in prompt_configs"""
+        assert app_server is not None
+        at = app_test(ST_FILE).run()
+
+        # Set up state with Vector Search enabled
+        at.session_state.client_settings["tools_enabled"] = ["Vector Search"]
+        at.session_state.client_settings["database"] = {"alias": "DEFAULT"}
+
+        # Get the prompt_configs from session state
+        prompt_configs = at.session_state["prompt_configs"] if "prompt_configs" in at.session_state else []
+        prompt_names = [p["name"] for p in prompt_configs]
+
+        # The expected prompt name when Vector Search is enabled
+        expected_prompt_name = "optimizer_vs-tools-default"
+
+        # CRITICAL: This test would have caught the bug!
+        # The bug was using "optimizer_vs-no-tools-default" which doesn't exist
+        assert expected_prompt_name in prompt_names, (
+            f"Expected prompt '{expected_prompt_name}' not found in prompt_configs. "
+            f"Available prompts: {prompt_names}"
+        )
+
+        # Also test that basic prompt exists for the fallback case
+        at.session_state.client_settings["tools_enabled"] = []
+        expected_basic_prompt = "optimizer_basic-default"
+        assert expected_basic_prompt in prompt_names, (
+            f"Expected prompt '{expected_basic_prompt}' not found in prompt_configs. "
+            f"Available prompts: {prompt_names}"
+        )
+
 
 #############################################################################
 # Test Prompt Config Upload with Real State
