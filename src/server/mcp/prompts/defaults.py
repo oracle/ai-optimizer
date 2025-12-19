@@ -169,10 +169,10 @@ def optimizer_vs_discovery() -> PromptMessage:
         5. Return ONLY the full TABLE NAMES (the part before any parenthesis/alias)
 
         Output format (JSON array only):
-        ['FULL_TABLE_NAME_1', 'FULL_TABLE_NAME_2']
+        ["FULL_TABLE_NAME_1", "FULL_TABLE_NAME_2"]
 
         Example valid output:
-        ['VECTOR_USERS_OPENAI_TEXT_EMBEDDING_3_SMALL_1536_308_COSINE_HNSW']
+        ["VECTOR_USERS_OPENAI_TEXT_EMBEDDING_3_SMALL_1536_308_COSINE_HNSW"]
 
         Your JSON array:
     """
