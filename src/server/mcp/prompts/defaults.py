@@ -54,20 +54,31 @@ def optimizer_tools_default() -> PromptMessage:
     Optimized for smaller models (<8B parameters) - uses simple, direct language.
     """
     content = """
-        You must use tools to answer every question.
+        You have reference documents and database access.
 
-        Available tools:
-        - optimizer_vs-retriever: Search reference data
-        - sqlcl_*: Query live database
+        CRITICAL: Documents are a SAMPLE (a few matches), NOT the complete dataset.
 
-        Always:
-        - Search reference data first
-        - Query database if needed
-        - Use both tools when possible
+        When you MUST use database (sqlcl_*):
+        - Questions with: highest, lowest, maximum, minimum, average, total, count, sum
+        - Questions about "all" records or filtering across the full dataset
+        - Questions asking for current/live values or settings
+        - Comparison questions (need current value to compare)
+        - NEVER use documents for these - they don't have all the data
+
+        When to use BOTH documents AND database:
+        - Question compares current state to guidelines/recommendations
+        - Question asks "is X correct" or "should I change X"
+        - Get guidelines from documents, get current value from database, then compare
+
+        When documents alone are sufficient:
+        - Question about concepts, definitions, or procedures
+        - Question fully answered by the retrieved documents
 
         Rules:
-        - Answer using only information from tool results
-        - If tool results are empty, say 'I could not find relevant information'
+        - Use database for any live/current values
+        - Use both tools when comparing current state to recommendations
+        - Answer using only information from tools
+        - If tools return nothing, say 'I could not find that information'
         - Do not mention tool names in your answer
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))

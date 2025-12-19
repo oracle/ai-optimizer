@@ -181,6 +181,10 @@ def display_chat_history(history):
             vector_search_refs = json.loads(message["content"])
 
         elif message["role"] in ("ai", "assistant"):
+            # Skip AIMessages with tool_calls (internal coordination, not user-facing)
+            if message.get("tool_calls"):
+                continue
+
             with st.chat_message("ai"):
                 st.markdown(escape_markdown_latex(message["content"]))
 
@@ -283,7 +287,7 @@ def show_prompt_engineering_notice():
             # Only show notice if using default prompt (no customization)
             if not has_override:
                 st.info(
-                    "📝 **Responses not as you expected?** Default Tools Prompt Engineering is required.",
+                    "**Responses not as you expected?** Default Tools Prompt Engineering maybe required.",
                     icon="💡"
                 )
         except (api_call.ApiError, KeyError):
@@ -299,10 +303,10 @@ async def main() -> None:
         st.stop()
 
     setup_sidebar()
+    show_prompt_engineering_notice()
     user_client = create_client()
     history = await user_client.get_history()
     display_chat_history(history)
-    show_prompt_engineering_notice()
     await handle_chat_input(user_client)
 
 
