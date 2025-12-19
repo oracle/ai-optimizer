@@ -73,7 +73,7 @@ mcp/
 │   ├── vs_retriever.py      # Vector search retrieval
 │   ├── vs_grade.py          # Document relevance grading
 │   ├── vs_rephrase.py       # Query rephrasing with context
-│   └── vs_tables.py         # Vector store discovery
+│   └── vs_discovery.py      # Vector store discovery
 ├── prompts/                 # MCP prompts (auto-discovered)
 │   ├── __init__.py
 │   ├── defaults.py          # Default system prompts
@@ -284,8 +284,8 @@ Tools are filtered based on client settings before being presented to the LLM:
 **Configuration**: `Settings.tools_enabled` list (default: `[]` - empty means LLM only)
 
 **Effect on Tool Availability**:
-- **Both enabled**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-storage`, `sqlcl_*` tools
-- **Only Vector Search**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-storage`
+- **Both enabled**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-discovery`, `sqlcl_*` tools
+- **Only Vector Search**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-discovery`
 - **Only NL2SQL**: LLM sees `sqlcl_*` tools only
 - **Neither enabled**: Basic chatbot (no tools)
 
@@ -342,7 +342,7 @@ The LLM can use multiple tools in two ways:
 | Tool | Exposed to LLM | Location | Purpose | Returns |
 |------|---------------|----------|---------|---------|
 | `optimizer_vs-retriever` | ✅ Yes | `tools/vs_retriever.py` | Semantic search across vector stores (smart table selection, multi-table aggregation) | `VectorSearchResponse` with documents + metadata |
-| `optimizer_vs-storage` | ✅ Yes | `tools/vs_tables.py` | List available vector stores (filtered by enabled embedding models) | List of tables with alias, description, model |
+| `optimizer_vs-discovery` | ✅ Yes | `tools/vs_discovery.py` | List available vector stores (filtered by enabled embedding models) | List of tables with alias, description, model |
 | `optimizer_vs-grade` | ❌ No (internal) | `tools/vs_grade.py` | Grade document relevance (binary scoring: yes/no) | `VectorGradeResponse` with relevance + formatted docs |
 | `optimizer_vs-rephrase` | ❌ No (internal) | `tools/vs_rephrase.py` | Contextualize query with conversation history (only runs if >2 messages) | `VectorRephraseResponse` with rephrased query |
 
@@ -520,6 +520,35 @@ MCP tools can access configuration through the bootstrap system:
 Graph behavior configured in `launch_server.py`:
 - **Recursion limit**: Max tool call iterations (default: 50)
 - **Checkpointer**: Thread-based state persistence (default: `InMemorySaver`, can use persistent checkpointer)
+
+### Vector Search Configuration
+
+**Document Relevance Filtering**: The system supports two complementary approaches for filtering search results:
+
+1. **Score Threshold** (Recommended):
+   - Set `score_threshold: 0.5-0.7` (higher = stricter filtering)
+   - Set `score_threshold: 0` to disable filtering (retrieve all top_k documents)
+   - Default: `0.65`
+   - Deterministic, fast, user-controllable
+   - Based on vector similarity score from semantic search
+   - Works with `search_type: "Similarity"`
+   - Similarity scores normalized to [0, 1] range regardless of distance metric (COSINE, DOT, EUCLIDEAN)
+
+2. **LLM Grading** (Optional):
+   - Set `grade: true` to enable post-retrieval grading
+   - LLM evaluates if documents can answer the question
+   - More flexible but adds latency and cost
+   - Subject to LLM variability
+   - Can be used alongside score threshold for double filtering
+
+**Search Configuration**:
+- `search_type: "Similarity"` - Standard semantic search with optional score threshold
+- `search_type: "Maximal Marginal Relevance"` - Diversity-focused retrieval
+- `top_k: 8` (default) - Number of candidate documents to retrieve
+- `discovery: true` (default) - Automatic vector store selection via LLM
+- `rephrase: true` (default) - Query contextualization with chat history
+
+**Recommendation**: Start with `score_threshold: 0.65` and `grade: false`. Only enable LLM grading if you need more nuanced relevance determination beyond similarity scores.
 
 ## Key Design Patterns
 
