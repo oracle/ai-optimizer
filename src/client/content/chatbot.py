@@ -40,17 +40,17 @@ def escape_markdown_latex(text: str) -> str:
         return text
 
     # Convert LaTeX display math delimiters: \[ \] → $$ $$
-    text = re.sub(r'\\\[', '$$', text)
-    text = re.sub(r'\\\]', '$$', text)
+    text = re.sub(r"\\\[", "$$", text)
+    text = re.sub(r"\\\]", "$$", text)
 
     # Convert LaTeX inline math delimiters: \( \) → $ $
-    text = re.sub(r'\\\(', '$', text)
-    text = re.sub(r'\\\)', '$', text)
+    text = re.sub(r"\\\(", "$", text)
+    text = re.sub(r"\\\)", "$", text)
 
     # Fallback: Convert [ ... ] to $$ $$ if it contains LaTeX commands
     # This handles cases where backslashes are stripped before reaching here
-    text = re.sub(r'\[\s*(\\[a-zA-Z]+)', r'$$ \1', text)
-    text = re.sub(r'(\\[a-zA-Z]+[^\]]*)\s*\]', r'\1 $$', text)
+    text = re.sub(r"\[\s*(\\[a-zA-Z]+)", r"$$ \1", text)
+    text = re.sub(r"(\\[a-zA-Z]+[^\]]*)\s*\]", r"\1 $$", text)
 
     # Clean up stray $ signs within LaTeX expressions that break rendering
     # Find sequences that have LaTeX commands with partial $ wrapping and fix them
@@ -59,21 +59,19 @@ def escape_markdown_latex(text: str) -> str:
         """Remove $ signs from within LaTeX expression and wrap the whole thing"""
         content = match.group(1)
         # Remove all $ signs from within the expression
-        cleaned = content.replace('$', '')
-        return f'${cleaned}$'
+        cleaned = content.replace("$", "")
+        return f"${cleaned}$"
 
     # Match sequences that contain LaTeX commands mixed with $ signs
     # This catches: "M = 330,000 $\times \frac{...}$"
     text = re.sub(
-        r'(?<!\$)([^$\n]*\\[a-zA-Z]+[^$\n]*\$[^$\n]*\\[a-zA-Z]+[^$\n]*?)(?=\s|$|\n)',
-        clean_stray_dollars,
-        text
+        r"(?<!\$)([^$\n]*\\[a-zA-Z]+[^$\n]*\$[^$\n]*\\[a-zA-Z]+[^$\n]*?)(?=\s|$|\n)", clean_stray_dollars, text
     )
 
     return text
 
 
-def show_vector_search_refs(context, vs_metadata=None):
+def show_vector_search_refs(context, vs_metadata=None) -> None:
     """When Vector Search Content Found, show the references"""
     st.markdown("**References:**")
     ref_src = set()
@@ -131,7 +129,7 @@ def show_vector_search_refs(context, vs_metadata=None):
                 st.markdown(f"**Search Query:** {vs_metadata.get('context_input')}")
 
 
-def show_token_usage(token_usage):
+def show_token_usage(token_usage) -> None:
     """Display token usage for AI responses using caption"""
     if token_usage:
         prompt_tokens = token_usage.get("prompt_tokens", 0)
@@ -177,34 +175,30 @@ def display_chat_history(history):
         if not message["content"]:
             continue
 
+        # Store vector search references for next AI message
         if message["role"] == "tool" and message["name"] == "optimizer_vs-retriever":
             vector_search_refs = json.loads(message["content"])
-
-        elif message["role"] in ("ai", "assistant"):
-            # Skip AIMessages with tool_calls (internal coordination, not user-facing)
-            if message.get("tool_calls"):
-                continue
-
+            continue
+        # Display AI assistant messages
+        if message["role"] in ("ai", "assistant") and not message.get("tool_calls"):
             with st.chat_message("ai"):
                 st.markdown(escape_markdown_latex(message["content"]))
-
-                # Extract metadata from response_metadata
                 response_metadata = message.get("response_metadata", {})
-                vs_metadata = response_metadata.get("vs_metadata", {})
                 token_usage = response_metadata.get("token_usage", {})
-
-                # Show token usage immediately after message
                 if token_usage:
                     show_token_usage(token_usage)
 
                 # Show vector search references if available
                 if vector_search_refs and vector_search_refs.get("documents"):
-                    show_vector_search_refs(vector_search_refs, vs_metadata)
+                    show_vector_search_refs(vector_search_refs, response_metadata.get("vs_metadata", {}))
                     vector_search_refs = {}
+            continue
 
-        elif message["role"] in ("human", "user"):
+        # Display human user messages
+        if message["role"] in ("human", "user"):
             with st.chat_message("human"):
                 content = message["content"]
+                # Handle list content with text and images
                 if isinstance(content, list):
                     for part in content:
                         if part["type"] == "text":
@@ -287,8 +281,7 @@ def show_prompt_engineering_notice():
             # Only show notice if using default prompt (no customization)
             if not has_override:
                 st.info(
-                    "**Responses not as you expected?** Default Tools Prompt Engineering maybe required.",
-                    icon="💡"
+                    "**Responses not as you expected?** Default Tools Prompt Engineering maybe required.", icon="💡"
                 )
         except (api_call.ApiError, KeyError):
             # Silently fail - don't show notice if we can't check
