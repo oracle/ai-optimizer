@@ -14,8 +14,6 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from langgraph.graph.state import CompiledStateGraph
 
-import litellm
-
 import server.api.utils.settings as utils_settings
 import server.api.utils.mcp as utils_mcp
 
@@ -53,24 +51,6 @@ def _get_system_prompt(tools_enabled: list) -> str:
 
     # Fallback for unknown tool combinations
     return default_prompts.get_prompt_with_override("optimizer_tools-default")
-
-
-def _check_model_tool_support(model_config: dict, tools: list, tools_enabled: list) -> str | None:
-    """Check if model supports function calling when tools are enabled"""
-    if not tools:
-        return None
-
-    model_name = model_config.get("model", "unknown")
-    if not litellm.supports_function_calling(model=model_name):
-        error_msg = (
-            f"The model '{model_name}' does not support tool/function calling. "
-            f"Tools enabled: {', '.join(tools_enabled)}. "
-            "Please either disable tools in settings or select a model that supports function calling."
-        )
-        logger.warning(error_msg)
-        return error_msg
-
-    return None
 
 
 def _filter_tools_by_enabled(tools: list, tools_enabled: list) -> list:

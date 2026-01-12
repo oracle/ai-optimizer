@@ -108,6 +108,16 @@ def app_server(request, client_test_env):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(("localhost", port)) == 0
 
+    # Check if port is already in use BEFORE trying to start server
+    if is_port_in_use(TEST_SERVER_PORT):
+        raise RuntimeError(
+            f"\n{'='*70}\n"
+            f"ERROR: Port {TEST_SERVER_PORT} is already in use!\n"
+            f"Cannot start test server. Kill the existing process first:\n"
+            f"  lsof -ti:{TEST_SERVER_PORT} | xargs kill -9\n"
+            f"{'='*70}"
+        )
+
     config_file = getattr(request, "param", None)
 
     # If config_file is passed, include it in the subprocess command

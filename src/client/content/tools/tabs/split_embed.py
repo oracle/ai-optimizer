@@ -630,7 +630,7 @@ def _handle_vector_store_population(
 
     if populate_clicked:
         try:
-            with st.spinner("Populating Vector Store... please be patient.", show_time=True):
+            with st.spinner("Populating Vector Store... please be patient.", show_time=True, width="content"):
                 response = _process_populate_request(embed_request, source_data, rate_limit)
             _handle_populate_success(response)
         except api_call.ApiError as ex:

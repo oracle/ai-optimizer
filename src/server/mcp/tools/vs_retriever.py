@@ -6,6 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from typing import Optional, List
 import json
+import traceback
 
 from pydantic import BaseModel
 
@@ -200,19 +201,48 @@ def _search_table(table_name, question, db_conn, embed_client, vector_search, ta
     # Initialize Vector Store for this table using its specific distance metric
     vectorstores = OracleVS(db_conn, embed_client, table_name, table_distance_metric)
 
-    # Configure retriever
-    retriever = _configure_retriever(vectorstores, vector_search.search_type, vector_search)
+    # For Similarity searches, call with_score to preserve scores
+    if vector_search.search_type == "Similarity":
+        # Get documents with scores (always retrieve top_k)
+        # Note: OracleVS returns raw distance scores from vector_distance()
+        docs_and_scores = vectorstores.similarity_search_with_score(question, k=vector_search.top_k)
 
-    # Retrieve documents
-    documents = retriever.invoke(question)
+        # Convert to Document list with scores in metadata
+        documents = []
+        for doc, score in docs_and_scores:
+            # Convert distance to similarity score (for COSINE: similarity = 1 - distance)
+            # For COSINE metric, distance is in [0, 2] range, similarity in [0, 1]
+            if table_distance_metric == "COSINE":
+                similarity = 1.0 - (score / 2.0)
+            elif table_distance_metric == "DOT":
+                # For DOT product, higher is better (already a similarity)
+                similarity = score
+            else:  # EUCLIDEAN or EUCLIDEAN_SQUARED
+                # For Euclidean, lower distance = higher similarity
+                # Use inverse: similarity = 1 / (1 + distance)
+                similarity = 1.0 / (1.0 + score)
+
+            # Filter by score_threshold if enabled (> 0)
+            if vector_search.score_threshold > 0 and similarity < vector_search.score_threshold:
+                continue
+
+            if not hasattr(doc, "metadata"):
+                doc.metadata = {}
+            doc.metadata["similarity_score"] = round(similarity, 3)
+            doc.metadata["searched_table"] = table_name
+            documents.append(doc)
+    else:
+        # For MMR and other modes, use standard retriever
+        retriever = _configure_retriever(vectorstores, vector_search.search_type, vector_search)
+        documents = retriever.invoke(question)
+
+        # Add table name to metadata
+        for doc in documents:
+            if not hasattr(doc, "metadata"):
+                doc.metadata = {}
+            doc.metadata["searched_table"] = table_name
+
     logger.info("Retrieved %d documents from %s", len(documents), table_name)
-
-    # Add table name to metadata
-    for doc in documents:
-        if not hasattr(doc, "metadata"):
-            doc.metadata = {}
-        doc.metadata["searched_table"] = table_name
-
     return documents
 
 
@@ -221,8 +251,17 @@ def _configure_retriever(vectorstores, search_type: str, vector_search):
     search_kwargs = {"k": vector_search.top_k}
 
     if search_type == "Similarity":
+        # If score_threshold > 0, automatically use similarity_score_threshold mode
+        if vector_search.score_threshold > 0:
+            search_kwargs["score_threshold"] = vector_search.score_threshold
+            return vectorstores.as_retriever(
+                search_type="similarity_score_threshold",
+                search_kwargs=search_kwargs,
+            )
+        # Otherwise use standard similarity search
         return vectorstores.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
     if search_type == "Similarity Score Threshold":
+        # Legacy support for old config format
         search_kwargs["score_threshold"] = vector_search.score_threshold
         return vectorstores.as_retriever(
             search_type="similarity_score_threshold",
@@ -322,7 +361,13 @@ def _vs_retrieve_impl(
                 all_documents.extend(documents)
                 searched_tables.append(table_name)
             except Exception as ex:
-                logger.error("Failed to search table %s: %s", table_name, ex)
+                logger.error(
+                    "Failed to search table %s: %s (type: %s)",
+                    table_name,
+                    str(ex) if str(ex) else repr(ex),
+                    type(ex).__name__
+                )
+                logger.debug("Full traceback: %s", traceback.format_exc())
                 failed_tables.append(table_name)
                 # Continue searching other tables even if one fails
 

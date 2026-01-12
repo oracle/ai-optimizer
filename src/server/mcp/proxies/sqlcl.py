@@ -7,10 +7,12 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import os
 import shutil
 import subprocess
+from fastmcp import Client
 
 import server.api.utils.databases as utils_databases
 
 from common import logging_config
+
 
 logger = logging_config.logging.getLogger("mcp.proxies.sqlcl")
 
@@ -65,8 +67,14 @@ async def register(mcp):
             except Exception as ex:
                 logger.error("Unexpected error creating connection store: %s", ex)
 
-        # Create a proxy to the configured server (auto-creates ProxyClient)
-        proxy = mcp.as_proxy(config, name=tool_name)
+        # Create a client with disabled sampling capabilities for compatibility with older MCP servers
+        client = Client(
+            transport=config,
+            sampling_capabilities=None,
+        )
+
+        # Create a proxy to the configured server
+        proxy = mcp.as_proxy(client, name=tool_name)
         mcp.mount(proxy, as_proxy=False, prefix="sqlcl")
     else:
         logger.warning("Not enabling SQLcl MCP server, sqlcl not found in PATH.")

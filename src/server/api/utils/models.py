@@ -154,8 +154,8 @@ def get_supported(
     }
     allowed_modes = type_to_modes.get(model_type, {"chat", "completion", "embedding", "responses", "rerank"})
 
-    # Below providers do not maintain a model list with litellm
-    skip_providers = {"ollama", "ollama_chat"}
+    # Below providers do not maintain a model list with litellm or require authN
+    skip_providers = {"ollama", "ollama_chat", "github_copilot"}
     result = []
 
     for provider in sorted([p.value for p in litellm.provider_list]):
@@ -168,7 +168,6 @@ def get_supported(
                 model_entry = _process_model_entry(model, type_to_modes, allowed_modes, provider)
                 if model_entry is not None:
                     models.append(model_entry)
-
         result.append({"provider": provider, "models": models})
 
     return result

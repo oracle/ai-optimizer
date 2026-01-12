@@ -96,7 +96,7 @@ async def _vs_rephrase_impl(
         use_history = client_settings.ll_model.chat_history
 
         # Only rephrase if history is enabled and there's actual history
-        if use_history and chat_history and len(chat_history) > MIN_CHAT_HISTORY_FOR_REPHRASE:
+        if use_history and chat_history and len(chat_history) >= MIN_CHAT_HISTORY_FOR_REPHRASE:
             # Get context prompt (checks cache for overrides first)
             ctx_prompt_msg = default_prompts.get_prompt_with_override("optimizer_context-default")
             ctx_prompt_content = ctx_prompt_msg.content.text

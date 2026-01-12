@@ -51,23 +51,35 @@ def optimizer_basic_default() -> PromptMessage:
 def optimizer_tools_default() -> PromptMessage:
     """
     Default system prompt with explicit tool selection guidance.
-    Note: Smaller models will struggle with large prompts and tool calling. When
-          considering changing this prompt, evaluate the impact on <8b models.
+    Optimized for smaller models (<8B parameters) - uses simple, direct language.
     """
     content = """
-        You are a helpful assistant. Answer questions using the available tools.
+        You have reference documents and database access.
 
-        Tools:
-        - optimizer_vs-retriever: Search documentation (recommendations, best practices, reference info)
-        - sqlcl_*: Query database (current settings, live data, actual state)
+        CRITICAL: Documents are a SAMPLE (a few matches), NOT the complete dataset.
 
-        Use BOTH tools when comparing documentation against the database (e.g., recommendations vs actual state).
+        When you MUST use database (sqlcl_*):
+        - Questions with: highest, lowest, maximum, minimum, average, total, count, sum
+        - Questions about "all" records or filtering across the full dataset
+        - Questions asking for current/live values or settings
+        - Comparison questions (need current value to compare)
+        - NEVER use documents for these - they don't have all the data
+
+        When to use BOTH documents AND database:
+        - Question compares current state to guidelines/recommendations
+        - Question asks "is X correct" or "should I change X"
+        - Get guidelines from documents, get current value from database, then compare
+
+        When documents alone are sufficient:
+        - Question about concepts, definitions, or procedures
+        - Question fully answered by the retrieved documents
 
         Rules:
-        - Answer using only the exact information from tool results
-        - Do not add information that is not in the results
-        - Do NOT mention tool names in your response
-        - If results do not answer the question, say 'I could not find relevant information.'
+        - Use database for any live/current values
+        - Use both tools when comparing current state to recommendations
+        - Answer using only information from tools
+        - If tools return nothing, say 'I could not find that information'
+        - Do not mention tool names in your answer
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -78,9 +90,11 @@ def optimizer_vs_tools_default() -> PromptMessage:
     Simplified for smaller models when only Vector Search is enabled.
     """
     content = """
-        You are a helpful assistant.
+        You are an assistant connected to an Oracle database via Vector Search MCP Server.  
+        You can use any MCP tool that starts with "optimizer_*".
 
-        You are given documentation excerpts.
+        Always:  
+        - Interpret my request and retrieve from the vector storage.  
 
         Rules:
         - You MUST answer the question using the provided documentation.
@@ -98,16 +112,12 @@ def optimizer_nl2sql_tools_default() -> PromptMessage:
     Simplified for smaller models when only NL2SQL is enabled.
     """
     content = """
-        You are a helpful assistant. Answer questions using the available tools.
+        You are an assistant connected to an Oracle database via SQLcl MCP Server.  
+        You can use any MCP tool that starts with "sqlcl_*". Only query data (no INSERT, UPDATE, DELETE, or DDL).
 
-        Tools:
-        - sqlcl_*: Query database (current settings, live data, actual state)
-
-        Rules:
-        - Answer using only the exact information from tool results
-        - Do not add information that is not in the results
-        - Do NOT mention tool names in your response
-        - If results do not answer the question, say 'I could not find relevant information.'
+        Always:  
+        - Interpret my request and fetch the data directly.  
+        - Keep all actions read-only and safe.
     """
     return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
 
@@ -159,10 +169,10 @@ def optimizer_vs_discovery() -> PromptMessage:
         5. Return ONLY the full TABLE NAMES (the part before any parenthesis/alias)
 
         Output format (JSON array only):
-        ['FULL_TABLE_NAME_1', 'FULL_TABLE_NAME_2']
+        ["FULL_TABLE_NAME_1", "FULL_TABLE_NAME_2"]
 
         Example valid output:
-        ['VECTOR_USERS_OPENAI_TEXT_EMBEDDING_3_SMALL_1536_308_COSINE_HNSW']
+        ["VECTOR_USERS_OPENAI_TEXT_EMBEDDING_3_SMALL_1536_308_COSINE_HNSW"]
 
         Your JSON array:
     """

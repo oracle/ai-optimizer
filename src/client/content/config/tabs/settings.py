@@ -420,11 +420,13 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     )
 
     if file_name.endswith(".yaml"):
-        sys_prompt = json.dumps(sys_prompt, indent=True)  # Converts it into a valid JSON string (preserving quotes)
+        # Use yaml.dump to properly escape the sys_prompt for YAML
+        # default_flow_style=False creates a properly quoted string
+        sys_prompt_escaped = yaml.dump(sys_prompt).rstrip('\n...')  # Remove trailing newline and document end marker
 
         formatted_content = template_content.format(
             provider=provider,
-            sys_prompt=sys_prompt,
+            sys_prompt=sys_prompt_escaped,
             ll_model=ll_config,
             vector_search=embed_config,
             database_config=database_lookup[state.client_settings.get("database", {}).get("alias")],

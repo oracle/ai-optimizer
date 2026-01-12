@@ -114,6 +114,8 @@ LOGGING_CONFIG = {
         "PIL": {"level": "INFO", "handlers": ["default"], "propagate": False},
         "fsevents": {"level": "INFO", "handlers": ["default"], "propagate": False},
         "numba": {"level": "INFO", "handlers": ["default"], "propagate": False},
+        "docket.worker": {"level": "WARNING", "handlers": ["default"], "propagate": False},
+        "fakeredis": {"level": "WARNING", "handlers": ["default"], "propagate": False},
         "oci": {"level": LOG_LEVEL, "handlers": ["default"], "propagate": False},
         "openai": {"level": LOG_LEVEL, "handlers": ["default"], "propagate": False},
         "httpcore": {"level": LOG_LEVEL, "handlers": ["default"], "propagate": False},
