@@ -100,8 +100,12 @@ async def _stream_llm_response(response, writer):
 
         # Handle content streaming
         if choice.content is not None:
-            writer({"stream": choice.content})
-            collected_content.append(choice.content)
+            # CRITICAL FIX: Some providers (OCI/Cohere) send the full completed response
+            # in the final chunk with finish_reason='stop'. This duplicates all the deltas.
+            # Skip content from any chunk that has finish_reason='stop' to avoid duplication.
+            if chunk.choices[0].finish_reason != "stop":
+                writer({"stream": choice.content})
+                collected_content.append(choice.content)
 
         full_response.append(chunk)
 
