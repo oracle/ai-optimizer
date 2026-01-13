@@ -45,13 +45,24 @@ For more details on the parameters, ask the Chatbot or review [Concepts for Gene
 
 ## Toolkit
 
-The {{< short_app_ref >}} provides tools to augment Large Language Models with your proprietary data using Retrieval Augmented Generation (**RAG**), including:
+The {{< short_app_ref >}} provides tools to augment Large Language Models with your proprietary data using different tools, such as Retrieval Augmented Generation (**RAG**), including:
 * [Vector Search](#vector-search) for Unstructured Data
+* [NL2SQL](#nl2sql-natural-language-to-sql) for interacting with your structured data using natural language
+
+![Vector Search+NL2SQL](images/vector_search_nl2sql.png)
 
 
 ## Vector Search
 
-Once you've created embeddings using [Split/Embed](../tools/split_embed), the option use Vector Search will be available. After selecting Vector Search, if you have more than one [Vector Store](#vector-store) you will need select the one you want to work with.
+Once you've created embeddings using [Split/Embed](../tools/split_embed), the Vector Search tool will be available. After selecting Vector Search, three additional options will pop up:
+* **Store Discovery**: Dynamically discover Vector Stores for use in Retrieval Augmented Generation.
+* **Prompt Rephrase**: Rephrase the user prompt, based on context and history, for a more meaningful Vector Search.
+* **Document Grading**: Grade the results from a Vector Search to determine their relevancy. 
+
+
+![Vector Search Options](images/vector_search_options.png)
+
+If you have more than one [Vector Store](#vector-store) you can either use the Store Discovery option or disable it.
 
 ![Chatbot Vector Search](images/chatbot_vs.png)
 
@@ -59,4 +70,6 @@ Choose the type of Search you want performed and the additional parameters assoc
 
 ### Vector Store
 
-With Vector Search selected, if you have more than one Vector Store, you can select which one will be used for searching, otherwise it will default to the only one available.  To choose a different Vector Store, click the "Reset" button to open up the available options.
+With Vector Search selected, if you have more than one Vector Store, you can either select Store Discovery and enable AutoRAG, or you can disable it and choose which specific Vector Store will be used for searching, otherwise it will default to the only one available.  To choose a different Vector Store, click the "Reset" button to open up the available options.
+
+## NL2SQL (Natural Language to SQL)
