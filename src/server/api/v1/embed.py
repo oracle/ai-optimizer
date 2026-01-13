@@ -134,7 +134,7 @@ async def store_web_file(
         for url in request:
             filename = Path(urlparse(str(url)).path).name
             request_timeout = aiohttp.ClientTimeout(total=60)
-            logger.debug("Requesting: %s (timeout in %is)", url, request_timeout)
+            logger.debug("Requesting: %s (timeout in %is)", url, request_timeout.total)
             async with session.get(str(url), timeout=request_timeout) as response:
                 content_type = response.headers.get("Content-Type", "").lower()
 
