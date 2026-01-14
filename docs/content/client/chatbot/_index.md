@@ -62,14 +62,39 @@ Once you've created embeddings using [Split/Embed](../tools/split_embed), the Ve
 
 ![Vector Search Options](images/vector_search_options.png)
 
-If you have more than one [Vector Store](#vector-store) you can either use the Store Discovery option or disable it.
+If you have more than one [Vector Store](#vector-store) you can either use the Store Discovery option or disable it. If you decide to disable the Store Discovery option, you will need to select the Vector Store you want to work with.
 
 ![Chatbot Vector Search](images/chatbot_vs.png)
 
-Choose the type of Search you want performed and the additional parameters associated with that search.
+ Choose the type of Search you want performed and the additional parameters associated with that search.
 
 ### Vector Store
 
 With Vector Search selected, if you have more than one Vector Store, you can either select Store Discovery and enable AutoRAG, or you can disable it and choose which specific Vector Store will be used for searching, otherwise it will default to the only one available.  To choose a different Vector Store, click the "Reset" button to open up the available options.
 
 ## NL2SQL (Natural Language to SQL)
+
+The Natural Language to SQL (NL2SQL) tool enables users to query structured data stored in Oracle AI Database 26ai by using natural language instead of SQL statements. 
+
+To use this tool, the **Oracle SQLcl MCP server** must be enabled and properly configured within the {{< short_app_ref >}}. Detailed instructions are available in the official [Oracle documentation](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html):
+
+![MCP Configuration](images/mcp_configuration.png)
+
+Once the MCP server is configured, the **NL2SQL** tool allows you to issue natural language queries against structured data, such as the dataset shown in the example below:
+
+![Customer Data](images/customer_data.png)
+
+To interact with the tool, navigate to the Chatbot tab, select NL2SQL from the tool dropdown menu, and enter a query such as:
+
+```text
+Can you give me the list of customers?
+```
+The response returned by the tool will be equivalent to the result of an actual SQL query executed against the database:
+
+![NL2SQL Example](images/nl2sql_example.png)
+
+By using this tool, the {{< short_app_ref >}} allows users to query structured data without writing any SQL code, simplifying data access and exploration.
+
+You can experiment freely with your own structured datasets and progressively issue more complex natural language queries to explore the full capabilities of the NL2SQL tool.
+
+
