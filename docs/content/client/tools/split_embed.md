@@ -8,15 +8,17 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
 
-The first phase building of building a RAG Chatbot using Vector Search starts with the document chunking based on vector embeddings generation.  Embeddings will be stored into a vector store to be retrieved by vectors distance search and added to the LLM context in order to answer the question grounded to the information provided.
+The first phase of building a RAG Chatbot using Vector Search starts with the document chunking based on vector embeddings generation.  Embeddings will be stored into a vector store to be retrieved by vectors distance search and added to the LLM context in order to answer the question grounded to the information provided.
 
-You have the freedom to choose different Embedding Models for vector embeddings provided by public services like Cohere, OpenAI, and Perplexity, or local models running on top a GPU compute node managed by the yourself.  Running a local model, such as Ollama or HuggingFace, avoids sharing data with external services that are beyond your control.
+You have the freedom to choose different Embedding Models for vector embeddings provided by public services like Cohere, OpenAI, and Perplexity, or local models running on top of a self-managed GPU compute node.  Running a local model, such as Ollama or HuggingFace, avoids sharing data with external services that are beyond your control.
 
 From the _Tools_ menu, select the _Split/Embed_ tab to perform the splitting and embedding process:
 
 ![Split](./images/split.png)
 
-The Load and Split Documents, parts of Split/Embed form, will allow to choose documents (txt,pdf,html,etc.) stored on the Object Storage service available on the Oracle Cloud Infrastructure, on the client’s desktop or from URLs, like shown in following snapshot:
+## Create New Vector Store
+
+You might have notice a *Create New Vector Store* option. Toggling this option will allow you to create a brand new vector store table in which you can embed your data source. The Load and Split Documents, parts of Split/Embed form, will allow users to choose documents (txt,pdf,html,etc.) stored in the Object Storage service available on the Oracle Cloud Infrastructure, on the client’s desktop or from URLs, like shown in following snapshot:
 
 ![Embed](./images/embed.png)
 
@@ -28,14 +30,15 @@ Choose one of the **Embedding models available** from the listbox that will depe
 The **Embedding Server** URL associated to the model chosen will be shown. The **Chunk Size (tokens)** will change according the kind of embeddings model selected, as well as the **Chunk Overlap (% of Chunk Size)**.
 
 Then you have to choose one of the **Distance Metric** available in the Oracle DB23ai:
-- COSINE
-- EUCLIDEAN_DISTANCE
-- DOT_PRODUCT
-- MAX_INNER_PRODUCT
+* COSINE
+* EUCLIDEAN_DISTANCE
+* DOT_PRODUCT
 
-To understand the meaning of these metrics, please refer to the doc [Vector Distance Metrics](https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/vector-distance-metrics.html) in the Oracle DB23ai "*AI Vector Search User's Guide*".
+To understand the meaning of these metrics, please refer to the doc [Vector Distance Metrics](https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/vector-distance-metrics.html) in the Oracle AI Database 26ai "*AI Vector Search User's Guide*".
 
-The **Embedding Alias** field let you to add a more meaningful info to the vectorstore table that allows you to have more than one vector table with the same: *model + chunksize + chunk_overlap + distance_strategy* combination.
+The **Embedding Alias** field lets you add a more meaningful info to the vectorstore table that allows you to have more than one vector table with the same: *model + chunksize + chunk_overlap + distance_strategy* combination.
+
+The **Description** field lets you add additional text to describe the content of what will be stored in the Vector Store table. This will be very helpful when using AutoRAG, as it will help the LLM to match the user's query to the most relevant vector table stored in the Database.
 
 
 ## Load and Split Documents
