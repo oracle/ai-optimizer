@@ -14,13 +14,13 @@ You have the freedom to choose different Embedding Models for vector embeddings 
 
 From the _Tools_ menu, select the _Split/Embed_ tab to perform the splitting and embedding process:
 
-![Split](./images/split.png)
+![Split](../images/split.png)
 
 ## Create New Vector Store
 
 You might have notice a *Create New Vector Store* option. Toggling this option will allow you to create a brand new vector store table in which you can embed your data source. The Load and Split Documents, parts of Split/Embed form, will allow users to choose documents (txt,pdf,html,etc.) stored in the Object Storage service available on the Oracle Cloud Infrastructure, on the client’s desktop or from URLs, like shown in following snapshot:
 
-![Embed](./images/embed.png)
+![Embed](../images/embed.png)
 
 "Populating the Vector Store" will create a table in the Oracle Database with the embeddings.  You can create multiple vector stores, on the same set of documents, to experiment with chunking size, distance metrics, etc, and then test them independently.
 
