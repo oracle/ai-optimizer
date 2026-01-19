@@ -64,3 +64,7 @@ The **Vector Store** will show the name of the table will be populated into the 
 If you untoggle the *Create New Vector Store* button, you will be able to edit an existing Vector Store alias:
 
 ![Edit Store](../images/edit_vector_store.png)
+
+Once you select the existing vector store from the *Select Alias* dropdown, the data source options will be pretty much the same as when creating a new table. The lowermost section allows users to check the content of the Vector Store, in the *Existing Embeddings* section, update the description of the existing vector store, and append the new content from the additional data source, through the *Populate Vector Store* button.
+
+![Populate Existing Embedding](../images/populate_existing_embedding.png)
