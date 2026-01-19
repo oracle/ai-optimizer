@@ -24,7 +24,7 @@ You might have notice a *Create New Vector Store* option. Toggling this option w
 
 "Populating the Vector Store" will create a table in the Oracle Database with the embeddings.  You can create multiple vector stores, on the same set of documents, to experiment with chunking size, distance metrics, etc, and then test them independently.
 
-## Embedding Configuration
+### Embedding Configuration
 
 Choose one of the **Embedding models available** from the listbox that will depend by the **Configuration/Models** page.
 The **Embedding Server** URL associated to the model chosen will be shown. The **Chunk Size (tokens)** will change according the kind of embeddings model selected, as well as the **Chunk Overlap (% of Chunk Size)**.
@@ -41,7 +41,7 @@ The **Embedding Alias** field lets you add a more meaningful info to the vectors
 The **Description** field lets you add additional text to describe the content of what will be stored in the Vector Store table. This will be very helpful when using AutoRAG, as it will help the LLM to match the user's query to the most relevant vector table stored in the Database.
 
 
-## Load and Split Documents
+### Load and Split Documents
 
 The process that starts clicking the **Populate Vector Store** button needs:
 - **File Source**: you can include txt,pdf,html documents from one of these sources:
@@ -58,3 +58,9 @@ The process that starts clicking the **Populate Vector Store** button needs:
 - **Rate Limit (RPM)**: to avoid that a public LLM embedding service bans you for too much requests per second, out of your subscription limits.
 
 The **Vector Store** will show the name of the table will be populated into the DB, according the naming convention that reflects the parameters used.
+
+## Edit existing Vector Store
+
+If you untoggle the *Create New Vector Store* button, you will be able to edit an existing Vector Store alias:
+
+![Edit Store](../images/edit_vector_store.png)
