@@ -8,63 +8,78 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
 
-The first phase of building a RAG Chatbot using Vector Search starts with the document chunking based on vector embeddings generation.  Embeddings will be stored into a vector store to be retrieved by vectors distance search and added to the LLM context in order to answer the question grounded to the information provided.
+The first phase in building a RAG chatbot based on vector search is document splitting and embedding. During this phase, source documents are divided into chunks, vector embeddings are generated for each chunk, and the resulting embeddings are stored in a vector store. At query time, relevant chunks are retrieved using vector distance search and injected into the Large Language Model (LLM) context to produce grounded answers based on the provided information.
 
-You have the freedom to choose different Embedding Models for vector embeddings provided by public services like Cohere, OpenAI, and Perplexity, or local models running on top of a self-managed GPU compute node.  Running a local model, such as Ollama or HuggingFace, avoids sharing data with external services that are beyond your control.
+You can choose from multiple embedding models provided by external services such as Cohere, OpenAI, and Perplexity, or use local models running on a self-managed GPU compute node. Running local models, for example via Ollama or Hugging Face, avoids sharing data with external services that are outside your administrative control.
 
-From the _Tools_ menu, select the _Split/Embed_ tab to perform the splitting and embedding process:
+To perform document splitting and embedding, open the Tools menu and select the **Split/Embed tab**:
 
 ![Split](../images/split.png)
 
 ## Create New Vector Store
 
-You might have notice a *Create New Vector Store* option. Toggling this option will allow you to create a brand new vector store table in which you can embed your data source. The Load and Split Documents, parts of Split/Embed form, will allow users to choose documents (txt,pdf,html,etc.) stored in the Object Storage service available on the Oracle Cloud Infrastructure, on the client’s desktop or from URLs, like shown in following snapshot:
+The **Create New Vector Store** option allows you to create a new vector store table and populate it with embeddings generated from one or more data sources. When this option is enabled, the Load and Split Documents section of the Split/Embed form lets you select documents in formats such as TXT, PDF, or HTML.
+
+Documents can be sourced from:
+
+* **Oracle Cloud Infrastructure (OCI) Object Storage**, allowing you to browse and select multiple documents;
+* **Local files**, enabling the upload of multiple documents from the client machine;
+* **Web URLs**, for loading a single TXT, PDF, or HTML document from a specified address.
 
 ![Embed](../images/embed.png)
 
-"Populating the Vector Store" will create a table in the Oracle Database with the embeddings.  You can create multiple vector stores, on the same set of documents, to experiment with chunking size, distance metrics, etc, and then test them independently.
+Populating the vector store creates a table in the Oracle Database that contains the generated embeddings. You can create multiple vector stores from the same set of documents to experiment with different chunk sizes, distance metrics, or embedding models, and evaluate them independently.
 
 ### Embedding Configuration
 
-Choose one of the **Embedding models available** from the listbox that will depend by the **Configuration/Models** page.
-The **Embedding Server** URL associated to the model chosen will be shown. The **Chunk Size (tokens)** will change according the kind of embeddings model selected, as well as the **Chunk Overlap (% of Chunk Size)**.
+Select one of the available **Embedding Models** from the list. The available options depend on the models configured in the **Configuration / Models** section. Once a model is selected, the associated **Embedding Server URL** is displayed.
 
-Then you have to choose one of the **Distance Metric** available in the Oracle DB23ai:
+The **Chunk Size (tokens)** and the **Chunk Overlap (% of chunk size)** are automatically adjusted based on the selected embedding model.
+
+Next, select one of the supported **Distance Metrics** provided by Oracle AI Database 26ai:
+
 * COSINE
 * EUCLIDEAN_DISTANCE
 * DOT_PRODUCT
 
 To understand the meaning of these metrics, please refer to the doc [Vector Distance Metrics](https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/vector-distance-metrics.html) in the Oracle AI Database 26ai "*AI Vector Search User's Guide*".
 
-The **Embedding Alias** field lets you add a more meaningful info to the vectorstore table that allows you to have more than one vector table with the same: *model + chunksize + chunk_overlap + distance_strategy* combination.
+The **Embedding Alias** field allows you to assign a meaningful identifier to the vector store table. This is particularly useful when multiple vector stores share the same combination of embedding model, chunk size, chunk overlap, and distance metric.
 
-The **Description** field lets you add additional text to describe the content of what will be stored in the Vector Store table. This will be very helpful when using AutoRAG, as it will help the LLM to match the user's query to the most relevant vector table stored in the Database.
-
+The **Description** field allows you to provide additional information about the content stored in the vector store. This description is especially useful when using AutoRAG, as it helps the LLM select the most relevant vector store for a given user query.
 
 ### Load and Split Documents
 
-The process that starts clicking the **Populate Vector Store** button needs:
-- **File Source**: you can include txt,pdf,html documents from one of these sources:
-    - **OCI**: you can browse and add more than one document into the same vectostore table at a time;
-    - **Local**: uploading more than one document into the same vectostore table at a time;
-    - **Web**: upload one txt,pdf,html from the URL provided.
-    - **SQL**: define a query on an Oracle DB to extract a field of VARCHAR2 type to embed the contents, row-by-row. Set the following parameters:
-        - **DB Connection**: put in input a string like
+The embedding process is initiated by clicking **Populate Vector Store**. The following input parameters are required:
+- **File Source**: specifies the origin of the documents to be embedded. Supported sources include:
+    - **OCI**: browse and select multiple documents from Oracle Cloud Infrastructure Object Storage;
+    - **Local**: upload multiple documents from the client machine;
+    - **Web**: load a single TXT, PDF, or HTML document from a specified URL;
+    - **SQL**: define a query against an Oracle Database to extract text from a VARCHAR2 column and embed it row by row. When using this option, the following parameters must be provided:
+        - **DB Connection**: a connection string, for example:
         ```CO/Welcome_12345@localhost:1521/FREEPDB1```
-        - **SQL**: set a query like
-        ```select PRODUCT_NAME from PRODUCTS``` to get just one field. The content it will be embedded from a string starting with the field name, to provide a better context in the chunk similarity search.
+        - **SQL**: a query that returns a single text column, for example:
+        ```select PRODUCT_NAME from PRODUCTS``` The embedded content is prefixed with the column name to provide additional context during similarity search.
 
 
-- **Rate Limit (RPM)**: to avoid that a public LLM embedding service bans you for too much requests per second, out of your subscription limits.
+- **Rate Limit (RPM)**: limits the number of embedding requests per minute to prevent exceeding the usage limits of external embedding services.
 
-The **Vector Store** will show the name of the table will be populated into the DB, according the naming convention that reflects the parameters used.
+The **Vector Store** field displays the name of the database table that will be populated, following a naming convention derived from the selected configuration parameters.
 
 ## Edit existing Vector Store
 
-If you untoggle the *Create New Vector Store* button, you will be able to edit an existing Vector Store alias:
+If the **Create New Vector Store** option is disabled, you can update an existing vector store instead of creating a new one:
 
 ![Edit Store](../images/edit_vector_store.png)
 
-Once you select the existing vector store from the *Select Alias* dropdown, the data source options will be pretty much the same as when creating a new table. The lowermost section allows users to check the content of the Vector Store, in the *Existing Embeddings* section, update the description of the existing vector store, and append the new content from the additional data source, through the *Populate Vector Store* button.
+After selecting an existing vector store alias from the **Select Alias** dropdown, the available data source options are the same as those used when creating a new vector store.
+
+The lower section of the interface allows you to:
+
+* Inspect the current contents of the vector store in the **Existing Embeddings** section;
+* Update the vector store description;
+* Append new content from additional data sources by clicking **Populate Vector Store**.
 
 ![Populate Existing Embedding](../images/populate_existing_embedding.png)
+
+This approach allows you to incrementally enrich an existing vector store while preserving previously generated embeddings.
