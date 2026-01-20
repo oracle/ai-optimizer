@@ -18,6 +18,7 @@ The following additional components, not delivered with the {{< short_app_ref >}
 - [Oracle AI Database](#database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free)
 - Access to at least one [Large Language Model](#large-language-model)
 - Access to at least one [Embedding Model](#embedding-model) (for Retrieval Augmented Generation)
+- (Optional) Access to an [SQLcl **MCP Server**-enabled](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) instance 
 
 The {{< short_app_ref >}} is specifically designed to run in container orchestration systems, such as [Kubernetes](https://kubernetes.io/).  For more information on deploying the {{< short_app_ref >}} in Kubernetes, using a Helm Chart, please review the [Advanced - Helm Chart](/advanced/helm) documentation.
 
@@ -67,3 +68,9 @@ Access to document sources for the purpose of embedding and populating the Vecto
 ## AI Models
 
 The {{< short_app_ref >}} provides the ability to connect to any language or embedding model to be used for completions and creating vectors.  Adding, Deleting, and Modifying access to AI Models is quick and easy.
+
+## SQLcl MCP Server
+
+The {{< short_app_ref >}} acts as a proxy MCP server and can therefore interface with external MCP servers. When connected to an Oracle SQLcl MCP server instance, the {{< short_app_ref >}} enables **Natural Language to SQL (NL2SQL)** capabilities. 
+
+This integration allows users to query structured data stored in an Oracle Database using natural language, without the need to write or execute SQL commands.
