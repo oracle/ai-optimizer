@@ -15,6 +15,10 @@ At a minimum, a Large _Language Model_ (LLM) must be configured in {{< short_app
 
 There is an extensive list of different API Model APIs available you can choose from.
 
+{{% notice style="code" title="Compatibility notice" icon="fire" %}}
+To use **NL2SQL**, the selected LLM must support the **Model Context Protocol (MCP)**. LLM runtimes without native MCP support—such as the Ollama desktop application and core server—cannot fully enable these features.
+{{% /notice %}}
+
 ## Configuration
 
 The models can either be configured using environment variables or through the {{< short_app_ref >}} interface. To configure models through environment variables, please read the [Additional Information](#additional-information) about the specific model you would like to configure.
@@ -56,6 +60,7 @@ Examples:
 Third-Party cloud models, such as [OpenAI](https://openai.com/api/) and [Perplexity AI](https://docs.perplexity.ai/getting-started), require API Keys. These keys are tied to registered, funded accounts on these platforms. For more information on creating an account, funding it, and generating API Keys for third-party cloud models, please visit their respective sites.
 
 On-Premises models, such as those from [Ollama](https://ollama.com/) or [HuggingFace](https://huggingface.co/) usually do not require API Keys. These values can be left blank.
+
 
 ## Additional Information
 
