@@ -10,7 +10,7 @@ import decimal
 
 import litellm
 
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.utils import convert_to_openai_messages
 from langchain_core.runnables import RunnableConfig
 
@@ -51,15 +51,73 @@ class DecimalEncoder(json.JSONEncoder):
 #############################################################################
 # Helper Functions
 #############################################################################
-def _build_messages_for_llm(state: OptimizerState, sys_prompt, use_history: bool = True) -> list:
-    """Build message list for LLM with system prompt and history handling"""
+def _extract_tool_content(tool_msg: ToolMessage) -> str:
+    """Extract content from a ToolMessage, preferring formatted_text if available."""
+    try:
+        content = json.loads(tool_msg.content)
+        if isinstance(content, dict) and "formatted_text" in content:
+            return content["formatted_text"]
+        return tool_msg.content
+    except (json.JSONDecodeError, TypeError):
+        return tool_msg.content
+
+
+def _flatten_tool_messages(state_messages: list) -> list:
+    """Convert tool_calls/tool patterns to regular messages for OCI compatibility.
+
+    Replaces AIMessage+ToolMessage sequences with a HumanMessage containing the tool content.
+    """
+    result = []
+    i = 0
+
+    while i < len(state_messages):
+        msg = state_messages[i]
+
+        # Check for AIMessage with tool_calls followed by ToolMessage
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            # Collect following ToolMessage(s)
+            tool_contents = []
+            j = i + 1
+            while j < len(state_messages) and isinstance(state_messages[j], ToolMessage):
+                tool_contents.append(_extract_tool_content(state_messages[j]))
+                j += 1
+
+            if tool_contents:
+                context_text = "\n\n".join(tool_contents)
+                result.append(
+                    HumanMessage(content=f"Here is relevant context from the knowledge base:\n\n{context_text}")
+                )
+            i = j  # Skip past all processed messages
+        elif isinstance(msg, ToolMessage):
+            # Skip orphaned ToolMessages
+            i += 1
+        else:
+            result.append(msg)
+            i += 1
+
+    return result
+
+
+def _build_messages_for_llm(
+    state: OptimizerState, sys_prompt, use_history: bool = True, flatten_tool_calls: bool = True
+) -> list:
+    """Build message list for LLM with system prompt and history handling
+
+    Args:
+        state: The current graph state containing messages
+        sys_prompt: System prompt to prepend
+        use_history: Whether to include full history or just latest message
+        flatten_tool_calls: If True, convert tool_calls/tool patterns to regular messages.
+            This is needed for providers like OCI that don't handle tool_calls well.
+    """
     messages = [SystemMessage(content=sys_prompt.content.text)]
 
     if use_history:
-        # Add all messages except SystemMessages from history
-        for msg in state["messages"]:
-            if not isinstance(msg, SystemMessage):
-                messages.append(msg)
+        state_messages = [msg for msg in state["messages"] if not isinstance(msg, SystemMessage)]
+        if flatten_tool_calls:
+            messages.extend(_flatten_tool_messages(state_messages))
+        else:
+            messages.extend(state_messages)
     else:
         # Only include ToolMessages and the latest user message
         for msg in state["messages"]:

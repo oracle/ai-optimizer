@@ -193,7 +193,7 @@ def optimizer_vs_grade() -> PromptMessage:
         IMPORTANT: Reply with exactly one word: yes or no
     """
 
-    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
+    return PromptMessage(role="user", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
 def optimizer_vs_rephrase() -> PromptMessage:
@@ -212,7 +212,7 @@ def optimizer_vs_rephrase() -> PromptMessage:
         Return ONLY the rephrased query without any explanation or additional text.
     """
 
-    return PromptMessage(role="assistant", content=TextContent(type="text", text=clean_prompt_string(content)))
+    return PromptMessage(role="user", content=TextContent(type="text", text=clean_prompt_string(content)))
 
 
 def optimizer_testbed_judge() -> PromptMessage:

@@ -69,7 +69,7 @@ write_files:
       python3.11 -m venv .venv
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools uv
-      uv pip install torch==2.9.1+cpu -f https://download.pytorch.org/whl/cpu/torch
+      uv pip install torch==2.10.0+cpu -f https://download.pytorch.org/whl/cpu/torch
       uv pip install -e ".[all]" &
       INSTALL_PID=$!
 
