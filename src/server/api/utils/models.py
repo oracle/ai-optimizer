@@ -155,7 +155,7 @@ def get_supported(
     allowed_modes = type_to_modes.get(model_type, {"chat", "completion", "embedding", "responses", "rerank"})
 
     # Below providers do not maintain a model list with litellm or require authN
-    skip_providers = {"ollama", "ollama_chat", "github_copilot"}
+    skip_providers = {"ollama", "ollama_chat", "github_copilot", "chatgpt"}
     result = []
 
     for provider in sorted([p.value for p in litellm.provider_list]):
