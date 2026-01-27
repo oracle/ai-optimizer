@@ -2,46 +2,6 @@
 
 This directory contains the OpenTofu/Terraform configuration for deploying the Oracle AI Optimizer on Oracle Cloud Infrastructure (OCI).
 
-## Portability
-
-This `opentofu/` directory is **designed to be portable** and can be copied to other projects or used standalone. It includes:
-
-- ✅ Standalone `.gitignore` - Works when copied to another repo
-- ✅ Self-contained modules - Remove modules if not applicable
-- ✅ Example variable files - Safe placeholder credentials for testing
-- ✅ Comprehensive documentation - Self-contained
-- ✅ CI/CD testing configs - GitHub Actions workflow examples
-
-### Using in Another Project
-
-To use this infrastructure in another project:
-
-1. **Copy the entire directory:**
-   ```bash
-   cp -r opentofu/ /path/to/your/project/
-   cd /path/to/your/project/opentofu/
-   ```
-
-2. **Remove modules that are not required (e.g. VM infrastructure):**
-   ```bash
-   cd /path/to/your/project/opentofu/
-   rm module_vm.tf
-   rm -rf modules/vm
-   ```
-
-3. **Start with an example:**
-   ```bash
-   cp examples/vm-new-adb.tfvars terraform.tfvars
-   # Edit terraform.tfvars with your real OCI credentials
-   ```
-
-4. **Deploy:**
-   ```bash
-   tofu init
-   tofu plan
-   tofu apply
-   ```
-
 ## Directory Structure
 
 ```
@@ -49,12 +9,13 @@ opentofu/
 ├── README.md                    # This file
 ├── TESTING.md                   # CI/CD testing documentation
 ├── .gitignore                   # Portable .gitignore (works standalone)
-├── examples/                    # Example variable files
+├── examples/                    # Example variable files; **see note below**
 │   ├── README.md                # Documentation for examples
 │   ├── vm-new-adb.tfvars        # VM with new ADB
 │   ├── k8s-new-adb.tfvars       # Kubernetes with new ADB
 │   └── ...                      # Other scenarios
 ├── *.tf                         # Main Terraform configuration
+├── versions.tf                  # Track Versions; **see note below**
 ├── modules/                     # Terraform modules
 │   ├── network/
 │   ├── kubernetes/
@@ -62,7 +23,12 @@ opentofu/
 └── cfgmgt/                      # Configuration management scripts
 ```
 
-## Example Variable Files
+### version.tf
+
+The `version.tf` file is automatically updated during the release cycle.
+The contents should otherwise be `app_version = "0.0.0"` to indicate a non-release.
+
+### Example Variable Files
 
 The `examples/` directory contains variable files with placeholder credentials for:
 
@@ -84,11 +50,6 @@ The IaC is packaged and attached to each release using GitHub Actions. Below is 
       -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" \
       -x "cfgmgt/stage/*.*" "*.tfplan*" "examples/*" "*.md" ".gitignore"
     ```
-
-## version.tf
-
-The `version.tf` file is automatically updated during the release cycle.
-The contents should otherwise be `app_version = "0.0.0"` to indicate a non-release.
 
 ## Quick Start
 
@@ -134,6 +95,46 @@ tofu apply
 tofu destroy
 ```
 
+## Portability
+
+This `opentofu/` directory is **designed to be portable** and can be copied to other projects or used standalone. It includes:
+
+- ✅ Standalone `.gitignore` - Works when copied to another repo
+- ✅ Self-contained modules - Remove modules if not applicable
+- ✅ Example variable files - Safe placeholder credentials for testing
+- ✅ Comprehensive documentation - Self-contained
+- ✅ CI/CD testing configs - GitHub Actions workflow examples
+
+### Using in Another Project
+
+To use this infrastructure in another project:
+
+1. **Copy the entire directory:**
+   ```bash
+   cp -r opentofu/ /path/to/your/project/
+   cd /path/to/your/project/opentofu/
+   ```
+
+2. **Remove modules that are not required (e.g. VM infrastructure):**
+   ```bash
+   cd /path/to/your/project/opentofu/
+   rm module_vm.tf
+   rm -rf modules/vm
+   ```
+
+3. **Start with an example:**
+   ```bash
+   cp examples/vm-new-adb.tfvars terraform.tfvars
+   # Edit terraform.tfvars with your real OCI credentials
+   ```
+
+4. **Deploy:**
+   ```bash
+   tofu init
+   tofu plan
+   tofu apply
+   ```
+
 ## Testing
 
 See [`TESTING.md`](TESTING.md) for manual testing requirements. **CI validates syntax only** - infrastructure logic must be tested with real OCI credentials before merging changes.
@@ -149,4 +150,3 @@ For issues or questions:
 
 1. Check the documentation in this directory
 2. Review the example files in `examples/`
-3. See the main project README for general information
