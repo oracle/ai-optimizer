@@ -6,6 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from typing import Optional, List
 import json
+import traceback
 
 from pydantic import BaseModel
 
@@ -17,8 +18,8 @@ import server.api.utils.settings as utils_settings
 import server.api.utils.databases as utils_databases
 import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
-import server.mcp.tools.vs_tables as vs_tables_tool
 import server.mcp.prompts.defaults as table_selection_prompts
+from server.mcp.tools.vs_discovery import _vs_discovery_impl
 
 from common import logging_config
 
@@ -50,22 +51,28 @@ class VectorSearchResponse(BaseModel):
 
 
 def _get_available_vector_stores(thread_id: str):
-    """Get list of available vector stores with enabled embedding models"""
-    try:
-        response = vs_tables_tool.execute_vector_table_query(thread_id)
-        parsed_tables = [vs_tables_tool.parse_vector_table_row(row) for row in response]
+    """Get list of available vector stores with enabled embedding models.
 
-        # Filter by enabled models
-        available = []
-        for table in parsed_tables:
-            model_id = table.parsed.model
-            alias = table.parsed.alias
-            logger.info("Checking table %s (alias: %s) with model: %s", table.table_name, alias, model_id)
-            if vs_tables_tool.is_model_enabled(model_id):
-                available.append(table)
-                logger.info("  -> Enabled")
-            else:
-                logger.info("  -> Skipped (not enabled or legacy)")
+    Delegates to vs_discovery which handles:
+    - Discovery enabled: queries database for all vector tables with enabled models
+    - Discovery disabled: returns configured vector store from settings
+    """
+    try:
+        response = _vs_discovery_impl(thread_id=thread_id, filter_enabled_models=True)
+
+        if response.status != "success":
+            logger.error("Discovery failed: %s", response.error)
+            return []
+
+        available = response.parsed_tables
+        for table in available:
+            logger.info(
+                "Checking table %s (alias: %s) with model: %s",
+                table.table_name,
+                table.parsed.alias,
+                table.parsed.model,
+            )
+            logger.info("  -> Enabled")
 
         logger.info(
             "Found %d available vector stores with enabled models",
@@ -109,9 +116,6 @@ def _select_tables_with_llm(
             desc_parts.append(f" (alias: {table.parsed.alias})")
         if table.parsed.description:
             desc_parts.append(f": {table.parsed.description}")
-        else:
-            desc_parts.append(f" - {table.num_rows} documents")
-
         if table.parsed.model:
             desc_parts.append(f" [model: {table.parsed.model}]")
 
@@ -120,7 +124,7 @@ def _select_tables_with_llm(
     tables_info = "\n".join(table_descriptions)
 
     # Get table selection prompt from MCP prompts (user customizable)
-    prompt_msg = table_selection_prompts.get_prompt_with_override("optimizer_vs-table-selection")
+    prompt_msg = table_selection_prompts.get_prompt_with_override("optimizer_vs-discovery")
     prompt_template = prompt_msg.content.text
 
     # Format the template with actual values
@@ -197,19 +201,48 @@ def _search_table(table_name, question, db_conn, embed_client, vector_search, ta
     # Initialize Vector Store for this table using its specific distance metric
     vectorstores = OracleVS(db_conn, embed_client, table_name, table_distance_metric)
 
-    # Configure retriever
-    retriever = _configure_retriever(vectorstores, vector_search.search_type, vector_search)
+    # For Similarity searches, call with_score to preserve scores
+    if vector_search.search_type == "Similarity":
+        # Get documents with scores (always retrieve top_k)
+        # Note: OracleVS returns raw distance scores from vector_distance()
+        docs_and_scores = vectorstores.similarity_search_with_score(question, k=vector_search.top_k)
 
-    # Retrieve documents
-    documents = retriever.invoke(question)
+        # Convert to Document list with scores in metadata
+        documents = []
+        for doc, score in docs_and_scores:
+            # Convert distance to similarity score (for COSINE: similarity = 1 - distance)
+            # For COSINE metric, distance is in [0, 2] range, similarity in [0, 1]
+            if table_distance_metric == "COSINE":
+                similarity = 1.0 - (score / 2.0)
+            elif table_distance_metric == "DOT":
+                # For DOT product, higher is better (already a similarity)
+                similarity = score
+            else:  # EUCLIDEAN or EUCLIDEAN_SQUARED
+                # For Euclidean, lower distance = higher similarity
+                # Use inverse: similarity = 1 / (1 + distance)
+                similarity = 1.0 / (1.0 + score)
+
+            # Filter by score_threshold if enabled (> 0)
+            if vector_search.score_threshold > 0 and similarity < vector_search.score_threshold:
+                continue
+
+            if not hasattr(doc, "metadata"):
+                doc.metadata = {}
+            doc.metadata["similarity_score"] = round(similarity, 3)
+            doc.metadata["searched_table"] = table_name
+            documents.append(doc)
+    else:
+        # For MMR and other modes, use standard retriever
+        retriever = _configure_retriever(vectorstores, vector_search.search_type, vector_search)
+        documents = retriever.invoke(question)
+
+        # Add table name to metadata
+        for doc in documents:
+            if not hasattr(doc, "metadata"):
+                doc.metadata = {}
+            doc.metadata["searched_table"] = table_name
+
     logger.info("Retrieved %d documents from %s", len(documents), table_name)
-
-    # Add table name to metadata
-    for doc in documents:
-        if not hasattr(doc, "metadata"):
-            doc.metadata = {}
-        doc.metadata["searched_table"] = table_name
-
     return documents
 
 
@@ -218,8 +251,17 @@ def _configure_retriever(vectorstores, search_type: str, vector_search):
     search_kwargs = {"k": vector_search.top_k}
 
     if search_type == "Similarity":
+        # If score_threshold > 0, automatically use similarity_score_threshold mode
+        if vector_search.score_threshold > 0:
+            search_kwargs["score_threshold"] = vector_search.score_threshold
+            return vectorstores.as_retriever(
+                search_type="similarity_score_threshold",
+                search_kwargs=search_kwargs,
+            )
+        # Otherwise use standard similarity search
         return vectorstores.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
     if search_type == "Similarity Score Threshold":
+        # Legacy support for old config format
         search_kwargs["score_threshold"] = vector_search.score_threshold
         return vectorstores.as_retriever(
             search_type="similarity_score_threshold",
@@ -319,7 +361,13 @@ def _vs_retrieve_impl(
                 all_documents.extend(documents)
                 searched_tables.append(table_name)
             except Exception as ex:
-                logger.error("Failed to search table %s: %s", table_name, ex)
+                logger.error(
+                    "Failed to search table %s: %s (type: %s)",
+                    table_name,
+                    str(ex) if str(ex) else repr(ex),
+                    type(ex).__name__
+                )
+                logger.debug("Full traceback: %s", traceback.format_exc())
                 failed_tables.append(table_name)
                 # Continue searching other tables even if one fails
 
@@ -361,6 +409,7 @@ def _vs_retrieve_impl(
 async def register(mcp, auth):
     """Invoke Registration of Vector Search Retriever"""
 
+    # Note: Keep docstring SHORT for small LLMs. See _vs_retrieve_impl for full documentation.
     @mcp.tool(name="optimizer_vs-retriever")
     @auth.get("/vs_retriever", operation_id="vs_retriever", include_in_schema=False)
     def retriever(
@@ -369,43 +418,5 @@ async def register(mcp, auth):
         mcp_client: str = "Optimizer",
         model: str = "UNKNOWN-LLM",
     ) -> VectorSearchResponse:
-        """
-        Smart semantic search using Oracle Vector Search with automatic table selection.
-
-        SMART TABLE SELECTION:
-        - Automatically discovers available vector stores and selects the most
-          relevant ones based on table descriptions, aliases, and the user's question
-        - Only considers tables with enabled embedding models
-        - Searches multiple relevant tables and merges results
-
-        BEHAVIOR:
-        1. Discovers all vector stores with enabled embedding models
-        2. Uses LLM to analyze question and select up to 3 most relevant tables
-        3. Searches all selected tables in parallel
-        4. Deduplicates results and returns top_k documents
-        5. Returns searched_tables list for transparency
-
-        The question should be a standalone query (optionally rephrased by a separate
-        rephrase tool). Results should be graded by a separate grading tool unless
-        disabled.
-
-        Args:
-            thread_id: Optimizer Client ID (chat thread), used for looking up
-                configuration (required)
-            question: The user's question to search for (required, may be
-                pre-rephrased)
-            mcp_client: Name of the MCP client implementation being used
-                (Default: Optimizer)
-            model: Name and version of the language model being used (optional)
-
-        Returns:
-            VectorSearchResponse object containing:
-            - context_input: The question used for retrieval
-            - documents: List of retrieved documents with page_content and metadata
-                (includes 'searched_table' in metadata)
-            - num_documents: Number of documents retrieved
-            - searched_tables: List of table names that were searched
-            - status: "success" or "error"
-            - error: Error message if status is "error" (optional)
-        """
+        """Search documentation using vector similarity. Returns relevant documents."""
         return _vs_retrieve_impl(thread_id, question, mcp_client, model)

@@ -16,14 +16,21 @@ RUN groupadd -g 10001 $RUNUSER && \
     dnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
-COPY --chown=$RUNUSER:$RUNUSER src /opt/package/src
 COPY pyproject.toml /opt/package/pyproject.toml
 
+# Generate requirements and install deps only (cached layer)
 RUN ${VIRTUAL_ENV}/bin/pip install --upgrade pip wheel setuptools uv && \
-    ${VIRTUAL_ENV}/bin/uv pip install "/opt/package[client]"
+    ${VIRTUAL_ENV}/bin/uv pip compile /opt/package/pyproject.toml --extra client -o /tmp/requirements.txt && \
+    ${VIRTUAL_ENV}/bin/uv pip install -r /tmp/requirements.txt
+
+# Copy source
+COPY --chown=$RUNUSER:$RUNUSER src /opt/package/src
+
+# Install project (deps already installed, so this is fast)
+RUN ${VIRTUAL_ENV}/bin/uv pip install "/opt/package[client]"
 
 ##################################################
-# Clint Application
+# Client Application
 ##################################################
 FROM optimizer_base AS client
 ENV PATH=$VIRTUAL_ENV/bin:$PATH \

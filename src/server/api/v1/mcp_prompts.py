@@ -112,3 +112,40 @@ async def mcp_update_prompt(
     except Exception as ex:
         logger.error("Failed to update MCP prompt '%s': %s", name, ex)
         raise HTTPException(status_code=500, detail=f"Failed to update prompt: {str(ex)}") from ex
+
+
+@auth.get(
+    "/prompts/{name}/has-override",
+    description="Check if a prompt has a cached override",
+    response_model=dict,
+)
+async def mcp_check_prompt_override(name: str) -> dict:
+    """Check if a prompt has been customized (has cache override)"""
+    has_override = cache.get_override(name) is not None
+    return {
+        "name": name,
+        "has_override": has_override,
+    }
+
+
+@auth.post(
+    "/prompts/reset",
+    description="Reset all MCP prompts to their default values",
+    response_model=dict,
+)
+async def mcp_reset_prompts() -> dict:
+    """Reset all MCP prompt overrides to their default values"""
+    logger.info("Resetting all MCP prompt overrides")
+
+    try:
+        # Clear all prompt overrides from cache
+        cache.clear_all_overrides()
+
+        logger.info("Successfully reset all MCP prompt overrides")
+        return {
+            "message": "All prompts reset to default values successfully",
+        }
+
+    except Exception as ex:
+        logger.error("Failed to reset MCP prompts: %s", ex)
+        raise HTTPException(status_code=500, detail=f"Failed to reset prompts: {str(ex)}") from ex

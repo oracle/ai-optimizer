@@ -52,14 +52,16 @@ async def _grade_documents_with_llm(question: str, documents_str: str, ll_config
         stream=False,
         **ll_config,
     )
-    relevant = response["choices"][0]["message"]["content"]
+    relevant = response["choices"][0]["message"]["content"].lower()
     logger.info("Grading completed. Relevant: %s", relevant)
 
-    if relevant.lower() not in ("yes", "no"):
-        logger.error("LLM did not return binary relevant in grader; assuming all results relevant.")
+    if "yes" in relevant:
         return "yes"
+    if "no" in relevant:
+        return "no"
 
-    return relevant.lower()
+    logger.error("LLM did not return binary relevant in grader; assuming all results relevant.")
+    return "yes"
 
 
 async def _vs_grade_impl(
@@ -71,11 +73,12 @@ async def _vs_grade_impl(
 ) -> VectorGradeResponse:
     try:
         logger.info(
-            "Grading Vector Search Response (Thread ID: %s, MCP: %s, Model: %s, Docs: %d)",
+            "Grading Vector Search Response (Thread ID: %s, MCP: %s, Model: %s, Docs: %d) against question: %s",
             thread_id,
             mcp_client,
             model,
             len(documents),
+            question,
         )
 
         # Get client settings
@@ -88,7 +91,7 @@ async def _vs_grade_impl(
         grading_performed = False
 
         # Only grade if grading is enabled and we have documents
-        if vector_search.grading and documents:
+        if vector_search.grade and documents:
             grading_performed = True
             # Get LLM config
             oci_config = utils_oci.get(client=thread_id)

@@ -208,12 +208,15 @@ class VectorSearchSettings(DatabaseVectorStorage):
     discovery: bool = Field(default=True, description="Auto-discover Vector Stores")
     rephrase: bool = Field(default=True, description="Rephrase User Prompt")
     grade: bool = Field(default=True, description="Grade Vector Search Results")
-    search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
+    search_type: Literal["Similarity", "Maximal Marginal Relevance"] = Field(
         default="Similarity", description="Search Type"
     )
-    top_k: Optional[int] = Field(default=4, ge=1, le=10000, description="Top K")
+    top_k: Optional[int] = Field(default=8, ge=1, le=10000, description="Top K - number of candidates to retrieve")
     score_threshold: Optional[float] = Field(
-        default=0.0, ge=0.0, le=1.0, description="Minimum Relevance Threshold (for Similarity Score Threshold)"
+        default=0.65,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity score (0=disabled, >0=filter results by threshold)",
     )
     fetch_k: Optional[int] = Field(default=20, ge=1, le=10000, description="Fetch K (for Maximal Marginal Relevance)")
     lambda_mult: Optional[float] = Field(
@@ -255,8 +258,8 @@ class Settings(BaseModel):
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
     database: Optional[DatabaseSettings] = Field(default_factory=DatabaseSettings, description="Database Settings")
     tools_enabled: List[str] = Field(
-        default_factory=lambda: ["LLM Only"],
-        description="List of enabled MCP tools for this client",
+        default_factory=list,
+        description="List of enabled MCP tools for this client (empty means LLM only)",
     )
     vector_search: Optional[VectorSearchSettings] = Field(
         default_factory=VectorSearchSettings, description="Vector Search Settings"

@@ -51,7 +51,7 @@ class TestVectorSearchToolSelection:
 
         Expected behavior:
         - Vector Search should NOT appear in Tool Selection (no usable vector stores)
-        - User should only see "LLM Only" option
+        - User should not see any options
 
         What this test verifies:
         - Vector Search when enabled embedding models don't match vector store models

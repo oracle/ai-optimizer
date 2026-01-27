@@ -96,7 +96,7 @@ def evaluation_report(eid=None, report=None) -> None:
             **Vector Store**: {report["settings"]["vector_search"]["vector_store"]}
         """)
         embed_settings = pd.DataFrame(report["settings"]["vector_search"], index=[0])
-        fields_to_drop = ["vector_store", "alias", "enabled", "grading"]
+        fields_to_drop = ["vector_store", "alias", "enabled", "grade", "discovery", "rephrase"]
         existing_fields = [f for f in fields_to_drop if f in embed_settings.columns]
         if existing_fields:
             embed_settings.drop(existing_fields, axis=1, inplace=True)
@@ -111,9 +111,6 @@ def evaluation_report(eid=None, report=None) -> None:
     # Show the Gauge
     correctness_value = report["correctness"]
     percentage_value = correctness_value * 100
-
-    # Debug output to verify the value
-    st.write(f"Debug: Raw correctness = {correctness_value}, Percentage = {percentage_value:.2f}%")
 
     gauge_fig = create_gauge(percentage_value)
     # Display gauge
@@ -322,7 +319,7 @@ def render_testset_generation_ui(available_ll_models: list, available_embed_mode
         ),
         key=f"selected_uploader_{state.testbed['uploader_key']}",
         accept_multiple_files=False,
-        type="pdf",
+        type=["pdf"],
     )
 
     col_left, col_center, col_right = st.columns([0.2, 0.35, 0.35])
@@ -496,7 +493,7 @@ def render_evaluation_ui(available_ll_models: list) -> None:
 
     st.subheader("Q&A Evaluation", divider="red")
     st.info("Use the sidebar settings for chatbot evaluation parameters", icon="⬅️")
-    tool_options.tools_sidebar()
+    tool_options.tools_sidebar(show_vs_subtools=False)
     st_common.ll_sidebar()
     vs_options.vector_search_sidebar()
     st.write("Choose a model to judge the correctness of the chatbot answer, then start evaluation.")

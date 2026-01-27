@@ -200,3 +200,31 @@ class TestMcpUpdatePrompt:
             await mcp_prompts.mcp_update_prompt(name="test-prompt", payload=payload, mcp_engine=mock_fastmcp)
 
         assert exc_info.value.status_code == 400
+
+
+class TestMcpResetPrompts:
+    """Tests for the mcp_reset_prompts endpoint."""
+
+    @pytest.mark.asyncio
+    @patch("server.api.v1.mcp_prompts.cache")
+    async def test_mcp_reset_prompts_success(self, mock_cache):
+        """mcp_reset_prompts should clear all overrides and return success."""
+        mock_cache.clear_all_overrides.return_value = None
+
+        result = await mcp_prompts.mcp_reset_prompts()
+
+        assert "message" in result
+        assert "reset to default values" in result["message"]
+        mock_cache.clear_all_overrides.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("server.api.v1.mcp_prompts.cache")
+    async def test_mcp_reset_prompts_handles_exception(self, mock_cache):
+        """mcp_reset_prompts should raise 500 on exception."""
+        mock_cache.clear_all_overrides.side_effect = RuntimeError("Cache clear error")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await mcp_prompts.mcp_reset_prompts()
+
+        assert exc_info.value.status_code == 500
+        assert "Failed to reset prompts" in str(exc_info.value.detail)

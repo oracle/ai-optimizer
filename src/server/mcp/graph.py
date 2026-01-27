@@ -2,39 +2,45 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore acompletion checkpointer litellm ainvoke
+# spell-checker:ignore acompletion checkpointer litellm sqlcl multitool
 
-import copy
-import decimal
-import json
 from typing import Literal
+import json
+import decimal
 
-from langchain_core.messages import SystemMessage, ToolMessage, AIMessage, HumanMessage
+import litellm
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.utils import convert_to_openai_messages
 from langchain_core.runnables import RunnableConfig
 
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, MessagesState, START, END
-from langgraph.checkpoint.memory import InMemorySaver
 
-from litellm import acompletion
-from litellm.exceptions import APIConnectionError
+from server.mcp.tools.vs_rephrase import _vs_rephrase_impl
+from server.mcp.tools.vs_retriever import _vs_retrieve_impl
+from server.mcp.tools.vs_grade import _vs_grade_impl
 
 from common import logging_config
 
-# Import VS tool implementation functions for internal orchestration
-from server.mcp.tools.vs_retriever import _vs_retrieve_impl
-from server.mcp.tools.vs_grade import _vs_grade_impl
-from server.mcp.tools.vs_rephrase import _vs_rephrase_impl
-
 logger = logging_config.logging.getLogger("mcp.graph")
+
+
+#############################################################################
+# Graph State
+#############################################################################
+class OptimizerState(MessagesState):
+    """Graph state machine for optimizer workflow"""
+
+    vs_metadata: dict  # Vector search metadata for UX display
 
 
 #############################################################################
 # JSON Encoder for Oracle Decimal types
 #############################################################################
 class DecimalEncoder(json.JSONEncoder):
-    """Used with json.dumps to encode decimals from Oracle database"""
+    """JSON encoder for Oracle Decimal types"""
 
     def default(self, o):
         if isinstance(o, decimal.Decimal):
@@ -43,430 +49,103 @@ class DecimalEncoder(json.JSONEncoder):
 
 
 #############################################################################
-# Error Handling
-#############################################################################
-def _detect_unreliable_function_calling(
-    tools: list, response_text: str, model_name: str
-) -> tuple[bool, str | None]:
-    """Detect if model exhibited unreliable function calling behavior
-
-    Args:
-        tools: List of tools that were provided to the model
-        response_text: The text content returned by the model
-        model_name: Name of the model that generated the response
-
-    Returns:
-        Tuple of (is_unreliable, error_message)
-        - is_unreliable: True if unreliable behavior detected
-        - error_message: User-friendly error message if unreliable, None otherwise
-    """
-    if not tools or not response_text.strip():
-        return False, None
-
-    stripped = response_text.strip()
-
-    # Pattern 1: JSON with function call structure returned as text
-    # Indicates model attempted function calling but LiteLLM couldn't parse it
-    has_json_start = stripped.startswith(("{", "["))
-    has_function_keywords = any(
-        keyword in stripped[:100] for keyword in ['"name"', '"function"', '"arguments"']
-    )
-    has_object_notation = stripped.startswith('{"') and ":" in stripped[:50]
-
-    looks_like_function_json = (has_json_start and has_function_keywords) or has_object_notation
-
-    if looks_like_function_json:
-        error_msg = (
-            f"⚠️ **Function Calling Not Supported**\n\n"
-            f"The model '{model_name}' attempted to call a tool but failed. "
-            f"This model lacks reliable function calling support.\n\n"
-            "Please disable tools in settings or switch to a model "
-            "with native function calling support."
-        )
-        logger.warning(
-            "Detected unreliable function calling for model %s - "
-            "returned JSON as text instead of tool_calls",
-            model_name,
-        )
-        return True, error_msg
-
-    # Pattern 2: Add other patterns here as they're discovered
-    # Example: Model returning tool names without proper structure, etc.
-
-    return False, None
-
-
-def _create_error_message(exception: Exception, context: str = "") -> AIMessage:
-    """Create user-friendly error wrapper around actual exception message"""
-    logger.exception("Error %s", context if context else "in graph execution")
-
-    # Extract just the error message, excluding any embedded tracebacks
-    error_str = str(exception)
-
-    # If error contains "Traceback", extract only the part before it
-    if "Traceback (most recent call last):" in error_str:
-        error_str = error_str.split("Traceback (most recent call last):", maxsplit=1)[0].strip()
-
-    # Take only the first line if multi-line (avoids showing pydantic URLs, etc.)
-    error_lines = [line.strip() for line in error_str.split("\n") if line.strip()]
-    error_msg = error_lines[0] if error_lines else str(type(exception).__name__)
-
-    error_text = "I'm sorry, I've run into a problem"
-    if context:
-        error_text += f" {context}"
-    error_text += f": {error_msg}"
-    error_text += (
-        "\n\nIf this appears to be a bug rather than a configuration issue, "
-        "please report it at: https://github.com/oracle/ai-optimizer/issues"
-    )
-
-    return AIMessage(content=error_text)
-
-
-# LangGraph Short-Term Memory (thread-level persistence)
-graph_memory = InMemorySaver()
-
-
-def _parse_tool_arguments(arguments: str) -> dict:
-    """Parse tool call arguments from string to dict"""
-    if not arguments or not isinstance(arguments, str):
-        return {}
-
-    try:
-        parsed = json.loads(arguments)
-        return parsed if isinstance(parsed, dict) else {}
-    except json.JSONDecodeError:
-        logger.error("Failed to parse tool call arguments: %s", arguments)
-        return {}
-
-
-#############################################################################
 # Helper Functions
 #############################################################################
-def _remove_system_prompt(messages: list) -> list:
-    """Remove SystemMessage from start of message list if present
+def _extract_tool_content(tool_msg: ToolMessage) -> str:
+    """Extract content from a ToolMessage, preferring formatted_text if available."""
+    try:
+        content = json.loads(tool_msg.content)
+        if isinstance(content, dict) and "formatted_text" in content:
+            return content["formatted_text"]
+        return tool_msg.content
+    except (json.JSONDecodeError, TypeError):
+        return tool_msg.content
 
-    System prompts are managed by the graph and injected dynamically,
-    so we remove any existing system prompts to avoid duplication.
+
+def _flatten_tool_messages(state_messages: list) -> list:
+    """Convert tool_calls/tool patterns to regular messages for OCI compatibility.
+
+    Replaces AIMessage+ToolMessage sequences with a HumanMessage containing the tool content.
     """
-    if messages and isinstance(messages[0], SystemMessage):
-        messages.pop(0)
-    return messages
+    result = []
+    i = 0
 
+    while i < len(state_messages):
+        msg = state_messages[i]
 
-#############################################################################
-# Graph State
-#############################################################################
-class OptimizerState(MessagesState):
-    """Establish our Agent State Machine"""
+        # Check for AIMessage with tool_calls followed by ToolMessage
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            # Collect following ToolMessage(s)
+            tool_contents = []
+            j = i + 1
+            while j < len(state_messages) and isinstance(state_messages[j], ToolMessage):
+                tool_contents.append(_extract_tool_content(state_messages[j]))
+                j += 1
 
-    cleaned_messages: list  # Messages w/o VS Results
-    context_input: str = ""  # Rephrased query used for retrieval (NEW for VS)
-    documents: str = ""  # Retrieved documents formatted as string (NEW for VS)
-    vs_metadata: dict = {}  # VS metadata for client display (tables, query)
-    final_response: dict  # OpenAI Response
-
-
-#############################################################################
-# Functions
-#############################################################################
-
-
-def clean_messages(state: OptimizerState, config: RunnableConfig) -> list:
-    """Return a list of messages that will be passed to the model for completion.
-    Filters ToolMessages marked as internal VS processing to prevent context bloat.
-    Preserves external tool ToolMessages as they're needed for context.
-    Uses metadata-based filtering: vs_orchestrate marks what it creates."""
-
-    use_history = config["metadata"]["use_history"]
-
-    state_messages = copy.deepcopy(state.get("messages", []))
-    if state_messages:
-        if not use_history:
-            last_human = next(
-                (m for m in reversed(state_messages) if isinstance(m, HumanMessage)),
-                None,
-            )
-            state_messages = [last_human] if last_human else []
-
-        state_messages = _remove_system_prompt(state_messages)
-
-        state_messages = [
-            msg
-            for msg in state_messages
-            if not (isinstance(msg, ToolMessage) and msg.additional_kwargs.get("internal_vs", False))
-        ]
-
-    return state_messages
-
-
-def should_continue(state: OptimizerState) -> Literal["vs_orchestrate", "tools", END]:
-    """Determine if graph should continue to VS orchestration, standard tools, or end
-
-    Implements dual-path routing:
-    - VS tools (optimizer_vs-*) → "vs_orchestrate" (internal pipeline, state storage)
-    - External tools → "tools" (standard execution, ToolMessages in history)
-    - No tools or all responded → END
-    """
-    messages = state["messages"]
-
-    if not messages or not hasattr(messages[-1], "tool_calls") or not messages[-1].tool_calls:
-        return END
-
-    # Extract tool call IDs with validation
-    tool_call_ids = {tc.get("id") for tc in messages[-1].tool_calls if isinstance(tc, dict) and tc.get("id")}
-    responded_tool_ids = {
-        msg.tool_call_id for msg in messages if isinstance(msg, ToolMessage) and hasattr(msg, "tool_call_id")
-    }
-
-    if not tool_call_ids - responded_tool_ids:
-        return END
-
-    # Extract tool names with validation
-    tool_names = {tc.get("name") for tc in messages[-1].tool_calls if isinstance(tc, dict) and tc.get("name")}
-    vs_tools = {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grade"}
-
-    # Route to VS orchestration if any VS tool called
-    if tool_names & vs_tools:
-        logger.info("Routing to vs_orchestrate for VS tools: %s", tool_names & vs_tools)
-        return "vs_orchestrate"
-
-    # Otherwise route to standard tool execution
-    logger.info("Routing to standard tools node for: %s", tool_names)
-    return "tools"
-
-
-#############################################################################
-# NODES and EDGES
-#############################################################################
-def custom_tool_node(tools):
-    """Custom tool node that injects Optimizer configurations"""
-
-    async def tool_node(state: OptimizerState, config: RunnableConfig):
-        """Custom tool node that injects Optimizer configurations into tool calls"""
-        messages = state["messages"]
-        last_message = messages[-1]
-
-        if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
-            return {"messages": []}
-
-        thread_id = config["configurable"]["thread_id"]
-        tool_map = {tool.name: tool for tool in tools}
-        tool_responses = []
-
-        for tool_call in last_message.tool_calls:
-            tool_name = tool_call["name"]
-            tool_args = tool_call["args"].copy()
-            tool_id = tool_call["id"]
-
-            if tool_name.startswith("optimizer_"):
-                tool_args = {**tool_args, "thread_id": thread_id}
-
-            try:
-                if tool_name in tool_map:
-                    tool = tool_map[tool_name]
-                    result = await tool.ainvoke(tool_args) if hasattr(tool, "ainvoke") else tool.invoke(tool_args)
-
-                    if isinstance(result, dict):
-                        result = json.dumps(result, indent=2)
-                    elif not isinstance(result, str):
-                        result = str(result)
-                else:
-                    result = f"Unknown tool: {tool_name}"
-
-                tool_responses.append(ToolMessage(content=result, tool_call_id=tool_id, name=tool_name))
-            except Exception as ex:
-                logger.error("Tool execution failed for %s: %s", tool_name, ex)
-                tool_responses.append(
-                    ToolMessage(
-                        content=f"Error executing {tool_name}: {str(ex)}", tool_call_id=tool_id, name=tool_name
-                    )
+            if tool_contents:
+                context_text = "\n\n".join(tool_contents)
+                result.append(
+                    HumanMessage(content=f"Here is relevant context from the knowledge base:\n\n{context_text}")
                 )
+            i = j  # Skip past all processed messages
+        elif isinstance(msg, ToolMessage):
+            # Skip orphaned ToolMessages
+            i += 1
+        else:
+            result.append(msg)
+            i += 1
 
-        return {"messages": tool_responses}
-
-    return tool_node
+    return result
 
 
-def _prepare_messages_for_completion(state: OptimizerState, config: RunnableConfig) -> list:
-    """Prepare messages for LLM completion, including system prompt and optional documents"""
-    if state.get("messages") and any(isinstance(msg, ToolMessage) for msg in state["messages"]):
-        messages = copy.deepcopy(state["messages"])
-        messages = _remove_system_prompt(messages)
+def _build_messages_for_llm(
+    state: OptimizerState, sys_prompt, use_history: bool = True, flatten_tool_calls: bool = True
+) -> list:
+    """Build message list for LLM with system prompt and history handling
+
+    Args:
+        state: The current graph state containing messages
+        sys_prompt: System prompt to prepend
+        use_history: Whether to include full history or just latest message
+        flatten_tool_calls: If True, convert tool_calls/tool patterns to regular messages.
+            This is needed for providers like OCI that don't handle tool_calls well.
+    """
+    messages = [SystemMessage(content=sys_prompt.content.text)]
+
+    if use_history:
+        state_messages = [msg for msg in state["messages"] if not isinstance(msg, SystemMessage)]
+        if flatten_tool_calls:
+            messages.extend(_flatten_tool_messages(state_messages))
+        else:
+            messages.extend(state_messages)
     else:
-        messages = state["cleaned_messages"]
+        # Only include ToolMessages and the latest user message
+        for msg in state["messages"]:
+            if isinstance(msg, ToolMessage):
+                messages.append(msg)
+        latest_message = state["messages"][-1]
+        if not isinstance(latest_message, ToolMessage):
+            messages.append(latest_message)
 
-    sys_prompt = config.get("metadata", {}).get("sys_prompt")
-    if state.get("documents") and state.get("documents") != "":
-        documents = state["documents"]
-        new_prompt = SystemMessage(content=f"{sys_prompt.content.text}\n\nRelevant Context:\n{documents}")
-        logger.info("Injecting %d chars of documents into system prompt", len(documents))
-    else:
-        new_prompt = SystemMessage(content=f"{sys_prompt.content.text}")
-
-    messages.insert(0, new_prompt)
-    logger.info("Sending Messages: %s", messages)
     return messages
 
 
-async def _accumulate_tool_calls(response, initial_chunk, initial_choice):
-    """Accumulate streaming tool call chunks until complete"""
-    accumulated_tool_calls = {}
+async def _call_llm(messages: list, ll_config: dict, stream: bool = False, tools: list = None):
+    """Call LiteLLM with messages and optional tools"""
+    openai_messages = convert_to_openai_messages(messages)
+    logger.debug("Message types: %s", [msg.get("role") for msg in openai_messages])
 
-    for tool_call_delta in initial_choice.tool_calls:
-        index = tool_call_delta.index
-        accumulated_tool_calls[index] = {
-            "id": getattr(tool_call_delta, "id", "") or "",
-            "name": getattr(tool_call_delta.function, "name", "") or "",
-            "arguments": getattr(tool_call_delta.function, "arguments", "") or "",
-        }
-
-    chunk = initial_chunk
-    # Continue until we get a finish_reason indicating completion
-    # Different providers use different finish reasons: 'tool_calls' (OpenAI) or 'stop' (Ollama)
-    while chunk.choices[0].finish_reason not in ("tool_calls", "stop"):
-        try:
-            chunk = await anext(response)
-        except StopAsyncIteration:
-            # Stream ended without explicit finish_reason
-            break
-
-        choice = chunk.choices[0].delta
-
-        if choice.tool_calls:
-            for tool_call_delta in choice.tool_calls:
-                index = tool_call_delta.index
-                if index in accumulated_tool_calls:
-                    if hasattr(tool_call_delta, "id") and tool_call_delta.id:
-                        accumulated_tool_calls[index]["id"] = tool_call_delta.id
-                    if hasattr(tool_call_delta.function, "name") and tool_call_delta.function.name:
-                        accumulated_tool_calls[index]["name"] = tool_call_delta.function.name
-                    if hasattr(tool_call_delta.function, "arguments") and tool_call_delta.function.arguments:
-                        accumulated_tool_calls[index]["arguments"] += tool_call_delta.function.arguments
-
-    return [
-        {
-            "name": data["name"],
-            "args": _parse_tool_arguments(data["arguments"]) or {},
-            "id": data["id"],
-            "type": "tool_call",
-        }
-        for data in accumulated_tool_calls.values()
-    ]
-
-
-async def initialise(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
-    """Initialize cleaned messages"""
-    return {"cleaned_messages": clean_messages(state, config)}
-
-
-def _build_completion_kwargs(messages: list, ll_raw: dict, tools: list) -> dict:
-    """Build kwargs for LiteLLM completion call
-
-    Args:
-        messages: Prepared messages for completion
-        ll_raw: Raw LLM configuration
-        tools: Available tools (may be empty)
-
-    Returns:
-        dict: Kwargs for acompletion()
-    """
-    completion_kwargs = {
-        "messages": convert_to_openai_messages(messages),
-        "stream": True,
-        **ll_raw
-    }
-
-    # Don't pass tools parameter when empty to prevent LiteLLM from forcing JSON format
+    kwargs = {"messages": openai_messages, **ll_config}
+    if stream:
+        kwargs["stream"] = True
     if tools:
-        completion_kwargs["tools"] = tools
+        kwargs["tools"] = tools
 
-    return completion_kwargs
-
-
-def _finalize_completion_response(full_response: list, full_text: str) -> dict:
-    """Transform streaming response into final completion format
-
-    Args:
-        full_response: List of response chunks
-        full_text: Concatenated content text
-
-    Returns:
-        dict: OpenAI-compatible completion response or None if no response
-    """
-    if not full_response:
-        return None
-
-    last_chunk = full_response[-1]
-    last_chunk.object = "chat.completion"
-    last_chunk.choices[0].message = {"role": "assistant", "content": full_text}
-    delattr(last_chunk.choices[0], "delta")
-    last_chunk.choices[0].finish_reason = "stop"
-
-    return last_chunk.model_dump()
-
-
-def _build_response_metadata(token_usage: dict, vs_metadata: dict) -> dict:
-    """Build response metadata from token usage and VS metadata
-
-    Args:
-        token_usage: Token usage statistics from LLM response
-        vs_metadata: Vector search metadata from state
-
-    Returns:
-        dict: Combined metadata (empty dict if no metadata)
-    """
-    return {
-        k: v
-        for k, v in [
-            ("token_usage", token_usage),
-            ("vs_metadata", vs_metadata),
-        ]
-        if v
-    }
-
-
-def _emit_completion_metadata(writer, final_response: dict, state: OptimizerState):
-    """Extract and emit token usage and completion via stream writer
-
-    Args:
-        writer: LangGraph stream writer
-        final_response: Final completion response dict
-        state: Current graph state (for vs_metadata)
-
-    Returns:
-        dict: response_metadata for AIMessage
-    """
-    token_usage = final_response.get("usage", {})
-    if token_usage:
-        writer({"token_usage": token_usage})
-        logger.info("Token usage written to stream: %s", token_usage)
-
-    writer({"completion": final_response})
-
-    # Build combined metadata
-    response_metadata = _build_response_metadata(
-        token_usage,
-        state.get("vs_metadata", {})
-    )
-
-    logger.info("AIMessage created with metadata: %s", response_metadata)
-    return response_metadata
+    return await litellm.acompletion(**kwargs)
 
 
 async def _stream_llm_response(response, writer):
-    """Stream LLM response chunks and accumulate content
-
-    Args:
-        response: AsyncGenerator from acompletion
-        writer: LangGraph stream writer
-
-    Returns:
-        tuple: (full_text, full_response_chunks, tool_calls_if_any)
-            - full_text: str or None (if empty/tool calls)
-            - full_response_chunks: list or None
-            - tool_calls_if_any: list or None
-    """
+    """Stream LLM response chunks and accumulate content"""
     full_response = []
     collected_content = []
 
@@ -475,414 +154,500 @@ async def _stream_llm_response(response, writer):
 
         # Handle empty response
         if chunk.choices[0].finish_reason == "stop" and choice.content is None and not collected_content:
-            return None, None, None  # Signal empty response
-
-        # Handle tool calls
-        if choice.tool_calls:
-            tool_calls = await _accumulate_tool_calls(response, chunk, choice)
-            return None, None, tool_calls
+            return None, None
 
         # Handle content streaming
         if choice.content is not None:
-            writer({"stream": choice.content})
-            collected_content.append(choice.content)
+            # Some providers (OCI/Cohere) send the full completed response in the final chunk with finish_reason='stop'.
+            # Skip content from any chunk that has finish_reason='stop' to avoid duplication.
+            if chunk.choices[0].finish_reason != "stop":
+                writer({"stream": choice.content})
+                collected_content.append(choice.content)
 
         full_response.append(chunk)
 
     full_text = "".join(collected_content)
-    return full_text, full_response, None
+    return full_text, full_response
 
 
-async def stream_completion(state: OptimizerState, config: RunnableConfig) -> OptimizerState:
-    """LiteLLM streaming wrapper - orchestrates LLM completion with streaming"""
+def _build_text_response(full_text: str, full_response: list, writer, state: OptimizerState) -> AIMessage:
+    """Build AIMessage for text response with metadata"""
+
+    if not full_response:
+        final_response = None
+    else:
+        last_chunk = full_response[-1]
+        last_chunk.object = "chat.completion"
+        last_chunk.choices[0].message = {
+            "role": "assistant",
+            "content": full_text,
+        }
+        delattr(last_chunk.choices[0], "delta")
+        last_chunk.choices[0].finish_reason = "stop"
+        final_response = last_chunk.model_dump()
+
+    # Emit completion + token usage
+    token_usage = final_response.get("usage", {}) if final_response else {}
+    response_metadata = {}
+    if token_usage:
+        writer({"token_usage": token_usage})
+        response_metadata["token_usage"] = token_usage
+
+    if final_response:
+        writer({"completion": final_response})
+
+    vs_metadata = state.get("vs_metadata", {})
+    if vs_metadata:
+        writer({"vs_metadata": vs_metadata})
+        response_metadata["vs_metadata"] = vs_metadata
+
+    return AIMessage(
+        content=full_text,
+        response_metadata=response_metadata,
+    )
+
+
+def _create_error_message(exception: Exception, context: str = "") -> AIMessage:
+    """Create user-friendly error wrapper around exception"""
+    logger.exception("Error %s", context or "in graph execution")
+
+    error_str = str(exception).split("Traceback (most recent call last):", maxsplit=1)[0].strip()
+    error_lines = [line.strip() for line in error_str.split("\n") if line.strip()]
+    error_msg = error_lines[0] if error_lines else type(exception).__name__
+
+    context_str = f" {context}" if context else ""
+    return AIMessage(
+        content=f"I'm sorry, I've run into a problem{context_str}: {error_msg}\n\n"
+        "If this appears to be a bug, please report it at: "
+        "https://github.com/oracle/ai-optimizer/issues"
+    )
+
+
+def _create_tool_message(
+    content: str | dict, tool_call_id: str, name: str = None, serialize_json: bool = False
+) -> ToolMessage:
+    """Create a ToolMessage with optional JSON serialization"""
+    if serialize_json and isinstance(content, dict):
+        content = json.dumps(content, cls=DecimalEncoder)
+    return ToolMessage(
+        content=str(content),
+        tool_call_id=tool_call_id,
+        name=name,
+    )
+
+
+def _create_ai_message_with_tool_calls(content: str, tool_calls: list) -> AIMessage:
+    """Create AIMessage with tool_calls (handles both raw and formatted tool calls)"""
+    formatted_calls = []
+    for tc in tool_calls:
+        if isinstance(tc, dict):
+            # Already formatted
+            formatted_calls.append(tc)
+        else:
+            # Raw tool call object from LiteLLM
+            formatted_calls.append(
+                {
+                    "id": tc.id,
+                    "name": tc.function.name,
+                    "args": json.loads(tc.function.arguments),
+                }
+            )
+    return AIMessage(content=content, tool_calls=formatted_calls)
+
+
+async def _execute_tool_call(tool_call, tools: list, messages: list, all_new_messages: list):
+    """Execute a single tool call and append result messages"""
+    logger.info("Executing tool: %s with args: %s", tool_call.function.name, tool_call.function.arguments)
+
+    # Find the tool object
+    tool_obj = next((t for t in tools if t.name == tool_call.function.name), None)
+    if not tool_obj:
+        logger.error("Tool not found: %s", tool_call.function.name)
+        tool_msg = _create_tool_message(
+            content=f"Error: Tool {tool_call.function.name} not found",
+            tool_call_id=tool_call.id,
+            name=tool_call.function.name,
+        )
+        messages.append(tool_msg)
+        all_new_messages.append(tool_msg)
+        return
+
+    # Execute the tool (async)
+    try:
+        args = json.loads(tool_call.function.arguments)
+        result = await tool_obj.ainvoke(args)
+        tool_msg = _create_tool_message(
+            content=str(result),
+            tool_call_id=tool_call.id,
+            name=tool_call.function.name,
+        )
+        messages.append(tool_msg)
+        all_new_messages.append(tool_msg)
+        logger.info("Tool executed successfully: %s", tool_call.function.name)
+        logger.info("Tool result: %s", str(result)[:500])  # First 500 chars
+    except Exception as ex:
+        logger.error("Tool execution failed: %s - %s", tool_call.function.name, ex)
+        tool_msg = _create_tool_message(
+            content=f"Error executing {tool_call.function.name}: {str(ex)}",
+            tool_call_id=tool_call.id,
+            name=tool_call.function.name,
+        )
+        messages.append(tool_msg)
+        all_new_messages.append(tool_msg)
+
+
+#############################################################################
+# Graph Nodes
+#############################################################################
+async def stream_completion(state: OptimizerState, config: RunnableConfig):
+    """Stream completion from LLM"""
     writer = get_stream_writer()
-    messages = _prepare_messages_for_completion(state, config)
 
     try:
-        ll_raw = config["configurable"]["ll_config"]
-        tools = config["metadata"].get("tools", [])
-        model_name = ll_raw.get("model", "unknown")
+        ll_config = config["configurable"]["ll_config"]
+        metadata = config.get("metadata", {})
+        sys_prompt = metadata.get("sys_prompt")
+        use_history = metadata.get("use_history", True)
 
-        logger.info("Streaming completion with model: %s, tools: %s", model_name, tools)
+        # Build message list
+        messages = _build_messages_for_llm(state, sys_prompt, use_history)
 
-        # Make LLM API call
-        completion_kwargs = _build_completion_kwargs(messages, ll_raw, tools)
-
-        try:
-            response = await acompletion(**completion_kwargs)
-        except Exception as ex:
-            logger.exception("Error calling LLM API")
-            raise ex
+        logger.info("Calling LiteLLM with %d messages (history: %s)", len(messages), use_history)
+        response = await _call_llm(messages, ll_config, stream=True)
 
         # Stream and accumulate response
-        full_text, full_response, tool_calls = await _stream_llm_response(response, writer)
-
-        # Build response based on LLM output
-        result_message = None
-
-        # Handle empty response
-        if full_text is None and tool_calls is None:
+        full_text, full_response = await _stream_llm_response(response, writer)
+        if full_text is None:
             result_message = AIMessage(content="I'm sorry, I was unable to produce a response.")
-
-        # Handle tool calls
-        elif tool_calls:
-            result_message = AIMessage(content="", tool_calls=tool_calls)
-
-        # Handle normal text response
         else:
-            # Finalize completion response
-            final_response = _finalize_completion_response(full_response, full_text)
-            logger.info("Final completion response: %s", final_response)
-
-            # Detect unreliable function calling
-            if tools:
-                is_unreliable, err_msg = _detect_unreliable_function_calling(
-                    tools, full_text, model_name
-                )
-                if is_unreliable:
-                    result_message = AIMessage(content=err_msg)
-
-            # Build normal response with metadata
-            if result_message is None:
-                response_metadata = _emit_completion_metadata(writer, final_response, state)
-                result_message = AIMessage(content=full_text, response_metadata=response_metadata)
-
+            result_message = _build_text_response(full_text, full_response, writer, state)
         return {"messages": [result_message]}
 
-    except APIConnectionError as ex:
-        error_msg = _create_error_message(ex, "connecting to LLM API")
-        return {"messages": [error_msg]}
+    except litellm.exceptions.APIConnectionError as ex:
+        return {"messages": [_create_error_message(ex, "connecting to LLM API")]}
     except Exception as ex:
-        error_msg = _create_error_message(ex, "generating completion")
-        return {"messages": [error_msg]}
+        return {"messages": [_create_error_message(ex, "generating completion")]}
 
 
-async def _vs_step_rephrase(thread_id: str, question: str, chat_history: list, use_history: bool) -> str:
-    """Execute rephrase step of VS pipeline
+async def vs_orchestrate(state: OptimizerState, config: RunnableConfig):
+    """Orchestrate vector search RAG pipeline"""
+    thread_id = config["configurable"]["thread_id"]
+    metadata = config.get("metadata", {})
+    vector_search = metadata.get("vector_search")
 
-    Returns rephrased question, or original question if rephrasing fails/disabled
-    """
-    if not use_history or len(chat_history) <= 2:
-        logger.info("Skipping rephrase (history disabled or insufficient)")
-        return question
+    logger.info("VS orchestrate starting (thread: %s)", thread_id)
 
-    logger.info("Rephrasing question with chat history (%d messages)", len(chat_history))
-    try:
+    # Remove old ToolMessages and their corresponding AIMessages with tool_calls
+    messages = [
+        msg
+        for msg in state["messages"]
+        if not isinstance(msg, ToolMessage) and not (isinstance(msg, AIMessage) and msg.tool_calls)
+    ]
+
+    # Extract user question from latest message
+    latest_message = messages[-1]
+    question = latest_message.content if hasattr(latest_message, "content") else str(latest_message)
+
+    # Build chat history for rephrase (exclude latest question and system messages)
+    chat_history = []
+    if vector_search.rephrase:
+        for msg in messages[:-1]:
+            if not isinstance(msg, SystemMessage):
+                role = "user" if msg.type == "human" else "assistant"
+                chat_history.append(f"{role}: {msg.content}")
+
+    # Step 1: Optionally rephrase the question
+    query = question
+    if vector_search.rephrase:
+        logger.info("Calling rephrase...")
         rephrase_result = await _vs_rephrase_impl(
             thread_id=thread_id,
             question=question,
-            chat_history=chat_history,
-            mcp_client="Optimizer-Internal",
-            model="graph-orchestrated",
+            chat_history=chat_history if chat_history else None,
+            mcp_client="Optimizer",
+            model="graph-orchestration",
         )
-
         if rephrase_result.status == "success" and rephrase_result.was_rephrased:
-            logger.info("Question rephrased: '%s' -> '%s'", question, rephrase_result.rephrased_prompt)
-            return rephrase_result.rephrased_prompt
+            query = rephrase_result.rephrased_prompt
+            logger.info("Query rephrased: '%s'", query)
 
-        logger.info("Question not rephrased (status: %s)", rephrase_result.status)
-        return question
-    except Exception as ex:
-        logger.error("Rephrase failed: %s (using original question)", ex)
-        return question
-
-
-def _vs_step_retrieve(thread_id: str, rephrased_question: str):
-    """Execute retrieve step of VS pipeline
-
-    Returns retrieval result, or raises exception if critical error occurs
-    """
-    logger.info("Retrieving documents for: %s", rephrased_question)
+    # Step 2: Retrieve documents
+    logger.info("Calling retriever with query: '%s'", query)
     retrieval_result = _vs_retrieve_impl(
         thread_id=thread_id,
-        question=rephrased_question,
-        mcp_client="Optimizer-Internal",
-        model="graph-orchestrated",
+        question=query,
+        mcp_client="Optimizer",
+        model="graph-orchestration",
     )
 
     if retrieval_result.status != "success":
-        error_msg = retrieval_result.error or "Unknown error"
-        logger.error("Retrieval failed: %s", error_msg)
+        logger.error("Retrieval failed: %s", retrieval_result.error)
+        # Return empty ToolMessage on failure
+        tool_message = _create_tool_message(
+            content="Vector search retrieval failed. Please try again.",
+            tool_call_id="vs_retriever",
+        )
+        return {"messages": messages + [tool_message]}
 
-        # Check for database connection errors - these are critical and should be surfaced to user
-        if "not connected to database" in error_msg.lower() or "dpy-1001" in error_msg.lower():
-            raise ConnectionError(
-                "Vector Search is enabled but the database connection has been lost. "
-                "Please reconnect to the database and try again."
-            )
+    documents = retrieval_result.documents
+    logger.info("Retrieved %d documents", len(documents))
 
-        # Check for no vector stores available - this should also be surfaced
-        if "no vector stores available" in error_msg.lower():
-            raise ValueError(
-                "Vector Search is enabled but no vector stores are available with enabled embedding models. "
-                "Please configure at least one vector store with an enabled embedding model."
-            )
-
-        # For other errors, return None (will result in transparent completion)
-        return None
-
-    logger.info(
-        "Retrieved %d documents from tables: %s",
-        retrieval_result.num_documents,
-        retrieval_result.searched_tables,
-    )
-    return retrieval_result
-
-
-async def _vs_step_grade(thread_id: str, question: str, documents: list, rephrased_question: str) -> dict:
-    """Execute grade step of VS pipeline
-
-    Returns dict with context_input and documents if relevant, empty dict otherwise
-    """
-    logger.info("Grading %d documents for relevance", len(documents))
-    try:
-        grading_result = await _vs_grade_impl(
+    # Step 3: Optionally grade documents
+    formatted_docs = ""
+    if vector_search.grade and documents:
+        logger.info("Calling grade...")
+        grade_result = await _vs_grade_impl(
             thread_id=thread_id,
-            question=question,
+            question=question,  # Use original question for grading
             documents=documents,
-            mcp_client="Optimizer-Internal",
-            model="graph-orchestrated",
+            mcp_client="Optimizer",
+            model="graph-orchestration",
         )
+        if grade_result.status == "success" and grade_result.relevant == "yes":
+            formatted_docs = grade_result.formatted_documents
+            logger.info("Documents graded as relevant")
+        else:
+            logger.info("Documents graded as not relevant")
+    else:
+        # No grading - format all documents
+        formatted_docs = "\n\n".join([doc["page_content"] for doc in documents])
 
-        if grading_result.status != "success":
-            logger.error("Grading failed: %s (defaulting to relevant)", grading_result.error)
-            return {
-                "context_input": rephrased_question,
-                "documents": grading_result.formatted_documents,
+    # Create AIMessage with tool_calls (required by OpenAI API)
+    ai_message = _create_ai_message_with_tool_calls(
+        content="",
+        tool_calls=[
+            {
+                "id": "vs_retriever",
+                "name": "optimizer_vs-retriever",
+                "args": {"question": query},
             }
+        ],
+    )
 
-        logger.info(
-            "Grading result: %s (grading_performed: %s)",
-            grading_result.relevant,
-            grading_result.grading_performed,
-        )
+    # Create ToolMessage with documents as JSON (client expects this format)
+    tool_message = _create_tool_message(
+        content={
+            "documents": documents,
+            "num_documents": len(documents),
+            "searched_tables": retrieval_result.searched_tables,
+            "formatted_text": formatted_docs if formatted_docs else "No relevant documents found.",
+        },
+        tool_call_id="vs_retriever",
+        name="optimizer_vs-retriever",
+        serialize_json=True,
+    )
 
-        if grading_result.relevant == "yes":
-            logger.info("Documents deemed relevant - storing in state")
-            return {
-                "context_input": rephrased_question,
-                "documents": grading_result.formatted_documents,
-            }
+    # Store metadata for UX display (preserved separately from context)
+    vs_metadata = {
+        "num_documents": len(documents),
+        "searched_tables": retrieval_result.searched_tables,
+        "context_input": query,
+    }
 
-        logger.info("Documents deemed NOT relevant - transparent completion (no VS context)")
-        return {"context_input": "", "documents": ""}
-    except Exception as ex:
-        logger.error("Grading exception: %s (defaulting to not relevant)", ex)
-        return {"context_input": "", "documents": ""}
-
-
-def _validate_vs_config(config: RunnableConfig) -> tuple[str, AIMessage | None]:
-    """Validate configuration for VS orchestration
-
-    Returns:
-        tuple: (thread_id, error_message) - error_message is None if valid
-    """
-    if "configurable" not in config:
-        logger.error("Missing 'configurable' in config")
-        error_msg = _create_error_message(ValueError("Missing required configuration"), "initializing vector search")
-        return "", error_msg
-
-    if "thread_id" not in config["configurable"]:
-        logger.error("Missing 'thread_id' in config")
-        error_msg = _create_error_message(ValueError("Missing session identifier"), "initializing vector search")
-        return "", error_msg
-
-    return config["configurable"]["thread_id"], None
+    return {
+        "messages": messages + [ai_message, tool_message],
+        "vs_metadata": vs_metadata,
+    }
 
 
-def _validate_vs_state(state: OptimizerState) -> tuple[list, AIMessage | None]:
-    """Validate state for VS orchestration
+def sqlcl_orchestrate(tools):
+    """Orchestrate SQL tool execution (true MCP pattern with multi-turn support)"""
 
-    Returns:
-        tuple: (messages, error_message) - error_message is None if valid
-    """
-    messages = state.get("messages", [])
-    if not messages:
-        logger.warning("No messages in state - skipping VS orchestration")
-        return [], None
+    async def execute_tools(state: OptimizerState, config: RunnableConfig):
+        """Execute SQL tools via LLM-driven tool calling with multi-turn loop"""
+        thread_id = config["configurable"]["thread_id"]
+        ll_config = config["configurable"]["ll_config"]
+        metadata = config.get("metadata", {})
+        sys_prompt = metadata.get("sys_prompt")
+        tool_defs = metadata.get("tools", [])  # OpenAI function definitions
+        use_history = metadata.get("use_history", True)
 
-    if not isinstance(messages, list):
-        logger.error("State messages is not a list: %s", type(messages))
-        error_msg = _create_error_message(
-            TypeError(f"Expected list, got {type(messages).__name__}"), "reading message history"
-        )
-        return [], error_msg
+        logger.info("SQLcl orchestrate starting (thread: %s)", thread_id)
 
-    return messages, None
+        # Build initial message list
+        messages = _build_messages_for_llm(state, sys_prompt, use_history)
 
+        # Track all messages created during orchestration
+        all_new_messages = []
+        max_iterations = 10  # Prevent infinite loops
 
-def _create_vs_tool_messages(messages: list, raw_documents: list, result: dict) -> list:
-    """Create ToolMessages for VS results
+        for iteration in range(max_iterations):
+            # Call LLM with tools bound (let LLM decide which tools to call)
+            sqlcl_tools = [t for t in tool_defs if "sqlcl" in t["function"]["name"]]
+            logger.info("Turn %d: Calling LLM with %d sqlcl tools", iteration + 1, len(sqlcl_tools))
+            response = await _call_llm(messages, ll_config, tools=sqlcl_tools)
 
-    Returns:
-        list: ToolMessages or single error message if serialization fails
-    """
-    tool_responses = []
-    last_message = messages[-1]
-
-    if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
-        return tool_responses
-
-    for tool_call in last_message.tool_calls:
-        tool_name = tool_call.get("name", "")
-        if tool_name in {"optimizer_vs-retriever", "optimizer_vs-rephrase", "optimizer_vs-grade"}:
+            logger.debug("Response received, extracting tool calls...")
+            # Extract tool calls from LLM response
             try:
-                tool_responses.append(
-                    ToolMessage(
-                        content=json.dumps(
-                            {"documents": raw_documents, "context_input": result["context_input"]}, cls=DecimalEncoder
-                        ),
-                        tool_call_id=tool_call["id"],
-                        name=tool_name,
-                        additional_kwargs={"internal_vs": True},
-                    )
-                )
-            except (TypeError, ValueError) as ex:
-                logger.exception("Failed to serialize VS results")
-                error_msg = _create_error_message(ex, "serializing vector search results")
-                return [error_msg]
-
-    return tool_responses
-
-
-async def vs_orchestrate(state: OptimizerState, config: RunnableConfig) -> dict:
-    """
-    Orchestrate internal VS pipeline: rephrase → retrieve → grade
-    Store results in state, NOT in message history (avoids context bloat)
-
-    Creates ToolMessages with raw documents for GUI, formatted string for LLM injection.
-    Emits VS metadata via stream writer for client consumption.
-    """
-    writer = get_stream_writer()
-    empty_result = {"context_input": "", "documents": ""}
-
-    # Validate config
-    thread_id, error_msg = _validate_vs_config(config)
-    if error_msg:
-        return {"context_input": "", "documents": "", "messages": [error_msg]}
-
-    logger.info("VS Orchestration started for thread: %s", thread_id)
-
-    # Validate state
-    messages, error_msg = _validate_vs_state(state)
-    if error_msg:
-        return {"context_input": "", "documents": "", "messages": [error_msg]}
-    if not messages:
-        return empty_result
-
-    # Execute VS pipeline
-    result, raw_documents, searched_tables = await _execute_vs_pipeline(thread_id, messages, config, empty_result)
-
-    # Build and emit VS metadata via stream writer for client display
-    vs_metadata = {}
-    if searched_tables or result.get("context_input"):
-        vs_metadata = {
-            "searched_tables": searched_tables,
-            "context_input": result.get("context_input", ""),
-            "num_documents": len(raw_documents),
-        }
-        writer({"vs_metadata": vs_metadata})
-        logger.info("VS metadata written to stream: %s", vs_metadata)
-
-    # Create ToolMessages
-    tool_responses = _create_vs_tool_messages(messages, raw_documents, result)
-
-    # If tool message creation returned error, return it
-    if tool_responses and isinstance(tool_responses[0], AIMessage):
-        return {"context_input": "", "documents": "", "messages": tool_responses}
-
-    # Combine state updates with ToolMessages and vs_metadata
-    result["messages"] = tool_responses
-    result["vs_metadata"] = vs_metadata  # Store for stream_completion to attach to AIMessage
-    return result
-
-
-async def _execute_vs_pipeline(
-    thread_id: str, messages: list, config: RunnableConfig, empty_result: dict
-) -> tuple[dict, list, list]:
-    """Execute the VS pipeline: rephrase → retrieve → grade
-
-    Returns:
-        tuple: (result dict, raw_documents list, searched_tables list)
-    """
-    raw_documents = []
-    searched_tables = []
-
-    try:
-        # Extract user question
-        question = None
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                question = msg.content
+                ai_msg_content = response.choices[0].message.content or ""
+                tool_calls = response.choices[0].message.tool_calls or []
+                logger.debug("Extracted: content_len=%d, tool_calls=%d", len(ai_msg_content), len(tool_calls))
+            except (AttributeError, IndexError) as ex:
+                logger.error("Failed to extract response: %s", ex)
+                logger.error("Response object: %s", response)
                 break
 
-        if not question:
-            logger.error("No user question found in message history")
-            return empty_result, raw_documents, searched_tables
+            if not tool_calls:
+                # LLM decided not to call any tools - we're done
+                logger.info("Turn %d: LLM did not call any tools, ending orchestration", iteration + 1)
+                break
 
-        logger.info("User question: %s", question)
+            logger.info("Turn %d: LLM called %d tool(s)", iteration + 1, len(tool_calls))
 
-        # Get chat history for rephrasing
-        chat_history = [msg.content for msg in messages if isinstance(msg, (HumanMessage, AIMessage))]
-        use_history = config["metadata"].get("use_history", True)
+            # Create AIMessage with tool_calls (required for OpenAI message format)
+            ai_message = _create_ai_message_with_tool_calls(
+                content=ai_msg_content,
+                tool_calls=tool_calls,
+            )
+            messages.append(ai_message)
+            all_new_messages.append(ai_message)
 
-        # Step 1: Rephrase
-        rephrased_question = await _vs_step_rephrase(thread_id, question, chat_history, use_history)
+            # Execute each tool and create ToolMessages
+            for tc in tool_calls:
+                await _execute_tool_call(tc, tools, messages, all_new_messages)
 
-        # Step 2: Retrieve
-        retrieval_result = _vs_step_retrieve(thread_id, rephrased_question)
-        if not retrieval_result or retrieval_result.num_documents == 0:
-            logger.info("No documents retrieved - transparent completion")
-            return empty_result, raw_documents, searched_tables
+            # Continue loop - LLM will see tool results and decide if it needs more tools
 
-        # Preserve raw documents and searched tables for client GUI
-        raw_documents = retrieval_result.documents
-        searched_tables = retrieval_result.searched_tables
+        logger.info("SQLcl orchestration completed after %d turn(s)", iteration + 1)
+        return {"messages": all_new_messages}
 
-        # Step 3: Grade
-        result = await _vs_step_grade(thread_id, question, retrieval_result.documents, rephrased_question)
-        return result, raw_documents, searched_tables
-
-    except Exception as ex:
-        error_msg = _create_error_message(ex, "during vector search orchestration")
-        return {"context_input": "", "documents": "", "messages": [error_msg]}, raw_documents, searched_tables
+    return execute_tools
 
 
-# #############################################################################
-# # GRAPH
-# #############################################################################
+def multitool(tools):
+    """Orchestrate both vector search and SQL tools together
+
+    Execution order:
+    1. VS orchestration (forced retrieval, ephemeral documents)
+    2. SQL orchestration (LLM-driven, persistent messages)
+
+    This preserves the forced retrieval pattern for VS while allowing
+    LLM-driven tool calling for SQL operations.
+    """
+
+    async def execute_multitool(state: OptimizerState, config: RunnableConfig):
+        thread_id = config["configurable"]["thread_id"]
+        logger.info("Multitool orchestration starting (thread: %s)", thread_id)
+
+        # Split tools by prefix
+        sql_tools = [t for t in tools if t.name.startswith("sqlcl_")]
+
+        logger.debug("SQL tools: %s", [t.name for t in sql_tools])
+
+        # Execute VS orchestration first (forced retrieval)
+        # Note: vs_orchestrate uses internal tools (rephrase, grade, retriever)
+        vs_result = await vs_orchestrate(state, config)
+
+        # Update state with VS messages so LLM can see the documents
+        # Messages are ephemeral (cleared next turn) but visible within this turn
+        vs_messages = vs_result.get("messages", [])
+        updated_state = {
+            **state,
+            "messages": state["messages"] + vs_messages,
+        }
+
+        # Filter metadata to only show SQL tools to LLM
+        sql_config = {
+            **config,
+            "metadata": {
+                **config.get("metadata", {}),
+                "tools": [t for t in config["metadata"]["tools"] if t["function"]["name"].startswith("sqlcl_")],
+            },
+        }
+
+        # Execute SQL orchestration with updated state (LLM-driven, multi-turn)
+        # LLM sees VS ToolMessage with documents and can decide if SQL is needed
+        sql_result = await sqlcl_orchestrate(sql_tools)(updated_state, sql_config)
+        sql_messages = sql_result.get("messages", [])
+
+        # Return both VS and SQL messages when SQL was used
+        # LLM may need both: documents for guidelines/context, SQL for current values
+        if sql_messages:
+            logger.info("SQL tools were used, returning both VS and SQL messages")
+            return {
+                "messages": vs_messages + sql_messages,
+                "vs_metadata": vs_result.get("vs_metadata", {}),
+            }
+        logger.info("No SQL tools used, returning only VS messages")
+        return {
+            "messages": vs_messages,
+            "vs_metadata": vs_result.get("vs_metadata", {}),
+        }
+
+    return execute_multitool
+
+
+def route_tools(
+    _: OptimizerState, config: RunnableConfig
+) -> Literal["vs_orchestrate", "sqlcl_orchestrate", "multitool", "stream_completion"]:
+    """Route to appropriate orchestrator based on tool configuration"""
+    tools = config["metadata"].get("tools", [])
+
+    if not tools:
+        logger.debug("No tools configured, routing to stream_completion")
+        return "stream_completion"
+
+    tool_names = [tool["function"]["name"] for tool in tools]
+    tool_config = {
+        "has_optimizer": any(name.startswith("optimizer_") for name in tool_names),
+        "has_sqlcl": any(name.startswith("sqlcl_") for name in tool_names),
+    }
+
+    if tool_config["has_optimizer"] and not tool_config["has_sqlcl"]:
+        logger.debug("Routing to vs_orchestrate")
+        return "vs_orchestrate"
+    if tool_config["has_sqlcl"] and not tool_config["has_optimizer"]:
+        logger.debug("Routing to sqlcl_orchestrate")
+        return "sqlcl_orchestrate"
+    if tool_config["has_optimizer"] and tool_config["has_sqlcl"]:
+        logger.debug("Routing to multitool")
+        return "multitool"
+
+    # Fallback: no recognized tools
+    logger.warning("No recognized tools detected, routing to stream_completion")
+    return "stream_completion"
+
+
+#############################################################################
+# MAIN
+#############################################################################
+graph_memory = InMemorySaver()
+
+
 def main(tools: list):
     """Define the graph with MCP tool nodes and dual-path routing"""
-    # Build the graph
     workflow = StateGraph(OptimizerState)
 
-    # Define the nodes
-    workflow.add_node("initialise", initialise)
+    # Add nodes
     workflow.add_node("stream_completion", stream_completion)
-    workflow.add_node("tools", custom_tool_node(tools))
-    workflow.add_node("vs_orchestrate", vs_orchestrate)  # Internal VS pipeline
+    workflow.add_node("vs_orchestrate", vs_orchestrate)
+    workflow.add_node("sqlcl_orchestrate", sqlcl_orchestrate(tools))
+    workflow.add_node("multitool", multitool(tools))
 
-    # Add Edges
-    workflow.add_edge(START, "initialise")
-    workflow.add_edge("initialise", "stream_completion")
-
-    # Conditional routing: should_continue() returns "vs_orchestrate", "tools", or END
+    # Wire up the graph with conditional routing from START
     workflow.add_conditional_edges(
-        "stream_completion",
-        should_continue,
+        START,
+        route_tools,
+        {
+            "vs_orchestrate": "vs_orchestrate",
+            "sqlcl_orchestrate": "sqlcl_orchestrate",
+            "multitool": "multitool",
+            "stream_completion": "stream_completion",  # No tools → go straight to completion
+        },
     )
 
-    # Both paths return to stream_completion for final response
-    workflow.add_edge("tools", "stream_completion")  # External tools path
-    workflow.add_edge("vs_orchestrate", "stream_completion")  # VS orchestration path
+    # All orchestrators route to stream_completion for final response
+    workflow.add_edge("vs_orchestrate", "stream_completion")
+    workflow.add_edge("sqlcl_orchestrate", "stream_completion")
+    workflow.add_edge("multitool", "stream_completion")
 
-    # Compile the graph and return it
+    # stream_completion routes to END
+    workflow.add_edge("stream_completion", END)
+
+    # Compile and return
     mcp_graph = workflow.compile(checkpointer=graph_memory)
-    logger.debug("Chatbot Graph Built with tools: %s", tools)
-    logger.info("Dual-path routing enabled: VS tools → vs_orchestrate, External tools → tools")
-    ## This will output the Graph in ascii; don't deliver uncommented
-    # mcp_graph.get_graph(xray=True).print_ascii()
-
+    logger.debug("Graph compiled with %d tools.", len(tools))
     return mcp_graph
 
 

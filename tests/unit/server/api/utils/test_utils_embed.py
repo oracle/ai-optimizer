@@ -169,7 +169,7 @@ class TestProcessMetadata:
         result = utils_embed.process_metadata(1, chunk)
 
         assert len(result) == 1
-        assert result[0].metadata["id"] == "test_1"
+        assert result[0].metadata["id"] == "test.pdf_1"
         assert result[0].metadata["filename"] == "test.pdf"
 
     def test_process_metadata_includes_file_metadata(self):
@@ -442,7 +442,11 @@ class TestRefreshVectorStoreFromBucket:
         """Should process objects and populate vector store."""
         mock_get_temp.return_value = tmp_path
         mock_get_object.return_value = str(tmp_path / "doc.pdf")
-        mock_load_split.return_value = ([LangchainDocument(page_content="test", metadata={})], [])
+        mock_load_split.return_value = (
+            [LangchainDocument(page_content="test", metadata={})],
+            [],
+            {"processed_files": [], "skipped_files": [], "total_chunks": 0},
+        )
 
         bucket_objects = [{"name": "doc.pdf", "size": 1000, "time_modified": "2024-01-01", "etag": "abc"}]
 
@@ -498,7 +502,7 @@ class TestLoadAndSplitDocuments:
         mock_get_loader.return_value = (mock_loader, True)
         mock_process.return_value = [LangchainDocument(page_content="Test", metadata={"id": "1"})]
 
-        result, _ = utils_embed.load_and_split_documents([str(test_file)], "default", 500, 50)
+        result, _, _ = utils_embed.load_and_split_documents([str(test_file)], "default", 500, 50)
 
         assert len(result) == 1
 
@@ -518,7 +522,7 @@ class TestLoadAndSplitDocuments:
         mock_process.return_value = [LangchainDocument(page_content="Test", metadata={})]
         mock_doc_to_json.return_value = str(tmp_path / "_test.json")
 
-        _, split_files = utils_embed.load_and_split_documents(
+        _, split_files, _ = utils_embed.load_and_split_documents(
             [str(test_file)], "default", 500, 50, write_json=True, output_dir=str(tmp_path)
         )
 

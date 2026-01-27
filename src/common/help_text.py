@@ -43,6 +43,19 @@ help_dict = {
     "vector_search": """
         Enable Vector Search Generation.
         """,
+    "vector_search_discovery": """
+        Dynamically discover Vector Stores for use in Retrieval Augmented Generation.
+        """,
+    "vector_search_rephrase": """
+        Rephrase the user prompt, based on context and history, for a more meaningful
+        Vector Search.  For example: 'Are you sure?' would be rephrased based on previous
+        interactions to produce better Vector Search results.
+        """,
+    "vector_search_grade": """
+        Grade the results from a Vector Search to determine their relevancy.  If it is
+        determined that the Vector Search results are not relevant to the user prompt,
+        discard them.
+        """,
     "rerank": """
         Organize the initially fetched documents based on their relevance to the question.
         Re-ranking ensures that the most relevant documents are prioritized for response

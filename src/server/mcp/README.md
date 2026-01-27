@@ -46,11 +46,21 @@ The MCP implementation provides:
 │        - Grade relevance                            │
 │        - State storage                              │
 │                ↓                      ↓             │
-│         stream_completion      stream_completion    │
-│                ↓                      ↓             │
-│               END                    END            │
+│        after_vs_orchestrate?   stream_completion    │
+│         ↓              ↓              ↓             │
+│      "tools"    "stream_completion"  END            │
+│         ↓              ↓                            │
+│    (execute)     stream_completion                  │
+│         ↓              ↓                            │
+│  stream_completion    END                           │
+│         ↓                                           │
+│        END                                          │
 └─────────────────────────────────────────────────────┘
 ```
+
+**Key Feature**: When the LLM requests both VS and external tools in a single turn,
+VS executes first, then external tools execute, then the LLM generates the final response.
+This enables efficient multi-tool collaboration without extra LLM round-trips.
 
 ### Directory Structure
 
@@ -63,7 +73,7 @@ mcp/
 │   ├── vs_retriever.py      # Vector search retrieval
 │   ├── vs_grade.py          # Document relevance grading
 │   ├── vs_rephrase.py       # Query rephrasing with context
-│   └── vs_tables.py         # Vector store discovery
+│   └── vs_discovery.py      # Vector store discovery
 ├── prompts/                 # MCP prompts (auto-discovered)
 │   ├── __init__.py
 │   ├── defaults.py          # Default system prompts
@@ -236,7 +246,7 @@ See [Complete Tool Reference](#9-complete-tool-reference) for detailed tool list
 | `optimizer_basic-default` | Basic chatbot | No tools enabled |
 | `optimizer_tools-default` | Tool-aware system prompt | Any tools enabled (VS, SQLcl, etc.) |
 | `optimizer_context-default` | Query rephrasing | VS rephrase tool needs context |
-| `optimizer_vs-table-selection` | Table selection | Smart retriever selecting vector stores |
+| `optimizer_vs-discovery` | Table selection | Smart retriever selecting vector stores |
 | `optimizer_vs-grade` | Document grading | Grading retrieved documents |
 | `optimizer_vs-rephrase` | Query rephrasing | Rephrasing with chat history |
 
@@ -271,11 +281,11 @@ Tools are filtered based on client settings before being presented to the LLM:
 - **Vector Search enabled**: Internal-only tools (`optimizer_vs-grade`, `optimizer_vs-rephrase`) hidden from LLM
 - **NL2SQL disabled**: All `sqlcl_*` tools removed
 
-**Configuration**: `Settings.tools_enabled` list (default: `["Vector Search", "NL2SQL"]`)
+**Configuration**: `Settings.tools_enabled` list (default: `[]` - empty means LLM only)
 
 **Effect on Tool Availability**:
-- **Both enabled**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-storage`, `sqlcl_*` tools
-- **Only Vector Search**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-storage`
+- **Both enabled**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-discovery`, `sqlcl_*` tools
+- **Only Vector Search**: LLM sees `optimizer_vs-retriever`, `optimizer_vs-discovery`
 - **Only NL2SQL**: LLM sees `sqlcl_*` tools only
 - **Neither enabled**: Basic chatbot (no tools)
 
@@ -312,9 +322,18 @@ The LLM (e.g., GPT-4o-mini, Claude) decides which tool to invoke based on questi
 
 **Multi-Tool Scenarios**:
 
-The LLM can chain tools sequentially:
-1. **Documentation first, then database**: "Based on our docs, what's the recommended SHMMAX? Then show me the current value."
-2. **Database first, then analysis**: "List all DBA users, then check if this matches security guidelines."
+The LLM can use multiple tools in two ways:
+
+1. **Parallel Execution** (single turn): LLM requests both VS and SQL tools at once
+   - Graph executes VS first (rephrase → retrieve → grade)
+   - Then executes SQL tools
+   - LLM receives all results and generates single synthesized response
+   - Example: "What tuning recommendations apply to my database?" → VS gets docs, SQL gets current values
+
+2. **Sequential Execution** (multiple turns): LLM chains tools across turns
+   - "Based on our docs, what's the recommended SHMMAX? Then show me the current value."
+   - First turn: VS returns recommendations
+   - Second turn: SQL returns current value
 
 ### 9. Complete Tool Reference
 
@@ -323,7 +342,7 @@ The LLM can chain tools sequentially:
 | Tool | Exposed to LLM | Location | Purpose | Returns |
 |------|---------------|----------|---------|---------|
 | `optimizer_vs-retriever` | ✅ Yes | `tools/vs_retriever.py` | Semantic search across vector stores (smart table selection, multi-table aggregation) | `VectorSearchResponse` with documents + metadata |
-| `optimizer_vs-storage` | ✅ Yes | `tools/vs_tables.py` | List available vector stores (filtered by enabled embedding models) | List of tables with alias, description, model |
+| `optimizer_vs-discovery` | ✅ Yes | `tools/vs_discovery.py` | List available vector stores (filtered by enabled embedding models) | List of tables with alias, description, model |
 | `optimizer_vs-grade` | ❌ No (internal) | `tools/vs_grade.py` | Grade document relevance (binary scoring: yes/no) | `VectorGradeResponse` with relevance + formatted docs |
 | `optimizer_vs-rephrase` | ❌ No (internal) | `tools/vs_rephrase.py` | Contextualize query with conversation history (only runs if >2 messages) | `VectorRephraseResponse` with rephrased query |
 
@@ -348,7 +367,8 @@ The LLM can chain tools sequentially:
 | "Show me all users created last month" | `sqlcl_query` | Specific data query with filter |
 | "What are the recommended PGA settings?" | `optimizer_vs-retriever` | Best practices from docs |
 | "What is the current value of PGA_AGGREGATE_TARGET?" | `sqlcl_query` | Current state query |
-| "Is our PGA configured per best practices?" | Both (sequential) | Docs for guidelines + DB for current value |
+| "Is our PGA configured per best practices?" | Both (parallel) | Docs for guidelines + DB for current value |
+| "Any tuning recommendations for my database?" | Both (parallel) | Docs for recommendations + DB for current state |
 
 ## Usage
 
@@ -438,24 +458,34 @@ The LLM can chain tools sequentially:
 
 ### Pattern 3: Multi-Tool Collaboration (Best Practices + Current State)
 
-**User Query**: *"Based on our documentation, what should PGA_AGGREGATE_TARGET be set to? Then show me the current value in our database."*
+**User Query**: *"What tuning recommendations apply to my database?"*
 
-**LLM Decision**: Requires both documentation AND database query → Sequential tool invocation
+**LLM Decision**: Requires both documentation AND database query → Parallel tool invocation
 
-**Flow**:
+**Flow** (Parallel Execution):
 ```
-1. LLM calls optimizer_vs-retriever(question="What should PGA_AGGREGATE_TARGET be set to?")
-2. VS Pipeline returns best practices (20% RAM for OLTP, 40-50% for DW)
-3. LLM generates partial response with recommendations
-4. LLM calls sqlcl_query(sql="SELECT value FROM v$parameter WHERE name = 'pga_aggregate_target'")
-5. SQL returns current value (e.g., 8GB)
-6. LLM synthesizes both results:
-   - Recommendations from docs: 13GB for OLTP @ 64GB RAM
-   - Current value: 8GB
-   - Analysis: Below recommended minimum
+1. LLM requests BOTH tools in single response:
+   - optimizer_vs-retriever(question="tuning recommendations")
+   - sqlcl_query(sql="SELECT name, value FROM v$parameter WHERE name LIKE '%pga%'")
+2. Graph routes to vs_orchestrate (VS tools detected)
+3. VS Pipeline executes:
+   - Rephrase → Retrieve → Grade
+   - Documents stored in state
+4. after_vs_orchestrate() detects pending SQL tools → routes to "tools"
+5. Tools node executes sqlcl_query
+   - ToolMessage with current values added to history
+6. stream_completion called ONCE with all results:
+   - VS documents injected into system prompt
+   - SQL ToolMessage in history
+7. LLM synthesizes both results in single response:
+   - Recommendations from docs: 3GB PGA optimal for OLTP
+   - Current value: 1.5GB
+   - Analysis: Below recommended, consider increasing
 ```
 
 **Result**: Comparison of best practices vs current configuration with actionable recommendations
+
+**Efficiency**: Single LLM call for final synthesis (vs 2+ calls in sequential pattern)
 
 ### Best Practices for Users
 
@@ -490,6 +520,35 @@ MCP tools can access configuration through the bootstrap system:
 Graph behavior configured in `launch_server.py`:
 - **Recursion limit**: Max tool call iterations (default: 50)
 - **Checkpointer**: Thread-based state persistence (default: `InMemorySaver`, can use persistent checkpointer)
+
+### Vector Search Configuration
+
+**Document Relevance Filtering**: The system supports two complementary approaches for filtering search results:
+
+1. **Score Threshold** (Recommended):
+   - Set `score_threshold: 0.5-0.7` (higher = stricter filtering)
+   - Set `score_threshold: 0` to disable filtering (retrieve all top_k documents)
+   - Default: `0.65`
+   - Deterministic, fast, user-controllable
+   - Based on vector similarity score from semantic search
+   - Works with `search_type: "Similarity"`
+   - Similarity scores normalized to [0, 1] range regardless of distance metric (COSINE, DOT, EUCLIDEAN)
+
+2. **LLM Grading** (Optional):
+   - Set `grade: true` to enable post-retrieval grading
+   - LLM evaluates if documents can answer the question
+   - More flexible but adds latency and cost
+   - Subject to LLM variability
+   - Can be used alongside score threshold for double filtering
+
+**Search Configuration**:
+- `search_type: "Similarity"` - Standard semantic search with optional score threshold
+- `search_type: "Maximal Marginal Relevance"` - Diversity-focused retrieval
+- `top_k: 8` (default) - Number of candidate documents to retrieve
+- `discovery: true` (default) - Automatic vector store selection via LLM
+- `rephrase: true` (default) - Query contextualization with chat history
+
+**Recommendation**: Start with `score_threshold: 0.65` and `grade: false`. Only enable LLM grading if you need more nuanced relevance determination beyond similarity scores.
 
 ## Key Design Patterns
 

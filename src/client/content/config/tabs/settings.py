@@ -78,10 +78,14 @@ def _render_download_settings_section() -> None:
     settings = get_settings(state.selected_sensitive_settings)
     st.json(settings, expanded=False)
     col_left, col_centre, _ = st.columns([3, 4, 3])
+    now = datetime.now()
+    filename = f"optimizer_settings_{now.strftime('%Y%m%d_%H%M%S')}.json"
     col_left.download_button(
-        label="Download Settings",
+        label="📥 Download Settings",
         data=save_settings(settings),
-        file_name="optimizer_settings.json",
+        file_name=filename,
+        mime="application/json",
+        key="download_settings",
     )
     col_centre.checkbox(
         "Include Sensitive Settings",
@@ -105,7 +109,11 @@ def _render_upload_settings_section() -> None:
             if differences:
                 st.subheader("Differences found:")
                 st.json(differences, expanded=True)
-                if st.button("Apply New Settings"):
+                if st.button(
+                    "📤 Apply New Settings",
+                    key="upload_settings",
+                    help="Import settings from the uploaded JSON file",
+                ):
                     apply_uploaded_settings(uploaded_settings)
                     time.sleep(3)
                     st.rerun()
@@ -321,7 +329,7 @@ def compare_settings(current, uploaded, path=""):
     return differences
 
 
-def apply_uploaded_settings(uploaded):
+def apply_uploaded_settings(uploaded) -> None:
     """Patch configuration to update the server side"""
     client_id = state.client_settings["client"]
     try:
@@ -377,7 +385,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     #     prompt_name = "optimizer_tools-default"
     ## Legacy Feature:
     if "Vector Search" in state.client_settings.get("tools_enabled", []):
-        prompt_name = "optimizer_vs-no-tools-default"
+        prompt_name = "optimizer_vs-tools-default"
     else:
         prompt_name = "optimizer_basic-default"
 
@@ -412,11 +420,13 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     )
 
     if file_name.endswith(".yaml"):
-        sys_prompt = json.dumps(sys_prompt, indent=True)  # Converts it into a valid JSON string (preserving quotes)
+        # Use yaml.dump to properly escape the sys_prompt for YAML
+        # default_flow_style=False creates a properly quoted string
+        sys_prompt_escaped = yaml.dump(sys_prompt).rstrip('\n...')  # Remove trailing newline and document end marker
 
         formatted_content = template_content.format(
             provider=provider,
-            sys_prompt=sys_prompt,
+            sys_prompt=sys_prompt_escaped,
             ll_model=ll_config,
             vector_search=embed_config,
             database_config=database_lookup[state.client_settings.get("database", {}).get("alias")],

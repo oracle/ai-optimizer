@@ -9,7 +9,6 @@ Uses hybrid approach:
 - Real Oracle database for connection/SQL execution tests
 - Mocks for pure Python logic tests (in-memory operations, exception handling)
 """
-
 # pylint: disable=too-few-public-methods
 
 from unittest.mock import patch, MagicMock
@@ -279,9 +278,7 @@ class TestExecuteSql:
 
     def test_execute_sql_with_binds(self, db_transaction):
         """execute_sql should pass binds to cursor (real database)."""
-        result = utils_databases.execute_sql(
-            db_transaction, "SELECT :val AS result FROM dual", {"val": "test_value"}
-        )
+        result = utils_databases.execute_sql(db_transaction, "SELECT :val AS result FROM dual", {"val": "test_value"})
 
         assert result[0] == ("test_value",)
 

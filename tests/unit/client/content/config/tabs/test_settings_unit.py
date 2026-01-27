@@ -102,9 +102,9 @@ class TestSpringAIObaas:
                     "text": "You are a helpful assistant.",
                 },
                 {
-                    "name": "optimizer_vs-no-tools-default",
-                    "title": "VS No Tools",
-                    "description": "Vector search prompt without tools",
+                    "name": "optimizer_vs-tools-default",
+                    "title": "VS Tools",
+                    "description": "Vector search prompt with tools",
                     "tags": [],
                     "text": "You are a vector search assistant.",
                 },
@@ -129,7 +129,7 @@ class TestSpringAIObaas:
         assert "{'model': 'gpt-4'}" in result
 
     def test_spring_ai_obaas_with_vector_search_tool_enabled(self):
-        """Test spring_ai_obaas uses vs-no-tools-default prompt when Vector Search is in tools_enabled"""
+        """Test spring_ai_obaas uses vs-tools-default prompt when Vector Search is in tools_enabled"""
         from client.content.config.tabs.settings import spring_ai_obaas
 
         mock_state = self._create_mock_session_state(tools_enabled=["Vector Search"])

@@ -82,10 +82,21 @@ async def _vs_rephrase_impl(
 
         # Get client settings
         client_settings = utils_settings.get_client(thread_id)
+
+        # Check if rephrasing is enabled in vector search settings
+        if not client_settings.vector_search.rephrase:
+            logger.info("Rephrasing disabled in vector search settings")
+            return RephrasePrompt(
+                original_prompt=question,
+                rephrased_prompt=question,
+                was_rephrased=False,
+                status="success",
+            )
+
         use_history = client_settings.ll_model.chat_history
 
         # Only rephrase if history is enabled and there's actual history
-        if use_history and chat_history and len(chat_history) > MIN_CHAT_HISTORY_FOR_REPHRASE:
+        if use_history and chat_history and len(chat_history) >= MIN_CHAT_HISTORY_FOR_REPHRASE:
             # Get context prompt (checks cache for overrides first)
             ctx_prompt_msg = default_prompts.get_prompt_with_override("optimizer_context-default")
             ctx_prompt_content = ctx_prompt_msg.content.text
