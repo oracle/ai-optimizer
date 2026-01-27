@@ -81,12 +81,8 @@ The IaC is packaged and attached to each release using GitHub Actions. Below is 
 1. Zip the IaC with Archives
     ```bash
     zip -r ai-optimizer-iac.zip . \
-      -x "terraform*" \
-      -x ".terraform*" \
-      -x "*/terraform*" \
-      -x "*/.terraform*" \
-      -x "cfgmgt/stage/*.*" \
-      -x "*.tfplan*"
+      -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" \
+      -x "cfgmgt/stage/*.*" "*.tfplan*" "examples/*" "*.md" ".gitignore"
     ```
 
 ## version.tf
