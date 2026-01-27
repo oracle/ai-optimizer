@@ -563,8 +563,8 @@ variables:
 outputGroups:
   - title: "Access the AI Optimizer and Toolkit"
     outputs:
-      - client_url
-      - server_url
+      - optimizer_client_url
+      - optimizer_server_url
 
   - title: "Kubernetes KUBECONFIG command"
     outputs:
@@ -572,11 +572,11 @@ outputGroups:
 
 ###########################################################################
 outputs:
-  client_url:
+  optimizer_client_url:
     title: "Web GUI"
     type: link
 
-  server_url:
+  optimizer_server_url:
     title: "Server API"
     type: link
 

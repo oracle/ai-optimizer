@@ -13,6 +13,7 @@ package_update: false
 packages:
   - python3.11
   - sqlcl
+  - zstd
 
 write_files:
   - path: /etc/systemd/system/ai-optimizer.service

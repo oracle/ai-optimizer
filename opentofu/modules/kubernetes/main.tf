@@ -95,6 +95,9 @@ resource "oci_containerengine_addon" "oraoper_addon" {
   addon_name                       = "OracleDatabaseOperator"
   cluster_id                       = oci_containerengine_cluster.default_cluster.id
   remove_addon_resources_on_delete = true
+  lifecycle {
+    create_before_destroy = false
+  }
 }
 
 resource "oci_containerengine_addon" "certmgr_addon" {
@@ -102,6 +105,9 @@ resource "oci_containerengine_addon" "certmgr_addon" {
   addon_name                       = "CertManager"
   cluster_id                       = oci_containerengine_cluster.default_cluster.id
   remove_addon_resources_on_delete = true
+  lifecycle {
+    create_before_destroy = false
+  }
 }
 
 resource "oci_containerengine_addon" "ingress_addon" {
@@ -120,6 +126,9 @@ resource "oci_containerengine_addon" "ingress_addon" {
   configurations {
     key   = "authType"
     value = "workloadIdentity"
+  }
+  lifecycle {
+    create_before_destroy = false
   }
 }
 
