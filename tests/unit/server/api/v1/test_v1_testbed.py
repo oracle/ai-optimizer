@@ -318,12 +318,14 @@ class TestProcessFileForTestset:
     """Tests for the _process_file_for_testset helper function."""
 
     @pytest.mark.asyncio
+    @patch("server.api.v1.testbed.utils_models.get_litellm_config")
     @patch("server.api.v1.testbed.utils_testbed.load_and_split")
     @patch("server.api.v1.testbed.utils_testbed.build_knowledge_base")
     async def test_process_file_writes_and_processes(
-        self, mock_build_kb, mock_load_split, tmp_path
+        self, mock_build_kb, mock_load_split, mock_get_config, tmp_path
     ):
         """_process_file_for_testset should write file and build knowledge base."""
+        mock_get_config.return_value = {"model": "test", "max_chunk_size": 512}
         mock_load_split.return_value = ["node1", "node2"]
         mock_testset = MagicMock()
 
@@ -359,12 +361,14 @@ class TestProcessFileForTestset:
         assert (tmp_path / "TestSet.jsonl").exists()
 
     @pytest.mark.asyncio
+    @patch("server.api.v1.testbed.utils_models.get_litellm_config")
     @patch("server.api.v1.testbed.utils_testbed.load_and_split")
     @patch("server.api.v1.testbed.utils_testbed.build_knowledge_base")
     async def test_process_file_appends_to_full_testsets(
-        self, mock_build_kb, mock_load_split, tmp_path
+        self, mock_build_kb, mock_load_split, mock_get_config, tmp_path
     ):
         """_process_file_for_testset should append to full_testsets file."""
+        mock_get_config.return_value = {"model": "test", "max_chunk_size": 512}
         mock_load_split.return_value = ["node1"]
         mock_testset = MagicMock()
 
@@ -396,6 +400,53 @@ class TestProcessFileForTestset:
         content = full_testsets.read_text()
         assert '{"question": "existing"}' in content
         assert '{"question": "Q1"}' in content
+
+    @pytest.mark.asyncio
+    @patch("server.api.v1.testbed.utils_models.get_litellm_config")
+    @patch("server.api.v1.testbed.utils_testbed.load_and_split")
+    @patch("server.api.v1.testbed.utils_testbed.build_knowledge_base")
+    async def test_process_file_passes_max_chunk_size_to_load_and_split(
+        self, mock_build_kb, mock_load_split, mock_get_config, tmp_path
+    ):
+        """_process_file_for_testset should pass max_chunk_size to load_and_split."""
+        # First call for ll_model, second for embed_model
+        mock_get_config.side_effect = [
+            {"llm_model": "gpt-4"},
+            {"model": "text-embedding-3", "max_chunk_size": 8192},
+        ]
+        mock_load_split.return_value = ["node1"]
+        mock_testset = MagicMock()
+
+        def save_side_effect(path):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write('{"question": "Q1"}\n')
+
+        mock_testset.save = save_side_effect
+        mock_build_kb.return_value = mock_testset
+
+        mock_file = MagicMock()
+        mock_file.read = AsyncMock(return_value=b"content")
+        mock_file.filename = "test.pdf"
+
+        full_testsets = tmp_path / "all_testsets.jsonl"
+        full_testsets.touch()
+
+        await testbed._process_file_for_testset(
+            file=mock_file,
+            temp_directory=tmp_path,
+            full_testsets=full_testsets,
+            name="TestSet",
+            questions=2,
+            ll_model="openai/gpt-4",
+            embed_model="openai/text-embedding-3",
+            oci_config=MagicMock(),
+        )
+
+        # Verify load_and_split was called with max_chunk_size from embed model config
+        mock_load_split.assert_called_once()
+        call_args = mock_load_split.call_args
+        # Second positional argument should be max_chunk_size (8192)
+        assert call_args[0][1] == 8192
 
 
 class TestCollectTestbedAnswers:
@@ -461,6 +512,86 @@ class TestCollectTestbedAnswers:
 
 class TestTestbedEvaluate:
     """Tests for the testbed_evaluate endpoint."""
+
+    @pytest.mark.asyncio
+    @patch("server.api.v1.testbed.pickle.dumps")
+    @patch("server.api.v1.testbed.utils_settings.get_client")
+    @patch("server.api.v1.testbed.utils_databases.get_client_database")
+    @patch("server.api.v1.testbed.utils_testbed.get_testset_qa")
+    @patch("server.api.v1.testbed.utils_embed.get_temp_directory")
+    @patch("server.api.v1.testbed.QATestset.load")
+    @patch("server.api.v1.testbed.utils_oci.get")
+    @patch("server.api.v1.testbed.utils_models.get_litellm_config")
+    @patch("server.api.v1.testbed.set_llm_model")
+    @patch("server.api.v1.testbed.get_prompt_with_override")
+    @patch("server.api.v1.testbed._collect_testbed_answers")
+    @patch("server.api.v1.testbed.evaluate")
+    @patch("server.api.v1.testbed.utils_testbed.insert_evaluation")
+    @patch("server.api.v1.testbed.utils_testbed.process_report")
+    @patch("server.api.v1.testbed.shutil.rmtree")
+    async def test_testbed_evaluate_calls_set_llm_model_with_config(
+        self,
+        _mock_rmtree,
+        mock_process_report,
+        mock_insert_eval,
+        mock_evaluate,
+        mock_collect_answers,
+        mock_get_prompt,
+        mock_set_llm,
+        mock_get_litellm,
+        mock_oci_get,
+        mock_qa_load,
+        mock_get_temp_dir,
+        mock_get_testset_qa,
+        mock_get_db,
+        mock_get_settings,
+        mock_pickle_dumps,
+        mock_db_connection,
+        tmp_path,
+    ):
+        """testbed_evaluate should call set_llm_model with config from get_litellm_config."""
+        mock_pickle_dumps.return_value = b"pickled_report"
+
+        mock_settings = MagicMock()
+        mock_settings.ll_model = MagicMock()
+        mock_settings.vector_search = MagicMock()
+        mock_settings.model_dump_json.return_value = "{}"
+        mock_get_settings.return_value = mock_settings
+
+        mock_db = MagicMock()
+        mock_db.connection = mock_db_connection
+        mock_get_db.return_value = mock_db
+
+        mock_get_testset_qa.return_value = MagicMock(qa_data=[{"q": "Q1"}])
+        mock_get_temp_dir.return_value = tmp_path
+        mock_qa_load.return_value = MagicMock()
+        mock_oci_get.return_value = MagicMock()
+
+        # Config returned by get_litellm_config with giskard=True includes llm_model
+        judge_config = {"llm_model": "openai/gpt-4", "api_key": "test"}
+        mock_get_litellm.return_value = judge_config
+
+        mock_prompt_msg = MagicMock()
+        mock_prompt_msg.content.text = "Judge prompt"
+        mock_get_prompt.return_value = mock_prompt_msg
+
+        mock_collect_answers.return_value = [MagicMock(message="Answer")]
+
+        mock_report = MagicMock()
+        mock_report.correctness = 0.85
+        mock_evaluate.return_value = mock_report
+
+        mock_insert_eval.return_value = "EID123"
+        mock_process_report.return_value = MagicMock()
+
+        await testbed.testbed_evaluate(
+            tid="TS001",
+            judge="openai/gpt-4",
+            client="test_client",
+        )
+
+        # Verify set_llm_model is called with the config (not with duplicate llm_model)
+        mock_set_llm.assert_called_once_with(**judge_config)
 
     @pytest.mark.asyncio
     @patch("server.api.v1.testbed.pickle.dumps")

@@ -18,7 +18,7 @@ from giskard.rag import generate_testset, KnowledgeBase, QATestset
 from giskard.rag.question_generators import simple_questions, complex_questions
 
 import server.api.utils.databases as utils_databases
-import server.api.utils.models as utils_models
+
 from common import schema
 from common import logging_config
 
@@ -220,36 +220,31 @@ def insert_evaluation(db_conn, tid, evaluated, correctness, settings, rag_report
     return utils_databases.execute_sql(db_conn, plsql, binds)
 
 
-def load_and_split(eval_file, chunk_size=2048):
+def load_and_split(eval_file, chunk_size=512):
     """Load and Split Document for Testbed"""
-    logger.info("Loading %s; Chunk Size: %i", eval_file, chunk_size)
+    chunk_overlap = int(chunk_size * 0.10)
+    effective_chunk_size = chunk_size - chunk_overlap
+    logger.info("Loading %s; Chunk Size: %i; Overlap: %i", eval_file, effective_chunk_size, chunk_overlap)
     loader = PdfReader(eval_file)
     documents = []
     for page in loader.pages:
         document = Document(text=page.extract_text())
         documents.append(document)
-    splitter = SentenceSplitter(chunk_size=chunk_size)
+    splitter = SentenceSplitter(chunk_size=effective_chunk_size, chunk_overlap=chunk_overlap)
     text_nodes = splitter(documents)
 
     return text_nodes
 
 
 def build_knowledge_base(
-    text_nodes: str, questions: int, ll_model: str, embed_model: str, oci_config: schema.OciSettings
+    text_nodes: str, questions: int, ll_model_config: dict, embed_model_config: dict
 ) -> QATestset:
     """Establish a temporary Knowledge Base"""
     logger.info("KnowledgeBase creation starting...")
-    logger.info("LL Model: %s; Embedding: %s", ll_model, embed_model)
 
     # Setup models, uses LiteLLM
-    ll_model_config = utils_models.get_litellm_config(
-        model_config={"model": ll_model}, oci_config=oci_config, giskard=True
-    )
-    set_llm_model(llm_model=ll_model, **ll_model_config)
-    embed_model_config = utils_models.get_litellm_config(
-        model_config={"model": embed_model}, oci_config=oci_config, giskard=True
-    )
-    set_embedding_model(model=embed_model, **embed_model_config)
+    set_llm_model(**ll_model_config)
+    set_embedding_model(**embed_model_config)
 
     knowledge_base_df = pd.DataFrame([node.text for node in text_nodes], columns=["text"])
     knowledge_base = KnowledgeBase(data=knowledge_base_df)
