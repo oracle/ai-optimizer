@@ -340,6 +340,91 @@ class TestGetLitellmConfig:
         assert result["oci_compartment_id"] == "ocid1.compartment.oc1..test"
 
 
+    @patch("server.api.utils.models._get_full_config")
+    @patch("server.api.utils.models.litellm.get_supported_openai_params")
+    def test_get_litellm_config_giskard_includes_max_chunk_size(self, mock_get_params, mock_get_full):
+        """get_litellm_config should include max_chunk_size when giskard=True."""
+        mock_get_full.return_value = (
+            {
+                "model": "openai/text-embedding-3-small",
+                "type": "embed",
+                "max_chunk_size": 8192,
+                "api_base": "https://api.openai.com/v1",
+            },
+            "openai",
+        )
+        mock_get_params.return_value = ["temperature"]
+
+        model_config = {"model": "openai/text-embedding-3-small"}
+
+        result = utils_models.get_litellm_config(model_config, None, giskard=True)
+
+        assert result["max_chunk_size"] == 8192
+
+    @patch("server.api.utils.models._get_full_config")
+    @patch("server.api.utils.models.litellm.get_supported_openai_params")
+    def test_get_litellm_config_giskard_ll_renames_model_to_llm_model(self, mock_get_params, mock_get_full):
+        """get_litellm_config should rename model to llm_model for ll type when giskard=True."""
+        mock_get_full.return_value = (
+            {
+                "model": "openai/gpt-4",
+                "type": "ll",
+                "api_base": "https://api.openai.com/v1",
+            },
+            "openai",
+        )
+        mock_get_params.return_value = ["temperature"]
+
+        model_config = {"model": "openai/gpt-4"}
+
+        result = utils_models.get_litellm_config(model_config, None, giskard=True)
+
+        assert "llm_model" in result
+        assert "model" not in result
+
+    @patch("server.api.utils.models._get_full_config")
+    @patch("server.api.utils.models.litellm.get_supported_openai_params")
+    def test_get_litellm_config_ollama_embed_keeps_ollama_prefix(self, mock_get_params, mock_get_full):
+        """get_litellm_config should NOT replace ollama/ with ollama_chat/ for embed models."""
+        mock_get_full.return_value = (
+            {
+                "model": "ollama/mxbai-embed-large",
+                "type": "embed",
+                "max_chunk_size": 512,
+                "api_base": "http://localhost:11434",
+            },
+            "ollama",
+        )
+        mock_get_params.return_value = []
+
+        model_config = {"model": "ollama/mxbai-embed-large"}
+
+        result = utils_models.get_litellm_config(model_config, None)
+
+        assert result["model"] == "ollama/mxbai-embed-large"
+        assert "ollama_chat" not in result["model"]
+
+    @patch("server.api.utils.models._get_full_config")
+    @patch("server.api.utils.models.litellm.get_supported_openai_params")
+    def test_get_litellm_config_ollama_ll_uses_ollama_chat(self, mock_get_params, mock_get_full):
+        """get_litellm_config should replace ollama/ with ollama_chat/ for ll models."""
+        mock_get_full.return_value = (
+            {
+                "model": "ollama/llama3",
+                "type": "ll",
+                "api_base": "http://localhost:11434",
+            },
+            "ollama",
+        )
+        mock_get_params.return_value = []
+
+        model_config = {"model": "ollama/llama3"}
+
+        result = utils_models.get_litellm_config(model_config, None)
+
+        assert result["model"] == "ollama_chat/llama3"
+
+
 class TestGetClientEmbed:
     """Tests for the get_client_embed function."""
 

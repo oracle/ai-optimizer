@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import pickle
 import shutil
-
+from pathlib import Path
 from datetime import datetime
 import json
 from typing import Optional
@@ -139,7 +139,14 @@ async def testbed_upsert_testsets(
 
 
 async def _process_file_for_testset(
-    file, temp_directory, full_testsets, name, questions, ll_model, embed_model, oci_config
+    file: UploadFile,
+    temp_directory: Path,
+    full_testsets: Path,
+    name: str,
+    questions: int,
+    ll_model: str,
+    embed_model: str,
+    oci_config: schema.OciSettings,
 ):
     """Process a single uploaded file and generate testset"""
     # Read and save file content
@@ -149,9 +156,19 @@ async def _process_file_for_testset(
     with open(filename, "wb") as file_handle:
         file_handle.write(file_content)
 
+    # Get Model Configurations
+    ll_model_config = utils_models.get_litellm_config(
+        model_config={"model": ll_model}, oci_config=oci_config, giskard=True
+    )
+    embed_model_config = utils_models.get_litellm_config(
+        model_config={"model": embed_model}, oci_config=oci_config, giskard=True
+    )
+
     # Process file for knowledge base
-    text_nodes = utils_testbed.load_and_split(filename)
-    test_set = utils_testbed.build_knowledge_base(text_nodes, questions, ll_model, embed_model, oci_config)
+    text_nodes = utils_testbed.load_and_split(filename, embed_model_config["max_chunk_size"])
+    test_set = utils_testbed.build_knowledge_base(
+        text_nodes, questions, ll_model_config, embed_model_config
+    )
 
     # Save test set
     test_set_filename = temp_directory / f"{name}.jsonl"
@@ -275,7 +292,7 @@ async def testbed_evaluate(
     oci_config = utils_oci.get(client)
 
     judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
-    set_llm_model(llm_model=judge, **judge_config)
+    set_llm_model(**judge_config)
 
     # Get judge prompt from MCP (allows override via Prompt Engineering page)
     judge_prompt_message = get_prompt_with_override("optimizer_testbed-judge")

@@ -68,7 +68,7 @@ spec:
       {{- if eq (include "server.database.isADBS" .) "true" }}
       - name: tns-admin
         secret:
-          secretName: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}
+          secretName: {{ include "server.database.adbTnsAdminSecret" . }}
       {{- end }}
 {{- end }}
 {{- end }}

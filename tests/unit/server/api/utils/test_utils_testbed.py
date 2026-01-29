@@ -234,25 +234,75 @@ class TestLoadAndSplit:
         mock_splitter_instance.return_value = ["node1", "node2"]
         mock_splitter.return_value = mock_splitter_instance
 
+        # chunk_size=1024, overlap=10% (102), effective_chunk_size=922
         utils_testbed.load_and_split("/path/to/doc.pdf", chunk_size=1024)
 
         mock_reader.assert_called_once_with("/path/to/doc.pdf")
-        mock_splitter.assert_called_once_with(chunk_size=1024)
+        mock_splitter.assert_called_once_with(chunk_size=922, chunk_overlap=102)
+
+    @patch("server.api.utils.testbed.PdfReader")
+    @patch("server.api.utils.testbed.SentenceSplitter")
+    def test_load_and_split_calculates_overlap_correctly(self, mock_splitter, mock_reader):
+        """Should calculate 10% overlap from chunk_size."""
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "Page content"
+        mock_reader.return_value.pages = [mock_page]
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.return_value = []
+        mock_splitter.return_value = mock_splitter_instance
+
+        # chunk_size=500, overlap=10% (50), effective_chunk_size=450
+        utils_testbed.load_and_split("/path/to/doc.pdf", chunk_size=500)
+
+        mock_splitter.assert_called_once_with(chunk_size=450, chunk_overlap=50)
+
+    @patch("server.api.utils.testbed.PdfReader")
+    @patch("server.api.utils.testbed.SentenceSplitter")
+    def test_load_and_split_with_small_chunk_size(self, mock_splitter, mock_reader):
+        """Should handle small chunk sizes correctly."""
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "Page content"
+        mock_reader.return_value.pages = [mock_page]
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.return_value = []
+        mock_splitter.return_value = mock_splitter_instance
+
+        # chunk_size=100, overlap=10% (10), effective_chunk_size=90
+        utils_testbed.load_and_split("/path/to/doc.pdf", chunk_size=100)
+
+        mock_splitter.assert_called_once_with(chunk_size=90, chunk_overlap=10)
+
+    @patch("server.api.utils.testbed.PdfReader")
+    @patch("server.api.utils.testbed.SentenceSplitter")
+    def test_load_and_split_uses_default_chunk_size(self, mock_splitter, mock_reader):
+        """Should use default chunk_size of 512 when not specified."""
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "Page content"
+        mock_reader.return_value.pages = [mock_page]
+
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.return_value = []
+        mock_splitter.return_value = mock_splitter_instance
+
+        # Default chunk_size=512, overlap=10% (51), effective_chunk_size=461
+        utils_testbed.load_and_split("/path/to/doc.pdf")
+
+        mock_splitter.assert_called_once_with(chunk_size=461, chunk_overlap=51)
 
 
 class TestBuildKnowledgeBase:
     """Tests for the build_knowledge_base function."""
 
-    @patch("server.api.utils.testbed.utils_models.get_litellm_config")
     @patch("server.api.utils.testbed.set_llm_model")
     @patch("server.api.utils.testbed.set_embedding_model")
     @patch("server.api.utils.testbed.KnowledgeBase")
     @patch("server.api.utils.testbed.generate_testset")
     def test_build_knowledge_base_success(
-        self, mock_generate, mock_kb, mock_set_embed, mock_set_llm, mock_get_config, make_oci_config
+        self, mock_generate, mock_kb, mock_set_embed, mock_set_llm
     ):
         """Should create knowledge base and generate testset."""
-        mock_get_config.return_value = {"api_key": "test"}
         mock_testset = MagicMock()
         mock_generate.return_value = mock_testset
 
@@ -260,18 +310,18 @@ class TestBuildKnowledgeBase:
         mock_text_node.text = "Sample text"
         text_nodes = [mock_text_node]
 
-        oci_config = make_oci_config()
+        ll_model_config = {"llm_model": "openai/gpt-4", "api_key": "test"}
+        embed_model_config = {"model": "openai/text-embedding-3-small", "api_key": "test"}
 
         result = utils_testbed.build_knowledge_base(
             text_nodes,
             questions=5,
-            ll_model="openai/gpt-4",
-            embed_model="openai/text-embedding-3-small",
-            oci_config=oci_config,
+            ll_model_config=ll_model_config,
+            embed_model_config=embed_model_config,
         )
 
-        mock_set_llm.assert_called_once()
-        mock_set_embed.assert_called_once()
+        mock_set_llm.assert_called_once_with(**ll_model_config)
+        mock_set_embed.assert_called_once_with(**embed_model_config)
         mock_kb.assert_called_once()
         mock_generate.assert_called_once()
         assert result == mock_testset

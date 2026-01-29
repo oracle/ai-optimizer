@@ -1,5 +1,5 @@
-## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent tolerations ollama pplx
 
 apiVersion: apps/v1
@@ -65,8 +65,8 @@ spec:
             - name: DB_WALLET_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
-                  key: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
+                  name: {{ include "server.database.adbWalletPassSecret" . }}
+                  key: {{ include "server.database.adbWalletPassSecretKey" . }}
               {{- end }}
             {{- end }}
             {{- if .Values.ollama.enabled }}
@@ -134,7 +134,7 @@ spec:
         {{- if eq (include "server.database.isADBS" .) "true" }}
         - name: tns-admin
           secret:
-            secretName: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}
+            secretName: {{ include "server.database.adbTnsAdminSecret" . }}
         {{- end }}
         {{- if and .Values.server.oci_config .Values.server.oci_config.fileSecretName }}
         - name: oci-config

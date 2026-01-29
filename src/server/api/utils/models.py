@@ -261,7 +261,8 @@ def get_litellm_config(
         litellm_config.pop("presence_penalty", None)
         litellm_config.pop("frequency_penalty", None)
         # Change any ollama providers to ollama_chat for tool calling support
-        model_config["model"] = model_config["model"].replace("ollama/", "ollama_chat/", 1)
+        if full_model_config["type"] == "ll":
+            model_config["model"] = model_config["model"].replace("ollama/", "ollama_chat/", 1)
 
     litellm_config.update(
         {"model": model_config["model"], "api_base": full_model_config.get("api_base"), "drop_params": True}
@@ -294,7 +295,10 @@ def get_litellm_config(
         litellm_config.update(oci_params)
 
     if giskard:
-        litellm_config.pop("model", None)
+        if full_model_config["type"] == "ll":
+            litellm_config["llm_model"] = litellm_config.pop("model", None)
+        if full_model_config["type"] == "embed" and full_model_config.get("max_chunk_size"):
+            litellm_config["max_chunk_size"] = full_model_config["max_chunk_size"]
         litellm_config.pop("temperature", None)
         litellm_config.pop("max_tokens", None)
 
