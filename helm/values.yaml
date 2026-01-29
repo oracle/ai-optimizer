@@ -1,5 +1,5 @@
-## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore ollama
 
 # fullnameOverride: will override the default naming convention: <release-name>-<chart-name>
@@ -92,6 +92,23 @@ server:
     oci:
       # -- OCID of the Autonomous Database
       ocid: ""
+
+    # -- For ADB-S, configuration for using existing secrets instead of creating new ones.
+    # This is useful when deploying as a subchart of another chart (e.g., obaas) that
+    # already manages the ADB wallet secrets.
+    adb:
+      # -- Set to true to use existing ADB secrets instead of creating new ones.
+      # When true, the chart will NOT create AutonomousDatabase or wallet-pass resources,
+      # assuming they already exist with the standard naming convention:
+      # {Release.Name}-adb-tns-admin-{Release.Revision} and {Release.Name}-adb-wallet-pass-{Release.Revision}
+      useExisting: false
+      # -- (Optional) Override the TNS admin secret name. If empty, uses default naming.
+      tnsAdminSecretName: ""
+      # -- (Optional) Override the wallet password secret name. If empty, uses default naming.
+      walletPassSecretName: ""
+      # -- (Optional) Key within walletPassSecretName that contains the password.
+      # If not specified, defaults to the secret name.
+      walletPassSecretKey: ""
 
     # -- For OTHER; Database connectivity
     # Either provide 'dsn' OR all of (host, port, service_name)

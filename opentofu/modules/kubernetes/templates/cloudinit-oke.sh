@@ -1,6 +1,6 @@
 #!/bin/bash
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
 ## https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/gettingmetadata.htm

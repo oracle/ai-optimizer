@@ -1,10 +1,12 @@
-## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent ocid
 
 # AutonomousDatabase Operator Resource (ADB-S)
+# Skip creating this resource if using existing ADB secrets (e.g., from obaas chart)
 {{- if .Values.server.database }}
 {{- if eq (include "server.database.isADBS" .) "true" }}
+{{- if ne (include "server.database.useExistingAdbSecrets" .) "true" }}
 apiVersion: database.oracle.com/v4
 kind: AutonomousDatabase
 metadata:
@@ -17,10 +19,10 @@ spec:
   details:
     id: {{ .Values.server.database.oci.ocid }}
   wallet:
-    name: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}
+    name: {{ include "server.database.adbTnsAdminSecret" . }}
     password:
       k8sSecret:
-        name: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
+        name: {{ include "server.database.adbWalletPassSecret" . }}
   {{- if .Values.server.oci_config }}
   ociConfig:
     configMapName: {{ .Values.server.oci_config.configMapName | default (printf "%s-oci-config" .Release.Name) }}
@@ -28,5 +30,6 @@ spec:
     secretName: {{ .Values.server.oci_config.keySecretName }}
     {{- end }}
   {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
