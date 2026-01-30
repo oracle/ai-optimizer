@@ -92,25 +92,21 @@ def show_vector_search_refs(context, vs_metadata=None) -> None:
         with ref_col.popover(popover_label):
             logger.debug("Chunk Content: %s", chunk)
 
-            # Show score metric if available
-            if similarity_score is not None:
-                st.metric(
-                    "Similarity Score",
-                    f"{similarity_score:.3f}",
-                    help="Higher score = more relevant (1.0 = perfect match)",
-                )
-
             st.subheader("Reference Text", divider="red")
             st.markdown(chunk["page_content"])
-            try:
-                ref_src.add(chunk["metadata"]["filename"])
-                st.subheader("Metadata", divider="red")
-                st.markdown(f"File:  {chunk['metadata']['source']}")
-                st.markdown(f"Chunk: {chunk['metadata']['page']}")
-                if similarity_score is not None:
-                    st.markdown(f"Score: {similarity_score:.3f}")
-            except KeyError:
-                logger.error("Chunk Metadata NOT FOUND!!")
+            metadata = chunk.get("metadata", {})
+            filename = metadata.get("filename")
+            if filename:
+                ref_src.add(filename)
+            st.subheader("Metadata", divider="red")
+            st.markdown(f"Document:  {metadata.get('source', 'N/A')}")
+            st.markdown(f"Document Page:  {metadata.get('page_label', 'N/A')}")
+            st.markdown(f"Vector Storage Chunk: {metadata.get('page', 'N/A')}")
+            st.markdown(
+                f"Similarity Score: {similarity_score:.3f}"
+                if similarity_score is not None
+                else "Similarity Score: N/A"
+            )
 
     # Display Vector Search details in expander
     if vs_metadata or ref_src:
