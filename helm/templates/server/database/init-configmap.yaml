@@ -3,7 +3,7 @@
 # spell-checker: ignore nindent freepdb1 oserror sidb spfile sqlplus adbs oraclevcn 
 # spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace
 
-{{- if .Values.server.database }}
+{{- if and .Values.server.database .Values.server.database.type }}
 ---
 # Database Initialization Scripts ConfigMap
 apiVersion: v1
