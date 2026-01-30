@@ -37,8 +37,8 @@ spec:
   rules:
     - http:
         paths:
-          - pathType: ImplementationSpecific
-            path: {{ include "global.getPath" . }}
+          - pathType: Prefix
+            path: {{ include "global.getPath" . | trimSuffix "/" | default "/" }}
             backend:
               {{- if semverCompare ">=1.19-0" $.Capabilities.KubeVersion.GitVersion }}
               service:

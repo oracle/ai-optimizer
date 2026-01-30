@@ -91,15 +91,21 @@ Define the API Key Secret with Defaults
 
 {{/* ******************************************
 Set the path based on baseUrlPath
+Always returns a path with leading and trailing slashes for proper concatenation.
 *********************************************** */}}
 {{- define "global.getPath" -}}
   {{- $baseUrlPath := .Values.global.baseUrlPath | default "" -}}
   {{- if eq $baseUrlPath "" -}}
     /
-  {{- else if not (hasPrefix "/" $baseUrlPath) -}}
-    {{- printf "/%s" $baseUrlPath -}}
   {{- else -}}
-    {{- $baseUrlPath -}}
+    {{- $path := $baseUrlPath -}}
+    {{- if not (hasPrefix "/" $path) -}}
+      {{- $path = printf "/%s" $path -}}
+    {{- end -}}
+    {{- if not (hasSuffix "/" $path) -}}
+      {{- $path = printf "%s/" $path -}}
+    {{- end -}}
+    {{- $path -}}
   {{- end -}}
 {{- end -}}
 
