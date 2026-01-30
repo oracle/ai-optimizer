@@ -102,7 +102,11 @@ def show_vector_search_refs(context, vs_metadata=None) -> None:
             st.markdown(f"Document:  {metadata.get('source', 'N/A')}")
             st.markdown(f"Document Page:  {metadata.get('page_label', 'N/A')}")
             st.markdown(f"Vector Storage Chunk: {metadata.get('page', 'N/A')}")
-            st.markdown(f"Similarity Score: {similarity_score:.3f}" if similarity_score is not None else "Similarity Score: N/A")
+            st.markdown(
+                f"Similarity Score: {similarity_score:.3f}"
+                if similarity_score is not None
+                else "Similarity Score: N/A"
+            )
 
     # Display Vector Search details in expander
     if vs_metadata or ref_src:
