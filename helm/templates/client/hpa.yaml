@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent
 
-{{- if .Values.server.autoscaling.enabled }}
+{{- if and .Values.client.enabled .Values.client.autoscaling.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -15,23 +15,23 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "global.fullname" . }}-client
-  minReplicas: {{ .Values.server.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.server.autoscaling.maxReplicas }}
+  minReplicas: {{ .Values.client.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.client.autoscaling.maxReplicas }}
   metrics:
-    {{- if .Values.server.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if .Values.client.autoscaling.targetCPUUtilizationPercentage }}
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: {{ .Values.server.autoscaling.targetCPUUtilizationPercentage }}
+          averageUtilization: {{ .Values.client.autoscaling.targetCPUUtilizationPercentage }}
     {{- end }}
-    {{- if .Values.server.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- if .Values.client.autoscaling.targetMemoryUtilizationPercentage }}
     - type: Resource
       resource:
         name: memory
         target:
           type: Utilization
-          averageUtilization: {{ .Values.server.autoscaling.targetMemoryUtilizationPercentage }}
+          averageUtilization: {{ .Values.client.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
 {{- end }}

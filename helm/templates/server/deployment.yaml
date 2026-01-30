@@ -95,7 +95,7 @@ spec:
           {{- if .Values.server.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: {{ include "global.getPath" . }}v1/liveness
+              path: /v1/liveness
               port: server-port
             {{- with omit .Values.server.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
@@ -104,7 +104,7 @@ spec:
           {{- if .Values.server.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: {{ include "global.getPath" . }}v1/readiness
+              path: /v1/readiness
               port: server-port
             {{- with omit .Values.server.readinessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
