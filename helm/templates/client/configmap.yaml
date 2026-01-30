@@ -24,9 +24,9 @@ data:
     cookieSecret = "{{ randAlphaNum 32 | b64enc }}"
     headless = true
     fileWatcherType = "none"
-    {{- $path := include "global.getPath" . }}
-    {{- if ne $path "/" }}
-    baseUrlPath = {{ include "global.getPath" . | quote }}
+    {{- $path := include "global.getPath" . | trimSuffix "/" }}
+    {{- if ne $path "" }}
+    baseUrlPath = {{ $path | quote }}
     {{- end }}
 
     [client]
