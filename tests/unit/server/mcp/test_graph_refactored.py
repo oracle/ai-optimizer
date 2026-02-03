@@ -96,18 +96,20 @@ class TestBuildMessagesForLLM:
             "messages": [
                 HumanMessage(content="Old question"),
                 AIMessage(content="Old answer"),
-                ToolMessage(content="Tool result", tool_call_id="call_123"),
                 HumanMessage(content="Latest question"),
+                AIMessage(content="", tool_calls=[{"id": "call_123", "name": "tool", "args": {}}]),
+                ToolMessage(content="Tool result", tool_call_id="call_123"),
             ]
         }
 
         result = _build_messages_for_llm(state, mock_sys_prompt, use_history=False)
 
-        # Should have: system prompt + ToolMessages + latest message
+        # Should have: system prompt + flattened context + latest user message
         assert len(result) == 3
         assert isinstance(result[0], SystemMessage)
-        assert isinstance(result[1], ToolMessage)
-        assert result[1].content == "Tool result"
+        # ToolMessage should be flattened to HumanMessage
+        assert isinstance(result[1], HumanMessage)
+        assert "Tool result" in result[1].content
         assert isinstance(result[2], HumanMessage)
         assert result[2].content == "Latest question"
 
@@ -135,10 +137,13 @@ class TestBuildMessagesForLLM:
         """Test that ToolMessages are flattened to HumanMessage for OCI compatibility."""
         state = {
             "messages": [
-                HumanMessage(content="Old question"),
+                HumanMessage(content="Current question"),
+                AIMessage(content="", tool_calls=[
+                    {"id": "call_1", "name": "tool1", "args": {}},
+                    {"id": "call_2", "name": "tool2", "args": {}},
+                ]),
                 ToolMessage(content="Tool 1 result", tool_call_id="call_1"),
                 ToolMessage(content="Tool 2 result", tool_call_id="call_2"),
-                HumanMessage(content="Current question"),
             ]
         }
 
