@@ -96,18 +96,20 @@ class TestBuildMessagesForLLM:
             "messages": [
                 HumanMessage(content="Old question"),
                 AIMessage(content="Old answer"),
-                ToolMessage(content="Tool result", tool_call_id="call_123"),
                 HumanMessage(content="Latest question"),
+                AIMessage(content="", tool_calls=[{"id": "call_123", "name": "tool", "args": {}}]),
+                ToolMessage(content="Tool result", tool_call_id="call_123"),
             ]
         }
 
         result = _build_messages_for_llm(state, mock_sys_prompt, use_history=False)
 
-        # Should have: system prompt + ToolMessages + latest message
+        # Should have: system prompt + flattened context + latest user message
         assert len(result) == 3
         assert isinstance(result[0], SystemMessage)
-        assert isinstance(result[1], ToolMessage)
-        assert result[1].content == "Tool result"
+        # ToolMessage should be flattened to HumanMessage
+        assert isinstance(result[1], HumanMessage)
+        assert "Tool result" in result[1].content
         assert isinstance(result[2], HumanMessage)
         assert result[2].content == "Latest question"
 
@@ -131,30 +133,64 @@ class TestBuildMessagesForLLM:
         assert isinstance(result[1], HumanMessage)
         assert result[1].content == "Current question"
 
-    def test_history_disabled_preserves_tool_messages(self, mock_sys_prompt):
-        """Test that ToolMessages are preserved even with history disabled."""
-        tool_msg1 = ToolMessage(content="Tool 1 result", tool_call_id="call_1")
-        tool_msg2 = ToolMessage(content="Tool 2 result", tool_call_id="call_2")
-
+    def test_history_disabled_flattens_tool_messages(self, mock_sys_prompt):
+        """Test that ToolMessages are flattened to HumanMessage for OCI compatibility."""
         state = {
             "messages": [
-                HumanMessage(content="Old question"),
-                tool_msg1,
-                tool_msg2,
                 HumanMessage(content="Current question"),
+                AIMessage(content="", tool_calls=[
+                    {"id": "call_1", "name": "tool1", "args": {}},
+                    {"id": "call_2", "name": "tool2", "args": {}},
+                ]),
+                ToolMessage(content="Tool 1 result", tool_call_id="call_1"),
+                ToolMessage(content="Tool 2 result", tool_call_id="call_2"),
             ]
         }
 
         result = _build_messages_for_llm(state, mock_sys_prompt, use_history=False)
 
-        # Should have: system prompt + both ToolMessages + latest HumanMessage
-        assert len(result) == 4
+        # Should have: system prompt + flattened context HumanMessage + user question
+        assert len(result) == 3
         assert isinstance(result[0], SystemMessage)
-        assert isinstance(result[1], ToolMessage)
-        assert result[1].content == "Tool 1 result"
-        assert isinstance(result[2], ToolMessage)
-        assert result[2].content == "Tool 2 result"
-        assert isinstance(result[3], HumanMessage)
+        # ToolMessages should be flattened into a single HumanMessage with context
+        assert isinstance(result[1], HumanMessage)
+        assert "relevant context from the knowledge base" in result[1].content
+        assert "Tool 1 result" in result[1].content
+        assert "Tool 2 result" in result[1].content
+        # User question should be last
+        assert isinstance(result[2], HumanMessage)
+        assert result[2].content == "Current question"
+
+    def test_history_disabled_when_latest_is_tool_message(self, mock_sys_prompt):
+        """Test when latest message is a ToolMessage (post-orchestration state).
+
+        This is the actual state shape after vs_orchestrate runs - the state ends
+        with AIMessage(tool_calls) + ToolMessage, not a HumanMessage.
+        """
+        state = {
+            "messages": [
+                HumanMessage(content="User question"),
+                AIMessage(content="", tool_calls=[{"id": "vs_retriever", "name": "retriever", "args": {}}]),
+                ToolMessage(content='{"formatted_text": "Retrieved docs"}', tool_call_id="vs_retriever"),
+            ]
+        }
+
+        result = _build_messages_for_llm(state, mock_sys_prompt, use_history=False)
+
+        # Should NOT include raw ToolMessages (OCI rejects orphaned tool messages)
+        tool_messages = [m for m in result if isinstance(m, ToolMessage)]
+        assert len(tool_messages) == 0, "Raw ToolMessages should be flattened, not included directly"
+
+        # Should have: system prompt + flattened context + user question
+        assert len(result) == 3
+        assert isinstance(result[0], SystemMessage)
+        # Flattened tool content as HumanMessage
+        assert isinstance(result[1], HumanMessage)
+        assert "relevant context" in result[1].content
+        assert "Retrieved docs" in result[1].content
+        # Original user question
+        assert isinstance(result[2], HumanMessage)
+        assert result[2].content == "User question"
 
 
 class TestCreateErrorMessage:
