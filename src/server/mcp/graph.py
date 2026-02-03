@@ -119,13 +119,29 @@ def _build_messages_for_llm(
         else:
             messages.extend(state_messages)
     else:
-        # Only include ToolMessages and the latest user message
-        for msg in state["messages"]:
-            if isinstance(msg, ToolMessage):
-                messages.append(msg)
-        latest_message = state["messages"][-1]
-        if not isinstance(latest_message, ToolMessage):
-            messages.append(latest_message)
+        # Only include current turn context (no history), flattened for OCI compatibility
+        state_messages = [msg for msg in state["messages"] if not isinstance(msg, SystemMessage)]
+
+        # Find the user's question (last HumanMessage)
+        user_question = None
+        for msg in reversed(state_messages):
+            if isinstance(msg, HumanMessage):
+                user_question = msg
+                break
+
+        # Collect current turn's tool-related messages (AIMessage with tool_calls + ToolMessages)
+        tool_related = [
+            msg
+            for msg in state_messages
+            if isinstance(msg, ToolMessage) or (isinstance(msg, AIMessage) and msg.tool_calls)
+        ]
+
+        # Flatten tool messages using existing function (converts to HumanMessage for OCI)
+        messages.extend(_flatten_tool_messages(tool_related))
+
+        # Add the user's question
+        if user_question:
+            messages.append(user_question)
 
     return messages
 
