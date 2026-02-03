@@ -6,6 +6,10 @@ variable "optimizer_version" {
   type = string
 }
 
+variable "app_version" {
+  type = string
+}
+
 variable "tenancy_id" {
   type = string
 }
