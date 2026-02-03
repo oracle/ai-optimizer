@@ -13,6 +13,7 @@ locals {
     db_password       = var.db_conn.password
     db_service        = var.db_conn.service
     optimizer_version = var.optimizer_version
+    app_version       = var.app_version
     install_ollama    = var.vm_is_gpu_shape ? true : false
   })
 

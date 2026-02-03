@@ -88,6 +88,7 @@ write_files:
     permissions: '0750'
     content: |
       #!/bin/bash
+      # AI Optimizer and Toolkit Version: ${app_version}
       export OCI_CLI_AUTH=instance_principal
       export API_SERVER_CONTROL="True"
       export TNS_ADMIN='/app/tns_admin'

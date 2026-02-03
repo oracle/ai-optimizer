@@ -11,6 +11,7 @@ module "vm" {
   for_each             = var.infrastructure == "VM" ? { managed = true } : {}
   source               = "./modules/vm"
   optimizer_version    = var.optimizer_version
+  app_version          = local.app_version #Triggers Upgrades
   label_prefix         = local.label_prefix
   tenancy_id           = var.tenancy_ocid
   compartment_id       = local.compartment_ocid
