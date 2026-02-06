@@ -97,6 +97,7 @@ async def completion_generator(
             metadata={
                 "use_history": client_settings.ll_model.chat_history,
                 "vector_search": client_settings.vector_search,
+                "stream_llm": call == "streams",
             },
         ),
     }
