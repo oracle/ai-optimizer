@@ -306,9 +306,11 @@ class TestBuildKnowledgeBase:
         mock_testset = MagicMock()
         mock_generate.return_value = mock_testset
 
-        mock_text_node = MagicMock()
-        mock_text_node.text = "Sample text"
-        text_nodes = [mock_text_node]
+        text_nodes = []
+        for i in range(6):
+            node = MagicMock()
+            node.text = f"Sample text {i}"
+            text_nodes.append(node)
 
         ll_model_config = {"llm_model": "openai/gpt-4", "api_key": "test"}
         embed_model_config = {"model": "openai/text-embedding-3-small", "api_key": "test"}
@@ -325,6 +327,40 @@ class TestBuildKnowledgeBase:
         mock_kb.assert_called_once()
         mock_generate.assert_called_once()
         assert result == mock_testset
+
+    @patch("server.api.utils.testbed.set_llm_model")
+    @patch("server.api.utils.testbed.set_embedding_model")
+    def test_build_knowledge_base_empty_text_nodes(self, mock_set_embed, mock_set_llm):
+        """Should raise ValueError when no text chunks are produced."""
+        ll_model_config = {"llm_model": "openai/gpt-4", "api_key": "test"}
+        embed_model_config = {"model": "openai/text-embedding-3-small", "api_key": "test"}
+
+        with pytest.raises(ValueError, match="no text chunks were produced"):
+            utils_testbed.build_knowledge_base(
+                [],
+                questions=5,
+                ll_model_config=ll_model_config,
+                embed_model_config=embed_model_config,
+            )
+
+    @patch("server.api.utils.testbed.set_llm_model")
+    @patch("server.api.utils.testbed.set_embedding_model")
+    def test_build_knowledge_base_questions_exceed_chunks(self, mock_set_embed, mock_set_llm):
+        """Should raise ValueError when question count exceeds available chunks."""
+        mock_text_node = MagicMock()
+        mock_text_node.text = "Sample text"
+        text_nodes = [mock_text_node]
+
+        ll_model_config = {"llm_model": "openai/gpt-4", "api_key": "test"}
+        embed_model_config = {"model": "openai/text-embedding-3-small", "api_key": "test"}
+
+        with pytest.raises(ValueError, match="Requested question count exceeds available text chunks"):
+            utils_testbed.build_knowledge_base(
+                text_nodes,
+                questions=5,
+                ll_model_config=ll_model_config,
+                embed_model_config=embed_model_config,
+            )
 
 
 class TestProcessReport:

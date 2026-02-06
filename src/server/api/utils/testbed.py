@@ -246,6 +246,24 @@ def build_knowledge_base(
     set_llm_model(**ll_model_config)
     set_embedding_model(**embed_model_config)
 
+    chunk_count = len(text_nodes)
+    if chunk_count == 0:
+        error_message = (
+            "Unable to generate a knowledge base because no text chunks were produced. "
+            "Ensure the uploaded document contains extractable text."
+        )
+        logger.error("TestSet Validation Error: %s", error_message)
+        raise ValueError(error_message)
+
+    if questions > chunk_count:
+        error_message = (
+            "Requested question count exceeds available text chunks. "
+            f"Requested: {questions}, available chunks: {chunk_count}. "
+            "Reduce the number of questions or provide documents with more content."
+        )
+        logger.error("TestSet Validation Error: %s", error_message)
+        raise ValueError(error_message)
+
     knowledge_base_df = pd.DataFrame([node.text for node in text_nodes], columns=["text"])
     knowledge_base = KnowledgeBase(data=knowledge_base_df)
     logger.info("KnowledgeBase Created")
