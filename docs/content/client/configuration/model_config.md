@@ -62,6 +62,44 @@ Third-Party cloud models, such as [OpenAI](https://openai.com/api/) and [Perplex
 On-Premises models, such as those from [Ollama](https://ollama.com/) or [HuggingFace](https://huggingface.co/) usually do not require API Keys. These values can be left blank.
 
 
+## CPU Optimization
+
+When running models on CPU-only systems (without GPU acceleration), smaller models provide significantly better performance and responsiveness. The {{< short_app_ref >}} includes built-in optimizations for CPU-friendly models.
+
+### Recommended CPU-Friendly Models
+
+The following Ollama models are optimized for CPU usage and are automatically enabled when Ollama is available:
+
+| Model | Parameters | Max Tokens | Use Case |
+|-------|-----------|------------|----------|
+| `llama3.2:1b` | 1B | 2048 | Fast responses, simple Q&A |
+| `llama3.2:3b` | 3B | 2048 | Balanced performance/quality |
+| `gemma3:1b` | 1B | 2048 | Lightweight, efficient |
+| `phi4-mini` | 3.8B | 4096 | Extended context, higher quality |
+
+### Automatic Optimization
+
+When a small model (<7B parameters) is selected, the {{< short_app_ref >}} automatically:
+
+1. **Disables Document Grading** - Skips the extra LLM call to grade document relevance
+2. **Disables Query Rephrasing** - Skips the extra LLM call to rephrase user queries
+
+These optimizations reduce the number of LLM calls from 3 to 1 per query, significantly improving response times on CPU systems.
+
+### Manual Control
+
+You can manually enable or disable these features using the **Grade** and **Rephrase** checkboxes in the Vector Search sidebar, regardless of model size.
+
+- **Grade**: When enabled, retrieved documents are evaluated for relevance before being used
+- **Rephrase**: When enabled, user queries are rephrased based on conversation context for better retrieval
+
+### Performance Tips
+
+1. **Model Selection**: Choose the smallest model that meets your quality requirements
+2. **Reduce Top K**: Lower the number of retrieved documents (e.g., Top K = 3-5)
+3. **Lower Max Tokens**: Reduce maximum output tokens to speed up generation
+4. **Temperature 0**: Use temperature 0 for deterministic, faster responses
+
 ## Additional Information
 
 {{< tabs "uniqueid" >}}

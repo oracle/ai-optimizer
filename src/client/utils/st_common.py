@@ -97,6 +97,7 @@ def update_client_settings(user_setting: str) -> None:
         if state.get(widget_key, setting_value) != setting_value:
             logger.info("Updating client_settings['%s']['%s'] to %s", user_setting, setting_key, widget_value)
             state.client_settings[user_setting][setting_key] = widget_value
+
     # Destroying user Client
     clear_state_key("user_client")
 
