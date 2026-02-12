@@ -62,6 +62,8 @@ server:
   # service: type of Kubernetes service to expose server port.
   service:
     type: "ClusterIP"
+    # -- Service port
+    port: 8000
 
   # ingress: controls the Ingress resource to expose the service.
   ingress:
@@ -290,6 +292,8 @@ client:
   # service: type of Kubernetes service to expose the HTTP port.
   service:
     type: "ClusterIP"
+    # -- Service port
+    port: 80
 
   # ingress: controls the Ingress resource to expose the service.
   ingress:

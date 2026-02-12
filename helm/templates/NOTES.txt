@@ -21,7 +21,7 @@ Streamlit Client (Web UI):
   {{- end }}
 {{- else }}
   Port-forward to access locally:
-    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "global.fullname" . }}-client-http 8501:80
+    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "global.fullname" . }}-client-http 8501:{{ .Values.client.service.port }}
 
   Then open in your browser:
     http://localhost:8501
@@ -41,10 +41,10 @@ Server API:
   {{- end }}
 {{- else }}
   Port-forward to access locally:
-    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "server.serviceName" . }} 8000:8000
+    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "server.serviceName" . }} {{ .Values.server.service.port }}:{{ .Values.server.service.port }}
 
   Then access the API at:
-    http://localhost:8000{{ include "global.getPath" . }}v1
+    http://localhost:{{ .Values.server.service.port }}{{ include "global.getPath" . }}v1
 {{- end }}
 
 ================================================================================

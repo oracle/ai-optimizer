@@ -43,9 +43,9 @@ spec:
               service:
                 name: {{ include "server.serviceName" . }}
                 port:
-                  number: 8000
+                  number: {{ .Values.server.service.port }}
               {{- else }}
               serviceName: {{ include "server.serviceName" . }}
-              servicePort: 8000
+              servicePort: {{ .Values.server.service.port }}
               {{- end }}
 {{- end }}
