@@ -69,9 +69,6 @@ server:
   ingress:
     enabled: false
     className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
-    annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
     tls: []
       # - hosts:
       #     - example.com
@@ -299,9 +296,6 @@ client:
   ingress:
     enabled: false
     className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
-    annotations:
-      nginx.ingress.kubernetes.io/ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/upstream-vhost: "localhost"
     tls: []
       # - hosts:
       #     - example.com

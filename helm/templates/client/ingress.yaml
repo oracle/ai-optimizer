@@ -16,7 +16,6 @@ metadata:
     app.kubernetes.io/component: client
     {{- include "global.labels" . | nindent 4 }}
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: 200m
     {{- with .Values.client.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

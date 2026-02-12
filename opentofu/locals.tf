@@ -77,6 +77,6 @@ locals {
 
 // Load Balancer Ports
 locals {
-  lb_client_port = 80
-  lb_server_port = 8000
+  lb_http_port = 80
+  lb_https_port = 443
 }

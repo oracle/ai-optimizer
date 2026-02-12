@@ -52,7 +52,7 @@ spec:
             - name: API_SERVER_URL
               value: {{ include "server.serviceUrl" . }}
             - name: API_SERVER_PORT
-              value: "8000"
+              value: {{ .Values.server.service.port | default 8000 | quote }}
             - name: API_SERVER_KEY
               valueFrom:
                 secretKeyRef:
