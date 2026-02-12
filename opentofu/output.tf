@@ -19,5 +19,5 @@ output "optimizer_client_url" {
 
 output "optimizer_server_url" {
   description = "URL for AI Optimizer and Toolkit Server API Access"
-  value       = var.deploy_optimizer ? format("http://%s:8000/v1/docs", oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address) : "N/A"
+  value       = var.deploy_optimizer ? format("http://%s/v1/docs", oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address) : "N/A"
 }

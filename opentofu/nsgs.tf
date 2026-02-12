@@ -12,7 +12,7 @@ resource "oci_core_network_security_group" "lb" {
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "client_lb_ingress" {
+resource "oci_core_network_security_group_security_rule" "lb_http_ingress" {
   for_each                  = toset(split(",", replace(var.client_allowed_cidrs, "/\\s+/", "")))
   network_security_group_id = oci_core_network_security_group.lb.id
   description               = "Loadbalancer Client Access - ${each.value}."
@@ -22,13 +22,13 @@ resource "oci_core_network_security_group_security_rule" "client_lb_ingress" {
   source_type               = "CIDR_BLOCK"
   tcp_options {
     destination_port_range {
-      min = local.lb_client_port
-      max = local.lb_client_port
+      min = local.lb_http_port
+      max = local.lb_http_port
     }
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "server_lb_ingress" {
+resource "oci_core_network_security_group_security_rule" "lb_https_ingress" {
   for_each                  = toset(split(",", replace(var.server_allowed_cidrs, "/\\s+/", "")))
   network_security_group_id = oci_core_network_security_group.lb.id
   description               = "Loadbalancer Server Access - ${each.value}."
@@ -38,8 +38,8 @@ resource "oci_core_network_security_group_security_rule" "server_lb_ingress" {
   source_type               = "CIDR_BLOCK"
   tcp_options {
     destination_port_range {
-      min = local.lb_server_port
-      max = local.lb_server_port
+      min = local.lb_https_port
+      max = local.lb_https_port
     }
   }
 }

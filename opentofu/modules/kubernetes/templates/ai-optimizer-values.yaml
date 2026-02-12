@@ -17,9 +17,9 @@ server:
     enabled: true
     className: native-ic
     annotations:
-      nginx.ingress.kubernetes.io/upstream-vhost: "${lb_ip}"
-      oci-native-ingress.oraclecloud.com/http-listener-port: "8000"
-      oci-native-ingress.oraclecloud.com/protocol: TCP
+      oci-native-ingress.oraclecloud.com/http-listener-port: "80"
+      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
+      oci-native-ingress.oraclecloud.com/healthcheck-path: "/v1/readiness"
 
   service:
     type: "NodePort"
@@ -56,9 +56,9 @@ client:
     enabled: true
     className: native-ic
     annotations:
-      nginx.ingress.kubernetes.io/upstream-vhost: "${lb_ip}"
       oci-native-ingress.oraclecloud.com/http-listener-port: "80"
-      oci-native-ingress.oraclecloud.com/protocol: TCP
+      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
+      oci-native-ingress.oraclecloud.com/healthcheck-path: "/ping"
 
   service:
     type: "NodePort"

@@ -14,7 +14,7 @@ authors = [
 
 # Common dependencies that are always needed
 dependencies = [
-    "langchain-core==1.2.9",
+    "langchain-core==1.2.11",
     "httpx==0.28.1",
     "oracledb~=3.1",
     "plotly==6.5.2",
@@ -34,15 +34,15 @@ server = [
     "langchain-community==0.4.1",
     "langchain-fireworks==1.1.0",
     "langchain-google-genai==4.2.0",
-    "langchain-ibm==1.0.3",
+    "langchain-ibm==1.0.4",
     "langchain-mcp-adapters==0.2.1",
     "langchain-mistralai==1.1.1",
     "langchain-nomic==1.0.1",
     "langchain-oci==0.2.3",
     "langchain-ollama==1.0.1",
-    "langchain-openai==1.1.7",
+    "langchain-openai==1.1.9",
     #"langchain-together==0.3.1",
-    "langgraph==1.0.7",
+    "langgraph==1.0.8",
     "litellm==1.81.8",
     "llama-index==0.14.13",
     "lxml==6.0.2",
