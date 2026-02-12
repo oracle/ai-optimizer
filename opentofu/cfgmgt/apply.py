@@ -1,6 +1,6 @@
 """
-# Copyright (c) 2025, 2026, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+Copyright (c) 2025, 2026, Oracle and/or its affiliates.
+All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 """
 # spell-checker:ignore kubeconfig obaas prereqs
 
