@@ -17,12 +17,12 @@ server:
     enabled: true
     className: native-ic
     annotations:
+      oci-native-ingress.oraclecloud.com/http-listener-port: "80"
       oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
       oci-native-ingress.oraclecloud.com/healthcheck-path: "/v1/readiness"
 
   service:
     type: "NodePort"
-    port: "80"
 
   # -- Enable Workload Identity
   oci_config:
@@ -56,12 +56,12 @@ client:
     enabled: true
     className: native-ic
     annotations:
+      oci-native-ingress.oraclecloud.com/http-listener-port: "80"
       oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
       oci-native-ingress.oraclecloud.com/healthcheck-path: "/ping"
 
   service:
     type: "NodePort"
-    port: "80"
 
   features:
     disableTestbed: "false"

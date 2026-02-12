@@ -14,7 +14,7 @@ spec:
   ports:
     - name: http
       protocol: TCP
-      port: {{ .Values.server.service.port }}
+      port: {{ .Values.server.service.port | default 8000 }}
       targetPort: 8000
   selector:
     app.kubernetes.io/component: server
