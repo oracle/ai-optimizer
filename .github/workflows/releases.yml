@@ -11,6 +11,7 @@ jobs:
   build-release:
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
       packages: write
       id-token: write
