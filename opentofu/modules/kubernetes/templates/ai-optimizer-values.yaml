@@ -5,6 +5,7 @@
 global:
   api:
     secretName: "${label}-optimizer-api-key"
+  baseUrlPath: "/ai-optimizer"
 
 # -- API Server configuration
 server:
@@ -19,7 +20,7 @@ server:
     annotations:
       oci-native-ingress.oraclecloud.com/http-listener-port: "80"
       oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
-      oci-native-ingress.oraclecloud.com/healthcheck-path: "/v1/readiness"
+      oci-native-ingress.oraclecloud.com/healthcheck-path: "/ai-optimizer/v1/readiness"
 
   service:
     type: "NodePort"
@@ -58,7 +59,7 @@ client:
     annotations:
       oci-native-ingress.oraclecloud.com/http-listener-port: "80"
       oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
-      oci-native-ingress.oraclecloud.com/healthcheck-path: "/ping"
+      oci-native-ingress.oraclecloud.com/healthcheck-path: "/ai-optimizer/ping"
 
   service:
     type: "NodePort"

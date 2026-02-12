@@ -53,7 +53,7 @@ spec:
           {{- if .Values.ollama.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: {{ include "global.getPath" . }}api/version
+              path: /api/version
               port: api
             {{- with omit .Values.ollama.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
@@ -62,7 +62,7 @@ spec:
           {{- if .Values.ollama.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: {{ include "global.getPath" . }}api/version
+              path: /api/version
               port: api
             {{- with omit .Values.ollama.readinessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}

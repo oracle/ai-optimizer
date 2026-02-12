@@ -32,6 +32,7 @@ import uvicorn
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.types import ASGIApp, Scope, Receive, Send
 from fastmcp import FastMCP, settings
 from fastmcp.server.auth import StaticTokenVerifier
 import psutil
@@ -101,6 +102,30 @@ def stop_server(pid: int) -> None:
         logger.info("API server stopped.")
     except (psutil.NoSuchProcess, psutil.AccessDenied) as ex:
         logger.error("Failed to terminate process with PID: %i - %s", pid, ex)
+
+
+##########################################
+# ASGI Middleware - Strip ROOT_PATH prefix
+##########################################
+class StripRootPathMiddleware:
+    """Strip the ROOT_PATH prefix from incoming request paths.
+
+    Allows the app to be served at a sub-path (e.g. /ai-optimizer) while
+    keeping all route definitions at their original paths (e.g. /v1/...).
+    Requests without the prefix (e.g. liveness probes) pass through unchanged.
+    """
+
+    def __init__(self, app: ASGIApp, root_path: str = ""):
+        self.app = app
+        self.root_path = root_path
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] in ("http", "websocket") and self.root_path:
+            path = scope.get("path", "")
+            if path.startswith(self.root_path):
+                scope = dict(scope)
+                scope["path"] = path[len(self.root_path) :] or "/"
+        await self.app(scope, receive, send)
 
 
 ##########################################
@@ -210,9 +235,11 @@ async def create_app(config: str = "") -> FastAPI:
                 continue
 
     # FastAPI Server
+    root_path = os.getenv("ROOT_PATH", "").rstrip("/")
     fastapi_app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
         version=__version__,
+        root_path=root_path,
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
         lifespan=combined_lifespan,
@@ -221,6 +248,8 @@ async def create_app(config: str = "") -> FastAPI:
             "url": "http://oss.oracle.com/licenses/upl",
         },
     )
+    if root_path:
+        fastapi_app.add_middleware(StripRootPathMiddleware, root_path=root_path)
     # Store MCP in the app state
     fastapi_app.state.fastmcp_app = fastmcp_app
     # Register MCP Server into FastAPI
