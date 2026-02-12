@@ -330,7 +330,9 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig):
         # Build message list
         messages = _build_messages_for_llm(state, sys_prompt, use_history)
 
-        logger.info("Calling LiteLLM with %d messages (history: %s, stream: %s)", len(messages), use_history, stream_llm)
+        logger.info(
+            "Calling LiteLLM with %d messages (history: %s, stream: %s)", len(messages), use_history, stream_llm
+        )
         response = await _call_llm(messages, ll_config, stream=stream_llm)
 
         if stream_llm:
