@@ -75,6 +75,8 @@ spec:
           volumeMounts:
             - name: key
               mountPath: "/.ollama"
+            - name: tmp
+              mountPath: "/tmp"
           {{- if and .Values.ollama.models .Values.ollama.models.enabled (gt (len .Values.ollama.models.modelPullList) 0) }}
           lifecycle:
             postStart:
@@ -90,6 +92,8 @@ spec:
           {{- end }}
       volumes:
         - name: key
+          emptyDir: {}
+        - name: tmp
           emptyDir: {}
       {{- with .Values.ollama.nodeSelector }}
       nodeSelector:
