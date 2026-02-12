@@ -14,7 +14,7 @@ spec:
   type: {{ .Values.client.service.type }}
   ports:
     - protocol: TCP
-      port: 80
+      port: {{ .Values.client.service.port | default 8501 }}
       targetPort: 8501
   selector:
     app.kubernetes.io/component: client

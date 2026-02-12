@@ -16,7 +16,6 @@ metadata:
     app.kubernetes.io/component: client
     {{- include "global.labels" . | nindent 4 }}
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: 200m
     {{- with .Values.client.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -44,9 +43,9 @@ spec:
               service:
                 name: {{ include "global.fullname" . }}-client-http
                 port:
-                  number: 80
+                  number: {{ .Values.client.service.port | default 8501 }}
               {{- else }}
               serviceName: {{ include "global.fullname" . }}-client-http
-              servicePort: 80
+              servicePort: {{ .Values.client.service.port | default 8501 }}
               {{- end }}
 {{- end }}
