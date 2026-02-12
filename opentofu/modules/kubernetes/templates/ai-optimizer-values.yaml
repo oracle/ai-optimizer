@@ -5,7 +5,7 @@
 global:
   api:
     secretName: "${label}-optimizer-api-key"
-  baseUrlPath: "/ai-optimizer"
+  baseUrlPath: "/"
 
 # -- API Server configuration
 server:
