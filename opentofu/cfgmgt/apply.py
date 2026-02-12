@@ -1,6 +1,6 @@
 """
-Copyright (c) 2025, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# Copyright (c) 2025, 2026, Oracle and/or its affiliates.
+# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 """
 # spell-checker:ignore kubeconfig obaas prereqs
 
@@ -11,8 +11,13 @@ import sys
 import time
 
 # --- Constants ---
-STAGE_PATH = os.path.join(os.path.dirname(__file__), "stage")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+STAGE_PATH = os.path.join(SCRIPT_DIR, "stage")
+LOCAL_HELM_DIR = os.path.join(SCRIPT_DIR, "helm")
 os.environ["KUBECONFIG"] = os.path.join(STAGE_PATH, "kubeconfig")
+
+ORACLE_OPERATOR_NS = "oracle-database-operator-system"
+ORACLE_OPERATOR_DEPLOYMENT = "oracle-database-operator-controller-manager"
 
 # --- Helm Charts Configuration ---
 HELM_CHARTS = [
@@ -32,18 +37,20 @@ def mod_kubeconfig(private_endpoint: str = None):
     if not private_endpoint:
         return
 
-    with open(os.environ["KUBECONFIG"], "r", encoding="utf-8") as f:
+    kubeconfig_path = os.environ["KUBECONFIG"]
+    with open(kubeconfig_path, "r", encoding="utf-8") as f:
         lines = f.read().splitlines()
 
-    with open(os.environ["KUBECONFIG"], "w", encoding="utf-8") as f:
+    with open(kubeconfig_path, "w", encoding="utf-8") as f:
         for line in lines:
             stripped = line.strip()
+            indent = line[: len(line) - len(line.lstrip())]
+
             if stripped.startswith("server:"):
                 # Preserve indentation
                 indent = line[: len(line) - len(line.lstrip())]
                 f.write(f"{indent}server: https://{private_endpoint}:6443\n")
             elif stripped.startswith("certificate-authority-data:"):
-                # Preserve indentation
                 indent = line[: len(line) - len(line.lstrip())]
                 f.write(f"{indent}insecure-skip-tls-verify: true\n")
             else:
@@ -53,7 +60,7 @@ def mod_kubeconfig(private_endpoint: str = None):
 
 
 def run_cmd(cmd, capture_output=True):
-    """Generic subprocess execution"""
+    """Execute a shell command and return stdout, stderr, and return code"""
     try:
         result = subprocess.run(
             cmd,
@@ -70,18 +77,27 @@ def run_cmd(cmd, capture_output=True):
 
 
 def retry(func, retries=5, delay=15):
-    """Retry a function with given arguments on failure using exponential backoff (x2)."""
+    """Retry a function on failure using exponential backoff"""
     current_delay = delay
     for attempt in range(1, retries + 1):
         print(f"🔁 Attempt {attempt}/{retries}")
-        if func():
+        if func(attempt):
             return True
         if attempt < retries:
             print(f"⏳ Retrying in {current_delay} seconds...")
             time.sleep(current_delay)
-            current_delay *= 2  # Exponential backoff: double the delay
+            current_delay *= 2
     print("🚨 Maximum retries reached. Exiting.")
     sys.exit(1)
+
+
+def check_resource_exists(resource_type, resource_name, namespace=None):
+    """Check if a Kubernetes resource exists"""
+    cmd = ["kubectl", "get", resource_type, resource_name]
+    if namespace:
+        cmd.extend(["-n", namespace])
+    _, _, rc = run_cmd(cmd, capture_output=True)
+    return rc == 0
 
 
 # --- Core Functionalities ---
@@ -106,20 +122,48 @@ def helm_repo_add_if_missing(repos_to_add):
     print("✅ Repos added and updated.\n")
 
 
-def apply_single_helm_chart_inner(chart_config, values_file, namespace, optimizer_version=None):
-    """Apply a single Helm Chart with its values file"""
+def delete_jobs(namespace, skip_buildkit=False):
+    """Delete all Jobs in the namespace (Jobs are immutable and block re-apply)"""
+    print(f"🗑️ Deleting existing Jobs in namespace '{namespace}'...")
+    stdout, _, rc = run_cmd(["kubectl", "get", "jobs", "-n", namespace, "-o", "jsonpath={.items[*].metadata.name}"])
+    if rc != 0 or not stdout:
+        return
+    for job in stdout.split():
+        if skip_buildkit and job == "optimizer-buildkit":
+            continue
+        run_cmd(["kubectl", "delete", "job", job, "-n", namespace, "--ignore-not-found=true"])
+
+
+def apply_helm_chart_inner(chart_config, namespace, optimizer_version=None, use_force_fallback=False, attempt=1):
+    """Apply a single Helm Chart"""
     chart_name = chart_config["name"]
+    values_file = chart_config["values_file"]
+
+    # Use chart-specific namespace if defined, otherwise use provided namespace
+    target_namespace = chart_config.get("namespace", namespace)
+
+    # Check for local helm directory override
     chart_ref = chart_config["chart_ref"]
+    local_path = os.path.join(LOCAL_HELM_DIR, chart_name)
+    if os.path.isdir(local_path):
+        chart_ref = local_path
+
     values_path = os.path.join(STAGE_PATH, values_file)
 
+    if attempt > 1:
+        delete_jobs(target_namespace, skip_buildkit=True)
+
+    # Use --force-conflicts (Helm 3.13+) or fallback to --force for older versions
+    force_flag = "--force" if use_force_fallback else "--force-conflicts"
     cmd = [
         "helm",
         "upgrade",
         "--install",
+        force_flag,
         chart_name,
         chart_ref,
         "--namespace",
-        namespace,
+        target_namespace,
         "--values",
         values_path,
     ]
@@ -140,34 +184,39 @@ def apply_single_helm_chart_inner(chart_config, values_file, namespace, optimize
             print(f"   {stdout}")
         return True
 
+    # Fallback: if --force-conflicts is not supported, retry with --force
+    if not use_force_fallback and "unknown flag: --force-conflicts" in stderr:
+        print("⚠️ Helm version doesn't support --force-conflicts, retrying with --force...")
+        return apply_helm_chart_inner(
+            chart_config, namespace, optimizer_version, use_force_fallback=True, attempt=attempt
+        )
+
     print(f"❌ Failed to apply Helm chart '{chart_name}':\n{stderr}")
     return False
 
 
-def apply_single_helm_chart(chart_config, values_file, namespace, optimizer_version=None):
-    """Retry Enabled - Apply a single Helm Chart"""
-    retry(lambda: apply_single_helm_chart_inner(chart_config, values_file, namespace, optimizer_version))
+def apply_helm_chart(chart_config, namespace, optimizer_version=None):
+    """Apply a Helm Chart with retry logic"""
+    retry(lambda attempt: apply_helm_chart_inner(chart_config, namespace, optimizer_version, attempt=attempt))
 
 
 def apply_all_helm_charts(namespace, optimizer_version=None):
-    """Apply Helm charts in HELM_CHARTS order if their values files exist"""
-    # Match charts to values files (iterate through HELM_CHARTS to preserve order)
+    """Apply Helm charts in order if their values files exist"""
     charts_to_apply = []
     repos_to_add = {}
 
+    # Discover which charts have values files
     for chart_config in HELM_CHARTS:
-        values_filename = chart_config["values_file"]
-        values_path = os.path.join(STAGE_PATH, values_filename)
-
-        # Check if values file exists
+        values_path = os.path.join(STAGE_PATH, chart_config["values_file"])
         if os.path.isfile(values_path):
-            print(f"✓ Found values file for '{chart_config['name']}': {values_filename}")
-            charts_to_apply.append((chart_config, values_filename))
-            # Collect remote repos that need to be added
-            if chart_config["repo_url"] is not None:
+            print(f"✓ Found values file for '{chart_config['name']}': {chart_config['values_file']}")
+            charts_to_apply.append(chart_config)
+
+            # Collect remote repos
+            if "repo_url" in chart_config:
                 repos_to_add[chart_config["repo_name"]] = chart_config["repo_url"]
         else:
-            print(f"⊘ Skipping '{chart_config['name']}': values file not found ({values_filename})")
+            print(f"⊘ Skipping '{chart_config['name']}': values file not found")
 
     if not charts_to_apply:
         print("\n⚠️ No charts to apply (no matching values files found).\n")
@@ -175,38 +224,27 @@ def apply_all_helm_charts(namespace, optimizer_version=None):
 
     print()  # Blank line after file detection
 
-    # Add all required Helm repos
+    # Add remote Helm repos
     helm_repo_add_if_missing(repos_to_add)
 
-    # Apply each chart in order
-    print(f"📦 Applying {len(charts_to_apply)} Helm chart(s) in order...\n")
-    for chart_config, values_file in charts_to_apply:
-        apply_single_helm_chart(chart_config, values_file, namespace, optimizer_version)
-        print()  # Add blank line between charts
+    # Apply charts in order
+    print(f"📦 Applying {len(charts_to_apply)} Helm chart(s)...\n")
+    for chart_config in charts_to_apply:
+        apply_helm_chart(chart_config, namespace, optimizer_version)
+        print()
 
     print("✅ All Helm charts applied successfully.\n")
 
 
-def apply_manifest_inner(namespace):
-    """Apply Manifest"""
+def apply_manifest_inner(namespace, attempt=1):
+    """Apply Kubernetes manifest"""
     manifest_path = os.path.join(STAGE_PATH, "k8s-manifest.yaml")
     if not os.path.isfile(manifest_path):
         print(f"⚠️ Manifest not found: {manifest_path}")
         return False
 
-    # Delete existing Jobs with the same name to allow recreation
-    # Jobs are immutable and cannot be updated, only replaced
-    print("🗑️ Checking for existing buildkit Job...")
-    stdout, _, _ = run_cmd(
-        ["kubectl", "get", "job", "optimizer-buildkit", "-n", namespace, "-o", "name"], capture_output=True
-    )
-    if stdout:
-        print(f"🗑️ Deleting existing optimizer-buildkit Job in namespace '{namespace}'...")
-        run_cmd(
-            ["kubectl", "delete", "job", "optimizer-buildkit", "-n", namespace, "--ignore-not-found=true"],
-            capture_output=False,
-        )
-        time.sleep(2)  # Wait for deletion to complete
+    if attempt > 1:
+        delete_jobs(namespace)
 
     print("🚀 Applying Kubernetes manifest: k8s-manifest.yaml")
     _, stderr, rc = run_cmd(["kubectl", "apply", "-f", manifest_path], capture_output=False)
@@ -219,12 +257,24 @@ def apply_manifest_inner(namespace):
 
 
 def apply_manifest(namespace):
-    """Retry Enabled Add/Update Manifest"""
-    retry(lambda: apply_manifest_inner(namespace))
+    """Apply Kubernetes manifest with retry logic"""
+    retry(lambda attempt: apply_manifest_inner(namespace, attempt=attempt))
 
 
 def patch_oracle_operator():
-    """Patch Oracle Database Operator deployment and wait for it to be ready"""
+    """Patch Oracle Database Operator deployment and wait for readiness"""
+    # Check if namespace exists
+    print(f"🔍 Checking if {ORACLE_OPERATOR_NS} namespace exists...")
+    if not check_resource_exists("namespace", ORACLE_OPERATOR_NS):
+        print(f"⊘ Namespace {ORACLE_OPERATOR_NS} not found. Skipping operator patch.\n")
+        return
+
+    # Check if deployment exists
+    if not check_resource_exists("deployment", ORACLE_OPERATOR_DEPLOYMENT, ORACLE_OPERATOR_NS):
+        print(f"⊘ Deployment {ORACLE_OPERATOR_DEPLOYMENT} not found. Skipping operator patch.\n")
+        return
+
+    # Apply patch
     print("🔧 Patching oracle-database-operator deployment...")
     patch_json = (
         '[{"op": "replace", "path": '
@@ -234,10 +284,10 @@ def patch_oracle_operator():
     cmd = [
         "kubectl",
         "-n",
-        "oracle-database-operator-system",
+        ORACLE_OPERATOR_NS,
         "patch",
         "deployment",
-        "oracle-database-operator-controller-manager",
+        ORACLE_OPERATOR_DEPLOYMENT,
         "--type",
         "json",
         "-p",
@@ -250,7 +300,7 @@ def patch_oracle_operator():
 
     print("✅ Oracle operator patched.\n")
 
-    # Wait for operator to be ready after patching
+    # Wait for operator to be ready
     print("⏳ Waiting for Oracle Database Operator to be ready...")
     wait_cmd = [
         "kubectl",
@@ -258,8 +308,8 @@ def patch_oracle_operator():
         "--for=condition=Available",
         "--timeout=300s",
         "-n",
-        "oracle-database-operator-system",
-        "deployment/oracle-database-operator-controller-manager",
+        ORACLE_OPERATOR_NS,
+        f"deployment/{ORACLE_OPERATOR_DEPLOYMENT}",
     ]
     _, stderr, rc = run_cmd(wait_cmd, capture_output=False)
     if rc != 0:
@@ -274,14 +324,14 @@ def patch_oracle_operator():
 
 # --- Entry Point ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Apply a Helm chart and a Kubernetes manifest.")
+    parser = argparse.ArgumentParser(description="Apply Helm charts and Kubernetes manifests.")
     parser.add_argument("namespace", help="Kubernetes namespace")
-    parser.add_argument("--private_endpoint", nargs="?", const=None, default=None, help="Kubernetes Private Endpoint")
+    parser.add_argument("--private_endpoint", help="Kubernetes Private Endpoint")
     parser.add_argument(
         "--optimizer_version",
         choices=["Stable", "Experimental"],
         default="Stable",
-        help="Optimizer version (Stable or Experimental)",
+        help="AI Optimizer version (default: Stable)",
     )
     args = parser.parse_args()
 

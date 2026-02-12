@@ -44,9 +44,9 @@ spec:
               service:
                 name: {{ include "global.fullname" . }}-client-http
                 port:
-                  number: 80
+                  number: {{ .Values.client.service.port }}
               {{- else }}
               serviceName: {{ include "global.fullname" . }}-client-http
-              servicePort: 80
+              servicePort: {{ .Values.client.service.port }}
               {{- end }}
 {{- end }}
