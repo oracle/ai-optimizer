@@ -32,6 +32,7 @@ import uvicorn
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.types import ASGIApp, Receive, Send
 from fastmcp import FastMCP, settings
 from fastmcp.server.auth import StaticTokenVerifier
 import psutil
@@ -101,6 +102,28 @@ def stop_server(pid: int) -> None:
         logger.info("API server stopped.")
     except (psutil.NoSuchProcess, psutil.AccessDenied) as ex:
         logger.error("Failed to terminate process with PID: %i - %s", pid, ex)
+
+
+##########################################
+# ASGI Middleware - Strip ROOT_PATH prefix
+##########################################
+def _make_root_path_stripper(asgi_app: ASGIApp, root_path: str) -> ASGIApp:
+    """Wrap an ASGI app to strip the ROOT_PATH prefix from incoming request paths.
+
+    Allows the app to be served at a sub-path (e.g. /ai-optimizer) while
+    keeping all route definitions at their original paths (e.g. /v1/...).
+    Requests without the prefix (e.g. liveness probes) pass through unchanged.
+    """
+
+    async def middleware(scope: dict, receive: Receive, send: Send):
+        if scope["type"] in ("http", "websocket"):
+            path = scope.get("path", "")
+            if path.startswith(root_path):
+                scope = dict(scope)
+                scope["path"] = path[len(root_path) :] or "/"
+        await asgi_app(scope, receive, send)
+
+    return middleware
 
 
 ##########################################
@@ -210,9 +233,11 @@ async def create_app(config: str = "") -> FastAPI:
                 continue
 
     # FastAPI Server
+    root_path = os.getenv("ROOT_PATH", "").rstrip("/")
     fastapi_app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
         version=__version__,
+        root_path=root_path,
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
         lifespan=combined_lifespan,
@@ -235,6 +260,8 @@ async def create_app(config: str = "") -> FastAPI:
     fastapi_app.include_router(noauth)
     fastapi_app.include_router(auth)
 
+    if root_path:
+        return _make_root_path_stripper(fastapi_app, root_path)
     return fastapi_app
 
 
