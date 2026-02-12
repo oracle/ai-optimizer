@@ -18,8 +18,8 @@ module "vm" {
   vcn_id               = local.vcn_ocid
   oci_services         = data.oci_core_services.core_services.services.0
   lb_id                = oci_load_balancer_load_balancer.lb.id
-  lb_http_port       = local.lb_http_port
-  lb_https_port       = local.lb_https_port
+  lb_http_port         = local.lb_http_port
+  lb_https_port        = local.lb_https_port
   db_name              = local.db_name
   db_conn              = local.db_conn
   vm_is_gpu_shape      = var.vm_is_gpu_shape
