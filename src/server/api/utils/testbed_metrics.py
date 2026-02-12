@@ -34,9 +34,6 @@ CORRECTNESS_INPUT_TEMPLATE = """
 
 ### EXPECTED ANSWER
 {reference_answer}
-
-You MUST respond with ONLY a valid JSON object (no markdown, no extra text) with exactly these keys:
-{{"correctness": true/false, "correctness_reason": "your explanation"}}
 """
 
 
@@ -84,6 +81,7 @@ class CustomCorrectnessMetric(CorrectnessMetric):  # pylint: disable=too-few-pub
                     ),
                 ],
                 temperature=0,
+                format="json_object",
             )
 
             json_output = parse_json_output(

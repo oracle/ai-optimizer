@@ -198,8 +198,7 @@ def _build_text_response(full_text: str, full_response: list, writer, state: Opt
             "role": "assistant",
             "content": full_text,
         }
-        if hasattr(last_chunk.choices[0], "delta"):
-            delattr(last_chunk.choices[0], "delta")
+        delattr(last_chunk.choices[0], "delta")
         last_chunk.choices[0].finish_reason = "stop"
         final_response = last_chunk.model_dump()
 
@@ -325,31 +324,19 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig):
         metadata = config.get("metadata", {})
         sys_prompt = metadata.get("sys_prompt")
         use_history = metadata.get("use_history", True)
-        stream_llm = metadata.get("stream_llm", True)
 
         # Build message list
         messages = _build_messages_for_llm(state, sys_prompt, use_history)
 
-        logger.info(
-            "Calling LiteLLM with %d messages (history: %s, stream: %s)", len(messages), use_history, stream_llm
-        )
-        response = await _call_llm(messages, ll_config, stream=stream_llm)
+        logger.info("Calling LiteLLM with %d messages (history: %s)", len(messages), use_history)
+        response = await _call_llm(messages, ll_config, stream=True)
 
-        if stream_llm:
-            # Stream and accumulate response
-            full_text, full_response = await _stream_llm_response(response, writer)
-            if full_text is None:
-                result_message = AIMessage(content="I'm sorry, I was unable to produce a response.")
-            else:
-                result_message = _build_text_response(full_text, full_response, writer, state)
+        # Stream and accumulate response
+        full_text, full_response = await _stream_llm_response(response, writer)
+        if full_text is None:
+            result_message = AIMessage(content="I'm sorry, I was unable to produce a response.")
         else:
-            # Non-streaming: extract response directly
-            full_text = response.choices[0].message.content or ""
-            if not full_text:
-                result_message = AIMessage(content="I'm sorry, I was unable to produce a response.")
-            else:
-                result_message = _build_text_response(full_text, [response], writer, state)
-
+            result_message = _build_text_response(full_text, full_response, writer, state)
         return {"messages": [result_message]}
 
     except litellm.exceptions.APIConnectionError as ex:
