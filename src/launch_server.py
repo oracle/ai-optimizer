@@ -121,6 +121,7 @@ def _make_root_path_stripper(asgi_app: ASGIApp, root_path: str) -> ASGIApp:
             if path.startswith(root_path):
                 scope = dict(scope)
                 scope["path"] = path[len(root_path) :] or "/"
+                scope["root_path"] = root_path + scope.get("root_path", "")
         await asgi_app(scope, receive, send)
 
     return middleware
@@ -237,7 +238,6 @@ async def create_app(config: str = "") -> FastAPI:
     fastapi_app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
         version=__version__,
-        root_path=root_path,
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
         lifespan=combined_lifespan,
