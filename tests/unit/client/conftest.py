@@ -1,6 +1,6 @@
 # pylint: disable=import-error,redefined-outer-name
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 Unit test fixtures for client tests. Unit tests mock dependencies rather than

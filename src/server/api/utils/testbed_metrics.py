@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 Custom metrics for testbed evaluation.
@@ -34,6 +34,9 @@ CORRECTNESS_INPUT_TEMPLATE = """
 
 ### EXPECTED ANSWER
 {reference_answer}
+
+You MUST respond with ONLY a valid JSON object (no markdown, no extra text) with exactly these keys:
+{{"correctness": true/false, "correctness_reason": "your explanation"}}
 """
 
 
@@ -81,7 +84,6 @@ class CustomCorrectnessMetric(CorrectnessMetric):  # pylint: disable=too-few-pub
                     ),
                 ],
                 temperature=0,
-                format="json_object",
             )
 
             json_output = parse_json_output(

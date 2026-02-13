@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore astream litellm sqlcl ollama
@@ -97,6 +97,7 @@ async def completion_generator(
             metadata={
                 "use_history": client_settings.ll_model.chat_history,
                 "vector_search": client_settings.vector_search,
+                "stream_llm": call == "streams",
             },
         ),
     }
