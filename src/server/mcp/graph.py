@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore acompletion checkpointer litellm sqlcl multitool
@@ -330,7 +330,9 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig):
         # Build message list
         messages = _build_messages_for_llm(state, sys_prompt, use_history)
 
-        logger.info("Calling LiteLLM with %d messages (history: %s, stream: %s)", len(messages), use_history, stream_llm)
+        logger.info(
+            "Calling LiteLLM with %d messages (history: %s, stream: %s)", len(messages), use_history, stream_llm
+        )
         response = await _call_llm(messages, ll_config, stream=stream_llm)
 
         if stream_llm:
