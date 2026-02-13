@@ -21,24 +21,8 @@ resource "oci_load_balancer_backend_set" "server_lb_backend_set" {
   health_checker {
     port     = local.fastapi_server_port
     protocol = "HTTP"
-    url_path = "/v1/liveness"
+    url_path = "/v1/readiness"
   }
-}
-
-resource "oci_load_balancer_listener" "client_lb_listener" {
-  load_balancer_id         = var.lb_id
-  name                     = format("%s-client-lb-listener", var.label_prefix)
-  default_backend_set_name = oci_load_balancer_backend_set.client_lb_backend_set.name
-  port                     = var.lb_http_port
-  protocol                 = "HTTP"
-}
-
-resource "oci_load_balancer_listener" "server_lb_listener" {
-  load_balancer_id         = var.lb_id
-  name                     = format("%s-server-lb-listener", var.label_prefix)
-  default_backend_set_name = oci_load_balancer_backend_set.server_lb_backend_set.name
-  port                     = var.lb_https_port
-  protocol                 = "HTTP"
 }
 
 resource "oci_load_balancer_backend" "client_lb_backend" {
@@ -53,6 +37,31 @@ resource "oci_load_balancer_backend" "server_lb_backend" {
   backendset_name  = oci_load_balancer_backend_set.server_lb_backend_set.name
   ip_address       = oci_core_instance.instance.private_ip
   port             = local.fastapi_server_port
+}
+
+resource "oci_load_balancer_load_balancer_routing_policy" "routing_policy" {
+  load_balancer_id           = var.lb_id
+  name                       = "route_policy"
+  condition_language_version = "V1"
+
+  rules {
+    name      = "route_v1"
+    condition = "any(http.request.url.path sw '/v1')"
+
+    actions {
+      name             = "FORWARD_TO_BACKENDSET"
+      backend_set_name = oci_load_balancer_backend_set.server_lb_backend_set.name
+    }
+  }
+}
+
+resource "oci_load_balancer_listener" "http_lb_listener" {
+  load_balancer_id         = var.lb_id
+  name                     = format("%s-http-lb-listener", var.label_prefix)
+  default_backend_set_name = oci_load_balancer_backend_set.client_lb_backend_set.name
+  port                     = var.lb_http_port
+  protocol                 = "HTTP"
+  routing_policy_name      = oci_load_balancer_load_balancer_routing_policy.routing_policy.name
 }
 
 // Compute Instance

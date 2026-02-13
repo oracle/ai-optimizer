@@ -58,7 +58,7 @@ client:
     annotations:
       oci-native-ingress.oraclecloud.com/http-listener-port: "80"
       oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
-      oci-native-ingress.oraclecloud.com/healthcheck-path: "/ping"
+      oci-native-ingress.oraclecloud.com/healthcheck-path: "/_stcore/health"
 
   service:
     type: "NodePort"
