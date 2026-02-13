@@ -64,6 +64,33 @@ resource "oci_load_balancer_listener" "http_lb_listener" {
   routing_policy_name      = oci_load_balancer_load_balancer_routing_policy.routing_policy.name
 }
 
+resource "oci_load_balancer_listener" "https_lb_listener" {
+  load_balancer_id         = var.lb_id
+  name                     = format("%s-https-lb-listener", var.label_prefix)
+  default_backend_set_name = oci_load_balancer_backend_set.client_lb_backend_set.name
+  port                     = var.lb_https_port
+  protocol                 = "HTTP"
+  routing_policy_name      = oci_load_balancer_load_balancer_routing_policy.routing_policy.name
+  ssl_configuration {
+    certificate_name        = var.lb_cert_name
+    verify_peer_certificate = false
+  }
+  lifecycle {
+    ignore_changes = [ssl_configuration[0].certificate_name]
+  }
+}
+
+
+# resource "oci_load_balancer_listener" "lb_listener_443" {
+#   ssl_configuration {
+#     certificate_name        = "get_a_real_cert"
+#     verify_peer_certificate = false
+#   }
+#   lifecycle {
+#     ignore_changes = [ssl_configuration[0].certificate_name]
+#   }
+# }
+
 // Compute Instance
 resource "oci_core_instance" "instance" {
   compartment_id      = var.compartment_id

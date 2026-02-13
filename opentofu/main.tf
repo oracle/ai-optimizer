@@ -45,6 +45,19 @@ resource "oci_load_balancer_load_balancer" "lb" {
   ]
 }
 
+resource "oci_load_balancer_certificate" "lb_certificate" {
+  certificate_name = "get_a_real_cert"
+  load_balancer_id = oci_load_balancer_load_balancer.lb.id
+
+  ca_certificate     = tls_self_signed_cert.acme_ca.cert_pem
+  public_certificate = tls_locally_signed_cert.example_com.cert_pem
+  private_key        = tls_private_key.example_com.private_key_pem
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 // Autonomous Database
 resource "oci_database_autonomous_database" "default_adb" {
   for_each                             = var.byo_db_type == "" ? { managed = true } : {}

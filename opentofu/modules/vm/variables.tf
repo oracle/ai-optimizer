@@ -26,6 +26,10 @@ variable "lb_id" {
   type = string
 }
 
+variable "lb_cert_name" {
+  type = string
+}
+
 variable "availability_domains" {
   type = list(any)
 }
