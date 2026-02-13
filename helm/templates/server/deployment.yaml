@@ -53,6 +53,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "global.apiSecretName" . }}
                   key: {{ include "global.apiSecretKey" . }}
+            - name: ROOT_PATH
+              value: {{ include "global.getPath" . | trimSuffix "/" | quote }}
             {{- if (default false .Values.server.oci_config.oke) }}
             - name: OCI_CLI_REGION
               value: {{ .Values.server.oci_config.region }}
