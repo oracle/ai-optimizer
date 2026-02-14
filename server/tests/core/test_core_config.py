@@ -40,6 +40,7 @@ def reload_settings(monkeypatch):
         sys.modules.pop(CONFIG_MODULE, None)
 
         for key in ("AIO_ENV", "AIO_URL_PREFIX", "AIO_PORT", "AIO_LOG_LEVEL",
+                     "AIO_API_KEY",
                      "AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN",
                      "AIO_DB_WALLET_PASSWORD", "AIO_DB_WALLET_LOCATION"):
             monkeypatch.delenv(key, raising=False)

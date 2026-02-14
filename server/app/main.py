@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 FastAPI application entrypoint.
 """
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,9 +19,14 @@ from server.app.db import initialize_schema
 #############################################################################
 # APP FACTORY
 #############################################################################
+LOGGER = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """FastAPI Lifespan"""
+    if settings.api_key_generated:
+        LOGGER.warning("AIO_API_KEY not set — using generated key: %s", settings.api_key)
     pool = await initialize_schema()
     try:
         yield
