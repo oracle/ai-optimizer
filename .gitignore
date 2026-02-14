@@ -2,95 +2,102 @@
 ##############################################################################
 # Project/User Specific
 ##############################################################################
-**/*.log
-**/*.zip
-**/requirements.txt
-**/THIRD_PARTY_LICENSES.txt
-sbin/**
-**/*.bak
-**/*.delete
-**/tmp/**
-**/temp/**
-**/chatbot_graph.png
-**/*.sh
-**/etc/*.json
-**/optimizer_settings.json
-**/rag_base_optimizer_config.py
-**/rag_base_optimizer_config_mcp.py
-!opentofu/**/cloudinit-oke.sh
-!opentofu/examples/manual-test.sh
-!src/entrypoint.sh
-!server/scripts/entrypoint.sh
-!src/client/spring_ai/templates/env.sh
-test*/db_startup_temp
+# **/*.log
+# **/*.zip
+# **/requirements.txt
+# **/THIRD_PARTY_LICENSES.txt
+# sbin/**
+# **/*.bak
+# **/*.delete
+# **/tmp/**
+# **/temp/**
+# **/chatbot_graph.png
+
+# **/etc/*.json
+# **/optimizer_settings.json
+# **/rag_base_optimizer_config.py
+# **/rag_base_optimizer_config_mcp.py
+# !opentofu/**/cloudinit-oke.sh
+# !opentofu/examples/manual-test.sh
+# !src/entrypoint.sh
+# !server/scripts/entrypoint.sh
+# !src/client/spring_ai/templates/env.sh
+# test*/db_startup_temp
 
 ##############################################################################
 # Environment (PyVen, IDE, etc.)
 ##############################################################################
 **/.*env*
-!.env.example
-**/.vscode
-**/.DS_Store
-**/*.swp
-**/.scannerwork
-**/.cursorignore
-**/tns_admin/**
-**/*.pem
-sonar-project.properties
-
-##############################################################################
-# Python
-##############################################################################
-__pycache__/
-.pytest_cache
-*.py[cod]
-*$py.class
 **/*.egg-info
-**/build/
-**/.mypy_cache
-
-# Test coverage artifacts
-.coverage
-coverage.xml
-htmlcov/
-test-results.xml
-
-##############################################################################
-# AI Code Assists
-##############################################################################
-**/*[Cc][Ll][Aa][Uu][Dd][Ee]*
-**/*[Cc][Ll][Ii][Ne][Ee]*
-**/*clinerules*/**
-**/*memory-bank*/**
+__pycache__/
+# **/.vscode
+**/.DS_Store
+# **/*.swp
+# **/.scannerwork
+# **/.cursorignore
+# sonar-project.properties
 
 ##############################################################################
-# Helm
+# Project/User Specific
 ##############################################################################
-helm/**/*.tgz
-helm/values*.yaml
-!helm/values.yaml
+!.env.example
+src/tns_admin/**
+**/*.sh
+**/*.log
+**/*.zip
 
-##############################################################################
-# IaC
-##############################################################################
-# Ignore all tfvars files (contain credentials)
-**/**.tfvars
-# But allow example tfvars files for CI/CD testing (safe, no real credentials)
-!opentofu/examples/*.tfvars
-# Terraform/OpenTofu state and cache
-**/.terraform*
-**/terraform.tfstate*
-**/*.tfplan
-**/*.tfplan.out
+# ##############################################################################
+# # Python
+# ##############################################################################
+# .pytest_cache
+# *.py[cod]
+# *$py.class
+# **/*.egg-info
+# **/build/
+# **/.mypy_cache
 
-##############################################################################
-# Random
-##############################################################################
-spring_ai/target/**
-spring_ai/create_user.sql
-spring_ai/drop.sql
-src/client/spring_ai/target/classes/*
-api_server_key
-DEVELOPMENT_NOTES.md
+# # Test coverage artifacts
+# .coverage
+# coverage.xml
+# htmlcov/
+# test-results.xml
 
-!**/.gitkeep
+# ##############################################################################
+# # AI Code Assists
+# ##############################################################################
+# **/*[Cc][Ll][Aa][Uu][Dd][Ee]*
+# **/*[Cc][Ll][Ii][Ne][Ee]*
+# **/*clinerules*/**
+# **/*memory-bank*/**
+
+# ##############################################################################
+# # Helm
+# ##############################################################################
+# helm/**/*.tgz
+# helm/values*.yaml
+# !helm/values.yaml
+
+# ##############################################################################
+# # IaC
+# ##############################################################################
+# # Ignore all tfvars files (contain credentials)
+# **/**.tfvars
+# # But allow example tfvars files for CI/CD testing (safe, no real credentials)
+# !opentofu/examples/*.tfvars
+# # Terraform/OpenTofu state and cache
+# **/.terraform*
+# **/terraform.tfstate*
+# **/*.tfplan
+# **/*.tfplan.out
+
+# ##############################################################################
+# # Random
+# ##############################################################################
+# spring_ai/target/**
+# spring_ai/create_user.sql
+# spring_ai/drop.sql
+# src/client/spring_ai/target/classes/*
+# api_server_key
+# DEVELOPMENT_NOTES.md
+
+# !**/.gitkeep
