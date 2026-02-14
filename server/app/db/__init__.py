@@ -6,14 +6,35 @@ Database initialization utilities for the FastAPI server.
 """
 
 import logging
-from typing import Optional
+from typing import Dict, Optional
 
 import oracledb
 
-from .config import create_pool, get_database_settings
+from .config import DatabaseSettings, create_pool, get_database_settings
 from .schema import SCHEMA_DDL
 
 LOGGER = logging.getLogger(__name__)
+
+_DATABASE_REGISTRY: Dict[str, DatabaseSettings] = {}
+
+
+def clear_database_registry() -> None:
+    """Remove all tracked database aliases."""
+
+    _DATABASE_REGISTRY.clear()
+
+
+def register_database(settings: DatabaseSettings) -> DatabaseSettings:
+    """Store the latest state for a database alias."""
+
+    _DATABASE_REGISTRY[settings.alias] = settings
+    return settings
+
+
+def get_registered_database(alias: str) -> Optional[DatabaseSettings]:
+    """Return the stored settings for ``alias`` if present."""
+
+    return _DATABASE_REGISTRY.get(alias)
 
 
 async def initialize_schema() -> Optional[oracledb.AsyncConnectionPool]:
@@ -23,33 +44,28 @@ async def initialize_schema() -> Optional[oracledb.AsyncConnectionPool]:
     lifecycle. When configuration is incomplete or connection fails, the
     failure is logged and ``None`` is returned without interrupting startup.
     """
-
-    settings = get_database_settings()
-    if settings is None:
-        LOGGER.warning("Skipping Oracle schema initialization: required DB_* environment variables missing.")
+    settings = register_database(get_database_settings())
+    if not settings.has_credentials():
+        LOGGER.info("Skipping Oracle schema initialization: alias=%s missing credentials.", settings.alias)
         return None
 
     pool = None
     try:
         pool = await create_pool(settings)
         async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("SELECT 1 FROM DUAL")
             conn.autocommit = True
             async with conn.cursor() as cursor:
                 for ddl in SCHEMA_DDL:
                     await cursor.execute(ddl)
-        LOGGER.info(
-            "Oracle schema initialized (user=%s, dsn=%s)",
-            settings.username,
-            settings.dsn,
-        )
+        register_database(settings.mark_usable(True))
+        LOGGER.info("Oracle schema initialized")
         return pool
     except oracledb.Error as exc:  # pragma: no cover - exercised via integration tests
-        LOGGER.warning(
-            "Oracle schema initialization failed for user=%s dsn=%s: %s",
-            settings.username,
-            settings.dsn,
-            exc,
-        )
+        LOGGER.warning("Oracle schema initialization failed")
+        LOGGER.warning("Database error: %s", exc)
+        register_database(settings.mark_usable(False))
         if pool is not None:
             try:
                 await pool.close()
