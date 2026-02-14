@@ -18,22 +18,28 @@ MODULE_PATH = "server.app.main"
 
 @pytest.fixture
 def load_app(monkeypatch):
-    """Reload the FastAPI app with an optional ROOT_PATH."""
+    """Reload the FastAPI app with an optional URL_PREFIX."""
 
     def _loader(root_path: str | None = None):
         if root_path is None:
-            monkeypatch.delenv("ROOT_PATH", raising=False)
+            monkeypatch.delenv("AIO_URL_PREFIX", raising=False)
         else:
-            monkeypatch.setenv("ROOT_PATH", root_path)
+            monkeypatch.setenv("AIO_URL_PREFIX", root_path)
 
-        sys.modules.pop(MODULE_PATH, None)
+        # Prevent real DB connections during unit tests
+        for key in ("AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN"):
+            monkeypatch.delenv(key, raising=False)
+
+        # Clear all dependent modules so settings/BASE_PATH are recreated
+        for mod in (MODULE_PATH, "server.app.core.config", "server.app.db", "server.app.db.config"):
+            sys.modules.pop(mod, None)
         return importlib.import_module(MODULE_PATH)
 
     return _loader
 
 
 def test_liveness_without_root_path(load_app):
-    """Responds on /v1 when ROOT_PATH unset."""
+    """Responds on /v1 when URL_PREFIX unset."""
     main = load_app()
     with TestClient(main.app) as client:
         response = client.get("/v1/liveness")
@@ -46,7 +52,7 @@ def test_liveness_without_root_path(load_app):
 
 
 def test_liveness_with_root_path(load_app):
-    """Supports prefixed and direct access when ROOT_PATH set."""
+    """Supports prefixed and direct access when URL_PREFIX set."""
     main = load_app("demo")
     with TestClient(main.app) as client:
         with_root = client.get("/demo/v1/liveness")

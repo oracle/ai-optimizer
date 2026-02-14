@@ -27,12 +27,13 @@ test*/db_startup_temp
 # Environment (PyVen, IDE, etc.)
 ##############################################################################
 **/.*env*
+!.env.example
 **/.vscode
 **/.DS_Store
 **/*.swp
 **/.scannerwork
 **/.cursorignore
-**/tns_admin
+**/tns_admin/**
 **/*.pem
 sonar-project.properties
 
@@ -90,3 +91,5 @@ spring_ai/drop.sql
 src/client/spring_ai/target/classes/*
 api_server_key
 DEVELOPMENT_NOTES.md
+
+!**/.gitkeep

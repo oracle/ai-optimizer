@@ -25,11 +25,13 @@ def test_schema_created(configure_db_env, oracle_connection, root_path, monkeypa
     del configure_db_env
 
     if root_path:
-        monkeypatch.setenv("ROOT_PATH", root_path)
+        monkeypatch.setenv("AIO_URL_PREFIX", root_path)
     else:
-        monkeypatch.delenv("ROOT_PATH", raising=False)
+        monkeypatch.delenv("AIO_URL_PREFIX", raising=False)
 
-    sys.modules.pop(MODULE_PATH, None)
+    for mod in (MODULE_PATH, "server.app.core.config",
+                "server.app.db", "server.app.db.config"):
+        sys.modules.pop(mod, None)
     app_main = importlib.import_module(MODULE_PATH)
 
     async def _run_lifespan():

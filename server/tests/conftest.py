@@ -147,8 +147,8 @@ def oracle_connection(oracle_db_container):
 def configure_db_env(monkeypatch, oracle_db_container):
     """Set database environment variables for the server during tests."""
     del oracle_db_container
-    monkeypatch.setenv("DB_USERNAME", TEST_DB_CONFIG["db_username"])
-    monkeypatch.setenv("DB_PASSWORD", TEST_DB_CONFIG["db_password"])
-    monkeypatch.setenv("DB_DSN", TEST_DB_CONFIG["db_dsn"])
-    monkeypatch.delenv("DB_WALLET_PASSWORD", raising=False)
+    monkeypatch.setenv("AIO_DB_USERNAME", TEST_DB_CONFIG["db_username"])
+    monkeypatch.setenv("AIO_DB_PASSWORD", TEST_DB_CONFIG["db_password"])
+    monkeypatch.setenv("AIO_DB_DSN", TEST_DB_CONFIG["db_dsn"])
+    monkeypatch.delenv("AIO_DB_WALLET_PASSWORD", raising=False)
     yield

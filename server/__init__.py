@@ -1,102 +1,76 @@
-"""Server package initialization and logging configuration."""
+"""
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-from __future__ import annotations
+Server package initialization and logging configuration.
+"""
 
-from collections.abc import Iterable
 import logging
-import os
 from logging.config import dictConfig
-
+from server.app.core.config import settings
 from ._version import __version__
 
 
-FORMATTER = {
-    'format': '%(asctime)s (v%(__version__)s) - %(levelname)-8s - (%(name)s): %(message)s',
-    'datefmt': '%Y-%b-%d %H:%M:%S',
-}
-
-_UVICORN_LOGGERS = ('uvicorn', 'uvicorn.error', 'uvicorn.access')
+_FORMATTER_FORMAT = "%(asctime)s (v%(__version__)s) - %(levelname)-8s - (%(name)s): %(message)s"
+_FORMATTER_DATEFMT = "%Y-%b-%d %H:%M:%S"
 
 
-class _VersionFilter(logging.Filter):
+def _inject_version(record: logging.LogRecord) -> bool:
     """Add package version information to log records."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if not hasattr(record, '__version__'):
-            record.__version__ = __version__
-        return True
-
-
-_VERSION_FILTER = _VersionFilter()
-
-
-def _attach_filter(handler: logging.Handler) -> None:
-    if not any(isinstance(existing, _VersionFilter) for existing in handler.filters):
-        handler.addFilter(_VERSION_FILTER)
-
-
-def _configure_handlers(loggers: Iterable[logging.Logger], formatter: logging.Formatter) -> None:
-    for logger in loggers:
-        for handler in logger.handlers:
-            handler.setFormatter(formatter)
-            _attach_filter(handler)
+    if not hasattr(record, "__version__"):
+        record.__version__ = __version__
+    return True
 
 
 def configure_logging() -> None:
     """Apply unified logging settings across server components."""
 
-    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-    uvicorn_access_level = os.getenv('UVICORN_ACCESS_LOG_LEVEL', 'INFO').upper()
+    log_level = settings.log_level.upper()
+    uvicorn_access_level = settings.log_level.upper()
     dictConfig(
         {
-            'version': 1,
-            'disable_existing_loggers': False,
-            'formatters': {
-                'standard': {
-                    'format': FORMATTER['format'],
-                    'datefmt': FORMATTER['datefmt'],
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "standard": {
+                    "format": _FORMATTER_FORMAT,
+                    "datefmt": _FORMATTER_DATEFMT,
                 },
             },
-            'filters': {
-                'inject_version': {'()': _VersionFilter},
-            },
-            'handlers': {
-                'console': {
-                    'class': 'logging.StreamHandler',
-                    'formatter': 'standard',
-                    'filters': ['inject_version'],
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "standard",
                 },
             },
-            'root': {
-                'handlers': ['console'],
-                'level': log_level,
+            "root": {
+                "handlers": ["console"],
+                "level": log_level,
             },
-            'loggers': {
-                'uvicorn': {
-                    'handlers': ['console'],
-                    'level': log_level,
-                    'propagate': False,
+            "loggers": {
+                "uvicorn": {
+                    "handlers": ["console"],
+                    "level": log_level,
+                    "propagate": False,
                 },
-                'uvicorn.error': {
-                    'handlers': ['console'],
-                    'level': log_level,
-                    'propagate': False,
+                "uvicorn.error": {
+                    "handlers": ["console"],
+                    "level": log_level,
+                    "propagate": False,
                 },
-                'uvicorn.access': {
-                    'handlers': ['console'],
-                    'level': uvicorn_access_level,
-                    'propagate': False,
+                "uvicorn.access": {
+                    "handlers": ["console"],
+                    "level": uvicorn_access_level,
+                    "propagate": False,
                 },
             },
         }
     )
 
-    root_logger = logging.getLogger()
-    formatter = logging.Formatter(FORMATTER['format'], FORMATTER['datefmt'])
-    target_loggers = [root_logger, *(logging.getLogger(name) for name in _UVICORN_LOGGERS)]
-    _configure_handlers(target_loggers, formatter)
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(_inject_version)
 
 
 configure_logging()
 
-__all__ = ('FORMATTER', 'configure_logging')
+__all__ = ("configure_logging",)

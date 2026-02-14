@@ -5,13 +5,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 FastAPI application entrypoint.
 """
 
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from server._version import __version__
 from server.app.api.v1.router import router as v1_router
+from server.app.core.config import settings
 from server.app.db import initialize_schema
 
 
@@ -31,7 +31,7 @@ async def lifespan(_app: FastAPI):
 
 API_PREFIX = "/v1"
 
-BASE_PATH = os.environ.get("ROOT_PATH", "").strip("/")
+BASE_PATH = settings.url_prefix.strip("/")
 BASE_PATH = f"/{BASE_PATH}" if BASE_PATH else ""
 
 app = FastAPI(

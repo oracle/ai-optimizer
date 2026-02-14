@@ -53,6 +53,6 @@ async def initialize_schema() -> Optional[oracledb.AsyncConnectionPool]:
         if pool is not None:
             try:
                 await pool.close()
-            except Exception:
+            except oracledb.Error:
                 pass
         return None
