@@ -13,36 +13,79 @@ from fastapi import APIRouter, HTTPException
 import oracledb
 
 from server.app.api.v1.schemas.databases import (
+    ActiveDatabase,
     DatabaseCreate,
     DatabaseResponse,
     DatabaseUpdate,
 )
 from server.app.database import (
     close_pool,
+    get_active_alias,
     get_all_registered_databases,
     get_registered_database,
     initialize_schema,
     register_database,
     remove_registered_database,
+    set_active_alias,
 )
-from server.app.database.config import DatabaseSettings
+
+__all__ = ["register_database"]
+from server.app.database.config import DatabaseSettings, WalletConfig
+from server.app.database.settings import registry_to_persisted, save_settings
 
 LOGGER = logging.getLogger(__name__)
 
 auth = APIRouter(prefix="/db")
 
 
-def _to_response(settings: DatabaseSettings) -> DatabaseResponse:
-    """Map internal DatabaseSettings to the public response model."""
+async def _persist_settings() -> None:
+    """Persist is_current registry state to aio_settings."""
+
+    default_db = get_registered_database("DEFAULT")
+    if default_db is None or not default_db.usable or default_db.pool is None:
+        return
+    try:
+        is_current = registry_to_persisted(get_all_registered_databases(), get_active_alias())
+        await save_settings(default_db.pool, is_current)
+    except oracledb.Error:
+        LOGGER.warning("Failed to persist database settings")
+
+
+def _to_response(state) -> DatabaseResponse:
+    """Map internal DatabaseState to the public response model."""
 
     return DatabaseResponse(
-        alias=settings.alias,
-        username=settings.username,
-        dsn=settings.dsn,
-        wallet_location=settings.wallet_location,
-        has_credentials=settings.has_credentials(),
-        usable=settings.usable,
+        alias=state.alias,
+        username=state.settings.username,
+        dsn=state.settings.dsn,
+        wallet_location=state.settings.wallet.location,
+        has_credentials=state.settings.has_credentials(),
+        usable=state.usable,
     )
+
+
+# --- Active database endpoints (before /{alias} to avoid path conflicts) ---
+
+
+@auth.get("/active", response_model=ActiveDatabase)
+async def get_active_database():
+    """Return the is_current alias."""
+
+    return ActiveDatabase(alias=get_active_alias())
+
+
+@auth.put("/active", response_model=ActiveDatabase)
+async def set_active_database(body: ActiveDatabase):
+    """Switch the active database alias."""
+
+    if get_registered_database(body.alias) is None:
+        raise HTTPException(status_code=404, detail=f"Alias '{body.alias}' not found")
+    set_active_alias(body.alias)
+    await _persist_settings()
+    return ActiveDatabase(alias=get_active_alias())
+
+
+# --- CRUD endpoints ---
 
 
 @auth.get("", response_model=list[DatabaseResponse])
@@ -67,8 +110,12 @@ async def create_database(body: DatabaseCreate):
         username=body.username,
         password=body.password,
         dsn=body.dsn,
-        wallet_password=body.wallet_password,
-        wallet_location=body.wallet_location,
+        wallet=WalletConfig(
+            password=body.wallet_password,
+            location=body.wallet_location,
+        ),
+        config_dir=body.config_dir,
+        tcp_connect_timeout=body.tcp_connect_timeout or 10,
     )
 
     pool = None
@@ -77,8 +124,8 @@ async def create_database(body: DatabaseCreate):
     except (oracledb.Error, ValueError):
         pass
 
-    saved = get_registered_database(body.alias)
-    if saved is not None and not saved.usable:
+    state = get_registered_database(body.alias)
+    if state is not None and not state.usable:
         await close_pool(pool)
         raise HTTPException(
             status_code=422,
@@ -87,13 +134,11 @@ async def create_database(body: DatabaseCreate):
 
     # Close the validation pool — runtime pool management is separate
     await close_pool(pool)
-    if pool is not None:
-        # Clear pool reference since we closed it
-        if saved is not None:
-            register_database(saved.with_pool(None))
-            saved = get_registered_database(body.alias)
+    if pool is not None and state is not None:
+        state.pool = None
 
-    return _to_response(saved)
+    await _persist_settings()
+    return _to_response(state)
 
 
 @auth.get("/{alias}", response_model=DatabaseResponse)
@@ -106,17 +151,38 @@ async def get_database(alias: str):
     return _to_response(db)
 
 
+def _build_updated_settings(state, body: DatabaseUpdate) -> DatabaseSettings:
+    """Merge request body into existing settings, returning a new DatabaseSettings."""
+
+    updates = body.model_dump(exclude_unset=True)
+    wallet_updates = {}
+    if "wallet_password" in updates:
+        wallet_updates["password"] = updates.pop("wallet_password")
+    if "wallet_location" in updates:
+        wallet_updates["location"] = updates.pop("wallet_location")
+    if wallet_updates:
+        updates["wallet"] = dataclasses.replace(state.settings.wallet, **wallet_updates)
+
+    return dataclasses.replace(state.settings, **updates)
+
+
 @auth.put("/{alias}", response_model=DatabaseResponse)
 async def update_database(alias: str, body: DatabaseUpdate):
     """Update an existing database alias configuration."""
 
-    existing = get_registered_database(alias)
-    if existing is None:
+    state = get_registered_database(alias)
+    if state is None:
         raise HTTPException(status_code=404, detail=f"Alias '{alias}' not found")
 
-    was_usable = existing.usable
-    updates = body.model_dump(exclude_unset=True)
-    new_settings = dataclasses.replace(existing, **updates, usable=False, pool=None)
+    was_usable = state.usable
+    old_pool = state.pool
+    old_settings = state.settings
+
+    new_settings = _build_updated_settings(state, body)
+
+    # Reset state for re-validation
+    state.usable = False
+    state.pool = None
 
     pool = None
     try:
@@ -124,15 +190,15 @@ async def update_database(alias: str, body: DatabaseUpdate):
     except (oracledb.Error, ValueError):
         pass
 
-    saved = get_registered_database(alias)
-
-    if saved is not None and not saved.usable:
+    if not state.usable:
         # Close pool from failed attempt
         await close_pool(pool)
 
         if was_usable:
             # Reject: restore old settings
-            register_database(existing)
+            state.settings = old_settings
+            state.usable = was_usable
+            state.pool = old_pool
             raise HTTPException(
                 status_code=422,
                 detail=f"Connectivity test failed; existing usable configuration preserved for alias '{alias}'",
@@ -145,15 +211,19 @@ async def update_database(alias: str, body: DatabaseUpdate):
         )
 
     # Close the old pool that was replaced by the successful update
-    await close_pool(existing.pool)
+    await close_pool(old_pool)
 
-    # Success — close validation pool and clear reference
-    await close_pool(pool)
-    if pool is not None and saved is not None:
-        register_database(saved.with_pool(None))
-        saved = get_registered_database(alias)
+    # Non-DEFAULT aliases close the validation pool; their runtime pools
+    # are established later.  DEFAULT keeps it for persistence.
+    if alias == "DEFAULT":
+        state.pool = pool
+    else:
+        await close_pool(pool)
+        if pool is not None:
+            state.pool = None
 
-    return _to_response(saved)
+    await _persist_settings()
+    return _to_response(state)
 
 
 @auth.delete("/{alias}", status_code=204)
@@ -168,3 +238,9 @@ async def delete_database(alias: str):
         raise HTTPException(status_code=404, detail=f"Alias '{alias}' not found")
     if db is not None:
         await close_pool(db.pool)
+
+    # If the deleted alias was the active one, reset to DEFAULT
+    if get_active_alias() == alias:
+        set_active_alias("DEFAULT")
+
+    await _persist_settings()

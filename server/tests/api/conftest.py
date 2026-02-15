@@ -13,4 +13,5 @@ MODULES_TO_RELOAD = (
     "server.app.api.v1.endpoints.probes",
     "server.app.database",
     "server.app.database.config",
+    "server.app.database.settings",
 )

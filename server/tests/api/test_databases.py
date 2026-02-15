@@ -20,6 +20,7 @@ from .conftest import MODULES_TO_RELOAD as _BASE_MODULES
 MODULES_TO_RELOAD = _BASE_MODULES + (
     "server.app.api.v1.endpoints.databases",
     "server.app.api.v1.schemas.databases",
+    "server.app.database.settings",
 )
 
 API_KEY = "test-secret"
@@ -163,28 +164,62 @@ class TestUpdateDatabase:
         assert response.status_code == 422
 
     def test_update_closes_old_pool(self, app_client):
-        """Updating an alias closes the old pool that was replaced by a successful update."""
+        """Updating DEFAULT closes the old pool but keeps the validation pool for persistence."""
         client = app_client()
 
         # Import through the same path the app uses to share the same registry
         from server.app.api.v1.endpoints import databases as db_ep
 
-        existing = db_ep.get_registered_database("DEFAULT")
+        state = db_ep.get_registered_database("DEFAULT")
         old_pool = AsyncMock()
-        db_ep.register_database(existing.with_pool(old_pool))
+        state.pool = old_pool
 
         validation_pool = AsyncMock()
 
         async def fake_init(settings):
-            db_ep.register_database(settings.mark_usable(True).with_pool(None))
+            target = db_ep.get_registered_database(settings.alias)
+            target.usable = True
+            target.pool = None
             return validation_pool
 
-        with patch.object(db_ep, "initialize_schema", side_effect=fake_init):
+        with (
+            patch.object(db_ep, "initialize_schema", side_effect=fake_init),
+            patch.object(db_ep, "save_settings", new_callable=AsyncMock),
+        ):
             response = client.put("/v1/db/DEFAULT", json={"dsn": "newdsn"}, headers=HEADERS)
 
         assert response.status_code == 200
         old_pool.close.assert_awaited_once()
-        validation_pool.close.assert_awaited_once()
+        # DEFAULT keeps the validation pool as its runtime pool for persistence
+        validation_pool.close.assert_not_awaited()
+        # Clean up: remove mock pool so it doesn't leak into later tests
+        state.pool = None
+
+    def test_update_default_persists_settings(self, app_client):
+        """Updating DEFAULT must persist settings (pool stays open for persistence)."""
+        client = app_client()
+
+        from server.app.api.v1.endpoints import databases as db_ep
+
+        validation_pool = AsyncMock()
+
+        async def fake_init(settings):
+            target = db_ep.get_registered_database(settings.alias)
+            target.usable = True
+            target.pool = None
+            return validation_pool
+
+        with (
+            patch.object(db_ep, "initialize_schema", side_effect=fake_init),
+            patch.object(db_ep, "save_settings", new_callable=AsyncMock) as mock_save,
+        ):
+            response = client.put("/v1/db/DEFAULT", json={"dsn": "newdsn"}, headers=HEADERS)
+
+        assert response.status_code == 200
+        mock_save.assert_awaited_once()
+        # Clean up: remove mock pool so it doesn't leak into later tests
+        state = db_ep.get_registered_database("DEFAULT")
+        state.pool = None
 
     def test_update_rejects_missing_api_key(self, app_client):
         """Request without API key returns 403."""
@@ -227,9 +262,10 @@ class TestDeleteDatabase:
         from server.app.api.v1.endpoints import databases as db_ep
         from server.app.database.config import DatabaseSettings
 
-        # Register an alias directly with a mock pool
+        # Register an alias directly, then attach a mock pool
         mock_pool = AsyncMock()
-        db_ep.register_database(DatabaseSettings(alias="pooltest", usable=False, pool=mock_pool))
+        state = db_ep.register_database(DatabaseSettings(alias="pooltest"))
+        state.pool = mock_pool
 
         response = client.delete("/v1/db/pooltest", headers=HEADERS)
         assert response.status_code == 204
@@ -264,3 +300,50 @@ class TestPasswordsNeverExposed:
         assert "password" not in data
         assert "wallet_password" not in data
         assert "secret" not in response.text
+
+
+class TestActiveDatabase:
+    """GET/PUT /v1/db/active"""
+
+    def test_get_active_returns_default(self, app_client):
+        """Active alias defaults to DEFAULT."""
+        client = app_client()
+        response = client.get("/v1/db/active", headers=HEADERS)
+        assert response.status_code == 200
+        assert response.json()["alias"] == "DEFAULT"
+
+    def test_set_active_unknown_alias_returns_404(self, app_client):
+        """Setting active to unknown alias returns 404."""
+        client = app_client()
+        response = client.put("/v1/db/active", json={"alias": "NOPE"}, headers=HEADERS)
+        assert response.status_code == 404
+
+    def test_set_active_to_default(self, app_client):
+        """Can explicitly set active back to DEFAULT."""
+        client = app_client()
+        response = client.put("/v1/db/active", json={"alias": "DEFAULT"}, headers=HEADERS)
+        assert response.status_code == 200
+        assert response.json()["alias"] == "DEFAULT"
+
+    def test_set_active_rejects_missing_api_key(self, app_client):
+        """Request without API key returns 403."""
+        client = app_client()
+        response = client.put("/v1/db/active", json={"alias": "DEFAULT"})
+        assert response.status_code == 403
+
+    def test_delete_active_alias_resets_to_default(self, app_client):
+        """Deleting the active alias resets it to DEFAULT."""
+        client = app_client()
+
+        from server.app.api.v1.endpoints import databases as db_ep
+        from server.app.database.config import DatabaseSettings
+
+        # Register an alias and set it as active
+        db_ep.register_database(DatabaseSettings(alias="temp"))
+        db_ep.set_active_alias("temp")
+
+        response = client.delete("/v1/db/temp", headers=HEADERS)
+        assert response.status_code == 204
+
+        response = client.get("/v1/db/active", headers=HEADERS)
+        assert response.json()["alias"] == "DEFAULT"

@@ -18,6 +18,8 @@ class _DatabaseFields(BaseModel):
     dsn: Optional[str] = None
     wallet_password: Optional[str] = None
     wallet_location: Optional[str] = None
+    config_dir: Optional[str] = None
+    tcp_connect_timeout: Optional[int] = None
 
 
 class DatabaseCreate(_DatabaseFields):
@@ -39,3 +41,44 @@ class DatabaseResponse(BaseModel):
     wallet_location: Optional[str] = None
     has_credentials: bool
     usable: bool
+
+
+class ActiveDatabase(BaseModel):
+    """Active database alias."""
+
+    alias: str
+
+
+# --- Persistence models for aio_settings ---
+
+
+class DatabaseConfigEntry(BaseModel):
+    """Single database config as stored in the settings JSON."""
+
+    alias: str
+    user: Optional[str] = None
+    password: Optional[str] = None
+    dsn: Optional[str] = None
+    wallet_password: Optional[str] = None
+    wallet_location: Optional[str] = None
+    config_dir: Optional[str] = None
+    tcp_connect_timeout: int = 10
+
+
+class ClientDatabaseSettings(BaseModel):
+    """Tracks which database alias is_current."""
+
+    alias: str = "DEFAULT"
+
+
+class ClientSettings(BaseModel):
+    """Client-level settings wrapper."""
+
+    database: ClientDatabaseSettings = ClientDatabaseSettings()
+
+
+class PersistedSettings(BaseModel):
+    """Top-level structure persisted in the aio_settings table."""
+
+    client_settings: ClientSettings = ClientSettings()
+    database_configs: list[DatabaseConfigEntry] = []

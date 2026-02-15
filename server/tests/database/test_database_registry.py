@@ -50,9 +50,9 @@ async def test_default_alias_unusable_without_credentials(monkeypatch):
     default_alias = db_module.get_registered_database("DEFAULT")
     assert default_alias is not None
     assert default_alias.usable is False
-    assert default_alias.username is None
-    assert default_alias.password is None
-    assert default_alias.dsn is None
+    assert default_alias.settings.username is None
+    assert default_alias.settings.password is None
+    assert default_alias.settings.dsn is None
 
 
 @pytest.mark.db
@@ -74,8 +74,8 @@ async def test_default_alias_becomes_usable_after_successful_bootstrap(configure
     default_alias = db_module.get_registered_database("DEFAULT")
     assert default_alias is not None
     assert default_alias.usable is True
-    assert default_alias.username == TEST_DB_CONFIG["db_username"]
-    assert default_alias.dsn == TEST_DB_CONFIG["db_dsn"]
+    assert default_alias.settings.username == TEST_DB_CONFIG["db_username"]
+    assert default_alias.settings.dsn == TEST_DB_CONFIG["db_dsn"]
 
     await pool.close()
 

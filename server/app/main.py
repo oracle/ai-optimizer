@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from server._version import __version__
 from server.app.api.v1.router import router as v1_router
 from server.app.core.config import settings
-from server.app.database import close_pool, get_all_registered_databases, initialize_schema
+from server.app.database import close_pool, get_all_registered_databases, initialize_schema, load_persisted_databases
 
 
 #############################################################################
@@ -28,6 +28,7 @@ async def lifespan(_app: FastAPI):
     if settings.api_key_generated:
         LOGGER.warning("AIO_API_KEY not set — using generated key: %s", settings.api_key)
     await initialize_schema()
+    await load_persisted_databases()
     try:
         yield
     finally:
