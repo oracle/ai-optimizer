@@ -30,7 +30,7 @@ def test_schema_created(configure_db_env, oracle_connection, root_path, monkeypa
         monkeypatch.delenv("AIO_URL_PREFIX", raising=False)
 
     for mod in (MODULE_PATH, "server.app.core.config",
-                "server.app.db", "server.app.db.config"):
+                "server.app.database", "server.app.database.config"):
         sys.modules.pop(mod, None)
     app_main = importlib.import_module(MODULE_PATH)
 

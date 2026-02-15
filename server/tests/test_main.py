@@ -31,7 +31,7 @@ def load_app(monkeypatch):
             monkeypatch.delenv(key, raising=False)
 
         # Clear all dependent modules so settings/BASE_PATH are recreated
-        for mod in (MODULE_PATH, "server.app.core.config", "server.app.db", "server.app.db.config"):
+        for mod in (MODULE_PATH, "server.app.core.config", "server.app.database", "server.app.database.config"):
             sys.modules.pop(mod, None)
         return importlib.import_module(MODULE_PATH)
 

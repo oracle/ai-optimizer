@@ -13,15 +13,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-MODULES_TO_RELOAD = (
-    "server.app.main",
-    "server.app.core.config",
-    "server.app.api.deps",
-    "server.app.api.v1.router",
-    "server.app.api.v1.endpoints.probes",
-    "server.app.db",
-    "server.app.db.config",
-)
+from .conftest import MODULES_TO_RELOAD
 
 
 @pytest.fixture

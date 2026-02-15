@@ -7,7 +7,7 @@ Database connection configuration for the FastAPI server.
 
 import logging
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 import oracledb
@@ -29,6 +29,7 @@ class DatabaseSettings:
     wallet_password: Optional[str] = None
     wallet_location: Optional[str] = None
     usable: bool = False
+    pool: Optional[oracledb.AsyncConnectionPool] = field(default=None, compare=False, repr=False)
 
     def has_credentials(self) -> bool:
         """Return True when username, password, and dsn are populated."""
@@ -39,6 +40,11 @@ class DatabaseSettings:
         """Return a copy with the usable flag updated."""
 
         return replace(self, usable=usable)
+
+    def with_pool(self, pool: Optional[oracledb.AsyncConnectionPool]) -> "DatabaseSettings":
+        """Return a copy with the pool reference updated."""
+
+        return replace(self, pool=pool)
 
 
 def get_database_settings() -> DatabaseSettings:

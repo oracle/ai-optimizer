@@ -14,12 +14,12 @@ def _reload_db_module():
     """Reload DB modules to pick up fresh settings and registry state."""
 
     for module in (
-        "server.app.db",
-        "server.app.db.config",
+        "server.app.database",
+        "server.app.database.config",
         "server.app.core.config",
     ):
         sys.modules.pop(module, None)
-    return importlib.import_module("server.app.db")
+    return importlib.import_module("server.app.database")
 
 
 def _clear_registry(db_module) -> None:
@@ -84,7 +84,8 @@ async def test_default_alias_becomes_usable_after_successful_bootstrap(configure
 @pytest.mark.slow
 @pytest.mark.integration
 @pytest.mark.anyio
-async def test_default_alias_marks_unusable_on_failed_connect(configure_db_env, oracle_connection, monkeypatch):
+@pytest.mark.usefixtures("configure_db_env")
+async def test_default_alias_marks_unusable_on_failed_connect(oracle_connection, monkeypatch):
     """Failed connectivity should leave DEFAULT marked unusable."""
 
     del oracle_connection
