@@ -31,7 +31,7 @@ async def close_pool(pool: Optional[oracledb.AsyncConnectionPool]) -> None:
 
 _DATABASE_REGISTRY: Dict[str, DatabaseState] = {}
 
-_ACTIVE_ALIAS: Dict[str, str] = {"value": "DEFAULT"}
+_ACTIVE_ALIAS: Dict[str, str] = {"value": "CORE"}
 
 
 def get_active_alias() -> str:
@@ -91,7 +91,7 @@ async def initialize_schema(
 ) -> Optional[oracledb.AsyncConnectionPool]:
     """Create database schema using oracledb if configuration is present.
 
-    When *db_settings* is ``None`` (startup path), falls back to the DEFAULT
+    When *db_settings* is ``None`` (startup path), falls back to the CORE
     alias built from environment variables. When provided (endpoint path),
     uses the given settings directly.
 
@@ -127,14 +127,14 @@ async def initialize_schema(
 
 
 async def load_persisted_databases() -> None:
-    """Load persisted database configs from aio_settings after DEFAULT init."""
+    """Load persisted database configs from aio_settings after CORE init."""
 
-    default_db = get_registered_database("DEFAULT")
-    if default_db is None or not default_db.usable or default_db.pool is None:
+    core_db = get_registered_database("CORE")
+    if core_db is None or not core_db.usable or core_db.pool is None:
         return
 
     try:
-        persisted = await load_settings(default_db.pool)
+        persisted = await load_settings(core_db.pool)
     except (oracledb.Error, json.JSONDecodeError, ValidationError):
         LOGGER.warning("Failed to load persisted settings from aio_settings")
         return
@@ -143,9 +143,9 @@ async def load_persisted_databases() -> None:
         # Restore active alias
         set_active_alias(persisted.client_settings.database.alias)
 
-        # Load non-DEFAULT databases from persisted configs
+        # Load non-CORE databases from persisted configs
         for entry in persisted.database_configs:
-            if entry.alias == "DEFAULT":
+            if entry.alias == "CORE":
                 continue
             if get_registered_database(entry.alias) is not None:
                 continue
@@ -155,9 +155,9 @@ async def load_persisted_databases() -> None:
             except (oracledb.Error, ValueError):
                 LOGGER.warning("Failed to restore persisted database alias=%s", entry.alias)
 
-    # Always persist is_current state (updates DEFAULT entry with latest env vars)
+    # Always persist is_current state (updates CORE entry with latest env vars)
     try:
         is_current = registry_to_persisted(get_all_registered_databases(), get_active_alias())
-        await save_settings(default_db.pool, is_current)
+        await save_settings(core_db.pool, is_current)
     except oracledb.Error:
         LOGGER.warning("Failed to save settings to aio_settings")

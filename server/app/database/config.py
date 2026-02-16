@@ -15,7 +15,7 @@ import oracledb
 from server.app.core.config import PROJECT_ROOT, settings
 
 LOGGER = logging.getLogger(__name__)
-_DEFAULT_TNS_ADMIN = PROJECT_ROOT / "server" / "tns_admin"
+_CORE_TNS_ADMIN = PROJECT_ROOT / "server" / "tns_admin"
 
 
 @dataclass(frozen=True)
@@ -60,10 +60,10 @@ class DatabaseState:
 
 
 def get_database_settings() -> DatabaseSettings:
-    """Return the DEFAULT database alias populated from environment variables."""
+    """Return the CORE database alias populated from environment variables."""
 
     return DatabaseSettings(
-        alias="DEFAULT",
+        alias="CORE",
         username=settings.db_username,
         password=settings.db_password,
         dsn=settings.db_dsn,
@@ -80,7 +80,7 @@ async def create_pool(db_settings: DatabaseSettings) -> oracledb.AsyncConnection
     if not db_settings.has_credentials():
         raise ValueError(f"Database alias {db_settings.alias} missing credentials")
 
-    tns_admin = db_settings.config_dir or os.environ.get("TNS_ADMIN") or str(_DEFAULT_TNS_ADMIN)
+    tns_admin = db_settings.config_dir or os.environ.get("TNS_ADMIN") or str(_CORE_TNS_ADMIN)
 
     connect_args = {
         "user": db_settings.username,

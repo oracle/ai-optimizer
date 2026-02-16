@@ -68,7 +68,7 @@ class DatabaseConfigEntry(BaseModel):
 class ClientDatabaseSettings(BaseModel):
     """Tracks which database alias is_current."""
 
-    alias: str = "DEFAULT"
+    alias: str = "CORE"
 
 
 class ClientSettings(BaseModel):

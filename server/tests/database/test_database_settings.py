@@ -97,18 +97,18 @@ class TestRegistryToPersisted:
     def test_single_entry(self):
         """Single-entry registry produces one database_configs item."""
 
-        registry = [DatabaseState(settings=DatabaseSettings(alias="DEFAULT", username="u", password="p", dsn="d"))]
-        persisted = registry_to_persisted(registry, "DEFAULT")
+        registry = [DatabaseState(settings=DatabaseSettings(alias="CORE", username="u", password="p", dsn="d"))]
+        persisted = registry_to_persisted(registry, "CORE")
 
-        assert persisted.client_settings.database.alias == "DEFAULT"
+        assert persisted.client_settings.database.alias == "CORE"
         assert len(persisted.database_configs) == 1
-        assert persisted.database_configs[0].alias == "DEFAULT"
+        assert persisted.database_configs[0].alias == "CORE"
 
     def test_multiple_entries(self):
         """Multi-entry registry records the active alias and all configs."""
 
         registry = [
-            DatabaseState(settings=DatabaseSettings(alias="DEFAULT", username="u1", password="p1", dsn="d1")),
+            DatabaseState(settings=DatabaseSettings(alias="CORE", username="u1", password="p1", dsn="d1")),
             DatabaseState(settings=DatabaseSettings(alias="TEST", username="u2", password="p2", dsn="d2")),
         ]
         persisted = registry_to_persisted(registry, "TEST")
@@ -116,7 +116,7 @@ class TestRegistryToPersisted:
         assert persisted.client_settings.database.alias == "TEST"
         assert len(persisted.database_configs) == 2
         aliases = {e.alias for e in persisted.database_configs}
-        assert aliases == {"DEFAULT", "TEST"}
+        assert aliases == {"CORE", "TEST"}
 
 
 class TestPersistedSettingsModel:
@@ -131,7 +131,7 @@ class TestPersistedSettingsModel:
             ),
             database_configs=[
                 DatabaseConfigEntry(
-                    alias="DEFAULT",
+                    alias="CORE",
                     user="u",
                     password="p",
                     dsn="d",
@@ -151,12 +151,12 @@ class TestPersistedSettingsModel:
 
         assert restored.client_settings.database.alias == "TEST"
         assert len(restored.database_configs) == 2
-        assert restored.database_configs[0].alias == "DEFAULT"
+        assert restored.database_configs[0].alias == "CORE"
         assert restored.database_configs[1].tcp_connect_timeout == 5
 
-    def test_defaults(self):
-        """Default PersistedSettings has DEFAULT alias and no configs."""
+    def test_core(self):
+        """Default PersistedSettings has CORE alias and no configs."""
 
         persisted = PersistedSettings()
-        assert persisted.client_settings.database.alias == "DEFAULT"
+        assert persisted.client_settings.database.alias == "CORE"
         assert not persisted.database_configs

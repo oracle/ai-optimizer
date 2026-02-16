@@ -27,8 +27,8 @@ def _clear_registry(db_module) -> None:
 
 
 @pytest.mark.anyio
-async def test_default_alias_unusable_without_credentials(monkeypatch):
-    """DEFAULT alias should exist but be unusable when env credentials are absent."""
+async def test_core_alias_unusable_without_credentials(monkeypatch):
+    """CORE alias should exist but be unusable when env credentials are absent."""
 
     # Force settings reload without .env-backed credentials
     monkeypatch.setenv("AIO_ENV", "pytest-empty")
@@ -47,20 +47,20 @@ async def test_default_alias_unusable_without_credentials(monkeypatch):
     pool = await db_module.initialize_schema()
 
     assert pool is None
-    default_alias = db_module.get_registered_database("DEFAULT")
-    assert default_alias is not None
-    assert default_alias.usable is False
-    assert default_alias.settings.username is None
-    assert default_alias.settings.password is None
-    assert default_alias.settings.dsn is None
+    core_alias = db_module.get_registered_database("CORE")
+    assert core_alias is not None
+    assert core_alias.usable is False
+    assert core_alias.settings.username is None
+    assert core_alias.settings.password is None
+    assert core_alias.settings.dsn is None
 
 
 @pytest.mark.db
 @pytest.mark.slow
 @pytest.mark.integration
 @pytest.mark.anyio
-async def test_default_alias_becomes_usable_after_successful_bootstrap(configure_db_env, oracle_connection):
-    """Valid env credentials should yield a usable DEFAULT alias."""
+async def test_core_alias_becomes_usable_after_successful_bootstrap(configure_db_env, oracle_connection):
+    """Valid env credentials should yield a usable CORE alias."""
 
     del configure_db_env
     del oracle_connection
@@ -71,11 +71,11 @@ async def test_default_alias_becomes_usable_after_successful_bootstrap(configure
     pool = await db_module.initialize_schema()
 
     assert pool is not None
-    default_alias = db_module.get_registered_database("DEFAULT")
-    assert default_alias is not None
-    assert default_alias.usable is True
-    assert default_alias.settings.username == TEST_DB_CONFIG["db_username"]
-    assert default_alias.settings.dsn == TEST_DB_CONFIG["db_dsn"]
+    core_alias = db_module.get_registered_database("CORE")
+    assert core_alias is not None
+    assert core_alias.usable is True
+    assert core_alias.settings.username == TEST_DB_CONFIG["db_username"]
+    assert core_alias.settings.dsn == TEST_DB_CONFIG["db_dsn"]
 
     await pool.close()
 
@@ -85,8 +85,8 @@ async def test_default_alias_becomes_usable_after_successful_bootstrap(configure
 @pytest.mark.integration
 @pytest.mark.anyio
 @pytest.mark.usefixtures("configure_db_env")
-async def test_default_alias_marks_unusable_on_failed_connect(oracle_connection, monkeypatch):
-    """Failed connectivity should leave DEFAULT marked unusable."""
+async def test_core_alias_marks_unusable_on_failed_connect(oracle_connection, monkeypatch):
+    """Failed connectivity should leave CORE marked unusable."""
 
     del oracle_connection
     monkeypatch.setenv("AIO_DB_PASSWORD", "incorrect")
@@ -97,6 +97,6 @@ async def test_default_alias_marks_unusable_on_failed_connect(oracle_connection,
     pool = await db_module.initialize_schema()
 
     assert pool is None
-    default_alias = db_module.get_registered_database("DEFAULT")
-    assert default_alias is not None
-    assert default_alias.usable is False
+    core_alias = db_module.get_registered_database("CORE")
+    assert core_alias is not None
+    assert core_alias.usable is False

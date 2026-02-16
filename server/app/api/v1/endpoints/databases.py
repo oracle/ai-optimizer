@@ -41,12 +41,12 @@ auth = APIRouter(prefix="/db")
 async def _persist_settings() -> None:
     """Persist is_current registry state to aio_settings."""
 
-    default_db = get_registered_database("DEFAULT")
-    if default_db is None or not default_db.usable or default_db.pool is None:
+    core_db = get_registered_database("CORE")
+    if core_db is None or not core_db.usable or core_db.pool is None:
         return
     try:
         is_current = registry_to_persisted(get_all_registered_databases(), get_active_alias())
-        await save_settings(default_db.pool, is_current)
+        await save_settings(core_db.pool, is_current)
     except oracledb.Error:
         LOGGER.warning("Failed to persist database settings")
 
@@ -99,8 +99,8 @@ async def list_databases():
 async def create_database(body: DatabaseCreate):
     """Create a new database alias configuration."""
 
-    if body.alias == "DEFAULT":
-        raise HTTPException(status_code=409, detail="Cannot create the DEFAULT alias")
+    if body.alias == "CORE":
+        raise HTTPException(status_code=409, detail="Cannot create the CORE Database alias")
 
     if get_registered_database(body.alias) is not None:
         raise HTTPException(status_code=409, detail=f"Alias '{body.alias}' already exists")
@@ -213,9 +213,9 @@ async def update_database(alias: str, body: DatabaseUpdate):
     # Close the old pool that was replaced by the successful update
     await close_pool(old_pool)
 
-    # Non-DEFAULT aliases close the validation pool; their runtime pools
-    # are established later.  DEFAULT keeps it for persistence.
-    if alias == "DEFAULT":
+    # Non-CORE aliases close the validation pool; their runtime pools
+    # are established later.  CORE keeps it for persistence.
+    if alias == "CORE":
         state.pool = pool
     else:
         await close_pool(pool)
@@ -230,8 +230,8 @@ async def update_database(alias: str, body: DatabaseUpdate):
 async def delete_database(alias: str):
     """Remove a database alias configuration."""
 
-    if alias == "DEFAULT":
-        raise HTTPException(status_code=403, detail="Cannot delete the DEFAULT alias")
+    if alias == "CORE":
+        raise HTTPException(status_code=403, detail="Cannot delete the CORE Database")
 
     db = get_registered_database(alias)
     if not remove_registered_database(alias):
@@ -239,8 +239,8 @@ async def delete_database(alias: str):
     if db is not None:
         await close_pool(db.pool)
 
-    # If the deleted alias was the active one, reset to DEFAULT
+    # If the deleted alias was the active one, reset to CORE
     if get_active_alias() == alias:
-        set_active_alias("DEFAULT")
+        set_active_alias("CORE")
 
     await _persist_settings()

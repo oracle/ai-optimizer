@@ -56,7 +56,7 @@ def entry_to_db_settings(entry: DatabaseConfigEntry) -> DatabaseSettings:
     )
 
 
-def registry_to_persisted(registry: list[DatabaseState], active_alias: str = "DEFAULT") -> PersistedSettings:
+def registry_to_persisted(registry: list[DatabaseState], active_alias: str = "CORE") -> PersistedSettings:
     """Build PersistedSettings from the current registry state."""
 
     return PersistedSettings(
