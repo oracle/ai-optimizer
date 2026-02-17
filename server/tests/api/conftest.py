@@ -10,8 +10,13 @@ MODULES_TO_RELOAD = (
     "server.app.core.config",
     "server.app.api.deps",
     "server.app.api.v1.router",
+    "server.app.api.v1.endpoints",
     "server.app.api.v1.endpoints.probes",
+    "server.app.api.v1.schemas",
     "server.app.database",
     "server.app.database.config",
     "server.app.database.settings",
+    "server.app.oci",
+    "server.app.oci.config",
+    "server.app.oci.settings",
 )

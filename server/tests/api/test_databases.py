@@ -19,8 +19,11 @@ from .conftest import MODULES_TO_RELOAD as _BASE_MODULES
 
 MODULES_TO_RELOAD = _BASE_MODULES + (
     "server.app.api.v1.endpoints.databases",
+    "server.app.api.v1.endpoints.oci_profiles",
     "server.app.api.v1.schemas.databases",
+    "server.app.api.v1.schemas.oci_profiles",
     "server.app.database.settings",
+    "server.app.oci.settings",
 )
 
 API_KEY = "test-secret"
@@ -185,7 +188,7 @@ class TestUpdateDatabase:
 
         with (
             patch.object(db_ep, "initialize_schema", side_effect=fake_init),
-            patch.object(db_ep, "save_settings", new_callable=AsyncMock),
+            patch.object(db_ep, "persist_settings", new_callable=AsyncMock),
         ):
             response = client.put("/v1/db/CORE", json={"dsn": "newdsn"}, headers=HEADERS)
 
@@ -212,12 +215,12 @@ class TestUpdateDatabase:
 
         with (
             patch.object(db_ep, "initialize_schema", side_effect=fake_init),
-            patch.object(db_ep, "save_settings", new_callable=AsyncMock) as mock_save,
+            patch.object(db_ep, "persist_settings", new_callable=AsyncMock) as mock_persist,
         ):
             response = client.put("/v1/db/CORE", json={"dsn": "newdsn"}, headers=HEADERS)
 
         assert response.status_code == 200
-        mock_save.assert_awaited_once()
+        mock_persist.assert_awaited_once()
         # Clean up: remove mock pool so it doesn't leak into later tests
         state = db_ep.get_registered_database("CORE")
         state.pool = None
