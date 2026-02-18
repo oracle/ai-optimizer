@@ -78,7 +78,7 @@ jobs:
 
       # Security scanning
       - name: Run Trivy Security Scan for IaC
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           scan-type: "config"
           scan-ref: "opentofu"

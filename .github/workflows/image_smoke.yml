@@ -79,7 +79,7 @@ jobs:
       # Security scanning - only AIO (contains both server and client)
       - name: Run Trivy Security Scan
         if: matrix.build.name == 'aio'
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           scan-type: image
           image-ref: "aio:${{ github.sha }}"
