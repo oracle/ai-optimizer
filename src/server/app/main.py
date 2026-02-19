@@ -11,17 +11,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from _version import __version__
-from server.app.api.v1.router import router as v1_router
 from server.app.core.settings import settings
+from server.app.api.v1.router import router as v1_router
 
 LOGGER = logging.getLogger(__name__)
 #############################################################################
 # APP FACTORY
 #############################################################################
 
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """FastAPI Lifespan"""
+    dumped = settings.model_dump()
+    LOGGER.debug("Settings: %s", dumped)
     if settings.api_key_generated:
         LOGGER.warning("AIO_API_KEY not set — using generated key: %s", settings.api_key)
     # await initialize_schema()

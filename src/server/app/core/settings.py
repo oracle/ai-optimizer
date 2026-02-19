@@ -10,8 +10,11 @@ import secrets
 from pathlib import Path
 from typing import Optional
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from server.app.core.databases import DatabaseConfig
+from server.app.core.oci_profiles import OciProfileConfig
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
@@ -32,12 +35,18 @@ class Settings(BaseSettings):
     server_port: int = 8000
     log_level: str = "INFO"
 
-    # Database for persistence ("CORE")
-    db_username: Optional[str] = None
-    db_password: Optional[str] = None
-    db_dsn: Optional[str] = None
-    db_wallet_password: Optional[str] = None
-    db_wallet_location: Optional[str] = None
+    # Database — flat fields loaded from AIO_DB_* env vars (excluded from serialization)
+    db_username: Optional[str] = Field(default=None, exclude=True)
+    db_password: Optional[str] = Field(default=None, exclude=True)
+    db_dsn: Optional[str] = Field(default=None, exclude=True)
+    db_wallet_password: Optional[str] = Field(default=None, exclude=True)
+    db_wallet_location: Optional[str] = Field(default=None, exclude=True)
+
+    # Consolidated database configs (populated by validator below)
+    database_configs: list[DatabaseConfig] = []
+
+    # OCI profile configs
+    oci_profile_configs: list[OciProfileConfig] = []
 
     # Client feature accessibility
     client_disable_testbed: bool = False
@@ -51,6 +60,21 @@ class Settings(BaseSettings):
 
     # Auth
     api_key: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _build_core_database_config(self) -> "Settings":
+        """Create the CORE database config from AIO_DB_* env vars."""
+        if any([self.db_username, self.db_password, self.db_dsn]):
+            core = DatabaseConfig(
+                alias="CORE",
+                username=self.db_username,
+                password=self.db_password,
+                dsn=self.db_dsn,
+                wallet_password=self.db_wallet_password,
+                wallet_location=self.db_wallet_location,
+            )
+            self.database_configs = [core]
+        return self
 
     @model_validator(mode="after")
     def _generate_api_key_if_missing(self) -> "Settings":
