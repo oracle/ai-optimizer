@@ -7,7 +7,7 @@
 # **/requirements.txt
 # **/THIRD_PARTY_LICENSES.txt
 # sbin/**
-# **/*.bak
+**/*.bak
 # **/*.delete
 # **/tmp/**
 # **/temp/**
