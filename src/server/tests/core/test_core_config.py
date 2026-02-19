@@ -39,7 +39,7 @@ def reload_settings(monkeypatch):
     def _reload(env_vars: dict | None = None):
         sys.modules.pop(CONFIG_MODULE, None)
 
-        for key in ("AIO_ENV", "AIO_URL_PREFIX", "AIO_PORT", "AIO_LOG_LEVEL",
+        for key in ("AIO_ENV", "AIO_SERVER_URL_PREFIX", "AIO_SERVER_PORT", "AIO_LOG_LEVEL",
                      "AIO_API_KEY",
                      "AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN",
                      "AIO_DB_WALLET_PASSWORD", "AIO_DB_WALLET_LOCATION"):
@@ -63,8 +63,8 @@ class TestDefaults:
         s = reload_settings()
         # Server defaults (not in .env.dev)
         assert s.env == "dev"
-        assert s.url_prefix == ""
-        assert s.port == 8000
+        assert s.server_url_prefix == ""
+        assert s.server_port == 8000
         assert s.log_level == "INFO"
         # DB values come from .env.dev if it exists, otherwise None
         env = _parse_env_file()
@@ -87,12 +87,12 @@ class TestEnvVars:
     def test_server_settings_from_env(self, reload_settings):
         """Verify server settings are read from environment variables."""
         s = reload_settings(env_vars={
-            "AIO_URL_PREFIX": "/api",
-            "AIO_PORT": "9000",
+            "AIO_SERVER_URL_PREFIX": "/api",
+            "AIO_SERVER_PORT": "9000",
             "AIO_LOG_LEVEL": "DEBUG",
         })
-        assert s.url_prefix == "/api"
-        assert s.port == 9000
+        assert s.server_url_prefix == "/api"
+        assert s.server_port == 9000
         assert s.log_level == "DEBUG"
 
     def test_db_settings_from_env(self, reload_settings):
@@ -132,5 +132,5 @@ class TestEnvFile:
     def test_missing_env_file_uses_defaults(self, reload_settings):
         """No .env file present should not raise, just use defaults."""
         s = reload_settings(env_vars={"AIO_ENV": "nonexistent"})
-        assert s.port == 8000
+        assert s.server_port == 8000
         assert s.db_username is None

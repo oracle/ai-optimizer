@@ -25,9 +25,9 @@ def test_schema_created(configure_db_env, oracle_connection, root_path, monkeypa
     del configure_db_env
 
     if root_path:
-        monkeypatch.setenv("AIO_URL_PREFIX", root_path)
+        monkeypatch.setenv("AIO_SERVER_URL_PREFIX", root_path)
     else:
-        monkeypatch.delenv("AIO_URL_PREFIX", raising=False)
+        monkeypatch.delenv("AIO_SERVER_URL_PREFIX", raising=False)
 
     for mod in (
         MODULE_PATH,
@@ -60,7 +60,7 @@ def test_settings_persisted_on_startup(configure_db_env, oracle_connection, monk
     """Startup should persist DEFAULT config to aio_settings."""
     del configure_db_env
 
-    monkeypatch.delenv("AIO_URL_PREFIX", raising=False)
+    monkeypatch.delenv("AIO_SERVER_URL_PREFIX", raising=False)
 
     for mod in (
         MODULE_PATH,

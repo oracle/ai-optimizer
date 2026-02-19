@@ -29,5 +29,5 @@
 
 ## Security & Configuration Tips
 - Never commit secrets; keep wallets inside `tns_admin/` and ignore environment files.
-- Set `AIO_API_KEY`, `AIO_DB_*`, and optional `AIO_URL_PREFIX` via environment variables when running locally.
+- Set `AIO_API_KEY`, `AIO_DB_*`, and optional `AIO_SERVER_URL_PREFIX` via environment variables when running locally.
 - Validate configuration changes against the documented Oracle AI Optimizer security posture before merging.

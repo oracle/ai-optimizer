@@ -28,8 +28,8 @@ class Settings(BaseSettings):
 
     # Server
     env: str = "dev"
-    url_prefix: str = ""
-    port: int = 8000
+    server_url_prefix: str = ""
+    server_port: int = 8000
     log_level: str = "INFO"
 
     # Auth

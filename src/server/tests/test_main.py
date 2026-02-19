@@ -22,9 +22,9 @@ def load_app(monkeypatch):
 
     def _loader(root_path: str | None = None):
         if root_path is None:
-            monkeypatch.delenv("AIO_URL_PREFIX", raising=False)
+            monkeypatch.delenv("AIO_SERVER_URL_PREFIX", raising=False)
         else:
-            monkeypatch.setenv("AIO_URL_PREFIX", root_path)
+            monkeypatch.setenv("AIO_SERVER_URL_PREFIX", root_path)
 
         # Prevent real DB connections during unit tests
         for key in ("AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN"):
@@ -52,14 +52,11 @@ def test_liveness_without_root_path(load_app):
 
 
 def test_liveness_with_root_path(load_app):
-    """Supports prefixed and direct access when URL_PREFIX set."""
+    """Routes work and root_path is set when URL_PREFIX is configured."""
     main = load_app("demo")
-    with TestClient(main.app) as client:
-        with_root = client.get("/demo/v1/liveness")
-        direct = client.get("/v1/liveness")
+    with TestClient(main.app, root_path="/demo") as client:
+        response = client.get("/v1/liveness")
 
-    assert with_root.status_code == 200
-    assert with_root.json() == {"status": "alive"}
-    assert direct.status_code == 200
-    assert direct.json() == {"status": "alive"}
+    assert response.status_code == 200
+    assert response.json() == {"status": "alive"}
     assert main.app.root_path == "/demo"

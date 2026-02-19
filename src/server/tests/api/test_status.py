@@ -7,37 +7,7 @@ Tests for the authenticated /status endpoint.
 # spell-checker: disable
 # pylint: disable=redefined-outer-name import-outside-toplevel
 
-import importlib
-import sys
-
 import pytest
-from fastapi.testclient import TestClient
-
-from .conftest import MODULES_TO_RELOAD
-
-
-@pytest.fixture
-def app_client(monkeypatch):
-    """Build a TestClient after setting env vars and reloading the app."""
-
-    def _make(env_vars: dict | None = None):
-        # Prevent real DB connections
-        for key in ("AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN"):
-            monkeypatch.delenv(key, raising=False)
-        monkeypatch.delenv("AIO_API_KEY", raising=False)
-        monkeypatch.delenv("AIO_URL_PREFIX", raising=False)
-
-        if env_vars:
-            for key, value in env_vars.items():
-                monkeypatch.setenv(key, value)
-
-        for mod in MODULES_TO_RELOAD:
-            sys.modules.pop(mod, None)
-
-        main = importlib.import_module("server.app.main")
-        return TestClient(main.app)
-
-    return _make
 
 
 class TestStatusAuth:
@@ -73,6 +43,7 @@ class TestStatusAuth:
     def test_generated_key_is_logged(self, app_client, caplog):
         """When AIO_API_KEY is not set, the generated key is logged at startup."""
         import logging
+
         client = app_client()
         with caplog.at_level(logging.WARNING, logger="server.app.main"):
             # Lifespan runs when entering the TestClient context

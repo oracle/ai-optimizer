@@ -49,7 +49,7 @@ async def lifespan(_app: FastAPI):
 
 API_PREFIX = "/v1"
 
-BASE_PATH = settings.url_prefix.strip("/")
+BASE_PATH = settings.server_url_prefix.strip("/")
 BASE_PATH = f"/{BASE_PATH}" if BASE_PATH else ""
 
 app = FastAPI(

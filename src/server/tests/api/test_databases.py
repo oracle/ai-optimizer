@@ -45,7 +45,7 @@ def app_client(monkeypatch):
         for key in ("AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN"):
             monkeypatch.setenv(key, "")
         monkeypatch.delenv("AIO_API_KEY", raising=False)
-        monkeypatch.delenv("AIO_URL_PREFIX", raising=False)
+        monkeypatch.delenv("AIO_SERVER_URL_PREFIX", raising=False)
 
         env = {"AIO_API_KEY": API_KEY}
         if env_vars:

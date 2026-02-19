@@ -4,12 +4,21 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore streamlit
 
+import logging
+
 import streamlit as st
+from streamlit import session_state as state
+
 from _version import __version__
+from logging_config import configure_logging
+
+configure_logging()
+
+LOGGER = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title="Oracle AI Optimizer and Toolkit",
-    page_icon=os.path.join(BASE_DIR, "client", "media", "favicon.png"),
+    page_icon="../assets/favicon.png",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
@@ -18,25 +27,27 @@ st.set_page_config(
         "About": f"v{__version__}",
     },
 )
-
-st.write("# Welcome to Streamlit! 👋")
-
-st.sidebar.success("Select a demo above.")
-
-st.markdown(
+st.html(
     """
-    Streamlit is an open-source app framework built specifically for
-    Machine Learning and Data Science projects.
-    **👈 Select a demo from the sidebar** to see some examples
-    of what Streamlit can do!
-    ### Want to learn more?
-    - Check out [streamlit.io](https://streamlit.io)
-    - Jump into our [documentation](https://docs.streamlit.io)
-    - Ask a question in our [community
-        forums](https://discuss.streamlit.io)
-    ### See more complex demos
-    - Use a neural net to [analyze the Udacity Self-driving Car Image
-        Dataset](https://github.com/streamlit/demo-self-driving)
-    - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-"""
+    <style>
+    img[alt="Logo"] {
+        height: auto;
+        margin-top: 2.25rem;
+        width: auto;
+    }
+    .stSidebar img[alt="Logo"] {
+        width: 100%;
+    }
+    .stAppHeader img[alt="Logo"] {
+        width: 50%;
+    }
+    /* Fix emoji rendering in tab labels */
+    [data-testid="stMarkdownContainer"] p {
+        font-family: "sans-serif-pro" !important;
+    }
+    </style>
+    """,
 )
+st.logo("../assets/logo.png")
+
+st.write(state)
