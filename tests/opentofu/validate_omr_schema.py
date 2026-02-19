@@ -1,5 +1,6 @@
+# pylint: disable=protected-access,import-error,import-outside-toplevel
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore opentofu
@@ -12,12 +13,10 @@ from referencing import Registry, Resource
 
 class DuplicateKeyError(Exception):
     """Exception raised when duplicate keys are found in YAML"""
-    pass
 
 
-class DuplicateKeyChecker(yaml.SafeLoader):
+class DuplicateKeyChecker(yaml.SafeLoader):  # pylint: disable=too-many-ancestors
     """Custom YAML loader that detects duplicate keys"""
-    pass
 
 
 def construct_mapping(loader, node):
@@ -29,19 +28,14 @@ def construct_mapping(loader, node):
     for key, value in pairs:
         if key in seen_keys:
             # Found a duplicate key
-            raise DuplicateKeyError(
-                f"Duplicate key '{key}' found at line {node.start_mark.line + 1}"
-            )
+            raise DuplicateKeyError(f"Duplicate key '{key}' found at line {node.start_mark.line + 1}")
         seen_keys[key] = value
 
     return seen_keys
 
 
 # Register the custom constructor
-DuplicateKeyChecker.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    construct_mapping
-)
+DuplicateKeyChecker.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping)
 
 
 def load_yaml_file(path):
@@ -57,7 +51,7 @@ def load_yaml_file(path):
 def check_duplicate_variables_in_groups(data):
     """Check if any variable appears in multiple variable groups"""
     if "variableGroups" not in data:
-        return
+        return True
 
     seen_variables = {}
     errors = []
@@ -110,6 +104,7 @@ def main(schema_file, data_file):
         sys.exit(1)
     else:
         print("OMR Schema YAML is valid")
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:

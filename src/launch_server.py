@@ -1,12 +1,9 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore configfile fastmcp noauth selectai getpid procs litellm giskard ollama
+# spell-checker:ignore configfile fastmcp noauth getpid procs litellm giskard ollama
 # spell-checker:ignore dotenv apiserver laddr
-
-# Patch litellm for Giskard/Ollama issue
-import server.patches.litellm_patch  # pylint: disable=unused-import, wrong-import-order
 
 # Set OS Environment before importing other modules
 # Set OS Environment (Don't move their position to reflect on imports)
@@ -35,9 +32,9 @@ import uvicorn
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.types import ASGIApp, Receive, Send
 from fastmcp import FastMCP, settings
 from fastmcp.server.auth import StaticTokenVerifier
-from langgraph.checkpoint.memory import InMemorySaver
 import psutil
 
 # Configuration
@@ -48,9 +45,6 @@ from common import logging_config
 from common._version import __version__
 
 logger = logging_config.logging.getLogger("launch_server")
-
-# Establish LangGraph Short-Term Memory (thread-level persistence)
-graph_memory = InMemorySaver()
 
 
 ##########################################
@@ -85,6 +79,9 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
         return existing_pid
 
     client_args = [sys.executable, __file__, "--port", str(port)]
+
+    # File handle intentionally kept open for subprocess to write logs
+    # Will be closed when subprocess terminates or parent exits
     if logfile:
         log_file = open(f"apiserver_{port}.log", "a", encoding="utf-8")  # pylint: disable=consider-using-with
         stdout = stderr = log_file
@@ -105,6 +102,29 @@ def stop_server(pid: int) -> None:
         logger.info("API server stopped.")
     except (psutil.NoSuchProcess, psutil.AccessDenied) as ex:
         logger.error("Failed to terminate process with PID: %i - %s", pid, ex)
+
+
+##########################################
+# ASGI Middleware - Strip ROOT_PATH prefix
+##########################################
+def _make_root_path_stripper(asgi_app: ASGIApp, root_path: str) -> ASGIApp:
+    """Wrap an ASGI app to strip the ROOT_PATH prefix from incoming request paths.
+
+    Allows the app to be served at a sub-path (e.g. /ai-optimizer) while
+    keeping all route definitions at their original paths (e.g. /v1/...).
+    Requests without the prefix (e.g. liveness probes) pass through unchanged.
+    """
+
+    async def middleware(scope: dict, receive: Receive, send: Send):
+        if scope["type"] in ("http", "websocket"):
+            path = scope.get("path", "")
+            if path.startswith(root_path):
+                scope = dict(scope)
+                scope["path"] = path[len(root_path) :] or "/"
+                scope["root_path"] = root_path + scope.get("root_path", "")
+        await asgi_app(scope, receive, send)
+
+    return middleware
 
 
 ##########################################
@@ -152,8 +172,7 @@ async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     # Authenticated
     auth.include_router(api_v1.chat.auth, prefix="/v1/chat", tags=["Chatbot"])
     auth.include_router(api_v1.embed.auth, prefix="/v1/embed", tags=["Embeddings"])
-    auth.include_router(api_v1.selectai.auth, prefix="/v1/selectai", tags=["SelectAI"])
-    auth.include_router(api_v1.prompts.auth, prefix="/v1/prompts", tags=["Tools - Prompts"])
+    auth.include_router(api_v1.mcp_prompts.auth, prefix="/v1/mcp", tags=["Tools - MCP Prompts"])
     auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
     auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Config - Settings"])
     auth.include_router(api_v1.databases.auth, prefix="/v1/databases", tags=["Config - Databases"])
@@ -161,7 +180,7 @@ async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     auth.include_router(api_v1.oci.auth, prefix="/v1/oci", tags=["Config - Oracle Cloud Infrastructure"])
     auth.include_router(api_v1.mcp.auth, prefix="/v1/mcp", tags=["Config - MCP Servers"])
 
-    # # Auto-discover all MCP tools and register HTTP + MCP endpoints
+    # Auto-discover all MCP tools and register HTTP + MCP endpoints
     mcp_router = APIRouter(prefix="/mcp", tags=["MCP Tools"])
     await register_all_mcp(mcp, auth)
     auth.include_router(mcp_router)
@@ -215,6 +234,7 @@ async def create_app(config: str = "") -> FastAPI:
                 continue
 
     # FastAPI Server
+    root_path = os.getenv("ROOT_PATH", "").rstrip("/")
     fastapi_app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
         version=__version__,
@@ -240,6 +260,8 @@ async def create_app(config: str = "") -> FastAPI:
     fastapi_app.include_router(noauth)
     fastapi_app.include_router(auth)
 
+    if root_path:
+        return _make_root_path_stripper(fastapi_app, root_path)
     return fastapi_app
 
 

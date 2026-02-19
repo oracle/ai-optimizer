@@ -1,22 +1,23 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 Session States Set:
 - user_client: Stores the Client
 """
-# spell-checker:ignore streamlit oraclevs selectai
+# spell-checker:ignore streamlit oraclevs
 
 import asyncio
+import base64
 import inspect
 import json
-import base64
+import re
 
 import streamlit as st
 from streamlit import session_state as state
 
 from client.content.config.tabs.models import get_models
-from client.utils import st_common, api_call, client
+from client.utils import st_common, api_call, client, vs_options, tool_options
 from client.utils.st_footer import render_chat_footer
 from common import logging_config
 
@@ -26,29 +27,111 @@ logger = logging_config.logging.getLogger("client.content.chatbot")
 #############################################################################
 # Functions
 #############################################################################
-def show_vector_search_refs(context):
+def escape_markdown_latex(text: str) -> str:
+    r"""Convert LaTeX math delimiters to markdown-compatible format.
+
+    Handles:
+    - LaTeX display math \[ \] → $$ $$
+    - LaTeX inline math \( \) → $ $
+    - Square brackets with LaTeX commands [ ... ] → $$ $$ (fallback for missing backslashes)
+    - Cleans up stray $ signs within LaTeX expressions
+    """
+    if not text:
+        return text
+
+    # Convert LaTeX display math delimiters: \[ \] → $$ $$
+    text = re.sub(r"\\\[", "$$", text)
+    text = re.sub(r"\\\]", "$$", text)
+
+    # Convert LaTeX inline math delimiters: \( \) → $ $
+    text = re.sub(r"\\\(", "$", text)
+    text = re.sub(r"\\\)", "$", text)
+
+    # Fallback: Convert [ ... ] to $$ $$ if it contains LaTeX commands
+    # This handles cases where backslashes are stripped before reaching here
+    text = re.sub(r"\[\s*(\\[a-zA-Z]+)", r"$$ \1", text)
+    text = re.sub(r"(\\[a-zA-Z]+[^\]]*)\s*\]", r"\1 $$", text)
+
+    # Clean up stray $ signs within LaTeX expressions that break rendering
+    # Find sequences that have LaTeX commands with partial $ wrapping and fix them
+    # Pattern: matches text with LaTeX commands that have $ signs interspersed incorrectly
+    def clean_stray_dollars(match):
+        """Remove $ signs from within LaTeX expression and wrap the whole thing"""
+        content = match.group(1)
+        # Remove all $ signs from within the expression
+        cleaned = content.replace("$", "")
+        return f"${cleaned}$"
+
+    # Match sequences that contain LaTeX commands mixed with $ signs
+    # This catches: "M = 330,000 $\times \frac{...}$"
+    text = re.sub(
+        r"(?<!\$)([^$\n]*\\[a-zA-Z]+[^$\n]*\$[^$\n]*\\[a-zA-Z]+[^$\n]*?)(?=\s|$|\n)", clean_stray_dollars, text
+    )
+
+    return text
+
+
+def show_vector_search_refs(context, vs_metadata=None) -> None:
     """When Vector Search Content Found, show the references"""
     st.markdown("**References:**")
     ref_src = set()
     ref_cols = st.columns([3, 3, 3])
     # Create a button in each column
-    for i, (ref_col, chunk) in enumerate(zip(ref_cols, context[0])):
-        with ref_col.popover(f"Reference: {i + 1}"):
-            chunk = context[0][i]
+    for i, (ref_col, chunk) in enumerate(zip(ref_cols, context["documents"])):
+        chunk = context["documents"][i]
+
+        # Get similarity score if available
+        similarity_score = chunk.get("metadata", {}).get("similarity_score")
+
+        # Create popover label with score if available
+        if similarity_score is not None:
+            popover_label = f"Reference {i + 1} ({similarity_score:.2f})"
+        else:
+            popover_label = f"Reference: {i + 1}"
+
+        with ref_col.popover(popover_label):
             logger.debug("Chunk Content: %s", chunk)
+
             st.subheader("Reference Text", divider="red")
             st.markdown(chunk["page_content"])
-            try:
-                ref_src.add(chunk["metadata"]["filename"])
-                st.subheader("Metadata", divider="red")
-                st.markdown(f"File:  {chunk['metadata']['source']}")
-                st.markdown(f"Chunk: {chunk['metadata']['page']}")
-            except KeyError:
-                logger.error("Chunk Metadata NOT FOUND!!")
+            metadata = chunk.get("metadata", {})
+            filename = metadata.get("filename")
+            if filename:
+                ref_src.add(filename)
+            st.subheader("Metadata", divider="red")
+            st.markdown(f"Document:  {metadata.get('source', 'N/A')}")
+            st.markdown(f"Document Page:  {metadata.get('page_label', 'N/A')}")
+            st.markdown(f"Vector Storage Chunk: {metadata.get('page', 'N/A')}")
+            st.markdown(
+                f"Similarity Score: {similarity_score:.3f}"
+                if similarity_score is not None
+                else "Similarity Score: N/A"
+            )
 
-    for link in ref_src:
-        st.markdown("- " + link)
-    st.markdown(f"**Notes:** Vector Search Query - {context[1]}")
+    # Display Vector Search details in expander
+    if vs_metadata or ref_src:
+        with st.expander("Vector Search Details", expanded=False):
+            if ref_src:
+                st.markdown("**Source Documents:**")
+                for link in ref_src:
+                    st.markdown(f"- {link}")
+
+            if vs_metadata and vs_metadata.get("searched_tables"):
+                st.markdown("**Tables Searched:**")
+                for table in vs_metadata["searched_tables"]:
+                    st.markdown(f"- {table}")
+
+            if vs_metadata and vs_metadata.get("context_input"):
+                st.markdown(f"**Search Query:** {vs_metadata.get('context_input')}")
+
+
+def show_token_usage(token_usage) -> None:
+    """Display token usage for AI responses using caption"""
+    if token_usage:
+        prompt_tokens = token_usage.get("prompt_tokens", 0)
+        completion_tokens = token_usage.get("completion_tokens", 0)
+        total_tokens = token_usage.get("total_tokens", 0)
+        st.caption(f"Token usage: {prompt_tokens} prompt + {completion_tokens} completion = {total_tokens} total")
 
 
 def setup_sidebar():
@@ -59,11 +142,10 @@ def setup_sidebar():
         st.stop()
 
     state.enable_client = True
-    st_common.tools_sidebar()
+    tool_options.tools_sidebar()
     st_common.history_sidebar()
     st_common.ll_sidebar()
-    st_common.selectai_sidebar()
-    st_common.vector_search_sidebar()
+    vs_options.vector_search_sidebar()
 
     if not state.enable_client:
         st.stop()
@@ -81,27 +163,38 @@ def create_client():
 
 
 def display_chat_history(history):
-    """Display chat history messages"""
+    """Display chat history messages with metadata"""
     st.chat_message("ai").write("Hello, how can I help you?")
-    vector_search_refs = []
+    vector_search_refs = {}
 
     for message in history or []:
         if not message["content"]:
             continue
 
-        if message["role"] == "tool" and message["name"] == "oraclevs_tool":
+        # Store vector search references for next AI message
+        if message["role"] == "tool" and message["name"] == "optimizer_vs-retriever":
             vector_search_refs = json.loads(message["content"])
-
-        elif message["role"] in ("ai", "assistant"):
+            continue
+        # Display AI assistant messages
+        if message["role"] in ("ai", "assistant") and not message.get("tool_calls"):
             with st.chat_message("ai"):
-                st.markdown(message["content"])
-                if vector_search_refs:
-                    show_vector_search_refs(vector_search_refs)
-                    vector_search_refs = []
+                st.markdown(escape_markdown_latex(message["content"]))
+                response_metadata = message.get("response_metadata", {})
+                token_usage = response_metadata.get("token_usage", {})
+                if token_usage:
+                    show_token_usage(token_usage)
 
-        elif message["role"] in ("human", "user"):
+                # Show vector search references if available
+                if vector_search_refs and vector_search_refs.get("documents"):
+                    show_vector_search_refs(vector_search_refs, response_metadata.get("vs_metadata", {}))
+                    vector_search_refs = {}
+            continue
+
+        # Display human user messages
+        if message["role"] in ("human", "user"):
             with st.chat_message("human"):
                 content = message["content"]
+                # Handle list content with text and images
                 if isinstance(content, list):
                     for part in content:
                         if part["type"] == "text":
@@ -114,11 +207,10 @@ def display_chat_history(history):
 
 async def handle_chat_input(user_client):
     """Handle user chat input and streaming response"""
-    sys_prompt = state.client_settings["prompts"]["sys"]
     render_chat_footer()
 
     if human_request := st.chat_input(
-        f"Ask your question here... (current prompt: {sys_prompt})",
+        "Ask your question here... ",
         accept_file=True,
         file_type=["jpg", "jpeg", "png"],
     ):
@@ -133,9 +225,32 @@ async def handle_chat_input(user_client):
         try:
             message_placeholder = st.chat_message("ai").empty()
             full_answer = ""
-            async for chunk in user_client.stream(message=human_request.text, image_b64=file_b64):
-                full_answer += chunk
-                message_placeholder.markdown(full_answer)
+
+            # Animated thinking indicator
+            async def animate_thinking():
+                """Animate the thinking indicator with increasing dots"""
+                dots = 0
+                while True:
+                    message_placeholder.markdown(f"🤔 Thinking{'.' * (dots % 4)}")
+                    dots += 1
+                    await asyncio.sleep(0.5)  # Update every 500ms
+
+            # Start the thinking animation
+            thinking_task = asyncio.create_task(animate_thinking())
+
+            try:
+                async for chunk in user_client.stream(message=human_request.text, image_b64=file_b64):
+                    # Cancel thinking animation on first chunk
+                    if thinking_task and not thinking_task.done():
+                        thinking_task.cancel()
+                        thinking_task = None
+                    full_answer += chunk
+                    message_placeholder.markdown(escape_markdown_latex(full_answer))
+            finally:
+                # Ensure thinking task is cancelled
+                if thinking_task and not thinking_task.done():
+                    thinking_task.cancel()
+
             st.rerun()
         except (ConnectionError, TimeoutError, api_call.ApiError) as ex:
             logger.exception("Error during chat streaming: %s", ex)
@@ -148,6 +263,27 @@ async def handle_chat_input(user_client):
 #############################################################################
 # MAIN
 #############################################################################
+def show_prompt_engineering_notice():
+    """Show notice when both tools are enabled and default prompt is being used"""
+    tools_enabled = state.client_settings.get("tools_enabled", [])
+    both_tools_enabled = "Vector Search" in tools_enabled and "NL2SQL" in tools_enabled
+
+    if both_tools_enabled:
+        try:
+            # Check if the prompt has been customized
+            response = api_call.get(endpoint="v1/mcp/prompts/optimizer_tools-default/has-override")
+            has_override = response.get("has_override", False)
+
+            # Only show notice if using default prompt (no customization)
+            if not has_override:
+                st.info(
+                    "**Responses not as you expected?** Default Tools Prompt Engineering maybe required.", icon="💡"
+                )
+        except (api_call.ApiError, KeyError):
+            # Silently fail - don't show notice if we can't check
+            pass
+
+
 async def main() -> None:
     """Streamlit GUI"""
     try:
@@ -156,6 +292,7 @@ async def main() -> None:
         st.stop()
 
     setup_sidebar()
+    show_prompt_engineering_notice()
     user_client = create_client()
     history = await user_client.get_history()
     display_chat_history(history)

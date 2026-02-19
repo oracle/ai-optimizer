@@ -1,5 +1,5 @@
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
 // Loadbalancer
@@ -29,7 +29,7 @@ resource "oci_load_balancer_listener" "client_lb_listener" {
   load_balancer_id         = var.lb_id
   name                     = format("%s-client-lb-listener", var.label_prefix)
   default_backend_set_name = oci_load_balancer_backend_set.client_lb_backend_set.name
-  port                     = var.lb_client_port
+  port                     = var.lb_http_port
   protocol                 = "HTTP"
 }
 
@@ -37,7 +37,7 @@ resource "oci_load_balancer_listener" "server_lb_listener" {
   load_balancer_id         = var.lb_id
   name                     = format("%s-server-lb-listener", var.label_prefix)
   default_backend_set_name = oci_load_balancer_backend_set.server_lb_backend_set.name
-  port                     = var.lb_server_port
+  port                     = var.lb_https_port
   protocol                 = "HTTP"
 }
 

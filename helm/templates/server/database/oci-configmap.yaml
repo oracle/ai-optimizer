@@ -1,0 +1,36 @@
+## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent
+
+{{- if .Values.server.oci_config }}
+{{- /* Validate OCI config settings */ -}}
+{{- include "server.ociConfig.validate" . }}
+{{- /* Only create ConfigMap if configMapName is not specified (user wants us to create it) */ -}}
+{{- if not .Values.server.oci_config.configMapName }}
+{{- /* Determine the default ConfigMap name */ -}}
+{{- $configMapName := printf "%s-oci-config" .Release.Name }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $configMapName }}
+  labels:
+    app.kubernetes.io/component: server
+    {{- include "global.labels" . | nindent 4 }}
+data:
+  {{- with .Values.server.oci_config }}
+    {{- if .tenancy }}
+  tenancy: {{ .tenancy | quote }}
+    {{- end }}
+    {{- if .user }}
+  user: {{ .user | quote }}
+    {{- end }}
+    {{- if .fingerprint }}
+  fingerprint: {{ .fingerprint | quote }}
+    {{- end }}
+    {{- if .region }}
+  region: {{ .region | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end -}}

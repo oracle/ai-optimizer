@@ -1,5 +1,5 @@
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
 locals {
@@ -13,6 +13,7 @@ locals {
     db_password       = var.db_conn.password
     db_service        = var.db_conn.service
     optimizer_version = var.optimizer_version
+    app_version       = var.app_version
     install_ollama    = var.vm_is_gpu_shape ? true : false
   })
 

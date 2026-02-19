@@ -1,5 +1,5 @@
-## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent tolerations ollama pplx
 
 apiVersion: apps/v1
@@ -53,6 +53,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "global.apiSecretName" . }}
                   key: {{ include "global.apiSecretKey" . }}
+            - name: ROOT_PATH
+              value: {{ include "global.getPath" . | trimSuffix "/" | quote }}
             {{- if (default false .Values.server.oci_config.oke) }}
             - name: OCI_CLI_REGION
               value: {{ .Values.server.oci_config.region }}
@@ -65,8 +67,8 @@ spec:
             - name: DB_WALLET_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
-                  key: {{ .Release.Name }}-adb-wallet-pass-{{ .Release.Revision }}
+                  name: {{ include "server.database.adbWalletPassSecret" . }}
+                  key: {{ include "server.database.adbWalletPassSecretKey" . }}
               {{- end }}
             {{- end }}
             {{- if .Values.ollama.enabled }}
@@ -95,7 +97,7 @@ spec:
           {{- if .Values.server.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: {{ include "global.getPath" . }}v1/liveness
+              path: /v1/liveness
               port: server-port
             {{- with omit .Values.server.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
@@ -104,7 +106,7 @@ spec:
           {{- if .Values.server.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: {{ include "global.getPath" . }}v1/readiness
+              path: /v1/readiness
               port: server-port
             {{- with omit .Values.server.readinessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
@@ -134,7 +136,7 @@ spec:
         {{- if eq (include "server.database.isADBS" .) "true" }}
         - name: tns-admin
           secret:
-            secretName: {{ .Release.Name }}-adb-tns-admin-{{ .Release.Revision }}
+            secretName: {{ include "server.database.adbTnsAdminSecret" . }}
         {{- end }}
         {{- if and .Values.server.oci_config .Values.server.oci_config.fileSecretName }}
         - name: oci-config

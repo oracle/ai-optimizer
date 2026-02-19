@@ -5,7 +5,7 @@ weight = 5
 +++
 
 <!--
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 spell-checker: ignore mxbai, ollama, sqlplus, sysdba, spfile, freepdb, tablespace, firewalld, hnsw
@@ -68,29 +68,19 @@ To enable the _ChatBot_ functionality, access to a **LLM** is required. The walk
    ```
    {{% /tab %}}
    {{% tab title="MacOS (Silicon)" %}}
-   The Container Runtime is backed by a virtual machine.  The VM should be started with **12G memory** and **100G disk space** allocated.
+   The Container Runtime is backed by a virtual machine. For optimal performance, especially to utilize the Metal GPU, configure the VM with at least **12G of memory** and **100G of disk space**, using the **LibKrun provider** type.
 
    ```bash
    podman run -d -e OLLAMA_NUM_PARALLEL=1 -v ollama:$HOME/.ollama -p 11434:11434 --name ollama docker.io/ollama/ollama
    ```
-
-   **Note:**
-   AI Runners like Ollama, LM Studio, etc. will not utilize Apple Silicon's "Metal" GPU when running in a container. This may change as the landscape evolves.
-
-   You can install and run Ollama natively outside a container and it will take advantage of the "Metal" GPU.  Later in the Walkthrough, when configuring the models, the API URL for the Ollama model will be your hosts IP address.
-
    {{% /tab %}}
    {{% tab title="Windows" %}}
-   The Container Runtime is backed by a virtual machine.  The VM should be started with **12G memory** and **100G disk space** allocated.
+   The Container Runtime is backed by a virtual machine. For optimal performance, especially to utilize the Metal GPU, configure the VM with at least **12G of memory** and **100G of disk space**, using the **LibKrun provider** type.
 
    ```bash
    podman run -d --gpus=all -v ollama:$HOME/.ollama -p 11434:11434 --name ollama docker.io/ollama/ollama
    ```
 
-   **Note:**
-   AI Runners like Ollama, LM Studio, etc. will not utilize non-NVIDIA GPUs when running in a container. This may change as the landscape evolves.
-
-   You can install and run Ollama natively outside a container and it will take advantage of non-NVIDIA GPU.  Later in the Walkthrough, when configuring the models, the API URL for the Ollama model will be your hosts IP address.
    {{% /tab %}}
    {{< /tabs >}}
 
@@ -240,7 +230,7 @@ Navigate to the _ChatBot_ screen:
 
 ![Say Hello?](images/chatbot_say_hello.png)
 
-The error about language models will have disappeared, but there are new warnings about embedding models and the database. You'll take care of those in the next steps.
+The error about language models will have disappeared, but there are new warnings the database. You'll take care of that in the next steps.
 
 The `Chat model:` will have been pre-set to the only enabled **LLM** (_ollama/llama3.1_) and a dialog box to interact with the **LLM** will be ready for input.
 
@@ -276,14 +266,14 @@ With the embedding model and database configured, you can now split and embed do
 
 Navigate to the _Tools_ screen and _Split/Embed_ tab:
 
-1. Change the File Source to `Web`
+1. Change the **Knowledge Base Source** to `Web`
 1. Enter the URL: 
    ```text
-   https://docs.oracle.com/en/engineered-systems/health-diagnostics/autonomous-health-framework/ahfug/oracle-autonomous-health-framework-users-guide.pdf
+   https://docs.oracle.com/en/database/oracle/oracle-database/26/xeinl/oracle-ai-database-free-installation-guide-linux.pdf
    ```
 1. Press Enter
 1. Give the Vector Store an Alias: `WALKTHROUGH`
-1. Click _Load, Split, and Populate Vector Store_
+1. Click _Populate Vector Store_
 1. Please be patient...
 
 {{% notice style="code" title="Performance: Grab a beverage of your choosing..." icon="circle-info" %}}
@@ -313,7 +303,7 @@ From the command line:
 1. Query the Vector Store:
 
    ```sql
-   select * from WALKTHROUGH.WALKTHROUGH_MXBAI_EMBED_LARGE_512_103_COSINE_HNSW;
+   select * from WALKTHROUGH_OLLAMA_MXBAI_EMBED_LARGE_512_103_COSINE_HNSW;
    ```
 
 ## Experiment with Vector Search
@@ -326,13 +316,13 @@ For this guided experiment, perform the following:
 
 1. Ask the _ChatBot_:
    ```text
-   In Oracle AI Database, how do I use AHF?
+   What are the required packages for a successful installation of an Oracle AI Database?
    ```
 
 Responses may vary, but generally the _ChatBot_'s response will be inaccurate, including:
 
-- Not understanding that there is a Oracle AI Database release. This is known as knowledge-cutoff.
-- Suggestions that AFH has to do with a non-existant Hybrid Feature and running `emcli` commands. These are hallucinations.
+- Not understanding that there is a Oracle AI Database release. This is known as **knowledge-cutoff**.
+- Suggestions of requiring unrelated software. These are **hallucinations**.
 
 Now select "Vector Search" in the Toolkit options and simply ask: `Are you sure?`
 
@@ -351,7 +341,9 @@ Depending on your hardware, this may cause the response to be **_significantly_*
 {{% /notice %}}
 
 By asking `Are you sure?`, you are taking advantage of the {{< short_app_ref >}}'s history and context functionality.  
-The response should be different and include references to `Cluster Health Advisor` and links to the embedded documentation where this information can be found. It might even include an apology!
+The response should be different and include a list of Operating System packages and maybe even an apology!.
+
+Under "Vector Search Details" you should see the PDF source, the vector store tables searched, and the rephrased query. 
 
 ## What's Next?
 

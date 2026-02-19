@@ -1,4 +1,4 @@
-## Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent
 
@@ -43,9 +43,9 @@ spec:
               service:
                 name: {{ include "server.serviceName" . }}
                 port:
-                  number: 8000
+                  number: {{ .Values.server.service.port | default 8000 }}
               {{- else }}
               serviceName: {{ include "server.serviceName" . }}
-              servicePort: 8000
+              servicePort: {{ .Values.server.service.port | default 8000 }}
               {{- end }}
 {{- end }}

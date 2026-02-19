@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
@@ -28,15 +28,15 @@ def get_mcp_status() -> dict:
         return {}
 
 
-def get_mcp_client() -> dict:
+def get_mcp_client() -> str:
     """Get MCP Client Configuration"""
     try:
-        params = {"server": {state.server["url"]}, "port": {state.server["port"]}}
+        params = {"server": state.server["url"], "port": state.server["port"]}
         mcp_client = api_call.get(endpoint="v1/mcp/client", params=params)
         return json.dumps(mcp_client, indent=2)
-    except api_call.ApiError as ex:
+    except (api_call.ApiError, ConnectionError, OSError) as ex:
         logger.error("Unable to get MCP Client: %s", ex)
-        return {}
+        return "{}"
 
 
 def get_mcp(force: bool = False) -> list[dict]:
@@ -85,6 +85,9 @@ def mcp_details(mcp_server: str, mcp_type: str, mcp_name: str) -> None:
     """MCP Dialog Box"""
     st.header(f"{mcp_name} - MCP server: {mcp_server}")
     config = next((t for t in state.mcp_configs[mcp_type] if t.get("name") == f"{mcp_server}_{mcp_name}"), None)
+    if config is None:
+        st.error(f"Configuration not found for {mcp_name}")
+        return
     if config.get("description"):
         st.code(config["description"], wrap_lines=True, height="content")
     if config.get("inputSchema"):
@@ -125,11 +128,12 @@ def render_configs(mcp_server: str, mcp_type: str, configs: list) -> None:
             value=mcp_name,
             label_visibility="collapsed",
             disabled=True,
+            key=f"{mcp_server}_{mcp_type}_{mcp_name}_input",
         )
         col2.button(
             "Details",
             on_click=mcp_details,
-            key=f"{mcp_server}_{mcp_name}_details",
+            key=f"{mcp_server}_{mcp_type}_{mcp_name}_details",
             kwargs={"mcp_server": mcp_server, "mcp_type": mcp_type, "mcp_name": mcp_name},
         )
 
@@ -174,7 +178,6 @@ def display_mcp() -> None:
             st.subheader("Prompts", divider="red")
             render_configs(selected_mcp_server, "prompts", mcp_prompts)
     if state.mcp_configs["resources"]:
-        st.subheader("Resources", divider="red")
         resources_lookup = st_common.state_configs_lookup("mcp_configs", "name", "resources")
         mcp_resources = [key.split("_", 1)[1] for key in resources_lookup if key.startswith(f"{selected_mcp_server}_")]
         if mcp_resources:

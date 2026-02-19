@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore rerank mult hnsw
@@ -40,11 +40,21 @@ help_dict = {
         A higher presence penalty makes bringing up new subjects more likely rather than
         sticking to what has already been mentioned.
         """,
-    "selectai": """
-        Enable SelectAI Generation.
-        """,
     "vector_search": """
         Enable Vector Search Generation.
+        """,
+    "vector_search_discovery": """
+        Dynamically discover Vector Stores for use in Retrieval Augmented Generation.
+        """,
+    "vector_search_rephrase": """
+        Rephrase the user prompt, based on context and history, for a more meaningful
+        Vector Search.  For example: 'Are you sure?' would be rephrased based on previous
+        interactions to produce better Vector Search results.
+        """,
+    "vector_search_grade": """
+        Grade the results from a Vector Search to determine their relevancy.  If it is
+        determined that the Vector Search results are not relevant to the user prompt,
+        discard them.
         """,
     "rerank": """
         Organize the initially fetched documents based on their relevance to the question.

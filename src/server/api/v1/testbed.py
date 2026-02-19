@@ -1,29 +1,31 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore testsets testset giskard litellm
 
-import asyncio
 import pickle
 import shutil
-
+from pathlib import Path
 from datetime import datetime
 import json
 from typing import Optional
 from giskard.rag import evaluate, QATestset
+from giskard.rag.base import AgentAnswer
 from giskard.llm import set_llm_model
 from fastapi import APIRouter, HTTPException, Header, UploadFile
 from fastapi.responses import JSONResponse
 import litellm
 from langchain_core.messages import ChatMessage
 
-import server.api.core.settings as core_settings
+import server.api.utils.settings as utils_settings
 import server.api.utils.oci as utils_oci
 import server.api.utils.embed as utils_embed
 import server.api.utils.testbed as utils_testbed
 import server.api.utils.databases as utils_databases
 import server.api.utils.models as utils_models
+from server.api.utils.testbed_metrics import CustomCorrectnessMetric
+from server.mcp.prompts.defaults import get_prompt_with_override
 
 from server.api.v1 import chat
 
@@ -38,11 +40,11 @@ auth = APIRouter()
 @auth.get(
     "/testsets",
     description="Get Stored TestSets.",
-    response_model=list[schema.TestSets],
+    response_model=list[schema.QASets],
 )
 async def testbed_testsets(
     client: schema.ClientIdType = Header(default="server"),
-) -> list[schema.TestSets]:
+) -> list[schema.QASets]:
     """Get a list of stored TestSets, create TestSet objects if they don't exist"""
     testsets = utils_testbed.get_testsets(db_conn=utils_databases.get_client_database(client).connection)
     return testsets
@@ -54,7 +56,7 @@ async def testbed_testsets(
     response_model=list[schema.Evaluation],
 )
 async def testbed_evaluations(
-    tid: schema.TestSetsIdType,
+    tid: schema.QASetsIdType,
     client: schema.ClientIdType = Header(default="server"),
 ) -> list[schema.Evaluation]:
     """Get Evaluations"""
@@ -70,7 +72,7 @@ async def testbed_evaluations(
     response_model=schema.EvaluationReport,
 )
 async def testbed_evaluation(
-    eid: schema.TestSetsIdType,
+    eid: schema.QASetsIdType,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Get Evaluations"""
@@ -82,15 +84,17 @@ async def testbed_evaluation(
 
 @auth.get(
     "/testset_qa",
-    description="Get Stored schema.TestSets Q&A.",
-    response_model=schema.TestSetQA,
+    description="Get Stored Testbed Q&A.",
+    response_model=schema.QASetData,
 )
 async def testbed_testset_qa(
-    tid: schema.TestSetsIdType,
+    tid: schema.QASetsIdType,
     client: schema.ClientIdType = Header(default="server"),
-) -> schema.TestSetQA:
+) -> schema.QASetData:
     """Get TestSet Q&A"""
-    return utils_testbed.get_testset_qa(db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper())
+    return utils_testbed.get_testset_qa(
+        db_conn=utils_databases.get_client_database(client).connection, tid=tid.upper()
+    )
 
 
 @auth.delete(
@@ -98,7 +102,7 @@ async def testbed_testset_qa(
     description="Delete a TestSet",
 )
 async def testbed_delete_testset(
-    tid: Optional[schema.TestSetsIdType] = None,
+    tid: Optional[schema.QASetsIdType] = None,
     client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Delete TestSet"""
@@ -109,14 +113,14 @@ async def testbed_delete_testset(
 @auth.post(
     "/testset_load",
     description="Upsert TestSets.",
-    response_model=schema.TestSetQA,
+    response_model=schema.QASetData,
 )
 async def testbed_upsert_testsets(
     files: list[UploadFile],
-    name: schema.TestSetsNameType,
-    tid: Optional[schema.TestSetsIdType] = None,
+    name: schema.QASetsNameType,
+    tid: Optional[schema.QASetsIdType] = None,
     client: schema.ClientIdType = Header(default="server"),
-) -> schema.TestSetQA:
+) -> schema.QASetData:
     """Update stored TestSet data"""
     created = datetime.now().isoformat()
     db_conn = utils_databases.get_client_database(client).connection
@@ -134,19 +138,89 @@ async def testbed_upsert_testsets(
     return testset_qa
 
 
+async def _process_file_for_testset(
+    file: UploadFile,
+    temp_directory: Path,
+    full_testsets: Path,
+    name: str,
+    questions: int,
+    ll_model: str,
+    embed_model: str,
+    oci_config: schema.OciSettings,
+):
+    """Process a single uploaded file and generate testset"""
+    # Read and save file content
+    file_content = await file.read()
+    filename = temp_directory / file.filename
+    logger.info("Writing Q&A File to: %s", filename)
+    with open(filename, "wb") as file_handle:
+        file_handle.write(file_content)
+
+    # Get Model Configurations
+    ll_model_config = utils_models.get_litellm_config(
+        model_config={"model": ll_model}, oci_config=oci_config, giskard=True
+    )
+    embed_model_config = utils_models.get_litellm_config(
+        model_config={"model": embed_model}, oci_config=oci_config, giskard=True
+    )
+
+    # Process file for knowledge base
+    text_nodes = utils_testbed.load_and_split(filename, embed_model_config["max_chunk_size"])
+    test_set = utils_testbed.build_knowledge_base(
+        text_nodes, questions, ll_model_config, embed_model_config
+    )
+
+    # Save test set
+    test_set_filename = temp_directory / f"{name}.jsonl"
+    test_set.save(test_set_filename)
+    with (
+        open(test_set_filename, "r", encoding="utf-8") as source,
+        open(full_testsets, "a", encoding="utf-8") as destination,
+    ):
+        destination.write(source.read())
+
+
+def _handle_testset_error(ex: Exception, temp_directory, ll_model: str):
+    """Handle errors during testset generation"""
+    shutil.rmtree(temp_directory)
+
+    if isinstance(ex, KeyError):
+        if "None of" in str(ex) and "are in the columns" in str(ex):
+            error_message = (
+                f"Failed to generate any questions using model '{ll_model}'. "
+                "This may indicate the model is unavailable, retired, or not found. "
+                "Please verify the model name and try a different model."
+            )
+            logger.error("TestSet Generation Failed: %s", error_message)
+            raise HTTPException(status_code=400, detail=error_message) from ex
+        # Re-raise other KeyErrors
+        raise ex
+
+    if isinstance(ex, ValueError):
+        logger.error("TestSet Validation Error: %s", str(ex))
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
+
+    if isinstance(ex, litellm.APIConnectionError):
+        logger.error("APIConnectionError Exception: %s", str(ex))
+        raise HTTPException(status_code=424, detail=f"Model API error: {str(ex)}") from ex
+
+    logger.error("Unknown TestSet Exception: %s", str(ex))
+    raise HTTPException(status_code=500, detail=f"Unexpected TestSet error: {str(ex)}.") from ex
+
+
 @auth.post(
     "/testset_generate",
     description="Generate Q&A Test Set.",
-    response_model=schema.TestSetQA,
+    response_model=schema.QASetData,
 )
 async def testbed_generate_qa(
     files: list[UploadFile],
-    name: schema.TestSetsNameType,
+    name: schema.QASetsNameType,
     ll_model: str,
     embed_model: str,
     questions: int = 2,
     client: schema.ClientIdType = Header(default="server"),
-) -> schema.TestSetQA:
+) -> schema.QASetData:
     """Retrieve contents from a local file uploaded and generate Q&A"""
     # Get the Model Configuration
     try:
@@ -159,52 +233,11 @@ async def testbed_generate_qa(
 
     for file in files:
         try:
-            # Read and save file content
-            file_content = await file.read()
-            filename = temp_directory / file.filename
-            logger.info("Writing Q&A File to: %s", filename)
-            with open(filename, "wb") as file:
-                file.write(file_content)
-
-            # Process file for knowledge base
-            text_nodes = utils_testbed.load_and_split(filename)
-            test_set = utils_testbed.build_knowledge_base(text_nodes, questions, ll_model, embed_model, oci_config)
-            # Save test set
-            test_set_filename = temp_directory / f"{name}.jsonl"
-            test_set.save(test_set_filename)
-            with (
-                open(test_set_filename, "r", encoding="utf-8") as source,
-                open(full_testsets, "a", encoding="utf-8") as destination,
-            ):
-                destination.write(source.read())
-        except KeyError as ex:
-            # Handle empty testset error (when no questions are generated due to model issues)
-            shutil.rmtree(temp_directory)
-            if "None of" in str(ex) and "are in the columns" in str(ex):
-                error_message = (
-                    f"Failed to generate any questions using model '{ll_model}'. "
-                    "This may indicate the model is unavailable, retired, or not found. "
-                    "Please verify the model name and try a different model."
-                )
-                logger.error("TestSet Generation Failed: %s", error_message)
-                raise HTTPException(status_code=400, detail=error_message) from ex
-            # Re-raise other KeyErrors
-            raise
-        except ValueError as ex:
-            # Handle model validation errors (e.g., empty testset due to model issues)
-            shutil.rmtree(temp_directory)
-            error_message = str(ex)
-            logger.error("TestSet Validation Error: %s", error_message)
-            raise HTTPException(status_code=400, detail=error_message) from ex
-        except litellm.APIConnectionError as ex:
-            shutil.rmtree(temp_directory)
-            error_message = str(ex)
-            logger.error("APIConnectionError Exception: %s", error_message)
-            raise HTTPException(status_code=424, detail=f"Model API error: {error_message}") from ex
-        except Exception as ex:
-            shutil.rmtree(temp_directory)
-            logger.error("Unknown TestSet Exception: %s", str(ex))
-            raise HTTPException(status_code=500, detail=f"Unexpected TestSet error: {str(ex)}.") from ex
+            await _process_file_for_testset(
+                file, temp_directory, full_testsets, name, questions, ll_model, embed_model, oci_config
+            )
+        except (KeyError, ValueError, litellm.APIConnectionError, Exception) as ex:
+            _handle_testset_error(ex, temp_directory, ll_model)
 
     # Store tests in database (only if we successfully generated testsets)
     with open(full_testsets, "rb") as file:
@@ -215,32 +248,35 @@ async def testbed_generate_qa(
     return testset_qa
 
 
+async def _collect_testbed_answers(loaded_testset: QATestset, client: str) -> list[AgentAnswer]:
+    """Collect answers from the chatbot for all questions in the testset."""
+    answers = []
+    for sample in loaded_testset.to_pandas().itertuples():
+        request = schema.ChatRequest(
+            messages=[ChatMessage(role="human", content=sample.question)],
+        )
+        ai_response = await chat.chat_post(client=client, request=request)
+        answers.append(AgentAnswer(message=ai_response["choices"][0]["message"]["content"]))
+    return answers
+
+
 @auth.post(
     "/evaluate",
     description="Evaluate Q&A Test Set.",
     response_model=schema.EvaluationReport,
 )
-def testbed_evaluate(
-    tid: schema.TestSetsIdType,
+async def testbed_evaluate(
+    tid: schema.QASetsIdType,
     judge: str,
     client: schema.ClientIdType = Header(default="server"),
 ) -> schema.EvaluationReport:
     """Run evaluate against a testset"""
-
-    def get_answer(question: str):
-        """Submit question against the chatbot"""
-        request = schema.ChatRequest(
-            messages=[ChatMessage(role="human", content=question)],
-        )
-        ai_response = asyncio.run(chat.chat_post(client=client, request=request))
-        return ai_response["choices"][0]["message"]["content"]
-
     evaluated = datetime.now().isoformat()
-    client_settings = core_settings.get_client_settings(client)
-    # Change Disable History
+    client_settings = utils_settings.get_client(client)
+    # Disable History
     client_settings.ll_model.chat_history = False
-    # Change Grade vector_search
-    client_settings.vector_search.grading = False
+    # Disable Grade vector_search
+    client_settings.vector_search.grade = False
 
     db_conn = utils_databases.get_client_database(client).connection
     testset = utils_testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())
@@ -256,9 +292,24 @@ def testbed_evaluate(
     oci_config = utils_oci.get(client)
 
     judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
-    set_llm_model(llm_model=judge, **judge_config)
+    set_llm_model(**judge_config)
+
+    # Get judge prompt from MCP (allows override via Prompt Engineering page)
+    judge_prompt_message = get_prompt_with_override("optimizer_testbed-judge")
+    judge_prompt = judge_prompt_message.content.text
+
+    # Create custom metric with the configurable prompt
+    custom_metric = CustomCorrectnessMetric(
+        name="correctness",
+        system_prompt=judge_prompt,
+        agent_description="A chatbot answering questions.",
+    )
+
+    # Pre-compute answers asynchronously to avoid event loop conflicts with LiteLLM
+    answers = await _collect_testbed_answers(loaded_testset, client)
+
     try:
-        report = evaluate(get_answer, testset=loaded_testset, metrics=None)
+        report = evaluate(answers, testset=loaded_testset, metrics=[custom_metric])
     except KeyError as ex:
         if str(ex) == "'correctness'":
             raise HTTPException(status_code=500, detail="Unable to determine the correctness; please retry.") from ex

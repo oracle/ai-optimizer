@@ -11,6 +11,7 @@ jobs:
   build-release:
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
       packages: write
       id-token: write
@@ -66,9 +67,16 @@ jobs:
       - name: Build and Push Infrastructure as Code
         run: |
           cd opentofu
-          zip -r $RUNNER_TEMP/${{ env.IAC }}.zip . -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" "cfgmgt/stage/*.*"
+          zip -r $RUNNER_TEMP/${{ env.IAC }}.zip . \
+            -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" \
+            -x "cfgmgt/stage/*.*" "*.tfplan*" "examples/*" "*.md" ".gitignore"
           gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.IAC }}.zip" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNNER_TEMP: ${{ runner.temp }}
         shell: bash
+
+      - name: Trigger Documentation/Helm Deployment
+        run: gh workflow run documentation.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

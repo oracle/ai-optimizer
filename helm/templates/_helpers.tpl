@@ -1,5 +1,5 @@
 {{/*
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 spell-checker: ignore trunc ollama
 */}}
@@ -91,15 +91,21 @@ Define the API Key Secret with Defaults
 
 {{/* ******************************************
 Set the path based on baseUrlPath
+Always returns a path with leading and trailing slashes for proper concatenation.
 *********************************************** */}}
 {{- define "global.getPath" -}}
   {{- $baseUrlPath := .Values.global.baseUrlPath | default "" -}}
   {{- if eq $baseUrlPath "" -}}
     /
-  {{- else if not (hasPrefix "/" $baseUrlPath) -}}
-    {{- printf "/%s" $baseUrlPath -}}
   {{- else -}}
-    {{- $baseUrlPath -}}
+    {{- $path := $baseUrlPath -}}
+    {{- if not (hasPrefix "/" $path) -}}
+      {{- $path = printf "/%s" $path -}}
+    {{- end -}}
+    {{- if not (hasSuffix "/" $path) -}}
+      {{- $path = printf "%s/" $path -}}
+    {{- end -}}
+    {{- $path -}}
   {{- end -}}
 {{- end -}}
 
@@ -262,6 +268,47 @@ then none of the other OCI config values (tenancy, user, fingerprint, region) sh
       {{- end -}}
     {{- end -}}
   {{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
+ADB-S Secret Name Helpers
+These helpers return the secret names for ADB-S wallet/tns-admin,
+supporting either existing secrets or auto-generated ones.
+*********************************************** */}}
+{{- define "server.database.useExistingAdbSecrets" -}}
+{{- $adb := .Values.server.database.adb | default dict -}}
+{{- default false $adb.useExisting -}}
+{{- end -}}
+
+{{- define "server.database.adbTnsAdminSecret" -}}
+{{- $adb := .Values.server.database.adb | default dict -}}
+{{- $tnsAdmin := $adb.tnsAdminSecretName | default "" -}}
+{{- if ne $tnsAdmin "" -}}
+  {{- $tnsAdmin -}}
+{{- else -}}
+  {{- printf "%s-adb-tns-admin-%d" .Release.Name .Release.Revision -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "server.database.adbWalletPassSecret" -}}
+{{- $adb := .Values.server.database.adb | default dict -}}
+{{- $walletPass := $adb.walletPassSecretName | default "" -}}
+{{- if ne $walletPass "" -}}
+  {{- $walletPass -}}
+{{- else -}}
+  {{- printf "%s-adb-wallet-pass-%d" .Release.Name .Release.Revision -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "server.database.adbWalletPassSecretKey" -}}
+{{- $adb := .Values.server.database.adb | default dict -}}
+{{- $walletPassKey := $adb.walletPassSecretKey | default "" -}}
+{{- if ne $walletPassKey "" -}}
+  {{- $walletPassKey -}}
+{{- else -}}
+  {{- include "server.database.adbWalletPassSecret" . -}}
+{{- end -}}
 {{- end -}}
 
 

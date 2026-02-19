@@ -1,6 +1,6 @@
 #cloud-config
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 users:
   - default
@@ -13,6 +13,7 @@ package_update: false
 packages:
   - python3.11
   - sqlcl
+  - zstd
 
 write_files:
   - path: /etc/systemd/system/ai-optimizer.service
@@ -69,7 +70,7 @@ write_files:
       python3.11 -m venv .venv
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools uv
-      uv pip install torch==2.9.0+cpu -f https://download.pytorch.org/whl/cpu/torch
+      uv pip install torch==2.10.0+cpu -f https://download.pytorch.org/whl/cpu/torch
       uv pip install -e ".[all]" &
       INSTALL_PID=$!
 
@@ -87,6 +88,7 @@ write_files:
     permissions: '0750'
     content: |
       #!/bin/bash
+      # AI Optimizer and Toolkit Version: ${app_version}
       export OCI_CLI_AUTH=instance_principal
       export API_SERVER_CONTROL="True"
       export TNS_ADMIN='/app/tns_admin'

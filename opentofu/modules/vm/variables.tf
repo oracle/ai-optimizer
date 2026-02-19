@@ -1,8 +1,12 @@
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
 variable "optimizer_version" {
+  type = string
+}
+
+variable "app_version" {
   type = string
 }
 
@@ -74,10 +78,10 @@ variable "db_conn" {
   })
 }
 
-variable "lb_client_port" {
+variable "lb_http_port" {
   type = number
 }
 
-variable "lb_server_port" {
+variable "lb_https_port" {
   type = number
 }

@@ -1,12 +1,16 @@
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
 resource "oci_identity_dynamic_group" "workers_dynamic_group" {
   compartment_id = var.tenancy_id
   name           = format("%s-worker-dyngrp", var.label_prefix)
   description    = format("%s Workers Dynamic Group", var.label_prefix)
-  matching_rule = format(
+  matching_rule = var.node_pool_gpu_deploy ? format(
+    "Any {ALL {instance.compartment.id = '%s', tag.Oracle-Tags.CreatedBy.value = '%s'}, ALL {instance.compartment.id = '%s', tag.Oracle-Tags.CreatedBy.value = '%s'}}",
+    var.compartment_id, oci_containerengine_node_pool.cpu_node_pool_details.id,
+    var.compartment_id, oci_containerengine_node_pool.gpu_node_pool_details[0].id
+    ) : format(
     "ALL {instance.compartment.id = '%s', tag.Oracle-Tags.CreatedBy.value = '%s'}",
   var.compartment_id, oci_containerengine_node_pool.cpu_node_pool_details.id)
   provider = oci.home_region

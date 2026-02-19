@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 This file is being used in APIs, and not the backend.py file.
 """
@@ -72,24 +72,3 @@ async def mcp_list_resources(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dic
         await client.close()
 
     return resources_info
-
-
-@auth.get(
-    "/prompts",
-    description="List MCP prompts",
-    response_model=list[dict],
-)
-async def mcp_list_prompts(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
-    """List MCP Prompts"""
-    prompts_info = []
-    try:
-        client = Client(mcp_engine)
-        async with client:
-            prompts = await client.list_prompts()
-            logger.debug("MCP Resources: %s", prompts)
-            for prompts_object in prompts:
-                prompts_info.append(prompts_object.model_dump())
-    finally:
-        await client.close()
-
-    return prompts_info

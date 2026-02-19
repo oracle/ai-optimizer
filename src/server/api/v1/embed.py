@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore docos slugified webscrape
@@ -7,8 +7,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import datetime
 import json
 from urllib.parse import urlparse
+import os
 from pathlib import Path
 import shutil
+import zipfile
 
 from fastapi import APIRouter, HTTPException, Response, Header, UploadFile
 from fastapi.responses import JSONResponse
@@ -26,6 +28,20 @@ from common import functions, schema, logging_config
 logger = logging_config.logging.getLogger("api.v1.embed")
 
 auth = APIRouter()
+
+
+def _extract_provider_error_message(exception: Exception) -> str:
+    """
+    Extract error message from exception.
+
+    Returns the exception's string representation, which typically contains
+    the provider's error message with all relevant details.
+    """
+    error_message = str(exception)
+    if error_message:
+        return error_message
+    # If str(exception) is empty, return the exception type
+    return f"Error: {type(exception).__name__}"
 
 
 @auth.delete(
@@ -66,6 +82,23 @@ async def embed_get_files(
         raise HTTPException(status_code=400, detail=f"Could not retrieve file list: {str(ex)}") from ex
 
 
+@auth.patch(
+    "/comment",
+    description="Update existing Vector Store Comment.",
+)
+async def comment_vs(
+    request: schema.DatabaseVectorStorage,
+    client: schema.ClientIdType = Header(default="server"),
+) -> Response:
+    """Update the comment on an existing Vector Store"""
+    logger.info("Received comment_vs - request: %s", request)
+    utils_embed.update_vs_comment(
+        vector_store=request,
+        db_details=utils_databases.get_client_database(client),
+    )
+    return Response(content=json.dumps({"message": "Vector Store comment updated."}), media_type="application/json")
+
+
 @auth.post(
     "/sql/store",
     description="Store SQL field for Embedding.",
@@ -101,7 +134,7 @@ async def store_web_file(
         for url in request:
             filename = Path(urlparse(str(url)).path).name
             request_timeout = aiohttp.ClientTimeout(total=60)
-            logger.debug("Requesting: %s (timeout in %is)", url, request_timeout)
+            logger.debug("Requesting: %s (timeout in %is)", url, request_timeout.total)
             async with session.get(str(url), timeout=request_timeout) as response:
                 content_type = response.headers.get("Content-Type", "").lower()
 
@@ -111,7 +144,7 @@ async def store_web_file(
 
                 elif "text" in content_type or "html" in content_type:
                     sections = await web_parse.fetch_and_extract_sections(url)
-                    base = web_parse.slugify(str(url).rsplit('/', maxsplit=1)[-1]) or "page"
+                    base = web_parse.slugify(str(url).rsplit("/", maxsplit=1)[-1]) or "page"
                     out_files = []
                     for idx, sec in enumerate(sections, 1):
                         # filename includes section number and optional slugified title for clarity
@@ -155,11 +188,42 @@ async def store_local_file(
         with filename.open("wb") as f:
             f.write(file_content)
 
-        # Capture metadata for this file
-        file_metadata[upload_file.filename] = {
-            "size": len(file_content),
-            "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        }
+        # Check if this is a zip file and extract it
+        if upload_file.filename.lower().endswith(".zip"):
+            try:
+                logger.info("Extracting zip file: %s", upload_file.filename)
+                with zipfile.ZipFile(filename, "r") as zip_ref:
+                    # Extract all files to temp directory root (flatten directory structure)
+                    for member in zip_ref.namelist():
+                        # Skip directories, only extract files
+                        if not member.endswith("/"):
+                            # Get just the filename without path
+                            member_name = os.path.basename(member)
+                            if member_name:  # Skip if basename is empty (shouldn't happen)
+                                extracted_path = temp_directory / member_name
+                                with zip_ref.open(member) as source, extracted_path.open("wb") as target:
+                                    target.write(source.read())
+
+                                # Add metadata for extracted file
+                                file_stat = extracted_path.stat()
+                                file_metadata[member_name] = {
+                                    "size": file_stat.st_size,
+                                    "time_modified": datetime.datetime.fromtimestamp(
+                                        file_stat.st_mtime, datetime.timezone.utc
+                                    ).isoformat(),
+                                }
+                # Remove the zip file after extraction
+                filename.unlink()
+                logger.info("Successfully extracted zip file: %s", upload_file.filename)
+            except Exception as e:
+                logger.error("Failed to extract zip file %s: %s", upload_file.filename, str(e))
+                # Continue processing - zip file will be treated as regular file or skipped
+        else:
+            # Capture metadata for regular files
+            file_metadata[upload_file.filename] = {
+                "size": len(file_content),
+                "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
 
     # Store metadata in JSON file for later use
     metadata_file = temp_directory / ".file_metadata.json"
@@ -211,7 +275,7 @@ async def split_embed(
             file_metadata = None
 
     try:
-        split_docos, _ = utils_embed.load_and_split_documents(
+        split_docos, _, processing_results = utils_embed.load_and_split_documents(
             files,
             request.model,
             request.chunk_size,
@@ -233,16 +297,25 @@ async def split_embed(
             input_data=split_docos,
             rate_limit=rate_limit,
         )
-        return Response(
-            content=json.dumps({"message": f"{len(split_docos)} chunks embedded."}), media_type="application/json"
-        )
+
+        # Prepare response with processing results
+        response_data = {
+            "message": "Vector store populated successfully",
+            "total_chunks": processing_results["total_chunks"],
+            "processed_files": processing_results["processed_files"],
+            "skipped_files": processing_results["skipped_files"],
+        }
+
+        return Response(content=json.dumps(response_data), media_type="application/json")
     except ValueError as ex:
         raise HTTPException(status_code=500, detail=str(ex)) from ex
     except RuntimeError as ex:
         raise HTTPException(status_code=500, detail=str(ex)) from ex
     except Exception as ex:
         logger.error("An exception occurred: %s", ex)
-        raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
+        # Extract meaningful error messages from common provider exceptions
+        error_message = _extract_provider_error_message(ex)
+        raise HTTPException(status_code=500, detail=error_message) from ex
     finally:
         shutil.rmtree(temp_directory)  # Clean up the temporary directory
 
@@ -349,4 +422,6 @@ async def refresh_vector_store(
         raise HTTPException(status_code=500, detail=f"Database error: {str(ex)}") from ex
     except Exception as ex:
         logger.error("Unexpected error in refresh_vector_store: %s", ex)
-        raise HTTPException(status_code=500, detail="Unexpected error occurred during refresh") from ex
+        # Extract meaningful error messages from common provider exceptions
+        error_message = _extract_provider_error_message(ex)
+        raise HTTPException(status_code=500, detail=error_message) from ex

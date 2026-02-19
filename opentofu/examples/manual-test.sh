@@ -4,8 +4,12 @@
 
 set -euo pipefail
 
-# Navigate to opentofu root
-cd "$(dirname "$(dirname "$0")")" || exit 1
+# Verify we're running from the opentofu directory, not examples
+if [ ! -f "provider.tf" ] || [ ! -d "examples" ]; then
+    echo "Error: This script must be run from the opentofu directory" >&2
+    echo "Usage: examples/manual-test.sh [profile_name]" >&2
+    exit 1
+fi
 
 # Check for tofu or terraform in PATH
 if command -v tofu &> /dev/null; then

@@ -4,7 +4,7 @@ weight = 20
 +++
 
 <!--
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 spell-checker: ignore tablespace mycomplexsecret mycomplexwalletsecret 
@@ -120,13 +120,6 @@ END;
 GRANT "DB_DEVELOPER_ROLE" TO "DEMO";
 ALTER USER "DEMO" DEFAULT ROLE ALL;
 ALTER USER "DEMO" QUOTA UNLIMITED ON DATA;
-```
-
-If running on a supported database for [SelectAI](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/select-ai.html) and want to use the feature, grant the following additional privileges and open appropriate ACLs:
-
-```sql
-GRANT EXECUTE ON DBMS_CLOUD_AI TO DEMO;
-GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO DEMO;
 ```
 
 {{% notice style="default" title="One schema fits none..." icon="circle-info" %}}

@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
@@ -7,8 +7,8 @@ import base64
 import re
 from pathlib import Path
 import sys
-import yaml
 import argparse
+import yaml
 
 
 def base64_encode_file(file_path: Path) -> str:
@@ -41,13 +41,9 @@ def main():
         "--config",
         type=Path,
         default=Path.home() / ".oci" / "config",
-        help="Path to OCI config file (default: ~/.oci/config)"
+        help="Path to OCI config file (default: ~/.oci/config)",
     )
-    parser.add_argument(
-        "--namespace",
-        default="default",
-        help="Kubernetes namespace (default: default)"
-    )
+    parser.add_argument("--namespace", default="default", help="Kubernetes namespace (default: default)")
     args = parser.parse_args()
 
     config_path = args.config.expanduser()
@@ -83,10 +79,7 @@ def main():
     secret_yaml = {
         "apiVersion": "v1",
         "kind": "Secret",
-        "metadata": {
-            "name": "oci-config-file",
-            "namespace": namespace
-        },
+        "metadata": {"name": "oci-config-file", "namespace": namespace},
         "type": "Opaque",
         "data": data,
     }

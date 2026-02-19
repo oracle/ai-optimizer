@@ -1,5 +1,5 @@
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
 resource "random_string" "optimizer_api_key" {
@@ -95,6 +95,9 @@ resource "oci_containerengine_addon" "oraoper_addon" {
   addon_name                       = "OracleDatabaseOperator"
   cluster_id                       = oci_containerengine_cluster.default_cluster.id
   remove_addon_resources_on_delete = true
+  lifecycle {
+    create_before_destroy = false
+  }
 }
 
 resource "oci_containerengine_addon" "certmgr_addon" {
@@ -102,6 +105,9 @@ resource "oci_containerengine_addon" "certmgr_addon" {
   addon_name                       = "CertManager"
   cluster_id                       = oci_containerengine_cluster.default_cluster.id
   remove_addon_resources_on_delete = true
+  lifecycle {
+    create_before_destroy = false
+  }
 }
 
 resource "oci_containerengine_addon" "ingress_addon" {
@@ -120,6 +126,9 @@ resource "oci_containerengine_addon" "ingress_addon" {
   configurations {
     key   = "authType"
     value = "workloadIdentity"
+  }
+  lifecycle {
+    create_before_destroy = false
   }
 }
 

@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore litellm
@@ -18,11 +18,10 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
-from server.api.utils import chat
-from server.agents import chatbot
+import server.api.utils.chat as utils_chat
+from server.mcp import graph
 
-from common import schema
-from common import logging_config
+from common import schema, logging_config
 
 logger = logging_config.logging.getLogger("endpoints.v1.chat")
 
@@ -39,7 +38,7 @@ async def chat_post(
 ) -> ModelResponse:
     """Full Completion Requests"""
     last_message = None
-    async for chunk in chat.completion_generator(client, request, "completions"):
+    async for chunk in utils_chat.completion_generator(client, request, "completions"):
         last_message = chunk
     return last_message
 
@@ -55,7 +54,7 @@ async def chat_stream(
 ) -> StreamingResponse:
     """Completion Requests"""
     return StreamingResponse(
-        chat.completion_generator(client, request, "streams"),
+        utils_chat.completion_generator(client, request, "streams"),
         media_type="application/octet-stream",
     )
 
@@ -66,8 +65,9 @@ async def chat_stream(
     response_model=list[schema.ChatMessage],
 )
 async def chat_history_clean(client: schema.ClientIdType = Header(default="server")) -> list[ChatMessage]:
-    """Delete all Chat History and clear RAG document context"""
-    agent: CompiledStateGraph = chatbot.chatbot_graph
+    """Delete all Chat History"""
+    agent: CompiledStateGraph = graph.main(tools=[])
+
     try:
         _ = agent.update_state(
             config=RunnableConfig(
@@ -95,7 +95,8 @@ async def chat_history_clean(client: schema.ClientIdType = Header(default="serve
 )
 async def chat_history_return(client: schema.ClientIdType = Header(default="server")) -> list[ChatMessage]:
     """Return Chat History"""
-    agent: CompiledStateGraph = chatbot.chatbot_graph
+    agent: CompiledStateGraph = graph.main(tools=[])
+
     try:
         state_snapshot = agent.get_state(
             config=RunnableConfig(
@@ -105,7 +106,16 @@ async def chat_history_return(client: schema.ClientIdType = Header(default="serv
             )
         )
         messages: list[AnyMessage] = state_snapshot.values["messages"]
-        chat_messages = convert_to_openai_messages(messages)
+
+        # Convert to OpenAI format while preserving response_metadata
+        chat_messages = []
+        for msg in messages:
+            openai_msg = convert_to_openai_messages([msg])[0]
+            # Preserve response_metadata if present
+            if hasattr(msg, "response_metadata") and msg.response_metadata:
+                openai_msg["response_metadata"] = msg.response_metadata
+            chat_messages.append(openai_msg)
+
         return chat_messages
     except KeyError:
         return [ChatMessage(content="I'm sorry, I have no history of this conversation.", role="system")]

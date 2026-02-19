@@ -1,11 +1,11 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama selectai showsql rerank
+# spell-checker:ignore hnsw ocid aioptimizer explainsql genai mult ollama showsql rerank
 
 import time
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, List, Any
 from pydantic import BaseModel, Field, PrivateAttr, ConfigDict
 
 from langchain_core.messages import ChatMessage
@@ -31,6 +31,7 @@ class DatabaseVectorStorage(BaseModel):
         json_schema_extra={"readOnly": True},
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
+    description: Optional[str] = Field(default=None, description="Human-readable description of table contents")
     model: Optional[str] = Field(default=None, description="Embedding Model")
     chunk_size: Optional[int] = Field(default=0, description="Chunk Size")
     chunk_overlap: Optional[int] = Field(default=0, description="Chunk Overlap")
@@ -60,14 +61,6 @@ class VectorStoreRefreshStatus(BaseModel):
     errors: Optional[list[str]] = Field(default=[], description="Any errors encountered")
 
 
-class DatabaseSelectAIObjects(BaseModel):
-    """Database SelectAI Objects"""
-
-    owner: Optional[str] = Field(default=None, description="Object Owner", json_schema_extra={"readOnly": True})
-    name: Optional[str] = Field(default=None, description="Object Name", json_schema_extra={"readOnly": True})
-    enabled: bool = Field(default=False, description="SelectAI Enabled")
-
-
 class DatabaseAuth(BaseModel):
     """Patch'able Database Configuration (sent to oracledb)"""
 
@@ -89,10 +82,6 @@ class Database(DatabaseAuth):
     connected: bool = Field(default=False, description="Connection Established", json_schema_extra={"readOnly": True})
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
         default=[], description="Vector Storage (read-only)", json_schema_extra={"readOnly": True}
-    )
-    selectai: bool = Field(default=False, description="SelectAI Possible")
-    selectai_profiles: Optional[list] = Field(
-        default=[], description="SelectAI Profiles (read-only)", json_schema_extra={"readOnly": True}
     )
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
@@ -117,9 +106,8 @@ class LanguageModelParameters(BaseModel):
     frequency_penalty: Optional[float] = Field(description=help_text.help_dict["frequency_penalty"], default=0.00)
     max_tokens: Optional[int] = Field(description=help_text.help_dict["max_tokens"], default=4096)
     presence_penalty: Optional[float] = Field(description=help_text.help_dict["presence_penalty"], default=0.00)
-    temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=1.00)
+    temperature: Optional[float] = Field(description=help_text.help_dict["temperature"], default=0.50)
     top_p: Optional[float] = Field(description=help_text.help_dict["top_p"], default=1.00)
-    streaming: Optional[bool] = Field(description="Enable Streaming (set by client)", default=False)
 
 
 class EmbeddingModelParameters(BaseModel):
@@ -192,23 +180,16 @@ class OracleCloudSettings(BaseModel):
 
 
 #####################################################
-# Prompt Engineering
+# Prompt Engineering (MCP-based)
 #####################################################
-class PromptText(BaseModel):
-    """Patch'able Prompt Parameters"""
+class MCPPrompt(BaseModel):
+    """MCP Prompt metadata and content"""
 
-    prompt: str = Field(..., min_length=1, description="Prompt Text")
-
-
-class Prompt(PromptText):
-    """Prompt Object"""
-
-    name: str = Field(
-        default="Basic Example",
-        description="Name of Prompt.",
-        examples=["Basic Example", "vector_search Example", "Custom"],
-    )
-    category: Literal["sys", "ctx"] = Field(..., description="Category of Prompt.")
+    name: str = Field(..., description="MCP prompt name (e.g., 'optimizer_basic-default')")
+    title: str = Field(..., description="Human-readable title")
+    description: str = Field(default="", description="Prompt purpose and usage")
+    tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+    text: str = Field(..., description="Effective prompt text (override if exists, otherwise default)")
 
 
 #####################################################
@@ -221,38 +202,25 @@ class LargeLanguageSettings(LanguageModelParameters):
     chat_history: bool = Field(default=True, description="Store Chat History")
 
 
-class PromptSettings(BaseModel):
-    """Store Prompt Settings"""
-
-    ctx: str = Field(default="Basic Example", description="Context Prompt Name")
-    sys: str = Field(default="Basic Example", description="System Prompt Name")
-
-
 class VectorSearchSettings(DatabaseVectorStorage):
-    """Store vector_search Settings incl VectorStorage"""
+    """Store vector_search Settings"""
 
-    enabled: bool = Field(default=False, description="vector_search Enabled")
-    grading: bool = Field(default=True, description="Grade vector_search Results")
-    search_type: Literal["Similarity", "Similarity Score Threshold", "Maximal Marginal Relevance"] = Field(
+    discovery: bool = Field(default=True, description="Auto-discover Vector Stores")
+    rephrase: bool = Field(default=True, description="Rephrase User Prompt")
+    grade: bool = Field(default=True, description="Grade Vector Search Results")
+    search_type: Literal["Similarity", "Maximal Marginal Relevance"] = Field(
         default="Similarity", description="Search Type"
     )
-    top_k: Optional[int] = Field(default=4, ge=1, le=10000, description="Top K")
+    top_k: Optional[int] = Field(default=8, ge=1, le=10000, description="Top K - number of candidates to retrieve")
     score_threshold: Optional[float] = Field(
-        default=0.0, ge=0.0, le=1.0, description="Minimum Relevance Threshold (for Similarity Score Threshold)"
+        default=0.65,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity score (0=disabled, >0=filter results by threshold)",
     )
     fetch_k: Optional[int] = Field(default=20, ge=1, le=10000, description="Fetch K (for Maximal Marginal Relevance)")
     lambda_mult: Optional[float] = Field(
         default=0.5, ge=0.0, le=1.0, description="Degree of Diversity (for Maximal Marginal Relevance)"
-    )
-
-
-class SelectAISettings(BaseModel):
-    """Store SelectAI Settings"""
-
-    enabled: bool = Field(default=False, description="SelectAI Enabled")
-    profile: Optional[str] = Field(default=None, description="SelectAI Profile")
-    action: Literal["runsql", "showsql", "explainsql", "narrate"] = Field(
-        default="narrate", description="SelectAI Action"
     )
 
 
@@ -287,15 +255,15 @@ class Settings(BaseModel):
     ll_model: Optional[LargeLanguageSettings] = Field(
         default_factory=LargeLanguageSettings, description="Large Language Settings"
     )
-    prompts: Optional[PromptSettings] = Field(
-        default_factory=PromptSettings, description="Prompt Engineering Settings"
-    )
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
     database: Optional[DatabaseSettings] = Field(default_factory=DatabaseSettings, description="Database Settings")
+    tools_enabled: List[str] = Field(
+        default_factory=list,
+        description="List of enabled MCP tools for this client (empty means LLM only)",
+    )
     vector_search: Optional[VectorSearchSettings] = Field(
         default_factory=VectorSearchSettings, description="Vector Search Settings"
     )
-    selectai: Optional[SelectAISettings] = Field(default_factory=SelectAISettings, description="SelectAI Settings")
     testbed: Optional[TestBedSettings] = Field(default_factory=TestBedSettings, description="TestBed Settings")
 
 
@@ -309,7 +277,7 @@ class Configuration(BaseModel):
     database_configs: Optional[list[Database]] = None
     model_configs: Optional[list[Model]] = None
     oci_configs: Optional[list[OracleCloudSettings]] = None
-    prompt_configs: Optional[list[Prompt]] = None
+    prompt_configs: Optional[list[MCPPrompt]] = None
 
     def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
@@ -381,18 +349,18 @@ class ChatRequest(LanguageModelParameters):
 #####################################################
 # Testbed
 #####################################################
-class TestSets(BaseModel):
-    """TestSets"""
+class QASets(BaseModel):
+    """QA Sets - Collection of Q&A test sets for testbed evaluation"""
 
     tid: str = Field(description="Test ID")
-    name: str = Field(description="Name of TestSet")
-    created: str = Field(description="Date TestSet Loaded")
+    name: str = Field(description="Name of QA Set")
+    created: str = Field(description="Date QA Set Loaded")
 
 
-class TestSetQA(BaseModel):
-    """TestSet Q&A"""
+class QASetData(BaseModel):
+    """QA Set Data - Question/Answer pairs for testbed evaluation"""
 
-    qa_data: list = Field(description="TestSet Q&A Data")
+    qa_data: list = Field(description="QA Set Data")
 
 
 class Evaluation(BaseModel):
@@ -425,10 +393,6 @@ ModelTypeType = Model.__annotations__["type"]
 ModelEnabledType = ModelAccess.__annotations__["enabled"]
 OCIProfileType = OracleCloudSettings.__annotations__["auth_profile"]
 OCIResourceOCID = OracleResource.__annotations__["ocid"]
-PromptNameType = Prompt.__annotations__["name"]
-PromptCategoryType = Prompt.__annotations__["category"]
-PromptPromptType = PromptText.__annotations__["prompt"]
-SelectAIProfileType = Database.__annotations__["selectai_profiles"]
-TestSetsIdType = TestSets.__annotations__["tid"]
-TestSetsNameType = TestSets.__annotations__["name"]
-TestSetDateType = TestSets.__annotations__["created"]
+QASetsIdType = QASets.__annotations__["tid"]
+QASetsNameType = QASets.__annotations__["name"]
+QASetsDateType = QASets.__annotations__["created"]

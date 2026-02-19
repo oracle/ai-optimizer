@@ -1,0 +1,74 @@
+## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent sqlcl sqlplus
+
+# Database Initialization Job
+{{- if .Values.server.database }}
+{{- if .Values.server.database.privAuthN }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "global.fullname" . }}-run-sql-{{ .Release.Revision }}
+  labels:
+    app.kubernetes.io/component: database
+    {{- include "global.labels" . | nindent 4 }}
+spec:
+  ttlSecondsAfterFinished: 300  # 5 minutes
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: oracle-sqlcl-runner
+        image: container-registry.oracle.com/database/sqlcl:latest
+        env:
+        - name: TNS_ADMIN
+          value: /app/tns_admin
+        - name: API_SERVER_HOST
+          value: {{ include "server.serviceName" . }}
+        - name: API_SERVER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "global.apiSecretName" . }}
+              key: {{ include "global.apiSecretKey" . }}
+        - name: PRIV_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.server.database.privAuthN.secretName }}
+              key: {{ default "username" .Values.server.database.privAuthN.usernameKey }}
+        - name: PRIV_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.server.database.privAuthN.secretName }}
+              key: {{ default "password" .Values.server.database.privAuthN.passwordKey }}
+        {{- include "server.database.authN" . | nindent 8 }}
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            attempt=1
+            while [ "$attempt" -lt 360 ]; do
+                sh /opt/oracle/scripts/startup/init.sh
+                if [ $? -eq 0 ]; then
+                exit 0
+                fi
+                echo "Waiting for connectivity to ${DB_DSN} ($attempt/360)"
+                sleep 10
+                attempt=$((attempt + 1))
+            done
+        volumeMounts:
+        - name: db-init-scripts
+          mountPath: /opt/oracle/scripts/startup
+        {{- if eq (include "server.database.isADBS" .) "true" }}
+        - name: tns-admin
+          mountPath: /app/tns_admin
+        {{- end }}
+      volumes:
+      - name: db-init-scripts
+        configMap:
+          name: {{ include "global.fullname" . }}-db-init
+      {{- if eq (include "server.database.isADBS" .) "true" }}
+      - name: tns-admin
+        secret:
+          secretName: {{ include "server.database.adbTnsAdminSecret" . }}
+      {{- end }}
+{{- end }}
+{{- end }}

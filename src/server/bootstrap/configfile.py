@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore configfile
@@ -44,6 +44,12 @@ class ConfigStore:
     def get(cls):
         """Return the configuration stored in memory"""
         return cls._config
+
+    @classmethod
+    def reset(cls):
+        """Reset the configuration state. Used for testing."""
+        with cls._lock:
+            cls._config = None
 
 
 def config_file_path() -> str:

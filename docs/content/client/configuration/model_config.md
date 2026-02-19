@@ -3,7 +3,7 @@ title = '🤖 Model Configuration'
 weight = 10
 +++
 <!--
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 spell-checker:ignore ollama, mxbai, nomic, thenlper, minilm, uniqueid, huggingface, hftei, openai, pplx, genai, ocid, configfile
@@ -14,6 +14,10 @@ spell-checker:ignore ollama, mxbai, nomic, thenlper, minilm, uniqueid, huggingfa
 At a minimum, a Large _Language Model_ (LLM) must be configured in {{< short_app_ref >}} for basic functionality. For Retrieval-Augmented Generation (**RAG**), an _Embedding Model_ will also need to be configured.
 
 There is an extensive list of different API Model APIs available you can choose from.
+
+{{% notice style="code" title="Compatibility notice" icon="fire" %}}
+To use **NL2SQL**, the selected LLM must support the **Model Context Protocol (MCP)**. LLM runtimes without native MCP support—such as the Ollama desktop application and core server—cannot fully enable these features.
+{{% /notice %}}
 
 ## Configuration
 
@@ -56,6 +60,7 @@ Examples:
 Third-Party cloud models, such as [OpenAI](https://openai.com/api/) and [Perplexity AI](https://docs.perplexity.ai/getting-started), require API Keys. These keys are tied to registered, funded accounts on these platforms. For more information on creating an account, funding it, and generating API Keys for third-party cloud models, please visit their respective sites.
 
 On-Premises models, such as those from [Ollama](https://ollama.com/) or [HuggingFace](https://huggingface.co/) usually do not require API Keys. These values can be left blank.
+
 
 ## Additional Information
 

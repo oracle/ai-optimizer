@@ -1,5 +1,5 @@
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
 output "app_version" {
@@ -19,5 +19,5 @@ output "optimizer_client_url" {
 
 output "optimizer_server_url" {
   description = "URL for AI Optimizer and Toolkit Server API Access"
-  value       = var.deploy_optimizer ? format("http://%s:8000/v1/docs", oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address) : "N/A"
+  value       = var.deploy_optimizer ? format("http://%s/v1/docs", oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address) : "N/A"
 }

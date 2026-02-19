@@ -1,8 +1,7 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-
 # spell-checker:ignore genai hnsw
 
 from typing import Tuple
@@ -11,6 +10,7 @@ import re
 import uuid
 import os
 import csv
+import json
 
 import oracledb
 import requests
@@ -57,30 +57,79 @@ def get_vs_table(
     distance_metric: str,
     index_type: str = "HNSW",
     alias: str = None,
+    description: str = None,
 ) -> Tuple[str, str]:
     """Return the concatenated VS Table name and comment"""
     store_table = None
     store_comment = None
     try:
         chunk_overlap_ceil = math.ceil(chunk_overlap)
-        table_string = (
-            f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
-        )
+        table_string = f"{model}_{chunk_size}_{chunk_overlap_ceil}_{distance_metric}_{index_type}"
         if alias:
             table_string = f"{alias}_{table_string}"
         store_table = re.sub(r"\W", "_", table_string.upper())
-        store_comment = (
-            f'{{"alias": "{alias}",'
-            f'"model": "{model}",'
-            f'"chunk_size": {chunk_size},'
-            f'"chunk_overlap": {chunk_overlap_ceil},'
-            f'"distance_metric": "{distance_metric}",'
-            f'"index_type": "{index_type}"}}'
-        )
+
+        # Build comment JSON with optional description
+        comment_parts = [
+            f'"alias": "{alias}"',
+            f'"description": "{description}"' if description else '"description": null',
+            f'"model": "{model}"',
+            f'"chunk_size": {chunk_size}',
+            f'"chunk_overlap": {chunk_overlap_ceil}',
+            f'"distance_metric": "{distance_metric}"',
+            f'"index_type": "{index_type}"',
+        ]
+        store_comment = "{" + ", ".join(comment_parts) + "}"
+
         logger.debug("Vector Store Table: %s; Comment: %s", store_table, store_comment)
     except TypeError:
         logger.fatal("Not all required values provided to get Vector Store Table name.")
     return store_table, store_comment
+
+
+def parse_vs_comment(comment: str) -> dict:
+    """
+    Parse table comment JSON to extract vector store metadata.
+    Returns dict with keys: alias, description, model, chunk_size, chunk_overlap,
+    distance_metric, index_type.
+    Handles backward compatibility for comments without description field.
+    """
+
+    default_result = {
+        "alias": None,
+        "description": None,
+        "model": None,
+        "chunk_size": None,
+        "chunk_overlap": None,
+        "distance_metric": None,
+        "index_type": None,
+        "parse_status": "no_comment",
+    }
+
+    if not comment:
+        return default_result
+
+    try:
+        # Strip "GENAI: " prefix if present
+        json_str = comment
+        if comment.startswith("GENAI: "):
+            json_str = comment[7:]  # len("GENAI: ") = 7
+
+        parsed = json.loads(json_str)
+        return {
+            "alias": parsed.get("alias"),
+            "description": parsed.get("description"),  # May be None for backward compat
+            "model": parsed.get("model"),
+            "chunk_size": parsed.get("chunk_size"),
+            "chunk_overlap": parsed.get("chunk_overlap"),
+            "distance_metric": parsed.get("distance_metric"),
+            "index_type": parsed.get("index_type"),
+            "parse_status": "success",
+        }
+    except (json.JSONDecodeError, AttributeError, TypeError) as ex:
+        logger.warning("Failed to parse table comment '%s': %s", comment, ex)
+        default_result["parse_status"] = f"parse_error: {str(ex)}"
+        return default_result
 
 
 def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
@@ -90,11 +139,9 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
     return_msg = ""
 
     try:  # Establish a connection
-
         username = ""
         password = ""
         dsn = ""
-
         if db_conn and query:
             try:
                 user_part, dsn = db_conn.split("@")
@@ -103,12 +150,8 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                 return_msg = f"Wrong connection string {db_conn}"
                 logger.error(return_msg)
                 ok = False
-
-            with oracledb.connect(
-                user=username, password=password, dsn=dsn
-            ) as connection:
+            with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
                 with connection.cursor() as cursor:
-
                     cursor.execute(query)
                     rows = cursor.fetchmany(3)
                     desc = cursor.description
@@ -117,9 +160,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                         logger.error(return_msg)
                         ok = False
                     if len(desc) != 1:
-                        return_msg = (
-                            f"SQL source returns {len(desc)} columns, expected 1."
-                        )
+                        return_msg = f"SQL source returns {len(desc)} columns, expected 1."
                         logger.error(return_msg)
                         ok = False
 
@@ -169,9 +210,7 @@ def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
         full_file_path = os.path.join(base_path, filename_with_extension)
 
         with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
-
             with connection.cursor() as cursor:
-
                 cursor.arraysize = batch_size
                 cursor.execute(query)
 

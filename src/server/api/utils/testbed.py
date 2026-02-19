@@ -1,5 +1,5 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore giskard testset ollama testsets litellm
@@ -7,7 +7,6 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 import json
 import pickle
 import pandas as pd
-from bs4 import BeautifulSoup
 
 from pypdf import PdfReader
 from oracledb import Connection
@@ -19,7 +18,7 @@ from giskard.rag import generate_testset, KnowledgeBase, QATestset
 from giskard.rag.question_generators import simple_questions, complex_questions
 
 import server.api.utils.databases as utils_databases
-import server.api.utils.models as utils_models
+
 from common import schema
 from common import logging_config
 
@@ -96,14 +95,14 @@ def get_testsets(db_conn: Connection) -> list:
     sql = "SELECT tid, name, to_char(created) FROM oai_testsets ORDER BY created"
     results = utils_databases.execute_sql(db_conn, sql)
     try:
-        testsets = [schema.TestSets(tid=tid.hex(), name=name, created=created) for tid, name, created in results]
+        testsets = [schema.QASets(tid=tid.hex(), name=name, created=created) for tid, name, created in results]
     except TypeError:
         create_testset_objects(db_conn)
 
     return testsets
 
 
-def get_testset_qa(db_conn: Connection, tid: schema.TestSetsIdType) -> schema.TestSetQA:
+def get_testset_qa(db_conn: Connection, tid: schema.QASetsIdType) -> schema.QASetData:
     """Get list of TestSet Q&A"""
     logger.info("Getting TestSet Q&A for TID: %s", tid)
     binds = {"tid": tid}
@@ -111,10 +110,10 @@ def get_testset_qa(db_conn: Connection, tid: schema.TestSetsIdType) -> schema.Te
     results = utils_databases.execute_sql(db_conn, sql, binds)
     qa_data = [qa_data[0] for qa_data in results]
 
-    return schema.TestSetQA(qa_data=qa_data)
+    return schema.QASetData(qa_data=qa_data)
 
 
-def get_evaluations(db_conn: Connection, tid: schema.TestSetsIdType) -> list[schema.Evaluation]:
+def get_evaluations(db_conn: Connection, tid: schema.QASetsIdType) -> list[schema.Evaluation]:
     """Get list of Evaluations for a TID"""
     logger.info("Getting Evaluations for: %s", tid)
     evaluations = []
@@ -134,7 +133,7 @@ def get_evaluations(db_conn: Connection, tid: schema.TestSetsIdType) -> list[sch
 
 def delete_qa(
     db_conn: Connection,
-    tid: schema.TestSetsIdType,
+    tid: schema.QASetsIdType,
 ) -> None:
     """Delete Q&A"""
     binds = {"tid": tid}
@@ -145,11 +144,11 @@ def delete_qa(
 
 def upsert_qa(
     db_conn: Connection,
-    name: schema.TestSetsNameType,
-    created: schema.TestSetDateType,
+    name: schema.QASetsNameType,
+    created: schema.QASetsDateType,
     json_data: json,
-    tid: schema.TestSetsIdType = None,
-) -> schema.TestSetsIdType:
+    tid: schema.QASetsIdType = None,
+) -> schema.QASetsIdType:
     """Upsert Q&A"""
     logger.info("Upsert TestSet: %s - %s", name, created)
     parsed_data = json.loads(json_data)
@@ -221,36 +220,31 @@ def insert_evaluation(db_conn, tid, evaluated, correctness, settings, rag_report
     return utils_databases.execute_sql(db_conn, plsql, binds)
 
 
-def load_and_split(eval_file, chunk_size=2048):
+def load_and_split(eval_file, chunk_size=512):
     """Load and Split Document for Testbed"""
-    logger.info("Loading %s; Chunk Size: %i", eval_file, chunk_size)
+    chunk_overlap = int(chunk_size * 0.10)
+    effective_chunk_size = chunk_size - chunk_overlap
+    logger.info("Loading %s; Chunk Size: %i; Overlap: %i", eval_file, effective_chunk_size, chunk_overlap)
     loader = PdfReader(eval_file)
     documents = []
     for page in loader.pages:
         document = Document(text=page.extract_text())
         documents.append(document)
-    splitter = SentenceSplitter(chunk_size=chunk_size)
+    splitter = SentenceSplitter(chunk_size=effective_chunk_size, chunk_overlap=chunk_overlap)
     text_nodes = splitter(documents)
 
     return text_nodes
 
 
 def build_knowledge_base(
-    text_nodes: str, questions: int, ll_model: str, embed_model: str, oci_config: schema.OciSettings
+    text_nodes: str, questions: int, ll_model_config: dict, embed_model_config: dict
 ) -> QATestset:
     """Establish a temporary Knowledge Base"""
     logger.info("KnowledgeBase creation starting...")
-    logger.info("LL Model: %s; Embedding: %s", ll_model, embed_model)
 
     # Setup models, uses LiteLLM
-    ll_model_config = utils_models.get_litellm_config(
-        model_config={"model": ll_model}, oci_config=oci_config, giskard=True
-    )
-    set_llm_model(llm_model=ll_model, **ll_model_config)
-    embed_model_config = utils_models.get_litellm_config(
-        model_config={"model": embed_model}, oci_config=oci_config, giskard=True
-    )
-    set_embedding_model(model=embed_model, **embed_model_config)
+    set_llm_model(**ll_model_config)
+    set_embedding_model(**embed_model_config)
 
     knowledge_base_df = pd.DataFrame([node.text for node in text_nodes], columns=["text"])
     knowledge_base = KnowledgeBase(data=knowledge_base_df)
@@ -271,28 +265,8 @@ def build_knowledge_base(
     return testset
 
 
-def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.EvaluationReport:
+def process_report(db_conn: Connection, eid: schema.QASetsIdType) -> schema.EvaluationReport:
     """Process an evaluate report"""
-
-    def clean(orig_html):
-        """Remove elements from html output"""
-        soup = BeautifulSoup(orig_html, "html.parser")
-        titles_to_remove = [
-            "GENERATOR",
-            "RETRIEVER",
-            "REWRITER",
-            "ROUTING",
-            "KNOWLEDGE_BASE",
-            "KNOWLEDGE BASE OVERVIEW",
-        ]
-        for title in titles_to_remove:
-            component_cards = soup.find_all("div", class_="component-card")
-            for card in component_cards:
-                title_element = card.find("div", class_="component-title")
-                if title_element and title in title_element.text.strip().upper():
-                    card.decompose()
-
-        return soup.prettify()
 
     # Main
     binds = {"eid": eid}
@@ -304,7 +278,6 @@ def process_report(db_conn: Connection, eid: schema.TestSetsIdType) -> schema.Ev
     results = utils_databases.execute_sql(db_conn, sql, binds)
     report = pickle.loads(results[0]["RAG_REPORT"])
     full_report = report.to_pandas()
-    html_report = report.to_html()
     by_topic = report.correctness_by_topic()
     failures = report.failures
 

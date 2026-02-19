@@ -1,6 +1,6 @@
 # yamllint disable rule:line-length
-# Copyright (c) 2024, 2025, Oracle and/or its affiliates.
-# All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
+# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore ocid ecpu mydb byodb mbps autonomousdatabase cfgmgt ocpu ocir
 
 title: "Oracle AI Optimizer and Toolkit"
@@ -31,6 +31,7 @@ variableGroups:
     variables:
       - adb_version
       - k8s_run_cfgmgt
+      - deploy_optimizer
     visible: false
 
   #########################################################################
@@ -562,8 +563,8 @@ variables:
 outputGroups:
   - title: "Access the AI Optimizer and Toolkit"
     outputs:
-      - client_url
-      - server_url
+      - optimizer_client_url
+      - optimizer_server_url
 
   - title: "Kubernetes KUBECONFIG command"
     outputs:
@@ -571,11 +572,11 @@ outputGroups:
 
 ###########################################################################
 outputs:
-  client_url:
+  optimizer_client_url:
     title: "Web GUI"
     type: link
 
-  server_url:
+  optimizer_server_url:
     title: "Server API"
     type: link
 

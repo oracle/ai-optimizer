@@ -1,15 +1,15 @@
 """
-Copyright (c) 2024, 2025, Oracle and/or its affiliates.
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectai clob nclob vectorstores oraclevs
+# spell-checker:ignore clob nclob vectorstores oraclevs genai privs
 
 from typing import Optional, Union
 import json
 import oracledb
 from langchain_community.vectorstores import oraclevs as LangchainVS
 
-import server.api.core.settings as core_settings
+import server.api.utils.settings as utils_settings
 from server.bootstrap.bootstrap import DATABASE_OBJECTS
 
 from common.schema import (
@@ -19,7 +19,6 @@ from common.schema import (
     ClientIdType,
     DatabaseAuth,
     DatabaseVectorStorage,
-    SelectAIProfileType,
 )
 from common import logging_config
 
@@ -101,12 +100,14 @@ def _test(config: Database) -> None:
     except oracledb.DatabaseError:
         logger.info("Refreshing %s database connection.", config.name)
         _ = connect(config)
-    except ValueError as ex:
-        raise DbException(status_code=400, detail=f"Database: {str(ex)}") from ex
+    except DbException:
+        raise
     except PermissionError as ex:
         raise DbException(status_code=401, detail=f"Database: {str(ex)}") from ex
     except ConnectionError as ex:
         raise DbException(status_code=503, detail=f"Database: {str(ex)}") from ex
+    except ValueError as ex:
+        raise DbException(status_code=400, detail=f"Database: {str(ex)}") from ex
     except Exception as ex:
         raise DbException(status_code=500, detail=str(ex)) from ex
 
@@ -129,42 +130,6 @@ def _get_vs(conn: oracledb.Connection) -> DatabaseVectorStorage:
     return vector_stores
 
 
-def _selectai_enabled(conn: oracledb.Connection) -> bool:
-    """Determine if SelectAI can be used"""
-    logger.debug("Checking %s for SelectAI", conn)
-    is_enabled = False
-    sql = """
-          SELECT COUNT(*)
-            FROM ALL_TAB_PRIVS
-           WHERE TYPE = 'PACKAGE'
-             AND PRIVILEGE = 'EXECUTE'
-             AND GRANTEE = USER
-             AND TABLE_NAME IN ('DBMS_CLOUD_AI','DBMS_CLOUD_PIPELINE')
-          """
-    result = execute_sql(conn, sql)
-    if result[0][0] == 2:
-        is_enabled = True
-    logger.debug("SelectAI enabled (results: %s): %s", result[0][0], is_enabled)
-
-    return is_enabled
-
-
-def _get_selectai_profiles(conn: oracledb.Connection) -> SelectAIProfileType:
-    """Retrieve SelectAI Profiles"""
-    logger.info("Looking for SelectAI Profiles")
-    selectai_profiles = []
-    sql = """
-            SELECT  profile_name
-            FROM USER_CLOUD_AI_PROFILES
-          """
-    results = execute_sql(conn, sql)
-    if results:
-        selectai_profiles = [row[0] for row in results]
-    logger.debug("Found SelectAI Profiles: %s", selectai_profiles)
-
-    return selectai_profiles
-
-
 #####################################################
 # Functions
 #####################################################
@@ -173,7 +138,7 @@ def connect(config: Database) -> oracledb.Connection:
     include_fields = set(DatabaseAuth.model_fields.keys())
     db_authn = config.model_dump(include=include_fields)
     if any(not db_authn[key] for key in ("user", "password", "dsn")):
-        raise ValueError("missing connection details")
+        raise DbException(status_code=400, detail=f"Database: {config.name} missing connection details.")
 
     logger.info("Connecting to Database: %s", config.dsn)
     # If a wallet password is provided but no wallet location is set
@@ -286,12 +251,9 @@ def get_databases(
         for db in databases:
             try:
                 db_conn = connect(config=db)
-            except (ValueError, PermissionError, ConnectionError, LookupError):
+            except (DbException, PermissionError, ConnectionError, LookupError):
                 continue
             db.vector_stores = _get_vs(db_conn)
-            db.selectai = _selectai_enabled(db_conn)
-            if db.selectai:
-                db.selectai_profiles = _get_selectai_profiles(db_conn)
             db.connected = True
             db.set_connection(db_conn)
     if db_name:
@@ -302,14 +264,12 @@ def get_databases(
 
 def get_client_database(client: ClientIdType, validate: bool = False) -> Database:
     """Return a Database Object based on client settings"""
-    client_settings = core_settings.get_client_settings(client)
+    client_settings = utils_settings.get_client(client)
 
     # Get database name from client settings, defaulting to "DEFAULT"
     db_name = "DEFAULT"
-    if (hasattr(client_settings, "vector_search") and client_settings.vector_search) or (
-        hasattr(client_settings, "selectai") and client_settings.selectai
-    ):
-        db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
+    if hasattr(client_settings, "database") and client_settings.database:
+        db_name = getattr(client_settings.database, "alias", "DEFAULT")
 
     # Return Single the Database Object
     return get_databases(db_name=db_name, validate=validate)
