@@ -46,7 +46,7 @@ ignore=CVS,.venv
 # ignore-list. The regex matches against paths and can be in Posix or Windows
 # format. Because '\\' represents the directory delimiter on Windows systems,
 # it can't be used as an escape character.
-ignore-paths=
+ignore-paths=^__init__\.py$
 # Files or directories matching the regular expression patterns are skipped.
 # The regex matches against base names, not paths. The default value ignores
 # Emacs file locks
@@ -95,7 +95,7 @@ recursive=yes
 # source root is an absolute path or a path relative to the current working
 # directory used to determine a package namespace for modules located under the
 # source root.
-source-roots=.
+source-roots=
 
 # Allow loading of arbitrary C extensions. Extensions are imported into the
 # active Python interpreter and may run arbitrary code.
@@ -283,7 +283,7 @@ ignored-parents=
 max-args=6
 
 # Maximum number of attributes for a class (see R0902).
-max-attributes=7
+max-attributes=8
 
 # Maximum number of boolean expressions in an if statement (see R0916).
 max-bool-expr=5

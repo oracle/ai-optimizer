@@ -12,39 +12,29 @@ from fastapi import FastAPI
 
 from _version import __version__
 from server.app.api.v1.router import router as v1_router
-from server.app.core.config import settings
-from server.app.database import (
-    close_pool,
-    get_all_registered_databases,
-    initialize_schema,
-    load_core_settings,
-    load_persisted_databases,
-    persist_settings,
-)
-from server.app.oci import load_oci_profiles
+from server.app.core.settings import settings
 
-
+LOGGER = logging.getLogger(__name__)
 #############################################################################
 # APP FACTORY
 #############################################################################
-LOGGER = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """FastAPI Lifespan"""
     if settings.api_key_generated:
         LOGGER.warning("AIO_API_KEY not set — using generated key: %s", settings.api_key)
-    await initialize_schema()
-    await load_persisted_databases()
-    persisted, _ = await load_core_settings()
-    await load_oci_profiles(persisted)
-    await persist_settings()
-    try:
-        yield
-    finally:
-        for db in get_all_registered_databases():
-            await close_pool(db.pool)
+    # await initialize_schema()
+    # await load_persisted_databases()
+    # persisted, _ = await load_core_settings()
+    # await load_oci_profiles(persisted)
+    # await persist_settings()
+    # try:
+    #     yield
+    # finally:
+    #     for db in get_all_registered_databases():
+    #         await close_pool(db.pool)
+    yield
 
 
 API_PREFIX = "/v1"

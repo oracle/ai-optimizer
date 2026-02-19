@@ -6,6 +6,6 @@ Server package initialization and logging configuration.
 """
 
 from logging_config import configure_logging
-from server.app.core.config import settings
+from server.app.core.settings import settings
 
 configure_logging(settings.log_level)

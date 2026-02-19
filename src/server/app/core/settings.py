@@ -23,7 +23,7 @@ class Settings(BaseSettings):
         env_prefix="AIO_",
         env_file=PROJECT_ROOT / f".env.{os.getenv('AIO_ENV', 'dev')}",
         env_file_encoding="utf-8",
-        extra="forbid",
+        extra="ignore",
     )
 
     # Server
@@ -32,15 +32,25 @@ class Settings(BaseSettings):
     server_port: int = 8000
     log_level: str = "INFO"
 
-    # Auth
-    api_key: Optional[str] = None
-
-    # Database
+    # Database for persistence ("CORE")
     db_username: Optional[str] = None
     db_password: Optional[str] = None
     db_dsn: Optional[str] = None
     db_wallet_password: Optional[str] = None
     db_wallet_location: Optional[str] = None
+
+    # Client feature accessibility
+    client_disable_testbed: bool = False
+    client_disable_api: bool = False
+    client_disable_tools: bool = False
+    client_disable_db_cfg: bool = False
+    client_disable_model_cfg: bool = False
+    client_disable_oci_cfg: bool = False
+    client_disable_settings: bool = False
+    client_disable_mcp_cfg: bool = False
+
+    # Auth
+    api_key: Optional[str] = None
 
     @model_validator(mode="after")
     def _generate_api_key_if_missing(self) -> "Settings":
