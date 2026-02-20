@@ -4,6 +4,9 @@
 
 This directory contains the documentation for the the [**Oracle AI Optimizer & Toolkit**](https://github.com/oracle/ai-optimizer).
 
+
+Documentation is versioned as part of the GitHub deployment process.  Documents in the `main` branch are v0.0.0 while each major release is per its version number.  All the latest major release documents will be made available as well as the last version of the previous major release.
+
 ## Getting Started - Documentation
 
 The **Oracle AI Optimizer & Toolkit** documentation is powered by [Hugo](https://gohugo.io/) using the [Relearn](https://github.com/McShelby/hugo-theme-relearn) theme.
@@ -26,3 +29,4 @@ From the `docs` directory:
 1. Start Hugo: `hugo serve`
 
 This will serve the documentation on `http://localhost:1313/ai-optimizer/` for review.
+

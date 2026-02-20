@@ -104,6 +104,7 @@ jobs:
           generate_version_overlay() {
             local current_version="$1"
             local overlay_file="$2"
+            local TAG
 
             cat > "$overlay_file" <<EOF
           [params]
@@ -136,6 +137,7 @@ jobs:
           WORKDIR=$(mktemp -d)
           git worktree add "$WORKDIR" "$LATEST_TAG"
           cp -r docs/themes "$WORKDIR/docs/themes"
+          cp -r docs/layouts "$WORKDIR/docs/layouts"
           generate_version_overlay "$LATEST_TAG" "$WORKDIR/docs/version-overlay.toml"
           hugo \
             --gc --minify \
@@ -164,6 +166,7 @@ jobs:
             WORKDIR=$(mktemp -d)
             git worktree add "$WORKDIR" "$TAG"
             cp -r docs/themes "$WORKDIR/docs/themes"
+            cp -r docs/layouts "$WORKDIR/docs/layouts"
             generate_version_overlay "$TAG" "$WORKDIR/docs/version-overlay.toml"
             hugo \
               --gc --minify \
