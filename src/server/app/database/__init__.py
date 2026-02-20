@@ -11,8 +11,8 @@ from typing import Optional
 import oracledb
 
 from .config import create_pool, close_pool
-from .model import DatabaseConfig
-from .schema import SCHEMA_DDL
+from .schemas import DatabaseConfig
+from .objects import SCHEMA_DDL
 from .sql import execute_sql
 
 LOGGER = logging.getLogger(__name__)

@@ -12,7 +12,7 @@ import pytest
 
 from server.app.core.settings import SettingsBase, settings
 from server.app.database import init_core_database, close_pool
-from server.app.database.model import DatabaseConfig
+from server.app.database.schemas import DatabaseConfig
 from server.app.database.settings import persist_settings
 from server.app.database.sql import execute_sql
 from server.tests.conftest import TEST_DB_CONFIG

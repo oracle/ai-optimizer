@@ -7,7 +7,7 @@ Endpoints for retrieving OCI profile configurations.
 
 from fastapi import APIRouter, HTTPException, Query
 
-from server.app.oci.schema import OciProfileConfig, OciProfileUpdate, OciSensitive
+from server.app.oci.schemas import OciProfileConfig, OciProfileUpdate, OciSensitive
 from server.app.database.settings import persist_settings
 from server.app.core.settings import settings
 

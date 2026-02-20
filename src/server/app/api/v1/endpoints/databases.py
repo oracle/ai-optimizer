@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from server.app.database import init_core_database
 from server.app.database.config import close_pool
-from server.app.database.model import DatabaseConfig, DatabaseSensitive, DatabaseUpdate
+from server.app.database.schemas import DatabaseConfig, DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import persist_settings
 from server.app.core.settings import settings
 

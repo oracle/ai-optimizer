@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from server.app.core.paths import PROJECT_ROOT
-from server.app.database.model import DatabaseConfig
-from server.app.oci.schema import OciProfileConfig
+from server.app.database.schemas import DatabaseConfig
+from server.app.oci.schemas import OciProfileConfig
 
 
 class SettingsBase(BaseModel):

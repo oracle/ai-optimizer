@@ -8,7 +8,7 @@ Tests for OCI profiles endpoint.
 
 import pytest
 
-from server.app.oci.schema import OciProfileConfig, OciSensitive
+from server.app.oci.schemas import OciProfileConfig, OciSensitive
 from server.app.core.settings import settings
 
 SENSITIVE_KEYS = set(OciSensitive.model_fields.keys())

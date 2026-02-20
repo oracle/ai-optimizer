@@ -13,7 +13,7 @@ from typing import Optional
 
 import oci.config
 
-from .schema import OciProfileConfig
+from .schemas import OciProfileConfig
 
 LOGGER = logging.getLogger(__name__)
 

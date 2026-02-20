@@ -12,7 +12,7 @@ from typing import Optional
 import oracledb
 
 from server.app.core.paths import PROJECT_ROOT
-from .model import DatabaseConfig
+from .schemas import DatabaseConfig
 
 LOGGER = logging.getLogger(__name__)
 _CORE_TNS_ADMIN = PROJECT_ROOT / "server" / "tns_admin"

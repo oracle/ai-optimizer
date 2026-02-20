@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.app.database.model import DatabaseConfig, DatabaseSensitive
+from server.app.database.schemas import DatabaseConfig, DatabaseSensitive
 from server.app.core.settings import settings
 
 SENSITIVE_KEYS = set(DatabaseSensitive.model_fields.keys())

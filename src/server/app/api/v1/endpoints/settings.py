@@ -8,8 +8,8 @@ Endpoint for retrieving server settings.
 from fastapi import APIRouter, Query
 
 from server.app.api.v1.schemas.settings import SettingsResponse
-from server.app.database.model import DatabaseSensitive
-from server.app.oci.schema import OciSensitive
+from server.app.database.schemas import DatabaseSensitive
+from server.app.oci.schemas import OciSensitive
 from server.app.core.settings import settings
 
 auth = APIRouter(prefix="/settings")

@@ -9,7 +9,7 @@ OCI profile registry and startup lifecycle.
 import logging
 
 from .config import parse_oci_config_file
-from .schema import OciProfileConfig
+from .schemas import OciProfileConfig
 
 LOGGER = logging.getLogger(__name__)
 
