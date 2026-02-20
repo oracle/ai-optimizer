@@ -9,23 +9,28 @@ OCI profile registry and startup lifecycle.
 import logging
 
 from .config import parse_oci_config_file
-from .settings import entry_to_oci_settings
+from .schema import OciProfileConfig
 
 LOGGER = logging.getLogger(__name__)
 
-async def load_oci_profiles(persisted=None) -> None:
-    """Startup entry point: load OCI profiles from config file and DB."""
 
-    # 1. Parse OCI config file
+def register_oci_profile(profile: OciProfileConfig) -> None:
+    """Append *profile* to settings.oci_profile_configs (deduplicate by auth_profile, last-write wins)."""
+    # Import here to avoid circular imports at module level
+    from server.app.core.settings import settings  # pylint: disable=import-outside-toplevel
+
+    key = profile.auth_profile.casefold()
+    settings.oci_profile_configs = [
+        p for p in settings.oci_profile_configs if p.auth_profile.casefold() != key
+    ] + [profile]
+
+
+async def load_oci_profiles() -> None:
+    """Startup entry point: load OCI profiles from the config file."""
+
     profiles = parse_oci_config_file()
-    for settings in profiles:
-        register_oci_profile(settings)
+    for prof in profiles:
+        register_oci_profile(prof)
 
     if profiles:
-        LOGGER.info("Loaded %d OCI profile(s) from config file", len(profiles))
-
-    # 2. Load persisted OCI configs from DB (if provided)
-    if persisted is not None:
-        for entry in persisted.oci_configs:
-            oci_settings = entry_to_oci_settings(entry)
-            register_oci_profile(oci_settings)
+        LOGGER.info('Loaded %d OCI profile(s) from config file', len(profiles))

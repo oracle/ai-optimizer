@@ -31,3 +31,16 @@ class OciProfileConfig(OciSensitive):
     genai_region: Optional[str] = None
     log_requests: Optional[bool] = False
     additional_user_agent: Optional[str] = ""
+
+
+class OciProfileUpdate(OciSensitive):
+    """Fields allowed in an OCI profile update (all optional)."""
+
+    user: Optional[str] = None
+    authentication: Optional[str] = None
+    tenancy: Optional[str] = None
+    region: Optional[str] = None
+    genai_compartment_id: Optional[str] = None
+    genai_region: Optional[str] = None
+    log_requests: Optional[bool] = None
+    additional_user_agent: Optional[str] = None
