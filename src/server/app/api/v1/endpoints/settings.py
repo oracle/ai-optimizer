@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query
 
 from server.app.api.v1.schemas.settings import SettingsResponse
 from server.app.database.model import DatabaseSensitive
-from server.app.core.oci_profiles import OciSensitive
+from server.app.oci.schema import OciSensitive
 from server.app.core.settings import settings
 
 auth = APIRouter(prefix="/settings")

@@ -16,6 +16,7 @@ from server.app.api.v1.router import router as v1_router
 from server.app.database import init_core_database
 from server.app.database.config import get_database_settings, close_pool
 from server.app.database.settings import persist_settings
+from server.app.oci import load_oci_profiles
 
 LOGGER = logging.getLogger(__name__)
 #############################################################################
@@ -30,9 +31,9 @@ async def lifespan(_app: FastAPI):
         LOGGER.warning("AIO_API_KEY not set — using generated key: %s", settings.api_key)
     core_cfg = get_database_settings(settings.database_configs, "CORE")
     await init_core_database(core_cfg)
+    await load_oci_profiles()
     # await load_persisted_settings()
     # persisted, _ = await load_core_settings()
-    # await load_oci_profiles(persisted)
     await persist_settings()
     try:
         yield

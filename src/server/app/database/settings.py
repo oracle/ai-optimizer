@@ -9,8 +9,8 @@ import json
 import logging
 
 from server.app.core.settings import SettingsBase, settings
-from server.app.database.config import get_database_settings
-from server.app.database.sql import execute_sql
+from .config import get_database_settings
+from .sql import execute_sql
 
 LOGGER = logging.getLogger(__name__)
 

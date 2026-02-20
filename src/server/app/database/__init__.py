@@ -10,10 +10,10 @@ from typing import Optional
 
 import oracledb
 
-from server.app.database.config import create_pool, close_pool
-from server.app.database.model import DatabaseConfig
-from server.app.database.schema import SCHEMA_DDL
-from server.app.database.sql import execute_sql
+from .config import create_pool, close_pool
+from .model import DatabaseConfig
+from .schema import SCHEMA_DDL
+from .sql import execute_sql
 
 LOGGER = logging.getLogger(__name__)
 

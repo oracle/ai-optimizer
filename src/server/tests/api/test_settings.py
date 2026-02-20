@@ -10,7 +10,7 @@ import pytest
 
 from server.app.api.v1.endpoints.settings import SENSITIVE_FIELDS
 from server.app.database.model import DatabaseConfig, DatabaseSensitive
-from server.app.core.oci_profiles import OciProfileConfig, OciSensitive
+from server.app.oci.schema import OciProfileConfig, OciSensitive
 from server.app.core.settings import settings
 
 

@@ -14,7 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from server.app.core.paths import PROJECT_ROOT
 from server.app.database.model import DatabaseConfig
-from server.app.core.oci_profiles import OciProfileConfig
+from server.app.oci.schema import OciProfileConfig
 
 
 class SettingsBase(BaseModel):
