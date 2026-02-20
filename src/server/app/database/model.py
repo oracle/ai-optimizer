@@ -6,7 +6,9 @@ Pydantic models and dataclasses for database configuration.
 """
 
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+import oracledb
 
 
 class DatabaseSensitive(BaseModel):
@@ -19,10 +21,23 @@ class DatabaseSensitive(BaseModel):
 class DatabaseConfig(DatabaseSensitive):
     """Database configurations."""
 
+    model_config = {'arbitrary_types_allowed': True}
+
     alias: str
     username: Optional[str] = None
     dsn: Optional[str] = None
     wallet_location: Optional[str] = None
     config_dir: Optional[str] = None
     tcp_connect_timeout: int = 10
-    useable: bool = False
+    usable: bool = False
+    pool: Optional[oracledb.AsyncConnectionPool] = Field(default=None, exclude=True)
+
+
+class DatabaseUpdate(DatabaseSensitive):
+    """Fields allowed in a database config update (all optional)."""
+
+    username: Optional[str] = None
+    dsn: Optional[str] = None
+    wallet_location: Optional[str] = None
+    config_dir: Optional[str] = None
+    tcp_connect_timeout: Optional[int] = None

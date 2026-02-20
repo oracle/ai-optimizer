@@ -13,6 +13,8 @@ from fastapi import FastAPI
 from _version import __version__
 from server.app.core.settings import settings
 from server.app.api.v1.router import router as v1_router
+from server.app.database import init_core_database
+from server.app.database.config import get_database_settings, close_pool
 
 LOGGER = logging.getLogger(__name__)
 #############################################################################
@@ -23,21 +25,19 @@ LOGGER = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """FastAPI Lifespan"""
-    dumped = settings.model_dump()
-    LOGGER.debug("Settings: %s", dumped)
     if settings.api_key_generated:
         LOGGER.warning("AIO_API_KEY not set — using generated key: %s", settings.api_key)
-    # await initialize_schema()
-    # await load_persisted_databases()
+    core_cfg = get_database_settings(settings.database_configs, "CORE")
+    await init_core_database(core_cfg)
+    # await load_persisted_settings()
     # persisted, _ = await load_core_settings()
     # await load_oci_profiles(persisted)
     # await persist_settings()
-    # try:
-    #     yield
-    # finally:
-    #     for db in get_all_registered_databases():
-    #         await close_pool(db.pool)
-    yield
+    try:
+        yield
+    finally:
+        for db in settings.database_configs:
+            await close_pool(db.pool)
 
 
 API_PREFIX = "/v1"

@@ -9,7 +9,7 @@ Tests for settings endpoint.
 import pytest
 
 from server.app.api.v1.endpoints.settings import SENSITIVE_FIELDS
-from server.app.core.databases import DatabaseConfig, DatabaseSensitive
+from server.app.database.model import DatabaseConfig, DatabaseSensitive
 from server.app.core.oci_profiles import OciProfileConfig, OciSensitive
 from server.app.core.settings import settings
 

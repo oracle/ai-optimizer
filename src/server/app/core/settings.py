@@ -7,19 +7,37 @@ Application settings loaded from environment variables and .env file.
 
 import os
 import secrets
-from pathlib import Path
 from typing import Optional
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from server.app.core.databases import DatabaseConfig
+from server.app.core.paths import PROJECT_ROOT
+from server.app.database.model import DatabaseConfig
 from server.app.core.oci_profiles import OciProfileConfig
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+class SettingsBase(BaseModel):
+    """Fields shared between Settings and SettingsResponse."""
+
+    env: str = "dev"
+    server_url_prefix: str = ""
+    server_port: int = 8000
+    log_level: str = "INFO"
+    database_configs: list[DatabaseConfig] = []
+    oci_profile_configs: list[OciProfileConfig] = []
+    client_disable_testbed: bool = False
+    client_disable_api: bool = False
+    client_disable_tools: bool = False
+    client_disable_db_cfg: bool = False
+    client_disable_model_cfg: bool = False
+    client_disable_oci_cfg: bool = False
+    client_disable_settings: bool = False
+    client_disable_mcp_cfg: bool = False
+    api_key: Optional[str] = None
 
 
-class Settings(BaseSettings):
+class Settings(SettingsBase, BaseSettings):
     """Application settings populated from environment variables / .env file."""
 
     model_config = SettingsConfigDict(
@@ -29,37 +47,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Server
-    env: str = "dev"
-    server_url_prefix: str = ""
-    server_port: int = 8000
-    log_level: str = "INFO"
-
     # Database — flat fields loaded from AIO_DB_* env vars (excluded from serialization)
     db_username: Optional[str] = Field(default=None, exclude=True)
     db_password: Optional[str] = Field(default=None, exclude=True)
     db_dsn: Optional[str] = Field(default=None, exclude=True)
     db_wallet_password: Optional[str] = Field(default=None, exclude=True)
     db_wallet_location: Optional[str] = Field(default=None, exclude=True)
-
-    # Consolidated database configs (populated by validator below)
-    database_configs: list[DatabaseConfig] = []
-
-    # OCI profile configs
-    oci_profile_configs: list[OciProfileConfig] = []
-
-    # Client feature accessibility
-    client_disable_testbed: bool = False
-    client_disable_api: bool = False
-    client_disable_tools: bool = False
-    client_disable_db_cfg: bool = False
-    client_disable_model_cfg: bool = False
-    client_disable_oci_cfg: bool = False
-    client_disable_settings: bool = False
-    client_disable_mcp_cfg: bool = False
-
-    # Auth
-    api_key: Optional[str] = None
 
     @model_validator(mode="after")
     def _build_core_database_config(self) -> "Settings":

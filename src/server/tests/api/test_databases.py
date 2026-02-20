@@ -6,9 +6,11 @@ Tests for databases endpoint.
 """
 # pylint: disable=duplicate-code
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
-from server.app.core.databases import DatabaseConfig, DatabaseSensitive
+from server.app.database.model import DatabaseConfig, DatabaseSensitive
 from server.app.core.settings import settings
 
 SENSITIVE_KEYS = set(DatabaseSensitive.model_fields.keys())
@@ -96,3 +98,158 @@ async def test_get_database_case_insensitive(app_client, auth_headers):
     resp = await app_client.get("/v1/databases/test", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["alias"] == "TEST"
+
+
+# --- POST /databases ---
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database(app_client, auth_headers):
+    """POST new alias returns 201 and config appears in list."""
+    resp = await app_client.post(
+        "/v1/databases",
+        json={"alias": "NEW_DB", "username": "newuser"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["alias"] == "NEW_DB"
+    assert body["username"] == "newuser"
+    for key in SENSITIVE_KEYS:
+        assert key not in body
+    # Verify it appears in the list
+    list_resp = await app_client.get("/v1/databases", headers=auth_headers)
+    aliases = [db["alias"] for db in list_resp.json()]
+    assert "NEW_DB" in aliases
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database_duplicate(app_client, auth_headers):
+    """POST existing alias returns 409."""
+    resp = await app_client.post(
+        "/v1/databases",
+        json={"alias": "TEST"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database_duplicate_case_insensitive(app_client, auth_headers):
+    """POST 'test' when 'TEST' exists returns 409."""
+    resp = await app_client.post(
+        "/v1/databases",
+        json={"alias": "test"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 409
+
+
+# --- PUT /databases/{alias} ---
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_database(app_client, auth_headers):
+    """PUT with new username returns 200 and field is changed."""
+    resp = await app_client.put(
+        "/v1/databases/TEST",
+        json={"username": "updated_user"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["username"] == "updated_user"
+    for key in SENSITIVE_KEYS:
+        assert key not in body
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_database_not_found(app_client, auth_headers):
+    """PUT unknown alias returns 404."""
+    resp = await app_client.put(
+        "/v1/databases/MISSING",
+        json={"username": "x"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_database_partial(app_client, auth_headers):
+    """PUT only one field leaves others unchanged."""
+    resp = await app_client.put(
+        "/v1/databases/TEST",
+        json={"dsn": "new_dsn"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["dsn"] == "new_dsn"
+    assert body["username"] == "testuser"  # unchanged
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_core_database_reinitializes(app_client, auth_headers):
+    """PUT on CORE alias closes existing pool and re-initialises."""
+    settings.database_configs.append(DatabaseConfig(alias="CORE", username="coreuser"))
+    with (
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
+        patch("server.app.api.v1.endpoints.databases.init_core_database", new_callable=AsyncMock) as mock_init,
+    ):
+        resp = await app_client.put(
+            "/v1/databases/CORE",
+            json={"username": "new_core_user"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        mock_close.assert_called_once()
+        mock_init.assert_called_once()
+
+
+# --- DELETE /databases/{alias} ---
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_database(app_client, auth_headers):
+    """DELETE removes config and closes pool."""
+    with patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close:
+        resp = await app_client.delete("/v1/databases/TEST", headers=auth_headers)
+        assert resp.status_code == 204
+        mock_close.assert_called_once()
+    # Verify it's gone
+    list_resp = await app_client.get("/v1/databases", headers=auth_headers)
+    aliases = [db["alias"] for db in list_resp.json()]
+    assert "TEST" not in aliases
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_database_not_found(app_client, auth_headers):
+    """DELETE unknown alias returns 404."""
+    resp = await app_client.delete("/v1/databases/MISSING", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_database_core_forbidden(app_client, auth_headers):
+    """DELETE CORE alias returns 403."""
+    settings.database_configs.append(DatabaseConfig(alias="CORE"))
+    resp = await app_client.delete("/v1/databases/CORE", headers=auth_headers)
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_database_core_case_insensitive(app_client, auth_headers):
+    """DELETE 'core' (lowercase) is also forbidden."""
+    resp = await app_client.delete("/v1/databases/core", headers=auth_headers)
+    assert resp.status_code == 403
