@@ -23,11 +23,9 @@ def _inject_version(record: logging.LogRecord) -> bool:
     return True
 
 
-class _DropScriptRunContext(logging.Filter):
+def _drop_script_run_context(record: logging.LogRecord) -> bool:
     """Suppress Streamlit's harmless 'missing ScriptRunContext' warnings."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        return "missing ScriptRunContext" not in record.getMessage()
+    return "missing ScriptRunContext" not in record.getMessage()
 
 
 def configure_logging(log_level: str | None = None) -> None:
@@ -109,7 +107,7 @@ def configure_logging(log_level: str | None = None) -> None:
     # Filter applied to the logger (not handler) so it runs before ALL handlers,
     # including any Streamlit adds after this configuration.
     logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").addFilter(
-        _DropScriptRunContext()
+        _drop_script_run_context
     )
 
     for handler in logging.getLogger().handlers:
