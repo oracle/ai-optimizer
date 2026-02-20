@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore clob nclob vectorstores oraclevs genai privs
 
+import logging
 from typing import Optional, Union
 import json
 import oracledb
@@ -20,9 +21,9 @@ from common.schema import (
     DatabaseAuth,
     DatabaseVectorStorage,
 )
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.utils.database")
+
+LOGGER = logging.getLogger("api.utils.database")
 
 
 #####################################################
@@ -72,9 +73,9 @@ def get(name: Optional[DatabaseNameType] = None) -> Union[list[Database], None]:
     """
     database_objects = DATABASE_OBJECTS
 
-    logger.debug("%i databases are defined", len(database_objects))
+    LOGGER.debug("%i databases are defined", len(database_objects))
     database_filtered = [db for db in database_objects if (name is None or db.name == name)]
-    logger.debug("%i databases after filtering", len(database_filtered))
+    LOGGER.debug("%i databases after filtering", len(database_filtered))
 
     if name and not database_filtered:
         raise UnknownDatabaseError(f"{name} not found")
@@ -95,10 +96,10 @@ def _test(config: Database) -> None:
     config.connected = False
     try:
         config.connection.ping()
-        logger.info("%s database connection is active.", config.name)
+        LOGGER.info("%s database connection is active.", config.name)
         config.connected = True
     except oracledb.DatabaseError:
-        logger.info("Refreshing %s database connection.", config.name)
+        LOGGER.info("Refreshing %s database connection.", config.name)
         _ = connect(config)
     except DbException:
         raise
@@ -114,7 +115,7 @@ def _test(config: Database) -> None:
 
 def _get_vs(conn: oracledb.Connection) -> DatabaseVectorStorage:
     """Retrieve Vector Storage Tables"""
-    logger.info("Looking for Vector Storage Tables")
+    LOGGER.info("Looking for Vector Storage Tables")
     vector_stores = []
     sql = """SELECT ut.table_name,
                     REPLACE(utc.comments, 'GENAI: ', '') AS comments
@@ -125,7 +126,7 @@ def _get_vs(conn: oracledb.Connection) -> DatabaseVectorStorage:
     for table_name, comments in results:
         comments_dict = json.loads(comments)
         vector_stores.append(DatabaseVectorStorage(vector_store=table_name, **comments_dict))
-    logger.debug("Found Vector Stores: %s", vector_stores)
+    LOGGER.debug("Found Vector Stores: %s", vector_stores)
 
     return vector_stores
 
@@ -140,16 +141,16 @@ def connect(config: Database) -> oracledb.Connection:
     if any(not db_authn[key] for key in ("user", "password", "dsn")):
         raise DbException(status_code=400, detail=f"Database: {config.name} missing connection details.")
 
-    logger.info("Connecting to Database: %s", config.dsn)
+    LOGGER.info("Connecting to Database: %s", config.dsn)
     # If a wallet password is provided but no wallet location is set
     # default the wallet location to the config directory
     if db_authn.get("wallet_password") and not db_authn.get("wallet_location"):
         db_authn["wallet_location"] = db_authn["config_dir"]
 
     # Attempt to Connect
-    logger.debug("Database AuthN: %s", db_authn)
+    LOGGER.debug("Database AuthN: %s", db_authn)
     try:
-        logger.debug("Attempting Database Connection...")
+        LOGGER.debug("Attempting Database Connection...")
         conn = oracledb.connect(**db_authn)
     except oracledb.DatabaseError as ex:
         error = ex.args[0] if ex.args else None
@@ -172,20 +173,20 @@ def connect(config: Database) -> oracledb.Connection:
     except OSError as ex:
         raise ConnectionError(f"Error connecting to database: {ex}") from ex
 
-    logger.debug("Connected to Databases: %s", config.dsn)
+    LOGGER.debug("Connected to Databases: %s", config.dsn)
 
     return conn
 
 
 def disconnect(conn: oracledb.Connection) -> None:
     """Disconnect from an Oracle Database"""
-    logger.debug("Disconnecting Databases Connection: %s", conn)
+    LOGGER.debug("Disconnecting Databases Connection: %s", conn)
     return conn.close()
 
 
 def execute_sql(conn: oracledb.Connection, run_sql: str, binds: dict = None) -> list:
     """Execute SQL against Oracle Database"""
-    logger.debug("SQL: %s with binds %s", run_sql, binds)
+    LOGGER.debug("SQL: %s with binds %s", run_sql, binds)
     try:
         # Use context manager to ensure the cursor is closed properly
         with conn.cursor() as cursor:
@@ -213,24 +214,24 @@ def execute_sql(conn: oracledb.Connection, run_sql: str, binds: dict = None) -> 
             else:
                 cursor.callproc("dbms_output.get_line", (text_var, status_var))
                 if status_var.getvalue() == 0:
-                    logger.info("Returning DBMS_OUTPUT.")
+                    LOGGER.info("Returning DBMS_OUTPUT.")
                     rows = text_var.getvalue()
     except oracledb.DatabaseError as ex:
         if ex.args:
             error_obj = ex.args[0]
             if hasattr(error_obj, "code") and error_obj.code == 955:
-                logger.info("Table exists")
+                LOGGER.info("Table exists")
             if hasattr(error_obj, "code") and error_obj.code == 942:
-                logger.info("Table does not exist")
+                LOGGER.info("Table does not exist")
             else:
-                logger.exception("Database error: %s", ex)
-                logger.info("Failed SQL: %s", run_sql)
+                LOGGER.exception("Database error: %s", ex)
+                LOGGER.info("Failed SQL: %s", run_sql)
                 raise
         else:
-            logger.exception("Database error: %s", ex)
+            LOGGER.exception("Database error: %s", ex)
             raise
     except oracledb.InterfaceError as ex:
-        logger.exception("Interface error: %s", ex)
+        LOGGER.exception("Interface error: %s", ex)
         raise
 
     return rows
@@ -238,7 +239,7 @@ def execute_sql(conn: oracledb.Connection, run_sql: str, binds: dict = None) -> 
 
 def drop_vs(conn: oracledb.Connection, vs: VectorStoreTableType) -> None:
     """Drop Vector Storage"""
-    logger.info("Dropping Vector Store: %s", vs)
+    LOGGER.info("Dropping Vector Store: %s", vs)
     LangchainVS.drop_table_purge(conn, vs)
 
 

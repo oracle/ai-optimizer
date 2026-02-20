@@ -129,25 +129,25 @@ class AIController {
 		user = jdbcTemplate.queryForObject(sqlUser, String.class);
 		if (helper.doesTableExist(legacyTable, user,this.jdbcTemplate) != -1) {
 			// RUNNING LOCAL
-			logger.info("Running local with user: " + user);
+			LOGGER.info("Running local with user: " + user);
 			sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
 					"SELECT ID, TEXT, METADATA, EMBEDDING FROM " + user + "." + legacyTable;
 		} else {
 			// RUNNING in OBAAS
-			logger.info("Running on OBaaS with user: " + user);
-			logger.info("copying langchain table from schema/user: " + userTable);
+			LOGGER.info("Running on OBaaS with user: " + user);
+			LOGGER.info("copying langchain table from schema/user: " + userTable);
 			sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
 					"SELECT ID, TEXT, METADATA, EMBEDDING FROM "+ userTable+"." + legacyTable;
 		}
 		// Execute the insert
-		logger.info("doesExist" + user + ": " + helper.doesTableExist(newTable, user,this.jdbcTemplate));
+		LOGGER.info("doesExist" + user + ": " + helper.doesTableExist(newTable, user,this.jdbcTemplate));
 		if (helper.countRecordsInTable(newTable, user,this.jdbcTemplate) == 0) {
 			// First microservice execution
-			logger.info("Table " + user + "." + newTable + " doesn't exist: create from "+userTable+"." + legacyTable);
+			LOGGER.info("Table " + user + "." + newTable + " doesn't exist: create from "+userTable+"." + legacyTable);
 			jdbcTemplate.update(sql);
 		} else {
 			// Table conversion already done
-			logger.info("Table " + user+"."+newTable + " exists: drop before if you want use with new contents " + userTable + "." + legacyTable);
+			LOGGER.info("Table " + user+"."+newTable + " exists: drop before if you want use with new contents " + userTable + "." + legacyTable);
 		}
 	}
 
@@ -171,20 +171,20 @@ class AIController {
 				String content = message.get("content");
 				if (content != null && !content.trim().isEmpty()) {
 					userMessageContent = content;
-					logger.info("user message: " + userMessageContent);
+					LOGGER.info("user message: " + userMessageContent);
 					Prompt prompt = promptBuilderService.buildPrompt(userMessageContent, contextInstr, TOPK);
-					logger.info("prompt message: " + prompt.getContents());
+					LOGGER.info("prompt message: " + prompt.getContents());
 					String contentResponse = chatClient.prompt(prompt).call().content();
-					logger.info("-------------------------------------------------------");
-					logger.info("- VECTOR SEARCH RETURN                                -");
-					logger.info("-------------------------------------------------------");
-					logger.info(contentResponse);
+					LOGGER.info("-------------------------------------------------------");
+					LOGGER.info("- VECTOR SEARCH RETURN                                -");
+					LOGGER.info("-------------------------------------------------------");
+					LOGGER.info(contentResponse);
 					new Thread(() -> {
 						try {
 							ObjectMapper mapper = new ObjectMapper();
 
 							if (request.isStream()) {
-								logger.info("Request is a Stream");
+								LOGGER.info("Request is a Stream");
 								List<String> chunks = helper.chunkString(contentResponse);
 								for (String token : chunks) {
 
@@ -199,7 +199,7 @@ class AIController {
 
 								bodyEmitter.send("data: [DONE]\n\n");
 							} else {
-								logger.info("Request isn't a Stream");
+								LOGGER.info("Request isn't a Stream");
 								String id = "chatcmpl-" + helper.generateRandomToken(28);
 								String object = "chat.completion";
 								String created = String.valueOf(Instant.now().getEpochSecond());
@@ -288,15 +288,15 @@ class AIController {
 	@GetMapping("/v1/models")
 	Map<String, Object> models(@RequestBody(required = false) Map<String, String> requestBody) {
 		String modelId = "custom";
-		logger.info("models request");
+		LOGGER.info("models request");
 		if (!"".equals(modelOpenAI)) {
 			modelId = modelOpenAI;
 		} else if (!"".equals(modelOllamaAI)) {
 			modelId = modelOllamaAI;
 		}
-		logger.info("model");
+		LOGGER.info("model");
 
-		logger.info(chatClient.prompt().toString());
+		LOGGER.info(chatClient.prompt().toString());
 		try {
 			Map<String, Object> model = new HashMap<>();
 			model.put("id", modelId);
@@ -314,7 +314,7 @@ class AIController {
 			return response;
 
 		} catch (Exception e) {
-			logger.error("Error while fetching completion", e);
+			LOGGER.error("Error while fetching completion", e);
 			return Map.of("error", "Failed to fetch completion");
 		}
 	}

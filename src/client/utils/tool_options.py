@@ -4,13 +4,15 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore selectbox subtools
 
+import logging
+
 import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import st_common
-from common import logging_config, help_text
+from common import help_text
 
-logger = logging_config.logging.getLogger("client.utils.st_common")
+LOGGER = logging.getLogger("client.utils.st_common")
 
 
 def tools_sidebar(show_vs_subtools: bool = True) -> None:
@@ -44,12 +46,12 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
     def _disable_tool(tool: str, reason: str = None) -> None:
         """Disable a tool in the tool box"""
         if reason:
-            logger.debug("%s Disabled (%s)", tool, reason)
+            LOGGER.debug("%s Disabled (%s)", tool, reason)
             st.warning(f"{reason}. Disabling {tool}.", icon="⚠️")
         state.tool_box[tool]["enabled"] = False
 
     if not st_common.is_db_configured():
-        logger.debug("Vector Search/NL2SQL Disabled (Database not configured)")
+        LOGGER.debug("Vector Search/NL2SQL Disabled (Database not configured)")
         st.warning("Database is not configured. Disabling Vector Search and NL2SQL tools.", icon="⚠️")
         _disable_tool("Vector Search")
         _disable_tool("NL2SQL")

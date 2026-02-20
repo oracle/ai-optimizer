@@ -26,7 +26,7 @@ public class Helper {
     public int countRecordsInTable(String tableName, String schemaName, JdbcTemplate jdbcTemplate) {
         // Dynamically construct the SQL query with the table and schema names
         String sql = String.format("SELECT COUNT(*) FROM %s.%s", schemaName.toUpperCase(), tableName.toUpperCase());
-        logger.info("Checking if table is empty: " + tableName + " in schema: " + schemaName);
+        LOGGER.info("Checking if table is empty: " + tableName + " in schema: " + schemaName);
 
         try {
             // Execute the query and get the count of records in the table
@@ -35,14 +35,14 @@ public class Helper {
             // Return the count if it's not null, otherwise return -1
             return count != null ? count : -1;
         } catch (Exception e) {
-            logger.error("Error checking table record count: " + e.getMessage());
+            LOGGER.error("Error checking table record count: " + e.getMessage());
             return -1; // Return -1 in case of an error
         }
     }
 
 	public int doesTableExist(String tableName, String schemaName, JdbcTemplate jdbcTemplate ) {
 		String sql = "SELECT COUNT(*) FROM all_tables WHERE table_name = ? AND owner = ?";
-		logger.info("Checking if table exists: " + tableName + " in schema: " + schemaName);
+		LOGGER.info("Checking if table exists: " + tableName + " in schema: " + schemaName);
 
 		try {
 			// Query the system catalog to check for the existence of the table in the given
@@ -56,7 +56,7 @@ public class Helper {
 				return -1;
 			}
 		} catch (Exception e) {
-			logger.error("Error checking table existence: " + e.getMessage());
+			LOGGER.error("Error checking table existence: " + e.getMessage());
 			return -1;
 		}
 	}

@@ -6,6 +6,7 @@ This page is used when the API Server is hosted with the Client
 """
 # spell-checker:ignore streamlit
 
+import logging
 import os
 import asyncio
 import inspect
@@ -15,9 +16,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import client, api_call
-from common import logging_config
 
-logger = logging_config.logging.getLogger("client.content.api_server")
+
+LOGGER = logging.getLogger("client.content.api_server")
 
 try:
     import launch_server
@@ -30,7 +31,7 @@ except ImportError:
 #####################################################
 def copy_client_settings(new_client: str) -> None:
     """Copy User Setting to a new client (e.g. the Server)"""
-    logger.info("Copying user settings to: %s", new_client)
+    LOGGER.info("Copying user settings to: %s", new_client)
     try:
         state[f"{new_client}_settings"] = api_call.patch(
             endpoint="v1/settings",
@@ -39,12 +40,12 @@ def copy_client_settings(new_client: str) -> None:
         )
     except api_call.ApiError as ex:
         st.error(f"Settings for {new_client} - Update Failed", icon="❌")
-        logger.error("%s Settings Update failed: %s", new_client, ex)
+        LOGGER.error("%s Settings Update failed: %s", new_client, ex)
 
 
 def server_restart() -> None:
     """Restart the server process when button pressed"""
-    logger.info("Restarting the API Server")
+    LOGGER.info("Restarting the API Server")
     os.environ["API_SERVER_KEY"] = state.user_server_key
     state.server["port"] = state.user_server_port
     state.server["key"] = os.getenv("API_SERVER_KEY")

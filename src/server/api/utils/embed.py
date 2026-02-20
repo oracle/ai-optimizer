@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore langchain docstore docos vectorstores oraclevs genai hnsw
 
+import logging
 import copy
 import datetime
 import json
@@ -31,9 +32,8 @@ import server.api.utils.oci as utils_oci
 
 from common import schema, functions
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.utils.embed")
+LOGGER = logging.getLogger("api.utils.embed")
 
 
 def get_temp_directory(client: schema.ClientIdType, function: str) -> Path:
@@ -43,7 +43,7 @@ def get_temp_directory(client: schema.ClientIdType, function: str) -> Path:
     else:
         client_folder = Path("/tmp") / client / function
     client_folder.mkdir(parents=True, exist_ok=True)
-    logger.debug("Created temporary directory: %s", client_folder)
+    LOGGER.debug("Created temporary directory: %s", client_folder)
     return client_folder
 
 
@@ -59,7 +59,7 @@ def doc_to_json(document: LangchainDocument, file: str, output_dir: str = None) 
     with open(dst_file_path, "w", encoding="utf-8") as f:
         f.write(json_data)
     file_size = os.path.getsize(dst_file_path)
-    logger.info("Wrote split JSON file: %s (%i bytes)", dst_file_path, file_size)
+    LOGGER.info("Wrote split JSON file: %s (%i bytes)", dst_file_path, file_size)
 
     return dst_file_path
 
@@ -97,7 +97,7 @@ def split_document(
     ##################################
     # Splitters - Start
     ##################################
-    logger.info("Splitting for %s", model)
+    LOGGER.info("Splitting for %s", model)
     chunk_overlap_ceil = math.ceil(chunk_overlap)
     match model:
         case "text-embedding*":
@@ -143,7 +143,7 @@ def split_document(
         case _:
             raise ValueError(f"Unsupported file type: {extension.lower()}")
 
-    logger.info("Number of Chunks: %i", len(doc_split))
+    LOGGER.info("Number of Chunks: %i", len(doc_split))
     return doc_split
 
 
@@ -225,14 +225,14 @@ def load_and_split_documents(
         name = os.path.basename(file)
         stat = os.stat(file)
         extension = os.path.splitext(file)[1][1:]
-        logger.info("Loading %s (%i bytes)", name, stat.st_size)
+        LOGGER.info("Loading %s (%i bytes)", name, stat.st_size)
 
         _capture_file_metadata(name, stat, file_metadata)
 
         try:
             loader, split = _get_document_loader(file, extension)
             loaded_doc = loader.load()
-            logger.info("Loaded Pages: %i", len(loaded_doc))
+            LOGGER.info("Loaded Pages: %i", len(loaded_doc))
 
             split_docos = _process_and_split_document(
                 loaded_doc, split, model, chunk_size, chunk_overlap, extension, file_metadata
@@ -246,20 +246,20 @@ def load_and_split_documents(
 
         except ValueError as e:
             # Skip unsupported file types
-            logger.warning("Skipping unsupported file %s: %s", name, str(e))
+            LOGGER.warning("Skipping unsupported file %s: %s", name, str(e))
             processing_results["skipped_files"].append(
                 {"filename": name, "reason": f"Unsupported file type: {extension}"}
             )
             continue
         except Exception as e:
             # Skip files with other processing errors
-            logger.warning("Skipping file %s due to processing error: %s", name, str(e))
+            LOGGER.warning("Skipping file %s due to processing error: %s", name, str(e))
             processing_results["skipped_files"].append({"filename": name, "reason": f"Processing error: {str(e)}"})
             continue
 
     processing_results["total_chunks"] = len(all_split_docos)
-    logger.info("Total Number of Chunks: %i", len(all_split_docos))
-    logger.info(
+    LOGGER.info("Total Number of Chunks: %i", len(all_split_docos))
+    LOGGER.info(
         "Processed files: %i, Skipped files: %i",
         len(processing_results["processed_files"]),
         len(processing_results["skipped_files"]),
@@ -285,15 +285,15 @@ def load_and_split_url(
     split_docos = []
     split_files = []
 
-    logger.info("Loading %s", url)
+    LOGGER.info("Loading %s", url)
     loader = WebBaseLoader(
         web_paths=(f"{url}",),
         bs_kwargs={"parse_only": bs4.SoupStrainer()},
     )
 
     loaded_doc = loader.load()
-    logger.info("Document Size: %s bytes", str(loaded_doc.__sizeof__()))
-    logger.info("Loaded Pages: %i", len(loaded_doc))
+    LOGGER.info("Document Size: %s bytes", str(loaded_doc.__sizeof__()))
+    LOGGER.info("Loaded Pages: %i", len(loaded_doc))
 
     # Chunk the File
     split_doc = split_document(model, chunk_size, chunk_overlap, loaded_doc, "html")
@@ -303,7 +303,7 @@ def load_and_split_url(
         split_doc_with_mdata = process_metadata(idx, chunk)
         split_docos += split_doc_with_mdata
 
-    logger.info("Total Number of Chunks: %i", len(split_docos))
+    LOGGER.info("Total Number of Chunks: %i", len(split_docos))
     if len(split_docos) == 0:
         raise ValueError("Input source contains no chunk-able data.")
 
@@ -312,7 +312,7 @@ def load_and_split_url(
 
 def _json_to_doc(file: str) -> list[LangchainDocument]:
     """Creates a list of LangchainDocument from a JSON file. Returns the list of documents."""
-    logger.info("Converting %s to Document", file)
+    LOGGER.info("Converting %s to Document", file)
 
     with open(file, "r", encoding="utf-8") as document:
         chunks = json.load(document)
@@ -322,8 +322,8 @@ def _json_to_doc(file: str) -> list[LangchainDocument]:
             metadata = chunk["kwargs"]["metadata"]
             docs.append(LangchainDocument(page_content=str(page_content), metadata=metadata))
 
-    logger.info("Total Chunk Size: %i bytes", docs.__sizeof__())
-    logger.info("Chunks ingested: %i", len(docs))
+    LOGGER.info("Total Chunk Size: %i bytes", docs.__sizeof__())
+    LOGGER.info("Chunks ingested: %i", len(docs))
     return docs
 
 
@@ -331,16 +331,16 @@ def _prepare_documents(input_data: Union[list[LangchainDocument], list]) -> list
     """Convert input data to documents and remove duplicates"""
     # Loop through files and create Documents
     if isinstance(input_data[0], LangchainDocument):
-        logger.debug("Processing Documents: %s", input_data)
+        LOGGER.debug("Processing Documents: %s", input_data)
         documents = input_data
     else:
         documents = []
         for file in input_data:
-            logger.info("Processing file: %s into a Document.", file)
+            LOGGER.info("Processing file: %s into a Document.", file)
             documents.extend(_json_to_doc(file))
 
-    logger.info("Size of Payload: %i bytes", documents.__sizeof__())
-    logger.info("Total Chunks: %i", len(documents))
+    LOGGER.info("Size of Payload: %i bytes", documents.__sizeof__())
+    LOGGER.info("Total Chunks: %i", len(documents))
 
     # Remove duplicates (copy-writes, etc)
     unique_texts = {}
@@ -349,7 +349,7 @@ def _prepare_documents(input_data: Union[list[LangchainDocument], list]) -> list
         if chunk.page_content not in unique_texts:
             unique_texts[chunk.page_content] = True
             unique_chunks.append(chunk)
-    logger.info("Total Unique Chunks: %i", len(unique_chunks))
+    LOGGER.info("Total Unique Chunks: %i", len(unique_chunks))
     return unique_chunks
 
 
@@ -361,8 +361,8 @@ def _create_temp_vector_store(
     vector_store_tmp.vector_store = f"{vector_store.vector_store}_TMP"
 
     utils_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
-    logger.info("Establishing initial vector store")
-    logger.debug("Embed Client: %s", embed_client)
+    LOGGER.info("Establishing initial vector store")
+    LOGGER.debug("Embed Client: %s", embed_client)
 
     vs_tmp = OracleVS(
         client=db_conn,
@@ -377,18 +377,18 @@ def _create_temp_vector_store(
 def _embed_documents_in_batches(vs_tmp: OracleVS, unique_chunks: list[LangchainDocument], rate_limit: int) -> None:
     """Embed documents in batches with rate limiting"""
     batch_size = 500
-    logger.info("Embedding chunks in batches of: %i", batch_size)
+    LOGGER.info("Embedding chunks in batches of: %i", batch_size)
 
     for i in range(0, len(unique_chunks), batch_size):
         batch = unique_chunks[i : i + batch_size]
         current_count = min(len(unique_chunks), i + batch_size)
-        logger.info("Processing: %i Chunks of %i (Rate Limit: %i)", current_count, len(unique_chunks), rate_limit)
+        LOGGER.info("Processing: %i Chunks of %i (Rate Limit: %i)", current_count, len(unique_chunks), rate_limit)
 
         OracleVS.add_documents(vs_tmp, documents=batch)
 
         if rate_limit > 0:
             interval = 60 / rate_limit
-            logger.info("Rate Limiting: sleeping for %i seconds", interval)
+            LOGGER.info("Rate Limiting: sleeping for %i seconds", interval)
             time.sleep(interval)
 
 
@@ -414,17 +414,17 @@ def _merge_and_index_vector_store(
         INSERT INTO {vector_store.vector_store} SELECT * FROM {vector_store_tmp.vector_store} src
          WHERE NOT EXISTS (SELECT 1 FROM {vector_store.vector_store} tgt WHERE tgt.ID = src.ID)
     """
-    logger.info("Merging %s into %s", vector_store_tmp.vector_store, vector_store.vector_store)
+    LOGGER.info("Merging %s into %s", vector_store_tmp.vector_store, vector_store.vector_store)
     utils_databases.execute_sql(db_conn, merge_sql)
     utils_databases.drop_vs(db_conn, vector_store_tmp.vector_store)
 
     # Build the Index
-    logger.info("Creating index on: %s", vector_store.vector_store)
+    LOGGER.info("Creating index on: %s", vector_store.vector_store)
     try:
         params = {"idx_name": vector_store_idx, "idx_type": vector_store.index_type}
         LangchainVS.create_index(db_conn, vs_real, params)
     except Exception as ex:
-        logger.error("Unable to create vector index: %s", ex)
+        LOGGER.error("Unable to create vector index: %s", ex)
 
 
 ##########################################
@@ -493,7 +493,7 @@ def get_vector_store_by_alias(db_details: schema.Database, alias: str) -> schema
                     vs_config = schema.DatabaseVectorStorage(vector_store=table_name, **comments_dict)
                     return vs_config
             except (json.JSONDecodeError, KeyError):
-                logger.warning("Failed to parse comments for table %s", table_name)
+                LOGGER.warning("Failed to parse comments for table %s", table_name)
                 continue
 
         raise ValueError(f"Vector store with alias '{alias}' not found")
@@ -513,7 +513,7 @@ def get_total_chunks_count(db_details: schema.Database, vector_store_name: str) 
         result = cursor.fetchone()
         return result[0] if result else 0
     except Exception as ex:
-        logger.warning("Could not count chunks in %s: %s", vector_store_name, ex)
+        LOGGER.warning("Could not count chunks in %s: %s", vector_store_name, ex)
         return 0
     finally:
         utils_databases.disconnect(db_conn)
@@ -525,15 +525,15 @@ def get_processed_objects_metadata(db_details: schema.Database, vector_store_nam
 
     try:
         # Retrieve all metadata and parse in Python since JSON_VALUE doesn't work
-        logger.info("Retrieving metadata from %s", vector_store_name)
+        LOGGER.info("Retrieving metadata from %s", vector_store_name)
         cursor = db_conn.cursor()
 
         # Get all unique metadata entries - metadata is automatically converted to dict by Oracle driver
         query = f'SELECT DISTINCT metadata FROM "{vector_store_name}"'
-        logger.info("SQL Query: %s", query)
+        LOGGER.info("SQL Query: %s", query)
         cursor.execute(query)
         results = cursor.fetchall()
-        logger.info("Query returned %s metadata entries", len(results))
+        LOGGER.info("Query returned %s metadata entries", len(results))
 
         # Parse metadata in Python to extract filename, etag, etc.
         processed_objects = {}
@@ -550,13 +550,13 @@ def get_processed_objects_metadata(db_details: schema.Database, vector_store_nam
                     }
 
         if processed_objects:
-            logger.info(
+            LOGGER.info(
                 "Found %i previously processed objects (new format) in %s", len(processed_objects), vector_store_name
             )
             return processed_objects
 
         # Try old format - check for 'source' field in metadata
-        logger.info("No filename field found, trying old format with 'source' field")
+        LOGGER.info("No filename field found, trying old format with 'source' field")
         for row in results:
             metadata = row[0]
             if isinstance(metadata, dict) and "source" in metadata:
@@ -567,22 +567,22 @@ def get_processed_objects_metadata(db_details: schema.Database, vector_store_nam
                     processed_objects[filename] = {"etag": None, "time_modified": None, "size": None}
 
         if processed_objects:
-            logger.info(
+            LOGGER.info(
                 "Found %s previously processed objects (old format) in %s",
                 len(processed_objects),
                 vector_store_name,
             )
-            logger.info(
+            LOGGER.info(
                 "Note: Old metadata format detected. Files will be re-processed with new metadata on next refresh."
             )
             return processed_objects
 
-        logger.info("No previously processed objects found in %s", vector_store_name)
+        LOGGER.info("No previously processed objects found in %s", vector_store_name)
         return {}
 
     except Exception as ex:
         # If table doesn't have metadata column or query fails, return empty dict
-        logger.warning("Could not retrieve processed objects metadata from %s: %s", vector_store_name, ex)
+        LOGGER.warning("Could not retrieve processed objects metadata from %s: %s", vector_store_name, ex)
         return {}
     finally:
         utils_databases.disconnect(db_conn)
@@ -593,15 +593,15 @@ def get_vector_store_files(db_details: schema.Database, vector_store_name: str) 
     db_conn = utils_databases.connect(db_details)
 
     try:
-        logger.info("Retrieving file list from %s", vector_store_name)
+        LOGGER.info("Retrieving file list from %s", vector_store_name)
         cursor = db_conn.cursor()
 
         # Get all metadata entries with chunk count
         query = f'SELECT metadata FROM "{vector_store_name}"'
-        logger.info("SQL Query: %s", query)
+        LOGGER.info("SQL Query: %s", query)
         cursor.execute(query)
         results = cursor.fetchall()
-        logger.info("Query returned %s chunks", len(results))
+        LOGGER.info("Query returned %s chunks", len(results))
 
         # Parse metadata to extract file information
         files_info = {}
@@ -657,17 +657,17 @@ def get_vector_store_files(db_details: schema.Database, vector_store_name: str) 
         }
 
         if orphaned_chunks > 0:
-            logger.warning(
+            LOGGER.warning(
                 "Found %s orphaned chunks without valid filename metadata in %s",
                 orphaned_chunks,
                 vector_store_name,
             )
 
-        logger.info("Found %s files with %s total chunks in %s", len(file_list), len(results), vector_store_name)
+        LOGGER.info("Found %s files with %s total chunks in %s", len(file_list), len(results), vector_store_name)
         return result
 
     except Exception as ex:
-        logger.error("Could not retrieve file list from %s: %s", vector_store_name, ex)
+        LOGGER.error("Could not retrieve file list from %s: %s", vector_store_name, ex)
         raise
     finally:
         utils_databases.disconnect(db_conn)
@@ -707,7 +707,7 @@ def refresh_vector_store_from_bucket(
         }
 
     temp_directory = get_temp_directory("refresh", "embedding")
-    logger.info("Processing %d objects for vector store refresh", len(bucket_objects))
+    LOGGER.info("Processing %d objects for vector store refresh", len(bucket_objects))
 
     try:
         # Download changed objects
@@ -717,7 +717,7 @@ def refresh_vector_store_from_bucket(
                 file_path = utils_oci.get_object(str(temp_directory), obj["name"], bucket_name, oci_config)
                 downloaded_files.append(file_path)
             except Exception as ex:
-                logger.error("Failed to download object %s: %s", obj["name"], ex)
+                LOGGER.error("Failed to download object %s: %s", obj["name"], ex)
                 continue
 
         if not downloaded_files:
@@ -743,7 +743,7 @@ def refresh_vector_store_from_bucket(
                 "etag": obj.get("etag"),
                 "bucket_name": bucket_name,
             }
-        logger.info("Built metadata dict for %d files from bucket objects", len(file_metadata))
+        LOGGER.info("Built metadata dict for %d files from bucket objects", len(file_metadata))
 
         # Process documents with metadata
         split_docos, _, _ = load_and_split_documents(
@@ -757,7 +757,7 @@ def refresh_vector_store_from_bucket(
         )
 
         # Metadata already set by load_and_split_documents with file_metadata parameter
-        logger.info("Processed %s document chunks with OCI bucket metadata", len(split_docos))
+        LOGGER.info("Processed %s document chunks with OCI bucket metadata", len(split_docos))
 
         # Populate vector store
         populate_vs(

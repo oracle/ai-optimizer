@@ -3,21 +3,22 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
+import logging
 from typing import AsyncIterator, Optional
 import time
 import httpx
 
 from langchain_core.messages import ChatMessage
 from common.schema import ChatRequest
-from common import logging_config
 
-logger = logging_config.logging.getLogger("client.utils.client")
+
+LOGGER = logging.getLogger("client.utils.client")
 
 
 class Client:
     """Client for interacting with the Chatbot."""
 
-    logger.debug("Initializing Chatbot Client")
+    LOGGER.debug("Initializing Chatbot Client")
 
     def __init__(
         self,
@@ -55,7 +56,7 @@ class Client:
                         )
                 except httpx.HTTPError as ex:
                     last_exception = ex
-                    logger.error("Failed settings request %i: %s", attempt, ex)
+                    LOGGER.error("Failed settings request %i: %s", attempt, ex)
                     if attempt < max_retries:
                         sleep_time = backoff_factor * (2 ** (attempt - 1))  # Exponential backoff
                         time.sleep(sleep_time)
@@ -64,12 +65,12 @@ class Client:
 
         response = settings_request("PATCH")
         if response.status_code != 200:
-            logger.error("Error updating settings with PATCH: %i - %s", response.status_code, response.text)
+            LOGGER.error("Error updating settings with PATCH: %i - %s", response.status_code, response.text)
             # Retry with POST if PATCH fails
             response = settings_request("POST")
             if response.status_code != 200:
-                logger.error("Error updating settings with POST: %i - %s", response.status_code, response.text)
-        logger.info("Established Chatbot Client: %s", self.settings["client"])
+                LOGGER.error("Error updating settings with POST: %i - %s", response.status_code, response.text)
+        LOGGER.info("Established Chatbot Client: %s", self.settings["client"])
 
     async def stream(self, message: str, image_b64: Optional[str] = None) -> AsyncIterator[str]:
         """Call stream endpoint for completion"""
@@ -85,7 +86,7 @@ class Client:
             **self.settings["ll_model"],
             messages=[ChatMessage(role="human", content=content)],
         )
-        logger.debug("Sending Request: %s", request.model_dump_json())
+        LOGGER.debug("Sending Request: %s", request.model_dump_json())
         client_call = {"json": request.model_dump(), **self.request_defaults}
         try:
             async with httpx.AsyncClient() as client:
@@ -98,7 +99,7 @@ class Client:
                             break
                         yield content
         except httpx.HTTPError as ex:
-            logger.exception("HTTP error during streaming: %s", ex)
+            LOGGER.exception("HTTP error during streaming: %s", ex)
             raise ConnectionError(f"Streaming connection failed: {ex}") from ex
 
     async def get_history(self) -> list[ChatMessage]:
@@ -109,11 +110,11 @@ class Client:
                 **self.request_defaults,
             )
             response_data = response.json()
-            logger.debug("Response Received: %s", response_data)
+            LOGGER.debug("Response Received: %s", response_data)
             if response.status_code == 200:
                 return response_data
 
             error_msg = response_data["detail"][0].get("msg", response.text)
             return f"Error: {response.status_code} - {error_msg}"
         except httpx.ConnectError:
-            logger.error("Unable to contact the API Server; will try again later.")
+            LOGGER.error("Unable to contact the API Server; will try again later.")

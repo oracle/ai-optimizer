@@ -7,6 +7,7 @@ Session States Set:
 """
 # spell-checker:ignore streamlit oraclevs
 
+import logging
 import asyncio
 import base64
 import inspect
@@ -19,9 +20,9 @@ from streamlit import session_state as state
 from client.content.config.tabs.models import get_models
 from client.utils import st_common, api_call, client, vs_options, tool_options
 from client.utils.st_footer import render_chat_footer
-from common import logging_config
 
-logger = logging_config.logging.getLogger("client.content.chatbot")
+
+LOGGER = logging.getLogger("client.content.chatbot")
 
 
 #############################################################################
@@ -90,7 +91,7 @@ def show_vector_search_refs(context, vs_metadata=None) -> None:
             popover_label = f"Reference: {i + 1}"
 
         with ref_col.popover(popover_label):
-            logger.debug("Chunk Content: %s", chunk)
+            LOGGER.debug("Chunk Content: %s", chunk)
 
             st.subheader("Reference Text", divider="red")
             st.markdown(chunk["page_content"])
@@ -253,7 +254,7 @@ async def handle_chat_input(user_client):
 
             st.rerun()
         except (ConnectionError, TimeoutError, api_call.ApiError) as ex:
-            logger.exception("Error during chat streaming: %s", ex)
+            LOGGER.exception("Error during chat streaming: %s", ex)
             message_placeholder.markdown("An unexpected error occurred, please retry your request.")
             if st.button("Retry", key="reload_chatbot"):
                 st_common.clear_state_key("user_client")
@@ -303,11 +304,11 @@ if __name__ == "__main__" or "page.py" in inspect.stack()[1].filename:
     try:
         asyncio.run(main())
     except ValueError as ex:
-        logger.exception("Bug detected: %s", ex)
+        LOGGER.exception("Bug detected: %s", ex)
         st.error("It looks like you found a bug; please open an issue", icon="🛑")
         st.stop()
     except IndexError as ex:
-        logger.exception("Unable to contact the server: %s", ex)
+        LOGGER.exception("Unable to contact the server: %s", ex)
         st.error("Unable to contact the server, is it running?", icon="🚨")
         if st.button("Retry", key="reload_chatbot"):
             st_common.clear_state_key("user_client")

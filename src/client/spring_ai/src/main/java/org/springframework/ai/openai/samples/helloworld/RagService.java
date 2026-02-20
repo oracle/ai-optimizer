@@ -74,7 +74,7 @@ public class RagService {
 
         // Implementation
         Prompt prompt = promptBuilderService.buildPrompt(question, contextInstr, TOPK);
-        logger.info("prompt message: " + prompt.getContents());
+        LOGGER.info("prompt message: " + prompt.getContents());
         String contentResponse = chatClient.prompt(prompt).call().content();
     
         return (contentResponse);

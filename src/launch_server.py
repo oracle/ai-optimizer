@@ -8,6 +8,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # Set OS Environment before importing other modules
 # Set OS Environment (Don't move their position to reflect on imports)
 # pylint: disable=wrong-import-position
+
+import logging
 import os
 
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
@@ -37,14 +39,12 @@ from fastmcp import FastMCP, settings
 from fastmcp.server.auth import StaticTokenVerifier
 import psutil
 
+from _version import __version__
+
 # Configuration
 from server.bootstrap import configfile  # pylint: disable=ungrouped-imports
 
-# Logging
-from common import logging_config
-from common._version import __version__
-
-logger = logging_config.logging.getLogger("launch_server")
+LOGGER = logging.getLogger("launch_server")
 
 
 ##########################################
@@ -52,7 +52,7 @@ logger = logging_config.logging.getLogger("launch_server")
 ##########################################
 def start_server(port: int = 8000, logfile: bool = False) -> int:
     """Start the uvicorn server for FastAPI"""
-    logger.info("Starting Oracle AI Optimizer and Toolkit")
+    LOGGER.info("Starting Oracle AI Optimizer and Toolkit")
 
     def find_available_port() -> int:
         """If port 8000 is not available, find another open one"""
@@ -75,7 +75,7 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
 
     port = port or find_available_port()
     if existing_pid := get_pid_using_port(port):
-        logger.info("API server already running on port: %i (PID: %i)", port, existing_pid)
+        LOGGER.info("API server already running on port: %i (PID: %i)", port, existing_pid)
         return existing_pid
 
     client_args = [sys.executable, __file__, "--port", str(port)]
@@ -89,7 +89,7 @@ def start_server(port: int = 8000, logfile: bool = False) -> int:
         stdout = stderr = subprocess.PIPE
 
     process = subprocess.Popen(client_args, stdout=stdout, stderr=stderr)  # pylint: disable=consider-using-with
-    logger.info("Server started on port %i with PID %i", port, process.pid)
+    LOGGER.info("Server started on port %i with PID %i", port, process.pid)
     return process.pid
 
 
@@ -99,9 +99,9 @@ def stop_server(pid: int) -> None:
         proc = psutil.Process(pid)
         proc.terminate()
         proc.wait()
-        logger.info("API server stopped.")
+        LOGGER.info("API server stopped.")
     except (psutil.NoSuchProcess, psutil.AccessDenied) as ex:
-        logger.error("Failed to terminate process with PID: %i - %s", pid, ex)
+        LOGGER.error("Failed to terminate process with PID: %i - %s", pid, ex)
 
 
 ##########################################
@@ -138,7 +138,7 @@ def generate_auth_key(length: int = 32) -> str:
 def get_api_key() -> str:
     """Retrieve API key from environment or generate one."""
     if not os.getenv("API_SERVER_KEY"):
-        logger.info("API_SERVER_KEY not set; generating.")
+        LOGGER.info("API_SERVER_KEY not set; generating.")
         os.environ["API_SERVER_KEY"] = generate_auth_key()
     return os.getenv("API_SERVER_KEY")
 
@@ -161,7 +161,7 @@ async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     """Register API Endpoints - Imports to avoid bootstrapping before config file read
     New endpoints need to be registered in server.api.v1.__init__.py
     """
-    logger.debug("Starting Endpoint Registration")
+    LOGGER.debug("Starting Endpoint Registration")
     # pylint: disable=import-outside-toplevel
     import server.api.v1 as api_v1
     from server.mcp import register_all_mcp
@@ -184,7 +184,7 @@ async def register_endpoints(mcp: FastMCP, auth: APIRouter, noauth: APIRouter):
     mcp_router = APIRouter(prefix="/mcp", tags=["MCP Tools"])
     await register_all_mcp(mcp, auth)
     auth.include_router(mcp_router)
-    logger.debug("Finished Endpoint Registration")
+    LOGGER.debug("Finished Endpoint Registration")
 
 
 #############################################################################
@@ -217,7 +217,7 @@ async def create_app(config: str = "") -> FastAPI:
         async with fastmcp_engine.lifespan(fastapi_app):
             yield
         # Shutdown cleanup
-        logger.info("Cleaning up leftover processes...")
+        LOGGER.info("Cleaning up leftover processes...")
         parent = psutil.Process(os.getpid())
         children = parent.children(recursive=True)
         for p in children:
@@ -283,7 +283,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     PORT = int(os.getenv("API_SERVER_PORT", "8000"))
-    logger.info("API Server Using port: %i", PORT)
+    LOGGER.info("API Server Using port: %i", PORT)
 
     # Sync entrypoint, but calls async factory before running Uvicorn
     app = asyncio.run(create_app(args.config))
@@ -292,5 +292,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=PORT,
         timeout_graceful_shutdown=5,
-        log_config=logging_config.LOGGING_CONFIG,
     )

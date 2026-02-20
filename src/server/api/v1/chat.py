@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore litellm
 
+import logging
 from fastapi import APIRouter, Header
 from fastapi.responses import StreamingResponse
 from litellm import ModelResponse
@@ -21,9 +22,9 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 import server.api.utils.chat as utils_chat
 from server.mcp import graph
 
-from common import schema, logging_config
+from common import schema
 
-logger = logging_config.logging.getLogger("endpoints.v1.chat")
+LOGGER = logging.getLogger("endpoints.v1.chat")
 
 auth = APIRouter()
 

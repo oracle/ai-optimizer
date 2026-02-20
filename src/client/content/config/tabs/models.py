@@ -9,6 +9,7 @@ Session States Set:
 """
 # spell-checker:ignore selectbox
 
+import logging
 from time import sleep
 from typing import Literal, Any
 import urllib.parse
@@ -17,9 +18,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import api_call, st_common
-from common import logging_config, help_text
+from common import help_text
 
-logger = logging_config.logging.getLogger("client.content.config.tabs.models")
+LOGGER = logging.getLogger("client.content.config.tabs.models")
 
 
 ###################################
@@ -42,10 +43,10 @@ def get_models(force: bool = False) -> None:
     """Get Models from API Server"""
     if force or "model_configs" not in state or not state.model_configs:
         try:
-            logger.info("Refreshing state.model_configs")
+            LOGGER.info("Refreshing state.model_configs")
             state.model_configs = api_call.get(endpoint="v1/models", params={"include_disabled": True})
         except api_call.ApiError as ex:
-            logger.error("Unable to populate state.model_configs: %s", ex)
+            LOGGER.error("Unable to populate state.model_configs: %s", ex)
             state.model_configs = {}
 
 

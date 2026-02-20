@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore testsets testset giskard litellm
 
+import logging
 import pickle
 import shutil
 from pathlib import Path
@@ -30,9 +31,9 @@ from server.mcp.prompts.defaults import get_prompt_with_override
 from server.api.v1 import chat
 
 from common import schema
-from common import logging_config
 
-logger = logging_config.logging.getLogger("endpoints.v1.testbed")
+
+LOGGER = logging.getLogger("endpoints.v1.testbed")
 
 auth = APIRouter()
 
@@ -131,7 +132,7 @@ async def testbed_upsert_testsets(
             db_id = utils_testbed.upsert_qa(db_conn, name, created, content, tid)
         db_conn.commit()
     except Exception as ex:
-        logger.error("An exception occurred: %s", ex)
+        LOGGER.error("An exception occurred: %s", ex)
         raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
 
     testset_qa = await testbed_testset_qa(client=client, tid=db_id)
@@ -152,7 +153,7 @@ async def _process_file_for_testset(
     # Read and save file content
     file_content = await file.read()
     filename = temp_directory / file.filename
-    logger.info("Writing Q&A File to: %s", filename)
+    LOGGER.info("Writing Q&A File to: %s", filename)
     with open(filename, "wb") as file_handle:
         file_handle.write(file_content)
 
@@ -166,9 +167,7 @@ async def _process_file_for_testset(
 
     # Process file for knowledge base
     text_nodes = utils_testbed.load_and_split(filename, embed_model_config["max_chunk_size"])
-    test_set = utils_testbed.build_knowledge_base(
-        text_nodes, questions, ll_model_config, embed_model_config
-    )
+    test_set = utils_testbed.build_knowledge_base(text_nodes, questions, ll_model_config, embed_model_config)
 
     # Save test set
     test_set_filename = temp_directory / f"{name}.jsonl"
@@ -191,20 +190,20 @@ def _handle_testset_error(ex: Exception, temp_directory, ll_model: str):
                 "This may indicate the model is unavailable, retired, or not found. "
                 "Please verify the model name and try a different model."
             )
-            logger.error("TestSet Generation Failed: %s", error_message)
+            LOGGER.error("TestSet Generation Failed: %s", error_message)
             raise HTTPException(status_code=400, detail=error_message) from ex
         # Re-raise other KeyErrors
         raise ex
 
     if isinstance(ex, ValueError):
-        logger.error("TestSet Validation Error: %s", str(ex))
+        LOGGER.error("TestSet Validation Error: %s", str(ex))
         raise HTTPException(status_code=400, detail=str(ex)) from ex
 
     if isinstance(ex, litellm.APIConnectionError):
-        logger.error("APIConnectionError Exception: %s", str(ex))
+        LOGGER.error("APIConnectionError Exception: %s", str(ex))
         raise HTTPException(status_code=424, detail=f"Model API error: {str(ex)}") from ex
 
-    logger.error("Unknown TestSet Exception: %s", str(ex))
+    LOGGER.error("Unknown TestSet Exception: %s", str(ex))
     raise HTTPException(status_code=500, detail=f"Unexpected TestSet error: {str(ex)}.") from ex
 
 
@@ -288,7 +287,7 @@ async def testbed_evaluate(
     loaded_testset = QATestset.load(temp_directory / f"{tid}_output.txt")
 
     # Setup Judge Model
-    logger.debug("Starting evaluation with Judge: %s", judge)
+    LOGGER.debug("Starting evaluation with Judge: %s", judge)
     oci_config = utils_oci.get(client)
 
     judge_config = utils_models.get_litellm_config(model_config={"model": judge}, oci_config=oci_config, giskard=True)
@@ -314,7 +313,7 @@ async def testbed_evaluate(
         if str(ex) == "'correctness'":
             raise HTTPException(status_code=500, detail="Unable to determine the correctness; please retry.") from ex
 
-    logger.debug("Ending evaluation with Judge: %s", judge)
+    LOGGER.debug("Ending evaluation with Judge: %s", judge)
 
     eid = utils_testbed.insert_evaluation(
         db_conn=db_conn,

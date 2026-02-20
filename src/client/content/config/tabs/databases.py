@@ -7,13 +7,14 @@ It includes a form to input and test database connection settings.
 """
 # spell-checker:ignore selectbox
 
+import logging
 import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import api_call, st_common
-from common import logging_config
 
-logger = logging_config.logging.getLogger("client.content.config.tabs.database")
+
+LOGGER = logging.getLogger("client.content.config.tabs.database")
 
 
 #####################################################
@@ -114,7 +115,7 @@ def get_databases(force: bool = False) -> None:
     """Get Databases from API Server"""
     if force or "database_configs" not in state or not state.database_configs:
         try:
-            logger.info("Refreshing state.database_configs")
+            LOGGER.info("Refreshing state.database_configs")
             # Validation will be done on currently configured client database
             # validation includes new vector_stores, etc.
             client_database = state.client_settings.get("database", {}).get("alias", {})
@@ -123,7 +124,7 @@ def get_databases(force: bool = False) -> None:
             # Update state
             state.database_configs = api_call.get(endpoint="v1/databases")
         except api_call.ApiError as ex:
-            logger.error("Unable to populate state.database_configs: %s", ex)
+            LOGGER.error("Unable to populate state.database_configs: %s", ex)
             state.database_configs = {}
 
 
@@ -141,10 +142,10 @@ def patch_database(name: str, supplied: dict, connected: bool) -> bool:
                     endpoint=f"v1/databases/{name}",
                     payload={"json": supplied},
                 )
-            logger.info("Database updated: %s", name)
+            LOGGER.info("Database updated: %s", name)
             st_common.clear_state_key("database_configs")
         except api_call.ApiError as ex:
-            logger.error("Database not updated: %s (%s)", name, ex)
+            LOGGER.error("Database not updated: %s (%s)", name, ex)
             _ = [d.update(connected=False) for d in state.database_configs if d.get("name") == name]
             state.database_error = str(ex)
     else:

@@ -3,6 +3,7 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
+import logging
 import time
 import json
 from typing import Optional, Dict
@@ -11,9 +12,9 @@ import requests
 
 import streamlit as st
 from streamlit import session_state as state
-from common import logging_config
 
-logger = logging_config.logging.getLogger("client.utils.api_call")
+
+LOGGER = logging.getLogger("client.utils.api_call")
 
 
 class ApiError(Exception):
@@ -22,7 +23,7 @@ class ApiError(Exception):
     def __init__(self, message):
         super().__init__(message)
         self.message = message.get("detail", str(message)) if isinstance(message, dict) else str(message)
-        logger.debug("ApiError: %s", self.message)
+        LOGGER.debug("ApiError: %s", self.message)
 
     def __str__(self):
         return self.message
@@ -94,31 +95,31 @@ def send_request(
             log_args["files"] = [(field_name, (f[0], "<binary_data>", f[2])) for field_name, f in log_args["files"]]
     except (ValueError, IndexError):
         pass
-    logger.info("%s Request: %s", method, log_args)
+    LOGGER.info("%s Request: %s", method, log_args)
 
     result = None
     for attempt in range(retries + 1):
         try:
             response = method_map[method](**args)
-            logger.info("%s Response: %s", method, response)
+            LOGGER.info("%s Response: %s", method, response)
             response.raise_for_status()
             result = response.json()
-            logger.debug("%s Data: %s", method, result)
+            LOGGER.debug("%s Data: %s", method, result)
             break
 
         except requests.exceptions.HTTPError as ex:
-            logger.error("HTTP Error: %s", ex)
+            LOGGER.error("HTTP Error: %s", ex)
             _error_response(_handle_http_error(ex))
 
         except requests.exceptions.ConnectionError as ex:
-            logger.error("Attempt %d: Connection Error: %s", attempt + 1, ex)
+            LOGGER.error("Attempt %d: Connection Error: %s", attempt + 1, ex)
             if attempt < retries:
                 time.sleep(backoff_factor * (2**attempt))
                 continue
             _error_response(f"Connection failed after {retries + 1} attempts")
 
         except (requests.exceptions.RequestException, json.JSONDecodeError, ValueError) as ex:
-            logger.error("Request/JSON Error: %s", ex)
+            LOGGER.error("Request/JSON Error: %s", ex)
             _error_response(f"Request failed: {str(ex)}")
 
     return result if result is not None else _error_response("An unexpected error occurred.")

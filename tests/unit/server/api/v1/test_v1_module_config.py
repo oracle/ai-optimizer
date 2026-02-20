@@ -85,16 +85,16 @@ class TestRouterConfiguration:
 
 
 class TestLoggerConfiguration:
-    """Parameterized tests for logger configuration across all API v1 modules."""
+    """Parameterized tests for LOGGER configuration across all API v1 modules."""
 
     @pytest.mark.parametrize("module,_logger_name", API_V1_MODULES)
     def test_logger_exists(self, module, _logger_name):
-        """Each API v1 module should have a logger configured."""
-        assert hasattr(module, "logger"), f"{module.__name__} should have 'logger'"
+        """Each API v1 module should have a LOGGER configured."""
+        assert hasattr(module, "LOGGER"), f"{module.__name__} should have 'LOGGER'"
 
     @pytest.mark.parametrize("module,expected_name", API_V1_MODULES)
     def test_logger_name(self, module, expected_name):
-        """Each API v1 module logger should have the correct name."""
-        assert module.logger.name == expected_name, (
-            f"{module.__name__} logger name should be '{expected_name}', got '{module.logger.name}'"
+        """Each API v1 module LOGGER should have the correct name."""
+        assert module.LOGGER.name == expected_name, (
+            f"{module.__name__} LOGGER name should be '{expected_name}', got '{module.LOGGER.name}'"
         )

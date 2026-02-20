@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ocid genai
 
+import logging
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import JSONResponse
 
@@ -12,9 +13,9 @@ import server.api.utils.oci as utils_oci
 import server.api.utils.models as utils_models
 
 from common import schema
-from common import logging_config
 
-logger = logging_config.logging.getLogger("endpoints.v1.oci")
+
+LOGGER = logging.getLogger("endpoints.v1.oci")
 
 # Validate the DEFAULT OCI Profile and get models
 try:
@@ -34,7 +35,7 @@ auth = APIRouter()
 )
 async def oci_list() -> list[schema.OracleCloudSettings]:
     """List OCI Configuration"""
-    logger.debug("Received oci_list")
+    LOGGER.debug("Received oci_list")
     try:
         return utils_oci.get()
     except ValueError as ex:
@@ -50,7 +51,7 @@ async def oci_get(
     auth_profile: schema.OCIProfileType,
 ) -> schema.OracleCloudSettings:
     """List OCI Configuration"""
-    logger.debug("Received oci_get - auth_profile: %s", auth_profile)
+    LOGGER.debug("Received oci_get - auth_profile: %s", auth_profile)
     try:
         return utils_oci.get(auth_profile=auth_profile)
     except ValueError as ex:
@@ -66,7 +67,7 @@ async def oci_list_regions(
     auth_profile: schema.OCIProfileType,
 ) -> list:
     """Return a list of regions"""
-    logger.debug("Received oci_list_regions - auth_profile: %s", auth_profile)
+    LOGGER.debug("Received oci_list_regions - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
         regions = utils_oci.get_regions(oci_config)
@@ -84,7 +85,7 @@ async def oci_list_genai(
     auth_profile: schema.OCIProfileType,
 ) -> list:
     """Return a list of genai service models"""
-    logger.debug("Received oci_list_genai - auth_profile: %s", auth_profile)
+    LOGGER.debug("Received oci_list_genai - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
         all_models = utils_oci.get_genai_models(oci_config, regional=False)
@@ -102,7 +103,7 @@ async def oci_list_compartments(
     auth_profile: schema.OCIProfileType,
 ) -> dict:
     """Return a list of compartments"""
-    logger.debug("Received oci_list_compartments - auth_profile: %s", auth_profile)
+    LOGGER.debug("Received oci_list_compartments - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
         compartments = utils_oci.get_compartments(oci_config)
@@ -121,7 +122,7 @@ async def oci_list_buckets(
     compartment_ocid: str,
 ) -> list:
     """Return a list of buckets; Validate OCID using Pydantic class"""
-    logger.debug("Received oci_list_buckets - auth_profile: %s; compartment_ocid: %s", auth_profile, compartment_ocid)
+    LOGGER.debug("Received oci_list_buckets - auth_profile: %s; compartment_ocid: %s", auth_profile, compartment_ocid)
     try:
         compartment_obj = schema.OracleResource(ocid=compartment_ocid)
         oci_config = await oci_get(auth_profile=auth_profile)
@@ -141,7 +142,7 @@ async def oci_list_bucket_objects(
     bucket_name: str,
 ) -> list:
     """Return a list of bucket objects; Validate OCID using Pydantic class"""
-    logger.debug("Received oci_list_bucket_objects - auth_profile: %s; bucket_name: %s", auth_profile, bucket_name)
+    LOGGER.debug("Received oci_list_bucket_objects - auth_profile: %s; bucket_name: %s", auth_profile, bucket_name)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
         objects = utils_oci.get_bucket_objects(bucket_name, oci_config)
@@ -160,7 +161,7 @@ async def oci_profile_update(
     payload: schema.OracleCloudSettings,
 ) -> schema.OracleCloudSettings:
     """Update OCI Configuration"""
-    logger.debug("Received oci_update - auth_profile: %s; payload %s", auth_profile, payload)
+    LOGGER.debug("Received oci_update - auth_profile: %s; payload %s", auth_profile, payload)
 
     oci_config = await oci_get(auth_profile=auth_profile)
 
@@ -191,7 +192,7 @@ async def oci_download_objects(
     client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Download files from Object Storage"""
-    logger.debug(
+    LOGGER.debug(
         "Received oci_download_objects - auth_profile: %s; bucket_name: %s; request: %s",
         auth_profile,
         bucket_name,
@@ -216,7 +217,7 @@ async def oci_create_genai_models(
     auth_profile: schema.OCIProfileType,
 ) -> list[schema.Model]:
     """Return a list of compartments"""
-    logger.debug("Received oci_create_genai_models - auth_profile: %s", auth_profile)
+    LOGGER.debug("Received oci_create_genai_models - auth_profile: %s", auth_profile)
     try:
         oci_config = await oci_get(auth_profile=auth_profile)
         enabled_models = utils_models.create_genai(oci_config)

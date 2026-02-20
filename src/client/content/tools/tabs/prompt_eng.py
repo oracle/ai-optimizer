@@ -9,6 +9,7 @@ Session States Set:
 """
 # spell-checker:ignore selectbox
 
+import logging
 import json
 import time
 from datetime import datetime
@@ -17,9 +18,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import st_common, api_call
-from common import logging_config
 
-logger = logging_config.logging.getLogger("client.tools.tabs.prompt_eng")
+
+LOGGER = logging.getLogger("client.tools.tabs.prompt_eng")
 
 
 #####################################################
@@ -29,10 +30,10 @@ def get_prompts(force: bool = False) -> None:
     """Get Prompts from API Server"""
     if force or "prompt_configs" not in state or not state.prompt_configs:
         try:
-            logger.info("Refreshing state.prompt_configs")
+            LOGGER.info("Refreshing state.prompt_configs")
             state.prompt_configs = api_call.get(endpoint="v1/mcp/prompts", params={"full": True})
         except api_call.ApiError as ex:
-            logger.error("Unable to populate state.prompt_configs: %s", ex)
+            LOGGER.error("Unable to populate state.prompt_configs: %s", ex)
             state.prompt_configs = []
 
 
@@ -42,16 +43,16 @@ def _get_prompt_name(prompt_title: str) -> str:
 
 def get_prompt_instructions() -> str:
     """Retrieve selected prompt instructions from cached configs"""
-    logger.info("Retrieving Prompt Instructions for %s", state.selected_prompt)
+    LOGGER.info("Retrieving Prompt Instructions for %s", state.selected_prompt)
     try:
         prompt = next((item for item in state.prompt_configs if item["title"] == state.selected_prompt), None)
         if prompt:
             state.selected_prompt_instructions = prompt.get("text", "")
         else:
-            logger.warning("Prompt %s not found in configs", state.selected_prompt)
+            LOGGER.warning("Prompt %s not found in configs", state.selected_prompt)
             state.selected_prompt_instructions = ""
     except Exception as ex:
-        logger.error("Unable to retrieve prompt instructions: %s", ex)
+        LOGGER.error("Unable to retrieve prompt instructions: %s", ex)
         st_common.clear_state_key("selected_prompt_instructions")
 
 
@@ -70,11 +71,11 @@ def patch_prompt(new_prompt_instructions: str) -> bool:
             endpoint=f"v1/mcp/prompts/{prompt_name}",
             payload={"json": {"instructions": new_prompt_instructions}},
         )
-        logger.info(response)
+        LOGGER.info(response)
         rerun = True
     except api_call.ApiError as ex:
         st.error(f"Prompt not updated: {ex}")
-        logger.error("Prompt not updated: %s", ex)
+        LOGGER.error("Prompt not updated: %s", ex)
         rerun = False
     st_common.clear_state_key("prompt_configs")
 
@@ -94,7 +95,7 @@ def save_all_prompts() -> str:
 
         return json.dumps(prompts_data, indent=2)
     except Exception as ex:
-        logger.error("Failed to export prompts: %s", ex)
+        LOGGER.error("Failed to export prompts: %s", ex)
         st.error(f"Failed to export prompts: {ex}")
         return ""
 
@@ -125,10 +126,10 @@ def apply_uploaded_prompts(uploaded_file) -> None:
                     endpoint=f"v1/mcp/prompts/{prompt['name']}",
                     payload={"json": {"instructions": prompt["text"]}},
                 )
-                logger.info("Updated prompt: %s", prompt["name"])
+                LOGGER.info("Updated prompt: %s", prompt["name"])
                 success_count += 1
             except api_call.ApiError as ex:
-                logger.warning("Failed to update prompt %s: %s", prompt["name"], ex)
+                LOGGER.warning("Failed to update prompt %s: %s", prompt["name"], ex)
                 st.warning(f"Failed to update prompt '{prompt['name']}': {ex}")
 
         if success_count > 0:
@@ -141,7 +142,7 @@ def apply_uploaded_prompts(uploaded_file) -> None:
     except json.JSONDecodeError:
         st.error("Invalid JSON file format")
     except Exception as ex:
-        logger.error("Failed to import prompts: %s", ex)
+        LOGGER.error("Failed to import prompts: %s", ex)
         st.error(f"Failed to import prompts: {ex}")
 
 
@@ -149,7 +150,7 @@ def reset_all_prompts() -> bool:
     """Reset all prompts to their default values"""
     try:
         response = api_call.post(endpoint="v1/mcp/prompts/reset")
-        logger.info("Reset prompts response: %s", response)
+        LOGGER.info("Reset prompts response: %s", response)
         st.toast(response["message"], icon="✅")
 
         # Clear cache and refresh
@@ -159,7 +160,7 @@ def reset_all_prompts() -> bool:
 
     except api_call.ApiError as ex:
         st.error(f"Failed to reset prompts: {ex}")
-        logger.error("Failed to reset prompts: %s", ex)
+        LOGGER.error("Failed to reset prompts: %s", ex)
         return False
 
 

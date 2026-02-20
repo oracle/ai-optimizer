@@ -3,16 +3,16 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 This file is being used in APIs, and not the backend.py file.
 """
-
 # spell-checker:ignore noauth fastmcp healthz
+
+import logging
 from fastapi import APIRouter, Request, Depends
 from fastmcp import FastMCP, Client
 
 import server.api.utils.mcp as utils_mcp
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.v1.mcp")
+LOGGER = logging.getLogger("api.v1.mcp")
 
 auth = APIRouter()
 
@@ -44,7 +44,7 @@ async def get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
         client = Client(mcp_engine)
         async with client:
             tools = await client.list_tools()
-            logger.debug("MCP Tools: %s", tools)
+            LOGGER.debug("MCP Tools: %s", tools)
             for tool_object in tools:
                 tools_info.append(tool_object.model_dump())
     finally:
@@ -65,7 +65,7 @@ async def mcp_list_resources(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dic
         client = Client(mcp_engine)
         async with client:
             resources = await client.list_resources()
-            logger.debug("MCP Resources: %s", resources)
+            LOGGER.debug("MCP Resources: %s", resources)
             for resources_object in resources:
                 resources_info.append(resources_object.model_dump())
     finally:

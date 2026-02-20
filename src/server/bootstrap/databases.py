@@ -4,18 +4,19 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore configfile
 
+import logging
 import os
 from server.bootstrap.configfile import ConfigStore
 
 from common.schema import Database
-from common import logging_config
 
-logger = logging_config.logging.getLogger("bootstrap.databases")
+
+LOGGER = logging.getLogger("bootstrap.databases")
 
 
 def main() -> list[Database]:
     """Define Default Database"""
-    logger.debug("*** Bootstrapping Database - Start")
+    LOGGER.debug("*** Bootstrapping Database - Start")
     configuration = ConfigStore.get()
     db_configs = configuration.database_configs if configuration and configuration.database_configs else []
 
@@ -44,7 +45,7 @@ def main() -> list[Database]:
             )
             if updated.wallet_password:
                 updated.wallet_location = updated.config_dir
-                logger.info("Setting WALLET_LOCATION: %s", updated.config_dir)
+                LOGGER.info("Setting WALLET_LOCATION: %s", updated.config_dir)
             database_objects.append(updated)
         else:
             database_objects.append(db)
@@ -61,11 +62,11 @@ def main() -> list[Database]:
         }
         if data["wallet_password"]:
             data["wallet_location"] = data["config_dir"]
-            logger.info("Setting WALLET_LOCATION: %s", data["config_dir"])
+            LOGGER.info("Setting WALLET_LOCATION: %s", data["config_dir"])
         database_objects.append(Database(**data))
 
-    logger.debug("Bootstrapped Databases: %s", database_objects)
-    logger.debug("*** Bootstrapping Database - End")
+    LOGGER.debug("Bootstrapped Databases: %s", database_objects)
+    LOGGER.debug("*** Bootstrapping Database - End")
     return database_objects
 
 

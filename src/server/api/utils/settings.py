@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore fastmcp
 
+import logging
 import os
 import copy
 import json
@@ -15,14 +16,14 @@ from server.mcp.prompts import defaults
 import server.api.utils.mcp as utils_mcp
 
 from common.schema import Settings, Configuration, ClientIdType, MCPPrompt
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.core.settings")
+
+LOGGER = logging.getLogger("api.core.settings")
 
 
 def create_client(client: ClientIdType) -> Settings:
     """Create a new client"""
-    logger.debug("Creating client (if non-existent): %s", client)
+    LOGGER.debug("Creating client (if non-existent): %s", client)
     settings_objects = bootstrap.SETTINGS_OBJECTS
     if any(settings.client == client for settings in settings_objects):
         raise ValueError(f"client {client} already exists")
@@ -65,10 +66,10 @@ async def get_mcp_prompts_with_overrides(mcp_engine: FastMCP) -> list[MCPPrompt]
                 default_message = default_func()
                 default_text = default_message.content.text
             except Exception as ex:
-                logger.warning("Failed to get default text for %s: %s", prompt_obj.name, ex)
+                LOGGER.warning("Failed to get default text for %s: %s", prompt_obj.name, ex)
                 default_text = ""
         else:
-            logger.warning("No default function found for prompt: %s", prompt_obj.name)
+            LOGGER.warning("No default function found for prompt: %s", prompt_obj.name)
             default_text = ""
 
         # Get override from cache
@@ -139,7 +140,7 @@ def _load_prompt_override(prompt: dict) -> bool:
     """
     if prompt.get("text"):
         cache.set_override(prompt["name"], prompt["text"])
-        logger.debug("Set override for prompt: %s", prompt["name"])
+        LOGGER.debug("Set override for prompt: %s", prompt["name"])
         return True
 
     return False
@@ -160,7 +161,7 @@ def _load_prompt_configs(config_data: dict) -> None:
     override_count = sum(_load_prompt_override(prompt) for prompt in prompt_configs)
 
     if override_count > 0:
-        logger.info("Loaded %d prompt overrides into cache", override_count)
+        LOGGER.info("Loaded %d prompt overrides into cache", override_count)
 
 
 def update_server(config_data: dict) -> None:
@@ -204,7 +205,7 @@ def load_config_from_json_data(config_data: dict, client: ClientIdType = None) -
 
     # Determine clients to update
     if client:
-        logger.debug("Updating client settings: %s", client)
+        LOGGER.debug("Updating client settings: %s", client)
         update_client(client_settings, client)
     else:
         server_settings = copy.deepcopy(client_settings)
@@ -218,10 +219,10 @@ def read_config_from_json_file() -> Configuration:
     config = os.getenv("CONFIG_FILE")
 
     if not os.path.isfile(config) or not os.access(config, os.R_OK):
-        logger.warning("Config file %s does not exist or is not readable.", config)
+        LOGGER.warning("Config file %s does not exist or is not readable.", config)
 
     if not config.endswith(".json"):
-        logger.warning("Config file %s must be a .json file", config)
+        LOGGER.warning("Config file %s must be a .json file", config)
 
     with open(config, "r", encoding="utf-8") as f:
         config_data = json.load(f)
