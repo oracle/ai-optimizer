@@ -136,6 +136,7 @@ jobs:
           echo "=== Building latest release ($LATEST_TAG) to root ==="
           WORKDIR=$(mktemp -d)
           git worktree add "$WORKDIR" "$LATEST_TAG"
+          rm -rf "$WORKDIR/docs/themes" "$WORKDIR/docs/layouts"
           cp -r docs/themes "$WORKDIR/docs/themes"
           cp -r docs/layouts "$WORKDIR/docs/layouts"
           generate_version_overlay "$LATEST_TAG" "$WORKDIR/docs/version-overlay.toml"
@@ -165,6 +166,7 @@ jobs:
             echo "=== Building $TAG to /${TAG}/ ==="
             WORKDIR=$(mktemp -d)
             git worktree add "$WORKDIR" "$TAG"
+            rm -rf "$WORKDIR/docs/themes" "$WORKDIR/docs/layouts"
             cp -r docs/themes "$WORKDIR/docs/themes"
             cp -r docs/layouts "$WORKDIR/docs/layouts"
             generate_version_overlay "$TAG" "$WORKDIR/docs/version-overlay.toml"
