@@ -12,7 +12,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
       text-transform: uppercase;
       white-space: nowrap;
     }
-    a#R-logo .powered-by {
+    a#R-logo-powered-by .powered-by {
       font-family: 'Work Sans', 'Helvetica', 'Tahoma', 'Geneva', 'Arial', sans-serif;
       font-style: italic;
       font-size: 0.8rem;
@@ -23,7 +23,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
       align-items: center;
       justify-content: center
     }
-    a#R-logo .powered-by img {
+    a#R-logo-powered-by .powered-by img {
       width: 30%;
       height: auto;
     }
@@ -36,6 +36,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
   <a id="R-logo" class="R-default" href="{{ partial "permalink.gotmpl" (dict "to" .Site.Home) }}">
     <span class="logo-title">AI Optimizer<br>& Toolkit</span>
   </a>
-  <a id="R-logo" href="https://www.oracle.com">
+  <a id="R-logo-powered-by" href="https://www.oracle.com">
     <span class="powered-by">Powered by <img src="{{ "images/logo.png" | absURL }}" alt="Oracle AI Optimizer & Toolkit"></span>
   </a>
