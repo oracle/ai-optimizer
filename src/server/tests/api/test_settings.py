@@ -10,15 +10,17 @@ import pytest
 
 from server.app.api.v1.endpoints.settings import SENSITIVE_FIELDS
 from server.app.database.schemas import DatabaseConfig, DatabaseSensitive
+from server.app.models.schemas import ModelConfig, ModelSensitive
 from server.app.oci.schemas import OciProfileConfig, OciSensitive
 from server.app.core.settings import settings
 
 
 @pytest.fixture(autouse=True)
 def _populate_configs():
-    """Ensure settings has at least one DB and OCI config for sensitive-field tests."""
+    """Ensure settings has at least one DB, OCI, and Model config for sensitive-field tests."""
     original_db = settings.database_configs
     original_oci = settings.oci_profile_configs
+    original_model = settings.model_configs
     settings.database_configs = [
         DatabaseConfig(
             alias="TEST",
@@ -38,9 +40,18 @@ def _populate_configs():
             tenancy="ocid1.tenancy.oc1..test",
         ),
     ]
+    settings.model_configs = [
+        ModelConfig(
+            id="test-model",
+            type="ll",
+            provider="openai",
+            api_key="sk-secret-key",
+        ),
+    ]
     yield
     settings.database_configs = original_db
     settings.oci_profile_configs = original_oci
+    settings.model_configs = original_model
 
 
 @pytest.mark.unit
@@ -69,6 +80,12 @@ async def test_get_settings_excludes_sensitive(app_client, auth_headers):
         # Non-sensitive fields should still be present
         assert "alias" in db_entry
 
+    # Model sensitive fields must be excluded
+    for model_entry in body.get("model_configs", []):
+        assert "api_key" not in model_entry
+        # Non-sensitive fields should still be present
+        assert "id" in model_entry
+
     # OCI sensitive fields must be excluded
     for oci_entry in body.get("oci_profile_configs", []):
         assert "fingerprint" not in oci_entry
@@ -96,6 +113,10 @@ async def test_get_settings_includes_sensitive(app_client, auth_headers):
     for db_entry in body.get("database_configs", []):
         assert "password" in db_entry
 
+    # Model sensitive fields should be present
+    for model_entry in body.get("model_configs", []):
+        assert "api_key" in model_entry
+
     # OCI sensitive fields should be present
     for oci_entry in body.get("oci_profile_configs", []):
         assert "fingerprint" in oci_entry
@@ -105,4 +126,5 @@ async def test_get_settings_includes_sensitive(app_client, auth_headers):
 def test_sensitive_fields_derived_from_models():
     """SENSITIVE_FIELDS entries must exactly match the Pydantic model fields."""
     assert SENSITIVE_FIELDS["database_configs"]["__all__"] == set(DatabaseSensitive.model_fields.keys())
+    assert SENSITIVE_FIELDS["model_configs"]["__all__"] == set(ModelSensitive.model_fields.keys())
     assert SENSITIVE_FIELDS["oci_profile_configs"]["__all__"] == set(OciSensitive.model_fields.keys())

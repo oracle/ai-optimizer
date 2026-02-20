@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query
 
 from server.app.api.v1.schemas.settings import SettingsResponse
 from server.app.database.schemas import DatabaseSensitive
+from server.app.models.schemas import ModelSensitive
 from server.app.oci.schemas import OciSensitive
 from server.app.core.settings import settings
 
@@ -17,6 +18,7 @@ auth = APIRouter(prefix="/settings")
 SENSITIVE_FIELDS = {
     "api_key": True,
     "database_configs": {"__all__": set(DatabaseSensitive.model_fields.keys())},
+    "model_configs": {"__all__": set(ModelSensitive.model_fields.keys())},
     "oci_profile_configs": {"__all__": set(OciSensitive.model_fields.keys())},
 }
 
