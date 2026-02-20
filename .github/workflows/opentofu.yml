@@ -40,11 +40,11 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Terraform validation steps
       - name: Cache Terraform Providers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.terraform.d/plugin-cache
           key: ${{ runner.os }}-terraform-${{ hashFiles('opentofu/.terraform.lock.hcl') }}
