@@ -14,9 +14,10 @@ from uuid import uuid4
 import streamlit as st
 from streamlit import session_state as state
 
+from _version import __version__
+
 from client.utils import api_call
 from common.schema import ClientIdType
-from common._version import __version__
 
 
 LOGGER = logging.getLogger("launch_client")

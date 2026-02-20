@@ -4,11 +4,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Unit tests for logging_config.py
 """
+# pylint: disable=protected-access
 
 import logging
-
-import logging_config
 from _version import __version__
+import logging_config
 
 
 class TestInjectVersion:

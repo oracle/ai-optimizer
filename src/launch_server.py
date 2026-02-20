@@ -39,12 +39,10 @@ from fastmcp import FastMCP, settings
 from fastmcp.server.auth import StaticTokenVerifier
 import psutil
 
+from _version import __version__
+
 # Configuration
 from server.bootstrap import configfile  # pylint: disable=ungrouped-imports
-
-# Logging
-
-from common._version import __version__
 
 LOGGER = logging.getLogger("launch_server")
 
@@ -294,5 +292,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=PORT,
         timeout_graceful_shutdown=5,
-        log_config=logging_config.LOGGING_CONFIG,
     )

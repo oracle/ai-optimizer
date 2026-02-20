@@ -7,6 +7,7 @@ Shared logging configuration for server and client packages.
 
 import logging
 import os
+import warnings
 from logging.config import dictConfig
 
 from _version import __version__
@@ -22,6 +23,13 @@ def _inject_version(record: logging.LogRecord) -> bool:
     return True
 
 
+class _DropScriptRunContext(logging.Filter):
+    """Suppress Streamlit's harmless 'missing ScriptRunContext' warnings."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "missing ScriptRunContext" not in record.getMessage()
+
+
 def configure_logging(log_level: str | None = None) -> None:
     """Apply unified logging settings.
 
@@ -30,6 +38,13 @@ def configure_logging(log_level: str | None = None) -> None:
             environment variable, then ``"INFO"``.
     """
     level = (log_level or os.getenv("AIO_LOG_LEVEL", "INFO")).upper()
+    debug = level == "DEBUG"
+
+    # Suppress DeprecationWarning (includes PydanticDeprecatedSince20) unless debugging
+    if debug:
+        warnings.filterwarnings("default", category=DeprecationWarning)
+    else:
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
 
     dictConfig(
         {
@@ -52,6 +67,11 @@ def configure_logging(log_level: str | None = None) -> None:
                 "level": level,
             },
             "loggers": {
+                "docket.worker": {
+                    "handlers": ["console"],
+                    "level": "WARNING",
+                    "propagate": False,
+                },
                 "uvicorn": {
                     "handlers": ["console"],
                     "level": level,
@@ -65,6 +85,11 @@ def configure_logging(log_level: str | None = None) -> None:
                 "uvicorn.access": {
                     "handlers": ["console"],
                     "level": level,
+                    "propagate": False,
+                },
+                "py.warnings": {
+                    "handlers": ["console"],
+                    "level": "DEBUG" if debug else "ERROR",
                     "propagate": False,
                 },
                 "PIL": {
@@ -81,5 +106,13 @@ def configure_logging(log_level: str | None = None) -> None:
         }
     )
 
+    # Filter applied to the logger (not handler) so it runs before ALL handlers,
+    # including any Streamlit adds after this configuration.
+    logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").addFilter(
+        _DropScriptRunContext()
+    )
+
     for handler in logging.getLogger().handlers:
         handler.addFilter(_inject_version)
+
+    logging.captureWarnings(True)
