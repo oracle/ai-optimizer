@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore sqlcl fastmcp connmgr noupdates savepwd
 
+import logging
 import os
 import shutil
 import subprocess
@@ -11,10 +12,8 @@ from fastmcp import Client
 
 import server.api.utils.databases as utils_databases
 
-from common import logging_config
 
-
-logger = logging_config.logging.getLogger("mcp.proxies.sqlcl")
+LOGGER = logging.getLogger("mcp.proxies.sqlcl")
 
 
 async def register(mcp):
@@ -61,11 +60,11 @@ async def register(mcp):
 
                 # Send commands joined by newlines
                 proc.communicate("\n".join(commands) + "\n")
-                logger.info("Established Connection Store for: %s", database.name)
+                LOGGER.info("Established Connection Store for: %s", database.name)
             except subprocess.SubprocessError as ex:
-                logger.error("Failed to create connection store: %s", ex)
+                LOGGER.error("Failed to create connection store: %s", ex)
             except Exception as ex:
-                logger.error("Unexpected error creating connection store: %s", ex)
+                LOGGER.error("Unexpected error creating connection store: %s", ex)
 
         # Create a client with disabled sampling capabilities for compatibility with older MCP servers
         client = Client(
@@ -77,4 +76,4 @@ async def register(mcp):
         proxy = mcp.as_proxy(client, name=tool_name)
         mcp.mount(proxy, as_proxy=False, prefix="sqlcl")
     else:
-        logger.warning("Not enabling SQLcl MCP server, sqlcl not found in PATH.")
+        LOGGER.warning("Not enabling SQLcl MCP server, sqlcl not found in PATH.")

@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore acompletion litellm
 
+import logging
 from typing import Optional, List
 
 from pydantic import BaseModel
@@ -16,9 +17,8 @@ import server.api.utils.models as utils_models
 import server.api.utils.oci as utils_oci
 import server.mcp.prompts.defaults as grading_prompts
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("mcp.tools.grading")
+LOGGER = logging.getLogger("mcp.tools.grading")
 
 
 class VectorGradeResponse(BaseModel):
@@ -45,7 +45,7 @@ async def _grade_documents_with_llm(question: str, documents_str: str, ll_config
 
     # Format the template with actual values
     formatted_prompt = grade_template.format(question=question, documents=documents_str)
-    logger.debug("Grading Prompt: %s", formatted_prompt)
+    LOGGER.debug("Grading Prompt: %s", formatted_prompt)
 
     response = await acompletion(
         messages=[{"role": prompt_msg.role, "content": formatted_prompt}],
@@ -53,14 +53,14 @@ async def _grade_documents_with_llm(question: str, documents_str: str, ll_config
         **ll_config,
     )
     relevant = response["choices"][0]["message"]["content"].lower()
-    logger.info("Grading completed. Relevant: %s", relevant)
+    LOGGER.info("Grading completed. Relevant: %s", relevant)
 
     if "yes" in relevant:
         return "yes"
     if "no" in relevant:
         return "no"
 
-    logger.error("LLM did not return binary relevant in grader; assuming all results relevant.")
+    LOGGER.error("LLM did not return binary relevant in grader; assuming all results relevant.")
     return "yes"
 
 
@@ -72,7 +72,7 @@ async def _vs_grade_impl(
     model: str,
 ) -> VectorGradeResponse:
     try:
-        logger.info(
+        LOGGER.info(
             "Grading Vector Search Response (Thread ID: %s, MCP: %s, Model: %s, Docs: %d) against question: %s",
             thread_id,
             mcp_client,
@@ -102,10 +102,10 @@ async def _vs_grade_impl(
             try:
                 relevant = await _grade_documents_with_llm(question, documents_str, ll_config)
             except APIConnectionError as ex:
-                logger.error("Failed to grade; marking all results relevant: %s", str(ex))
+                LOGGER.error("Failed to grade; marking all results relevant: %s", str(ex))
                 relevant = "yes"
         else:
-            logger.info("Vector Search Grading disabled; assuming all results relevant.")
+            LOGGER.info("Vector Search Grading disabled; assuming all results relevant.")
 
         # Return formatted documents only if relevant
         formatted_docs = documents_str if relevant.lower() == "yes" else ""
@@ -118,7 +118,7 @@ async def _vs_grade_impl(
             status="success",
         )
     except Exception as ex:
-        logger.error("Grading failed: %s", ex)
+        LOGGER.error("Grading failed: %s", ex)
         return VectorGradeResponse(
             relevant="yes",  # Default to yes on error
             formatted_documents="",

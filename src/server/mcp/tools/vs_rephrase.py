@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore litellm fastmcp
 
+import logging
 from typing import Optional, List
 
 from pydantic import BaseModel
@@ -18,9 +19,8 @@ import server.api.utils.oci as utils_oci
 
 import server.mcp.prompts.defaults as default_prompts
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("mcp.tools.rephrase")
+LOGGER = logging.getLogger("mcp.tools.rephrase")
 
 # Configuration constants
 MIN_CHAT_HISTORY_FOR_REPHRASE = 2  # Minimum chat messages needed to trigger rephrasing
@@ -73,7 +73,7 @@ async def _vs_rephrase_impl(
     Callable directly by graph orchestration without going through MCP tool layer.
     """
     try:
-        logger.info(
+        LOGGER.info(
             "Rephrasing question (Thread ID: %s, MCP: %s, Model: %s)",
             thread_id,
             mcp_client,
@@ -85,7 +85,7 @@ async def _vs_rephrase_impl(
 
         # Check if rephrasing is enabled in vector search settings
         if not client_settings.vector_search.rephrase:
-            logger.info("Rephrasing disabled in vector search settings")
+            LOGGER.info("Rephrasing disabled in vector search settings")
             return RephrasePrompt(
                 original_prompt=question,
                 rephrased_prompt=question,
@@ -110,7 +110,7 @@ async def _vs_rephrase_impl(
                 rephrased = await _perform_rephrase(question, chat_history, ctx_prompt_content, ll_config)
 
                 if rephrased != question:
-                    logger.info("Rephrased: '%s' -> '%s'", question, rephrased)
+                    LOGGER.info("Rephrased: '%s' -> '%s'", question, rephrased)
                     return RephrasePrompt(
                         original_prompt=question,
                         rephrased_prompt=rephrased,
@@ -118,7 +118,7 @@ async def _vs_rephrase_impl(
                         status="success",
                     )
             except APIConnectionError as ex:
-                logger.error("Failed to rephrase: %s", str(ex))
+                LOGGER.error("Failed to rephrase: %s", str(ex))
                 return RephrasePrompt(
                     original_prompt=question,
                     rephrased_prompt=question,
@@ -128,7 +128,7 @@ async def _vs_rephrase_impl(
                 )
 
         # No rephrasing needed or performed
-        logger.info("No rephrasing needed or history insufficient")
+        LOGGER.info("No rephrasing needed or history insufficient")
         return RephrasePrompt(
             original_prompt=question,
             rephrased_prompt=question,
@@ -137,7 +137,7 @@ async def _vs_rephrase_impl(
         )
 
     except Exception as ex:
-        logger.error("Rephrase failed: %s", ex)
+        LOGGER.error("Rephrase failed: %s", ex)
         return RephrasePrompt(
             original_prompt=question,
             rephrased_prompt=question,

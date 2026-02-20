@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore docos slugified webscrape
 
+import logging
 import datetime
 import json
 from urllib.parse import urlparse
@@ -23,9 +24,9 @@ import server.api.utils.embed as utils_embed
 import server.api.utils.models as utils_models
 import server.api.utils.webscrape as web_parse
 
-from common import functions, schema, logging_config
+from common import functions, schema
 
-logger = logging_config.logging.getLogger("api.v1.embed")
+LOGGER = logging.getLogger("api.v1.embed")
 
 auth = APIRouter()
 
@@ -53,7 +54,7 @@ async def embed_drop_vs(
     client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Drop Vector Storage"""
-    logger.debug("Received %s embed_drop_vs: %s", client, vs)
+    LOGGER.debug("Received %s embed_drop_vs: %s", client, vs)
     try:
         client_db = utils_databases.get_client_database(client)
         db_conn = utils_databases.connect(client_db)
@@ -72,13 +73,13 @@ async def embed_get_files(
     client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Get list of files in Vector Store with statistics"""
-    logger.debug("Received %s embed_get_files: %s", client, vs)
+    LOGGER.debug("Received %s embed_get_files: %s", client, vs)
     try:
         client_db = utils_databases.get_client_database(client)
         file_list = utils_embed.get_vector_store_files(client_db, vs)
         return JSONResponse(status_code=200, content=file_list)
     except Exception as ex:
-        logger.error("Error retrieving file list from %s: %s", vs, str(ex))
+        LOGGER.error("Error retrieving file list from %s: %s", vs, str(ex))
         raise HTTPException(status_code=400, detail=f"Could not retrieve file list: {str(ex)}") from ex
 
 
@@ -91,7 +92,7 @@ async def comment_vs(
     client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Update the comment on an existing Vector Store"""
-    logger.info("Received comment_vs - request: %s", request)
+    LOGGER.info("Received comment_vs - request: %s", request)
     utils_embed.update_vs_comment(
         vector_store=request,
         db_details=utils_databases.get_client_database(client),
@@ -108,13 +109,13 @@ async def store_sql_file(
     client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Store contents from a SQL"""
-    logger.debug("Received store_SQL_data - request: %s", request)
+    LOGGER.debug("Received store_SQL_data - request: %s", request)
 
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
     result_file = functions.run_sql_query(db_conn=request[0], query=request[1], base_path=temp_directory)
 
     stored_files = [result_file]
-    logger.debug("sql ingest - temp csv file location: %s", result_file)
+    LOGGER.debug("sql ingest - temp csv file location: %s", result_file)
     return Response(content=json.dumps(stored_files), media_type="application/json")
 
 
@@ -127,14 +128,14 @@ async def store_web_file(
     client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Store contents from a web URL"""
-    logger.debug("Received store_web_file - request: %s", request)
+    LOGGER.debug("Received store_web_file - request: %s", request)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
     async with aiohttp.ClientSession() as session:
         for url in request:
             filename = Path(urlparse(str(url)).path).name
             request_timeout = aiohttp.ClientTimeout(total=60)
-            logger.debug("Requesting: %s (timeout in %is)", url, request_timeout.total)
+            LOGGER.debug("Requesting: %s (timeout in %is)", url, request_timeout.total)
             async with session.get(str(url), timeout=request_timeout) as response:
                 content_type = response.headers.get("Content-Type", "").lower()
 
@@ -177,7 +178,7 @@ async def store_local_file(
     client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Store contents from a local file uploaded to streamlit"""
-    logger.debug("Received store_local_file - files: %s", files)
+    LOGGER.debug("Received store_local_file - files: %s", files)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
     # Store file metadata
@@ -191,7 +192,7 @@ async def store_local_file(
         # Check if this is a zip file and extract it
         if upload_file.filename.lower().endswith(".zip"):
             try:
-                logger.info("Extracting zip file: %s", upload_file.filename)
+                LOGGER.info("Extracting zip file: %s", upload_file.filename)
                 with zipfile.ZipFile(filename, "r") as zip_ref:
                     # Extract all files to temp directory root (flatten directory structure)
                     for member in zip_ref.namelist():
@@ -214,9 +215,9 @@ async def store_local_file(
                                 }
                 # Remove the zip file after extraction
                 filename.unlink()
-                logger.info("Successfully extracted zip file: %s", upload_file.filename)
+                LOGGER.info("Successfully extracted zip file: %s", upload_file.filename)
             except Exception as e:
-                logger.error("Failed to extract zip file %s: %s", upload_file.filename, str(e))
+                LOGGER.error("Failed to extract zip file %s: %s", upload_file.filename, str(e))
                 # Continue processing - zip file will be treated as regular file or skipped
         else:
             # Capture metadata for regular files
@@ -244,13 +245,13 @@ async def split_embed(
     client: schema.ClientIdType = Header(default="server"),
 ) -> Response:
     """Perform Split and Embed"""
-    logger.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
+    LOGGER.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
     oci_config = utils_oci.get(client=client)
     temp_directory = utils_embed.get_temp_directory(client, "embedding")
 
     try:
         files = [f for f in temp_directory.iterdir() if f.is_file() and f.name != ".file_metadata.json"]
-        logger.info("Processing Files: %s", files)
+        LOGGER.info("Processing Files: %s", files)
     except FileNotFoundError as ex:
         raise HTTPException(
             status_code=404,
@@ -269,9 +270,9 @@ async def split_embed(
         try:
             with metadata_file.open("r") as f:
                 file_metadata = json.load(f)
-            logger.info("Loaded metadata for %d files", len(file_metadata))
+            LOGGER.info("Loaded metadata for %d files", len(file_metadata))
         except Exception as ex:
-            logger.warning("Could not load file metadata: %s", ex)
+            LOGGER.warning("Could not load file metadata: %s", ex)
             file_metadata = None
 
     try:
@@ -312,7 +313,7 @@ async def split_embed(
     except RuntimeError as ex:
         raise HTTPException(status_code=500, detail=str(ex)) from ex
     except Exception as ex:
-        logger.error("An exception occurred: %s", ex)
+        LOGGER.error("An exception occurred: %s", ex)
         # Extract meaningful error messages from common provider exceptions
         error_message = _extract_provider_error_message(ex)
         raise HTTPException(status_code=500, detail=error_message) from ex
@@ -329,7 +330,7 @@ async def refresh_vector_store(
     client: schema.ClientIdType = Header(default="server"),
 ) -> JSONResponse:
     """Refresh an existing vector store with new/modified documents from OCI bucket"""
-    logger.debug("Received refresh_vector_store - request: %s", request)
+    LOGGER.debug("Received refresh_vector_store - request: %s", request)
 
     try:
         # Get OCI configuration
@@ -340,7 +341,7 @@ async def refresh_vector_store(
 
         # Get existing vector store configuration
         vs_config = utils_embed.get_vector_store_by_alias(db_details, request.vector_store_alias)
-        logger.info("Found vector store: %s with model %s", vs_config.vector_store, vs_config.model)
+        LOGGER.info("Found vector store: %s with model %s", vs_config.vector_store, vs_config.model)
 
         # Get current bucket objects with metadata
         current_objects = utils_oci.get_bucket_objects_with_metadata(request.bucket_name, oci_config)
@@ -360,7 +361,7 @@ async def refresh_vector_store(
 
         # Get previously processed objects metadata
         processed_objects = utils_embed.get_processed_objects_metadata(db_details, vs_config.vector_store)
-        logger.info("Found %d previously processed objects", len(processed_objects))
+        LOGGER.info("Found %d previously processed objects", len(processed_objects))
 
         # Detect changes
         new_objects, modified_objects = utils_oci.detect_changed_objects(current_objects, processed_objects)
@@ -415,13 +416,13 @@ async def refresh_vector_store(
         )
 
     except ValueError as ex:
-        logger.error("Validation error in refresh_vector_store: %s", ex)
+        LOGGER.error("Validation error in refresh_vector_store: %s", ex)
         raise HTTPException(status_code=400, detail=str(ex)) from ex
     except utils_databases.DbException as ex:
-        logger.error("Database error in refresh_vector_store: %s", ex)
+        LOGGER.error("Database error in refresh_vector_store: %s", ex)
         raise HTTPException(status_code=500, detail=f"Database error: {str(ex)}") from ex
     except Exception as ex:
-        logger.error("Unexpected error in refresh_vector_store: %s", ex)
+        LOGGER.error("Unexpected error in refresh_vector_store: %s", ex)
         # Extract meaningful error messages from common provider exceptions
         error_message = _extract_provider_error_message(ex)
         raise HTTPException(status_code=500, detail=error_message) from ex

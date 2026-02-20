@@ -4,16 +4,17 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore genai configfile
 
+import logging
 import os
 import configparser
 import oci
 
 from server.bootstrap.configfile import ConfigStore
 
-from common import logging_config
+
 from common.schema import OracleCloudSettings
 
-logger = logging_config.logging.getLogger("bootstrap.oci")
+LOGGER = logging.getLogger("bootstrap.oci")
 
 
 def _apply_env_overrides_to_default_profile(config: list[dict]) -> None:
@@ -54,14 +55,14 @@ def _apply_env_overrides_to_default_profile(config: list[dict]) -> None:
             )
 
             if overrides:
-                logger.info("Environment variable overrides for OCI DEFAULT profile:")
+                LOGGER.info("Environment variable overrides for OCI DEFAULT profile:")
                 for key, (old, new) in overrides.items():
-                    logger.info("  %s: '%s' -> '%s'", key, old, new)
+                    LOGGER.info("  %s: '%s' -> '%s'", key, old, new)
 
 
 def main() -> list[OracleCloudSettings]:
     """Read in OCI Configuration options into an object"""
-    logger.debug("*** Bootstrapping OCI - Start")
+    LOGGER.debug("*** Bootstrapping OCI - Start")
 
     config = []
 
@@ -73,7 +74,7 @@ def main() -> list[OracleCloudSettings]:
         config_parser.read(file)
         sections = config_parser.sections() + ["DEFAULT"]
         for section in sections:
-            logger.debug("Evaluating OCI Profile: %s", section)
+            LOGGER.debug("Evaluating OCI Profile: %s", section)
             try:
                 profile_data = oci.config.from_file(file_location=file, profile_name=section)
             except oci.exceptions.InvalidKeyFilePath:
@@ -93,15 +94,15 @@ def main() -> list[OracleCloudSettings]:
             profile_dict = oci_conf.model_dump()  # Pydantic v2 way to dict
             profile_name = profile_dict.get("auth_profile", oci.config.DEFAULT_PROFILE)
             if profile_name in existing_profiles:
-                logger.info("Overriding existing OCI profile from ConfigStore: %s", profile_name)
+                LOGGER.info("Overriding existing OCI profile from ConfigStore: %s", profile_name)
             else:
-                logger.info("Adding new OCI profile from ConfigStore: %s", profile_name)
+                LOGGER.info("Adding new OCI profile from ConfigStore: %s", profile_name)
             existing_profiles[profile_name] = profile_dict
         config = list(existing_profiles.values())
 
     # Ensure DEFAULT profile exists
     if not any(item["auth_profile"] == oci.config.DEFAULT_PROFILE for item in config):
-        logger.debug("Inserting empty OCI Profile: %s", oci.config.DEFAULT_PROFILE)
+        LOGGER.debug("Inserting empty OCI Profile: %s", oci.config.DEFAULT_PROFILE)
         config.append({"auth_profile": oci.config.DEFAULT_PROFILE})
 
     # Override DEFAULT profile with environment variables
@@ -113,7 +114,7 @@ def main() -> list[OracleCloudSettings]:
         oci_config = OracleCloudSettings(**profile_data)
         oci_objects.append(oci_config)
 
-    logger.debug("*** Bootstrapping OCI - End")
+    LOGGER.debug("*** Bootstrapping OCI - End")
     return oci_objects
 
 

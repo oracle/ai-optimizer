@@ -32,12 +32,12 @@ class TestLoggerConfiguration:
 
     @pytest.mark.parametrize("module,_logger_name", BOOTSTRAP_MODULES)
     def test_logger_exists(self, module, _logger_name):
-        """Each bootstrap module should have a logger configured."""
-        assert hasattr(module, "logger"), f"{module.__name__} should have 'logger'"
+        """Each bootstrap module should have a LOGGER configured."""
+        assert hasattr(module, "LOGGER"), f"{module.__name__} should have 'LOGGER'"
 
     @pytest.mark.parametrize("module,expected_name", BOOTSTRAP_MODULES)
     def test_logger_name(self, module, expected_name):
-        """Each bootstrap module logger should have the correct name."""
-        assert module.logger.name == expected_name, (
-            f"{module.__name__} logger name should be '{expected_name}', got '{module.logger.name}'"
+        """Each bootstrap module LOGGER should have the correct name."""
+        assert module.LOGGER.name == expected_name, (
+            f"{module.__name__} LOGGER name should be '{expected_name}', got '{module.LOGGER.name}'"
         )

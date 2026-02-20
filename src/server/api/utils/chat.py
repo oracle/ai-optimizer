@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore astream litellm sqlcl ollama
 
+import logging
 from typing import Literal, AsyncGenerator
 
 from langchain_core.messages import HumanMessage
@@ -24,9 +25,9 @@ from server.mcp import graph
 import server.mcp.prompts.defaults as default_prompts
 
 from common import schema
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.utils.chat")
+
+LOGGER = logging.getLogger("api.utils.chat")
 
 # Configuration constants
 GRAPH_RECURSION_LIMIT = 50  # Maximum depth for LangGraph execution
@@ -75,8 +76,8 @@ async def completion_generator(
 
     client_settings = utils_settings.get_client(client)
     model = request.model_dump()
-    logger.debug("Settings: %s", client_settings)
-    logger.debug("Request: %s", model)
+    LOGGER.debug("Settings: %s", client_settings)
+    LOGGER.debug("Request: %s", model)
 
     # Establish LL Model Params (if the request specs a model, otherwise override from settings)
     if not model["model"]:
@@ -118,7 +119,7 @@ async def completion_generator(
     kwargs["config"]["metadata"]["tools"] = [
         {"type": "function", "function": convert_to_openai_function(t)} for t in graph_tools
     ]
-    logger.debug("Completion Kwargs: %s", kwargs)
+    LOGGER.debug("Completion Kwargs: %s", kwargs)
 
     # Establish the graph
     agent: CompiledStateGraph = graph.main(graph_tools)
@@ -133,14 +134,14 @@ async def completion_generator(
                 final_response = output["completion"]
             elif "vs_metadata" in output or "token_usage" in output:
                 # Log metadata emissions (automatically stored in AIMessage.response_metadata by graph.py)
-                logger.debug("Metadata emitted: %s", {k: v for k, v in output.items() if k != "stream"})
+                LOGGER.debug("Metadata emitted: %s", {k: v for k, v in output.items() if k != "stream"})
 
         if call == "streams":
             yield STREAM_FINISHED_MARKER  # This will break the Chatbot loop
         elif call == "completions" and final_response is not None:
             yield final_response  # This will be captured for ChatResponse
     except Exception as ex:
-        logger.exception("Graph execution failed")
+        LOGGER.exception("Graph execution failed")
         error_text = (
             f"I'm sorry, I've run into a problem: {str(ex)}\n\n"
             "Please raise an issue at: https://github.com/oracle/ai-optimizer/issues"

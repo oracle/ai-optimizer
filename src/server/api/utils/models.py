@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ollama pplx huggingface genai giskard litellm ocigenai rerank vllm
 
+import logging
 from typing import Optional, Union, Any
 from urllib.parse import urlparse
 
@@ -18,9 +19,9 @@ from server.bootstrap.bootstrap import MODEL_OBJECTS
 
 from common.functions import is_url_accessible
 from common import schema
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.utils.models")
+
+LOGGER = logging.getLogger("api.utils.models")
 
 
 #####################################################
@@ -68,7 +69,7 @@ def get(
     include_disabled: bool = True,
 ) -> Union[list[schema.Model], None]:
     """Used in direct call from list_models and agents.models"""
-    logger.debug("%i models are defined", len(MODEL_OBJECTS))
+    LOGGER.debug("%i models are defined", len(MODEL_OBJECTS))
 
     model_filtered = [
         model
@@ -78,7 +79,7 @@ def get(
         and (model_provider is None or model.provider == model_provider)
         and (include_disabled or model.enabled)
     ]
-    logger.debug("%i models after filtering", len(model_filtered))
+    LOGGER.debug("%i models after filtering", len(model_filtered))
 
     if model_id and not model_filtered:
         raise UnknownModelError(f"{model_id} not found")
@@ -204,13 +205,13 @@ def create_genai(config: schema.OracleCloudSettings) -> list[schema.Model]:
             new_model = schema.Model(**model_dict)
             genai_models.append(create(new_model, check_url=False))
         except ExistsModelError:
-            logger.info("Model: %s already configured", new_model.id)
+            LOGGER.info("Model: %s already configured", new_model.id)
 
     return genai_models
 
 
 def _get_full_config(model_config: dict, oci_config: schema.OracleCloudSettings = None) -> dict:
-    logger.debug("Model Client: %s; OCI Config: %s", model_config, oci_config)
+    LOGGER.debug("Model Client: %s; OCI Config: %s", model_config, oci_config)
     model_provider, model_id = model_config["model"].split("/", 1)
 
     try:
@@ -302,7 +303,7 @@ def get_litellm_config(
         litellm_config.pop("temperature", None)
         litellm_config.pop("max_tokens", None)
 
-    logger.debug("LiteLLM Config: %s", litellm_config)
+    LOGGER.debug("LiteLLM Config: %s", litellm_config)
 
     return litellm_config
 

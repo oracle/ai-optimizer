@@ -32,16 +32,16 @@ API_UTILS_MODULES = [
 
 
 class TestLoggerConfiguration:
-    """Parameterized tests for logger configuration across all API utils modules."""
+    """Parameterized tests for LOGGER configuration across all API utils modules."""
 
     @pytest.mark.parametrize("module,_logger_name", API_UTILS_MODULES)
     def test_logger_exists(self, module, _logger_name):
-        """Each API utils module should have a logger configured."""
-        assert hasattr(module, "logger"), f"{module.__name__} should have 'logger'"
+        """Each API utils module should have a LOGGER configured."""
+        assert hasattr(module, "LOGGER"), f"{module.__name__} should have 'LOGGER'"
 
     @pytest.mark.parametrize("module,expected_name", API_UTILS_MODULES)
     def test_logger_name(self, module, expected_name):
-        """Each API utils module logger should have the correct name."""
-        assert module.logger.name == expected_name, (
-            f"{module.__name__} logger name should be '{expected_name}', got '{module.logger.name}'"
+        """Each API utils module LOGGER should have the correct name."""
+        assert module.LOGGER.name == expected_name, (
+            f"{module.__name__} LOGGER name should be '{expected_name}', got '{module.LOGGER.name}'"
         )

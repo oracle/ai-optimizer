@@ -4,11 +4,12 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore streamable fastmcp
 
+import logging
 import os
 from fastmcp import FastMCP, Client
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.utils.mcp")
+
+LOGGER = logging.getLogger("api.utils.mcp")
 
 
 def get_client(server: str = "http://127.0.0.1", port: int = 8000, client: str = None) -> dict:

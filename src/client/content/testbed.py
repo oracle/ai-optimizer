@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore mult selectbox testset testsets
 
+import logging
 import random
 import string
 import inspect
@@ -19,9 +20,8 @@ from client.content.config.tabs.models import get_models
 
 from client.utils import st_common, api_call, vs_options, tool_options
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("client.content.testbed")
+LOGGER = logging.getLogger("client.content.testbed")
 
 
 #####################################################
@@ -266,7 +266,7 @@ def check_prerequisites() -> tuple[list, list, bool]:
 
     db_avail = st_common.is_db_configured()
     if not db_avail:
-        logger.debug("Testbed Disabled (Database not configured)")
+        LOGGER.debug("Testbed Disabled (Database not configured)")
         st.error("Database is not configured. Disabling Testbed.", icon="🛑")
 
     # If there is no eligible (OpenAI Compat.) LL Models; then disable ALL functionality
@@ -447,7 +447,7 @@ def process_testset_request(endpoint: str, api_params: dict, testset_source: str
         st.error(f"Error Generating TestSet: {ex}", icon="🚨")
         st.stop()
     except (ValueError, KeyError, TypeError) as ex:
-        logger.error("Exception: %s", ex)
+        LOGGER.error("Exception: %s", ex)
         st.error(f"Looks like you found a bug: {ex}", icon="🚨")
         st.stop()
 
@@ -455,7 +455,7 @@ def process_testset_request(endpoint: str, api_params: dict, testset_source: str
         state.testbed_qa = response["qa_data"]
         st.success(f"{len(state.testbed_qa)} Q&A Loaded.", icon="✅")
     except UnboundLocalError as ex:
-        logger.exception("Failed to load Tests: %s", ex)
+        LOGGER.exception("Failed to load Tests: %s", ex)
         st.error("Unable to process Tests", icon="🚨")
 
 

@@ -4,9 +4,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 This script allows importing/exporting configurations using Streamlit (`st`).
 """
-
 # spell-checker:ignore streamlit mvnw obaas ollama vllm
 
+import logging
 import time
 import os
 import io
@@ -27,9 +27,7 @@ from streamlit import session_state as state
 from client.utils import api_call, st_common
 from client.content.config.tabs.models import get_models
 
-from common import logging_config
-
-logger = logging_config.logging.getLogger("client.content.config.tabs.settings")
+LOGGER = logging.getLogger("client.content.config.tabs.settings")
 
 
 #############################################################################
@@ -101,7 +99,7 @@ def _render_upload_settings_section() -> None:
         uploaded_settings = json.loads(uploaded_file.read().decode("utf-8"))
         try:
             settings = get_settings(True)
-            logger.info("Comparing Settings between Current and Uploaded")
+            LOGGER.info("Comparing Settings between Current and Uploaded")
             differences = compare_settings(current=settings, uploaded=uploaded_settings)
             # Remove empty difference groups
             differences = {k: v for k, v in differences.items() if v}
@@ -154,7 +152,7 @@ def _render_source_code_templates_section() -> None:
     st.header("Source Code Templates", divider="red")
 
     ll_config, embed_config, spring_ai_conf = _get_model_configs()
-    logger.info("config found: %s", spring_ai_conf)
+    LOGGER.info("config found: %s", spring_ai_conf)
 
     if spring_ai_conf == "hybrid":
         st.markdown(
@@ -202,7 +200,7 @@ def get_settings(include_sensitive: bool = False):
     except api_call.ApiError as ex:
         if "not found" in str(ex):
             # If client settings not found, create them
-            logger.info("Client settings not found, creating new ones")
+            LOGGER.info("Client settings not found, creating new ones")
             api_call.post(
                 endpoint="v1/settings",
                 params={"client": state.client_settings["client"]},
@@ -347,7 +345,7 @@ def apply_uploaded_settings(uploaded) -> None:
                 st_common.clear_state_key(key)
     except api_call.ApiError as ex:
         st.error(f"Settings for {state.client_settings['client']} - Update Failed", icon="❌")
-        logger.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
+        LOGGER.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
 
 
 def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
@@ -357,7 +355,7 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
 
     ll_provider = ll_model.get("provider", "")
     embed_provider = embed_model.get("provider", "")
-    logger.info("llm chat: %s - embeddings: %s", ll_provider, embed_provider)
+    LOGGER.info("llm chat: %s - embeddings: %s", ll_provider, embed_provider)
     if all("hosted_vllm" in p for p in (ll_provider, embed_provider)):
         return "hosted_vllm"
     if all("openai" in p for p in (ll_provider, embed_provider)):
@@ -397,16 +395,16 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
         sys_prompt = sys_prompt_obj.get("text")
     else:
         # Fallback to basic prompt if not found
-        logger.warning("Prompt %s not found in configs, using fallback", prompt_name)
+        LOGGER.warning("Prompt %s not found in configs, using fallback", prompt_name)
         sys_prompt = "You are a helpful assistant."
 
-    logger.info("Prompt used in export (%s):\n%s", prompt_name, sys_prompt)
+    LOGGER.info("Prompt used in export (%s):\n%s", prompt_name, sys_prompt)
     with open(src_dir / "templates" / file_name, "r", encoding="utf-8") as template:
         template_content = template.read()
 
     database_lookup = st_common.state_configs_lookup("database_configs", "name")
 
-    logger.info(
+    LOGGER.info(
         "Database Legacy User:%s",
         database_lookup[state.client_settings["database"]["alias"]]["user"],
     )
@@ -422,7 +420,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     if file_name.endswith(".yaml"):
         # Use yaml.dump to properly escape the sys_prompt for YAML
         # default_flow_style=False creates a properly quoted string
-        sys_prompt_escaped = yaml.dump(sys_prompt).rstrip('\n...')  # Remove trailing newline and document end marker
+        sys_prompt_escaped = yaml.dump(sys_prompt).rstrip("\n...")  # Remove trailing newline and document end marker
 
         formatted_content = template_content.format(
             provider=provider,
@@ -448,7 +446,7 @@ def spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
                 and yaml_data["spring"]["ai"]["openai"]["base-url"].find("api.openai.com") != -1
             ):
                 yaml_data["spring"]["ai"]["openai"]["base-url"] = "https://api.openai.com"
-                logger.info(
+                LOGGER.info(
                     "in spring_ai_obaas(%s) found openai.base-url and changed with https://api.openai.com",
                     file_name,
                 )
@@ -469,7 +467,7 @@ def spring_ai_zip(provider, ll_config, embed_config):
     # Using TemporaryDirectory
     with tempfile.TemporaryDirectory() as temp_dir:
         dst_dir = os.path.join(temp_dir, "spring_ai")
-        logger.info("Starting SpringAI zip processing: %s", dst_dir)
+        LOGGER.info("Starting SpringAI zip processing: %s", dst_dir)
 
         shutil.copytree(os.path.join(src_dir, "src"), os.path.join(dst_dir, "src"))
         for item in files:
@@ -500,7 +498,7 @@ def langchain_mcp_zip(settings):
     # Using TemporaryDirectory
     with tempfile.TemporaryDirectory() as temp_dir:
         dst_dir = os.path.join(temp_dir, "langchain_mcp")
-        logger.info("Starting langchain mcp zip processing: %s", dst_dir)
+        LOGGER.info("Starting langchain mcp zip processing: %s", dst_dir)
 
         shutil.copytree(src_dir, dst_dir)
 

@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 """
 # spell-checker:ignore giskard testset ollama testsets litellm
 
+import logging
 import json
 import pickle
 import pandas as pd
@@ -20,9 +21,9 @@ from giskard.rag.question_generators import simple_questions, complex_questions
 import server.api.utils.databases as utils_databases
 
 from common import schema
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.utils.testbed")
+
+LOGGER = logging.getLogger("api.utils.testbed")
 
 
 def jsonl_to_json_content(content: str) -> json:
@@ -80,17 +81,17 @@ def create_testset_objects(db_conn: Connection) -> None:
                 CONSTRAINT oai_evaluations_uq UNIQUE (eid, evaluated)
             )
         """
-    logger.info("Creating testsets Table")
+    LOGGER.info("Creating testsets Table")
     _ = utils_databases.execute_sql(db_conn, testsets_tbl)
-    logger.info("Creating testset_qa Table")
+    LOGGER.info("Creating testset_qa Table")
     _ = utils_databases.execute_sql(db_conn, testset_qa_tbl)
-    logger.info("Creating evaluations Table")
+    LOGGER.info("Creating evaluations Table")
     _ = utils_databases.execute_sql(db_conn, evaluation_tbl)
 
 
 def get_testsets(db_conn: Connection) -> list:
     """Get list of TestSets"""
-    logger.info("Getting All TestSets")
+    LOGGER.info("Getting All TestSets")
     testsets = []
     sql = "SELECT tid, name, to_char(created) FROM oai_testsets ORDER BY created"
     results = utils_databases.execute_sql(db_conn, sql)
@@ -104,7 +105,7 @@ def get_testsets(db_conn: Connection) -> list:
 
 def get_testset_qa(db_conn: Connection, tid: schema.QASetsIdType) -> schema.QASetData:
     """Get list of TestSet Q&A"""
-    logger.info("Getting TestSet Q&A for TID: %s", tid)
+    LOGGER.info("Getting TestSet Q&A for TID: %s", tid)
     binds = {"tid": tid}
     sql = "SELECT qa_data FROM oai_testset_qa where tid=:tid"
     results = utils_databases.execute_sql(db_conn, sql, binds)
@@ -115,7 +116,7 @@ def get_testset_qa(db_conn: Connection, tid: schema.QASetsIdType) -> schema.QASe
 
 def get_evaluations(db_conn: Connection, tid: schema.QASetsIdType) -> list[schema.Evaluation]:
     """Get list of Evaluations for a TID"""
-    logger.info("Getting Evaluations for: %s", tid)
+    LOGGER.info("Getting Evaluations for: %s", tid)
     evaluations = []
     binds = {"tid": tid}
     sql = "SELECT eid, to_char(evaluated), correctness FROM oai_evaluations WHERE tid=:tid ORDER BY evaluated DESC"
@@ -150,7 +151,7 @@ def upsert_qa(
     tid: schema.QASetsIdType = None,
 ) -> schema.QASetsIdType:
     """Upsert Q&A"""
-    logger.info("Upsert TestSet: %s - %s", name, created)
+    LOGGER.info("Upsert TestSet: %s - %s", name, created)
     parsed_data = json.loads(json_data)
     # Handle single QA
     if not isinstance(parsed_data, list):
@@ -189,13 +190,13 @@ def upsert_qa(
             DBMS_OUTPUT.PUT_LINE(l_tid);
         END;
     """
-    logger.debug("Upsert PLSQL: %s", plsql)
+    LOGGER.debug("Upsert PLSQL: %s", plsql)
     return utils_databases.execute_sql(db_conn, plsql, binds)
 
 
 def insert_evaluation(db_conn, tid, evaluated, correctness, settings, rag_report):
     """Insert Evaluation Data"""
-    logger.info("Insert evaluation; TID: %s", tid)
+    LOGGER.info("Insert evaluation; TID: %s", tid)
     binds = {
         "tid": tid,
         "evaluated": evaluated,
@@ -216,7 +217,7 @@ def insert_evaluation(db_conn, tid, evaluated, correctness, settings, rag_report
             DBMS_OUTPUT.PUT_LINE(l_eid);
         END;
     """
-    logger.debug("Insert PLSQL: %s", plsql)
+    LOGGER.debug("Insert PLSQL: %s", plsql)
     return utils_databases.execute_sql(db_conn, plsql, binds)
 
 
@@ -224,7 +225,7 @@ def load_and_split(eval_file, chunk_size=512):
     """Load and Split Document for Testbed"""
     chunk_overlap = int(chunk_size * 0.10)
     effective_chunk_size = chunk_size - chunk_overlap
-    logger.info("Loading %s; Chunk Size: %i; Overlap: %i", eval_file, effective_chunk_size, chunk_overlap)
+    LOGGER.info("Loading %s; Chunk Size: %i; Overlap: %i", eval_file, effective_chunk_size, chunk_overlap)
     loader = PdfReader(eval_file)
     documents = []
     for page in loader.pages:
@@ -240,7 +241,7 @@ def build_knowledge_base(
     text_nodes: str, questions: int, ll_model_config: dict, embed_model_config: dict
 ) -> QATestset:
     """Establish a temporary Knowledge Base"""
-    logger.info("KnowledgeBase creation starting...")
+    LOGGER.info("KnowledgeBase creation starting...")
 
     # Setup models, uses LiteLLM
     set_llm_model(**ll_model_config)
@@ -248,9 +249,9 @@ def build_knowledge_base(
 
     knowledge_base_df = pd.DataFrame([node.text for node in text_nodes], columns=["text"])
     knowledge_base = KnowledgeBase(data=knowledge_base_df)
-    logger.info("KnowledgeBase Created")
+    LOGGER.info("KnowledgeBase Created")
 
-    logger.info("TestSet from Knowledge Base starting...")
+    LOGGER.info("TestSet from Knowledge Base starting...")
     testset = generate_testset(
         knowledge_base,
         question_generators=[
@@ -260,7 +261,7 @@ def build_knowledge_base(
         num_questions=questions,
         agent_description="A chatbot answering questions based on the provided knowledge base",
     )
-    logger.info("Test Set from Knowledge Base Generated")
+    LOGGER.info("Test Set from Knowledge Base Generated")
 
     return testset
 
@@ -292,7 +293,7 @@ def process_report(db_conn: Connection, eid: schema.QASetsIdType) -> schema.Eval
         # "html_report": clean(html_report), #CDB
         "html_report": "<html><body></body></html>",
     }
-    logger.debug("Evaluation Results: %s", evaluation_results)
+    LOGGER.debug("Evaluation Results: %s", evaluation_results)
     evaluation = schema.EvaluationReport(**evaluation_results)
 
     return evaluation

@@ -2,8 +2,9 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-
 # spell-checker:ignore selectbox healthz
+
+import logging
 import json
 
 import streamlit as st
@@ -11,9 +12,7 @@ from streamlit import session_state as state
 
 from client.utils import api_call, st_common
 
-from common import logging_config
-
-logger = logging_config.logging.getLogger("client.content.config.tabs.mcp")
+LOGGER = logging.getLogger("client.content.config.tabs.mcp")
 
 
 ###################################
@@ -24,7 +23,7 @@ def get_mcp_status() -> dict:
     try:
         return api_call.get(endpoint="v1/mcp/healthz")
     except api_call.ApiError as ex:
-        logger.error("Unable to get MCP Status: %s", ex)
+        LOGGER.error("Unable to get MCP Status: %s", ex)
         return {}
 
 
@@ -35,14 +34,14 @@ def get_mcp_client() -> str:
         mcp_client = api_call.get(endpoint="v1/mcp/client", params=params)
         return json.dumps(mcp_client, indent=2)
     except (api_call.ApiError, ConnectionError, OSError) as ex:
-        logger.error("Unable to get MCP Client: %s", ex)
+        LOGGER.error("Unable to get MCP Client: %s", ex)
         return "{}"
 
 
 def get_mcp(force: bool = False) -> list[dict]:
     """Get MCP configs from API Server"""
     if force or "mcp_configs" not in state or not state.mcp_configs:
-        logger.info("Refreshing state.mcp_configs")
+        LOGGER.info("Refreshing state.mcp_configs")
         endpoints = {
             "tools": "v1/mcp/tools",
             "prompts": "v1/mcp/prompts",
@@ -54,7 +53,7 @@ def get_mcp(force: bool = False) -> list[dict]:
             try:
                 results[key] = api_call.get(endpoint=endpoint)
             except api_call.ApiError as ex:
-                logger.error("Unable to get %s: %s", key, ex)
+                LOGGER.error("Unable to get %s: %s", key, ex)
                 results[key] = {}
 
         state.mcp_configs = results

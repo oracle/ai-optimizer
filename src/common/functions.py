@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore genai hnsw
 
+import logging
 from typing import Tuple
 import math
 import re
@@ -16,9 +17,7 @@ import oracledb
 import requests
 
 
-from common import logging_config
-
-logger = logging_config.logging.getLogger("common.functions")
+LOGGER = logging.getLogger("common.functions")
 
 
 #############################################################################
@@ -28,24 +27,24 @@ def is_url_accessible(url: str) -> Tuple[bool, str]:
     """Check if the URL is accessible."""
     if not url:
         return False, "No URL Provided"
-    logger.debug("Checking if %s is accessible", url)
+    LOGGER.debug("Checking if %s is accessible", url)
 
     is_accessible = False
     err_msg = None
 
     try:
         response = requests.get(url, timeout=2)
-        logger.info("Response for %s: %s", url, response.status_code)
+        LOGGER.info("Response for %s: %s", url, response.status_code)
 
         if response.status_code in {200, 403, 404, 421}:
             is_accessible = True
         else:
             err_msg = f"{url} is not accessible. (Status: {response.status_code})"
-            logger.warning(err_msg)
+            LOGGER.warning(err_msg)
     except requests.exceptions.RequestException as ex:
         err_msg = f"{url} is not accessible. ({type(ex).__name__})"
-        logger.warning(err_msg)
-        logger.exception(ex, exc_info=False)
+        LOGGER.warning(err_msg)
+        LOGGER.exception(ex, exc_info=False)
 
     return is_accessible, err_msg
 
@@ -81,9 +80,9 @@ def get_vs_table(
         ]
         store_comment = "{" + ", ".join(comment_parts) + "}"
 
-        logger.debug("Vector Store Table: %s; Comment: %s", store_table, store_comment)
+        LOGGER.debug("Vector Store Table: %s; Comment: %s", store_table, store_comment)
     except TypeError:
-        logger.fatal("Not all required values provided to get Vector Store Table name.")
+        LOGGER.fatal("Not all required values provided to get Vector Store Table name.")
     return store_table, store_comment
 
 
@@ -127,7 +126,7 @@ def parse_vs_comment(comment: str) -> dict:
             "parse_status": "success",
         }
     except (json.JSONDecodeError, AttributeError, TypeError) as ex:
-        logger.warning("Failed to parse table comment '%s': %s", comment, ex)
+        LOGGER.warning("Failed to parse table comment '%s': %s", comment, ex)
         default_result["parse_status"] = f"parse_error: {str(ex)}"
         return default_result
 
@@ -148,7 +147,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                 username, password = user_part.split("/")
             except ValueError:
                 return_msg = f"Wrong connection string {db_conn}"
-                logger.error(return_msg)
+                LOGGER.error(return_msg)
                 ok = False
             with oracledb.connect(user=username, password=password, dsn=dsn) as connection:
                 with connection.cursor() as cursor:
@@ -157,11 +156,11 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                     desc = cursor.description
                     if not rows:
                         return_msg = "SQL source return an empty table!"
-                        logger.error(return_msg)
+                        LOGGER.error(return_msg)
                         ok = False
                     if len(desc) != 1:
                         return_msg = f"SQL source returns {len(desc)} columns, expected 1."
-                        logger.error(return_msg)
+                        LOGGER.error(return_msg)
                         ok = False
 
                     if rows and len(desc) == 1:
@@ -173,7 +172,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
                         ):
                             # to be implemented: oracledb.DB_TYPE_CLOB,oracledb.DB_TYPE_JSON
                             return_msg = f"SQL source returns column of type %{col_type}, expected VARCHAR."
-                            logger.error(return_msg)
+                            LOGGER.error(return_msg)
                             ok = False
 
         else:
@@ -184,7 +183,7 @@ def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
 
     except oracledb.Error as e:
         return_msg = f"SQL source connection error:{e}"
-        logger.error(return_msg)
+        LOGGER.error(return_msg)
         return False, return_msg
 
 
@@ -202,7 +201,7 @@ def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
             user_part, dsn = db_conn.split("@")
             username, password = user_part.split("/")
         except ValueError:
-            logger.error("Wrong connection string %s", db_conn)
+            LOGGER.error("Wrong connection string %s", db_conn)
             return False
         random_filename = str(uuid.uuid4())
 
@@ -232,5 +231,5 @@ def run_sql_query(db_conn: str, query: str, base_path: str) -> str:
         return full_file_path
 
     except oracledb.Error as e:
-        logger.error("SQL source connection error: %s", e)
+        LOGGER.error("SQL source connection error: %s", e)
         return ""

@@ -11,14 +11,15 @@ WARNING: If you bootstrap additional Ollama Models, you will need to update the 
 # spell-checker:ignore configfile genai ollama pplx docos mxbai nomic thenlper
 # spell-checker:ignore huggingface vllm
 
+import logging
 import os
 
 from server.bootstrap.configfile import ConfigStore
 from common.schema import Model
 from common.functions import is_url_accessible
-from common import logging_config
 
-logger = logging_config.logging.getLogger("bootstrap.models")
+
+LOGGER = logging.getLogger("bootstrap.models")
 
 
 def _update_env_var(model: Model, provider: str, model_key: str, env_var: str):
@@ -32,9 +33,9 @@ def _update_env_var(model: Model, provider: str, model_key: str, env_var: str):
 
     old_value = model.get(model_key)
     if old_value != new_value:
-        logger.debug("Overriding '%s' for model '%s' with %s environment variable", model_key, model.id, env_var)
+        LOGGER.debug("Overriding '%s' for model '%s' with %s environment variable", model_key, model.id, env_var)
         model[model_key] = new_value
-        logger.debug("Model '%s' updated via environment variable overrides.", model.id)
+        LOGGER.debug("Model '%s' updated via environment variable overrides.", model.id)
 
 
 def _get_base_models_list() -> list[dict]:
@@ -176,7 +177,7 @@ def _merge_with_config_store(models_list: list[dict]) -> list[dict]:
     if not configuration or not configuration.model_configs:
         return models_list
 
-    logger.debug("Merging model configs from ConfigStore")
+    LOGGER.debug("Merging model configs from ConfigStore")
 
     # Use (provider, id) tuple as key
     config_model_map = {(m.provider, m.id): m.model_dump() for m in configuration.model_configs}
@@ -188,7 +189,7 @@ def _merge_with_config_store(models_list: list[dict]) -> list[dict]:
                 if k not in existing[key]:
                     continue
                 if _values_differ(existing[key][k], v):
-                    log_func = logger.debug if k == "api_key" else logger.info
+                    log_func = LOGGER.debug if k == "api_key" else LOGGER.info
                     log_func(
                         "Overriding field '%s' for model '%s/%s' (was: %r → now: %r)",
                         k,
@@ -199,7 +200,7 @@ def _merge_with_config_store(models_list: list[dict]) -> list[dict]:
                     )
                     existing[key][k] = v
         else:
-            logger.info("Adding new model from ConfigStore: %s/%s", key[0], key[1])
+            LOGGER.info("Adding new model from ConfigStore: %s/%s", key[0], key[1])
             existing[key] = override
 
     return list(existing.values())
@@ -224,17 +225,17 @@ def _check_url_accessibility(models_list: list[dict]) -> None:
         url = model["api_base"]
         if model["enabled"]:
             if url not in url_access_cache:
-                logger.debug("Testing %s URL: %s", model["id"], url)
+                LOGGER.debug("Testing %s URL: %s", model["id"], url)
                 url_access_cache[url] = is_url_accessible(url)[0]
             else:
-                logger.debug("Reusing cached result for %s for URL: %s", model["id"], url)
+                LOGGER.debug("Reusing cached result for %s for URL: %s", model["id"], url)
 
             model["enabled"] = url_access_cache[url]
 
 
 def main() -> list[Model]:
     """Define example Model Support"""
-    logger.debug("*** Bootstrapping Models - Start")
+    LOGGER.debug("*** Bootstrapping Models - Start")
 
     models_list = _get_base_models_list()
     _check_for_duplicates(models_list)
@@ -244,8 +245,8 @@ def main() -> list[Model]:
 
     # Convert to Model objects
     model_objects = [Model(**model_dict) for model_dict in models_list]
-    logger.info("Loaded %i Models.", len(model_objects))
-    logger.debug("*** Bootstrapping Models - End")
+    LOGGER.info("Loaded %i Models.", len(model_objects))
+    LOGGER.debug("*** Bootstrapping Models - End")
     return model_objects
 
 

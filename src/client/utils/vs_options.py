@@ -4,14 +4,15 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore mult selectbox selectboxes
 
+import logging
 import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import st_common
-from common import logging_config, help_text
+from common import help_text
 
-logger = logging_config.logging.getLogger("client.utils.vs_selector")
+LOGGER = logging.getLogger("client.utils.vs_selector")
 
 
 #####################################################
