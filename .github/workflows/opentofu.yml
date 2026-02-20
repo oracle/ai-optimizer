@@ -43,16 +43,19 @@ jobs:
         uses: actions/checkout@v6
 
       # Terraform validation steps
+      - name: Install Cache Dependencies
+        run: apk add --no-cache tar zstd
+
       - name: Cache Terraform Providers
         uses: actions/cache@v5
         with:
-          path: ~/.terraform.d/plugin-cache
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
           key: ${{ runner.os }}-terraform-${{ hashFiles('opentofu/.terraform.lock.hcl') }}
           restore-keys: |
             ${{ runner.os }}-terraform-
 
       - name: Create Plugin Cache Directory
-        run: mkdir -p ~/.terraform.d/plugin-cache
+        run: mkdir -p ${{ env.TF_PLUGIN_CACHE_DIR }}
 
       - name: Initialize Infrastructure as Code
         working-directory: ./opentofu
