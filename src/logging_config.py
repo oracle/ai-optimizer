@@ -107,9 +107,7 @@ def configure_logging(log_level: str | None = None) -> None:
 
     # Filter applied to the logger (not handler) so it runs before ALL handlers,
     # including any Streamlit adds after this configuration.
-    logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").addFilter(
-        _drop_script_run_context
-    )
+    logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").addFilter(_drop_script_run_context)
 
     for handler in logging.getLogger().handlers:
         handler.addFilter(_inject_version)
