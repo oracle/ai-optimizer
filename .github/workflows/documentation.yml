@@ -66,17 +66,114 @@ jobs:
       - name: Install Node.js dependencies
         run: "[[ -f package-lock.json || -f npm-shrinkwrap.json ]] && npm ci || true"
 
-      - name: Build with Hugo
+      - name: Build Versioned Docs
         env:
           HUGO_CACHEDIR: ${{ runner.temp }}/hugo_cache
           HUGO_ENVIRONMENT: production
           TZ: Europe/London
+          BASE_URL: "${{ steps.pages.outputs.base_url }}"
         run: |
+          # --- Determine which versions to build ---
+          # Latest tag = current major; also include last tag from previous major
+          LATEST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No version tags found, building main only"
+            hugo --gc --minify --source docs --baseURL "${BASE_URL}/"
+            exit 0
+          fi
+
+          CURRENT_MAJOR=$(echo "$LATEST_TAG" | cut -d. -f1)
+          PREV_MAJOR_NUM=$(( ${CURRENT_MAJOR#v} - 1 ))
+
+          # All tags from current major (descending order)
+          mapfile -t CURRENT_TAGS < <(git tag --sort=-version:refname | grep -E "^${CURRENT_MAJOR}\.[0-9]+\.[0-9]+$")
+
+          # Last tag from previous major (if any)
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E "^v${PREV_MAJOR_NUM}\.[0-9]+\.[0-9]+$" | head -1)
+
+          # Combine all tags to build
+          ALL_TAGS=("${CURRENT_TAGS[@]}")
+          if [ -n "$PREV_TAG" ]; then
+            ALL_TAGS+=("$PREV_TAG")
+          fi
+
+          echo "Latest tag: $LATEST_TAG"
+          echo "All doc versions: ${ALL_TAGS[*]}"
+
+          # --- Helper: generate version overlay TOML ---
+          generate_version_overlay() {
+            local current_version="$1"
+            local overlay_file="$2"
+
+            cat > "$overlay_file" <<EOF
+          [params]
+          version = '${current_version}'
+          [[params.versions]]
+          identifier = '${LATEST_TAG}'
+          title = '${LATEST_TAG}'
+          baseURL = '${BASE_URL}/'
+          isLatest = true
+          [[params.versions]]
+          identifier = 'v0.0.0'
+          title = 'v0.0.0 (dev)'
+          baseURL = '${BASE_URL}/main/'
+          EOF
+
+            for TAG in "${ALL_TAGS[@]}"; do
+              if [ "$TAG" != "$LATEST_TAG" ]; then
+                cat >> "$overlay_file" <<EOF
+          [[params.versions]]
+          identifier = '${TAG}'
+          title = '${TAG}'
+          baseURL = '${BASE_URL}/${TAG}/'
+          EOF
+              fi
+            done
+          }
+
+          # --- Build latest release tag to root ---
+          echo "=== Building latest release ($LATEST_TAG) to root ==="
+          WORKDIR=$(mktemp -d)
+          git worktree add "$WORKDIR" "$LATEST_TAG"
+          cp -r docs/themes "$WORKDIR/docs/themes"
+          generate_version_overlay "$LATEST_TAG" "$WORKDIR/docs/version-overlay.toml"
           hugo \
-            --gc \
-            --minify \
+            --gc --minify \
+            --source "$WORKDIR/docs" \
+            --destination "$GITHUB_WORKSPACE/docs/public" \
+            --config hugo.toml,version-overlay.toml \
+            --baseURL "${BASE_URL}/"
+          git worktree remove "$WORKDIR" --force
+
+          # --- Build main branch to /main/ ---
+          echo "=== Building main branch to /main/ ==="
+          generate_version_overlay "v0.0.0" "docs/version-overlay.toml"
+          hugo \
+            --gc --minify \
             --source docs \
-            --baseURL "${{ steps.pages.outputs.base_url }}/"
+            --destination "$GITHUB_WORKSPACE/docs/public/main" \
+            --config hugo.toml,version-overlay.toml \
+            --baseURL "${BASE_URL}/main/"
+
+          # --- Build remaining tagged versions to subdirectories ---
+          for TAG in "${ALL_TAGS[@]}"; do
+            if [ "$TAG" = "$LATEST_TAG" ]; then
+              continue
+            fi
+            echo "=== Building $TAG to /${TAG}/ ==="
+            WORKDIR=$(mktemp -d)
+            git worktree add "$WORKDIR" "$TAG"
+            cp -r docs/themes "$WORKDIR/docs/themes"
+            generate_version_overlay "$TAG" "$WORKDIR/docs/version-overlay.toml"
+            hugo \
+              --gc --minify \
+              --source "$WORKDIR/docs" \
+              --destination "$GITHUB_WORKSPACE/docs/public/${TAG}" \
+              --config hugo.toml,version-overlay.toml \
+              --baseURL "${BASE_URL}/${TAG}/" \
+            || echo "WARNING: Build failed for $TAG, skipping"
+            git worktree remove "$WORKDIR" --force
+          done
 
       - name: Package Tags Helm chart
         run: |
