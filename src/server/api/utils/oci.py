@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore genai ocids ocid
 
+import logging
 import os
 import base64
 import json
@@ -14,9 +15,9 @@ import oci
 
 from server.bootstrap import bootstrap
 from common.schema import OracleCloudSettings, ClientIdType, OCIProfileType
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.utils.oci")
+
+LOGGER = logging.getLogger("api.utils.oci")
 
 
 #####################################################
@@ -44,15 +45,15 @@ def get(
     If auth_profile is provided, returns matching OCI settings.
     Raises ValueError if no matching OCI found.
     """
-    logger.debug("Getting OCI config for client: %s; auth_profile: %s", client, auth_profile)
+    LOGGER.debug("Getting OCI config for client: %s; auth_profile: %s", client, auth_profile)
     if client is not None and auth_profile is not None:
         raise ValueError("provide either 'client' or 'auth_profile', not both")
 
     oci_objects = bootstrap.OCI_OBJECTS
     if client is not None:
         # Get client settings directly from SETTINGS_OBJECTS
-        logger.debug("Looking for client %s in SETTINGS_OBJECTS", client)
-        logger.debug(
+        LOGGER.debug("Looking for client %s in SETTINGS_OBJECTS", client)
+        LOGGER.debug(
             "SETTINGS_OBJECTS has %d entries: %s",
             len(bootstrap.SETTINGS_OBJECTS),
             [s.client for s in bootstrap.SETTINGS_OBJECTS],
@@ -91,11 +92,11 @@ def get_signer(config: OracleCloudSettings) -> Optional[object]:
     """Get OCI signer for instance principal or workload identity authentication."""
 
     if config.authentication == "instance_principal":
-        logger.info("Creating Instance Principal signer")
+        LOGGER.info("Creating Instance Principal signer")
         return oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
 
     if config.authentication == "oke_workload_identity":
-        logger.info("Creating OKE Workload Identity signer")
+        LOGGER.info("Creating OKE Workload Identity signer")
         return oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
 
     # API key or security token authentication - no signer needed
@@ -155,7 +156,7 @@ def init_client(
                     payload = json.loads(decoded_bytes)
                     config.tenancy = payload.get("tenant")
         elif config_json["authentication"] == "security_token" and config_json["security_token_file"]:
-            logger.info("OCI Authentication with Security Token")
+            LOGGER.info("OCI Authentication with Security Token")
             token = None
             with open(config_json["security_token_file"], "r", encoding="utf-8") as f:
                 token = f.read()
@@ -163,7 +164,7 @@ def init_client(
             sec_token_signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
             client = client_type(config={"region": config_json["region"]}, signer=sec_token_signer, **client_kwargs)
         else:
-            logger.info("OCI Authentication as Standard")
+            LOGGER.info("OCI Authentication as Standard")
             client = client_type(config_json, **client_kwargs)
     except oci.exceptions.InvalidConfig as ex:
         raise OciException(status_code=400, detail=f"Invalid Config: {str(ex)}") from ex
@@ -179,12 +180,12 @@ def init_genai_client(config: OracleCloudSettings) -> oci.generative_ai_inferenc
 
 def get_namespace(config: OracleCloudSettings) -> str:
     """Get the Object Storage Namespace.  Also used for testing AuthN"""
-    logger.info("Getting Object Storage Namespace")
+    LOGGER.info("Getting Object Storage Namespace")
     client_type = oci.object_storage.ObjectStorageClient
     try:
         client = init_client(client_type, config)
         config.namespace = client.get_namespace().data
-        logger.info("OCI: Namespace = %s", config.namespace)
+        LOGGER.info("OCI: Namespace = %s", config.namespace)
     except OciException:
         # Re-raise OciException from init_client without wrapping
         raise
@@ -242,7 +243,7 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
         region_config = config.model_copy(deep=True)
         region_config.region = region["region_name"]
         client = init_client(oci.generative_ai.GenerativeAiClient, region_config)
-        logger.info(
+        LOGGER.info(
             "Checking Region: %s; Compartment: %s for GenAI services",
             region["region_name"],
             config.genai_compartment_id,
@@ -280,11 +281,11 @@ def get_genai_models(config: OracleCloudSettings, regional: bool = False) -> lis
                         "id": model.id,
                     }
                 )
-            logger.info("Registered %i GenAI Models", len(genai_models))
+            LOGGER.info("Registered %i GenAI Models", len(genai_models))
         except oci.exceptions.ServiceError as ex:
-            logger.info("Unable to get GenAI Models in Region: %s (%s)", region["region_name"], ex.message)
+            LOGGER.info("Unable to get GenAI Models in Region: %s (%s)", region["region_name"], ex.message)
         except (oci.exceptions.RequestException, urllib3.exceptions.MaxRetryError):
-            logger.error("Timeout: Error querying GenAI services in %s", region["region_name"])
+            LOGGER.error("Timeout: Error querying GenAI services in %s", region["region_name"])
 
     return genai_models
 
@@ -319,7 +320,7 @@ def get_compartments(config: OracleCloudSettings = None) -> set:
 
     # Create a set with full paths as keys and OCIDs as values
     compartment_paths = {construct_path(compartment_id): compartment_id.id for compartment_id in compartments}
-    logger.info("Returning %i Compartments", len(compartment_paths))
+    LOGGER.info("Returning %i Compartments", len(compartment_paths))
     return compartment_paths
 
 
@@ -328,7 +329,7 @@ def get_buckets(compartment_id: str, config: OracleCloudSettings = None) -> list
     client_type = oci.object_storage.ObjectStorageClient
     client = init_client(client_type, config)
 
-    logger.info("Getting Buckets in %s", compartment_id)
+    LOGGER.info("Getting Buckets in %s", compartment_id)
     client = init_client(client_type, config)
     bucket_names = []
     try:
@@ -360,7 +361,7 @@ def get_bucket_objects(bucket_name: str, config: OracleCloudSettings = None) -> 
         # TODO(gotsysba) - filter out non-supported objects
         object_names = [object.name for object in objects]
     except oci.exceptions.ServiceError:
-        logger.debug("Bucket %s not found.  Will create on upload.", bucket_name)
+        LOGGER.debug("Bucket %s not found.  Will create on upload.", bucket_name)
 
     return object_names
 
@@ -393,9 +394,9 @@ def get_bucket_objects_with_metadata(bucket_name: str, config: OracleCloudSettin
                 }
                 objects_metadata.append(obj_metadata)
     except oci.exceptions.ServiceError:
-        logger.debug("Bucket %s not found.", bucket_name)
+        LOGGER.debug("Bucket %s not found.", bucket_name)
 
-    logger.info("Retrieved %d objects with metadata from bucket %s", len(objects_metadata), bucket_name)
+    LOGGER.info("Retrieved %d objects with metadata from bucket %s", len(objects_metadata), bucket_name)
     return objects_metadata
 
 
@@ -426,7 +427,7 @@ def detect_changed_objects(current_objects: list[dict], processed_objects: dict)
 
             # If old format (no etag), skip - assume unchanged to avoid duplicates
             if last_processed.get("etag") is None and last_processed.get("time_modified") is None:
-                logger.debug("Skipping %s - found in old metadata format (assumed unchanged)", obj_name)
+                LOGGER.debug("Skipping %s - found in old metadata format (assumed unchanged)", obj_name)
                 continue
 
             # Compare etag and modification time
@@ -435,7 +436,7 @@ def detect_changed_objects(current_objects: list[dict], processed_objects: dict)
             ):
                 modified_objects.append(obj)
 
-    logger.info("Found %d new objects and %d modified objects", len(new_objects), len(modified_objects))
+    LOGGER.info("Found %d new objects and %d modified objects", len(new_objects), len(modified_objects))
     return new_objects, modified_objects
 
 
@@ -452,6 +453,6 @@ def get_object(directory: str, object_name: str, bucket_name: str, config: Oracl
         for content in response.data.raw.stream(1024 * 1024, decode_content=False):
             f.write(content)
     file_size = os.path.getsize(file_path)
-    logger.info("Downloaded %s to %s (%i bytes)", file_name, file_path, file_size)
+    LOGGER.info("Downloaded %s to %s (%i bytes)", file_name, file_path, file_size)
 
     return file_path

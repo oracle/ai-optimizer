@@ -6,6 +6,7 @@ This script initializes is used for the splitting and chunking process using Str
 """
 # spell-checker:ignore selectbox hnsw ivf ocids iterrows isin
 
+import logging
 import math
 import re
 from dataclasses import dataclass
@@ -23,9 +24,9 @@ from client.content.config.tabs.models import get_models
 from client.content.config.tabs.oci import get_oci
 
 from common.schema import DistanceMetrics, IndexTypes, DatabaseVectorStorage
-from common import logging_config, help_text, functions
+from common import help_text, functions
 
-logger = logging_config.logging.getLogger("client.tools.tabs.split_embed")
+LOGGER = logging.getLogger("client.tools.tabs.split_embed")
 
 
 #####################################################
@@ -283,7 +284,7 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict) -> FileSourceDa
             key="local_file_uploader",
             help="Upload individual files or a zip archive containing multiple documents. "
             "Large or many files? Consider OCI Object Storage.",
-            type=["pdf","html","md","csv","txt","png","jpeg","zip"],
+            type=["pdf", "html", "md", "csv", "txt", "png", "jpeg", "zip"],
             accept_multiple_files=True,
         )
 
@@ -436,7 +437,7 @@ def _render_populate_vs_section(
                 if file_list_response and "files" in file_list_response:
                     _display_file_list_expander(file_list_response)
             except api_call.ApiError as e:
-                logger.warning("Could not retrieve file list for %s: %s", embed_request.vector_store, e)
+                LOGGER.warning("Could not retrieve file list for %s: %s", embed_request.vector_store, e)
         else:
             st.caption("A new vector store will be created.")
 
@@ -575,9 +576,9 @@ def _handle_populate_success(response: dict) -> None:
     st.success(f"{response.get('message', 'Vector store populated successfully')}", icon="✅")
 
     # Display processing summary
-    total_chunks = response.get('total_chunks', 0)
-    processed_files = response.get('processed_files', [])
-    skipped_files = response.get('skipped_files', [])
+    total_chunks = response.get("total_chunks", 0)
+    processed_files = response.get("processed_files", [])
+    skipped_files = response.get("skipped_files", [])
 
     with st.expander("📊 Processing Summary", expanded=True):
         col1, col2, col3 = st.columns(3)
@@ -658,12 +659,12 @@ def _initialize_and_validate_config() -> tuple[dict, list]:
 
     db_avail = st_common.is_db_configured()
     if not db_avail:
-        logger.debug("Embedding Disabled (Database not configured)")
+        LOGGER.debug("Embedding Disabled (Database not configured)")
         st.error("Database is not configured. Disabling Embedding.", icon="🛑")
 
     embed_models_enabled = st_common.enabled_models_lookup("embed")
     if not embed_models_enabled:
-        logger.debug("Embedding Disabled (no Embedding Models)")
+        LOGGER.debug("Embedding Disabled (no Embedding Models)")
         st.error("No embedding models are configured and/or enabled. Disabling Embedding.", icon="🛑")
 
     if not db_avail or not embed_models_enabled:

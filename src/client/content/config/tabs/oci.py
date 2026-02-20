@@ -6,6 +6,8 @@ Script initializes a web interface for Oracle Cloud Infrastructure (OCI)
 It includes a form to input and test OCI API Access.
 """
 # spell-checker:ignore streamlit ocid selectbox genai oraclecloud
+
+import logging
 import time
 import pandas as pd
 
@@ -13,9 +15,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import api_call, st_common
-from common import logging_config
 
-logger = logging_config.logging.getLogger("client.content.config.tabs.oci")
+
+LOGGER = logging.getLogger("client.content.config.tabs.oci")
 
 
 #####################################################
@@ -211,7 +213,7 @@ def get_oci(force: bool = False) -> None:
     """Get a dictionary of all OCI Configurations"""
     if force or "oci_configs" not in state or not state.oci_configs:
         try:
-            logger.info("Refreshing state.oci_configs")
+            LOGGER.info("Refreshing state.oci_configs")
             state.oci_configs = api_call.get(endpoint="v1/oci")
         except api_call.ApiError as ex:
             st.error(f"Unable populate state.oci_configs: {ex}", icon="🚨")
@@ -249,9 +251,9 @@ def patch_oci(auth_profile: str, supplied: dict, namespace: str, toast: bool = T
 
             with st.spinner(text="Updating OCI Profile...", show_time=True):
                 _ = api_call.patch(endpoint=f"v1/oci/{auth_profile}", payload={"json": supplied}, toast=toast)
-            logger.info("OCI Profile updated: %s", auth_profile)
+            LOGGER.info("OCI Profile updated: %s", auth_profile)
         except api_call.ApiError as ex:
-            logger.error("OCI Update failed: %s", ex)
+            LOGGER.error("OCI Update failed: %s", ex)
             state.oci_error = ex
         st_common.clear_state_key("oci_configs")
     else:

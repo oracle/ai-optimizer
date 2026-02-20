@@ -8,9 +8,9 @@ import json
 from oracledb import Connection
 import server.api.utils.databases as databases
 from common.schema import ClientIdType
-from common import logging_config
+import logging
 
-logger = logging_config.logging.getLogger("server.api.utils.settings")
+LOGGER = logging.getLogger("server.api.utils.settings")
 
 
 def create_settings_objects(db_conn: Connection) -> None:
@@ -25,7 +25,7 @@ def create_settings_objects(db_conn: Connection) -> None:
                 CONSTRAINT oai_settings_pk PRIMARY KEY (name, type)
             )
         """
-    logger.info("Creating settings Table")
+    LOGGER.info("Creating settings Table")
     _ = databases.execute_sql(db_conn, settings_tbl)
 
 
@@ -36,7 +36,7 @@ def upsert_settings(
     json_data: json,
 ) -> None:
     """Upsert Q&A"""
-    logger.info("Upsert Settings: %s - %s", name, setting_type)
+    LOGGER.info("Upsert Settings: %s - %s", name, setting_type)
     parsed_data = json.loads(json_data)
     if not isinstance(parsed_data, list):
         parsed_data = [parsed_data]
@@ -57,5 +57,5 @@ def upsert_settings(
             VALUES (l_name, l_type, CURRENT_TIMESTAMP, l_qa_object);
         END;
     """
-    logger.debug("Upsert PLSQL: %s", plsql)
+    LOGGER.debug("Upsert PLSQL: %s", plsql)
     return databases.execute_sql(db_conn, plsql, binds)

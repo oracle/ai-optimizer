@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore mult oraclevs vectorstores litellm
 
+import logging
 from typing import Optional, List
 import json
 import traceback
@@ -21,9 +22,8 @@ import server.api.utils.oci as utils_oci
 import server.mcp.prompts.defaults as table_selection_prompts
 from server.mcp.tools.vs_discovery import _vs_discovery_impl
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("mcp.tools.retriever")
+LOGGER = logging.getLogger("mcp.tools.retriever")
 
 # Configuration constants
 TABLE_SELECTION_TEMPERATURE = 0.0  # Deterministic table selection
@@ -61,26 +61,26 @@ def _get_available_vector_stores(thread_id: str):
         response = _vs_discovery_impl(thread_id=thread_id, filter_enabled_models=True)
 
         if response.status != "success":
-            logger.error("Discovery failed: %s", response.error)
+            LOGGER.error("Discovery failed: %s", response.error)
             return []
 
         available = response.parsed_tables
         for table in available:
-            logger.info(
+            LOGGER.info(
                 "Checking table %s (alias: %s) with model: %s",
                 table.table_name,
                 table.parsed.alias,
                 table.parsed.model,
             )
-            logger.info("  -> Enabled")
+            LOGGER.info("  -> Enabled")
 
-        logger.info(
+        LOGGER.info(
             "Found %d available vector stores with enabled models",
             len(available),
         )
         return available
     except Exception as ex:
-        logger.error("Failed to get available vector stores: %s", ex)
+        LOGGER.error("Failed to get available vector stores: %s", ex)
         return []
 
 
@@ -99,13 +99,13 @@ def _select_tables_with_llm(
         List of selected table names
     """
     if not available_tables:
-        logger.warning("No available tables to select from")
+        LOGGER.warning("No available tables to select from")
         return []
 
     # If only one table available, use it
     if len(available_tables) == 1:
         table_name = available_tables[0].table_name
-        logger.info("Only one table available, selecting: %s", table_name)
+        LOGGER.info("Only one table available, selecting: %s", table_name)
         return [table_name]
 
     # Build context about available tables
@@ -141,13 +141,13 @@ def _select_tables_with_llm(
         response = completion(messages=[{"role": "user", "content": prompt}], **selection_config)
 
         selection_text = response.choices[0].message.content.strip()
-        logger.info("LLM table selection response: %s", selection_text)
+        LOGGER.info("LLM table selection response: %s", selection_text)
 
         # Parse JSON response
         selected_tables = json.loads(selection_text)
 
         if not isinstance(selected_tables, list):
-            logger.warning("LLM returned non-list response, falling back to first table")
+            LOGGER.warning("LLM returned non-list response, falling back to first table")
             return [available_tables[0].table_name]
 
         # Validate selected tables exist
@@ -155,14 +155,14 @@ def _select_tables_with_llm(
         selected_tables = [t for t in selected_tables if t in valid_table_names]
 
         if not selected_tables:
-            logger.warning("No valid tables selected, falling back to first table")
+            LOGGER.warning("No valid tables selected, falling back to first table")
             return [available_tables[0].table_name]
 
-        logger.info("Selected %d tables: %s", len(selected_tables), selected_tables)
+        LOGGER.info("Selected %d tables: %s", len(selected_tables), selected_tables)
         return selected_tables[:max_tables]
 
     except Exception as ex:
-        logger.error("Failed to select tables with LLM: %s", ex)
+        LOGGER.error("Failed to select tables with LLM: %s", ex)
         # Fallback: return first table
         return [available_tables[0].table_name]
 
@@ -190,13 +190,13 @@ def _deduplicate_documents(documents: List) -> List:
                 seen_content[content] = doc
                 deduplicated.append(doc)
 
-    logger.info("Deduplicated %d to %d documents", len(documents), len(deduplicated))
+    LOGGER.info("Deduplicated %d to %d documents", len(documents), len(deduplicated))
     return deduplicated
 
 
 def _search_table(table_name, question, db_conn, embed_client, vector_search, table_distance_metric):
     """Search a single vector table and return documents with metadata"""
-    logger.info("Searching table: %s with distance metric: %s", table_name, table_distance_metric)
+    LOGGER.info("Searching table: %s with distance metric: %s", table_name, table_distance_metric)
 
     # Initialize Vector Store for this table using its specific distance metric
     vectorstores = OracleVS(db_conn, embed_client, table_name, table_distance_metric)
@@ -242,7 +242,7 @@ def _search_table(table_name, question, db_conn, embed_client, vector_search, ta
                 doc.metadata = {}
             doc.metadata["searched_table"] = table_name
 
-    logger.info("Retrieved %d documents from %s", len(documents), table_name)
+    LOGGER.info("Retrieved %d documents from %s", len(documents), table_name)
     return documents
 
 
@@ -294,7 +294,7 @@ def _vs_retrieve_impl(
     all_documents = []
 
     try:
-        logger.info(
+        LOGGER.info(
             "Smart Vector Search Retrieve (Thread ID: %s, MCP: %s, Model: %s)",
             thread_id,
             mcp_client,
@@ -306,7 +306,7 @@ def _vs_retrieve_impl(
         vector_search = client_settings.vector_search
 
         # Tool presence indicates VS is enabled (controlled by chat.py:77-78)
-        logger.info("Perform Vector Search with: %s", question)
+        LOGGER.info("Perform Vector Search with: %s", question)
 
         # Get database connection
         db_conn = utils_databases.get_client_database(thread_id, False)
@@ -318,11 +318,11 @@ def _vs_retrieve_impl(
         oci_config = utils_oci.get(client=thread_id)
 
         # Smart selection: discover and select relevant tables
-        logger.info("Performing smart table selection...")
+        LOGGER.info("Performing smart table selection...")
         available_tables = _get_available_vector_stores(thread_id)
 
         if not available_tables:
-            logger.warning("No available vector stores with enabled models")
+            LOGGER.warning("No available vector stores with enabled models")
             return VectorSearchResponse(
                 context_input=question,
                 documents=[],
@@ -344,14 +344,14 @@ def _vs_retrieve_impl(
             ll_config,  # Uses DEFAULT_MAX_TABLES
         )
 
-        logger.info("Searching %d table(s): %s", len(tables_to_search), tables_to_search)
+        LOGGER.info("Searching %d table(s): %s", len(tables_to_search), tables_to_search)
 
         # Search each selected table with its specific embedding model
         for table_name in tables_to_search:
             try:
                 # Get the table's specific embedding model and distance metric
                 table_info = table_info_map[table_name]
-                logger.info("Creating embed client for table %s with model %s", table_name, table_info.parsed.model)
+                LOGGER.info("Creating embed client for table %s with model %s", table_name, table_info.parsed.model)
 
                 # Create embed client for this table's model and search
                 embed_client = utils_models.get_client_embed({"model": table_info.parsed.model}, oci_config)
@@ -361,13 +361,13 @@ def _vs_retrieve_impl(
                 all_documents.extend(documents)
                 searched_tables.append(table_name)
             except Exception as ex:
-                logger.error(
+                LOGGER.error(
                     "Failed to search table %s: %s (type: %s)",
                     table_name,
                     str(ex) if str(ex) else repr(ex),
-                    type(ex).__name__
+                    type(ex).__name__,
                 )
-                logger.debug("Full traceback: %s", traceback.format_exc())
+                LOGGER.debug("Full traceback: %s", traceback.format_exc())
                 failed_tables.append(table_name)
                 # Continue searching other tables even if one fails
 
@@ -381,7 +381,7 @@ def _vs_retrieve_impl(
         all_documents = all_documents[: vector_search.top_k]
 
     except (AttributeError, KeyError, TypeError) as ex:
-        logger.error("Vector search failed with exception: %s", ex)
+        LOGGER.error("Vector search failed with exception: %s", ex)
         return VectorSearchResponse(
             context_input=question,
             documents=[],
@@ -392,9 +392,9 @@ def _vs_retrieve_impl(
             error=f"Vector search failed: {str(ex)}",
         )
 
-    logger.info("Found %d documents from %d table(s)", len(all_documents), len(searched_tables))
+    LOGGER.info("Found %d documents from %d table(s)", len(all_documents), len(searched_tables))
     if failed_tables:
-        logger.warning("Failed to search %d table(s): %s", len(failed_tables), failed_tables)
+        LOGGER.warning("Failed to search %d table(s): %s", len(failed_tables), failed_tables)
 
     return VectorSearchResponse(
         context_input=question,

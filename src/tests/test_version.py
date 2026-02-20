@@ -7,7 +7,7 @@ Unit tests for common/_version.py
 Tests version string retrieval.
 """
 
-from common._version import __version__
+from _version import __version__
 
 
 class TestVersion:

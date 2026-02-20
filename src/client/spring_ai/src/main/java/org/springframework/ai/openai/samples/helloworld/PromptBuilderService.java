@@ -55,7 +55,7 @@ public class PromptBuilderService {
         PromptTemplate promptTemplate = new PromptTemplate(template);
         Prompt prompt = promptTemplate.create(Map.of("documents", context, "question", message));
 
-        logger.info("Generated Prompt:\n{}", prompt.toString());
+        LOGGER.info("Generated Prompt:\n{}", prompt.toString());
 
         return prompt;
     }

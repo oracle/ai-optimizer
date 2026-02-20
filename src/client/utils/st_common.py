@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore isin mult selectbox
 
+import logging
 from io import BytesIO
 from typing import Any, Union
 
@@ -11,9 +12,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import api_call
-from common import logging_config, help_text
+from common import help_text
 
-logger = logging_config.logging.getLogger("client.utils.st_common")
+LOGGER = logging.getLogger("client.utils.st_common")
 
 
 #############################################################################
@@ -22,7 +23,7 @@ logger = logging_config.logging.getLogger("client.utils.st_common")
 def clear_state_key(state_key: str) -> None:
     """Generic clear key from state, handles if key isn't in state"""
     state.pop(state_key, None)
-    logger.debug("State cleared: %s", state_key)
+    LOGGER.debug("State cleared: %s", state_key)
 
 
 def state_configs_lookup(state_configs_name: str, key: str, section: str = None) -> dict[str, dict[str, Any]]:
@@ -81,7 +82,7 @@ def patch_settings() -> None:
             toast=False,
         )
     except api_call.ApiError as ex:
-        logger.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
+        LOGGER.error("%s Settings Update failed: %s", state.client_settings["client"], ex)
 
 
 #############################################################################
@@ -95,7 +96,7 @@ def update_client_settings(user_setting: str) -> None:
         widget_key = f"selected_{user_setting}_{setting_key}"
         widget_value = state.get(widget_key, setting_value)
         if state.get(widget_key, setting_value) != setting_value:
-            logger.info("Updating client_settings['%s']['%s'] to %s", user_setting, setting_key, widget_value)
+            LOGGER.info("Updating client_settings['%s']['%s'] to %s", user_setting, setting_key, widget_value)
             state.client_settings[user_setting][setting_key] = widget_value
     # Destroying user Client
     clear_state_key("user_client")
@@ -131,7 +132,7 @@ def history_sidebar() -> None:
         try:
             api_call.patch(endpoint="v1/chat/history")
         except api_call.ApiError as ex:
-            logger.error("Clearing Chat History for %s failed: %s", state.client_settings["client"], ex)
+            LOGGER.error("Clearing Chat History for %s failed: %s", state.client_settings["client"], ex)
         clear_state_key("user_client")
 
 

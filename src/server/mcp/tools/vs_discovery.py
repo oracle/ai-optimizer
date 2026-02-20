@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore genai
 
+import logging
 from typing import Any, Optional, List
 
 from pydantic import BaseModel
@@ -15,9 +16,8 @@ import server.api.utils.settings as utils_settings
 from common.functions import parse_vs_comment, get_vs_table
 from common.schema import DatabaseVectorStorage
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("mcp.tools.vector_storage")
+LOGGER = logging.getLogger("mcp.tools.vector_storage")
 
 
 class DatabaseConnectionError(Exception):
@@ -67,7 +67,7 @@ def execute_vector_table_query(thread_id: str) -> list:
         raise DatabaseConnectionError("No database connection available")
 
     results = utils_databases.execute_sql(db_client.connection, base_sql)
-    logger.info("Found %d vector store tables", len(results))
+    LOGGER.info("Found %d vector store tables", len(results))
     return results
 
 
@@ -82,7 +82,7 @@ def is_model_enabled(model_id: str) -> bool:
 
     # Skip legacy model IDs without provider prefix (e.g., "text-embedding-3-small")
     if "/" not in model_id:
-        logger.debug("Skipping legacy model ID without provider prefix: %s", model_id)
+        LOGGER.debug("Skipping legacy model ID without provider prefix: %s", model_id)
         return False
 
     # Split into provider and model name
@@ -95,15 +95,15 @@ def is_model_enabled(model_id: str) -> bool:
             model_provider=provider, model_id=model_name, model_type="embed", include_disabled=False
         )
         if models:
-            logger.debug("Model %s is enabled (found %d configs)", model_id, len(models))
+            LOGGER.debug("Model %s is enabled (found %d configs)", model_id, len(models))
             return True
-        logger.info("Model %s not found in enabled embed models", model_id)
+        LOGGER.info("Model %s not found in enabled embed models", model_id)
         return False
     except utils_models.UnknownModelError:
-        logger.info("Model %s (provider=%s, id=%s) not found", model_id, provider, model_name)
+        LOGGER.info("Model %s (provider=%s, id=%s) not found", model_id, provider, model_name)
         return False
     except Exception as ex:
-        logger.warning("Failed to check if model %s is enabled: %s", model_id, ex)
+        LOGGER.warning("Failed to check if model %s is enabled: %s", model_id, ex)
         return False
 
 
@@ -178,7 +178,7 @@ def _vs_discovery_impl(
         vector_search = client_settings.vector_search
 
         if not vector_search.discovery:
-            logger.info("Discovery disabled - using configured vector store settings")
+            LOGGER.info("Discovery disabled - using configured vector store settings")
 
             # Generate table name from configured settings
             table_name, table_comment = get_vs_table(
@@ -192,7 +192,7 @@ def _vs_discovery_impl(
             )
 
             if not table_name:
-                logger.error("Failed to generate table name from vector search settings")
+                LOGGER.error("Failed to generate table name from vector search settings")
                 return VectorStoreListResponse(
                     raw_results=[],
                     parsed_tables=[],
@@ -213,7 +213,7 @@ def _vs_discovery_impl(
                 index_type=vector_search.index_type,
             )
 
-            logger.info("Returning configured vector store: %s", table_name)
+            LOGGER.info("Returning configured vector store: %s", table_name)
             return VectorStoreListResponse(
                 raw_results=[],
                 parsed_tables=[configured_table],
@@ -230,11 +230,11 @@ def _vs_discovery_impl(
         if filter_enabled_models:
             original_count = len(parsed_tables)
             parsed_tables = [table for table in parsed_tables if is_model_enabled(table.parsed.model)]
-            logger.info("Filtered %d tables to %d with enabled models", original_count, len(parsed_tables))
+            LOGGER.info("Filtered %d tables to %d with enabled models", original_count, len(parsed_tables))
 
         return VectorStoreListResponse(raw_results=results, parsed_tables=parsed_tables, status="success")
     except Exception as ex:
-        logger.error("Vector store info retrieval failed: %s", ex)
+        LOGGER.error("Vector store info retrieval failed: %s", ex)
         return VectorStoreListResponse(raw_results=[], parsed_tables=[], status="error", error=str(ex))
 
 
@@ -251,7 +251,7 @@ async def register(mcp, auth):
         model: str = "UNKNOWN-LLM",
     ) -> VectorStoreListResponse:
         """List available vector storage tables in the database."""
-        logger.info(
+        LOGGER.info(
             "VS Discovery (Thread ID: %s, Filter: %s, MCP: %s, Model: %s)",
             thread_id,
             filter_enabled_models,

@@ -4,6 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore acompletion checkpointer litellm sqlcl multitool
 
+import logging
+
 from typing import Literal
 import json
 import decimal
@@ -22,9 +24,8 @@ from server.mcp.tools.vs_rephrase import _vs_rephrase_impl
 from server.mcp.tools.vs_retriever import _vs_retrieve_impl
 from server.mcp.tools.vs_grade import _vs_grade_impl
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("mcp.graph")
+LOGGER = logging.getLogger("mcp.graph")
 
 
 #############################################################################
@@ -149,7 +150,7 @@ def _build_messages_for_llm(
 async def _call_llm(messages: list, ll_config: dict, stream: bool = False, tools: list = None):
     """Call LiteLLM with messages and optional tools"""
     openai_messages = convert_to_openai_messages(messages)
-    logger.debug("Message types: %s", [msg.get("role") for msg in openai_messages])
+    LOGGER.debug("Message types: %s", [msg.get("role") for msg in openai_messages])
 
     kwargs = {"messages": openai_messages, **ll_config}
     if stream:
@@ -226,7 +227,7 @@ def _build_text_response(full_text: str, full_response: list, writer, state: Opt
 
 def _create_error_message(exception: Exception, context: str = "") -> AIMessage:
     """Create user-friendly error wrapper around exception"""
-    logger.exception("Error %s", context or "in graph execution")
+    LOGGER.exception("Error %s", context or "in graph execution")
 
     error_str = str(exception).split("Traceback (most recent call last):", maxsplit=1)[0].strip()
     error_lines = [line.strip() for line in error_str.split("\n") if line.strip()]
@@ -274,12 +275,12 @@ def _create_ai_message_with_tool_calls(content: str, tool_calls: list) -> AIMess
 
 async def _execute_tool_call(tool_call, tools: list, messages: list, all_new_messages: list):
     """Execute a single tool call and append result messages"""
-    logger.info("Executing tool: %s with args: %s", tool_call.function.name, tool_call.function.arguments)
+    LOGGER.info("Executing tool: %s with args: %s", tool_call.function.name, tool_call.function.arguments)
 
     # Find the tool object
     tool_obj = next((t for t in tools if t.name == tool_call.function.name), None)
     if not tool_obj:
-        logger.error("Tool not found: %s", tool_call.function.name)
+        LOGGER.error("Tool not found: %s", tool_call.function.name)
         tool_msg = _create_tool_message(
             content=f"Error: Tool {tool_call.function.name} not found",
             tool_call_id=tool_call.id,
@@ -300,10 +301,10 @@ async def _execute_tool_call(tool_call, tools: list, messages: list, all_new_mes
         )
         messages.append(tool_msg)
         all_new_messages.append(tool_msg)
-        logger.info("Tool executed successfully: %s", tool_call.function.name)
-        logger.info("Tool result: %s", str(result)[:500])  # First 500 chars
+        LOGGER.info("Tool executed successfully: %s", tool_call.function.name)
+        LOGGER.info("Tool result: %s", str(result)[:500])  # First 500 chars
     except Exception as ex:
-        logger.error("Tool execution failed: %s - %s", tool_call.function.name, ex)
+        LOGGER.error("Tool execution failed: %s - %s", tool_call.function.name, ex)
         tool_msg = _create_tool_message(
             content=f"Error executing {tool_call.function.name}: {str(ex)}",
             tool_call_id=tool_call.id,
@@ -330,7 +331,7 @@ async def stream_completion(state: OptimizerState, config: RunnableConfig):
         # Build message list
         messages = _build_messages_for_llm(state, sys_prompt, use_history)
 
-        logger.info(
+        LOGGER.info(
             "Calling LiteLLM with %d messages (history: %s, stream: %s)", len(messages), use_history, stream_llm
         )
         response = await _call_llm(messages, ll_config, stream=stream_llm)
@@ -364,7 +365,7 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig):
     metadata = config.get("metadata", {})
     vector_search = metadata.get("vector_search")
 
-    logger.info("VS orchestrate starting (thread: %s)", thread_id)
+    LOGGER.info("VS orchestrate starting (thread: %s)", thread_id)
 
     # Remove old ToolMessages and their corresponding AIMessages with tool_calls
     messages = [
@@ -388,7 +389,7 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig):
     # Step 1: Optionally rephrase the question
     query = question
     if vector_search.rephrase:
-        logger.info("Calling rephrase...")
+        LOGGER.info("Calling rephrase...")
         rephrase_result = await _vs_rephrase_impl(
             thread_id=thread_id,
             question=question,
@@ -398,10 +399,10 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig):
         )
         if rephrase_result.status == "success" and rephrase_result.was_rephrased:
             query = rephrase_result.rephrased_prompt
-            logger.info("Query rephrased: '%s'", query)
+            LOGGER.info("Query rephrased: '%s'", query)
 
     # Step 2: Retrieve documents
-    logger.info("Calling retriever with query: '%s'", query)
+    LOGGER.info("Calling retriever with query: '%s'", query)
     retrieval_result = _vs_retrieve_impl(
         thread_id=thread_id,
         question=query,
@@ -410,7 +411,7 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig):
     )
 
     if retrieval_result.status != "success":
-        logger.error("Retrieval failed: %s", retrieval_result.error)
+        LOGGER.error("Retrieval failed: %s", retrieval_result.error)
         # Return empty ToolMessage on failure
         tool_message = _create_tool_message(
             content="Vector search retrieval failed. Please try again.",
@@ -419,12 +420,12 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig):
         return {"messages": messages + [tool_message]}
 
     documents = retrieval_result.documents
-    logger.info("Retrieved %d documents", len(documents))
+    LOGGER.info("Retrieved %d documents", len(documents))
 
     # Step 3: Optionally grade documents
     formatted_docs = ""
     if vector_search.grade and documents:
-        logger.info("Calling grade...")
+        LOGGER.info("Calling grade...")
         grade_result = await _vs_grade_impl(
             thread_id=thread_id,
             question=question,  # Use original question for grading
@@ -434,9 +435,9 @@ async def vs_orchestrate(state: OptimizerState, config: RunnableConfig):
         )
         if grade_result.status == "success" and grade_result.relevant == "yes":
             formatted_docs = grade_result.formatted_documents
-            logger.info("Documents graded as relevant")
+            LOGGER.info("Documents graded as relevant")
         else:
-            logger.info("Documents graded as not relevant")
+            LOGGER.info("Documents graded as not relevant")
     else:
         # No grading - format all documents
         formatted_docs = "\n\n".join([doc["page_content"] for doc in documents])
@@ -491,7 +492,7 @@ def sqlcl_orchestrate(tools):
         tool_defs = metadata.get("tools", [])  # OpenAI function definitions
         use_history = metadata.get("use_history", True)
 
-        logger.info("SQLcl orchestrate starting (thread: %s)", thread_id)
+        LOGGER.info("SQLcl orchestrate starting (thread: %s)", thread_id)
 
         # Build initial message list
         messages = _build_messages_for_llm(state, sys_prompt, use_history)
@@ -503,26 +504,26 @@ def sqlcl_orchestrate(tools):
         for iteration in range(max_iterations):
             # Call LLM with tools bound (let LLM decide which tools to call)
             sqlcl_tools = [t for t in tool_defs if "sqlcl" in t["function"]["name"]]
-            logger.info("Turn %d: Calling LLM with %d sqlcl tools", iteration + 1, len(sqlcl_tools))
+            LOGGER.info("Turn %d: Calling LLM with %d sqlcl tools", iteration + 1, len(sqlcl_tools))
             response = await _call_llm(messages, ll_config, tools=sqlcl_tools)
 
-            logger.debug("Response received, extracting tool calls...")
+            LOGGER.debug("Response received, extracting tool calls...")
             # Extract tool calls from LLM response
             try:
                 ai_msg_content = response.choices[0].message.content or ""
                 tool_calls = response.choices[0].message.tool_calls or []
-                logger.debug("Extracted: content_len=%d, tool_calls=%d", len(ai_msg_content), len(tool_calls))
+                LOGGER.debug("Extracted: content_len=%d, tool_calls=%d", len(ai_msg_content), len(tool_calls))
             except (AttributeError, IndexError) as ex:
-                logger.error("Failed to extract response: %s", ex)
-                logger.error("Response object: %s", response)
+                LOGGER.error("Failed to extract response: %s", ex)
+                LOGGER.error("Response object: %s", response)
                 break
 
             if not tool_calls:
                 # LLM decided not to call any tools - we're done
-                logger.info("Turn %d: LLM did not call any tools, ending orchestration", iteration + 1)
+                LOGGER.info("Turn %d: LLM did not call any tools, ending orchestration", iteration + 1)
                 break
 
-            logger.info("Turn %d: LLM called %d tool(s)", iteration + 1, len(tool_calls))
+            LOGGER.info("Turn %d: LLM called %d tool(s)", iteration + 1, len(tool_calls))
 
             # Create AIMessage with tool_calls (required for OpenAI message format)
             ai_message = _create_ai_message_with_tool_calls(
@@ -538,7 +539,7 @@ def sqlcl_orchestrate(tools):
 
             # Continue loop - LLM will see tool results and decide if it needs more tools
 
-        logger.info("SQLcl orchestration completed after %d turn(s)", iteration + 1)
+        LOGGER.info("SQLcl orchestration completed after %d turn(s)", iteration + 1)
         return {"messages": all_new_messages}
 
     return execute_tools
@@ -557,12 +558,12 @@ def multitool(tools):
 
     async def execute_multitool(state: OptimizerState, config: RunnableConfig):
         thread_id = config["configurable"]["thread_id"]
-        logger.info("Multitool orchestration starting (thread: %s)", thread_id)
+        LOGGER.info("Multitool orchestration starting (thread: %s)", thread_id)
 
         # Split tools by prefix
         sql_tools = [t for t in tools if t.name.startswith("sqlcl_")]
 
-        logger.debug("SQL tools: %s", [t.name for t in sql_tools])
+        LOGGER.debug("SQL tools: %s", [t.name for t in sql_tools])
 
         # Execute VS orchestration first (forced retrieval)
         # Note: vs_orchestrate uses internal tools (rephrase, grade, retriever)
@@ -593,12 +594,12 @@ def multitool(tools):
         # Return both VS and SQL messages when SQL was used
         # LLM may need both: documents for guidelines/context, SQL for current values
         if sql_messages:
-            logger.info("SQL tools were used, returning both VS and SQL messages")
+            LOGGER.info("SQL tools were used, returning both VS and SQL messages")
             return {
                 "messages": vs_messages + sql_messages,
                 "vs_metadata": vs_result.get("vs_metadata", {}),
             }
-        logger.info("No SQL tools used, returning only VS messages")
+        LOGGER.info("No SQL tools used, returning only VS messages")
         return {
             "messages": vs_messages,
             "vs_metadata": vs_result.get("vs_metadata", {}),
@@ -614,7 +615,7 @@ def route_tools(
     tools = config["metadata"].get("tools", [])
 
     if not tools:
-        logger.debug("No tools configured, routing to stream_completion")
+        LOGGER.debug("No tools configured, routing to stream_completion")
         return "stream_completion"
 
     tool_names = [tool["function"]["name"] for tool in tools]
@@ -624,17 +625,17 @@ def route_tools(
     }
 
     if tool_config["has_optimizer"] and not tool_config["has_sqlcl"]:
-        logger.debug("Routing to vs_orchestrate")
+        LOGGER.debug("Routing to vs_orchestrate")
         return "vs_orchestrate"
     if tool_config["has_sqlcl"] and not tool_config["has_optimizer"]:
-        logger.debug("Routing to sqlcl_orchestrate")
+        LOGGER.debug("Routing to sqlcl_orchestrate")
         return "sqlcl_orchestrate"
     if tool_config["has_optimizer"] and tool_config["has_sqlcl"]:
-        logger.debug("Routing to multitool")
+        LOGGER.debug("Routing to multitool")
         return "multitool"
 
     # Fallback: no recognized tools
-    logger.warning("No recognized tools detected, routing to stream_completion")
+    LOGGER.warning("No recognized tools detected, routing to stream_completion")
     return "stream_completion"
 
 
@@ -676,7 +677,7 @@ def main(tools: list):
 
     # Compile and return
     mcp_graph = workflow.compile(checkpointer=graph_memory)
-    logger.debug("Graph compiled with %d tools.", len(tools))
+    LOGGER.debug("Graph compiled with %d tools.", len(tools))
     return mcp_graph
 
 

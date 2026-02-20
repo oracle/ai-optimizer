@@ -7,19 +7,20 @@ Session States Set:
 """
 # spell-checker:ignore streamlit scriptrunner
 
+import logging
 import os
 from uuid import uuid4
 
 import streamlit as st
 from streamlit import session_state as state
 
+from _version import __version__
+
 from client.utils import api_call
 from common.schema import ClientIdType
-from common._version import __version__
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("launch_client")
+LOGGER = logging.getLogger("launch_client")
 
 # Import launch_server if it exists
 launch_server_exists = True
@@ -27,9 +28,9 @@ try:
     from launch_server import start_server, get_api_key
 
     _ = get_api_key()
-    logger.debug("Imported API Server.")
+    LOGGER.debug("Imported API Server.")
 except ImportError as ex:
-    logger.debug("API Server not present: %s", ex)
+    LOGGER.debug("API Server not present: %s", ex)
     os.environ.pop("API_SERVER_CONTROL", None)
     launch_server_exists = False
 
@@ -42,13 +43,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 def init_server_state() -> None:
     """initialize Streamlit State server"""
     if "server" not in state:
-        logger.info("Initializing state.server")
+        LOGGER.info("Initializing state.server")
         api_server_control: bool = os.getenv("API_SERVER_CONTROL") is not None
         state.server = {"url": os.getenv("API_SERVER_URL", "http://localhost")}
         state.server["port"] = int(os.getenv("API_SERVER_PORT", "8000"))
         state.server["key"] = os.getenv("API_SERVER_KEY")
         state.server["control"] = api_server_control
-        logger.debug("Server State: %s", state.server)
+        LOGGER.debug("Server State: %s", state.server)
 
 
 def init_configs_state(client: ClientIdType) -> None:
@@ -60,7 +61,7 @@ def init_configs_state(client: ClientIdType) -> None:
         backoff_factor=1.5,
     )
     for key, value in full_config.items():
-        logger.info("Initializing state.%s", key)
+        LOGGER.info("Initializing state.%s", key)
         state[key] = value
 
 
@@ -111,14 +112,14 @@ def main() -> None:
             _ = api_call.post(endpoint="v1/settings", params={"client": client_id})
             init_configs_state(client_id)
         except api_call.ApiError:
-            logger.error("Unable to contact API Server; setting as Down!")
+            LOGGER.error("Unable to contact API Server; setting as Down!")
             api_down = True
     if not api_down and "server_settings" not in state:
         try:
-            logger.info("Initializing state.server_settings")
+            LOGGER.info("Initializing state.server_settings")
             state.server_settings = api_call.get(endpoint="v1/settings", params={"client": "server"})
         except api_call.ApiError:
-            logger.error("Unable to contact API Server; setting as Down!")
+            LOGGER.error("Unable to contact API Server; setting as Down!")
             api_down = True
     if api_down and "client_settings" not in state:
         st.error(
@@ -165,7 +166,7 @@ if __name__ == "__main__":
     init_server_state()
     if launch_server_exists:
         try:
-            logger.debug("Server PID: %i", state.server["pid"])
+            LOGGER.debug("Server PID: %i", state.server["pid"])
         except KeyError:
             state.server["pid"] = start_server(logfile=True)
     main()

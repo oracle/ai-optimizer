@@ -3,15 +3,16 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
+import logging
 from typing import Optional, Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 import server.api.utils.models as utils_models
 
-from common import schema, logging_config
+from common import schema
 
-logger = logging_config.logging.getLogger("endpoints.v1.models")
+LOGGER = logging.getLogger("endpoints.v1.models")
 
 auth = APIRouter()
 
@@ -26,7 +27,7 @@ async def models_list(
     include_disabled: schema.ModelEnabledType = Query(False, description="Include disabled models"),
 ) -> list[schema.Model]:
     """List all models after applying filters if specified"""
-    logger.debug("Received models_list - type: %s; include_disabled: %s", model_type, include_disabled)
+    LOGGER.debug("Received models_list - type: %s; include_disabled: %s", model_type, include_disabled)
     models_ret = utils_models.get(model_type=model_type, include_disabled=include_disabled)
     print(models_ret)
 
@@ -43,7 +44,7 @@ async def models_supported(
     model_type: Optional[schema.ModelTypeType] = Query(None),
 ) -> list[dict[str, Any]]:
     """List all model Providers"""
-    logger.debug("Received models_supported")
+    LOGGER.debug("Received models_supported")
 
     return utils_models.get_supported(model_provider=model_provider, model_type=model_type)
 
@@ -58,7 +59,7 @@ async def models_get(
     model_id: schema.ModelIdType,
 ) -> schema.Model:
     """List a specific model"""
-    logger.debug("Received models_get - model: %s/%s", model_provider, model_id)
+    LOGGER.debug("Received models_get - model: %s/%s", model_provider, model_id)
 
     try:
         (models_ret,) = utils_models.get(model_provider=model_provider, model_id=model_id)
@@ -78,7 +79,7 @@ async def models_get(
 )
 async def models_update(payload: schema.Model) -> schema.Model:
     """Update a model"""
-    logger.debug("Received models_update - payload: %s", payload)
+    LOGGER.debug("Received models_update - payload: %s", payload)
     try:
         return utils_models.update(payload=payload)
     except utils_models.UnknownModelError as ex:
@@ -92,7 +93,7 @@ async def models_create(
     payload: schema.Model,
 ) -> schema.Model:
     """Create a model"""
-    logger.debug("Received model_create - payload: %s", payload)
+    LOGGER.debug("Received model_create - payload: %s", payload)
 
     try:
         return utils_models.create(payload)
@@ -109,6 +110,6 @@ async def models_delete(
     model_id: schema.ModelIdType,
 ) -> JSONResponse:
     """Delete a model"""
-    logger.debug("Received models_delete - model: %s/%s", model_provider, model_id)
+    LOGGER.debug("Received models_delete - model: %s/%s", model_provider, model_id)
     utils_models.delete(model_provider=model_provider, model_id=model_id)
     return JSONResponse(status_code=200, content={"message": f"Model: {model_provider}/{model_id} deleted."})

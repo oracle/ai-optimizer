@@ -5,6 +5,7 @@ This file is being used in APIs, and not the backend.py file.
 """
 # spell-checker:ignore noauth fastmcp healthz
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastmcp import FastMCP, Client
 import mcp
@@ -14,9 +15,8 @@ from server.mcp.prompts import cache
 import server.api.utils.mcp as utils_mcp
 import server.api.utils.settings as utils_settings
 
-from common import logging_config
 
-logger = logging_config.logging.getLogger("api.v1.mcp_prompts")
+LOGGER = logging.getLogger("api.v1.mcp_prompts")
 
 auth = APIRouter()
 
@@ -36,12 +36,12 @@ async def mcp_list_prompts(mcp_engine: FastMCP = Depends(get_mcp), full: bool = 
     if full:
         # Return prompts with resolved text (default + overrides)
         prompts = await utils_settings.get_mcp_prompts_with_overrides(mcp_engine)
-        logger.debug("MCP Prompts (full): %s", prompts)
+        LOGGER.debug("MCP Prompts (full): %s", prompts)
         return [prompt.model_dump() for prompt in prompts]
 
     # Return MCP standard format (metadata only)
     prompts = await utils_mcp.list_prompts(mcp_engine)
-    logger.debug("MCP Prompts (metadata): %s", prompts)
+    LOGGER.debug("MCP Prompts (metadata): %s", prompts)
 
     prompts_info = []
     for prompts_object in prompts:
@@ -62,7 +62,7 @@ async def mcp_get_prompt(name: str, mcp_engine: FastMCP = Depends(get_mcp)) -> m
         client = Client(mcp_engine)
         async with client:
             prompt = await client.get_prompt(name=name)
-            logger.debug("MCP Resources: %s", prompt)
+            LOGGER.debug("MCP Resources: %s", prompt)
     finally:
         await client.close()
 
@@ -80,7 +80,7 @@ async def mcp_update_prompt(
     mcp_engine: FastMCP = Depends(get_mcp),
 ) -> dict:
     """Update an existing MCP prompt text while preserving title and tags"""
-    logger.info("Updating MCP prompt: %s", name)
+    LOGGER.info("Updating MCP prompt: %s", name)
 
     instructions = payload.get("instructions")
     if instructions is None:
@@ -101,7 +101,7 @@ async def mcp_update_prompt(
         # This preserves the decorator metadata (title, tags) while updating the text
         cache.set_override(name, instructions)
 
-        logger.info("Successfully updated MCP prompt text: %s", name)
+        LOGGER.info("Successfully updated MCP prompt text: %s", name)
         return {
             "message": f"Prompt '{name}' text updated successfully",
             "name": name,
@@ -110,7 +110,7 @@ async def mcp_update_prompt(
     except HTTPException:
         raise
     except Exception as ex:
-        logger.error("Failed to update MCP prompt '%s': %s", name, ex)
+        LOGGER.error("Failed to update MCP prompt '%s': %s", name, ex)
         raise HTTPException(status_code=500, detail=f"Failed to update prompt: {str(ex)}") from ex
 
 
@@ -135,17 +135,17 @@ async def mcp_check_prompt_override(name: str) -> dict:
 )
 async def mcp_reset_prompts() -> dict:
     """Reset all MCP prompt overrides to their default values"""
-    logger.info("Resetting all MCP prompt overrides")
+    LOGGER.info("Resetting all MCP prompt overrides")
 
     try:
         # Clear all prompt overrides from cache
         cache.clear_all_overrides()
 
-        logger.info("Successfully reset all MCP prompt overrides")
+        LOGGER.info("Successfully reset all MCP prompt overrides")
         return {
             "message": "All prompts reset to default values successfully",
         }
 
     except Exception as ex:
-        logger.error("Failed to reset MCP prompts: %s", ex)
+        LOGGER.error("Failed to reset MCP prompts: %s", ex)
         raise HTTPException(status_code=500, detail=f"Failed to reset prompts: {str(ex)}") from ex

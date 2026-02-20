@@ -3,15 +3,16 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
+import logging
 from fastapi import APIRouter, HTTPException
 import oracledb
 
 import server.api.utils.databases as utils_databases
 
 from common import schema
-from common import logging_config
 
-logger = logging_config.logging.getLogger("endpoints.v1.databases")
+
+LOGGER = logging.getLogger("endpoints.v1.databases")
 
 # Validate the DEFAULT Databases
 try:
@@ -29,7 +30,7 @@ auth = APIRouter()
 )
 async def databases_list() -> list[schema.Database]:
     """List all databases"""
-    logger.debug("Received databases_list")
+    LOGGER.debug("Received databases_list")
     try:
         database_objects = utils_databases.get_databases(validate=False)
     except ValueError as ex:
@@ -39,7 +40,6 @@ async def databases_list() -> list[schema.Database]:
     return database_objects
 
 
-
 @auth.get(
     "/{name}",
     description="Get single database configuration and vector storage",
@@ -47,7 +47,7 @@ async def databases_list() -> list[schema.Database]:
 )
 async def databases_get(name: schema.DatabaseNameType) -> schema.Database:
     """Get single database"""
-    logger.debug("Received databases_get - name: %s", name)
+    LOGGER.debug("Received databases_get - name: %s", name)
     try:
         # Validate when looking at a single database
         db = utils_databases.get_databases(db_name=name, validate=True)
@@ -67,7 +67,7 @@ async def databases_update(
     payload: schema.DatabaseAuth,
 ) -> schema.Database:
     """Update Database"""
-    logger.debug("Received databases_update - name: %s; payload: %s", name, payload)
+    LOGGER.debug("Received databases_update - name: %s; payload: %s", name, payload)
 
     try:
         db = utils_databases.get_databases(db_name=name, validate=False)
@@ -79,7 +79,7 @@ async def databases_update(
         # Create a test config with payload values to test connection
         # Only update the actual db object after successful connection
         test_config = db.model_copy(update=payload.model_dump(exclude_unset=True))
-        logger.debug("Testing Database: %s", test_config)
+        LOGGER.debug("Testing Database: %s", test_config)
         db_conn = utils_databases.connect(test_config)
     except utils_databases.DbException as ex:
         raise HTTPException(status_code=ex.status_code, detail=ex.detail) from ex

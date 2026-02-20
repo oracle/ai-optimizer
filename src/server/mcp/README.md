@@ -609,7 +609,7 @@ All MCP tools and graph nodes follow consistent error handling patterns.
 
 #### Tool Error Handling
 
-- Catch exceptions and log full traceback via `logger.exception()`
+- Catch exceptions and log full traceback via `LOGGER.exception()`
 - Return error response models with user-friendly messages (no tracebacks)
 - Status field indicates success/error
 
@@ -621,7 +621,7 @@ Graph errors wrapped via `_create_error_message()` helper (`graph.py`):
 - Returns AIMessage with friendly wrapper + GitHub issues URL
 
 **Key Principles**:
-- ✅ Full exception details logged via `logger.exception()` (includes traceback)
+- ✅ Full exception details logged via `LOGGER.exception()` (includes traceback)
 - ✅ User receives friendly AIMessage (never raw tracebacks)
 - ✅ Actual error message preserved (not generic "an error occurred")
 - ✅ Issue URL provided for reporting

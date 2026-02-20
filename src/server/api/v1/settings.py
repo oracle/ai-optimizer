@@ -3,6 +3,7 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
+import logging
 import json
 from typing import Union
 
@@ -12,9 +13,9 @@ from fastapi.responses import JSONResponse
 import server.api.utils.settings as utils_settings
 
 from common import schema
-from common import logging_config
 
-logger = logging_config.logging.getLogger("endpoints.v1.settings")
+
+LOGGER = logging.getLogger("endpoints.v1.settings")
 
 auth = APIRouter()
 
@@ -71,7 +72,7 @@ async def settings_update(
     client: schema.ClientIdType,
 ) -> schema.Settings:
     """Update a single client settings"""
-    logger.debug("Received %s Client Payload: %s", client, payload)
+    LOGGER.debug("Received %s Client Payload: %s", client, payload)
 
     try:
         return utils_settings.update_client(payload, client)
@@ -88,7 +89,7 @@ async def settings_create(
     client: schema.ClientIdType,
 ) -> schema.Settings:
     """Create a new client, initialise client settings"""
-    logger.debug("Received %s Client create request.", client)
+    LOGGER.debug("Received %s Client create request.", client)
 
     try:
         new_client = utils_settings.create_client(client)
@@ -110,7 +111,7 @@ async def load_settings_from_file(
     If `client` param is provided, update that client only.
     Otherwise, update "default" and "server" clients.
     """
-    logger.debug("Received %s Client File: %s", client, file)
+    LOGGER.debug("Received %s Client File: %s", client, file)
     try:
         utils_settings.create_client(client)
     except ValueError:  # Client already exists
@@ -143,7 +144,7 @@ async def load_settings_from_json(
     If `client` param is provided, update that client only.
     Otherwise, update "default" and "server" clients.
     """
-    logger.debug("Received %s Client Payload: %s", client, payload)
+    LOGGER.debug("Received %s Client Payload: %s", client, payload)
     try:
         utils_settings.create_client(client)
     except ValueError:  # Client already exists
