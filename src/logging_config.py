@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Shared logging configuration for server and client packages.
 """
+# spell-checker:ignore scriptrunner
 
 import logging
 import os
