@@ -20,6 +20,7 @@ sbin/**
 !opentofu/**/cloudinit-oke.sh
 !opentofu/examples/manual-test.sh
 !src/entrypoint.sh
+!src/server/scripts/entrypoint.sh
 !src/client/spring_ai/templates/env.sh
 test*/db_startup_temp
 
