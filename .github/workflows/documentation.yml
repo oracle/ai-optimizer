@@ -36,7 +36,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HUGO_VERSION: 0.152.2
+      HUGO_VERSION: 0.156.0
     steps:
       - name: Install Hugo CLI
         run: |
@@ -47,7 +47,7 @@ jobs:
         run: sudo snap install dart-sass
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 0
@@ -100,7 +100,7 @@ jobs:
 
             # Clean up
             git worktree remove "$WORKDIR"
-          done          
+          done
 
       - name: Package Main Helm chart
         run: |
@@ -111,7 +111,7 @@ jobs:
         run: helm repo index docs/public/helm --url "${{ steps.pages.outputs.base_url }}/helm"
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./docs/public
 

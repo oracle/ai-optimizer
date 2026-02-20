@@ -9,7 +9,7 @@ Note: Shared fixtures (make_database, make_model, etc.) are automatically
 available via pytest_plugins in test/conftest.py. Only import constants
 and helper functions that are needed in this file.
 """
-
+# spell-checker:disable
 # pylint: disable=redefined-outer-name
 
 from unittest.mock import MagicMock, AsyncMock

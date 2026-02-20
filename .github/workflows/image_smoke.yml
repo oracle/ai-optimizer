@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Use official Docker Buildx action for better caching
       - name: Set up Docker Buildx
@@ -49,7 +49,7 @@ jobs:
 
       # Optimized caching with content-based keys
       - name: Cache Docker Layers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ matrix.build.name }}-${{ hashFiles('src/**', 'pyproject.toml') }}
@@ -64,7 +64,7 @@ jobs:
           context: .
           file: ${{ matrix.build.dockerfile }}
           tags: ${{ matrix.build.name }}:${{ github.sha }}
-          load: true  # Load all images for smoke testing
+          load: true # Load all images for smoke testing
           push: false
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
@@ -79,7 +79,7 @@ jobs:
       # Security scanning - only AIO (contains both server and client)
       - name: Run Trivy Security Scan
         if: matrix.build.name == 'aio'
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           scan-type: image
           image-ref: "aio:${{ github.sha }}"
