@@ -12,7 +12,9 @@ spring:
         version: 1.0.0
         type: SYNC
         request-timeout: 120
-        instructions: "Use this tool to answer any question that may benefit from up-to-date or domain-specific information."
+        instructions: >-
+          Use this tool to answer any question that may benefit
+          from up-to-date or domain-specific information.
         capabilities:
           tool: true
           resource: true
@@ -21,8 +23,8 @@ spring:
     vectorstore:
       oracle:
         distance-type: ${DISTANCE_TYPE}
-        remove-existing-vector-store-table: True
-        initialize-schema: True
+        remove-existing-vector-store-table: true
+        initialize-schema: true
         index-type: ${INDEX_TYPE}
     openai:
       base-url: {OPENAI_URL}
