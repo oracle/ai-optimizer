@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from server.app.database import init_core_database
 from server.app.database.config import close_pool
 from server.app.database.model import DatabaseConfig, DatabaseSensitive, DatabaseUpdate
+from server.app.database.settings import persist_settings
 from server.app.core.settings import settings
 
 auth = APIRouter(prefix='/databases')
@@ -41,6 +42,7 @@ async def create_database(body: DatabaseConfig):
         if cfg.alias.lower() == body.alias.lower():
             raise HTTPException(status_code=409, detail=f'Database config already exists: {body.alias}')
     settings.database_configs.append(body)
+    await persist_settings()
     return body.model_dump(exclude=SENSITIVE_FIELDS)
 
 
@@ -57,6 +59,7 @@ async def update_database(alias: str, body: DatabaseUpdate):
                 await close_pool(cfg.pool)
                 cfg.usable = False
                 await init_core_database(cfg)
+            await persist_settings()
             return cfg.model_dump(exclude=SENSITIVE_FIELDS)
     raise HTTPException(status_code=404, detail=f'Database config not found: {alias}')
 
@@ -70,5 +73,6 @@ async def delete_database(alias: str):
         if cfg.alias.lower() == alias.lower():
             await close_pool(cfg.pool)
             settings.database_configs.pop(i)
+            await persist_settings()
             return None
     raise HTTPException(status_code=404, detail=f'Database config not found: {alias}')

@@ -197,11 +197,12 @@ async def test_update_database_partial(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_update_core_database_reinitializes(app_client, auth_headers):
-    """PUT on CORE alias closes existing pool and re-initialises."""
+    """PUT on CORE alias closes existing pool, re-initialises, then persists."""
     settings.database_configs.append(DatabaseConfig(alias="CORE", username="coreuser"))
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
         patch("server.app.api.v1.endpoints.databases.init_core_database", new_callable=AsyncMock) as mock_init,
+        patch("server.app.api.v1.endpoints.databases.persist_settings", new_callable=AsyncMock) as mock_persist,
     ):
         resp = await app_client.put(
             "/v1/databases/CORE",
@@ -211,6 +212,7 @@ async def test_update_core_database_reinitializes(app_client, auth_headers):
         assert resp.status_code == 200
         mock_close.assert_called_once()
         mock_init.assert_called_once()
+        mock_persist.assert_called_once()
 
 
 # --- DELETE /databases/{alias} ---
