@@ -21,8 +21,8 @@ SENSITIVE_KEYS = set(OciSensitive.model_fields.keys())
 @pytest.fixture(autouse=True)
 def _populate_configs():
     """Inject test OciProfileConfig entries into settings."""
-    original = settings.oci_profile_configs
-    settings.oci_profile_configs = [
+    original = settings.oci_configs
+    settings.oci_configs = [
         OciProfileConfig(
             auth_profile="TEST",
             fingerprint="aa:bb:cc",
@@ -40,7 +40,7 @@ def _populate_configs():
         ),
     ]
     yield
-    settings.oci_profile_configs = original
+    settings.oci_configs = original
 
 
 @pytest.mark.unit
@@ -219,7 +219,7 @@ async def test_create_oci_profile_not_useable(app_client, auth_headers):
     assert resp.status_code == 422
     assert "connection refused" in resp.json()["detail"]
     # Profile still persisted
-    profiles = [c.auth_profile for c in settings.oci_profile_configs]
+    profiles = [c.auth_profile for c in settings.oci_configs]
     assert "BAD_PROFILE" in profiles
 
 
@@ -228,7 +228,7 @@ async def test_create_oci_profile_not_useable(app_client, auth_headers):
 async def test_update_previously_useable_now_fails(app_client, auth_headers):
     """PUT on useable profile that now fails returns 422 and reverts values."""
     # Mark the TEST profile as useable
-    for cfg in settings.oci_profile_configs:
+    for cfg in settings.oci_configs:
         if cfg.auth_profile == "TEST":
             cfg.useable = True
             break
@@ -241,7 +241,7 @@ async def test_update_previously_useable_now_fails(app_client, auth_headers):
     assert resp.status_code == 422
     assert "auth failed" in resp.json()["detail"]
     # Values reverted
-    for cfg in settings.oci_profile_configs:
+    for cfg in settings.oci_configs:
         if cfg.auth_profile == "TEST":
             assert cfg.tenancy == "ocid1.tenancy.oc1..test"
             assert cfg.useable is True
@@ -252,7 +252,7 @@ async def test_update_previously_useable_now_fails(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_update_previously_unuseable_still_fails(app_client, auth_headers):
     """PUT on unuseable profile that still fails returns 422 but keeps new values."""
-    for cfg in settings.oci_profile_configs:
+    for cfg in settings.oci_configs:
         if cfg.auth_profile == "TEST":
             cfg.useable = False
             break
@@ -265,7 +265,7 @@ async def test_update_previously_unuseable_still_fails(app_client, auth_headers)
     assert resp.status_code == 422
     assert "still broken" in resp.json()["detail"]
     # Values kept (not reverted)
-    for cfg in settings.oci_profile_configs:
+    for cfg in settings.oci_configs:
         if cfg.auth_profile == "TEST":
             assert cfg.tenancy == "ocid1.tenancy.oc1..new_attempt"
             assert cfg.useable is False
@@ -276,7 +276,7 @@ async def test_update_previously_unuseable_still_fails(app_client, auth_headers)
 @pytest.mark.anyio
 async def test_update_previously_unuseable_now_useable(app_client, auth_headers):
     """PUT on unuseable profile that now succeeds returns 200."""
-    for cfg in settings.oci_profile_configs:
+    for cfg in settings.oci_configs:
         if cfg.auth_profile == "TEST":
             cfg.useable = False
             break

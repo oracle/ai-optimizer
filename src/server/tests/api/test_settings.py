@@ -19,7 +19,7 @@ from server.app.core.settings import settings
 def _populate_configs():
     """Ensure settings has at least one DB, OCI, and Model config for sensitive-field tests."""
     original_db = settings.database_configs
-    original_oci = settings.oci_profile_configs
+    original_oci = settings.oci_configs
     original_model = settings.model_configs
     settings.database_configs = [
         DatabaseConfig(
@@ -29,7 +29,7 @@ def _populate_configs():
             wallet_password="wallet_secret",
         ),
     ]
-    settings.oci_profile_configs = [
+    settings.oci_configs = [
         OciProfileConfig(
             auth_profile="TEST",
             fingerprint="aa:bb:cc",
@@ -50,7 +50,7 @@ def _populate_configs():
     ]
     yield
     settings.database_configs = original_db
-    settings.oci_profile_configs = original_oci
+    settings.oci_configs = original_oci
     settings.model_configs = original_model
 
 
@@ -87,7 +87,7 @@ async def test_get_settings_excludes_sensitive(app_client, auth_headers):
         assert "id" in model_entry
 
     # OCI sensitive fields must be excluded
-    for oci_entry in body.get("oci_profile_configs", []):
+    for oci_entry in body.get("oci_configs", []):
         assert "fingerprint" not in oci_entry
         assert "key_content" not in oci_entry
         assert "key_file" not in oci_entry
@@ -118,7 +118,7 @@ async def test_get_settings_includes_sensitive(app_client, auth_headers):
         assert "api_key" in model_entry
 
     # OCI sensitive fields should be present
-    for oci_entry in body.get("oci_profile_configs", []):
+    for oci_entry in body.get("oci_configs", []):
         assert "fingerprint" in oci_entry
 
 
@@ -127,4 +127,4 @@ def test_sensitive_fields_derived_from_models():
     """SENSITIVE_FIELDS entries must exactly match the Pydantic model fields."""
     assert SENSITIVE_FIELDS["database_configs"]["__all__"] == set(DatabaseSensitive.model_fields.keys())
     assert SENSITIVE_FIELDS["model_configs"]["__all__"] == set(ModelSensitive.model_fields.keys())
-    assert SENSITIVE_FIELDS["oci_profile_configs"]["__all__"] == set(OciSensitive.model_fields.keys())
+    assert SENSITIVE_FIELDS["oci_configs"]["__all__"] == set(OciSensitive.model_fields.keys())

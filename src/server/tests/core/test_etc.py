@@ -36,7 +36,7 @@ def _restore_settings():
         "client_disable_testbed": settings.client_disable_testbed,
         "database_configs": list(settings.database_configs),
         "model_configs": list(settings.model_configs),
-        "oci_profile_configs": list(settings.oci_profile_configs),
+        "oci_configs": list(settings.oci_configs),
         "_api_key_generated": getattr(settings, "_api_key_generated", False),
     }
     yield
@@ -211,9 +211,9 @@ def test_merge_model_configs_by_id():
 
 def test_merge_oci_profiles_by_auth_profile():
     """OCI profiles are merged by auth_profile."""
-    settings.oci_profile_configs = [OciProfileConfig(auth_profile="DEFAULT")]
+    settings.oci_configs = [OciProfileConfig(auth_profile="DEFAULT")]
     source = SettingsBase.model_validate({
-        "oci_profile_configs": [
+        "oci_configs": [
             {"auth_profile": "DEFAULT", "region": "file_region"},
             {"auth_profile": "PROD", "region": "us-phoenix-1"},
         ]
@@ -221,9 +221,9 @@ def test_merge_oci_profiles_by_auth_profile():
 
     apply_overlay(source, protected=set())
 
-    profiles = [p.auth_profile for p in settings.oci_profile_configs]
+    profiles = [p.auth_profile for p in settings.oci_configs]
     assert profiles == ["DEFAULT", "PROD"]
-    assert settings.oci_profile_configs[0].region is None
+    assert settings.oci_configs[0].region is None
 
 
 # ---------------------------------------------------------------------------
@@ -235,21 +235,21 @@ def test_apply_overlay_exclude_fields():
     """Excluded fields are skipped entirely."""
     settings.log_level = "INFO"
     settings.model_configs = []
-    settings.oci_profile_configs = []
-    excl = {"model_configs", "oci_profile_configs"}
+    settings.oci_configs = []
+    excl = {"model_configs", "oci_configs"}
     source = SettingsBase.model_validate({
         "log_level": "DEBUG",
         "model_configs": [{"id": "m1", "type": "ll", "provider": "openai"}],
-        "oci_profile_configs": [{"auth_profile": "TEST"}],
+        "oci_configs": [{"auth_profile": "TEST"}],
     })
 
     result = apply_overlay(source, protected=set(), exclude_fields=excl)
 
     assert settings.log_level == "DEBUG"           # not excluded, applied
     assert settings.model_configs == []            # excluded, untouched
-    assert settings.oci_profile_configs == []      # excluded, untouched
+    assert settings.oci_configs == []      # excluded, untouched
     assert "model_configs" in result               # still added to protected set
-    assert "oci_profile_configs" in result
+    assert "oci_configs" in result
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +266,7 @@ def test_full_overlay_chain_precedence():
     settings.log_level = "INFO"
     settings.database_configs = [DatabaseConfig(alias="CORE", dsn="env_dsn")]
     env_protected = {"log_level"}
-    excl = {"model_configs", "oci_profile_configs"}
+    excl = {"model_configs", "oci_configs"}
 
     # Config file provides log_level (should be skipped) and server_port + new DB
     config_source = SettingsBase.model_validate({
