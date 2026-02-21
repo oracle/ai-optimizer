@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Pydantic models and dataclasses for database configuration.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 from pydantic import BaseModel, Field
 
 import oracledb
@@ -30,7 +30,7 @@ class DatabaseConfig(DatabaseSensitive):
     config_dir: Optional[str] = None
     tcp_connect_timeout: int = 10
     usable: bool = False
-    pool: Optional[oracledb.AsyncConnectionPool] = Field(default=None, exclude=True)
+    pool: Annotated[Optional[oracledb.AsyncConnectionPool], Field(exclude=True)] = None
 
 
 class DatabaseUpdate(DatabaseSensitive):

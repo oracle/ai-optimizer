@@ -33,24 +33,22 @@ SELECT settings FROM aio_settings WHERE client = :client AND is_current = 1
 
 async def persist_settings() -> None:
     """Serialize current settings and upsert into aio_settings."""
-    core_cfg = get_database_settings(settings.database_configs, 'CORE')
+    core_cfg = get_database_settings(settings.database_configs, "CORE")
     if not core_cfg.pool or not core_cfg.usable:
-        LOGGER.warning('persist_settings: CORE database not available — skipping')
+        LOGGER.warning("persist_settings: CORE database not available — skipping")
         return
 
     payload = json.dumps(
-        SettingsBase.model_validate(settings).model_dump(
-            mode='json', exclude={'oci_profile_configs'}
-        )
+        SettingsBase.model_validate(settings).model_dump(mode="json", exclude={"oci_profile_configs"})
     )
 
     try:
         async with core_cfg.pool.acquire() as conn:
-            await execute_sql(conn, _UPSERT_SQL, {'client': 'DEFAULT', 'settings': payload})
+            await execute_sql(conn, _UPSERT_SQL, {"client": "DEFAULT", "settings": payload})
             await conn.commit()
-        LOGGER.info('Settings persisted to aio_settings')
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.warning('persist_settings: Failed to persist to database: %s', exc)
+        LOGGER.info("Settings persisted to aio_settings")
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        LOGGER.warning("persist_settings: Failed to persist to database: %s", exc)
 
 
 async def load_settings() -> Optional[SettingsBase]:
@@ -59,23 +57,23 @@ async def load_settings() -> Optional[SettingsBase]:
     Returns a SettingsBase instance, or None if the CORE database is not
     available, no matching row exists, or any error occurs.
     """
-    core_cfg = get_database_settings(settings.database_configs, 'CORE')
+    core_cfg = get_database_settings(settings.database_configs, "CORE")
     if not core_cfg.pool or not core_cfg.usable:
-        LOGGER.info('load_settings: CORE database not available — skipping')
+        LOGGER.info("load_settings: CORE database not available — skipping")
         return None
 
     try:
         async with core_cfg.pool.acquire() as conn:
-            rows = await execute_sql(conn, _SELECT_SQL, {'client': 'DEFAULT'})
+            rows = await execute_sql(conn, _SELECT_SQL, {"client": "DEFAULT"})
 
         if not rows:
-            LOGGER.info('load_settings: No persisted settings found')
+            LOGGER.info("load_settings: No persisted settings found")
             return None
 
         raw = rows[0][0]
         data = json.loads(raw) if isinstance(raw, str) else raw
         return SettingsBase.model_validate(data)
 
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.warning('load_settings: Failed to load from database: %s', exc)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        LOGGER.warning("load_settings: Failed to load from database: %s", exc)
         return None
