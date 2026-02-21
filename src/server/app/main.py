@@ -14,7 +14,7 @@ from _version import __version__
 from server.app.core.etc import apply_overlay, load_config_file
 from server.app.core.settings import settings
 from server.app.api.v1.router import router as v1_router
-from server.app.database import init_core_database
+from server.app.database.registry import init_core_database
 from server.app.database.config import get_database_settings, close_pool
 from server.app.database.settings import load_settings, persist_settings
 from server.app.models.registry import apply_env_overrides, load_default_models

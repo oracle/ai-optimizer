@@ -11,7 +11,8 @@ import json
 import pytest
 
 from server.app.core.settings import SettingsBase, settings
-from server.app.database import init_core_database, close_pool
+from server.app.database.config import close_pool
+from server.app.database.registry import init_core_database
 from server.app.database.schemas import DatabaseConfig
 from server.app.database.settings import load_settings, persist_settings
 from server.app.database.sql import execute_sql
