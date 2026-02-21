@@ -22,6 +22,7 @@ _LIST_FIELD_KEYS: dict[str, str] = {
     "database_configs": "alias",
     "model_configs": "id",
     "oci_configs": "auth_profile",
+    "prompt_configs": "name",
 }
 
 
