@@ -51,24 +51,27 @@ async def create_oci_profile(body: OciProfileConfig):
 @auth.put("/{auth_profile}", response_model=OciProfileConfig, response_model_exclude_unset=True)
 async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
     """Update an existing OCI profile configuration by auth_profile (case-insensitive)."""
-    for cfg in settings.oci_profile_configs:
-        if cfg.auth_profile.lower() == auth_profile.lower():
-            was_useable = cfg.useable
-            updates = body.model_dump(exclude_unset=True)
-            originals = {field: getattr(cfg, field) for field in updates}
-            for field, value in updates.items():
+    cfg = next(
+        (c for c in settings.oci_profile_configs if c.auth_profile.lower() == auth_profile.lower()),
+        None,
+    )
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=f"OCI profile config not found: {auth_profile}")
+    was_useable = cfg.useable
+    updates = body.model_dump(exclude_unset=True)
+    originals = {field: getattr(cfg, field) for field in updates}
+    for field, value in updates.items():
+        setattr(cfg, field, value)
+    error = _check_useable(cfg)
+    if error:
+        if was_useable:
+            for field, value in originals.items():
                 setattr(cfg, field, value)
-            error = _check_useable(cfg)
-            if error:
-                if was_useable:
-                    for field, value in originals.items():
-                        setattr(cfg, field, value)
-                    cfg.useable = True
-                await persist_settings()
-                raise HTTPException(status_code=422, detail=f"OCI profile not useable: {error}")
-            await persist_settings()
-            return cfg.model_dump(exclude=SENSITIVE_FIELDS)
-    raise HTTPException(status_code=404, detail=f"OCI profile config not found: {auth_profile}")
+            cfg.useable = True
+        await persist_settings()
+        raise HTTPException(status_code=422, detail=f"OCI profile not useable: {error}")
+    await persist_settings()
+    return cfg.model_dump(exclude=SENSITIVE_FIELDS)
 
 
 @auth.delete("/{auth_profile}", status_code=204)
