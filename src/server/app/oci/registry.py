@@ -16,10 +16,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 def register_oci_profile(profile: OciProfileConfig) -> None:
-    """Append *profile* to settings.oci_profile_configs (deduplicate by auth_profile, last-write wins)."""
+    """Append *profile* to settings.oci_configs (deduplicate by auth_profile, last-write wins)."""
     key = profile.auth_profile.casefold()
-    settings.oci_profile_configs = [
-        p for p in settings.oci_profile_configs if p.auth_profile.casefold() != key
+    settings.oci_configs = [
+        p for p in settings.oci_configs if p.auth_profile.casefold() != key
     ] + [profile]
 
 

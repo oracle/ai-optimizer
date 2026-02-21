@@ -36,7 +36,7 @@ async def lifespan(_app: FastAPI):
         LOGGER.warning("AIO_API_KEY not set — using generated key: %s", settings.api_key)
 
     # --- Source 2: configuration.json overlay ---
-    _excl = {"model_configs", "oci_profile_configs"}
+    _excl = {"model_configs", "oci_configs"}
     config_source = load_config_file()
     if config_source is not None:
         protected = apply_overlay(config_source, protected, exclude_fields=_excl)

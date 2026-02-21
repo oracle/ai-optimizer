@@ -21,13 +21,13 @@ SENSITIVE_FIELDS = set(OciSensitive.model_fields.keys())
 async def list_oci_profiles(include_sensitive: bool = Query(default=False)):
     """Return all OCI profile configurations."""
     exclude = None if include_sensitive else SENSITIVE_FIELDS
-    return [cfg.model_dump(exclude=exclude) for cfg in settings.oci_profile_configs]
+    return [cfg.model_dump(exclude=exclude) for cfg in settings.oci_configs]
 
 
 @auth.get("/{auth_profile}", response_model=OciProfileConfig, response_model_exclude_unset=True)
 async def get_oci_profile(auth_profile: str, include_sensitive: bool = Query(default=False)):
     """Return a single OCI profile configuration by auth_profile (case-insensitive)."""
-    for cfg in settings.oci_profile_configs:
+    for cfg in settings.oci_configs:
         if cfg.auth_profile.lower() == auth_profile.lower():
             exclude = None if include_sensitive else SENSITIVE_FIELDS
             return cfg.model_dump(exclude=exclude)
@@ -37,10 +37,10 @@ async def get_oci_profile(auth_profile: str, include_sensitive: bool = Query(def
 @auth.post("", response_model=OciProfileConfig, status_code=201, response_model_exclude_unset=True)
 async def create_oci_profile(body: OciProfileConfig):
     """Add a new OCI profile configuration."""
-    for cfg in settings.oci_profile_configs:
+    for cfg in settings.oci_configs:
         if cfg.auth_profile.lower() == body.auth_profile.lower():
             raise HTTPException(status_code=409, detail=f"OCI profile config already exists: {body.auth_profile}")
-    settings.oci_profile_configs.append(body)
+    settings.oci_configs.append(body)
     error = _check_useable(body)
     await persist_settings()
     if error:
@@ -52,7 +52,7 @@ async def create_oci_profile(body: OciProfileConfig):
 async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
     """Update an existing OCI profile configuration by auth_profile (case-insensitive)."""
     cfg = next(
-        (c for c in settings.oci_profile_configs if c.auth_profile.lower() == auth_profile.lower()),
+        (c for c in settings.oci_configs if c.auth_profile.lower() == auth_profile.lower()),
         None,
     )
     if cfg is None:
@@ -77,9 +77,9 @@ async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
 @auth.delete("/{auth_profile}", status_code=204)
 async def delete_oci_profile(auth_profile: str):
     """Remove an OCI profile configuration by auth_profile (case-insensitive)."""
-    for i, cfg in enumerate(settings.oci_profile_configs):
+    for i, cfg in enumerate(settings.oci_configs):
         if cfg.auth_profile.lower() == auth_profile.lower():
-            settings.oci_profile_configs.pop(i)
+            settings.oci_configs.pop(i)
             await persist_settings()
             return None
     raise HTTPException(status_code=404, detail=f"OCI profile config not found: {auth_profile}")

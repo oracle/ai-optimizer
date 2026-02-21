@@ -39,7 +39,7 @@ async def persist_settings() -> None:
         return
 
     payload = json.dumps(
-        SettingsBase.model_validate(settings).model_dump(mode="json", exclude={"oci_profile_configs"})
+        SettingsBase.model_validate(settings).model_dump(mode="json", exclude={"oci_configs"})
     )
 
     try:

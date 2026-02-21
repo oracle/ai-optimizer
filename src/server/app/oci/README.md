@@ -54,16 +54,16 @@ These fields are excluded from API responses by default:
 The lifespan handler in `main.py` executes these steps in order:
 
 1. `.env` / environment variables loaded (at import time).
-2. `configuration.json` overlay applied &mdash; `oci_profile_configs` **excluded**.
+2. `configuration.json` overlay applied &mdash; `oci_configs` **excluded**.
 3. CORE database initialized.
-4. DB settings overlay applied &mdash; `oci_profile_configs` **excluded**.
+4. DB settings overlay applied &mdash; `oci_configs` **excluded**.
 5. `load_oci_profiles()` called:
    - `parse_oci_config_file()` reads `~/.oci/config` (or the path in
      `OCI_CLI_CONFIG_FILE` env var).
    - Uses `configparser` to enumerate all sections (including `DEFAULT`),
      then `oci.config.from_file()` per profile for proper key inheritance.
    - Each profile is tested via `_check_useable()`.
-   - Each profile is registered into `settings.oci_profile_configs` via
+   - Each profile is registered into `settings.oci_configs` via
      `register_oci_profile()` (deduplicates by `auth_profile`, last-write wins).
 
 ## Connectivity Check (`_check_useable`)
@@ -106,7 +106,7 @@ All routes are under `/v1/oci-profiles`.
 
 OCI profiles are **not** persisted to the database.
 
-- `persist_settings()` explicitly excludes `oci_profile_configs`.
+- `persist_settings()` explicitly excludes `oci_configs`.
 - Profiles are loaded fresh from the OCI config file at each server startup.
 - API CRUD operations (POST/PUT/DELETE) modify the in-memory list only.
 - Changes survive for the duration of the server process but are lost on restart.

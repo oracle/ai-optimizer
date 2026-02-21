@@ -19,7 +19,7 @@ SENSITIVE_FIELDS = {
     "api_key": True,
     "database_configs": {"__all__": set(DatabaseSensitive.model_fields.keys())},
     "model_configs": {"__all__": set(ModelSensitive.model_fields.keys())},
-    "oci_profile_configs": {"__all__": set(OciSensitive.model_fields.keys())},
+    "oci_configs": {"__all__": set(OciSensitive.model_fields.keys())},
 }
 
 

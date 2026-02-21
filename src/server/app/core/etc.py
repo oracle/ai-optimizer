@@ -21,7 +21,7 @@ _CONFIG_FILE = PROJECT_ROOT / "server" / "etc" / "configuration.json"
 _LIST_FIELD_KEYS: dict[str, str] = {
     "database_configs": "alias",
     "model_configs": "id",
-    "oci_profile_configs": "auth_profile",
+    "oci_configs": "auth_profile",
 }
 
 
@@ -53,7 +53,7 @@ def apply_overlay(
     """Overlay *source* fields onto the global ``settings`` singleton.
 
     Scalar fields are only applied when the field name is NOT in *protected*.
-    List fields (database_configs, model_configs, oci_profile_configs) are
+    List fields (database_configs, model_configs, oci_configs) are
     always merged by identity key; existing items win entirely.
     Fields in *exclude_fields* are skipped entirely.
 

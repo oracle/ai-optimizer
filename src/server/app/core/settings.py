@@ -26,7 +26,7 @@ class SettingsBase(BaseModel):
     server_port: int = 8000
     log_level: str = "INFO"
     database_configs: list[DatabaseConfig] = []
-    oci_profile_configs: list[OciProfileConfig] = []
+    oci_configs: list[OciProfileConfig] = []
     model_configs: list[ModelConfig] = []
     client_disable_testbed: bool = False
     client_disable_api: bool = False
