@@ -21,7 +21,7 @@ from server.app.database.registry import init_core_database
 from server.app.database.config import get_database_settings, close_pool
 from server.app.database.settings import load_settings, persist_settings
 from server.app.core.mcp import mcp, MCPApiKeyMiddleware
-from server.app.prompts.registry import apply_prompt_defaults, register_mcp_prompts
+from server.app.mcp.prompts.registry import apply_prompt_defaults, register_mcp_prompts
 from server.app.models.registry import apply_env_overrides, load_default_models
 from server.app.oci.registry import load_oci_profiles
 

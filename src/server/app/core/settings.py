@@ -14,7 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from server.app.core.paths import PROJECT_ROOT
 from server.app.database.schemas import DatabaseConfig
-from server.app.prompts.schemas import PromptConfig
+from server.app.mcp.prompts.schemas import PromptConfig
 from server.app.oci.schemas import OciProfileConfig
 from server.app.models.schemas import ModelConfig
 

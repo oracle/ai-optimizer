@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.app.prompts.schemas import PromptConfig
+from server.app.mcp.prompts.schemas import PromptConfig
 from server.app.core.settings import settings
 
 

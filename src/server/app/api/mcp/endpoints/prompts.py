@@ -10,8 +10,8 @@ from fastapi import APIRouter, HTTPException
 from server.app.api.mcp.schemas.prompts import PromptResponse, PromptUpdate
 from server.app.core.settings import settings
 from server.app.database.settings import persist_settings
-from server.app.prompts.registry import register_mcp_prompt
-from server.app.prompts.schemas import PromptConfig
+from server.app.mcp.prompts.registry import register_mcp_prompt
+from server.app.mcp.prompts.schemas import PromptConfig
 
 auth = APIRouter(prefix='/prompts')
 

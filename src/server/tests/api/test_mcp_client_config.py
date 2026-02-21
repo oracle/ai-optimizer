@@ -29,7 +29,7 @@ async def test_client_config_default(app_client, auth_headers):
     server = body["mcpServers"]["oracle-ai-optimizer"]
     expected_url = f"http://test{settings.server_url_prefix}/mcp/"
     assert server["url"] == expected_url
-    assert server["type"] == "streamable-http"
+    assert server["type"] == "streamableHttp"
     assert server["transport"] == "streamable-http"
     assert server["headers"]["X-API-Key"] == settings.api_key
 
