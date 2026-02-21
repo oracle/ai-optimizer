@@ -27,9 +27,9 @@ def get_mcp(request: Request) -> FastMCP:
     description="Get MCP Client Configuration",
     response_model=dict,
 )
-async def get_client(server: str = None, port: int = None) -> dict:
+async def get_client(server: str = "http://127.0.0.1", port: int = 8000, client: str = None) -> dict:
     "Get MCP Client Configuration"
-    return utils_mcp.get_client(server, port)
+    return utils_mcp.get_client(server, port, client)
 
 
 @auth.get(
@@ -40,16 +40,11 @@ async def get_client(server: str = None, port: int = None) -> dict:
 async def get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
     """List MCP tools"""
     tools_info = []
-    try:
-        client = Client(mcp_engine)
-        async with client:
-            tools = await client.list_tools()
-            LOGGER.debug("MCP Tools: %s", tools)
-            for tool_object in tools:
-                tools_info.append(tool_object.model_dump())
-    finally:
-        await client.close()
-
+    async with Client(mcp_engine) as client:
+        tools = await client.list_tools()
+        LOGGER.debug("MCP Tools: %s", tools)
+        for tool_object in tools:
+            tools_info.append(tool_object.model_dump())
     return tools_info
 
 
@@ -61,14 +56,9 @@ async def get_tools(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
 async def mcp_list_resources(mcp_engine: FastMCP = Depends(get_mcp)) -> list[dict]:
     """List MCP Resources"""
     resources_info = []
-    try:
-        client = Client(mcp_engine)
-        async with client:
-            resources = await client.list_resources()
-            LOGGER.debug("MCP Resources: %s", resources)
-            for resources_object in resources:
-                resources_info.append(resources_object.model_dump())
-    finally:
-        await client.close()
-
+    async with Client(mcp_engine) as client:
+        resources = await client.list_resources()
+        LOGGER.debug("MCP Resources: %s", resources)
+        for resources_object in resources:
+            resources_info.append(resources_object.model_dump())
     return resources_info

@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Endpoint returning MCP client configuration.
 """
+# spell-checker:ignore streamable
 
 from fastapi import APIRouter, Request
 

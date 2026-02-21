@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Tests for MCP client-config endpoint.
 """
+# spell-checker:disable
 
 import pytest
 

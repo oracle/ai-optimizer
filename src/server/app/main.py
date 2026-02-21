@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 FastAPI application entrypoint.
 """
+# spell-checker:ignore fastmcp
 
 import logging
 from contextlib import asynccontextmanager

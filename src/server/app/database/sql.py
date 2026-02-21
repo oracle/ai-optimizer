@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Shared async SQL execution utility for Oracle database operations.
 """
+# spell-checker:ignore setinputsizes
 
 import logging
 from typing import Optional
