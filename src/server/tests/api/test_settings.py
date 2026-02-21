@@ -33,7 +33,7 @@ def _populate_configs():
         OciProfileConfig(
             auth_profile="TEST",
             fingerprint="aa:bb:cc",
-            key="private-key-data",
+            key_content="private-key-data",
             key_file="/path/to/key",
             pass_phrase="passphrase",
             security_token_file="/path/to/token",
@@ -89,7 +89,7 @@ async def test_get_settings_excludes_sensitive(app_client, auth_headers):
     # OCI sensitive fields must be excluded
     for oci_entry in body.get("oci_profile_configs", []):
         assert "fingerprint" not in oci_entry
-        assert "key" not in oci_entry
+        assert "key_content" not in oci_entry
         assert "key_file" not in oci_entry
         assert "pass_phrase" not in oci_entry
         assert "security_token_file" not in oci_entry

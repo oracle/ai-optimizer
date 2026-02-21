@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Pydantic models and dataclasses for OCI profile configuration.
 """
+# spell-checker: ignore genai
 
 from typing import Optional
 from pydantic import BaseModel
@@ -13,10 +14,10 @@ class OciSensitive(BaseModel):
     """Sensitive OCI profile fields excluded from default API responses."""
 
     fingerprint: Optional[str] = None
-    key: Optional[str] = None
-    security_token_file: Optional[str] = None
+    key_content: Optional[str] = None
     key_file: Optional[str] = None
     pass_phrase: Optional[str] = None
+    security_token_file: Optional[str] = None
 
 
 class OciProfileConfig(OciSensitive):
@@ -31,7 +32,7 @@ class OciProfileConfig(OciSensitive):
     genai_region: Optional[str] = None
     log_requests: Optional[bool] = False
     additional_user_agent: Optional[str] = ""
-
+    useable: Optional[bool] = False
 
 class OciProfileUpdate(OciSensitive):
     """Fields allowed in an OCI profile update (all optional)."""

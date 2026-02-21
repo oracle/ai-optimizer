@@ -43,9 +43,9 @@ class ModelConfig(LanguageModelParameters, EmbeddingModelParameters, ModelSensit
     owned_by: Literal["aioptimizer"] = "aioptimizer"
     type: Literal["ll", "embed", "rerank"] = Field(...)
     provider: str = Field(..., min_length=1, examples=["openai", "anthropic", "ollama"])
-    enabled: Optional[bool] = False
     api_base: Optional[str] = None
-
+    enabled: Optional[bool] = False
+    usable: bool = False
 
 class ModelUpdate(ModelSensitive):
     """Fields allowed in a model config update (all optional)."""

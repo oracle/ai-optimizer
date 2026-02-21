@@ -8,6 +8,7 @@ Endpoints for retrieving OCI profile configurations.
 from fastapi import APIRouter, HTTPException, Query
 
 from server.app.oci.schemas import OciProfileConfig, OciProfileUpdate, OciSensitive
+from server.app.oci.config import _check_useable
 from server.app.database.settings import persist_settings
 from server.app.core.settings import settings
 
@@ -40,7 +41,10 @@ async def create_oci_profile(body: OciProfileConfig):
         if cfg.auth_profile.lower() == body.auth_profile.lower():
             raise HTTPException(status_code=409, detail=f"OCI profile config already exists: {body.auth_profile}")
     settings.oci_profile_configs.append(body)
+    error = _check_useable(body)
     await persist_settings()
+    if error:
+        raise HTTPException(status_code=422, detail=f"OCI profile not useable: {error}")
     return body.model_dump(exclude=SENSITIVE_FIELDS)
 
 
@@ -49,9 +53,19 @@ async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
     """Update an existing OCI profile configuration by auth_profile (case-insensitive)."""
     for cfg in settings.oci_profile_configs:
         if cfg.auth_profile.lower() == auth_profile.lower():
+            was_useable = cfg.useable
             updates = body.model_dump(exclude_unset=True)
+            originals = {field: getattr(cfg, field) for field in updates}
             for field, value in updates.items():
                 setattr(cfg, field, value)
+            error = _check_useable(cfg)
+            if error:
+                if was_useable:
+                    for field, value in originals.items():
+                        setattr(cfg, field, value)
+                    cfg.useable = True
+                await persist_settings()
+                raise HTTPException(status_code=422, detail=f"OCI profile not useable: {error}")
             await persist_settings()
             return cfg.model_dump(exclude=SENSITIVE_FIELDS)
     raise HTTPException(status_code=404, detail=f"OCI profile config not found: {auth_profile}")

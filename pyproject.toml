@@ -29,7 +29,7 @@ server = [
     "evaluate==0.4.6",
     "faiss-cpu==1.13.2",
     "fastapi==0.129.0",
-    "fastmcp==2.14.5",
+    "fastmcp==3.0.0",
     "giskard==2.19.1",
     #"langchain-aimlapi==0.1.0",
     "langchain-cohere==0.5.0",

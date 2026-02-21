@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Integration tests for persist_settings() against a real Oracle container.
+Integration tests for persist_settings() and load_settings() against a real Oracle container.
 """
 # pylint: disable=redefined-outer-name
 
@@ -13,7 +13,7 @@ import pytest
 from server.app.core.settings import SettingsBase, settings
 from server.app.database import init_core_database, close_pool
 from server.app.database.schemas import DatabaseConfig
-from server.app.database.settings import persist_settings
+from server.app.database.settings import load_settings, persist_settings
 from server.app.database.sql import execute_sql
 from server.tests.conftest import TEST_DB_CONFIG
 
@@ -139,3 +139,43 @@ async def test_persist_settings_round_trip_json(core_pool):
     assert restored.server_port == settings.server_port
     assert restored.log_level == settings.log_level
     assert restored.api_key == settings.api_key
+
+
+# ---------------------------------------------------------------------------
+# load_settings tests
+# ---------------------------------------------------------------------------
+
+
+async def test_load_settings_returns_settings_base(core_pool):
+    """load_settings() returns a SettingsBase after persist_settings()."""
+    del core_pool
+    await persist_settings()
+
+    result = await load_settings()
+
+    assert isinstance(result, SettingsBase)
+    assert result.env == settings.env
+    assert result.log_level == settings.log_level
+    assert result.api_key == settings.api_key
+
+
+async def test_load_settings_empty_table(core_pool):
+    """load_settings() returns None when no rows exist."""
+    del core_pool
+    result = await load_settings()
+    assert result is None
+
+
+async def test_load_settings_no_pool_returns_none(core_pool):
+    """load_settings() returns None when CORE pool is unavailable."""
+    saved_pool = core_pool.pool
+    saved_usable = core_pool.usable
+    core_pool.pool = None
+    core_pool.usable = False
+
+    try:
+        result = await load_settings()
+        assert result is None
+    finally:
+        core_pool.pool = saved_pool
+        core_pool.usable = saved_usable

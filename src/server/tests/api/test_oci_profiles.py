@@ -6,10 +6,14 @@ Tests for OCI profiles endpoint.
 """
 # pylint: disable=duplicate-code
 
+from unittest.mock import patch
+
 import pytest
 
 from server.app.oci.schemas import OciProfileConfig, OciSensitive
 from server.app.core.settings import settings
+
+MOCK_CHECK = "server.app.api.v1.endpoints.oci_profiles._check_useable"
 
 SENSITIVE_KEYS = set(OciSensitive.model_fields.keys())
 
@@ -22,7 +26,7 @@ def _populate_configs():
         OciProfileConfig(
             auth_profile="TEST",
             fingerprint="aa:bb:cc",
-            key="private-key-data",
+            key_content="private-key-data",
             key_file="/path/to/key",
             pass_phrase="passphrase",
             security_token_file="/path/to/token",
@@ -31,7 +35,7 @@ def _populate_configs():
         OciProfileConfig(
             auth_profile="DEV",
             fingerprint="dd:ee:ff",
-            key="dev-key-data",
+            key_content="dev-key-data",
             tenancy="ocid1.tenancy.oc1..dev",
         ),
     ]
@@ -70,7 +74,7 @@ async def test_list_oci_profiles_sensitive(app_client, auth_headers):
     body = resp.json()
     assert len(body) == 2
     assert body[0]["fingerprint"] == "aa:bb:cc"
-    assert body[0]["key"] == "private-key-data"
+    assert body[0]["key_content"] == "private-key-data"
 
 
 @pytest.mark.unit
@@ -109,11 +113,12 @@ async def test_get_oci_profile_case_insensitive(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_create_oci_profile(app_client, auth_headers):
     """POST new auth_profile returns 201 and config appears in list."""
-    resp = await app_client.post(
-        "/v1/oci-profiles",
-        json={"auth_profile": "NEW_PROFILE", "tenancy": "ocid1.tenancy.oc1..new"},
-        headers=auth_headers,
-    )
+    with patch(MOCK_CHECK, return_value=None):
+        resp = await app_client.post(
+            "/v1/oci-profiles",
+            json={"auth_profile": "NEW_PROFILE", "tenancy": "ocid1.tenancy.oc1..new"},
+            headers=auth_headers,
+        )
     assert resp.status_code == 201
     body = resp.json()
     assert body["auth_profile"] == "NEW_PROFILE"
@@ -157,11 +162,12 @@ async def test_create_oci_profile_duplicate_case_insensitive(app_client, auth_he
 @pytest.mark.anyio
 async def test_update_oci_profile(app_client, auth_headers):
     """PUT with new tenancy returns 200 and field is changed."""
-    resp = await app_client.put(
-        "/v1/oci-profiles/TEST",
-        json={"tenancy": "ocid1.tenancy.oc1..updated"},
-        headers=auth_headers,
-    )
+    with patch(MOCK_CHECK, return_value=None):
+        resp = await app_client.put(
+            "/v1/oci-profiles/TEST",
+            json={"tenancy": "ocid1.tenancy.oc1..updated"},
+            headers=auth_headers,
+        )
     assert resp.status_code == 200
     body = resp.json()
     assert body["tenancy"] == "ocid1.tenancy.oc1..updated"
@@ -185,15 +191,103 @@ async def test_update_oci_profile_not_found(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_update_oci_profile_partial(app_client, auth_headers):
     """PUT only one field leaves others unchanged."""
-    resp = await app_client.put(
-        "/v1/oci-profiles/TEST",
-        json={"region": "us-phoenix-1"},
-        headers=auth_headers,
-    )
+    with patch(MOCK_CHECK, return_value=None):
+        resp = await app_client.put(
+            "/v1/oci-profiles/TEST",
+            json={"region": "us-phoenix-1"},
+            headers=auth_headers,
+        )
     assert resp.status_code == 200
     body = resp.json()
     assert body["region"] == "us-phoenix-1"
     assert body["tenancy"] == "ocid1.tenancy.oc1..test"  # unchanged
+
+
+# --- _check_useable integration ---
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_oci_profile_not_useable(app_client, auth_headers):
+    """POST when _check_useable fails returns 422; profile persisted with useable=False."""
+    with patch(MOCK_CHECK, return_value="connection refused"):
+        resp = await app_client.post(
+            "/v1/oci-profiles",
+            json={"auth_profile": "BAD_PROFILE", "tenancy": "ocid1.tenancy.oc1..bad"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 422
+    assert "connection refused" in resp.json()["detail"]
+    # Profile still persisted
+    profiles = [c.auth_profile for c in settings.oci_profile_configs]
+    assert "BAD_PROFILE" in profiles
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_previously_useable_now_fails(app_client, auth_headers):
+    """PUT on useable profile that now fails returns 422 and reverts values."""
+    # Mark the TEST profile as useable
+    for cfg in settings.oci_profile_configs:
+        if cfg.auth_profile == "TEST":
+            cfg.useable = True
+            break
+    with patch(MOCK_CHECK, return_value="auth failed"):
+        resp = await app_client.put(
+            "/v1/oci-profiles/TEST",
+            json={"tenancy": "ocid1.tenancy.oc1..broken"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 422
+    assert "auth failed" in resp.json()["detail"]
+    # Values reverted
+    for cfg in settings.oci_profile_configs:
+        if cfg.auth_profile == "TEST":
+            assert cfg.tenancy == "ocid1.tenancy.oc1..test"
+            assert cfg.useable is True
+            break
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_previously_unuseable_still_fails(app_client, auth_headers):
+    """PUT on unuseable profile that still fails returns 422 but keeps new values."""
+    for cfg in settings.oci_profile_configs:
+        if cfg.auth_profile == "TEST":
+            cfg.useable = False
+            break
+    with patch(MOCK_CHECK, return_value="still broken"):
+        resp = await app_client.put(
+            "/v1/oci-profiles/TEST",
+            json={"tenancy": "ocid1.tenancy.oc1..new_attempt"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 422
+    assert "still broken" in resp.json()["detail"]
+    # Values kept (not reverted)
+    for cfg in settings.oci_profile_configs:
+        if cfg.auth_profile == "TEST":
+            assert cfg.tenancy == "ocid1.tenancy.oc1..new_attempt"
+            assert cfg.useable is False
+            break
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_previously_unuseable_now_useable(app_client, auth_headers):
+    """PUT on unuseable profile that now succeeds returns 200."""
+    for cfg in settings.oci_profile_configs:
+        if cfg.auth_profile == "TEST":
+            cfg.useable = False
+            break
+    with patch(MOCK_CHECK, return_value=None):
+        resp = await app_client.put(
+            "/v1/oci-profiles/TEST",
+            json={"tenancy": "ocid1.tenancy.oc1..fixed"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    assert resp.json()["tenancy"] == "ocid1.tenancy.oc1..fixed"
 
 
 # --- DELETE /oci-profiles/{auth_profile} ---

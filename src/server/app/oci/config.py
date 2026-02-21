@@ -12,7 +12,9 @@ import os
 from typing import Optional
 
 import oci.config
+import oci.object_storage
 
+from .client import init_client
 from .schemas import OciProfileConfig
 
 LOGGER = logging.getLogger(__name__)
@@ -23,25 +25,11 @@ def _get_config_file_path() -> str:
     return os.environ.get('OCI_CLI_CONFIG_FILE', oci.config.DEFAULT_LOCATION)
 
 
-def _read_key_file(key_file_path: Optional[str]) -> Optional[str]:
-    """Read PEM key file contents, returning None on failure."""
-    if not key_file_path:
-        return None
-    expanded = os.path.expanduser(key_file_path)
-    try:
-        with open(expanded, 'r', encoding='utf-8') as f:
-            return f.read()
-    except OSError as exc:
-        LOGGER.warning('Cannot read key_file %s: %s', expanded, exc)
-        return None
-
-
 def _profile_from_oci_config(profile_name: str, file_location: str) -> OciProfileConfig:
-    """Build an OCIProfileSettings from an oci.config.from_file() result."""
+    """Build an OciProfileConfig from an oci.config.from_file() result."""
     config = oci.config.from_file(file_location=file_location, profile_name=profile_name)
-
     key_file = config.get('key_file')
-    key_contents = _read_key_file(key_file)
+    key_content = config.get('key_content')
 
     return OciProfileConfig(
         auth_profile=profile_name,
@@ -50,10 +38,32 @@ def _profile_from_oci_config(profile_name: str, file_location: str) -> OciProfil
         security_token_file=config.get('security_token_file'),
         fingerprint=config.get('fingerprint'),
         tenancy=config.get('tenancy'),
-        key=key_contents,
+        key_file=key_file,
+        key_content=None if key_file else key_content,
         pass_phrase=config.get('pass_phrase'),
         region=config.get('region'),
     )
+
+
+def _check_useable(profile: OciProfileConfig) -> Optional[str]:
+    """Test OCI connectivity via get_namespace(); sets profile.useable.
+
+    Returns None on success, or the error message on failure.
+    """
+    try:
+        client = init_client(
+            oci.object_storage.ObjectStorageClient,
+            profile,
+            timeout=(1, 10),
+        )
+        _ = client.get_namespace().data
+        profile.useable = True
+        LOGGER.info("OCI profile '%s' is useable", profile.auth_profile)
+        return None
+    except Exception as exc:  # pylint: disable=broad-except
+        LOGGER.warning("OCI profile '%s' not useable: %s", profile.auth_profile, exc)
+        profile.useable = False
+        return str(exc)
 
 
 def parse_oci_config_file(file_location: Optional[str] = None) -> list[OciProfileConfig]:
