@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import time
+from io import TextIOWrapper
 from pathlib import Path
 
 import httpx
@@ -19,9 +20,9 @@ LOGGER = logging.getLogger(__name__)
 _SERVER: dict = {"process": None, "log_file": None}
 
 
-def _spawn_server(port: str, env: dict) -> tuple[subprocess.Popen, "IO"]:
+def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Popen, TextIOWrapper]:
     """Spawn a uvicorn server subprocess and return the Popen handle and log file."""
-    log_path = Path(f"apiserver_{port}.log")
+    LOGGER.info("Writing API Server logs to: %s", log_path)
     log_fh = log_path.open("a")
     proc = subprocess.Popen(
         [
@@ -43,6 +44,7 @@ def _spawn_server(port: str, env: dict) -> tuple[subprocess.Popen, "IO"]:
 
 def start_server() -> None:
     """Start the server as a subprocess."""
+    LOGGER.info("Starting the AI Optimizer All-In-One mode...")
     proc = _SERVER["process"]
     if proc is not None and proc.poll() is None:
         return
@@ -51,13 +53,13 @@ def start_server() -> None:
     src_dir = str(Path(__file__).resolve().parents[3])
     env = {**os.environ, "PYTHONPATH": src_dir}
 
-    proc, log_fh = _spawn_server(port, env)
-    log_path = f"apiserver_{port}.log"
+    log_path = Path(src_dir) / f"apiserver_{port}.log"
+    proc, log_fh = _spawn_server(port, env, log_path)
     # Give the process a moment to fail on import/startup errors.
     try:
         proc.wait(timeout=2)
         log_fh.close()
-        stderr = Path(log_path).read_text()
+        stderr = log_path.read_text()
         LOGGER.error(
             "Server process exited immediately (code %d). PYTHONPATH=%s\nSee %s\n%s",
             proc.returncode,

@@ -17,6 +17,7 @@ async def execute_sql(
     conn: oracledb.AsyncConnection,
     sql: str,
     binds: Optional[dict] = None,
+    input_sizes: Optional[dict] = None,
 ) -> Optional[list]:
     """Execute a SQL statement and return results for SELECT queries.
 
@@ -29,6 +30,8 @@ async def execute_sql(
 
     async with conn.cursor() as cursor:
         try:
+            if input_sizes:
+                cursor.setinputsizes(**input_sizes)
             if binds:
                 await cursor.execute(sql, binds)
             else:

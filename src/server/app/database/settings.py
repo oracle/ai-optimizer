@@ -9,6 +9,8 @@ import json
 import logging
 from typing import Optional
 
+import oracledb
+
 from server.app.core.settings import SettingsBase, settings
 from .config import get_database_settings
 from .sql import execute_sql
@@ -38,13 +40,16 @@ async def persist_settings() -> None:
         LOGGER.warning("persist_settings: CORE database not available — skipping")
         return
 
-    payload = json.dumps(
-        SettingsBase.model_validate(settings).model_dump(mode="json", exclude={"oci_configs"})
-    )
+    payload = SettingsBase.model_validate(settings).model_dump(mode="json", exclude={"oci_configs"})
 
     try:
         async with core_cfg.pool.acquire() as conn:
-            await execute_sql(conn, _UPSERT_SQL, {"client": "DEFAULT", "settings": payload})
+            await execute_sql(
+                conn,
+                _UPSERT_SQL,
+                {"client": "DEFAULT", "settings": payload},
+                input_sizes={"settings": oracledb.DB_TYPE_JSON},
+            )
             await conn.commit()
         LOGGER.info("Settings persisted to aio_settings")
     except Exception as exc:  # pylint: disable=broad-exception-caught
