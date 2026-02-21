@@ -44,10 +44,13 @@ async def persist_settings() -> None:
         )
     )
 
-    async with core_cfg.pool.acquire() as conn:
-        await execute_sql(conn, _UPSERT_SQL, {'client': 'DEFAULT', 'settings': payload})
-        await conn.commit()
-    LOGGER.info('Settings persisted to aio_settings')
+    try:
+        async with core_cfg.pool.acquire() as conn:
+            await execute_sql(conn, _UPSERT_SQL, {'client': 'DEFAULT', 'settings': payload})
+            await conn.commit()
+        LOGGER.info('Settings persisted to aio_settings')
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning('persist_settings: Failed to persist to database: %s', exc)
 
 
 async def load_settings() -> Optional[SettingsBase]:

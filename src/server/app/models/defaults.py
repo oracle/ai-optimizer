@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Default model configurations bootstrapped on first startup.
 """
 # spell-checker: ignore ollama pplx vllm huggingface mxbai nomic thenlper
+# pylint: disable=inconsistent-quotes
 
 # Environment variable -> (provider, field) mapping.
 # apply_env_overrides() uses this to patch model_configs at startup so that
