@@ -7,6 +7,9 @@ MCP prompt registry and startup lifecycle.
 
 import logging
 
+from fastmcp.prompts import Prompt
+
+from server.app.core.mcp import mcp
 from server.app.core.settings import settings
 from .defaults import DEFAULT_PROMPTS
 from .schemas import PromptConfig
@@ -55,3 +58,33 @@ def apply_prompt_defaults() -> None:
             )
 
     LOGGER.info("Applied prompt defaults (%d total)", len(settings.prompt_configs))
+
+
+def register_mcp_prompt(pc: PromptConfig) -> None:
+    """Register (or re-register) a single PromptConfig with FastMCP.
+
+    Removes any existing prompt with the same name before adding.
+    """
+    try:
+        mcp.local_provider.remove_prompt(pc.name)
+    except KeyError:
+        pass
+
+    def _prompt_fn() -> str:
+        return pc.text
+
+    prompt = Prompt.from_function(
+        fn=_prompt_fn,
+        name=pc.name,
+        title=pc.title,
+        description=pc.description,
+        tags=set(pc.tags) if pc.tags else None,
+    )
+    mcp.add_prompt(prompt)
+
+
+def register_mcp_prompts() -> None:
+    """Register all prompt_configs with FastMCP."""
+    for pc in settings.prompt_configs:
+        register_mcp_prompt(pc)
+    LOGGER.info("Registered %d MCP prompt(s)", len(settings.prompt_configs))

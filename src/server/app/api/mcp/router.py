@@ -7,30 +7,17 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from fastapi import APIRouter, Depends
 
 from server.app.api.deps import verify_api_key
-from server.app.api.v1.endpoints import databases, models, oci_profiles, probes, settings
+from server.app.api.mcp.endpoints import client_config, probes, prompts
 
 router = APIRouter()
-# -- Non Authenticated Endpoints
 router.include_router(probes.noauth, tags=["Probes"])
-
-# -- Authenticated Endpoints
 router.include_router(
-    settings.auth,
-    tags=["Settings"],
+    prompts.auth,
+    tags=["Prompts"],
     dependencies=[Depends(verify_api_key)],
 )
 router.include_router(
-    databases.auth,
-    tags=["Databases"],
-    dependencies=[Depends(verify_api_key)],
-)
-router.include_router(
-    models.auth,
-    tags=["Models"],
-    dependencies=[Depends(verify_api_key)],
-)
-router.include_router(
-    oci_profiles.auth,
-    tags=["OCI Profiles"],
+    client_config.auth,
+    tags=["Client Config"],
     dependencies=[Depends(verify_api_key)],
 )
