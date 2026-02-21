@@ -9,6 +9,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastmcp.utilities.lifespan import combine_lifespans
+from starlette.middleware import Middleware
 
 from _version import __version__
 from server.app.core.etc import apply_overlay, load_config_file
@@ -17,6 +19,7 @@ from server.app.api.v1.router import router as v1_router
 from server.app.database.registry import init_core_database
 from server.app.database.config import get_database_settings, close_pool
 from server.app.database.settings import load_settings, persist_settings
+from server.app.mcp.server import mcp, MCPApiKeyMiddleware
 from server.app.models.registry import apply_env_overrides, load_default_models
 from server.app.oci.registry import load_oci_profiles
 
@@ -83,9 +86,15 @@ async def lifespan(_app: FastAPI):
 
 
 API_PREFIX = "/v1"
+MCP_MOUNT = "/mcp"
 
 BASE_PATH = settings.server_url_prefix.strip("/")
 BASE_PATH = f"/{BASE_PATH}" if BASE_PATH else ""
+
+mcp_app = mcp.http_app(
+    path="/",
+    middleware=[Middleware(MCPApiKeyMiddleware)],
+)
 
 app = FastAPI(
     title="Oracle AI Optimizer and Toolkit",
@@ -93,7 +102,7 @@ app = FastAPI(
     docs_url=f"{API_PREFIX}/docs",
     openapi_url=f"{API_PREFIX}/openapi.json",
     root_path=BASE_PATH,
-    lifespan=lifespan,
+    lifespan=combine_lifespans(lifespan, mcp_app.lifespan),
     license_info={
         "name": "Universal Permissive License",
         "url": "http://oss.oracle.com/licenses/upl",
@@ -101,3 +110,4 @@ app = FastAPI(
 )
 
 app.include_router(v1_router, prefix=API_PREFIX)
+app.mount(MCP_MOUNT, mcp_app)
