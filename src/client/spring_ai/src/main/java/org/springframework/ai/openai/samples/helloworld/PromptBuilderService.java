@@ -19,7 +19,7 @@ import java.util.Map;
 @Component
 public class PromptBuilderService {
 
-    private static final Logger logger = LoggerFactory.getLogger(PromptBuilderService.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(PromptBuilderService.class);
 
     private final OracleVectorStore vectorStore;
 

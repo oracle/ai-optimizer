@@ -59,7 +59,7 @@ class AIController {
 	private final int TOPK;
 	private JdbcTemplate jdbcTemplate;
 
-	private static final Logger logger = LoggerFactory.getLogger(AIController.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(AIController.class);
 	private static final int SLEEP = 50; // Wait in streaming between chunks
 	private static final int STREAM_SIZE = 5; // chars in each chunk
 
