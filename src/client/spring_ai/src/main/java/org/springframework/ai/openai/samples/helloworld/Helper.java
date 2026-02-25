@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class Helper {
-    private static final Logger logger = LoggerFactory.getLogger(PromptBuilderService.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(PromptBuilderService.class);
 
     private static final int SLEEP = 50; // Wait in streaming between chunks
     private static final int STREAM_SIZE = 5; // chars in each chunk
