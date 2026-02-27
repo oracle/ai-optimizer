@@ -10,7 +10,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import st_common
-from common import logging_config, help_text, functions
+from common import help_text, functions
 
 LOGGER = logging.getLogger("client.utils.st_common")
 
@@ -116,7 +116,7 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
                 st.sidebar.info("CPU Mode: Rephrase/Grading auto-disabled")
                 # Auto-disable when switching TO a small model
                 if model_changed:
-                    logger.info("Small model detected (%s), auto-disabling grade and rephrase", model_id)
+                    LOGGER.info("Small model detected (%s), auto-disabling grade and rephrase", model_id)
                     state.client_settings["vector_search"]["rephrase"] = False
                     state.client_settings["vector_search"]["grade"] = False
                     # Clear widget keys so checkboxes use the value parameter
