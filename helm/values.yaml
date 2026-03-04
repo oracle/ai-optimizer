@@ -303,21 +303,21 @@ client:
   gateway:
     enabled: false
     className: eg # GatewayClass name (e.g., "eg" for Envoy Gateway controller)
-    tls: [ ]
-      # - hosts:
-    #     - example.com
-    #   secretName: example-tls
+  #    tls:
+  #      mode: Terminate
+  #      certificateRefs:
+  #        - kind: Secret
+  #          group: ""
+  #          name: default-cert
 
   # ingress: controls the Ingress resource to expose the service.
   ingress:
     enabled: false
     className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
-#    tls:
-#      mode: Terminate
-#      certificateRefs:
-#        - kind: Secret
-#          group: ""
-#          name: default-cert
+    tls: [ ]
+    # - hosts:
+    #     - example.com
+    #   secretName: example-tls
 
   # -- Disable specific client features
   features:
