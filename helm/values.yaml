@@ -63,6 +63,17 @@ server:
   service:
     type: "ClusterIP"
 
+  # Gateway: controls the Gateway API resources to expose the service
+  gateway:
+    enabled: false
+    className: eg # GatewayClass name (e.g., "eg" for Envoy Gateway controller)
+#    tls:
+#      mode: Terminate
+#      certificateRefs:
+#        - kind: Secret
+#          group: ""
+#          name: default-cert
+
   # ingress: controls the Ingress resource to expose the service.
   ingress:
     enabled: false
@@ -288,14 +299,25 @@ client:
   service:
     type: "ClusterIP"
 
+  # Gateway: controls the Gateway API resources to expose the service
+  gateway:
+    enabled: false
+    className: eg # GatewayClass name (e.g., "eg" for Envoy Gateway controller)
+    tls: [ ]
+      # - hosts:
+    #     - example.com
+    #   secretName: example-tls
+
   # ingress: controls the Ingress resource to expose the service.
   ingress:
     enabled: false
     className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
-    tls: []
-      # - hosts:
-      #     - example.com
-      #   secretName: example-tls
+#    tls:
+#      mode: Terminate
+#      certificateRefs:
+#        - kind: Secret
+#          group: ""
+#          name: default-cert
 
   # -- Disable specific client features
   features:
