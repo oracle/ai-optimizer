@@ -4,6 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 
 import logging
+import os
+import re
 
 import oracledb
 from langchain_community.vectorstores import oraclevs  # pylint: disable=unused-import
@@ -27,29 +29,29 @@ def get_llm(data):
     Returns:
         Configured LLM instance
     """
-    LOGGER.info("llm data:")
-    LOGGER.info(data["client_settings"]["ll_model"]["model"])
+    logger.info("llm data:")
+    logger.info(data["client_settings"]["ll_model"]["model"])
     model_full = data["client_settings"]["ll_model"]["model"]
     _, prefix, model = model_full.partition("/")
     llm = {}
     models_by_id = {m["id"]: m for m in data.get("model_configs", [])}
     llm_config = models_by_id.get(model)
-    LOGGER.info(llm_config)
+    logger.info(llm_config)
     provider = llm_config["provider"]
     url = llm_config["api_base"]
-    api_key = llm_config["api_key"]
+    api_key = llm_config.get("api_key", "ollama")
 
-    LOGGER.info("CHAT_MODEL: %s %s %s %s", model, provider, url, api_key)
+    logger.info("CHAT_MODEL: %s %s %s %s", model, provider, url, api_key)
     if provider == "ollama":
         # Initialize the LLM
         llm = OllamaLLM(model=model, base_url=url)
-        LOGGER.info("Ollama LLM created")
+        logger.info("Ollama LLM created")
     elif provider == "openai":
         llm = ChatOpenAI(model=model, api_key=api_key)
-        LOGGER.info("OpenAI LLM created")
+        logger.info("OpenAI LLM created")
     elif provider == "hosted_vllm":
         llm = ChatOpenAI(model=model, api_key=api_key, base_url=url)
-        LOGGER.info("hosted_vllm compatible LLM created")
+        logger.info("hosted_vllm compatible LLM created")
     return llm
 
 
@@ -64,27 +66,27 @@ def get_embeddings(data):
         Configured embeddings instance
     """
     embeddings = {}
-    LOGGER.info("getting embeddings..")
+    logger.info("getting embeddings..")
     model_full = data["client_settings"]["vector_search"]["model"]
     _, prefix, model = model_full.partition("/")
-    LOGGER.info("embedding model: %s", model)
+    logger.info("embedding model: %s", model)
     models_by_id = {m["id"]: m for m in data.get("model_configs", [])}
     model_params = models_by_id.get(model)
     provider = model_params["provider"]
     url = model_params["api_base"]
-    api_key = model_params["api_key"]
+    api_key = model_params.get("api_key", "ollama")
 
-    LOGGER.info("Embeddings Model: %s %s %s %s", model, provider, url, api_key)
+    logger.info("Embeddings Model: %s %s %s %s", model, provider, url, api_key)
     embeddings = {}
     if provider == "ollama":
         embeddings = OllamaEmbeddings(model=model, base_url=url)
-        LOGGER.info("Ollama Embeddings connection successful")
+        logger.info("Ollama Embeddings connection successful")
     elif provider == "openai":
         embeddings = OpenAIEmbeddings(model=model, api_key=api_key)
-        LOGGER.info("OpenAI embeddings connection successful")
+        logger.info("OpenAI embeddings connection successful")
     elif provider == "hosted_vllm":
         embeddings = OpenAIEmbeddings(model=model, api_key=api_key, base_url=url, check_embedding_ctx_length=False)
-        LOGGER.info("hosted_vllm compatible embeddings connection successful")
+        logger.info("hosted_vllm compatible embeddings connection successful")
 
     return embeddings
 
@@ -112,38 +114,29 @@ def get_vectorstore(data, embeddings):
     distance_metric = data["client_settings"]["vector_search"]["distance_metric"]
     index_type = data["client_settings"]["vector_search"]["index_type"]
 
-    db_table = (
-        (table_alias + "_" + model + "_" + chunk_size + "_" + chunk_overlap + "_" + distance_metric + "_" + index_type)
-        .upper()
-        .replace("-", "_")
-        .replace("/", "_")
-    )
-    LOGGER.info("db_table:%s", db_table)
+    table_string = f"{table_alias}_{model}_{chunk_size}_{chunk_overlap}_{distance_metric}_{index_type}"
+    db_table = re.sub(r"\W", "_", table_string.upper())
+    logger.info("db_table:%s", db_table)
 
     user = db_config["user"]
-    password = db_config["password"]
-    dsn = db_config["dsn"]
-
-    user = db_config["user"]
-    password = db_config["password"]
+    password = db_config.get("password") or os.environ.get("DB_PASSWORD", "")
     dsn = db_config["dsn"]
 
     # ADB connection with wallet
+    wallet_pwd = db_config.get("wallet_password") or os.environ.get("DB_WALLET_PASSWORD", "")
+    wallet_location = db_config.get("wallet_location")
 
-    wallet_pwd = db_config["wallet_password"]
-    wallet_location = db_config["wallet_location"]
-
-    LOGGER.info("%s: %s - %s", db_table, user, dsn)
+    logger.info("%s: %s - %s", db_table, user, dsn)
 
     if wallet_pwd and wallet_location:
-        LOGGER.info("ADB connection starting..")
+        logger.info("ADB connection starting..")
         conn23c = oracledb.connect(
             user=user, password=password, dsn=dsn, wallet_location=wallet_location, wallet_password=wallet_pwd
         )
     else:
         conn23c = oracledb.connect(user=user, password=password, dsn=dsn)
 
-    LOGGER.info("DB Connection successful!")
+    logger.info("DB Connection successful!")
     metric = data["client_settings"]["vector_search"]["distance_metric"]
 
     dist_strategy = DistanceStrategy.COSINE
@@ -152,7 +145,7 @@ def get_vectorstore(data, embeddings):
     elif metric == "EUCLIDEAN":
         dist_strategy = DistanceStrategy.EUCLIDEAN
 
-    LOGGER.info(embeddings)
+    logger.info(embeddings)
     knowledge_base = OracleVS(
         client=conn23c, table_name=db_table, embedding_function=embeddings, distance_strategy=dist_strategy
     )
