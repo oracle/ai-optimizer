@@ -15,6 +15,51 @@ from common import help_text, functions
 LOGGER = logging.getLogger("client.utils.st_common")
 
 
+def _render_vs_subtools(on_change) -> None:
+    """Render rephrase/grade checkboxes with CPU mode detection."""
+    model_name = state.client_settings.get("ll_model", {}).get("model") or ""
+    model_id = model_name.split("/")[-1] if "/" in model_name else model_name
+    is_small = model_id and functions.is_small_model(model_id)
+
+    previous_model = state.get("_previous_ll_model_for_cpu")
+    model_changed = previous_model != model_name
+    state["_previous_ll_model_for_cpu"] = model_name
+
+    if is_small:
+        st.sidebar.info("CPU Mode: Rephrase/Grading auto-disabled")
+        if model_changed:
+            LOGGER.info("Small model detected (%s), auto-disabling grade and rephrase", model_id)
+            state.client_settings["vector_search"]["rephrase"] = False
+            state.client_settings["vector_search"]["grade"] = False
+            state.pop("selected_vs_rephrase", None)
+            state.pop("selected_vs_grade", None)
+
+    rephrase_enabled = st.sidebar.checkbox(
+        "Prompt Rephrase",
+        help=help_text.help_dict["vector_search_rephrase"],
+        value=state.client_settings["vector_search"]["rephrase"],
+        key="selected_vs_rephrase",
+        on_change=on_change,
+    )
+    grade_enabled = st.sidebar.checkbox(
+        "Document Grading",
+        help=help_text.help_dict["vector_search_grade"],
+        value=state.client_settings["vector_search"]["grade"],
+        key="selected_vs_grade",
+        on_change=on_change,
+    )
+
+    if state.client_settings["vector_search"]["rephrase"] != rephrase_enabled:
+        state.client_settings["vector_search"]["rephrase"] = rephrase_enabled
+        st_common.clear_state_key("user_client")
+    if state.client_settings["vector_search"]["grade"] != grade_enabled:
+        state.client_settings["vector_search"]["grade"] = grade_enabled
+        st_common.clear_state_key("user_client")
+
+    if is_small and (rephrase_enabled or grade_enabled):
+        st.sidebar.warning("Enabling on small models increases response time")
+
+
 def tools_sidebar(show_vs_subtools: bool = True) -> None:
     """Tools Sidebar Settings
 
@@ -102,49 +147,4 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
             on_change=_update_vs_subtools,
         )
         if show_vs_subtools:
-            # Detect small model for CPU optimization
-            model_name = state.client_settings.get("ll_model", {}).get("model") or ""
-            model_id = model_name.split("/")[-1] if "/" in model_name else model_name
-            is_small_model = model_id and functions.is_small_model(model_id)
-
-            # Track model changes for auto-disable
-            previous_model = state.get("_previous_ll_model_for_cpu")
-            model_changed = previous_model != model_name
-            state["_previous_ll_model_for_cpu"] = model_name
-
-            if is_small_model:
-                st.sidebar.info("CPU Mode: Rephrase/Grading auto-disabled")
-                # Auto-disable when switching TO a small model
-                if model_changed:
-                    LOGGER.info("Small model detected (%s), auto-disabling grade and rephrase", model_id)
-                    state.client_settings["vector_search"]["rephrase"] = False
-                    state.client_settings["vector_search"]["grade"] = False
-                    # Clear widget keys so checkboxes use the value parameter
-                    state.pop("selected_vs_rephrase", None)
-                    state.pop("selected_vs_grade", None)
-
-            rephrase_enabled = st.sidebar.checkbox(
-                "Prompt Rephrase",
-                help=help_text.help_dict["vector_search_rephrase"],
-                value=state.client_settings["vector_search"]["rephrase"],
-                key="selected_vs_rephrase",
-                on_change=_update_vs_subtools,
-            )
-            grade_enabled = st.sidebar.checkbox(
-                "Document Grading",
-                help=help_text.help_dict["vector_search_grade"],
-                value=state.client_settings["vector_search"]["grade"],
-                key="selected_vs_grade",
-                on_change=_update_vs_subtools,
-            )
-
-            # Always sync checkbox values to client_settings (handles widget state vs client_settings mismatch)
-            if state.client_settings["vector_search"]["rephrase"] != rephrase_enabled:
-                state.client_settings["vector_search"]["rephrase"] = rephrase_enabled
-                st_common.clear_state_key("user_client")
-            if state.client_settings["vector_search"]["grade"] != grade_enabled:
-                state.client_settings["vector_search"]["grade"] = grade_enabled
-                st_common.clear_state_key("user_client")
-
-            if is_small_model and (rephrase_enabled or grade_enabled):
-                st.sidebar.warning("Enabling on small models increases response time")
+            _render_vs_subtools(_update_vs_subtools)
