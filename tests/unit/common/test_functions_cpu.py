@@ -7,8 +7,6 @@ Unit tests for CPU optimization utilities in common/functions.py
 Tests extract_parameter_count() and is_small_model() functions.
 """
 
-import pytest
-
 from common import functions
 
 
@@ -144,3 +142,7 @@ class TestSmallModelThreshold:
     def test_threshold_is_7(self):
         """SMALL_MODEL_THRESHOLD_B should be 7."""
         assert functions.SMALL_MODEL_THRESHOLD_B == 7
+
+    def test_threshold_is_integer(self):
+        """SMALL_MODEL_THRESHOLD_B should be an integer."""
+        assert isinstance(functions.SMALL_MODEL_THRESHOLD_B, int)
