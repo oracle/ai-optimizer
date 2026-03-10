@@ -60,6 +60,30 @@ def _render_vs_subtools(on_change) -> None:
         st.sidebar.warning("Enabling on small models increases response time")
 
 
+def _update_set_tool():
+    """Update user settings as to which tool is being used"""
+    state.client_settings["tools_enabled"] = [state.selected_tools]
+
+
+def _update_vs_subtools():
+    """Update user settings as to which vector search subtools are enabled"""
+    state.client_settings["vector_search"]["discovery"] = state.selected_vs_discovery
+    if "selected_vs_rephrase" in state:
+        state.client_settings["vector_search"]["rephrase"] = state.selected_vs_rephrase
+    if "selected_vs_grade" in state:
+        state.client_settings["vector_search"]["grade"] = state.selected_vs_grade
+    # Clear user_client so it gets recreated with new settings
+    st_common.clear_state_key("user_client")
+
+
+def _disable_tool(tool: str, reason: str = None) -> None:
+    """Disable a tool in the tool box"""
+    if reason:
+        LOGGER.debug("%s Disabled (%s)", tool, reason)
+        st.warning(f"{reason}. Disabling {tool}.", icon="⚠️")
+    state.tool_box[tool]["enabled"] = False
+
+
 def tools_sidebar(show_vs_subtools: bool = True) -> None:
     """Tools Sidebar Settings
 
@@ -75,27 +99,6 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
         "Vector Search": {"description": "Use AI with Unstructured Data", "enabled": True},
         "NL2SQL": {"description": "Use AI with Structured Data", "enabled": True},
     }
-
-    def _update_set_tool():
-        """Update user settings as to which tool is being used"""
-        state.client_settings["tools_enabled"] = [state.selected_tools]
-
-    def _update_vs_subtools():
-        """Update user settings as to which vector search subtools are enabled"""
-        state.client_settings["vector_search"]["discovery"] = state.selected_vs_discovery
-        if "selected_vs_rephrase" in state:
-            state.client_settings["vector_search"]["rephrase"] = state.selected_vs_rephrase
-        if "selected_vs_grade" in state:
-            state.client_settings["vector_search"]["grade"] = state.selected_vs_grade
-        # Clear user_client so it gets recreated with new settings
-        st_common.clear_state_key("user_client")
-
-    def _disable_tool(tool: str, reason: str = None) -> None:
-        """Disable a tool in the tool box"""
-        if reason:
-            LOGGER.debug("%s Disabled (%s)", tool, reason)
-            st.warning(f"{reason}. Disabling {tool}.", icon="⚠️")
-        state.tool_box[tool]["enabled"] = False
 
     if not st_common.is_db_configured():
         LOGGER.debug("Vector Search/NL2SQL Disabled (Database not configured)")
