@@ -10,9 +10,78 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.utils import st_common
-from common import help_text
+from common import help_text, functions
 
 LOGGER = logging.getLogger("client.utils.st_common")
+
+
+def _render_vs_subtools(on_change) -> None:
+    """Render rephrase/grade checkboxes with CPU mode detection."""
+    model_name = state.client_settings.get("ll_model", {}).get("model") or ""
+    model_id = model_name.split("/")[-1] if "/" in model_name else model_name
+    is_small = model_id and functions.is_small_model(model_id)
+
+    previous_model = state.get("_previous_ll_model_for_cpu")
+    model_changed = previous_model != model_name
+    state["_previous_ll_model_for_cpu"] = model_name
+
+    if is_small:
+        st.sidebar.info("CPU Mode: Rephrase/Grading auto-disabled")
+        if model_changed:
+            LOGGER.info("Small model detected (%s), auto-disabling grade and rephrase", model_id)
+            state.client_settings["vector_search"]["rephrase"] = False
+            state.client_settings["vector_search"]["grade"] = False
+            state.pop("selected_vs_rephrase", None)
+            state.pop("selected_vs_grade", None)
+
+    rephrase_enabled = st.sidebar.checkbox(
+        "Prompt Rephrase",
+        help=help_text.help_dict["vector_search_rephrase"],
+        value=state.client_settings["vector_search"]["rephrase"],
+        key="selected_vs_rephrase",
+        on_change=on_change,
+    )
+    grade_enabled = st.sidebar.checkbox(
+        "Document Grading",
+        help=help_text.help_dict["vector_search_grade"],
+        value=state.client_settings["vector_search"]["grade"],
+        key="selected_vs_grade",
+        on_change=on_change,
+    )
+
+    if state.client_settings["vector_search"]["rephrase"] != rephrase_enabled:
+        state.client_settings["vector_search"]["rephrase"] = rephrase_enabled
+        st_common.clear_state_key("user_client")
+    if state.client_settings["vector_search"]["grade"] != grade_enabled:
+        state.client_settings["vector_search"]["grade"] = grade_enabled
+        st_common.clear_state_key("user_client")
+
+    if is_small and (rephrase_enabled or grade_enabled):
+        st.sidebar.warning("Enabling on small models increases response time")
+
+
+def _update_set_tool():
+    """Update user settings as to which tool is being used"""
+    state.client_settings["tools_enabled"] = [state.selected_tools]
+
+
+def _update_vs_subtools():
+    """Update user settings as to which vector search subtools are enabled"""
+    state.client_settings["vector_search"]["discovery"] = state.selected_vs_discovery
+    if "selected_vs_rephrase" in state:
+        state.client_settings["vector_search"]["rephrase"] = state.selected_vs_rephrase
+    if "selected_vs_grade" in state:
+        state.client_settings["vector_search"]["grade"] = state.selected_vs_grade
+    # Clear user_client so it gets recreated with new settings
+    st_common.clear_state_key("user_client")
+
+
+def _disable_tool(tool: str, reason: str = None) -> None:
+    """Disable a tool in the tool box"""
+    if reason:
+        LOGGER.debug("%s Disabled (%s)", tool, reason)
+        st.warning(f"{reason}. Disabling {tool}.", icon="⚠️")
+    state.tool_box[tool]["enabled"] = False
 
 
 def tools_sidebar(show_vs_subtools: bool = True) -> None:
@@ -30,25 +99,6 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
         "Vector Search": {"description": "Use AI with Unstructured Data", "enabled": True},
         "NL2SQL": {"description": "Use AI with Structured Data", "enabled": True},
     }
-
-    def _update_set_tool():
-        """Update user settings as to which tool is being used"""
-        state.client_settings["tools_enabled"] = [state.selected_tools]
-
-    def _update_vs_subtools():
-        """Update user settings as to which vector search subtools are enabled"""
-        state.client_settings["vector_search"]["discovery"] = state.selected_vs_discovery
-        if "selected_vs_rephrase" in state:
-            state.client_settings["vector_search"]["rephrase"] = state.selected_vs_rephrase
-        if "selected_vs_grade" in state:
-            state.client_settings["vector_search"]["grade"] = state.selected_vs_grade
-
-    def _disable_tool(tool: str, reason: str = None) -> None:
-        """Disable a tool in the tool box"""
-        if reason:
-            LOGGER.debug("%s Disabled (%s)", tool, reason)
-            st.warning(f"{reason}. Disabling {tool}.", icon="⚠️")
-        state.tool_box[tool]["enabled"] = False
 
     if not st_common.is_db_configured():
         LOGGER.debug("Vector Search/NL2SQL Disabled (Database not configured)")
@@ -100,17 +150,4 @@ def tools_sidebar(show_vs_subtools: bool = True) -> None:
             on_change=_update_vs_subtools,
         )
         if show_vs_subtools:
-            st.sidebar.checkbox(
-                "Prompt Rephrase",
-                help=help_text.help_dict["vector_search_rephrase"],
-                value=state.client_settings["vector_search"]["rephrase"],
-                key="selected_vs_rephrase",
-                on_change=_update_vs_subtools,
-            )
-            st.sidebar.checkbox(
-                "Document Grading",
-                help=help_text.help_dict["vector_search_grade"],
-                value=state.client_settings["vector_search"]["grade"],
-                key="selected_vs_grade",
-                on_change=_update_vs_subtools,
-            )
+            _render_vs_subtools(_update_vs_subtools)
