@@ -91,9 +91,10 @@ def _get_base_models_list() -> list[dict]:
             "max_input_tokens": 16384,
         },
         # CPU-friendly Ollama models (small models <7B parameters)
+        # Disabled by default; must be explicitly enabled after pulling the model via Ollama
         {
             "id": "llama3.2:1b",
-            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
+            "enabled": False,
             "type": "ll",
             "provider": "ollama",
             "api_key": "",
@@ -103,7 +104,7 @@ def _get_base_models_list() -> list[dict]:
         },
         {
             "id": "llama3.2:3b",
-            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
+            "enabled": False,
             "type": "ll",
             "provider": "ollama",
             "api_key": "",
@@ -113,7 +114,7 @@ def _get_base_models_list() -> list[dict]:
         },
         {
             "id": "gemma3:1b",
-            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
+            "enabled": False,
             "type": "ll",
             "provider": "ollama",
             "api_key": "",
@@ -123,7 +124,7 @@ def _get_base_models_list() -> list[dict]:
         },
         {
             "id": "phi4-mini",
-            "enabled": os.getenv("ON_PREM_OLLAMA_URL") is not None,
+            "enabled": False,
             "type": "ll",
             "provider": "ollama",
             "api_key": "",
