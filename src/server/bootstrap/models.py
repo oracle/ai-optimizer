@@ -90,6 +90,48 @@ def _get_base_models_list() -> list[dict]:
             "max_tokens": 2048,
             "max_input_tokens": 16384,
         },
+        # CPU-friendly Ollama models (small models <7B parameters)
+        # Disabled by default; must be explicitly enabled after pulling the model via Ollama
+        {
+            "id": "llama3.2:1b",
+            "enabled": False,
+            "type": "ll",
+            "provider": "ollama",
+            "api_key": "",
+            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "max_tokens": 2048,
+            "max_input_tokens": 131072,
+        },
+        {
+            "id": "llama3.2:3b",
+            "enabled": False,
+            "type": "ll",
+            "provider": "ollama",
+            "api_key": "",
+            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "max_tokens": 2048,
+            "max_input_tokens": 131072,
+        },
+        {
+            "id": "gemma3:1b",
+            "enabled": False,
+            "type": "ll",
+            "provider": "ollama",
+            "api_key": "",
+            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "max_tokens": 2048,
+            "max_input_tokens": 8192,
+        },
+        {
+            "id": "phi4-mini",
+            "enabled": False,
+            "type": "ll",
+            "provider": "ollama",
+            "api_key": "",
+            "api_base": os.environ.get("ON_PREM_OLLAMA_URL", default="http://127.0.0.1:11434"),
+            "max_tokens": 4096,
+            "max_input_tokens": 16384,
+        },
         {
             # This is intentionally last to line up with docos
             "id": "llama3.1",
