@@ -79,15 +79,18 @@ jobs:
       # Security scanning - only AIO (contains both server and client)
       - name: Run Trivy Security Scan
         if: matrix.build.name == 'aio'
-        uses: aquasecurity/trivy-action@0.35.0
-        with:
-          scan-type: image
-          image-ref: "aio:${{ github.sha }}"
-          severity: HIGH,CRITICAL
-          format: sarif
-          output: trivy-results-aio.sarif
-          ignore-unfixed: true
-          exit-code: 0
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}:/workspace" \
+            ghcr.io/aquasecurity/trivy:0.69.3 \
+            image \
+            --severity HIGH,CRITICAL \
+            --format sarif \
+            --output /workspace/trivy-results-aio.sarif \
+            --ignore-unfixed \
+            --exit-code 0 \
+            "aio:${{ github.sha }}"
 
       # Upload security results to GitHub Security tab
       - name: Upload Trivy Results to GitHub Security
