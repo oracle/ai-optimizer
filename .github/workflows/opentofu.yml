@@ -26,17 +26,15 @@ env:
   TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform.d/plugin-cache
 
 jobs:
-  # Job 1: Static analysis (validation, formatting, schema, security)
+  # Job 1: Static analysis (validation, formatting, schema)
   verify-iac-static:
-    name: Static Analysis & Security
+    name: Static Analysis
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/opentofu/opentofu:latest
     permissions:
-      pull-requests: write
       contents: read
-      security-events: write
 
     steps:
       - name: Checkout Code
@@ -79,21 +77,34 @@ jobs:
         working-directory: ./tests/opentofu
         run: python3 ./validate_omr_schema.py OMRMetaSchema.yaml ../../opentofu/schema.yaml
 
-      # Security scanning
+  # Job 2: Security scanning (runs on host for Docker access)
+  verify-iac-security:
+    name: Security Scan
+    if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
       - name: Run Trivy Security Scan for IaC
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: "config"
-          scan-ref: "opentofu"
-          format: "sarif"
-          output: "trivy-results.sarif"
-          exit-code: "0"
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            ghcr.io/aquasecurity/trivy:0.69.3 \
+            config \
+            --format sarif \
+            --output /workspace/trivy-results.sarif \
+            --exit-code 0 \
+            /workspace/opentofu
 
   verify-iac-summary:
     name: Validation Summary
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: [verify-iac-static]
+    needs: [verify-iac-static, verify-iac-security]
 
     steps:
       - name: All Validations Passed
