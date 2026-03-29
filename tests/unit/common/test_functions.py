@@ -13,6 +13,7 @@ import tempfile
 from unittest.mock import patch, MagicMock
 import requests
 import oracledb
+from langchain_community.vectorstores.utils import DistanceStrategy
 
 from common import functions
 
@@ -465,3 +466,29 @@ class TestRunSqlQuery:
                 content = f.read()
                 assert "COL1,COL2" in content
                 assert "val1,val2" in content
+
+
+class TestToDistanceStrategy:
+    """Tests for to_distance_strategy function."""
+
+    def test_cosine_string(self):
+        assert functions.to_distance_strategy("COSINE") == DistanceStrategy.COSINE
+
+    def test_euclidean_distance_string(self):
+        assert functions.to_distance_strategy("EUCLIDEAN_DISTANCE") == DistanceStrategy.EUCLIDEAN_DISTANCE
+
+    def test_dot_product_string(self):
+        assert functions.to_distance_strategy("DOT_PRODUCT") == DistanceStrategy.DOT_PRODUCT
+
+    def test_case_insensitive(self):
+        assert functions.to_distance_strategy("cosine") == DistanceStrategy.COSINE
+
+    def test_none_raises_error(self):
+        import pytest
+        with pytest.raises(ValueError, match="required"):
+            functions.to_distance_strategy(None)
+
+    def test_unrecognized_raises_error(self):
+        import pytest
+        with pytest.raises(ValueError, match="Unrecognized"):
+            functions.to_distance_strategy("UNKNOWN")

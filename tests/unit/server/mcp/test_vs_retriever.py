@@ -10,6 +10,7 @@ Tests distance-to-similarity conversion and score threshold filtering.
 
 from unittest.mock import MagicMock, patch
 from langchain_core.documents import Document
+from langchain_community.vectorstores.utils import DistanceStrategy
 
 from common.schema import VectorSearchSettings
 
@@ -86,7 +87,7 @@ class TestDistanceToSimilarityConversion:
                 db_conn=MagicMock(),
                 embed_client=MagicMock(),
                 vector_search=vector_search,
-                table_distance_metric="DOT",
+                table_distance_metric="DOT_PRODUCT",
             )
 
         # DOT scores should pass through unchanged
@@ -125,7 +126,7 @@ class TestDistanceToSimilarityConversion:
                 db_conn=MagicMock(),
                 embed_client=MagicMock(),
                 vector_search=vector_search,
-                table_distance_metric="EUCLIDEAN",
+                table_distance_metric="EUCLIDEAN_DISTANCE",
             )
 
         # Verify similarity scores
@@ -421,3 +422,66 @@ class TestMetadataEnrichment:
 
         # Should be rounded to 3 decimals
         assert documents[0].metadata["similarity_score"] == 0.833
+
+
+class TestOracleVSDistanceStrategyType:
+    """Tests that OracleVS receives a DistanceStrategy enum, not a raw string."""
+
+    def test_oraclevs_receives_distance_strategy_enum(self):
+        """OracleVS must be called with a DistanceStrategy enum, not a string.
+
+        This test would have caught the langchain-core 1.2.22 breakage where
+        _get_distance_function raises ValueError on non-enum values.
+        """
+        mock_vectorstore = MagicMock()
+        mock_vectorstore.similarity_search_with_score.return_value = [
+            (Document(page_content="Test", metadata={}), 0.2),
+        ]
+
+        from server.mcp.tools.vs_retriever import _search_table
+
+        vector_search = VectorSearchSettings(
+            search_type="Similarity",
+            top_k=1,
+            score_threshold=0.0,
+        )
+
+        with patch("server.mcp.tools.vs_retriever.OracleVS", return_value=mock_vectorstore) as mock_cls:
+            _search_table(
+                table_name="TEST_TABLE",
+                question="test query",
+                db_conn=MagicMock(),
+                embed_client=MagicMock(),
+                vector_search=vector_search,
+                table_distance_metric="COSINE",
+            )
+
+        # The 4th positional arg to OracleVS() must be a DistanceStrategy enum
+        args = mock_cls.call_args[0]
+        assert len(args) >= 4, "OracleVS should receive at least 4 positional args"
+        assert isinstance(args[3], DistanceStrategy), (
+            f"Expected DistanceStrategy enum, got {type(args[3]).__name__}: {args[3]}"
+        )
+        assert args[3] == DistanceStrategy.COSINE
+
+    def test_oraclevs_raises_for_none_metric(self):
+        """When distance_metric is None, _search_table should raise ValueError."""
+        import pytest
+
+        from server.mcp.tools.vs_retriever import _search_table
+
+        vector_search = VectorSearchSettings(
+            search_type="Similarity",
+            top_k=1,
+            score_threshold=0.0,
+        )
+
+        with pytest.raises(ValueError, match="required"):
+            _search_table(
+                table_name="TEST_TABLE",
+                question="test query",
+                db_conn=MagicMock(),
+                embed_client=MagicMock(),
+                vector_search=vector_search,
+                table_distance_metric=None,
+            )
