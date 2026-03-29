@@ -55,6 +55,7 @@ def make_vector_store():
         model: str = "text-embedding-3-small",
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
+        distance_metric: str = "COSINE",
         **kwargs,
     ) -> DatabaseVectorStorage:
         return DatabaseVectorStorage(
@@ -62,6 +63,7 @@ def make_vector_store():
             model=model,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            distance_metric=distance_metric,
             **kwargs,
         )
 
