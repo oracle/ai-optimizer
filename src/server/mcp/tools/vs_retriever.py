@@ -12,10 +12,10 @@ import traceback
 from pydantic import BaseModel
 
 from langchain_community.vectorstores.oraclevs import OracleVS
+from litellm import completion
 
 from common.functions import to_distance_strategy
 
-from litellm import completion
 
 import server.api.utils.settings as utils_settings
 import server.api.utils.databases as utils_databases
@@ -200,7 +200,12 @@ def _search_table(table_name, question, db_conn, embed_client, vector_search, ta
     """Search a single vector table and return documents with metadata"""
     # Normalize distance metric for consistent use in both OracleVS construction and score conversion
     distance_strategy = to_distance_strategy(table_distance_metric)
-    LOGGER.info("Searching table: %s with distance metric: %s (resolved: %s)", table_name, table_distance_metric, distance_strategy.value)
+    LOGGER.info(
+        "Searching table: %s with distance metric: %s (resolved: %s)",
+        table_name,
+        table_distance_metric,
+        distance_strategy.value,
+    )
 
     # Initialize Vector Store for this table using its specific distance metric
     vectorstores = OracleVS(db_conn, embed_client, table_name, distance_strategy)

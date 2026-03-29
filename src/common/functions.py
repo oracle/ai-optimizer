@@ -215,7 +215,9 @@ def to_distance_strategy(metric: str) -> DistanceStrategy:
         raise ValueError("Distance metric is required but was None/empty")
     strategy = _DISTANCE_STRATEGY_MAP.get(metric.upper())
     if strategy is None:
-        raise ValueError(f"Unrecognized distance metric: '{metric}'. Expected one of: {list(_DISTANCE_STRATEGY_MAP.keys())}")
+        raise ValueError(
+            f"Unrecognized distance metric: '{metric}'. Expected one of: {list(_DISTANCE_STRATEGY_MAP.keys())}"
+        )
     return strategy
 
 

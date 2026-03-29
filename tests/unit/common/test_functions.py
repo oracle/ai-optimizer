@@ -6,6 +6,7 @@ Unit tests for common/functions.py
 
 Tests utility functions for URL checking, vector store operations, and SQL operations.
 """
+# pylint: disable=import-outside-toplevel
 
 import json
 import os
@@ -472,23 +473,29 @@ class TestToDistanceStrategy:
     """Tests for to_distance_strategy function."""
 
     def test_cosine_string(self):
+        """Test COSINE string maps to DistanceStrategy.COSINE."""
         assert functions.to_distance_strategy("COSINE") == DistanceStrategy.COSINE
 
     def test_euclidean_distance_string(self):
+        """Test EUCLIDEAN_DISTANCE string maps to DistanceStrategy.EUCLIDEAN_DISTANCE."""
         assert functions.to_distance_strategy("EUCLIDEAN_DISTANCE") == DistanceStrategy.EUCLIDEAN_DISTANCE
 
     def test_dot_product_string(self):
+        """Test DOT_PRODUCT string maps to DistanceStrategy.DOT_PRODUCT."""
         assert functions.to_distance_strategy("DOT_PRODUCT") == DistanceStrategy.DOT_PRODUCT
 
     def test_case_insensitive(self):
+        """Test that metric string matching is case-insensitive."""
         assert functions.to_distance_strategy("cosine") == DistanceStrategy.COSINE
 
     def test_none_raises_error(self):
+        """Test that None metric raises ValueError."""
         import pytest
         with pytest.raises(ValueError, match="required"):
             functions.to_distance_strategy(None)
 
     def test_unrecognized_raises_error(self):
+        """Test that unrecognized metric raises ValueError."""
         import pytest
         with pytest.raises(ValueError, match="Unrecognized"):
             functions.to_distance_strategy("UNKNOWN")
