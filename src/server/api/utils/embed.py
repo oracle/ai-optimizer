@@ -31,6 +31,7 @@ import server.api.utils.databases as utils_databases
 import server.api.utils.oci as utils_oci
 
 from common import schema, functions
+from common.functions import to_distance_strategy
 
 
 LOGGER = logging.getLogger("api.utils.embed")
@@ -368,7 +369,7 @@ def _create_temp_vector_store(
         client=db_conn,
         embedding_function=embed_client,
         table_name=vector_store_tmp.vector_store,
-        distance_strategy=vector_store.distance_metric,
+        distance_strategy=to_distance_strategy(vector_store.distance_metric),
         query="AI Optimizer for Apps - Powered by Oracle",
     )
     return vs_tmp, vector_store_tmp
@@ -401,7 +402,7 @@ def _merge_and_index_vector_store(
         client=db_conn,
         embedding_function=embed_client,
         table_name=vector_store.vector_store,
-        distance_strategy=vector_store.distance_metric,
+        distance_strategy=to_distance_strategy(vector_store.distance_metric),
         query="AI Optimizer for Apps - Powered by Oracle",
     )
 

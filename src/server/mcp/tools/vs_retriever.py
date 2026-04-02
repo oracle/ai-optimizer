@@ -12,8 +12,10 @@ import traceback
 from pydantic import BaseModel
 
 from langchain_community.vectorstores.oraclevs import OracleVS
-
 from litellm import completion
+
+from common.functions import to_distance_strategy
+
 
 import server.api.utils.settings as utils_settings
 import server.api.utils.databases as utils_databases
@@ -196,10 +198,17 @@ def _deduplicate_documents(documents: List) -> List:
 
 def _search_table(table_name, question, db_conn, embed_client, vector_search, table_distance_metric):
     """Search a single vector table and return documents with metadata"""
-    LOGGER.info("Searching table: %s with distance metric: %s", table_name, table_distance_metric)
+    # Normalize distance metric for consistent use in both OracleVS construction and score conversion
+    distance_strategy = to_distance_strategy(table_distance_metric)
+    LOGGER.info(
+        "Searching table: %s with distance metric: %s (resolved: %s)",
+        table_name,
+        table_distance_metric,
+        distance_strategy.value,
+    )
 
     # Initialize Vector Store for this table using its specific distance metric
-    vectorstores = OracleVS(db_conn, embed_client, table_name, table_distance_metric)
+    vectorstores = OracleVS(db_conn, embed_client, table_name, distance_strategy)
 
     # For Similarity searches, call with_score to preserve scores
     if vector_search.search_type == "Similarity":
@@ -212,12 +221,12 @@ def _search_table(table_name, question, db_conn, embed_client, vector_search, ta
         for doc, score in docs_and_scores:
             # Convert distance to similarity score (for COSINE: similarity = 1 - distance)
             # For COSINE metric, distance is in [0, 2] range, similarity in [0, 1]
-            if table_distance_metric == "COSINE":
+            if distance_strategy.value == "COSINE":
                 similarity = 1.0 - (score / 2.0)
-            elif table_distance_metric == "DOT":
+            elif distance_strategy.value == "DOT_PRODUCT":
                 # For DOT product, higher is better (already a similarity)
                 similarity = score
-            else:  # EUCLIDEAN or EUCLIDEAN_SQUARED
+            else:  # EUCLIDEAN_DISTANCE
                 # For Euclidean, lower distance = higher similarity
                 # Use inverse: similarity = 1 / (1 + distance)
                 similarity = 1.0 / (1.0 + score)

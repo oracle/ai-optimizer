@@ -13,6 +13,8 @@ import os
 import csv
 import json
 
+from langchain_community.vectorstores.utils import DistanceStrategy
+
 import oracledb
 import requests
 
@@ -190,7 +192,7 @@ def parse_vs_comment(comment: str) -> dict:
             "model": parsed.get("model"),
             "chunk_size": parsed.get("chunk_size"),
             "chunk_overlap": parsed.get("chunk_overlap"),
-            "distance_metric": parsed.get("distance_metric"),
+            "distance_metric": parsed.get("distance_metric") or parsed.get("distance_strategy"),
             "index_type": parsed.get("index_type"),
             "parse_status": "success",
         }
@@ -198,6 +200,25 @@ def parse_vs_comment(comment: str) -> dict:
         LOGGER.warning("Failed to parse table comment '%s': %s", comment, ex)
         default_result["parse_status"] = f"parse_error: {str(ex)}"
         return default_result
+
+
+_DISTANCE_STRATEGY_MAP = {
+    "COSINE": DistanceStrategy.COSINE,
+    "EUCLIDEAN_DISTANCE": DistanceStrategy.EUCLIDEAN_DISTANCE,
+    "DOT_PRODUCT": DistanceStrategy.DOT_PRODUCT,
+}
+
+
+def to_distance_strategy(metric: str) -> DistanceStrategy:
+    """Convert a distance metric string to a DistanceStrategy enum."""
+    if not metric:
+        raise ValueError("Distance metric is required but was None/empty")
+    strategy = _DISTANCE_STRATEGY_MAP.get(metric.upper())
+    if strategy is None:
+        raise ValueError(
+            f"Unrecognized distance metric: '{metric}'. Expected one of: {list(_DISTANCE_STRATEGY_MAP.keys())}"
+        )
+    return strategy
 
 
 def is_sql_accessible(db_conn: str, query: str) -> tuple[bool, str]:
