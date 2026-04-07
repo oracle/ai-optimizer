@@ -19,7 +19,7 @@ from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 from fastmcp.server.providers.proxy import ProxyProvider, _create_client_factory
 from fastmcp.server.server import FastMCP as FastMCPServer
-from fastmcp.tools.tool import Tool
+from fastmcp.tools import Tool
 
 from server.app.core.mcp import mcp
 from server.app.core.paths import PROJECT_ROOT

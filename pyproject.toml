@@ -130,7 +130,7 @@ markers = [
 line-length = 120
 target-version = "py311"
 src = ["src"]
-extend-exclude = ["**/wip/**", "src/client/mcp", "docs/themes/relearn", "docs/public", "docs/static/demoware"]
+extend-exclude = ["**/wip/**", "src/client/mcp", "docs/themes/relearn", "docs/public", "docs/static/demoware", "docs/demo"]
 
 [tool.ruff.lint]
 select = [

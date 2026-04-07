@@ -14,7 +14,7 @@ ACCESSING THE APPLICATION
 Streamlit Client (Web UI):
 {{- if .Values.client.ingress.enabled }}
   The client UI is available via Ingress.
-  {{- if .Values.client.ingress.tls }}
+  {{- if and .Values.client.ingress.tls (gt (len .Values.client.ingress.tls) 0) }}
   Access at: https://{{ (index .Values.client.ingress.tls 0).hosts | first }}
   {{- else }}
   Access at: http://<your-ingress-host>{{ include "global.getPath" . }}
@@ -34,7 +34,7 @@ Streamlit Client (Web UI):
 Server API:
 {{- if .Values.server.ingress.enabled }}
   The server API is available via Ingress.
-  {{- if .Values.server.ingress.tls }}
+  {{- if and .Values.server.ingress.tls (gt (len .Values.server.ingress.tls) 0) }}
   Access at: https://{{ (index .Values.server.ingress.tls 0).hosts | first }}{{ include "global.getPath" . }}v1
   {{- else }}
   Access at: http://<your-ingress-host>{{ include "global.getPath" . }}v1
