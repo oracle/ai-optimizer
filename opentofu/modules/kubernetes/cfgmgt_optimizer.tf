@@ -12,7 +12,7 @@ locals {
     db_dsn               = var.db_conn.service
     db_name              = lower(var.db_name)
     node_pool_gpu_deploy = var.node_pool_gpu_deploy
-    lb_ip                = var.lb.ip_address_details[0].ip_address
+    ssl_enabled          = var.ssl_enabled
   })
 }
 

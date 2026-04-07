@@ -3,11 +3,12 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
+import argparse
 import base64
 import re
-from pathlib import Path
 import sys
-import argparse
+from pathlib import Path
+
 import yaml
 
 
@@ -27,7 +28,7 @@ def rewrite_key_file_paths(config_text: str) -> str:
 
     def replacer(match):
         original_path = Path(match.group(1).strip())
-        new_path = Path("/app/runtime/.oci") / original_path.name
+        new_path = Path("/app/.oci") / original_path.name
         return f"key_file={new_path}"
 
     return re.sub(r"key_file\s*=\s*(.+)", replacer, config_text)

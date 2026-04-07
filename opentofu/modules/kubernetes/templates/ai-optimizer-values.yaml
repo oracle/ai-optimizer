@@ -3,6 +3,7 @@
 # spell-checker: disable
 
 global:
+  env: "prd"
   api:
     secretName: "${label}-optimizer-api-key"
 
@@ -17,9 +18,17 @@ server:
     enabled: true
     className: native-ic
     annotations:
+%{ if ssl_enabled ~}
+      oci-native-ingress.oraclecloud.com/https-listener-port: "443"
+%{ else ~}
       oci-native-ingress.oraclecloud.com/http-listener-port: "80"
+%{ endif ~}
       oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
       oci-native-ingress.oraclecloud.com/healthcheck-path: "/v1/readiness"
+%{ if ssl_enabled ~}
+    tls:
+      - secretName: ${label}-tls
+%{ endif ~}
 
   service:
     type: "NodePort"
@@ -46,7 +55,7 @@ server:
       secretName: "${db_name}-db-priv-authn"
 
 client:
-  enable: true
+  enabled: true
   image:
     repository: ${repository_base}/ai-optimizer-client
     tag: "latest"
@@ -56,28 +65,36 @@ client:
     enabled: true
     className: native-ic
     annotations:
+%{ if ssl_enabled ~}
+      oci-native-ingress.oraclecloud.com/https-listener-port: "443"
+%{ else ~}
       oci-native-ingress.oraclecloud.com/http-listener-port: "80"
+%{ endif ~}
       oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
       oci-native-ingress.oraclecloud.com/healthcheck-path: "/_stcore/health"
+%{ if ssl_enabled ~}
+    tls:
+      - secretName: ${label}-tls
+%{ endif ~}
 
   service:
     type: "NodePort"
 
   features:
-    disableTestbed: "false"
-    disableApi: "false"
-    disableTools: "false"
-    disableDbCfg: "false"
-    disableModelCfg: "false"
-    disableOciCfg: "false"
-    disableSettings: "false"
+    disableTestbed: false
+    disableApi: false
+    disableTools: false
+    disableDbCfg: false
+    disableModelCfg: false
+    disableOciCfg: false
+    disableSettings: false
 
 ollama:
   enabled: ${node_pool_gpu_deploy}
   models:
     enabled: true
     modelPullList:
-      - llama3.1
+      - qwen3:8b
       - mxbai-embed-large
   resources:
     limits:

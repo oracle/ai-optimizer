@@ -4,9 +4,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore kubeconfig obaas prereqs
 
-import subprocess
+from __future__ import annotations
+
 import argparse
 import os
+import subprocess
 import sys
 import time
 
@@ -32,7 +34,7 @@ HELM_CHARTS = [
 
 
 # --- Utility Functions ---
-def mod_kubeconfig(private_endpoint: str = None):
+def mod_kubeconfig(private_endpoint: str | None = None):
     """Modify Kubeconfig with private endpoint if applicable"""
     if not private_endpoint:
         return
@@ -172,6 +174,8 @@ def apply_helm_chart_inner(chart_config, namespace, optimizer_version=None, use_
     if chart_name == "ai-optimizer" and optimizer_version == "Experimental":
         cmd.extend(["--version", "0.0.0"])
         print("🔬 Using Experimental version (0.0.0)")
+    elif chart_name == "ai-optimizer" and optimizer_version == "Branch":
+        print("🔬 Using local Branch chart")
     elif chart_name == "ai-optimizer":
         print("✅ Using latest Stable release")
 
@@ -329,11 +333,22 @@ if __name__ == "__main__":
     parser.add_argument("--private_endpoint", help="Kubernetes Private Endpoint")
     parser.add_argument(
         "--optimizer_version",
-        choices=["Stable", "Experimental"],
+        choices=["Stable", "Experimental", "Branch"],
         default="Stable",
         help="AI Optimizer version (default: Stable)",
     )
+    parser.add_argument(
+        "--local_chart_path",
+        help="Path to local Helm chart directory (used with Branch mode)",
+    )
     args = parser.parse_args()
+
+    if args.local_chart_path:
+        for chart in HELM_CHARTS:
+            if chart["name"] == "ai-optimizer":
+                chart["chart_ref"] = args.local_chart_path
+                chart.pop("repo_url", None)
+                chart.pop("repo_name", None)
 
     mod_kubeconfig(args.private_endpoint)
     apply_manifest(args.namespace)

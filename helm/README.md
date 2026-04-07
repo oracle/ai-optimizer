@@ -191,10 +191,10 @@ helm install ai-optimizer . \
 | `server.database.image.repository` | Container image for SIDB/ADB-FREE | `""` | See examples |
 | `server.database.image.tag` | Container image tag | `latest` | |
 | `server.database.oci.ocid` | ADB-S OCID (for ADB-S only) | `""` | |
-| `server.database.other.dsn` | Full DSN (for OTHER only) | `""` | Either dsn OR (host+port+service_name) |
+| `server.database.other.dsn` | Full DSN (for OTHER only) | `""` | Either dsn OR (host+port+serviceName) |
 | `server.database.other.host` | Database host (for OTHER only) | `""` | Required if dsn not provided |
 | `server.database.other.port` | Database port (for OTHER only) | `""` | Required if dsn not provided |
-| `server.database.other.service_name` | Database service name (for OTHER only) | `""` | Required if dsn not provided |
+| `server.database.other.serviceName` | Database service name (for OTHER only) | `""` | Required if dsn not provided |
 | `server.database.authN.secretName` | Secret with DB credentials | `"db-authn"` | Auto-generated if not exists |
 | `server.database.authN.usernameKey` | Key for username in secret | `"username"` | |
 | `server.database.authN.passwordKey` | Key for password in secret | `"password"` | |
@@ -207,7 +207,7 @@ helm install ai-optimizer . \
 - **SIDB-FREE**: Oracle AI Database Free (containerized single instance)
 - **ADB-FREE**: Autonomous Oracle AI Database Free (containerized)
 - **ADB-S**: Autonomous Database Shared (managed OCI service)
-- **OTHER**: External/bring-your-own database (requires host, port, and service_name)
+- **OTHER**: External/bring-your-own database (requires host, port, and serviceName)
 
 #### Server OCI Configuration
 
@@ -300,7 +300,7 @@ Same structure as server autoscaling (see above).
 | `ollama.image.repository` | Ollama image | `docker.io/ollama/ollama` |
 | `ollama.image.tag` | Ollama image tag | `latest` |
 | `ollama.models.enabled` | Auto-pull models on startup | `true` |
-| `ollama.models.modelPullList` | List of models to pull | `[llama3.1, mxbai-embed-large]` |
+| `ollama.models.modelPullList` | List of models to pull | `[qwen3:8b, mxbai-embed-large]` |
 | `ollama.resources` | Resource requests/limits (GPU support) | `{}` |
 
 **Note**: For GPU support, set:

@@ -1,3 +1,3 @@
 # etc
 
-Director to store settings files for automatic consumption on startup.
+Place an exported settings json file, named `configuration.json`, for automatic consumption during server startup.

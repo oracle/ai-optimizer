@@ -135,6 +135,41 @@ http://{{ include "ollama.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster
 
 
 {{/* ******************************************
+Env Secret Name Helpers
+Returns either the user-provided secretName or a generated name.
+*********************************************** */}}
+{{- define "server.envSecretName" -}}
+{{- $envSecret := .Values.server.envSecret | default dict -}}
+{{- $envSecret.secretName | default (printf "%s-env" (include "global.fullname" .)) -}}
+{{- end -}}
+
+{{- define "server.envSecretKey" -}}
+{{- $envSecret := .Values.server.envSecret | default dict -}}
+{{- $envSecret.secretKey | default "server.env" -}}
+{{- end -}}
+
+{{- define "client.envSecretName" -}}
+{{- $envSecret := .Values.client.envSecret | default dict -}}
+{{- $envSecret.secretName | default (printf "%s-env" (include "global.fullname" .)) -}}
+{{- end -}}
+
+{{- define "client.envSecretKey" -}}
+{{- $envSecret := .Values.client.envSecret | default dict -}}
+{{- $envSecret.secretKey | default "client.env" -}}
+{{- end -}}
+
+{{- define "global.envSecretEnabled" -}}
+{{- $serverEnv := .Values.server.envSecret | default dict -}}
+{{- $clientEnv := .Values.client.envSecret | default dict -}}
+{{- $serverContent := $serverEnv.content | default dict -}}
+{{- $clientContent := $clientEnv.content | default dict -}}
+{{- $serverSecretName := $serverEnv.secretName | default "" -}}
+{{- $clientSecretName := $clientEnv.secretName | default "" -}}
+{{- or (and (eq $serverSecretName "") (gt (len $serverContent) 0)) (and (eq $clientSecretName "") (gt (len $clientContent) 0)) -}}
+{{- end -}}
+
+
+{{/* ******************************************
 Database Secret Name
 *********************************************** */}}
 {{- define "server.databaseSecret" -}}
@@ -196,8 +231,22 @@ Create the pull model list for Ollama
 {{- end -}}
 
 {{/* ******************************************
+Validate that server.database.adb.serviceName is provided when database type is ADB-S
+and no external authN secret overrides the default.
+*********************************************** */}}
+{{- define "server.database.validateADBSType" -}}
+  {{- if eq (include "server.database.isADBS" .) "true" -}}
+    {{- $adb := .Values.server.database.adb | default dict -}}
+    {{- $serviceName := $adb.serviceName | default "" -}}
+    {{- if eq ($serviceName | trim) "" -}}
+      {{- fail "server.database.type is ADB-S: must provide server.database.adb.serviceName (TNS alias from wallet tnsnames.ora, e.g., mydb_low)" -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{/* ******************************************
 Validate that server.database.other fields are provided when database type is OTHER.
-Requires either 'dsn' OR all of (host, port, service_name).
+Requires either 'dsn' OR all of (host, port, serviceName).
 *********************************************** */}}
 {{- define "server.database.validateOtherType" -}}
   {{- if .Values.server.database -}}
@@ -207,7 +256,7 @@ Requires either 'dsn' OR all of (host, port, service_name).
       {{- $dsn := .Values.server.database.other.dsn -}}
       {{- $host := .Values.server.database.other.host -}}
       {{- $port := .Values.server.database.other.port -}}
-      {{- $serviceName := .Values.server.database.other.service_name -}}
+      {{- $serviceName := .Values.server.database.other.serviceName -}}
 
       {{- /* Check if dsn is provided and not empty */ -}}
       {{- $hasDsn := false -}}
@@ -242,7 +291,7 @@ Requires either 'dsn' OR all of (host, port, service_name).
       {{- /* Validate: must have either dsn OR all three individual fields */ -}}
       {{- if not $hasDsn -}}
         {{- if not (and $hasHost $hasPort $hasServiceName) -}}
-          {{- fail "server.database.type is OTHER: must provide either 'dsn' OR all of (host, port, service_name)" -}}
+          {{- fail "server.database.type is OTHER: must provide either 'dsn' OR all of (host, port, serviceName)" -}}
         {{- end -}}
       {{- end -}}
     {{- end -}}

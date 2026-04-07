@@ -113,11 +113,7 @@ Please follow the [Getting Started](https://docs.oracle.com/en-us/iaas/Content/g
 To use OCI GenAI, the {{< short_app_ref >}} must be configured for [OCI access](oci_config); including the Compartment OCID for the OCI GenAI service.
 
 >[!code]Skip the GUI!
->You can set the following environment variables to automatically enable OCI GenAI models:
->```shell
->export OCI_GENAI_REGION=<OCI GenAI Service Region>
->export OCI_GENAI_COMPARTMENT_ID=<OCI Compartment OCID of the OCI GenAI Service>
->```
+>OCI GenAI models can be enabled via environment variables. See [OCI GenAI](/env_config/#oci-genai) configuration.
 >
 >Alternatively, you can specify the following in the `~/.oci/config` configfile under the appropriate OCI profile:
 >```shell
@@ -134,14 +130,11 @@ To use OCI GenAI, the {{< short_app_ref >}} must be configured for [OCI access](
 When configuring an Ollama model in the {{< short_app_ref >}}, set the `API Server` URL (e.g `http://127.0.0.1:11434`) and leave the API Key blank. Substitute the IP Address with the IP of where Ollama is running.
 
 >[!code]Skip the GUI!
->You can set the following environment variable to automatically set the `API Server` URL and enable Ollama models (change the IP address and Port, as applicable to your environment):
->```shell
->export ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
->```
+>Ollama models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
 
 ## Quick-start
 
-Example of running llama3.1 on a Linux host:
+Example of running qwen3:8b on a Linux host:
 
 1. Install Ollama:
 
@@ -149,10 +142,10 @@ Example of running llama3.1 on a Linux host:
 sudo curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-1. Pull the llama3.1 model:
+1. Pull the qwen3:8b model:
 
 ```shell
-ollama pull llama3.1
+ollama pull qwen3:8b
 ```
 
 1. Start Ollama
@@ -170,11 +163,7 @@ For more information and instructions on running Ollama on other platforms, plea
 [HuggingFace](https://huggingface.co/) is a platform where the machine learning community collaborates on models, datasets, and applications. It provides a large selection of models that can be run both in the cloud and On-Premises.
 
 >[!code]Skip the GUI!
->You can set the following environment variable to automatically set the `API Server` URL and enable HuggingFace models (change the IP address and Port, as applicable to your environment):
-:
->```shell
->export ON_PREM_HF_URL=http://127.0.0.1:8080
->```
+>HuggingFace models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
 
 ## Quick-start
 
@@ -221,11 +210,7 @@ Example of running thenlper/gte-base in a container:
 **WARNING:** Cohere is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
 
 >[!code]Skip the GUI!
->You can set the following environment variable to automatically set the `API Key` and enable Perplexity models:
-:
->```shell
->export COHERE_API_KEY=<super-secret API Key>
->```
+>Cohere models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
 {{% /tab %}}
 {{% tab title="OpenAI" %}}
 # OpenAI
@@ -235,11 +220,7 @@ Example of running thenlper/gte-base in a container:
 **WARNING:** OpenAI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
 
 >[!code]Skip the GUI!
->You can set the following environment variable to automatically set the `API Key` and enable OpenAI models:
-:
->```shell
->export OPENAI_API_KEY=<super-secret API Key>
->```
+>OpenAI models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
 
 {{% /tab %}}
 {{% tab title="CompatOpenAI" %}}
@@ -256,10 +237,6 @@ Many "AI Runners" provide OpenAI compatible APIs.  These can be used without any
 **WARNING:** Perplexity AI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
 
 >[!code]Skip the GUI!
->You can set the following environment variable to automatically set the `API Key` and enable Perplexity models:
-:
->```shell
->export PPLX_API_KEY=<super-secret API Key>
->```
+>Perplexity models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
 {{% /tab %}}
 {{< /tabs >}}

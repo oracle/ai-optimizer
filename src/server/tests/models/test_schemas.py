@@ -1,0 +1,215 @@
+"""
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+Tests for server.app.models.schemas Pydantic models.
+"""
+# spell-checker: disable
+
+import time
+
+import pytest
+from pydantic import ValidationError
+
+from server.app.models.schemas import (
+    EmbeddingModelParameters,
+    LanguageModelParameters,
+    ModelConfig,
+    ModelIdentity,
+    ModelSensitive,
+    ModelUpdate,
+    SupportedProviderIds,
+)
+
+# ---------------------------------------------------------------------------
+# LanguageModelParameters
+# ---------------------------------------------------------------------------
+
+
+class TestLanguageModelParameters:
+    """Test LanguageModelParameters defaults and overrides."""
+
+    def test_defaults(self):
+        """Unset fields use expected defaults."""
+        params = LanguageModelParameters()
+        assert params.max_input_tokens is None
+        assert params.max_tokens == 4096
+        assert params.top_p == 1.00
+
+    def test_overrides(self):
+        """Explicit values replace defaults."""
+        params = LanguageModelParameters(max_input_tokens=1024, max_tokens=512, top_p=0.9)
+        assert params.max_input_tokens == 1024
+        assert params.max_tokens == 512
+        assert params.top_p == 0.9
+
+
+# ---------------------------------------------------------------------------
+# EmbeddingModelParameters
+# ---------------------------------------------------------------------------
+
+
+class TestEmbeddingModelParameters:
+    """Test EmbeddingModelParameters defaults and overrides."""
+
+    def test_defaults(self):
+        """max_chunk_size defaults to 8192."""
+        params = EmbeddingModelParameters()
+        assert params.max_chunk_size == 8192
+
+    def test_overrides(self):
+        """Explicit max_chunk_size replaces default."""
+        params = EmbeddingModelParameters(max_chunk_size=512)
+        assert params.max_chunk_size == 512
+
+
+# ---------------------------------------------------------------------------
+# ModelSensitive
+# ---------------------------------------------------------------------------
+
+
+class TestModelSensitive:
+    """Test ModelSensitive field."""
+
+    def test_api_key_default_none(self):
+        """api_key defaults to None."""
+        m = ModelSensitive()
+        assert m.api_key is None
+
+    def test_api_key_set(self):
+        """api_key stores the provided value."""
+        m = ModelSensitive(api_key="sk-test")
+        assert m.api_key == "sk-test"
+
+
+# ---------------------------------------------------------------------------
+# SupportedProviderIds
+# ---------------------------------------------------------------------------
+
+
+class TestSupportedProviderIds:
+    """Test SupportedProviderIds defaults and construction."""
+
+    def test_defaults(self):
+        """provider defaults to None and ids to empty list."""
+        s = SupportedProviderIds()
+        assert s.provider is None
+        assert not s.ids
+
+    def test_construction(self):
+        """Explicit values are stored correctly."""
+        s = SupportedProviderIds(provider="openai", ids=[{"key": "gpt-4o"}])
+        assert s.provider == "openai"
+        assert len(s.ids) == 1
+
+
+# ---------------------------------------------------------------------------
+# ModelIdentity
+# ---------------------------------------------------------------------------
+
+
+class TestModelIdentity:
+    """Test ModelIdentity defaults and construction."""
+
+    def test_defaults(self):
+        """provider and id default to None."""
+        m = ModelIdentity()
+        assert m.provider is None
+        assert m.id is None
+
+    def test_construction(self):
+        """Explicit provider and id are stored."""
+        m = ModelIdentity(provider="openai", id="gpt-4o")
+        assert m.provider == "openai"
+        assert m.id == "gpt-4o"
+
+
+# ---------------------------------------------------------------------------
+# ModelConfig
+# ---------------------------------------------------------------------------
+
+
+class TestModelConfig:
+    """Test ModelConfig composite model."""
+
+    def test_defaults(self):
+        """Default fields match expected literal and computed values."""
+        now = int(time.time())
+        cfg = ModelConfig(type="ll")
+        assert cfg.object == "model"
+        assert cfg.owned_by == "aioptimizer"
+        assert abs(cfg.created - now) <= 2
+        assert cfg.enabled is False
+        assert cfg.usable is False
+
+    def test_type_validation_accepts_valid(self):
+        """'ll', 'embed', and 'rerank' are all accepted."""
+        for t in ("ll", "embed", "rerank"):
+            cfg = ModelConfig(type=t)
+            assert cfg.type == t
+
+    def test_type_validation_rejects_invalid(self):
+        """An unrecognised type raises ValidationError."""
+        with pytest.raises(ValidationError):
+            ModelConfig(type="invalid")  # type: ignore[arg-type]
+
+    def test_inherits_language_model_parameters(self):
+        """LanguageModelParameters fields are accessible on ModelConfig."""
+        cfg = ModelConfig(type="ll", max_tokens=2048, max_input_tokens=4096)
+        assert cfg.max_tokens == 2048
+        assert cfg.max_input_tokens == 4096
+
+    def test_inherits_embedding_model_parameters(self):
+        """EmbeddingModelParameters fields are accessible on ModelConfig."""
+        cfg = ModelConfig(type="embed", max_chunk_size=512)
+        assert cfg.max_chunk_size == 512
+
+    def test_inherits_model_sensitive(self):
+        """ModelSensitive fields are accessible on ModelConfig."""
+        cfg = ModelConfig(type="ll", api_key="sk-key")
+        assert cfg.api_key == "sk-key"
+
+    def test_inherits_model_identity(self):
+        """ModelIdentity fields are accessible on ModelConfig."""
+        cfg = ModelConfig(type="ll", provider="openai", id="gpt-4o")
+        assert cfg.provider == "openai"
+        assert cfg.id == "gpt-4o"
+
+    def test_api_base_optional(self):
+        """api_base defaults to None and accepts a URL string."""
+        cfg = ModelConfig(type="ll")
+        assert cfg.api_base is None
+        cfg2 = ModelConfig(type="ll", api_base="http://localhost:8000")
+        assert cfg2.api_base == "http://localhost:8000"
+
+
+# ---------------------------------------------------------------------------
+# ModelUpdate
+# ---------------------------------------------------------------------------
+
+
+class TestModelUpdate:
+    """Test ModelUpdate optional fields."""
+
+    def test_all_fields_optional(self):
+        """Empty constructor succeeds with all fields None."""
+        u = ModelUpdate()
+        assert u.type is None
+        assert u.provider is None
+
+    def test_model_dump_exclude_unset_returns_only_set_fields(self):
+        """model_dump(exclude_unset=True) omits fields not explicitly set."""
+        u = ModelUpdate(temperature=0.5, enabled=True)
+        dumped = u.model_dump(exclude_unset=True)
+        assert dumped == {"temperature": 0.5, "enabled": True}
+
+    def test_inherits_api_key_from_model_sensitive(self):
+        """api_key is available via ModelSensitive inheritance."""
+        u = ModelUpdate(api_key="new-key")
+        assert u.api_key == "new-key"
+
+    def test_empty_dump_has_no_keys(self):
+        """Dumping a default instance with exclude_unset yields empty dict."""
+        u = ModelUpdate()
+        dumped = u.model_dump(exclude_unset=True)
+        assert dumped == {}

@@ -31,11 +31,11 @@ Provide the following input:
 - **Database Connect String**: The full connection string or [TNS Alias](#using-a-wallettns_admin-directory) for the Database. 
     This is normally in the form of 
     `
-    (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=<hostname>)(PORT=<port>))(CONNECT_DATA=(SERVICE_NAME=<service_name>)))
+    (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=<hostname>)(PORT=<port>))(CONNECT_DATA=(SERVICE_NAME=<serviceName>)))
     ` 
     or 
     `
-    //<hostname>:<port>/<service_name>
+    //<hostname>:<port>/<serviceName>
     `
 - **Wallet Password** (_Optional_): If the connection to the database uses mTLS, provide the wallet password. {{< icon "star" >}}Review [Using a Wallet](#using-a-wallettns_admin-directory) for additional setup instructions.
 
@@ -45,21 +45,7 @@ Once all fields are set, click the `Save` button.
 
 ### Environment Variables
 
-The following environment variables can be set, prior to starting the {{< short_app_ref >}}, to automatically configure the database:
-
-- **DB_USERNAME**: The pre-created [database username](#database-user) where the embeddings will be stored
-- **DB_PASSWORD**: The password for the `DB Username`
-- **DB_DSN**: The connection string or [TNS Alias](#using-a-wallettns_admin-directory) for the Database. This is normally in the form of `(description=... (service_name=<service_name>))` or `//host:port/service_name`.
-- **DB_WALLET_PASSWORD** (_Optional_): If the connection to the database uses mTLS, provide the wallet password. {{< icon "star" >}}Review [Using a Wallet](#using-a-wallettns_admin-directory) for additional setup instructions.
-
-For Example:
-
-```bash
-export DB_USERNAME="DEMO"
-export DB_PASSWORD=MYCOMPLEXSECRET
-export DB_DSN="//localhost:1521/OPTIMIZER"
-export DB_WALLET_PASSWORD=MYCOMPLEXWALLETSECRET
-```
+The database can also be configured using environment variables. See the [Database](/env_config/#database) section of the Configuration page for available variables and usage.
 
 --- 
 

@@ -43,5 +43,5 @@ Mixed configurations, like Ollama for embeddings and OpenAI for chat completion 
 
 For more information, about the {{< short_app_ref >}} and  downloadable templates:
 
-* **LangchainMCP**: please view the [Advanced - Export as Langchain server](../../advanced/langchain_mcp.md) documentation.
-* **SpringAI**: please view the [Advanced - SpringAI](../../advanced/springai) documentation.
+* **LangchainMCP**: please view the [Advanced - Export as Langchain server](../../advanced/source_code/langchain_mcp) documentation.
+* **SpringAI**: please view the [Advanced - SpringAI](../../advanced/source_code/springai) documentation.

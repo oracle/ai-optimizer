@@ -33,6 +33,10 @@ global:
   # Example: "/test" results in URLs like http://hostname/test/...
   baseUrlPath: "/"
 
+  # -- Environment name. Controls which .env file pydantic-settings reads (.env.{env})
+  # and which file path the envSecret is mounted as (/app/.env.{env}).
+  env: "prd"
+
 # -----------------------
 # Server Configuration
 server:
@@ -62,6 +66,14 @@ server:
   # service: type of Kubernetes service to expose server port.
   service:
     type: "ClusterIP"
+
+  # ssl: enable HTTPS on the uvicorn server.
+  # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
+  # When certFile and keyFile are empty, a self-signed certificate is auto-generated at startup.
+  ssl:
+    enabled: false
+    certFile: ""
+    keyFile: ""
 
   # Gateway: controls the Gateway API resources to expose the service
   gateway:
@@ -117,12 +129,15 @@ server:
       # -- (Optional) Key within walletPassSecretName that contains the password.
       # If not specified, defaults to the secret name.
       walletPassSecretKey: ""
+      # -- TNS alias from the wallet's tnsnames.ora (e.g., mydb_low).
+      # Required when auto-creating the auth secret for ADB-S.
+      serviceName: ""
 
     # -- For OTHER; Database connectivity
-    # Either provide 'dsn' OR all of (host, port, service_name)
+    # Either provide 'dsn' OR all of (host, port, serviceName)
     other:
       # -- Full DSN string (e.g: mydbhost.com:1521/mydb_service)
-      # If provided, supersedes host/port/service_name
+      # If provided, supersedes host/port/serviceName
       dsn: ""
       # -- Database host (e.g: mydbhost.com)
       # Required if dsn is not provided
@@ -132,7 +147,7 @@ server:
       port: ""
       # -- Database service name (e.g: mydb_service)
       # Required if dsn is not provided
-      service_name: ""
+      serviceName: ""
 
     # -- Application User Authentication/Connection Details
     authN:
@@ -153,6 +168,8 @@ server:
       usernameKey: "username"
       # -- Key in secretName containing the password
       passwordKey: "password"
+      # -- Key in secretName containing the connection service name
+      serviceKey: "service"
 
   # -- Oracle Cloud Infrastructure Configuration
   oci_config:
@@ -189,6 +206,22 @@ server:
     cohere:
       secretName: ""
       secretKey: "apiKey"
+
+  # -- Environment configuration (.env.prd) mounted as a Secret.
+  # Provides AIO_* settings to the server (pydantic-settings reads the file directly).
+  # Pod env vars (DB_*, OCI_CLI_*, model API keys) always take precedence.
+  # Either:
+  # 1) Provide 'secretName' to reference a pre-existing Secret containing .env.prd content.
+  # 2) Provide 'content' as key-value pairs and Helm will create the Secret.
+  # envSecret:
+  #   secretName: ""
+  #   secretKey: "server.env"
+  #   content:
+  #     AIO_RUNTIME: langgraph
+  #     AIO_LOG_LEVEL: INFO
+  #     AIO_DB_POOL_SIZE: "5"
+  #     AIO_GENAI_COMPARTMENT_ID: "ocid1.compartment..."
+  #     AIO_GENAI_REGION: "us-chicago-1"
 
   # livenessProbe: defines settings for the liveness probe.
   # Set `enabled` to false to disable the probe entirely.
@@ -299,6 +332,14 @@ client:
   service:
     type: "ClusterIP"
 
+  # ssl: enable HTTPS on the Streamlit server.
+  # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
+  # When certFile and keyFile are empty, a self-signed certificate is auto-generated at startup.
+  ssl:
+    enabled: false
+    certFile: ""
+    keyFile: ""
+
   # Gateway: controls the Gateway API resources to expose the service
   gateway:
     enabled: false
@@ -318,6 +359,18 @@ client:
     # - hosts:
     #     - example.com
     #   secretName: example-tls
+
+  # -- Environment configuration (.env.prd) mounted as a Secret.
+  # Provides AIO_* settings to the client (pydantic-settings reads the file directly).
+  # Pod env vars always take precedence.
+  # Either:
+  # 1) Provide 'secretName' to reference a pre-existing Secret containing .env.prd content.
+  # 2) Provide 'content' as key-value pairs and Helm will create the Secret.
+  # envSecret:
+  #   secretName: ""
+  #   secretKey: "client.env"
+  #   content:
+  #     AIO_LOG_LEVEL: INFO
 
   # -- Disable specific client features
   features:
@@ -444,7 +497,7 @@ ollama:
     enabled: true
     # -- List of models to automatically pull
     modelPullList:
-      - llama3.1
+      - qwen3:8b
       - mxbai-embed-large
 
   # livenessProbe: defines settings for the liveness probe.

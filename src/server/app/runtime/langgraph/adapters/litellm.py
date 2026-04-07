@@ -1,0 +1,508 @@
+"""
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+ChatLiteLLMBridge — a LangChain BaseChatModel wrapping litellm.acompletion().
+
+Used by the LangGraph runtime to route LLM calls through LiteLLM,
+which handles provider-specific formatting (OCI, OpenAI, Ollama, etc.).
+"""
+# spell-checker: ignore litellm acompletion accum agenerate ollama astream
+
+import json
+import logging
+import uuid
+from contextvars import ContextVar
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence, Union, cast
+
+import litellm
+from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from langchain_core.runnables import Runnable
+from langchain_core.tools import BaseTool
+from langchain_core.utils.function_calling import convert_to_openai_tool
+from litellm import CustomStreamWrapper
+from pydantic import Field
+
+from server.app.runtime.common import TokenUsage, extract_response_usage
+from server.app.runtime.ollama_tools import (
+    contextualize_tool_result,
+    is_ollama_model,
+    sanitize_tool_name,
+    sanitize_tools,
+    unsanitize_tool_name,
+)
+
+LOGGER = logging.getLogger(__name__)
+
+# Context var for streaming: when set, _agenerate streams internally and pushes
+# chunks to the queue.  Shape: {"queue": asyncio.Queue, "streamed_text": bool}
+_streaming_ctx: ContextVar[Optional[dict]] = ContextVar("_streaming_ctx", default=None)
+
+
+def _flatten_tool_content(content):
+    """Flatten LangGraph content blocks to a single string for LiteLLM."""
+    if not isinstance(content, list):
+        return content
+    parts = []
+    for block in content:
+        if isinstance(block, dict) and "text" in block:
+            parts.append(block["text"])
+        elif isinstance(block, str):
+            parts.append(block)
+        else:
+            parts.append(json.dumps(block, default=str))
+    return "\n".join(parts)
+
+
+def _messages_to_openai(messages: List[BaseMessage], contextualize_tools: bool = False) -> List[Dict[str, Any]]:
+    """Convert LangChain messages to OpenAI dict format.
+
+    When *contextualize_tools* is True, tool result content is prefixed
+    with the tool name so smaller models (e.g. llama3.1) can understand
+    what the result represents instead of hallucinating.
+    """
+    result = []
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            result.append({"role": "system", "content": msg.content})
+        elif isinstance(msg, HumanMessage):
+            result.append({"role": "user", "content": msg.content})
+        elif isinstance(msg, AIMessage):
+            entry: Dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
+            if msg.tool_calls:
+                entry["tool_calls"] = [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": tc["args"] if isinstance(tc["args"], str) else json.dumps(tc["args"]),
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ]
+            result.append(entry)
+        elif isinstance(msg, ToolMessage):
+            content = _flatten_tool_content(msg.content)
+            if contextualize_tools and msg.name is not None:
+                content = contextualize_tool_result(msg.name, content)
+            result.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id,
+                    "content": content,
+                }
+            )
+        else:
+            result.append({"role": "user", "content": str(msg.content)})
+    return result
+
+
+def _parse_tool_calls(raw_tool_calls: Any, name_map: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """Parse litellm tool calls into LangChain format."""
+    if not raw_tool_calls:
+        return []
+    tool_calls = []
+    for tc in raw_tool_calls:
+        func = tc.function if hasattr(tc, "function") else tc.get("function", {})
+        name = func.name if hasattr(func, "name") else func.get("name", "")
+        name = unsanitize_tool_name(name, name_map)
+        args_str = func.arguments if hasattr(func, "arguments") else func.get("arguments", "{}")
+        try:
+            args = json.loads(args_str) if isinstance(args_str, str) else args_str
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+        tc_id = tc.id if hasattr(tc, "id") else tc.get("id", "")
+        tool_calls.append({"type": "tool_call", "name": name, "args": args, "id": tc_id})
+    return tool_calls
+
+
+def _process_tool_call_delta(tool_call_accum: Dict[int, Dict[str, str]], tc_delta: Any) -> None:
+    """Accumulate a single tool-call delta into the accumulator dict."""
+    idx = tc_delta.index if hasattr(tc_delta, "index") else 0
+    if idx not in tool_call_accum:
+        tool_call_accum[idx] = {"id": "", "name": "", "arguments": ""}
+    entry = tool_call_accum[idx]
+    if hasattr(tc_delta, "id") and tc_delta.id:
+        entry["id"] = tc_delta.id
+    func = getattr(tc_delta, "function", None)
+    if func:
+        if hasattr(func, "name") and func.name:
+            entry["name"] = func.name
+        if hasattr(func, "arguments") and func.arguments:
+            entry["arguments"] += func.arguments
+
+
+def _build_tool_calls_from_accum(
+    tool_call_accum: Dict[int, Dict[str, str]],
+    name_map: Optional[Dict[str, str]] = None,
+) -> list:
+    """Convert accumulated tool-call deltas into LangChain tool-call dicts."""
+    tool_calls: list = []
+    for idx in sorted(tool_call_accum.keys()):
+        entry = tool_call_accum[idx]
+        name = unsanitize_tool_name(entry["name"], name_map)
+        args_str = entry["arguments"]
+        try:
+            args = json.loads(args_str) if args_str else {}
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+        tc_id = entry["id"] or f"call_{uuid.uuid4().hex[:12]}"
+        tool_calls.append({"type": "tool_call", "name": name, "args": args, "id": tc_id})
+    return tool_calls
+
+
+def _accumulate_chunk_usage(usage_accum: Dict[str, int], chunk: Any) -> None:
+    """Add token usage from a stream chunk into the running accumulator."""
+    chunk_usage = getattr(chunk, "usage", None)
+    if chunk_usage:
+        for key in usage_accum:
+            usage_accum[key] += getattr(chunk_usage, key, 0) or 0
+
+
+def _build_streaming_result(
+    content_parts: List[str],
+    tool_calls: List[Dict[str, Any]],
+    usage_accum: Dict[str, int],
+    last_token_usage: Optional[Union[Dict[str, Any], TokenUsage]],
+) -> tuple:
+    """Build ChatResult and updated token usage from streaming accumulators.
+
+    Returns (ChatResult, updated_last_token_usage).
+    """
+    content = "".join(content_parts)
+    ai_msg = AIMessage(content=content, tool_calls=tool_calls)
+
+    usage = None
+    prev: Optional[Dict[str, Any]] = (
+        last_token_usage.model_dump() if isinstance(last_token_usage, TokenUsage) else last_token_usage
+    )
+    updated_usage: Optional[Dict[str, Any]] = prev
+    if any(v > 0 for v in usage_accum.values()):
+        usage = usage_accum
+        if prev:  # noqa: SIM108
+            updated_usage = {k: prev.get(k, 0) + usage_accum.get(k, 0) for k in usage_accum}
+        else:
+            updated_usage = dict(usage_accum)
+
+    generation = ChatGeneration(message=ai_msg)
+    result = ChatResult(
+        generations=[generation],
+        llm_output={"token_usage": usage} if usage else {},
+    )
+    return result, updated_usage
+
+
+class ChatLiteLLMBridge(BaseChatModel):
+    """LangChain BaseChatModel that delegates to litellm.acompletion().
+
+    Supports tool calling via LangChain's default bind_tools mechanism
+    (litellm speaks OpenAI tool format natively).
+    """
+
+    model: str
+    api_key: Optional[str] = None
+    api_base: Optional[str] = None
+    max_tokens: Optional[int] = None
+    frequency_penalty: Optional[float] = None
+    presence_penalty: Optional[float] = None
+    extra_params: Dict[str, Any] = Field(default_factory=dict)
+    last_token_usage: Optional[Union[Dict[str, Any], TokenUsage]] = None
+
+    @property
+    def _llm_type(self) -> str:
+        return "litellm-bridge"
+
+    def _is_ollama(self) -> bool:
+        """Check if this model targets an Ollama provider."""
+        return is_ollama_model(self.model)
+
+    def bind_tools(
+        self,
+        tools: Sequence[Union[Dict[str, Any], type, Callable, BaseTool]],
+        *,
+        tool_choice: Optional[Union[dict, str, bool]] = None,
+        **kwargs: Any,
+    ) -> Runnable:
+        """Bind tools to the model for tool calling."""
+        formatted_tools = [convert_to_openai_tool(tool) for tool in tools]
+        name_map: Dict[str, str] = {}
+        if self._is_ollama():
+            formatted_tools, name_map = sanitize_tools(formatted_tools)
+        if isinstance(tool_choice, bool):
+            tool_choice = "required" if tool_choice else "none"
+        elif self._is_ollama() and isinstance(tool_choice, dict):
+            func = tool_choice.get("function", {})
+            if "name" in func:
+                tool_choice = {**tool_choice, "function": {**func, "name": sanitize_tool_name(func["name"])}}
+        return super().bind(tools=formatted_tools, tool_choice=tool_choice, _ollama_name_map=name_map, **kwargs)
+
+    def _build_kwargs(self, messages: List[BaseMessage], stop: Optional[List[str]], **kwargs: Any) -> Dict[str, Any]:
+        """Build kwargs for litellm calls.
+
+        Returns the kwargs dict. Callers should pop ``_ollama_name_map``
+        before passing to litellm.
+        """
+        ollama = self._is_ollama()
+        call_kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "messages": _messages_to_openai(messages, contextualize_tools=ollama),
+            "drop_params": True,
+        }
+        if self.api_key:
+            call_kwargs["api_key"] = self.api_key
+        if self.api_base:
+            call_kwargs["base_url"] = self.api_base
+        if self.max_tokens is not None:
+            call_kwargs["max_tokens"] = self.max_tokens
+        if self.frequency_penalty is not None:
+            call_kwargs["frequency_penalty"] = self.frequency_penalty
+        if self.presence_penalty is not None:
+            call_kwargs["presence_penalty"] = self.presence_penalty
+        if stop:
+            call_kwargs["stop"] = stop
+
+        if "tools" in kwargs:
+            call_kwargs["tools"] = kwargs["tools"]
+        if "tool_choice" in kwargs:
+            call_kwargs["tool_choice"] = kwargs["tool_choice"]
+
+        # Thread the Ollama name map through so callers can unsanitize
+        call_kwargs["_ollama_name_map"] = kwargs.get("_ollama_name_map", {})
+
+        # Provider-specific params (e.g. OCI auth)
+        call_kwargs.update(self.extra_params)
+
+        return call_kwargs
+
+    @staticmethod
+    def _extract_usage(response: Any) -> Optional[TokenUsage]:
+        """Extract token usage from a litellm response."""
+        return extract_response_usage(response)
+
+    def _response_to_chat_result(self, response: Any, name_map: Optional[Dict[str, str]] = None) -> ChatResult:
+        """Convert a litellm ModelResponse to a LangChain ChatResult."""
+        choice = response.choices[0]
+        message = choice.message
+        content = message.content or ""
+        tool_calls = _parse_tool_calls(getattr(message, "tool_calls", None), name_map=name_map)
+        ai_msg = AIMessage(content=content, tool_calls=tool_calls)
+        usage = self._extract_usage(response)
+        self.last_token_usage = usage
+        generation = ChatGeneration(message=ai_msg)
+        return ChatResult(
+            generations=[generation],
+            llm_output={"token_usage": usage} if usage else {},
+        )
+
+    def _generate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Sync generation via litellm.completion().
+
+        When _streaming_ctx is set, streams internally and pushes content
+        chunks to the context queue while still returning a full ChatResult.
+        """
+        ctx = _streaming_ctx.get(None)
+        if ctx is not None:
+            return self._generate_streaming(messages, stop, run_manager, ctx, **kwargs)
+        call_kwargs = self._build_kwargs(messages, stop, **kwargs)
+        name_map = call_kwargs.pop("_ollama_name_map", None)
+        response = litellm.completion(**call_kwargs)
+        return self._response_to_chat_result(response, name_map=name_map)
+
+    def _generate_streaming(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]],
+        run_manager: Optional[CallbackManagerForLLMRun],
+        ctx: dict,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Stream internally (sync), pushing content chunks to context queue."""
+        call_kwargs = self._build_kwargs(messages, stop, **kwargs)
+        name_map = call_kwargs.pop("_ollama_name_map", None)
+        call_kwargs["stream"] = True
+        call_kwargs["stream_options"] = {"include_usage": True}
+
+        try:
+            response = cast(CustomStreamWrapper, litellm.completion(**call_kwargs))
+        except Exception:
+            LOGGER.debug("Streaming setup failed, falling back to non-streaming")
+            token = _streaming_ctx.set(None)
+            try:
+                return self._generate(messages, stop, run_manager, **kwargs)
+            finally:
+                _streaming_ctx.reset(token)
+
+        content_parts: List[str] = []
+        tool_call_accum: Dict[int, Dict[str, str]] = {}
+        usage_accum: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        try:
+            for chunk in response:
+                text = getattr(chunk.choices[0].delta, "content", None) or ""
+                if text:
+                    content_parts.append(text)
+                    ctx["queue"].put_nowait({"type": "stream", "content": text})
+                    ctx["streamed_text"] = True
+                for tc_delta in getattr(chunk.choices[0].delta, "tool_calls", None) or ():
+                    _process_tool_call_delta(tool_call_accum, tc_delta)
+                _accumulate_chunk_usage(usage_accum, chunk)
+        except Exception:
+            LOGGER.debug("Stream iteration failed, falling back to non-streaming")
+            token = _streaming_ctx.set(None)
+            try:
+                return self._generate(messages, stop, run_manager, **kwargs)
+            finally:
+                _streaming_ctx.reset(token)
+
+        result, self.last_token_usage = _build_streaming_result(
+            content_parts, _build_tool_calls_from_accum(tool_call_accum, name_map), usage_accum, self.last_token_usage
+        )
+        return result
+
+    async def _agenerate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Async generation via litellm.acompletion().
+
+        When _streaming_ctx is set, streams internally and pushes content
+        chunks to the context queue while still returning a full ChatResult.
+        """
+        ctx = _streaming_ctx.get(None)
+        if ctx is not None:
+            return await self._agenerate_streaming(messages, stop, run_manager, ctx, **kwargs)
+        call_kwargs = self._build_kwargs(messages, stop, **kwargs)
+        name_map = call_kwargs.pop("_ollama_name_map", None)
+        response = await litellm.acompletion(**call_kwargs)
+        return self._response_to_chat_result(response, name_map=name_map)
+
+    async def _agenerate_streaming(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]],
+        run_manager: Optional[AsyncCallbackManagerForLLMRun],
+        ctx: dict,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Stream internally, pushing content chunks to context queue."""
+        call_kwargs = self._build_kwargs(messages, stop, **kwargs)
+        name_map = call_kwargs.pop("_ollama_name_map", None)
+        call_kwargs["stream"] = True
+        call_kwargs["stream_options"] = {"include_usage": True}
+
+        try:
+            response = cast(CustomStreamWrapper, await litellm.acompletion(**call_kwargs))
+        except Exception:
+            LOGGER.debug("Streaming setup failed, falling back to non-streaming")
+            # Temporarily clear ctx to avoid recursion
+            token = _streaming_ctx.set(None)
+            try:
+                return await self._agenerate(messages, stop, run_manager, **kwargs)
+            finally:
+                _streaming_ctx.reset(token)
+
+        content_parts: List[str] = []
+        tool_call_accum: Dict[int, Dict[str, str]] = {}
+        usage_accum: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        try:
+            async for chunk in response:
+                text = getattr(chunk.choices[0].delta, "content", None) or ""
+                if text:
+                    content_parts.append(text)
+                    await ctx["queue"].put({"type": "stream", "content": text})
+                    ctx["streamed_text"] = True
+                for tc_delta in getattr(chunk.choices[0].delta, "tool_calls", None) or ():
+                    _process_tool_call_delta(tool_call_accum, tc_delta)
+                _accumulate_chunk_usage(usage_accum, chunk)
+        except Exception:
+            LOGGER.debug("Stream iteration failed, falling back to non-streaming")
+            token = _streaming_ctx.set(None)
+            try:
+                return await self._agenerate(messages, stop, run_manager, **kwargs)
+            finally:
+                _streaming_ctx.reset(token)
+
+        result, self.last_token_usage = _build_streaming_result(
+            content_parts, _build_tool_calls_from_accum(tool_call_accum, name_map), usage_accum, self.last_token_usage
+        )
+        return result
+
+    def _stream(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> Iterator[ChatGenerationChunk]:
+        """Sync streaming via litellm.completion(stream=True)."""
+        LOGGER.debug("Streaming using run_manager: %s", run_manager)
+        call_kwargs = self._build_kwargs(messages, stop, **kwargs)
+        call_kwargs.pop("_ollama_name_map", None)
+        call_kwargs["stream"] = True
+        response = cast(CustomStreamWrapper, litellm.completion(**call_kwargs))
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            content = getattr(delta, "content", "") or ""
+            yield ChatGenerationChunk(message=AIMessageChunk(content=content))
+
+    async def _astream(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        """Async streaming via litellm.acompletion(stream=True)."""
+        LOGGER.debug("Streaming using run_manager: %s", run_manager)
+        ctx = _streaming_ctx.get(None)
+        call_kwargs = self._build_kwargs(messages, stop, **kwargs)
+        name_map = call_kwargs.pop("_ollama_name_map", None)
+        call_kwargs["stream"] = True
+        response = cast(CustomStreamWrapper, await litellm.acompletion(**call_kwargs))
+        accumulated_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        content_parts: List[str] = []
+        tool_call_accum: Dict[int, Dict[str, str]] = {}
+        async for chunk in response:
+            delta = chunk.choices[0].delta
+            content = getattr(delta, "content", "") or ""
+            # Push content to context queue when streaming context is active
+            if content and ctx is not None:
+                await ctx["queue"].put({"type": "stream", "content": content})
+                ctx["streamed_text"] = True
+            if content:
+                content_parts.append(content)
+            # Accumulate structured tool calls if present
+            for tc_delta in getattr(delta, "tool_calls", None) or ():
+                _process_tool_call_delta(tool_call_accum, tc_delta)
+            # Accumulate token usage from stream chunks
+            usage = getattr(chunk, "usage", None)
+            if usage:
+                for key in accumulated_usage:
+                    accumulated_usage[key] += getattr(usage, key, 0) or 0
+            yield ChatGenerationChunk(message=AIMessageChunk(content=content))
+        if any(v > 0 for v in accumulated_usage.values()):
+            self.last_token_usage = accumulated_usage
+        tool_calls = _build_tool_calls_from_accum(tool_call_accum, name_map)
+        if tool_calls:
+            yield ChatGenerationChunk(message=AIMessageChunk(content="", tool_calls=tool_calls))

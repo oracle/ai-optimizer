@@ -1,15 +1,17 @@
 ## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker:disable
 
-# Ignore everything
+## Ignore everything
 **
 
-# Keep the src directory and pyproject.toml file
+## Keep the src directory and pyproject.toml file
 !src/
 !pyproject.toml
 
-# Inside src, ignore specific things
+## Inside src, ignore specific things
 src/**/Dockerfile*
+src/**/tests/
 src/**/__pycache__/
 src/**/.pytest_cache/
 src/**/tns_admin/
@@ -18,7 +20,7 @@ src/**/.*
 src/**/*.sh
 src/**/*.log
 
-# But explicitly keep these
-!src/.streamlit
-!src/client/spring_ai/templates/start.sh
-!src/entrypoint.sh
+## But explicitly keep these
+!src/client/app/.streamlit
+!src/client/source/spring_ai/templates/start.sh
+!src/entrypoint.py

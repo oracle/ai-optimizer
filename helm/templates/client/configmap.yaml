@@ -28,6 +28,12 @@ data:
     {{- if ne $path "" }}
     baseUrlPath = {{ $path | quote }}
     {{- end }}
+    {{- if .Values.client.ssl.certFile }}
+    sslCertFile = {{ .Values.client.ssl.certFile | quote }}
+    {{- end }}
+    {{- if .Values.client.ssl.keyFile }}
+    sslKeyFile = {{ .Values.client.ssl.keyFile | quote }}
+    {{- end }}
 
     [client]
     toolbarMode = "minimal"

@@ -1,0 +1,627 @@
+"""
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+Tests for settings endpoint.
+"""
+# spell-checker: disable
+
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from server.app.api.v1.endpoints.settings import SENSITIVE_FIELDS
+from server.app.core.schemas import ClientSettings
+from server.app.core.settings import (
+    _MAX_CLIENTS,
+    _PROTECTED_CLIENTS,
+    _client_store,
+    _ensure_capacity,
+    settings,
+)
+from server.app.database.schemas import DatabaseSensitive
+from server.app.models.schemas import ModelSensitive
+from server.app.oci.schemas import OciSensitive
+from server.tests.conftest import make_test_database_config, make_test_model_config, make_test_oci_profile
+
+SETTINGS_MODULE = "server.app.api.v1.endpoints.settings"
+
+
+@pytest.fixture(autouse=True)
+def _populate_configs():
+    """Ensure settings has at least one DB, OCI, and Model config for sensitive-field tests."""
+    original_db = settings.database_configs
+    original_oci = settings.oci_configs
+    original_model = settings.model_configs
+    original_cs = settings.client_settings
+    settings.database_configs = [make_test_database_config()]
+    settings.oci_configs = [make_test_oci_profile()]
+    settings.model_configs = [make_test_model_config()]
+    settings.client_settings = original_cs.model_copy(deep=True)
+    yield
+    _client_store.clear()
+    settings.database_configs = original_db
+    settings.oci_configs = original_oci
+    settings.model_configs = original_model
+    settings.client_settings = original_cs
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_client_settings_no_auth(app_client):
+    """Settings endpoint rejects requests without API key."""
+    resp = await app_client.get("/v1/settings")
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_client_settings_excludes_sensitive(app_client, auth_headers):
+    """Default response omits sensitive fields from all config sections."""
+    resp = await app_client.get("/v1/settings", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Top-level api_key must be excluded
+    assert "api_key" not in body
+
+    # Database sensitive fields must be excluded
+    for db_entry in body.get("database_configs", []):
+        assert "password" not in db_entry
+        assert "wallet_password" not in db_entry
+        # Non-sensitive fields should still be present
+        assert "alias" in db_entry
+
+    # Model sensitive fields must be excluded
+    for model_entry in body.get("model_configs", []):
+        assert "api_key" not in model_entry
+        # Non-sensitive fields should still be present
+        assert "id" in model_entry
+
+    # OCI sensitive fields must be excluded
+    for oci_entry in body.get("oci_configs", []):
+        assert "fingerprint" not in oci_entry
+        assert "key_content" not in oci_entry
+        assert "pass_phrase" not in oci_entry
+        assert "security_token_file" not in oci_entry
+        # Non-sensitive fields should still be present
+        assert "auth_profile" in oci_entry
+        assert "key_file" in oci_entry
+
+    # client_settings should be present from GET /settings
+    assert "client_settings" in body
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_client_settings_includes_sensitive(app_client, auth_headers):
+    """Response includes sensitive fields when include_sensitive=true."""
+    resp = await app_client.get("/v1/settings", params={"include_sensitive": "true"}, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # api_key should still be excluded (Field(exclude=True) on SettingsBase)
+    assert "api_key" not in body
+
+    # Database sensitive fields should be present
+    for db_entry in body.get("database_configs", []):
+        assert "password" in db_entry
+
+    # Model sensitive fields should be present
+    for model_entry in body.get("model_configs", []):
+        assert "api_key" in model_entry
+
+    # OCI sensitive fields should be present
+    for oci_entry in body.get("oci_configs", []):
+        assert "fingerprint" in oci_entry
+
+    # client_settings should be present from GET /settings
+    assert "client_settings" in body
+
+
+@pytest.mark.unit
+def test_sensitive_fields_derived_from_models():
+    """SENSITIVE_FIELDS entries must exactly match the Pydantic model fields."""
+    assert SENSITIVE_FIELDS["database_configs"]["__all__"] == set(DatabaseSensitive.model_fields.keys())
+    assert SENSITIVE_FIELDS["model_configs"]["__all__"] == set(ModelSensitive.model_fields.keys())
+    assert SENSITIVE_FIELDS["oci_configs"]["__all__"] == set(OciSensitive.model_fields.keys())
+
+
+# ---------------------------------------------------------------------------
+# PUT /settings
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_client_settings_database_alias(app_client, auth_headers):
+    """PUT /settings updates database.alias in memory."""
+    resp = await app_client.put(
+        "/v1/settings",
+        json={"database": {"alias": "NEW_DB"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["database"]["alias"] == "NEW_DB"
+    assert settings.client_settings.database.alias == "NEW_DB"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_client_settings_oci_profile(app_client, auth_headers):
+    """PUT /settings updates oci.auth_profile in memory."""
+    resp = await app_client.put(
+        "/v1/settings",
+        json={"oci": {"auth_profile": "PROD"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["oci"]["auth_profile"] == "PROD"
+    assert settings.client_settings.oci.auth_profile == "PROD"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_client_settings_partial(app_client, auth_headers):
+    """PUT /settings with only database does not reset oci."""
+    settings.client_settings.oci.auth_profile = "KEEP_ME"
+    resp = await app_client.put(
+        "/v1/settings",
+        json={"database": {"alias": "OTHER"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["database"]["alias"] == "OTHER"
+    assert body["oci"]["auth_profile"] == "KEEP_ME"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_client_settings_no_auth(app_client):
+    """PUT /settings rejects requests without API key."""
+    resp = await app_client.put("/v1/settings", json={"database": {"alias": "X"}})
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_client_settings_reflects_put(app_client, auth_headers):
+    """GET /settings returns updated client_settings after PUT /settings."""
+    put_resp = await app_client.put(
+        "/v1/settings",
+        json={"oci": {"auth_profile": "LONDON"}},
+        headers=auth_headers,
+    )
+    assert put_resp.status_code == 200
+
+    get_resp = await app_client.get("/v1/settings", headers=auth_headers)
+    assert get_resp.status_code == 200
+    body = get_resp.json()
+    assert body["client_settings"]["oci"]["auth_profile"] == "LONDON"
+
+
+# ---------------------------------------------------------------------------
+# Per-client isolation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_client_settings_isolation(app_client, auth_headers):
+    """Different client IDs get independent settings; default is unaffected."""
+    # Update two separate clients
+    resp_a = await app_client.put(
+        "/v1/settings?client=AAA",
+        json={"database": {"alias": "DB_AAA"}},
+        headers=auth_headers,
+    )
+    assert resp_a.status_code == 200
+
+    resp_b = await app_client.put(
+        "/v1/settings?client=BBB",
+        json={"database": {"alias": "DB_BBB"}},
+        headers=auth_headers,
+    )
+    assert resp_b.status_code == 200
+
+    # Each client sees only its own value
+    get_a = await app_client.get("/v1/settings?client=AAA", headers=auth_headers)
+    assert get_a.json()["client_settings"]["database"]["alias"] == "DB_AAA"
+
+    get_b = await app_client.get("/v1/settings?client=BBB", headers=auth_headers)
+    assert get_b.json()["client_settings"]["database"]["alias"] == "DB_BBB"
+
+    # Default (CONFIGURED) still has the original default alias
+    get_default = await app_client.get("/v1/settings", headers=auth_headers)
+    default_alias = get_default.json()["client_settings"]["database"]["alias"]
+    assert default_alias == "CORE"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_client_settings_sees_server_configs(app_client, auth_headers):
+    """GET /settings includes shared server configs alongside client settings."""
+    resp = await app_client.get("/v1/settings?client=NEW_CLIENT", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Shared server-level configs are present
+    assert "database_configs" in body
+    assert "model_configs" in body
+    assert "oci_configs" in body
+
+    # Per-client settings are also present
+    assert "client_settings" in body
+    assert body["client_settings"]["client"] == "NEW_CLIENT"
+
+
+# ---------------------------------------------------------------------------
+# POST /settings
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_post_settings_no_auth(app_client):
+    """POST /settings rejects requests without API key."""
+    resp = await app_client.post("/v1/settings")
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_post_settings_creates_client(app_client, auth_headers):
+    """POST /settings creates a new client session with skeleton defaults."""
+    resp = await app_client.post("/v1/settings?client=FRESH", headers=auth_headers)
+    assert resp.status_code == 201
+    body = resp.json()
+
+    assert "client_settings" in body
+    assert body["client_settings"]["client"] == "FRESH"
+    assert body["client_settings"]["database"]["alias"] == "CORE"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_post_settings_duplicate_returns_409(app_client, auth_headers):
+    """POST /settings returns 409 if client already exists."""
+    resp1 = await app_client.post("/v1/settings?client=DUP", headers=auth_headers)
+    assert resp1.status_code == 201
+
+    resp2 = await app_client.post("/v1/settings?client=DUP", headers=auth_headers)
+    assert resp2.status_code == 409
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_post_settings_excludes_sensitive(app_client, auth_headers):
+    """POST /settings excludes sensitive fields from the response."""
+    resp = await app_client.post("/v1/settings?client=SAFE", headers=auth_headers)
+    assert resp.status_code == 201
+    body = resp.json()
+
+    assert "api_key" not in body
+
+    for db_entry in body.get("database_configs", []):
+        assert "password" not in db_entry
+        assert "wallet_password" not in db_entry
+
+    for model_entry in body.get("model_configs", []):
+        assert "api_key" not in model_entry
+
+    for oci_entry in body.get("oci_configs", []):
+        assert "fingerprint" not in oci_entry
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_post_settings_includes_server_configs(app_client, auth_headers):
+    """POST /settings response includes shared server configs."""
+    resp = await app_client.post("/v1/settings?client=CFG", headers=auth_headers)
+    assert resp.status_code == 201
+    body = resp.json()
+
+    assert "database_configs" in body
+    assert "model_configs" in body
+    assert "oci_configs" in body
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_post_then_get_round_trip(app_client, auth_headers):
+    """POST /settings followed by GET /settings returns the same client."""
+    post_resp = await app_client.post("/v1/settings?client=ROUND", headers=auth_headers)
+    assert post_resp.status_code == 201
+
+    get_resp = await app_client.get("/v1/settings?client=ROUND", headers=auth_headers)
+    assert get_resp.status_code == 200
+    body = get_resp.json()
+    assert body["client_settings"]["client"] == "ROUND"
+
+
+# ---------------------------------------------------------------------------
+# DELETE /settings
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_settings_no_auth(app_client):
+    """DELETE /settings rejects requests without API key."""
+    resp = await app_client.delete("/v1/settings?client=X")
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_settings_success(app_client, auth_headers):
+    """DELETE /settings removes an existing client and calls delete_row."""
+    # Create a client first
+    _client_store["TEMP"] = ClientSettings(client="TEMP")
+
+    with patch(f"{SETTINGS_MODULE}.delete_row", new_callable=AsyncMock) as mock_del:
+        resp = await app_client.delete("/v1/settings?client=TEMP", headers=auth_headers)
+
+    assert resp.status_code == 204
+    assert "TEMP" not in _client_store
+    mock_del.assert_awaited_once_with("TEMP")
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_settings_configured_forbidden(app_client, auth_headers):
+    """DELETE /settings returns 403 for the CONFIGURED client."""
+    resp = await app_client.delete("/v1/settings?client=CONFIGURED", headers=auth_headers)
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_settings_factory_forbidden(app_client, auth_headers):
+    """DELETE /settings returns 403 for the FACTORY client."""
+    resp = await app_client.delete("/v1/settings?client=FACTORY", headers=auth_headers)
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_settings_not_found(app_client, auth_headers):
+    """DELETE /settings returns 404 for a missing client."""
+    resp = await app_client.delete("/v1/settings?client=GHOST", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_settings_missing_param(app_client, auth_headers):
+    """DELETE /settings returns 422 when client param is missing."""
+    resp = await app_client.delete("/v1/settings", headers=auth_headers)
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# LRU eviction
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_lru_eviction_oldest_non_protected():
+    """Filling the store to capacity evicts the oldest non-protected entry."""
+    _client_store.clear()
+
+    # Seed protected clients so they exist but should never be evicted
+    for name in _PROTECTED_CLIENTS:
+        _client_store[name] = ClientSettings(client=name)
+
+    # Fill remaining slots
+    for i in range(_MAX_CLIENTS - len(_PROTECTED_CLIENTS)):
+        _client_store[f"c{i}"] = ClientSettings(client=f"c{i}")
+
+    assert len(_client_store) == _MAX_CLIENTS
+
+    # Trigger eviction — oldest non-protected key is "c0"
+    _ensure_capacity()
+
+    assert len(_client_store) == _MAX_CLIENTS - 1
+    assert "c0" not in _client_store
+    for name in _PROTECTED_CLIENTS:
+        assert name in _client_store
+
+
+# ---------------------------------------------------------------------------
+# POST /settings/server/copy
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_copy_to_server_no_auth(app_client):
+    """POST /settings/server/copy rejects requests without API key."""
+    resp = await app_client.post("/v1/settings/server/copy")
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_copy_to_server_success(app_client, auth_headers):
+    """POST /settings/server/copy copies source client settings to server."""
+    _client_store["SOURCE"] = ClientSettings(client="SOURCE")
+    _client_store["SOURCE"].database.alias = "MY_DB"
+
+    with patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True):
+        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["client"] == "server"
+    assert body["database"]["alias"] == "MY_DB"
+    assert _client_store["server"].client == "server"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_copy_to_server_persist_failure_rollback(app_client, auth_headers):
+    """POST /settings/server/copy rollback restores original server entry on persist failure."""
+    original_server = ClientSettings(client="server")
+    original_server.database.alias = "ORIGINAL"
+    _client_store["server"] = original_server
+    _client_store["SOURCE"] = ClientSettings(client="SOURCE")
+
+    with patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=False):
+        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+
+    assert resp.status_code == 503
+    assert _client_store["server"].database.alias == "ORIGINAL"
+
+
+# ---------------------------------------------------------------------------
+# POST /settings/reset
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_reset_no_auth(app_client):
+    """POST /settings/reset rejects requests without API key."""
+    resp = await app_client.post("/v1/settings/reset")
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_reset_success(app_client, auth_headers):
+    """POST /settings/reset resets to factory defaults and evicts non-protected clients."""
+    _client_store["ephemeral"] = ClientSettings(client="ephemeral")
+
+    with (
+        patch(f"{SETTINGS_MODULE}.reset_factory_models"),
+        patch(f"{SETTINGS_MODULE}.apply_env_overrides"),
+        patch(f"{SETTINGS_MODULE}.load_ollama_models", new_callable=AsyncMock),
+        patch(f"{SETTINGS_MODULE}.load_factory_prompts"),
+        patch(f"{SETTINGS_MODULE}.register_mcp_prompts"),
+        patch(f"{SETTINGS_MODULE}.check_model_reachability", new_callable=AsyncMock),
+        patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock, return_value=True),
+        patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True),
+    ):
+        resp = await app_client.post("/v1/settings/reset", headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert "ephemeral" not in _client_store
+    body = resp.json()
+    assert "client_settings" in body
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_reset_persist_failure_rollback(app_client, auth_headers):
+    """POST /settings/reset rolls back on persist failure."""
+    saved_models = list(settings.model_configs)
+
+    with (
+        patch(f"{SETTINGS_MODULE}.reset_factory_models"),
+        patch(f"{SETTINGS_MODULE}.apply_env_overrides"),
+        patch(f"{SETTINGS_MODULE}.load_ollama_models", new_callable=AsyncMock),
+        patch(f"{SETTINGS_MODULE}.load_factory_prompts"),
+        patch(f"{SETTINGS_MODULE}.register_mcp_prompts"),
+        patch(f"{SETTINGS_MODULE}.check_model_reachability", new_callable=AsyncMock),
+        patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock, return_value=False),
+    ):
+        resp = await app_client.post("/v1/settings/reset", headers=auth_headers)
+
+    assert resp.status_code == 503
+    # model_configs should be rolled back
+    assert settings.model_configs == saved_models
+
+
+# ---------------------------------------------------------------------------
+# _reconcile_ll_model_tokens
+# ---------------------------------------------------------------------------
+
+
+class TestReconcileLlModelTokens:
+    """Tests for _reconcile_ll_model_tokens."""
+
+    @staticmethod
+    def _make_ll_model(**kwargs):
+        """Create an LLModelSettings with given overrides."""
+        from server.app.core.schemas import LLModelSettings
+
+        return LLModelSettings(**kwargs)
+
+    @staticmethod
+    def _make_model_config(**kwargs):
+        """Create a minimal mock model config."""
+        from unittest.mock import MagicMock
+
+        cfg = MagicMock()
+        cfg.max_input_tokens = kwargs.get("max_input_tokens", 128000)
+        cfg.max_tokens = kwargs.get("max_tokens", 4096)
+        return cfg
+
+    @pytest.mark.unit
+    def test_same_model_no_change(self):
+        """No changes when provider/id are unchanged."""
+        from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens
+
+        current = self._make_ll_model(provider="openai", id="gpt-4o")
+        incoming = self._make_ll_model(provider="openai", id="gpt-4o")
+        original_max = incoming.max_tokens
+        _reconcile_ll_model_tokens(current, incoming)
+        assert incoming.max_tokens == original_max
+
+    @pytest.mark.unit
+    def test_unknown_new_model(self):
+        """Unknown new model leaves incoming unchanged."""
+        from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens
+
+        current = self._make_ll_model(provider="openai", id="gpt-4o")
+        incoming = self._make_ll_model(provider="openai", id="unknown-model")
+        original_max = incoming.max_tokens
+        with patch(f"{SETTINGS_MODULE}.find_model", return_value=None):
+            _reconcile_ll_model_tokens(current, incoming)
+        assert incoming.max_tokens == original_max
+
+    @pytest.mark.unit
+    def test_updates_max_input_tokens(self):
+        """Changing model should update max_input_tokens from new model config."""
+        from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens
+
+        new_cfg = self._make_model_config(max_input_tokens=200000, max_tokens=8192)
+        old_cfg = self._make_model_config(max_input_tokens=128000, max_tokens=4096)
+        current = self._make_ll_model(provider="openai", id="gpt-4o", max_tokens=4096)
+        incoming = self._make_ll_model(provider="anthropic", id="claude-3")
+        with patch(f"{SETTINGS_MODULE}.find_model", side_effect=[new_cfg, old_cfg]):
+            _reconcile_ll_model_tokens(current, incoming)
+        assert incoming.max_input_tokens == 200000
+
+    @pytest.mark.unit
+    def test_adopts_new_default_max_tokens(self):
+        """When user did not customize max_tokens, adopt new model's default."""
+        from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens
+
+        old_cfg = self._make_model_config(max_input_tokens=128000, max_tokens=4096)
+        new_cfg = self._make_model_config(max_input_tokens=200000, max_tokens=8192)
+        # current.max_tokens matches old default → user did NOT customize
+        current = self._make_ll_model(provider="openai", id="gpt-4o", max_tokens=4096)
+        incoming = self._make_ll_model(provider="anthropic", id="claude-3")
+        with patch(f"{SETTINGS_MODULE}.find_model", side_effect=[new_cfg, old_cfg]):
+            _reconcile_ll_model_tokens(current, incoming)
+        assert incoming.max_tokens == 8192
+
+    @pytest.mark.unit
+    def test_caps_customized_max_tokens(self):
+        """When user customized max_tokens and it exceeds new max_input_tokens, cap it."""
+        from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens
+
+        old_cfg = self._make_model_config(max_input_tokens=128000, max_tokens=4096)
+        new_cfg = self._make_model_config(max_input_tokens=1000, max_tokens=500)
+        # current.max_tokens differs from old default → user DID customize
+        current = self._make_ll_model(provider="openai", id="gpt-4o", max_tokens=5000)
+        incoming = self._make_ll_model(provider="anthropic", id="claude-3")
+        with patch(f"{SETTINGS_MODULE}.find_model", side_effect=[new_cfg, old_cfg]):
+            _reconcile_ll_model_tokens(current, incoming)
+        # Capped to new model's max_input_tokens
+        assert incoming.max_tokens == 1000

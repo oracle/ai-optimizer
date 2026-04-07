@@ -13,9 +13,16 @@ resource "oci_core_network_security_group" "lb" {
 }
 
 resource "oci_core_network_security_group_security_rule" "lb_http_ingress" {
-  for_each                  = toset(split(",", replace(var.client_allowed_cidrs, "/\\s+/", "")))
+  for_each = toset(
+    local.ssl_enabled
+    ? distinct(concat(
+      split(",", replace(var.client_allowed_cidrs, "/\\s+/", "")),
+      split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))
+    ))
+    : split(",", replace(var.client_allowed_cidrs, "/\\s+/", ""))
+  )
   network_security_group_id = oci_core_network_security_group.lb.id
-  description               = "Loadbalancer Client Access - ${each.value}."
+  description               = "Loadbalancer HTTP Access - ${each.value}."
   direction                 = "INGRESS"
   protocol                  = "6"
   source                    = each.value
@@ -29,9 +36,16 @@ resource "oci_core_network_security_group_security_rule" "lb_http_ingress" {
 }
 
 resource "oci_core_network_security_group_security_rule" "lb_https_ingress" {
-  for_each                  = toset(split(",", replace(var.server_allowed_cidrs, "/\\s+/", "")))
+  for_each = toset(
+    local.ssl_enabled
+    ? distinct(concat(
+      split(",", replace(var.client_allowed_cidrs, "/\\s+/", "")),
+      split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))
+    ))
+    : split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))
+  )
   network_security_group_id = oci_core_network_security_group.lb.id
-  description               = "Loadbalancer Server Access - ${each.value}."
+  description               = "Loadbalancer HTTPS Access - ${each.value}."
   direction                 = "INGRESS"
   protocol                  = "6"
   source                    = each.value

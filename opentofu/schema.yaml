@@ -32,6 +32,7 @@ variableGroups:
       - adb_version
       - k8s_run_cfgmgt
       - deploy_optimizer
+      - optimizer_branch
     visible: false
 
   #########################################################################
@@ -105,6 +106,9 @@ variableGroups:
       - lb_max_shape
       - client_allowed_cidrs
       - server_allowed_cidrs
+      - ssl_mode
+      - ssl_certificate
+      - ssl_private_key
     visible: true
 
   #########################################################################
@@ -376,6 +380,39 @@ variables:
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
 
   #########################################################################
+  ssl_mode:
+    type: enum
+    title: "TLS Termination"
+    description: "HTTP only, auto-generated self-signed certificate, or provide your own certificate."
+    required: true
+    default: "none"
+    enum:
+      - "none"
+      - "self-signed"
+      - "provided"
+
+  ssl_certificate:
+    type: text
+    title: "TLS Certificate (PEM)"
+    description: "PEM-encoded certificate for TLS termination."
+    required: true
+    visible:
+      eq:
+        - ssl_mode
+        - "provided"
+
+  ssl_private_key:
+    type: password
+    title: "TLS Private Key (PEM)"
+    description: "PEM-encoded private key for TLS termination."
+    required: true
+    confirmation: false
+    visible:
+      eq:
+        - ssl_mode
+        - "provided"
+
+  #########################################################################
   byo_db:
     type: boolean
     title: "Bring Your Own Oracle Database?"
@@ -521,7 +558,7 @@ variables:
             - byo_db_type
             - "ADB-S"
 
-  ### BYODB - Use Existing Other (Host:Port/Service_Name) ###
+  ### BYODB - Use Existing Other (Host:Port/ServiceName) ###
   byo_odb_host:
     title: "Bring Your Own Other Database - Host"
     type: string
@@ -565,6 +602,7 @@ outputGroups:
     outputs:
       - optimizer_client_url
       - optimizer_server_url
+      - ssl_ca_certificate
 
   - title: "Kubernetes KUBECONFIG command"
     outputs:
@@ -579,6 +617,15 @@ outputs:
   optimizer_server_url:
     title: "Server API"
     type: link
+
+  ssl_ca_certificate:
+    title: "CA Certificate (self-signed mode)"
+    type: string
+    sensitive: true
+    visible:
+      eq:
+        - ssl_mode
+        - "self-signed"
 
   kubeconfig_cmd:
     title: "KUBECONFIG command"

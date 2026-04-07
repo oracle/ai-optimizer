@@ -91,6 +91,10 @@ module "kubernetes" {
   orm_install                = var.current_user_ocid != ""
   byo_ocir_url               = var.k8s_byo_ocir_url
   optimizer_version          = var.optimizer_version
+  optimizer_branch           = local.optimizer_branch
+  ssl_enabled                = local.ssl_enabled
+  ssl_cert_pem               = local.ssl_cert_pem
+  ssl_key_pem                = local.ssl_key_pem
   providers = {
     oci.home_region = oci.home_region
   }

@@ -1,0 +1,139 @@
+"""
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+Application settings loaded from etc/configuration.json files
+"""
+
+import json
+import logging
+from pathlib import Path
+from typing import Optional, Union
+
+from server.app.core.paths import PROJECT_ROOT
+from server.app.core.settings import SettingsBase, settings
+
+LOGGER = logging.getLogger(__name__)
+
+_CONFIG_FILE = PROJECT_ROOT / "server" / "etc" / "configuration.json"
+
+# Identity key spec: a single field name, or a tuple of field names for composite keys.
+_IdentitySpec = Union[str, tuple[str, ...]]
+
+# List fields merged by identity key — existing items from higher-precedence sources win.
+_LIST_FIELD_KEYS: dict[str, _IdentitySpec] = {
+    "database_configs": "alias",
+    "model_configs": ("provider", "id"),
+    "oci_configs": "auth_profile",
+}
+
+
+def _extract_key(item: object, identity_spec: _IdentitySpec) -> Union[str, tuple[str, ...]]:
+    """Return a hashable, case-folded identity key for *item*."""
+    if isinstance(identity_spec, str):
+        return getattr(item, identity_spec).lower()
+    return tuple(getattr(item, field).lower() for field in identity_spec)
+
+
+def _identity_fields(identity_spec: _IdentitySpec) -> frozenset[str]:
+    """Return the set of field names that make up the identity key."""
+    if isinstance(identity_spec, str):
+        return frozenset({identity_spec})
+    return frozenset(identity_spec)
+
+
+def load_config_file(path: Optional[Path] = None) -> Optional[SettingsBase]:
+    """Load and validate configuration.json.
+
+    Returns a SettingsBase instance on success, or None if the file is
+    missing, unreadable, or contains invalid data.
+    """
+    config_path = path or _CONFIG_FILE
+    if not config_path.is_file():
+        LOGGER.info("Configuration file not found: %s", config_path)
+        return None
+
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        return SettingsBase.model_validate(data)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        LOGGER.warning("Failed to load configuration file %s: %s", config_path, exc)
+        return None
+
+
+def apply_overlay(
+    source: SettingsBase,
+    protected: set[str],
+    exclude_fields: Optional[set[str]] = None,
+) -> set[str]:
+    """Overlay *source* fields onto the global ``settings`` singleton.
+
+    Scalar fields are only applied when the field name is NOT in *protected*.
+    List fields (database_configs, model_configs, oci_configs) are
+    always merged by identity key; existing items win entirely.
+    Fields in *exclude_fields* are skipped entirely.
+
+    Returns the updated protected set (input | source.model_fields_set).
+    """
+    skip = exclude_fields or set()
+    for field_name in source.model_fields_set:
+        if field_name in skip:
+            continue
+        if field_name in _LIST_FIELD_KEYS:
+            _merge_list_field(field_name, source, _LIST_FIELD_KEYS[field_name])
+        elif field_name not in protected:
+            value = getattr(source, field_name)
+            setattr(settings, field_name, value)
+            if field_name == "api_key":
+                object.__setattr__(settings, "_api_key_generated", False)
+
+    return protected | source.model_fields_set
+
+
+def upsert_list_field(field_name: str, incoming: list) -> tuple[list, list]:
+    """Upsert *incoming* items into ``settings.<field_name>`` by identity key.
+
+    Unlike ``_merge_list_field`` (existing wins / additive only), this uses
+    **incoming wins** semantics: matching items are updated in-place and
+    new items are appended.
+
+    Returns (created, updated) lists of items that were affected.
+    """
+    identity_spec = _LIST_FIELD_KEYS[field_name]
+    id_fields = _identity_fields(identity_spec)
+    existing_list: list = getattr(settings, field_name)
+    existing_by_key = {_extract_key(item, identity_spec): item for item in existing_list}
+
+    created, updated = [], []
+    for item in incoming:
+        key = _extract_key(item, identity_spec)
+        target = existing_by_key.get(key)
+        if target is not None:
+            for fn in item.model_fields_set:
+                if fn not in id_fields:
+                    setattr(target, fn, getattr(item, fn))
+            updated.append(target)
+        else:
+            existing_list.append(item)
+            existing_by_key[key] = item
+            created.append(item)
+
+    return created, updated
+
+
+def _merge_list_field(field_name: str, source: SettingsBase, identity_spec: _IdentitySpec) -> None:
+    """Append items from *source* whose identity key is not already present."""
+    existing: list = getattr(settings, field_name)
+    incoming: list = getattr(source, field_name)
+
+    existing_keys: set = {_extract_key(item, identity_spec) for item in existing}
+
+    merged = list(existing)
+    for item in incoming:
+        key = _extract_key(item, identity_spec)
+        if key not in existing_keys:
+            merged.append(item)
+            existing_keys.add(key)
+
+    setattr(settings, field_name, merged)

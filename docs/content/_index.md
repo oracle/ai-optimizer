@@ -13,7 +13,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker:ignore streamlit, genai, venv
 -->
 
-The {{< full_app_ref >}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**) combined with Retrieval-Augmented Generation (**RAG**) capabilities. By integrating Oracle Database AI VectorSearch and SelectAI, the {{< short_app_ref >}} enables users to enhance existing Large Language Models (**LLM**s) through **RAG**. This method significantly improves the performance and accuracy of AI models, helping to avoid common issues such as knowledge cutoff and hallucinations.
+The {{< full_app_ref >}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**) combined with Retrieval-Augmented Generation (**RAG**) capabilities. By integrating Oracle Database AI VectorSearch and SQLcl MCP, the {{< short_app_ref >}} enables users to enhance existing Large Language Models (**LLM**s) through **RAG** and **NL2SQL**. This method significantly improves the performance and accuracy of AI models, helping to avoid common issues such as knowledge cutoff and hallucinations.
 
 - **GenAI**: Powers the generation of text, images, or other data based on prompts using pre-trained **LLM**s.
 - **RAG**: Enhances **LLM**s by retrieving relevant, real-time information allowing models to provide up-to-date and accurate responses.
@@ -40,14 +40,19 @@ The [Walkthrough](walkthrough) is a great way to familiarize yourself with the *
 
 ## Prerequisites
 
-- Oracle AI Database incl. Oracle AI Database Free
 - Python 3.11 (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
 - Access to an Embedding and Chat Model:
   - API Keys for Third-Party Models
   - On-Premises Models*
+- Oracle AI Database incl. Oracle AI Database Free (for RAG and persisting settings)
 
 ~\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [{{< short_app_ref >}}](client/) documentation.~
+
+{{% notice style="code" title="What do I actually need?" icon="circle-info" %}}
+<!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
+The **AI Optimizer** will start and allow interaction with language models without any database or pre-configuration. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database](client/configuration/db_config/) should be configured.
+{{% /notice %}}
 
 ### Bare-Metal Installation
 
@@ -78,10 +83,18 @@ To run the application on bare-metal, download the latest release:
    uv pip install -e ".[all]"
    ```
 
-1. Start Streamlit:
+1. _(Optional)_ Create an [environment file](env_config) to pre-configure the application:
 
    ```bash
-   streamlit run launch_client.py --server.port 8501
+   cp src/.env.example src/.env.dev
+   ```
+
+   Edit `src/.env.dev` as needed. See [Environment Configuration](env_config) for details.
+
+1. Start the application:
+
+   ```bash
+   python src/entrypoint.py client
    ```
 
 1. Navigate to `http://localhost:8501`.

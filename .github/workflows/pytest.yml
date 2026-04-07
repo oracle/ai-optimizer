@@ -1,4 +1,5 @@
-# Workflow for running tests on server code
+# Workflow for running tests with targeted CI based on changed files
+# spell-checker: disable
 name: Test Suite
 
 on:
@@ -13,10 +14,68 @@ on:
   workflow_dispatch:
 
 jobs:
-  check:
-    if: github.event.pull_request.draft == false
+  detect-changes:
+    if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # Block merging if the job fails
+    outputs:
+      client: ${{ steps.changes.outputs.client }}
+      server: ${{ steps.changes.outputs.server }}
+      helm: ${{ steps.changes.outputs.helm }}
+      opentofu: ${{ steps.changes.outputs.opentofu }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        id: changes
+        run: |
+          # workflow_dispatch → run everything
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "client=true" >> $GITHUB_OUTPUT
+            echo "server=true" >> $GITHUB_OUTPUT
+            echo "helm=true" >> $GITHUB_OUTPUT
+            echo "opentofu=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Client: src/client + shared paths
+          if echo "$CHANGED" | grep -qE '^(src/client/|src/tests/|src/_version\.py|src/logging_config\.py|pyproject\.toml|pytest\.ini|\.yamllint)'; then
+            echo "client=true" >> $GITHUB_OUTPUT
+          else
+            echo "client=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Server: src/server + shared paths
+          if echo "$CHANGED" | grep -qE '^(src/server/|src/tests/|src/_version\.py|src/logging_config\.py|pyproject\.toml|pytest\.ini|\.yamllint)'; then
+            echo "server=true" >> $GITHUB_OUTPUT
+          else
+            echo "server=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Helm
+          if echo "$CHANGED" | grep -qE '^helm/'; then
+            echo "helm=true" >> $GITHUB_OUTPUT
+          else
+            echo "helm=false" >> $GITHUB_OUTPUT
+          fi
+
+          # OpenTofu
+          if echo "$CHANGED" | grep -qE '^opentofu/'; then
+            echo "opentofu=true" >> $GITHUB_OUTPUT
+          else
+            echo "opentofu=false" >> $GITHUB_OUTPUT
+          fi
+
+  check-client:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.client == 'true'
+    runs-on: ubuntu-latest
     permissions:
       pull-requests: write
 
@@ -31,22 +90,106 @@ jobs:
       - name: Cache dependencies
         uses: actions/cache@v5
         with:
-          path: |
-            ~/.cache/pip
-            src/.tox
-          key: ${{ runner.os }}-pip-${{ hashFiles('src/pyproject.toml') }}
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-client-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-pip-client-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip wheel setuptools uv
-          uv pip install torch==2.10.0+cpu -f https://download.pytorch.org/whl/cpu/torch --system
-          uv pip install -e ".[all-test]" --system
+          uv pip install -e ".[client,test]" --system
+
+      - name: Run yamllint
+        run: yamllint src/client
+
+      - name: Run Pyright
+        run: npx pyright src/client
+
+      - name: Run Ruff
+        run: ruff check src/client
+
+      - name: Run Tests
+        run: pytest src/client/tests src/tests -v --junitxml=test-results-client.xml --cov=src/client --cov-report=xml:coverage-client.xml --cov-report=term
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results-client
+          path: |
+            test-results-client.xml
+            coverage-client.xml
+
+  check-server:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Cache dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-server-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-server-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip wheel setuptools uv
+          uv pip install -e ".[server,test]" --system
+
+      - name: Run yamllint
+        run: yamllint src/server
+
+      - name: Run Pyright
+        run: npx pyright src/server
+
+      - name: Run Ruff
+        run: ruff check src/server
+
+      - name: Run Tests
+        run: pytest src/server/tests src/tests -v --junitxml=test-results-server.xml --cov=src/server --cov-report=xml:coverage-server.xml --cov-report=term
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results-server
+          path: |
+            test-results-server.xml
+            coverage-server.xml
+
+  check-helm:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install yamllint
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-      - name: Run yamllint on Code
-        run: yamllint .
+      - name: Run yamllint
+        run: yamllint helm/
 
       - name: Run Helm Lint (basic structure)
         run: helm lint helm/
@@ -54,24 +197,52 @@ jobs:
       - name: Run Helm Lint (with required values)
         run: helm lint helm/ --set global.api.apiKey=test-api-key
 
-      - name: Run Pylint on IaC Code
-        run: pylint opentofu
+  check-opentofu:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.opentofu == 'true'
+    runs-on: ubuntu-latest
 
-      - name: Run Pylint on Source Code
-        run: pylint src
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
 
-      - name: Run Pylint on Tests
-        run: pylint tests
-
-      - name: Run All Tests
-        run: pytest tests -v --junitxml=test-results.xml --cov=src --cov-report=xml --cov-report=term
-
-      - name: Upload Test Results
-        if: always()
-        uses: actions/upload-artifact@v6
+      - uses: actions/setup-python@v6
         with:
-          name: test-results
-          path: |
-            test-results.xml
-            coverage.xml
-            .coverage
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install ruff
+
+      - name: Run Ruff
+        run: ruff check opentofu
+
+  check:
+    needs:
+      - detect-changes
+      - check-client
+      - check-server
+      - check-helm
+      - check-opentofu
+    if: always() && (github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Evaluate results
+        run: |
+          echo "detect-changes: ${{ needs.detect-changes.result }}"
+          echo "check-client:   ${{ needs.check-client.result }}"
+          echo "check-server:   ${{ needs.check-server.result }}"
+          echo "check-helm:     ${{ needs.check-helm.result }}"
+          echo "check-opentofu: ${{ needs.check-opentofu.result }}"
+
+          # Fail if any upstream job failed (skipped is OK)
+          if [ "${{ needs.detect-changes.result }}" = "failure" ] || \
+             [ "${{ needs.check-client.result }}" = "failure" ] || \
+             [ "${{ needs.check-server.result }}" = "failure" ] || \
+             [ "${{ needs.check-helm.result }}" = "failure" ] || \
+             [ "${{ needs.check-opentofu.result }}" = "failure" ]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+
+          echo "All jobs passed or were skipped"

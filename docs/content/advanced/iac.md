@@ -79,7 +79,7 @@ The Application Information tab will provide the URL's to access the {{< short_a
 Although the infrastructure is deployed, the {{< short_app_ref >}} may still be initializing, which can result in a 502 Bad Gateway error when accessing the URLs. Please allow up to 10 minutes for the configuration to complete.
 {{% /notice %}}
 
-To get a better understanding of how the API Server works and to obtain the API Key for making REST calls, review the [API Server documentation](client/api_server/).
+To get a better understanding of how the API Server works and to obtain the API Key for making REST calls, review the [API Server documentation](/client/api_server/).
 
 ### Cleanup
 
@@ -147,7 +147,7 @@ The Application Information tab will provide the URL's to access the {{< short_a
 Although the infrastructure is deployed, the {{< short_app_ref >}} may still be initializing, which can result in a 502 Bad Gateway error when accessing the URLs. Please allow up to 10 minutes for the configuration to complete.
 {{% /notice %}}
 
-To get a better understanding of how the API Server works and to obtain the API Key for making REST calls, review the [API Server documentation](client/api_server/).
+To get a better understanding of how the API Server works and to obtain the API Key for making REST calls, review the [API Server documentation](/client/api_server/).
 
 ### Cleanup
 

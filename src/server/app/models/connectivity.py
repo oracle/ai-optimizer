@@ -1,0 +1,209 @@
+"""
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+Model endpoint reachability checks run at startup.
+"""
+# spell-checker: ignore ollama vllm huggingface
+
+import asyncio
+import logging
+
+import httpx
+
+from server.app.core.settings import settings
+
+LOGGER = logging.getLogger(__name__)
+
+NO_KEY_PROVIDERS = {"ollama", "huggingface", "hosted_vllm"}
+CONNECT_TIMEOUT = 3.0
+READ_TIMEOUT = 5.0
+
+
+def _normalize_ollama_name(name: str) -> str:
+    """Strip the ``':latest'`` tag so ``'llama3.1:latest'`` matches ``'llama3.1'``."""
+    return name[: -len(":latest")] if name.endswith(":latest") else name
+
+
+async def _fetch_ollama_models(client: httpx.AsyncClient, api_base: str) -> set[str] | None:
+    """Return the set of model names available on an Ollama server, or *None* on failure."""
+    try:
+        resp = await client.get(f"{api_base.rstrip('/')}/api/tags")
+        resp.raise_for_status()
+        data = resp.json()
+        names = {_normalize_ollama_name(m["name"]).casefold() for m in data.get("models", [])}
+        LOGGER.debug("Ollama at %s has models: %s", api_base, names)
+        return names
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        LOGGER.debug("Failed to fetch Ollama model list from %s: %s", api_base, exc)
+        return None
+
+
+async def _apply_ollama_rules(client: httpx.AsyncClient, ollama_models: list) -> None:
+    """Rule 6: Only enable Ollama models that are actually pulled."""
+    by_base: dict[str, list] = {}
+    for model in ollama_models:
+        if not model.api_base:
+            model.usable = False
+            continue
+        by_base.setdefault(model.api_base, []).append(model)
+
+    for api_base, models in by_base.items():
+        available = await _fetch_ollama_models(client, api_base)
+        if available is None:
+            for model in models:
+                model.usable = False
+                LOGGER.debug("Model '%s' (ollama) unreachable at %s", model.id, api_base)
+            continue
+
+        for model in models:
+            normalized_id = _normalize_ollama_name(model.id).casefold()
+            if normalized_id in available:
+                model.usable = True
+                LOGGER.debug("Model '%s' (ollama) available at %s", model.id, api_base)
+            else:
+                model.usable = False
+                LOGGER.debug("Model '%s' (ollama) not pulled at %s", model.id, api_base)
+
+
+async def _probe_endpoint(client: httpx.AsyncClient, api_base: str) -> tuple[bool, str | None]:
+    """HEAD-probe *api_base*; any HTTP response means reachable."""
+    try:
+        resp = await client.head(api_base)
+        LOGGER.debug("Probe %s -> HTTP %s", api_base, resp.status_code)
+        return True, None
+    except httpx.HTTPError as exc:
+        LOGGER.debug("Probe %s failed: %s", api_base, exc)
+        return False, str(exc)
+
+
+def _apply_oci_rules(oci_models: list) -> None:
+    """Rule 5: OCI models require a usable OCI profile."""
+    has_usable_oci = any(p.usable for p in settings.oci_configs)
+    for model in oci_models:
+        if has_usable_oci:
+            model.usable = True
+            LOGGER.debug("Model '%s' (oci) usable via OCI profile", model.id)
+        else:
+            model.usable = False
+            model.enabled = False
+            LOGGER.debug("Model '%s' (oci) disabled — no usable OCI profile", model.id)
+
+
+def _apply_probe_rules(to_probe: dict, results: dict) -> None:
+    """Apply reachability rules 1-4 to probed endpoints."""
+    for api_base, models in to_probe.items():
+        reachable, error = results[api_base]
+        for model in models:
+            provider = (model.provider or "").casefold()
+            if not reachable:
+                # Rule 1
+                model.usable = False
+                LOGGER.debug("Model '%s' (%s) unreachable at %s: %s", model.id, provider, api_base, error)
+            elif model.api_key:
+                # Rule 2
+                model.usable = True
+                LOGGER.debug("Model '%s' (%s) usable (key present)", model.id, provider)
+            elif provider in NO_KEY_PROVIDERS:
+                # Rule 3
+                model.usable = True
+                LOGGER.debug("Model '%s' (%s) usable (no key required)", model.id, provider)
+            else:
+                # Rule 4
+                model.usable = False
+                LOGGER.debug("Model '%s' (%s) reachable but no api_key", model.id, provider)
+
+
+async def check_model_reachability() -> None:
+    """Verify enabled models can reach their endpoints and set ``usable``."""
+    enabled = [m for m in settings.model_configs if m.enabled]
+    if not enabled:
+        LOGGER.info("Models Loaded: %d; Models Usable: 0; Models Enabled: 0", len(settings.model_configs))
+        return
+
+    # --- Rule 5: OCI models without an enabled OCI profile ---
+    oci_models = [m for m in enabled if m.provider and m.provider.casefold() == "oci"]
+    non_oci = [m for m in enabled if not m.provider or m.provider.casefold() != "oci"]
+    _apply_oci_rules(oci_models)
+
+    # --- Rule 6: Ollama models — verify pulled ---
+    ollama_models = [m for m in non_oci if (m.provider or "").casefold() == "ollama"]
+    non_ollama = [m for m in non_oci if (m.provider or "").casefold() != "ollama"]
+
+    # --- Collect endpoints to probe (deduplicate by api_base) ---
+    to_probe: dict[str, list] = {}  # api_base -> list of models
+    for model in non_ollama:
+        if not model.api_base:
+            LOGGER.debug("Model '%s' (%s) has no api_base — marking unusable", model.id, model.provider)
+            model.usable = False
+            continue
+        to_probe.setdefault(model.api_base, []).append(model)
+
+    if not to_probe and not ollama_models:
+        LOGGER.info(
+            "Models Loaded: %d; Models Usable: %d; Models Enabled: %d",
+            len(settings.model_configs),
+            sum(1 for m in settings.model_configs if m.usable),
+            sum(1 for m in settings.model_configs if m.enabled),
+        )
+        return
+
+    # --- Probe unique endpoints in parallel + verify Ollama models ---
+    async with httpx.AsyncClient(timeout=httpx.Timeout(READ_TIMEOUT, connect=CONNECT_TIMEOUT)) as client:
+        if ollama_models:
+            await _apply_ollama_rules(client, ollama_models)
+        tasks = {url: _probe_endpoint(client, url) for url in to_probe}
+        results = dict(zip(tasks.keys(), await asyncio.gather(*tasks.values())))
+
+    _apply_probe_rules(to_probe, results)
+
+    LOGGER.info(
+        "Models Loaded: %d; Models Usable: %d; Models Enabled: %d",
+        len(settings.model_configs),
+        sum(1 for m in settings.model_configs if m.usable),
+        sum(1 for m in settings.model_configs if m.enabled),
+    )
+
+
+async def check_single_model(model) -> None:
+    """Probe a single model and set its ``usable`` flag.
+
+    Called when a model is created or updated via the API so that the caller
+    does not have to restart the server.
+    """
+    if not model.enabled:
+        model.usable = False
+        return
+
+    provider = (model.provider or "").casefold()
+
+    # OCI models — delegate to existing rule
+    if provider == "oci":
+        _apply_oci_rules([model])
+        return
+
+    # Ollama models — verify the model is actually pulled
+    if provider == "ollama":
+        if not model.api_base:
+            model.usable = False
+            return
+        async with httpx.AsyncClient(timeout=httpx.Timeout(READ_TIMEOUT, connect=CONNECT_TIMEOUT)) as client:
+            await _apply_ollama_rules(client, [model])
+        return
+
+    if not model.api_base:
+        model.usable = False
+        return
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(READ_TIMEOUT, connect=CONNECT_TIMEOUT)) as client:
+        reachable, error = await _probe_endpoint(client, model.api_base)
+
+    if not reachable:
+        model.usable = False
+        LOGGER.debug("Model '%s' (%s) unreachable at %s: %s", model.id, provider, model.api_base, error)
+    elif model.api_key or provider in NO_KEY_PROVIDERS:
+        model.usable = True
+    else:
+        model.usable = False
+
+    LOGGER.info("Model '%s' (%s) usable=%s", model.id, provider, model.usable)

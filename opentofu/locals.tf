@@ -75,8 +75,29 @@ locals {
   adb_private_endpoint_label = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.label_prefix : null
 }
 
-// Load Balancer Ports
+// Optimizer Branch
+locals {
+  optimizer_branch = (
+    var.optimizer_version == "Branch" ? var.optimizer_branch :
+    var.optimizer_version == "Experimental" ? "main" :
+    ""
+  )
+}
+
+// Load Balancer
 locals {
   lb_http_port  = 80
   lb_https_port = 443
+  ssl_enabled   = var.ssl_mode != "none"
+  ssl_cert_pem = (
+    var.ssl_mode == "self-signed" ? tls_locally_signed_cert.server[0].cert_pem :
+    var.ssl_mode == "provided" ? var.ssl_certificate :
+    ""
+  )
+  ssl_key_pem = (
+    var.ssl_mode == "self-signed" ? tls_private_key.server[0].private_key_pem :
+    var.ssl_mode == "provided" ? var.ssl_private_key :
+    ""
+  )
+  ssl_ca_cert_pem = var.ssl_mode == "self-signed" ? tls_self_signed_cert.ca[0].cert_pem : null
 }

@@ -14,10 +14,22 @@ output "app_name" {
 
 output "optimizer_client_url" {
   description = "URL for AI Optimizer and Toolkit Client Access"
-  value       = var.deploy_optimizer ? format("http://%s", oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address) : "N/A"
+  value = var.deploy_optimizer ? format(
+    "%s://%s", local.ssl_enabled ? "https" : "http",
+    oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address
+  ) : "N/A"
 }
 
 output "optimizer_server_url" {
   description = "URL for AI Optimizer and Toolkit Server API Access"
-  value       = var.deploy_optimizer ? format("http://%s/v1/docs", oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address) : "N/A"
+  value = var.deploy_optimizer ? format(
+    "%s://%s/v1/docs", local.ssl_enabled ? "https" : "http",
+    oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address
+  ) : "N/A"
+}
+
+output "ssl_ca_certificate" {
+  description = "CA certificate PEM (self-signed mode only — add to trust store to avoid browser warnings)"
+  value       = var.ssl_mode == "self-signed" ? local.ssl_ca_cert_pem : "N/A"
+  sensitive   = true
 }
