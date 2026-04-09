@@ -44,8 +44,8 @@ jobs:
           uv pip install torch==2.10.0+cpu -f https://download.pytorch.org/whl/cpu/torch --system
           uv pip install -e ".[all-test]" --system
           HELM_INSTALL_SCRIPT=$(mktemp)
-          curl -fsSL -o "$HELM_INSTALL_SCRIPT" https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-          EXPECTED_HASH="e57be187fd9eaad22040898b6e354e825830e5cf80517b83e11dca3ef5870e10"
+          curl -fsSL -o "$HELM_INSTALL_SCRIPT" https://raw.githubusercontent.com/helm/helm/v4.1.4/scripts/get-helm-3
+          EXPECTED_HASH="38b65f882d9cae3891755bdb03becc6a01ae6f9cb24826c191f219ddfee70a5d"
           ACTUAL_HASH=$(sha256sum "$HELM_INSTALL_SCRIPT" | cut -d' ' -f1)
           if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
             echo "❌ Helm install script hash mismatch!"
