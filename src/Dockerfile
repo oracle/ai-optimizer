@@ -6,7 +6,7 @@
 # Build from the project root directory:
 #  podman build -f src/Dockerfile -t ai-optimizer-aio:latest .
 ##################################################
-FROM container-registry.oracle.com/os/oraclelinux:8 AS all_in_one_pyenv
+FROM container-registry.oracle.com/os/oraclelinux:8-slim AS all_in_one_pyenv
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
