@@ -6,7 +6,7 @@
 #  podman build -f src/server/Dockerfile -t ai-optimizer-server:latest .
 #############################################################
 # spell-checker: disable
-FROM container-registry.oracle.com/os/oraclelinux:8 AS optimizer_base
+FROM container-registry.oracle.com/os/oraclelinux:8-slim AS optimizer_base
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
