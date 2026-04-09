@@ -130,7 +130,18 @@ jobs:
         run: docker load -i /tmp/aio-image.tar
 
       - name: Install Grype
-        run: curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+        run: |
+          GRYPE_INSTALL_SCRIPT=$(mktemp)
+          curl -fsSL -o "$GRYPE_INSTALL_SCRIPT" https://raw.githubusercontent.com/anchore/grype/v0.110.0/install.sh
+          EXPECTED_HASH="8646f06a90b10ca64992c1809b4aa00c44e30b4f551f63c309b0b0ab66873556"
+          ACTUAL_HASH=$(sha256sum "$GRYPE_INSTALL_SCRIPT" | cut -d' ' -f1)
+          if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+            echo "❌ Grype install script hash mismatch!"
+            echo "Expected: $EXPECTED_HASH"
+            echo "Actual:   $ACTUAL_HASH"
+            exit 1
+          fi
+          sh "$GRYPE_INSTALL_SCRIPT" -b /usr/local/bin
 
       # Generate SARIF output (always succeeds so SARIF is uploaded)
       - name: Run Grype Scan (SARIF)
