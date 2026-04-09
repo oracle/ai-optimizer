@@ -10,11 +10,16 @@ FROM container-registry.oracle.com/os/oraclelinux:8-slim AS all_in_one_pyenv
 ENV RUNUSER=oracleai \
     VIRTUAL_ENV=/opt/.venv
 
+RUN echo -e '[ol8_oracle_software]\n\
+name=Oracle Software for OracleLinux 8\n\
+baseurl=https://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/$basearch\n\
+gpgcheck=0\n\
+enabled=1' > /etc/yum.repos.d/oracle-software.repo
+
 RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    dnf config-manager --add-repo https://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/\$basearch && \
-    dnf --nodocs -y install python3.11 python3.11-pip sqlcl java-21-openjdk-headless --nogpgcheck && \
-    dnf clean all && \
+    microdnf --nodocs -y install python3.11 python3.11-pip sqlcl java-21-openjdk-headless && \
+    microdnf clean all && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV
 
 COPY pyproject.toml /opt/package/pyproject.toml
