@@ -72,8 +72,7 @@ jobs:
       - name: Load Image
         run: docker load -i /tmp/aio-image.tar
 
-      # Generate SARIF output (always succeeds so SARIF is uploaded)
-      - name: Run Trivy Scan (SARIF)
+      - name: Run Trivy Scan
         run: |
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
@@ -93,20 +92,13 @@ jobs:
           sarif_file: trivy-results.sarif
           category: trivy-aio
 
-      # Run again with table format - fails the job if vulnerabilities found
       - name: Check for Vulnerabilities
         run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "${{ github.workspace }}:/workspace" \
-            ghcr.io/aquasecurity/trivy:0.69.3 \
-            image \
-            --severity HIGH,CRITICAL \
-            --format table \
-            --output /workspace/trivy-results.txt \
-            --ignore-unfixed \
-            --exit-code 1 \
-            "aio:${{ github.sha }}"
+          RESULTS=$(jq '[.runs[].results[] | select(.level == "error" or .level == "warning")] | length' trivy-results.sarif)
+          if [ "$RESULTS" -gt 0 ]; then
+            echo "❌ Found $RESULTS HIGH/CRITICAL vulnerabilities"
+            exit 1
+          fi
 
   # Grype security scan
   grype-scan:
@@ -143,13 +135,11 @@ jobs:
           fi
           sh "$GRYPE_INSTALL_SCRIPT" -b /usr/local/bin
 
-      # Generate SARIF output (always succeeds so SARIF is uploaded)
-      - name: Run Grype Scan (SARIF)
+      - name: Run Grype Scan
         run: |
           grype \
             "docker:aio:${{ github.sha }}" \
             --only-fixed \
-            --fail-on high \
             --output sarif \
             --file grype-results.sarif || true
 
@@ -159,15 +149,13 @@ jobs:
           sarif_file: grype-results.sarif
           category: grype-aio
 
-      # Run again with table format - fails the job if vulnerabilities found
       - name: Check for Vulnerabilities
         run: |
-          grype \
-            "docker:aio:${{ github.sha }}" \
-            --only-fixed \
-            --fail-on high \
-            --output table \
-            --file grype-results.txt
+          RESULTS=$(jq '[.runs[].results[] | select(.level == "error" or .level == "warning")] | length' grype-results.sarif)
+          if [ "$RESULTS" -gt 0 ]; then
+            echo "❌ Found $RESULTS HIGH/CRITICAL vulnerabilities"
+            exit 1
+          fi
 
   # Macaron - check GitHub Actions for known vulnerabilities
   macaron:
