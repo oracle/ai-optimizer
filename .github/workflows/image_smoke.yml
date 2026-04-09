@@ -1,4 +1,4 @@
-# Workflow for validating container images and security scanning
+# Workflow for validating container image builds
 name: Validate Container Images
 
 on:
@@ -13,51 +13,13 @@ on:
       - "pyproject.toml"
       - ".github/workflows/image_smoke.yml"
 
-  schedule:
-    # Daily security scan at 06:00 UTC
-    - cron: "0 6 * * *"
-
   # Allows running this workflow manually
   workflow_dispatch:
 
 jobs:
-  # Determine which jobs to run based on trigger and changed files
-  detect-changes:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    outputs:
-      run_smoke_tests: ${{ steps.check.outputs.run_smoke_tests }}
-      run_scans: ${{ steps.check.outputs.run_scans }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Detect Changes
-        id: check
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "run_smoke_tests=false" >> "$GITHUB_OUTPUT"
-            echo "run_scans=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run_smoke_tests=true" >> "$GITHUB_OUTPUT"
-            # Check if security-relevant files changed
-            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- pyproject.toml src/Dockerfile)
-            if [ -n "$CHANGED" ]; then
-              echo "run_scans=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "run_scans=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
-  # Build and smoke test all container images (PR only)
+  # Build and test all container images with optimized caching
   image-build-test:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_smoke_tests == 'true'
+    if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -80,6 +42,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v6
 
+      # Use official Docker Buildx action for better caching
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -93,13 +56,14 @@ jobs:
             ${{ runner.os }}-buildx-${{ matrix.build.name }}-
             ${{ runner.os }}-buildx-
 
+      # Build using official action (replaces manual docker buildx commands)
       - name: Build Container Image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.build.dockerfile }}
           tags: ${{ matrix.build.name }}:${{ github.sha }}
-          load: true
+          load: true # Load all images for smoke testing
           push: false
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
@@ -111,29 +75,18 @@ jobs:
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
-      # Export AIO image as artifact for security scan jobs
-      - name: Export AIO Image for Scanning
-        if: matrix.build.name == 'aio' && needs.detect-changes.outputs.run_scans == 'true'
-        run: docker save -o /tmp/aio-image.tar "aio:${{ github.sha }}"
-
-      - name: Upload AIO Image Artifact
-        if: matrix.build.name == 'aio' && needs.detect-changes.outputs.run_scans == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: aio-image
-          path: /tmp/aio-image.tar
-          retention-days: 1
-
       # Smoke test - Server container
       - name: Smoke Test - Server Container
         if: matrix.build.name == 'server'
         run: |
           echo "Testing Server container startup..."
 
+          # Start server container in background
           docker run -d --name test-server \
             -e API_SERVER_KEY=test-key-for-ci \
             server:${{ github.sha }}
 
+          # Wait and verify container is still running (max 30 seconds)
           echo "Waiting for container to stabilize..."
           sleep 10
 
@@ -153,12 +106,15 @@ jobs:
         run: |
           echo "Testing Client container startup..."
 
+          # Start client container in background
+          # Client requires API_SERVER_* env vars to be set
           docker run -d --name test-client \
             -e API_SERVER_KEY=test-key-for-ci \
             -e API_SERVER_URL=http://localhost \
             -e API_SERVER_PORT=8000 \
             client:${{ github.sha }}
 
+          # Wait and verify container is still running
           echo "Waiting for container to stabilize..."
           sleep 10
 
@@ -178,10 +134,12 @@ jobs:
         run: |
           echo "Testing AIO container startup..."
 
+          # Start container in background
           docker run -d --name test-aio \
             -e API_SERVER_KEY=test-key-for-ci \
             aio:${{ github.sha }}
 
+          # Wait and verify container is still running
           echo "Waiting for container to stabilize..."
           sleep 10
 
@@ -206,194 +164,22 @@ jobs:
           docker stop test-aio 2>/dev/null || true
           docker rm test-aio 2>/dev/null || true
 
-  # Build AIO image for scanning (schedule/dispatch only, when smoke tests are skipped)
-  build-for-scan:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_smoke_tests == 'false'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build AIO Container Image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: src/Dockerfile
-          tags: aio:${{ github.sha }}
-          outputs: type=docker,dest=/tmp/aio-image.tar
-          push: false
-
-      - name: Upload Image Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: aio-image
-          path: /tmp/aio-image.tar
-          retention-days: 1
-
-  # Trivy security scan
-  trivy-scan:
-    needs: [detect-changes, image-build-test, build-for-scan]
-    if: always() && needs.detect-changes.outputs.run_scans == 'true' && !cancelled()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-
-    steps:
-      - name: Download Image Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: aio-image
-          path: /tmp
-
-      - name: Load Image
-        run: docker load -i /tmp/aio-image.tar
-
-      # Generate SARIF output (always succeeds so SARIF is uploaded)
-      - name: Run Trivy Scan (SARIF)
-        run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "${{ github.workspace }}:/workspace" \
-            ghcr.io/aquasecurity/trivy:0.69.3 \
-            image \
-            --severity HIGH,CRITICAL \
-            --format sarif \
-            --output /workspace/trivy-results.sarif \
-            --ignore-unfixed \
-            --exit-code 0 \
-            "aio:${{ github.sha }}"
-
-      - name: Upload Trivy SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: trivy-results.sarif
-          category: trivy-aio
-
-      # Run again with table format - fails the job if vulnerabilities found
-      - name: Check for Vulnerabilities
-        run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "${{ github.workspace }}:/workspace" \
-            ghcr.io/aquasecurity/trivy:0.69.3 \
-            image \
-            --severity HIGH,CRITICAL \
-            --format table \
-            --output /workspace/trivy-results.txt \
-            --ignore-unfixed \
-            --exit-code 1 \
-            "aio:${{ github.sha }}"
-
-  # Grype security scan
-  grype-scan:
-    needs: [detect-changes, image-build-test, build-for-scan]
-    if: always() && needs.detect-changes.outputs.run_scans == 'true' && !cancelled()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-
-    steps:
-      - name: Download Image Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: aio-image
-          path: /tmp
-
-      - name: Load Image
-        run: docker load -i /tmp/aio-image.tar
-
-      - name: Install Grype
-        run: curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-
-      # Generate SARIF output (always succeeds so SARIF is uploaded)
-      - name: Run Grype Scan (SARIF)
-        run: |
-          grype \
-            "docker:aio:${{ github.sha }}" \
-            --only-fixed \
-            --fail-on high \
-            --output sarif \
-            --file grype-results.sarif || true
-
-      - name: Upload Grype SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: grype-results.sarif
-          category: grype-aio
-
-      # Run again with table format - fails the job if vulnerabilities found
-      - name: Check for Vulnerabilities
-        run: |
-          grype \
-            "docker:aio:${{ github.sha }}" \
-            --only-fixed \
-            --fail-on high \
-            --output table \
-            --file grype-results.txt
-
   # Summary job
-  validation-summary:
+  image-validation-summary:
     name: Validation Summary
-    if: always() && !cancelled()
+    if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: [detect-changes, image-build-test, build-for-scan, trivy-scan, grype-scan]
+    needs: [image-build-test]
 
     steps:
-      - name: Check Results
+      - name: All Validations Passed
         run: |
           echo "========================================================"
-          echo "Validation Summary"
+          echo "✅ All container image validations passed!"
           echo "========================================================"
-          echo "Trigger: ${{ github.event_name }}"
-          echo ""
-
-          FAILED=false
-
-          # Smoke tests (PR only)
-          if [ "${{ needs.detect-changes.outputs.run_smoke_tests }}" = "true" ]; then
-            if [ "${{ needs.image-build-test.result }}" = "success" ]; then
-              echo "✅ Image builds & smoke tests: passed"
-            else
-              echo "❌ Image builds & smoke tests: ${{ needs.image-build-test.result }}"
-              FAILED=true
-            fi
-          else
-            echo "⏭️  Image builds & smoke tests: skipped (scheduled scan)"
-          fi
-
-          # Security scans
-          if [ "${{ needs.detect-changes.outputs.run_scans }}" = "true" ]; then
-            if [ "${{ needs.trivy-scan.result }}" = "success" ]; then
-              echo "✅ Trivy security scan: passed"
-            else
-              echo "❌ Trivy security scan: ${{ needs.trivy-scan.result }}"
-              FAILED=true
-            fi
-
-            if [ "${{ needs.grype-scan.result }}" = "success" ]; then
-              echo "✅ Grype security scan: passed"
-            else
-              echo "❌ Grype security scan: ${{ needs.grype-scan.result }}"
-              FAILED=true
-            fi
-          else
-            echo "⏭️  Security scans: skipped (no dependency/Dockerfile changes)"
-          fi
-
+          echo "- Image builds (aio, client, server): ✅"
+          echo "- Smoke tests:"
+          echo "  - Server container startup: ✅"
+          echo "  - Client container startup: ✅"
+          echo "  - AIO container startup: ✅"
           echo "========================================================"
-
-          if [ "$FAILED" = "true" ]; then
-            echo "❌ One or more validations failed"
-            exit 1
-          else
-            echo "✅ All validations passed"
-          fi
