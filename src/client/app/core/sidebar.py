@@ -18,7 +18,6 @@ from client.app.core.helpers import (
     state_configs_lookup,
     update_client_settings,
 )
-from server.app.models.litellm_utils import is_small_model
 
 LOGGER = logging.getLogger("client.core.sidebar")
 
@@ -232,11 +231,22 @@ def _disable_tool(tool: str, reason: str | None = None) -> None:
     state.tool_box[tool]["enabled"] = False
 
 
+def _is_small_model(client_settings: dict) -> bool:
+    """Check if the active LLM is a small model via its model_config entry."""
+    ll = client_settings.get("ll_model", {})
+    provider = ll.get("provider", "")
+    model_id = ll.get("id", "")
+    key = f"{provider}/{model_id}"
+    model_configs = state_configs_lookup("model_configs", "id")
+    cfg = model_configs.get(model_id) or model_configs.get(key, {})
+    return cfg.get("small_model", False)
+
+
 def _render_vs_subtools(vs_settings: dict, client_settings: dict) -> None:
     """Render Vector Search sub-tool checkboxes (rephrase, grade) with CPU mode logic."""
     # CPU mode detection for small models
     model_id = client_settings.get("ll_model", {}).get("id", "")
-    small_model = is_small_model(model_id)
+    small_model = _is_small_model(client_settings)
 
     previous_model = state.get("_previous_ll_model_for_cpu")
     model_changed = previous_model != model_id

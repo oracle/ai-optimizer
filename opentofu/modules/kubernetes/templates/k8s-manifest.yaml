@@ -32,18 +32,6 @@ stringData:
   password: "${db_password}"
   service: "${db_service}"
 %{ endif }
-%{ if ssl_enabled ~}
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ${label}-tls
-  namespace: ${label}
-type: kubernetes.io/tls
-data:
-  tls.crt: ${ssl_cert_b64}
-  tls.key: ${ssl_key_b64}
-%{ endif ~}
 ---
 # Secret containing privileged DB User details.
 # Used to create user defined in -db-authn in init-container

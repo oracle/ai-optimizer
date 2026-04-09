@@ -845,3 +845,117 @@ class TestDisableTool:
             _disable_tool("NL2SQL")
         assert state.tool_box["NL2SQL"]["enabled"] is False
         mock_st.sidebar.warning.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _is_small_model
+# ---------------------------------------------------------------------------
+class TestIsSmallModel:
+    """Tests for _is_small_model."""
+
+    def test_true_when_model_config_says_small(self):
+        """Verify returns True when model config has small_model=True."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "llama3.2:1b", "type": "ll", "provider": "ollama", "small_model": True},
+        ]
+        state["settings"]["client_settings"]["ll_model"] = {"provider": "ollama", "id": "llama3.2:1b"}
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import _is_small_model
+
+            assert _is_small_model(state["settings"]["client_settings"]) is True
+
+    def test_false_when_model_config_says_not_small(self):
+        """Verify returns False when model config has small_model=False."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "llama3:70b", "type": "ll", "provider": "ollama", "small_model": False},
+        ]
+        state["settings"]["client_settings"]["ll_model"] = {"provider": "ollama", "id": "llama3:70b"}
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import _is_small_model
+
+            assert _is_small_model(state["settings"]["client_settings"]) is False
+
+    def test_false_when_no_model_config_found(self):
+        """Verify returns False when model id is not in model_configs."""
+        state = _make_state()
+        state["settings"]["model_configs"] = []
+        state["settings"]["client_settings"]["ll_model"] = {"provider": "openai", "id": "gpt-4o"}
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import _is_small_model
+
+            assert _is_small_model(state["settings"]["client_settings"]) is False
+
+    def test_false_when_no_ll_model(self):
+        """Verify returns False when ll_model is empty."""
+        state = _make_state()
+        state["settings"]["model_configs"] = []
+        state["settings"]["client_settings"]["ll_model"] = {}
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import _is_small_model
+
+            assert _is_small_model(state["settings"]["client_settings"]) is False
+
+
+# ---------------------------------------------------------------------------
+# _render_vs_subtools
+# ---------------------------------------------------------------------------
+class TestRenderVsSubtools:
+    """Tests for _render_vs_subtools."""
+
+    def test_small_model_auto_disables_rephrase_grade(self, mock_st):
+        """Verify rephrase and grade are auto-disabled for small models."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "llama3.2:1b", "type": "ll", "provider": "ollama", "small_model": True},
+        ]
+        state["settings"]["client_settings"]["ll_model"] = {"provider": "ollama", "id": "llama3.2:1b"}
+        vs_settings = {"rephrase": True, "grade": True}
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.update_client_settings") as mock_update,
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import _render_vs_subtools
+
+            _render_vs_subtools(vs_settings, state["settings"]["client_settings"])
+        assert vs_settings["rephrase"] is False
+        assert vs_settings["grade"] is False
+        mock_update.assert_called_once_with({"vector_search": {"rephrase": False, "grade": False}})
+        mock_st.sidebar.info.assert_called_once()
+
+    def test_large_model_keeps_rephrase_grade(self, mock_st):
+        """Verify rephrase and grade are unchanged for large models."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "llama3:70b", "type": "ll", "provider": "ollama", "small_model": False},
+        ]
+        state["settings"]["client_settings"]["ll_model"] = {"provider": "ollama", "id": "llama3:70b"}
+        vs_settings = {"rephrase": True, "grade": True}
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.update_client_settings") as mock_update,
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import _render_vs_subtools
+
+            _render_vs_subtools(vs_settings, state["settings"]["client_settings"])
+        assert vs_settings["rephrase"] is True
+        assert vs_settings["grade"] is True
+        mock_update.assert_not_called()
+        mock_st.sidebar.info.assert_not_called()

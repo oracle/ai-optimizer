@@ -6,10 +6,15 @@ Pydantic models for AI model configuration.
 """
 # spell-checker: ignore aioptimizer ollama rerank
 
+import re
 import time
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
+
+# Pattern to extract parameter count from model names (e.g., "llama3.2:1b" -> 1.0)
+_PARAM_PATTERN = re.compile(r"(\d+(?:\.\d+)?)[bB](?![a-zA-Z])")
+_SMALL_MODEL_THRESHOLD_B = 7
 
 
 class LanguageModelParameters(BaseModel):
@@ -71,6 +76,20 @@ class ModelConfig(LanguageModelParameters, EmbeddingModelParameters, ModelSensit
     api_base: Optional[str] = None
     enabled: Optional[bool] = False
     usable: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def small_model(self) -> bool:
+        """True when the model has < 7B parameters (detected from model name)."""
+        if not self.id:
+            return False
+        match = _PARAM_PATTERN.search(self.id)
+        if match:
+            try:
+                return float(match.group(1)) < _SMALL_MODEL_THRESHOLD_B
+            except ValueError:
+                pass
+        return False
 
 
 class ModelUpdate(ModelSensitive):

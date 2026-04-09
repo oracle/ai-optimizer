@@ -114,7 +114,7 @@ Always returns a path with leading and trailing slashes for proper concatenation
 Define the serviceName and serviceUrl of the API Server for Client Access.
 *********************************************** */}}
 {{- define "server.serviceName" -}}
-{{ include "global.fullname" . }}-server-8000
+{{ include "global.fullname" . }}-server-http
 {{- end -}}
 
 {{- define "server.serviceUrl" -}}
