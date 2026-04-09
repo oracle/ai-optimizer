@@ -22,14 +22,14 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
 
       - name: Cache dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: |
             ~/.cache/pip
@@ -43,7 +43,17 @@ jobs:
           python -m pip install --upgrade pip wheel setuptools uv
           uv pip install torch==2.10.0+cpu -f https://download.pytorch.org/whl/cpu/torch --system
           uv pip install -e ".[all-test]" --system
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          HELM_INSTALL_SCRIPT=$(mktemp)
+          curl -fsSL -o "$HELM_INSTALL_SCRIPT" https://raw.githubusercontent.com/helm/helm/v4.1.4/scripts/get-helm-3
+          EXPECTED_HASH="38b65f882d9cae3891755bdb03becc6a01ae6f9cb24826c191f219ddfee70a5d"
+          ACTUAL_HASH=$(sha256sum "$HELM_INSTALL_SCRIPT" | cut -d' ' -f1)
+          if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+            echo "❌ Helm install script hash mismatch!"
+            echo "Expected: $EXPECTED_HASH"
+            echo "Actual:   $ACTUAL_HASH"
+            exit 1
+          fi
+          bash "$HELM_INSTALL_SCRIPT"
 
       - name: Run yamllint on Code
         run: yamllint .
@@ -68,7 +78,7 @@ jobs:
 
       - name: Upload Test Results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: test-results
           path: |
