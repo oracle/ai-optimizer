@@ -4,11 +4,14 @@
 [![Test Suite](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml)
 [![Validate IaC](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml)
 [![Validate Container Images](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml)
+[![Security Scan](https://github.com/oracle/ai-optimizer/actions/workflows/security_scan.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/security_scan.yml)
 [![Deploy Documentation](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml)
 
 ## Description
 
 The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle AI Database** VectorSearch and SelectAI, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
+
+If you find this project useful, please consider giving it a [Star](https://github.com/oracle/ai-optimizer/stargazers)!
 
 ## AI Optimizer Features
 

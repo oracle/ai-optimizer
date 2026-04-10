@@ -38,14 +38,14 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # Terraform validation steps
       - name: Install Cache Dependencies
         run: apk add --no-cache tar zstd
 
       - name: Cache Terraform Providers
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ env.TF_PLUGIN_CACHE_DIR }}
           key: ${{ runner.os }}-terraform-${{ hashFiles('opentofu/.terraform.lock.hcl') }}
@@ -87,7 +87,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run Trivy Security Scan for IaC
         run: |
@@ -104,6 +104,7 @@ jobs:
     name: Validation Summary
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions: {}
     needs: [verify-iac-static, verify-iac-security]
 
     steps:
