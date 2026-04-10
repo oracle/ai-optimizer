@@ -6,6 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore opentofu
 
 import sys
+
 import yaml
 from jsonschema import Draft7Validator
 from referencing import Registry, Resource

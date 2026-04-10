@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, cast
 
-import pytest
 from fastmcp.tools.function_tool import FunctionTool
 from litellm.exceptions import APIConnectionError
 

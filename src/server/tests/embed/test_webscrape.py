@@ -2,8 +2,9 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Tests for embed webscrape utilities.
+Tests for embed web scrape utilities.
 """
+# spell-checker: disable
 
 import pytest
 from bs4 import BeautifulSoup

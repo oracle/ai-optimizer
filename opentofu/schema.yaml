@@ -618,15 +618,6 @@ outputs:
     title: "Server API"
     type: link
 
-  ssl_ca_certificate:
-    title: "CA Certificate (self-signed mode)"
-    type: string
-    sensitive: true
-    visible:
-      eq:
-        - ssl_mode
-        - "self-signed"
-
   kubeconfig_cmd:
     title: "KUBECONFIG command"
     type: string
