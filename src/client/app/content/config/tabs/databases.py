@@ -53,7 +53,7 @@ def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict
     """Process database form submission (create or update)."""
     if not is_new:
         changes = {k: v for k, v in form_data.items() if db_config.get(k) != v}
-        if not changes:
+        if not changes and db_config.get("usable"):
             st.toast("No changes detected.", icon="ℹ️")
             return
 
