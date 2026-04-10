@@ -66,7 +66,7 @@ if "settings" not in state:
     if state.settings is None:
         with st.sidebar.spinner("Starting server...", show_time=True):
             start_server()
-            state.settings = get_server_settings(client=state.optimizer_client, max_retries=5)
+            state.settings = get_server_settings(client=state.optimizer_client)
 
 if state.settings is None:
     st.error("Unable to connect to the server. Please check that the server is running.")

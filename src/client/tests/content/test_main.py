@@ -92,10 +92,7 @@ class TestMainConnectionLogic:
         mock_get, mock_start = _import_main(state, get_settings_side_effect=[None, valid_settings])
 
         mock_start.assert_called_once()
-        # Second call should include max_retries=5
         assert mock_get.call_count == 2
-        second_call_kwargs = mock_get.call_args_list[1][1]
-        assert second_call_kwargs.get("max_retries") == 5
 
     def test_connection_failure_shows_error(self):
         """When all connection attempts fail, st.error is called."""

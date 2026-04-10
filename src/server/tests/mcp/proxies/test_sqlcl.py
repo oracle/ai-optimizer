@@ -73,11 +73,24 @@ async def test_verify_backend_empty():
 
 
 async def test_verify_backend_exception(caplog):
-    """_verify_backend handles enumeration failures gracefully."""
+    """_verify_backend handles client open failures gracefully."""
     caplog.set_level("WARNING")
     client = _DummyClient(raise_on_enter=True)
     assert await sqlcl._verify_backend(cast(Client[Any], client)) is False
-    assert "failed to enumerate capabilities" in caplog.text
+    assert "failed to open client" in caplog.text
+
+
+async def test_verify_backend_resource_failure_does_not_block_tools(caplog):
+    """A failure listing resources must not prevent the proxy from mounting when tools exist."""
+    caplog.set_level("WARNING")
+
+    class _PartialClient(_DummyClient):
+        async def list_resources(self):
+            raise RuntimeError("invalid resource URL")
+
+    client = _PartialClient(tools=[SimpleNamespace(name="tool1")])
+    assert await sqlcl._verify_backend(cast(Client[Any], client)) is True
+    assert "failed to list resources" in caplog.text
 
 
 async def test_create_connection_store_success(monkeypatch):
