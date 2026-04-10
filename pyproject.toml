@@ -126,6 +126,17 @@ markers = [
     "wayflowcore: Tests exercising wayflowcore runtime (opt-in only; enable with --wayflowcore or '-m wayflowcore')",
 ]
 
+[tool.pyright]
+# wayflowcore is an optional extra (`server-wayflow`) and is intentionally not
+# installed in the default dev env — it downgrades langgraph and related deps.
+# Exclude the wayflow runtime subtree so pyright doesn't report missing imports.
+exclude = [
+    "**/.venv",
+    "src/server/tests/conftest.py",
+    "src/server/app/runtime/wayflow",
+    "src/server/tests/runtime/wayflow",
+]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
