@@ -175,30 +175,40 @@ async def _preflight_check(sqlcl_binary: str, args: list[str], env: dict[str, st
 
 
 async def _verify_backend(client: Client) -> bool:
-    """Verify the client exposes tools, prompts, or resources from the SQLcl backend."""
+    """Verify the client exposes tools, prompts, or resources from the SQLcl backend.
+
+    Each capability is enumerated independently so that a single broken list
+    (e.g. SQLcl currently emits non-URL resource names that fail Pydantic
+    validation) does not abort the whole verification.
+    """
+
+    async def _safe_list(label: str, fn):
+        try:
+            items = await fn()
+            return [getattr(it, "name", str(it)) for it in items]
+        except Exception as ex:
+            LOGGER.warning("SQLcl MCP proxy: failed to list %s: %s", label, ex)
+            return []
+
     try:
         async with client:
-            tools = await client.list_tools()
-            prompts = await client.list_prompts()
-            resources = await client.list_resources()
-
-            tool_names = [t.name for t in tools]
-            prompt_names = [p.name for p in prompts]
-            resource_names = [r.name for r in resources]
-
-            LOGGER.info(
-                "SQLcl MCP proxy: %d tool(s): %s, %d prompt(s): %s, %d resource(s): %s",
-                len(tool_names),
-                tool_names,
-                len(prompt_names),
-                prompt_names,
-                len(resource_names),
-                resource_names,
-            )
-            return bool(tool_names or prompt_names or resource_names)
+            tool_names = await _safe_list("tools", client.list_tools)
+            prompt_names = await _safe_list("prompts", client.list_prompts)
+            resource_names = await _safe_list("resources", client.list_resources)
     except Exception as ex:
-        LOGGER.warning("SQLcl MCP proxy: failed to enumerate capabilities: %s", ex)
+        LOGGER.warning("SQLcl MCP proxy: failed to open client: %s", ex)
         return False
+
+    LOGGER.info(
+        "SQLcl MCP proxy: %d tool(s): %s, %d prompt(s): %s, %d resource(s): %s",
+        len(tool_names),
+        tool_names,
+        len(prompt_names),
+        prompt_names,
+        len(resource_names),
+        resource_names,
+    )
+    return bool(tool_names or prompt_names or resource_names)
 
 
 def _quote_sqlcl_value(value: str) -> str:

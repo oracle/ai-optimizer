@@ -495,53 +495,22 @@ class TestApiDelete:
 class TestGetServerSettings:
     """Tests for get_server_settings."""
 
-    def test_first_attempt_success(self):
-        """Verify get_server_settings returns data on the first successful attempt."""
+    def test_success(self):
+        """Verify get_server_settings returns data on a successful call."""
         resp = _resp(200, json_data={"settings": "ok"})
         ctx, _ = _mock_client_ctx(response=resp)
         settings = _mock_settings()
         with (
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}.httpx.Client", return_value=ctx),
-            patch(f"{MODULE}.time.sleep"),
         ):
             from client.app.core.api import get_server_settings
 
             result = get_server_settings(client="test")
         assert result == {"settings": "ok"}
 
-    def test_retry_then_success(self):
-        """Verify get_server_settings retries on failure and returns data on eventual success."""
-        fail_resp = _resp(503, json_data={"detail": "unavailable"})
-        fail_resp.raise_for_status = MagicMock(
-            side_effect=httpx.HTTPStatusError("err", request=fail_resp.request, response=fail_resp)
-        )
-        ok_resp = _resp(200, json_data={"ok": True})
-
-        call_count = 0
-
-        def _side_effect(*_args, **_kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 2:
-                return fail_resp
-            return ok_resp
-
-        ctx, instance = _mock_client_ctx()
-        instance.get.side_effect = _side_effect
-        settings = _mock_settings()
-        with (
-            patch(f"{MODULE}.settings", settings),
-            patch(f"{MODULE}.httpx.Client", return_value=ctx),
-            patch(f"{MODULE}.time.sleep"),
-        ):
-            from client.app.core.api import get_server_settings
-
-            result = get_server_settings(client="test", max_retries=5)
-        assert result == {"ok": True}
-
-    def test_all_retries_fail_returns_none(self):
-        """Verify get_server_settings returns None when all retries are exhausted."""
+    def test_http_error_returns_none(self):
+        """Verify get_server_settings returns None when the server is unreachable."""
         fail_resp = _resp(503, json_data={"detail": "down"})
         fail_resp.raise_for_status = MagicMock(
             side_effect=httpx.HTTPStatusError("err", request=fail_resp.request, response=fail_resp)
@@ -551,11 +520,10 @@ class TestGetServerSettings:
         with (
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}.httpx.Client", return_value=ctx),
-            patch(f"{MODULE}.time.sleep"),
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test", max_retries=2, backoff_delays=[0, 0, 0])
+            result = get_server_settings(client="test")
         assert result is None
 
     def test_params_forwarded(self):
@@ -566,7 +534,6 @@ class TestGetServerSettings:
         with (
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}.httpx.Client", return_value=ctx),
-            patch(f"{MODULE}.time.sleep"),
         ):
             from client.app.core.api import get_server_settings
 
@@ -611,6 +578,54 @@ class TestSpawnServer:
         result[1].close()
 
 
+class TestWaitForServerReady:
+    """Tests for _wait_for_server_ready."""
+
+    def test_returns_true_when_liveness_responds(self):
+        """Verify the helper returns True once /liveness returns 200."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        ok_resp = MagicMock(status_code=200)
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,
+            patch(f"{MODULE}.time.sleep"),
+        ):
+            from client.app.core.api import _wait_for_server_ready
+
+            assert _wait_for_server_ready(mock_proc, timeout=5) is True
+        mock_get.assert_called()
+
+    def test_returns_false_when_process_exits(self):
+        """Verify the helper returns False when the subprocess dies before becoming ready."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 1  # Exited
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.get", side_effect=httpx.ConnectError("nope")),
+            patch(f"{MODULE}.time.sleep"),
+        ):
+            from client.app.core.api import _wait_for_server_ready
+
+            assert _wait_for_server_ready(mock_proc, timeout=5) is False
+
+    def test_returns_false_on_timeout(self):
+        """Verify the helper returns False when /liveness never succeeds before the deadline."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.get", side_effect=httpx.ConnectError("nope")),
+            patch(f"{MODULE}.time.sleep"),
+        ):
+            from client.app.core.api import _wait_for_server_ready
+
+            assert _wait_for_server_ready(mock_proc, timeout=0.05) is False
+
+
 # ---------------------------------------------------------------------------
 # start_server
 # ---------------------------------------------------------------------------
@@ -631,15 +646,16 @@ class TestStartServer:
         mock_spawn.assert_not_called()
 
     def test_starts_new_server(self):
-        """Verify start_server spawns a new server process when none is running."""
+        """Verify start_server spawns a new server process and waits for readiness."""
         mock_proc = MagicMock()
-        mock_proc.wait.side_effect = __import__("subprocess").TimeoutExpired(cmd="test", timeout=2)
+        mock_proc.poll.return_value = None  # Still running
         mock_fh = MagicMock()
         settings = _mock_settings()
         with (
             patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)),
+            patch(f"{MODULE}._wait_for_server_ready", return_value=True),
             patch(f"{MODULE}.atexit.register"),
         ):
             from client.app.core.api import start_server
@@ -649,7 +665,7 @@ class TestStartServer:
     def test_generates_api_key_when_none(self):
         """Verify start_server generates an API key when none is configured."""
         mock_proc = MagicMock()
-        mock_proc.wait.side_effect = __import__("subprocess").TimeoutExpired(cmd="test", timeout=2)
+        mock_proc.poll.return_value = None
         mock_fh = MagicMock()
         settings = _mock_settings(api_key=None)
         # Need to handle the falsy check: `if not settings.api_key`
@@ -658,6 +674,7 @@ class TestStartServer:
             patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)),
+            patch(f"{MODULE}._wait_for_server_ready", return_value=True),
             patch(f"{MODULE}.atexit.register"),
             patch(f"{MODULE}.secrets.token_urlsafe", return_value="generated-key"),
         ):
@@ -665,6 +682,7 @@ class TestStartServer:
 
             start_server()
         assert settings.api_key == "generated-key"
+
 
 
 # ---------------------------------------------------------------------------

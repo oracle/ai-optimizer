@@ -25,6 +25,9 @@ LOGGER = logging.getLogger(__name__)
 
 _SERVER: dict = {"process": None, "log_file": None}
 
+_SERVER_READY_TIMEOUT_SECONDS = float(os.environ.get("AIO_SERVER_READY_TIMEOUT", "180"))
+_SERVER_READY_POLL_INTERVAL = 5.0
+
 
 def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Popen, TextIOWrapper]:
     """Spawn a uvicorn server subprocess and return the Popen handle and log file."""
@@ -46,6 +49,28 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
         stderr=log_fh,
     )
     return proc, log_fh
+
+
+def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READY_TIMEOUT_SECONDS) -> bool:
+    """Poll the no-auth liveness endpoint until it responds or the process exits.
+
+    The probe is independent of the server's log level (unlike scraping uvicorn
+    stderr). Returns True once /liveness returns 200, False if the subprocess
+    exits early or the timeout is reached.
+    """
+    url = f"{_base_url()}/liveness"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return False
+        try:
+            resp = httpx.get(url, timeout=1.0)
+            if resp.status_code == 200:
+                return True
+        except httpx.HTTPError:
+            pass
+        time.sleep(_SERVER_READY_POLL_INTERVAL)
+    return False
 
 
 def start_server() -> None:
@@ -73,36 +98,50 @@ def start_server() -> None:
 
     log_path = Path(src_dir) / f"apiserver_{port}.log"
     proc, log_fh = _spawn_server(port, env, log_path)
-    # Give the process a moment to fail on import/startup errors.
-    try:
-        proc.wait(timeout=2)
-        log_fh.close()
-        stderr = log_path.read_text()
-        LOGGER.error(
-            "Server process exited immediately (code %d). PYTHONPATH=%s\nSee %s\n%s",
-            proc.returncode,
-            src_dir,
-            log_path,
-            stderr.strip(),
-        )
-        return
-    except subprocess.TimeoutExpired:
-        pass  # Still running — expected.
 
+    # Track the subprocess immediately so it isn't killed on timeout — slow
+    # imports (langchain, etc.) can push first-byte well past any sane wait,
+    # and the next Streamlit rerun will pick it up once it's actually ready.
     _SERVER["process"] = proc
     _SERVER["log_file"] = log_fh
     atexit.register(_stop_server)
 
+    if not _wait_for_server_ready(proc):
+        if proc.poll() is not None:
+            stderr = log_path.read_text()
+            LOGGER.error(
+                "Server process exited (code %d). PYTHONPATH=%s\nSee %s\n%s",
+                proc.returncode,
+                src_dir,
+                log_path,
+                stderr.strip(),
+            )
+            _SERVER["process"] = None
+            log_fh.close()
+            _SERVER["log_file"] = None
+            return
+        LOGGER.warning(
+            "Server not ready after %.0fs; leaving it running (set AIO_SERVER_READY_TIMEOUT to extend). See %s",
+            _SERVER_READY_TIMEOUT_SECONDS,
+            log_path,
+        )
 
-def _stop_server() -> None:
-    """Terminate the server subprocess if it is still running."""
-    proc = _SERVER["process"]
-    if proc is not None and proc.poll() is None:
+
+def _stop_process(proc: subprocess.Popen) -> None:
+    """Terminate a subprocess, escalating to kill if needed."""
+    if proc.poll() is None:
         proc.terminate()
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+
+def _stop_server() -> None:
+    """Terminate the server subprocess if it is still running."""
+    proc = _SERVER["process"]
+    if proc is not None:
+        _stop_process(proc)
     _SERVER["process"] = None
     log_fh = _SERVER["log_file"]
     if log_fh:
@@ -220,44 +259,20 @@ def api_delete(
             st.toast(toast, icon="✅")
 
 
-def get_server_settings(
-    client: str,
-    max_retries: int = 3,
-    backoff_delays: list[int] | None = None,
-    include_sensitive: bool = True,
-) -> dict | None:
+def get_server_settings(client: str, include_sensitive: bool = True) -> dict | None:
     """Fetch server settings (including database and OCI configs) from /settings.
 
-    Retries up to ``max_retries`` times with exponential backoff if the server
-    is not yet available.
+    Returns ``None`` on any HTTP error so callers can decide how to recover
+    (e.g. spawn the subprocess server in All-In-One mode).
     """
-    if backoff_delays is None:
-        backoff_delays = [2, 4, 6, 12, 15, 30]
     base = _base_url()
     headers = _headers()
     params = {"client": client, "include_sensitive": str(include_sensitive).lower()}
-
-    for attempt in range(max_retries + 1):
-        try:
-            with httpx.Client(headers=headers, timeout=5) as client_settings:
-                resp = client_settings.get(f"{base}/settings", params=params)
-                resp.raise_for_status()
-                return resp.json()
-        except httpx.HTTPError:
-            if attempt < max_retries:
-                delay = backoff_delays[attempt]
-                LOGGER.warning(
-                    "Server not ready, retrying in %ds (attempt %d/%d)",
-                    delay,
-                    attempt + 1,
-                    max_retries,
-                )
-                time.sleep(delay)
-            else:
-                LOGGER.error(
-                    "Failed to fetch server settings from %s after %d attempts",
-                    base,
-                    max_retries + 1,
-                )
-                return None
-    return None
+    try:
+        with httpx.Client(headers=headers, timeout=5) as client_settings:
+            resp = client_settings.get(f"{base}/settings", params=params)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError:
+        LOGGER.warning("Failed to fetch server settings from %s", base)
+        return None
