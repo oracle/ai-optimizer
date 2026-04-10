@@ -25,7 +25,7 @@ from server.app.database.settings import (
 from server.app.database.sql import execute_sql
 from server.tests.conftest import make_core_db_config
 
-pytestmark = [pytest.mark.db, pytest.mark.anyio]
+pytestmark = [pytest.mark.db]
 
 _READ_SQL = "SELECT client, settings, is_current FROM aio_settings WHERE client = :client"
 _DELETE_SQL = "DELETE FROM aio_settings WHERE client = :client"

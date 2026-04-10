@@ -24,7 +24,7 @@ from server.app.database.registry import test_connection as _test_connection
 from server.app.database.schemas import DatabaseConfig, DatabaseUpdate
 from server.tests.conftest import make_core_db_config
 
-pytestmark = [pytest.mark.db, pytest.mark.anyio]
+pytestmark = [pytest.mark.db]
 
 PATCH_PERSIST = "server.app.api.v1.endpoints.databases.persist_settings"
 

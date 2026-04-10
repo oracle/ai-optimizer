@@ -12,7 +12,7 @@ import pytest
 from server.app.api.v1.endpoints import chat as chat_endpoint
 from server.app.core.settings import _client_store, settings
 from server.tests.conftest import make_test_model_config
-from server.tests.runtime.wayflow.helpers import ollama_available
+from server.tests.runtime.shared_helpers import ollama_available
 
 
 async def _collect_sse(response) -> List[str]:

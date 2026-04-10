@@ -31,7 +31,6 @@ def test_format_documents() -> None:
     assert vs_grade._format_documents(docs) == "Doc A\n\nDoc B"
 
 
-@pytest.mark.anyio
 async def test_vs_grade_disabled_returns_documents():
     """Grading disabled should return original documents."""
     settings.client_settings.vector_search.grade = False
@@ -43,7 +42,6 @@ async def test_vs_grade_disabled_returns_documents():
     assert response.relevant == "yes"
 
 
-@pytest.mark.anyio
 async def test_vs_grade_llm_yes(configure_ll_model, prompt_config_factory, monkeypatch):
     """LLM returning 'Yes' should keep documents."""
     settings.client_settings.vector_search.grade = True
@@ -62,7 +60,6 @@ async def test_vs_grade_llm_yes(configure_ll_model, prompt_config_factory, monke
     assert response.formatted_documents == "Doc"
 
 
-@pytest.mark.anyio
 async def test_vs_grade_llm_no(configure_ll_model, prompt_config_factory, monkeypatch):
     """LLM returning 'No' should clear documents."""
     settings.client_settings.vector_search.grade = True
@@ -80,7 +77,6 @@ async def test_vs_grade_llm_no(configure_ll_model, prompt_config_factory, monkey
     assert response.formatted_documents == ""
 
 
-@pytest.mark.anyio
 async def test_vs_grade_api_connection_error(configure_ll_model, prompt_config_factory, monkeypatch):
     """Connection errors should fall back to success with 'yes'."""
     settings.client_settings.vector_search.grade = True
@@ -98,7 +94,6 @@ async def test_vs_grade_api_connection_error(configure_ll_model, prompt_config_f
     assert response.status == "success"
 
 
-@pytest.mark.anyio
 async def test_vs_grade_generic_error(prompt_config_factory, monkeypatch):
     """Unexpected errors should set status to error."""
     settings.client_settings.vector_search.grade = True
@@ -115,7 +110,6 @@ async def test_vs_grade_generic_error(prompt_config_factory, monkeypatch):
     assert response.error == "boom"
 
 
-@pytest.mark.anyio
 async def test_grade_documents_with_llm_missing_prompt(monkeypatch):
     """Missing prompt should default to 'yes'."""
 
@@ -130,7 +124,6 @@ async def test_grade_documents_with_llm_missing_prompt(monkeypatch):
     assert result == "yes"
 
 
-@pytest.mark.anyio
 async def test_grade_documents_with_llm_invalid_response(prompt_config_factory, monkeypatch, caplog):
     """Invalid LLM response should log and return 'yes'."""
     prompt_config_factory("optimizer_vs-grade", "Prompt {question} :: {documents}")
@@ -147,7 +140,6 @@ async def test_grade_documents_with_llm_invalid_response(prompt_config_factory, 
     assert "LLM did not return binary relevant" in caplog.text
 
 
-@pytest.mark.anyio
 async def test_register_grade_tool(monkeypatch):
     """Registered grade tool should call implementation and emit info."""
 

@@ -24,9 +24,6 @@ from server.app.database.config import (
 from server.app.database.schemas import DatabaseConfig
 from server.tests.conftest import make_core_db_config
 
-pytestmark = pytest.mark.anyio
-
-
 # ---------------------------------------------------------------------------
 # Unit tests (no database required)
 # ---------------------------------------------------------------------------

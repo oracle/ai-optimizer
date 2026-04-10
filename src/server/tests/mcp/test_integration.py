@@ -20,7 +20,7 @@ import pytest
 from server.app.core.settings import settings
 from server.app.mcp.prompts.registry import register_mcp_prompt
 
-pytestmark = [pytest.mark.anyio, pytest.mark.integration]
+pytestmark = [pytest.mark.integration]
 
 EXPECTED_TOOL_NAMES = {
     "optimizer_vs-discovery",

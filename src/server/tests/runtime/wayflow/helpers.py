@@ -6,8 +6,6 @@ Shared helpers
 """
 # spell-checker: disable
 
-import urllib.error
-import urllib.request
 from typing import cast
 
 from pyagentspec.flows.edges.controlflowedge import ControlFlowEdge
@@ -21,16 +19,7 @@ from wayflowcore.flow import Flow as RuntimeFlow
 from server.app.agentspec.adapters.litellm import LiteLlmConfig
 from server.app.agentspec.flow_vecsearch import assemble_flow, build_standard_inputs
 from server.app.runtime.wayflow.adapters.litellm import get_litellm_wayflow_plugin
-
-
-def ollama_available() -> bool:
-    """Return True if ollama is reachable at the default endpoint."""
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:11434", timeout=2):
-            pass
-        return True
-    except (urllib.error.URLError, OSError):
-        return False
+from server.tests.runtime.shared_helpers import ollama_available  # noqa: F401  # re-exported
 
 
 def build_minimal_test_flow(

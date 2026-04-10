@@ -100,7 +100,7 @@ all = [
 
 # - all: all-in-one for testing/development
 all-dev = [
-    "ai-optimizer[server-all]",
+    "ai-optimizer[server]",
     "ai-optimizer[client]",
     "ai-optimizer[dev]",
 ]
@@ -123,6 +123,7 @@ markers = [
     "integration: Integration tests (real components, may require external services)",
     "slow: Slow tests (deselect with '-m \"not slow\"')",
     "db: Tests requiring Oracle database container (deselect with '-m \"not db\"')",
+    "wayflowcore: Tests exercising wayflowcore runtime (opt-in only; enable with --wayflowcore or '-m wayflowcore')",
 ]
 
 [tool.ruff]

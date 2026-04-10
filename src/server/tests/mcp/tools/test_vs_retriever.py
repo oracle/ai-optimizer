@@ -52,7 +52,6 @@ def _make_vector_table(
     return VectorTable(table_name=name, table_comment=None, parsed=storage)
 
 
-@pytest.mark.anyio
 async def test_get_available_vector_stores_error(monkeypatch: pytest.MonkeyPatch):
     async def _fake_discovery(filter_enabled_models: bool = True, client: str = "CONFIGURED"):
         return VectorStoreListResponse(parsed_tables=[], status="error", error="x")
@@ -63,12 +62,10 @@ async def test_get_available_vector_stores_error(monkeypatch: pytest.MonkeyPatch
     assert result == []
 
 
-@pytest.mark.anyio
 async def test_select_tables_zero_tables():
     assert await vs_retriever._select_tables_with_llm("q", [], {}, 3) == []
 
 
-@pytest.mark.anyio
 async def test_get_available_vector_stores_exception(monkeypatch: pytest.MonkeyPatch):
     async def _boom(filter_enabled_models: bool = True, client: str = "CONFIGURED"):
         raise RuntimeError("crash")
@@ -78,7 +75,6 @@ async def test_get_available_vector_stores_exception(monkeypatch: pytest.MonkeyP
     assert await vs_retriever._get_available_vector_stores() == []
 
 
-@pytest.mark.anyio
 async def test_select_tables_single_table(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
 
@@ -92,7 +88,6 @@ async def test_select_tables_single_table(prompt_config_factory, monkeypatch):
     assert result == ["ONE"]
 
 
-@pytest.mark.anyio
 async def test_select_tables_valid_json(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
 
@@ -121,7 +116,6 @@ async def test_select_tables_valid_json(prompt_config_factory, monkeypatch):
     assert result == ["B", "A"]
 
 
-@pytest.mark.anyio
 async def test_select_tables_invalid_response(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
 
@@ -138,7 +132,6 @@ async def test_select_tables_invalid_response(prompt_config_factory, monkeypatch
     assert result == ["A"]
 
 
-@pytest.mark.anyio
 async def test_select_tables_non_list_json(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
 
@@ -155,7 +148,6 @@ async def test_select_tables_non_list_json(prompt_config_factory, monkeypatch):
     assert result == ["A"]
 
 
-@pytest.mark.anyio
 async def test_select_tables_no_valid_entries(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
 
@@ -172,7 +164,6 @@ async def test_select_tables_no_valid_entries(prompt_config_factory, monkeypatch
     assert result == ["A"]
 
 
-@pytest.mark.anyio
 async def test_select_tables_missing_prompt(monkeypatch):
     monkeypatch.setattr("server.app.mcp.tools.vs_retriever.find_prompt", lambda _: None)
 
@@ -197,7 +188,6 @@ def test_deduplicate_documents():
     assert result[0]["metadata"]["similarity_score"] == 0.9
 
 
-@pytest.mark.anyio
 async def test_search_table_similarity(monkeypatch: pytest.MonkeyPatch):
     settings.client_settings.vector_search.search_type = "Similarity"
     settings.client_settings.vector_search.top_k = 5
@@ -228,7 +218,6 @@ async def test_search_table_similarity(monkeypatch: pytest.MonkeyPatch):
     assert docs[0]["metadata"]["similarity_score"] > 0.7
 
 
-@pytest.mark.anyio
 async def test_search_table_similarity_dot(monkeypatch: pytest.MonkeyPatch):
     settings.client_settings.vector_search.search_type = "Similarity"
     settings.client_settings.vector_search.top_k = 5
@@ -257,7 +246,6 @@ async def test_search_table_similarity_dot(monkeypatch: pytest.MonkeyPatch):
     assert docs[0]["metadata"]["similarity_score"] == 0.25
 
 
-@pytest.mark.anyio
 async def test_search_table_similarity_other(monkeypatch: pytest.MonkeyPatch):
     settings.client_settings.vector_search.search_type = "Similarity"
     settings.client_settings.vector_search.top_k = 5
@@ -286,7 +274,6 @@ async def test_search_table_similarity_other(monkeypatch: pytest.MonkeyPatch):
     assert docs[0]["metadata"]["similarity_score"] == 0.5
 
 
-@pytest.mark.anyio
 async def test_search_table_mmr(monkeypatch: pytest.MonkeyPatch):
     settings.client_settings.vector_search.search_type = "Maximal Marginal Relevance"
     settings.client_settings.vector_search.top_k = 3
@@ -313,7 +300,6 @@ async def test_search_table_mmr(monkeypatch: pytest.MonkeyPatch):
     assert all(doc["metadata"]["searched_table"] == "T" for doc in docs)
 
 
-@pytest.mark.anyio
 async def test_search_table_default_branch(monkeypatch: pytest.MonkeyPatch):
     settings.client_settings.vector_search.search_type = "Hybrid"
     settings.client_settings.vector_search.top_k = 2
@@ -358,7 +344,6 @@ class _FakePool:
         return _AcquireContext(self._conn)
 
 
-@pytest.mark.anyio
 async def test_vs_retrieve_no_tables(monkeypatch: pytest.MonkeyPatch):
     async def _available(client="CONFIGURED"):
         return []
@@ -371,7 +356,6 @@ async def test_vs_retrieve_no_tables(monkeypatch: pytest.MonkeyPatch):
     assert response.error == "No vector stores available with enabled embedding models"
 
 
-@pytest.mark.anyio
 async def test_vs_retrieve_no_pool(model_config_factory, prompt_config_factory, monkeypatch: pytest.MonkeyPatch):
     settings.client_settings.ll_model.provider = "openai"
     settings.client_settings.ll_model.id = "gpt-retrieve"
@@ -395,7 +379,6 @@ async def test_vs_retrieve_no_pool(model_config_factory, prompt_config_factory, 
     assert response.error == "No database connection pool available"
 
 
-@pytest.mark.anyio
 async def test_vs_retrieve_missing_embedding_model(
     model_config_factory,
     prompt_config_factory,
@@ -429,7 +412,6 @@ async def test_vs_retrieve_missing_embedding_model(
     assert response.searched_tables == []
 
 
-@pytest.mark.anyio
 async def test_vs_retrieve_search_exception(
     model_config_factory,
     prompt_config_factory,
@@ -479,7 +461,6 @@ async def test_vs_retrieve_search_exception(
     assert response.searched_tables == []
 
 
-@pytest.mark.anyio
 async def test_vs_retrieve_generic_error(monkeypatch: pytest.MonkeyPatch):
     settings.client_settings = None  # type: ignore[assignment]
 
@@ -490,7 +471,6 @@ async def test_vs_retrieve_generic_error(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.db
-@pytest.mark.anyio
 async def test_vs_retrieve_success(
     vector_db_config,
     vector_store_table,
@@ -551,7 +531,6 @@ async def test_vs_retrieve_success(
     assert ctx.progress == [(1, 4), (2, 4), (3, 4), (4, 4)]
 
 
-@pytest.mark.anyio
 async def test_register_retriever_tool(monkeypatch: pytest.MonkeyPatch):
     async def _fake_impl(question: str, ctx=None, client: str = "CONFIGURED") -> VectorSearchResponse:
         return VectorSearchResponse(

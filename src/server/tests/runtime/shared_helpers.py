@@ -9,11 +9,23 @@ Shared mock factories and helpers used by both LangGraph and WayFlow runtime tes
 from __future__ import annotations
 
 import asyncio
+import urllib.error
+import urllib.request
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
     from litellm.types.utils import ModelResponse
+
+
+def ollama_available() -> bool:
+    """Return True if ollama is reachable at the default endpoint."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434", timeout=2):
+            pass
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
 
 
 # ---------------------------------------------------------------------------

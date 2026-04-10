@@ -17,9 +17,6 @@ from server.app.database.sql import execute_sql, validate_oracle_identifier
 # Unit tests (no database required)
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.anyio
-
-
 def _make_ora_error(code: int, message: str = "error"):
     """Create an oracledb.DatabaseError with a given ORA code."""
     err = MagicMock()

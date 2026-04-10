@@ -141,7 +141,7 @@ class TestUnwrapToolContentBlocks:
         tool.coroutine = fake_coroutine
         _unwrap_tool_content_blocks(tool)
 
-        result = asyncio.get_event_loop().run_until_complete(tool.coroutine())
+        result = asyncio.run(tool.coroutine())
         assert result == ('{"documents": []}', None)
 
     def test_passthrough_non_content_blocks(self):
@@ -159,7 +159,7 @@ class TestUnwrapToolContentBlocks:
         tool.coroutine = fake_coroutine
         _unwrap_tool_content_blocks(tool)
 
-        result = asyncio.get_event_loop().run_until_complete(tool.coroutine())
+        result = asyncio.run(tool.coroutine())
         assert result == plain_result
 
     def test_passthrough_non_tuple(self):
@@ -176,7 +176,7 @@ class TestUnwrapToolContentBlocks:
         tool.coroutine = fake_coroutine
         _unwrap_tool_content_blocks(tool)
 
-        result = asyncio.get_event_loop().run_until_complete(tool.coroutine())
+        result = asyncio.run(tool.coroutine())
         assert result == "plain string"
 
 

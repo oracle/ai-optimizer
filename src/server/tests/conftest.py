@@ -55,11 +55,6 @@ atexit.register(lambda: setattr(logging, "raiseExceptions", False))
 
 from pyagentspec.flows.flow import Flow
 from pyagentspec.flows.nodes import EndNode, LlmNode
-from wayflowcore.agent import Agent as RuntimeAgent
-from wayflowcore.conversation import Conversation
-from wayflowcore.flow import Flow as RuntimeFlow
-from wayflowcore.messagelist import MessageList
-from wayflowcore.models import LlmGenerationConfig
 
 from server.app.agentspec.adapters.litellm import LiteLlmConfig
 from server.app.core.settings import settings
@@ -67,13 +62,68 @@ from server.app.database.schemas import DatabaseConfig
 from server.app.main import app
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
-from server.app.runtime.wayflow.adapters.litellm import LiteLlmModel, register_litellm_model_factory
+
+try:
+    from wayflowcore.agent import Agent as RuntimeAgent
+    from wayflowcore.conversation import Conversation
+    from wayflowcore.flow import Flow as RuntimeFlow
+    from wayflowcore.messagelist import MessageList
+    from wayflowcore.models import LlmGenerationConfig
+
+    from server.app.runtime.wayflow.adapters.litellm import LiteLlmModel, register_litellm_model_factory
+
+    WAYFLOWCORE_AVAILABLE = True
+except ModuleNotFoundError:
+    WAYFLOWCORE_AVAILABLE = False
+
+# Tell pytest to skip collecting wayflowcore-only test modules when the
+# package isn't installed. Paths are relative to this conftest.
+collect_ignore_glob: list[str] = []
+if not WAYFLOWCORE_AVAILABLE:
+    collect_ignore_glob.append("runtime/wayflow/*")
 
 
 @pytest.fixture
 def anyio_backend():
     """Force asyncio backend globally to avoid trio dependency."""
     return "asyncio"
+
+
+# ---------------------------------------------------------------------------
+# wayflowcore opt-in gating
+# ---------------------------------------------------------------------------
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--wayflowcore",
+        action="store_true",
+        default=False,
+        help="Run wayflowcore runtime tests (skipped by default).",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-mark tests under runtime/wayflow/ and skip unless opted in.
+
+    Opt in with `--wayflowcore` or by selecting the marker via `-m wayflowcore`.
+    """
+    wayflow_marker = pytest.mark.wayflowcore
+    for item in items:
+        if "runtime/wayflow" in item.nodeid.replace("\\", "/"):
+            item.add_marker(wayflow_marker)
+
+    if config.getoption("--wayflowcore"):
+        return
+
+    markexpr = config.getoption("-m", default="") or ""
+    if "wayflowcore" in markexpr:
+        return
+
+    skip_wayflow = pytest.mark.skip(reason="wayflowcore tests skipped; pass --wayflowcore to run")
+    for item in items:
+        if "wayflowcore" in item.keywords:
+            item.add_marker(skip_wayflow)
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +413,8 @@ def _ensure_model_configs():
 
 def mock_flow(content: str = "answer", execute_side_effect: Exception | None = None) -> MagicMock:
     """Create a mock WayFlow flow with a canned response."""
+    if not WAYFLOWCORE_AVAILABLE:
+        pytest.skip("wayflowcore not installed")
     mock = MagicMock(spec=RuntimeFlow)
     mock_conv = MagicMock(spec=Conversation)
     mock_status = MagicMock()
@@ -382,6 +434,8 @@ def mock_agent_conv(
     Returns (agent, conv) where conv.append_user_message uses the real
     MessageList so rollback tests work correctly.
     """
+    if not WAYFLOWCORE_AVAILABLE:
+        pytest.skip("wayflowcore not installed")
     agent = MagicMock(spec=RuntimeAgent)
     conv = MagicMock(spec=Conversation)
     conv.execute_async = AsyncMock(side_effect=execute_side_effect)
@@ -424,12 +478,16 @@ def assert_flow_llm_nodes_use_litellm(flow: Flow) -> None:
 @pytest.fixture(scope="session", autouse=True)
 def register_factory():
     """Register the LiteLLM model factory once per test session."""
+    if not WAYFLOWCORE_AVAILABLE:
+        return
     register_litellm_model_factory()
 
 
 @pytest.fixture
 def litellm_model():
     """Create a LiteLlmModel configured for local Ollama."""
+    if not WAYFLOWCORE_AVAILABLE:
+        pytest.skip("wayflowcore not installed")
     return LiteLlmModel(
         provider=OLLAMA_PROVIDER,
         model_id=OLLAMA_MODEL,

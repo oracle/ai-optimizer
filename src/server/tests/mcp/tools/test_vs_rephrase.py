@@ -21,7 +21,6 @@ from server.app.mcp.tools import vs_rephrase
 from server.app.mcp.tools.schemas import RephrasePrompt
 
 
-@pytest.mark.anyio
 async def test_vs_rephrase_disabled() -> None:
     """When rephrase disabled, prompt should remain unchanged."""
     settings.client_settings.vector_search.rephrase = False
@@ -32,7 +31,6 @@ async def test_vs_rephrase_disabled() -> None:
     assert response.rephrased_prompt == "Question?"
 
 
-@pytest.mark.anyio
 async def test_vs_rephrase_success(
     configure_ll_model,
     prompt_config_factory,
@@ -54,7 +52,6 @@ async def test_vs_rephrase_success(
     assert response.rephrased_prompt == "New question"
 
 
-@pytest.mark.anyio
 async def test_vs_rephrase_history_insufficient(configure_ll_model, prompt_config_factory, monkeypatch):
     """Insufficient history should skip rephrase."""
     configure_ll_model(provider="openai", model_id="gpt-rephrase")
@@ -72,7 +69,6 @@ async def test_vs_rephrase_history_insufficient(configure_ll_model, prompt_confi
     assert response.rephrased_prompt == "Question?"
 
 
-@pytest.mark.anyio
 async def test_vs_rephrase_api_error(configure_ll_model, prompt_config_factory, monkeypatch):
     """API errors should return error status with message."""
     configure_ll_model(provider="openai", model_id="gpt-rephrase")
@@ -90,7 +86,6 @@ async def test_vs_rephrase_api_error(configure_ll_model, prompt_config_factory, 
     assert "API connection failed" in (response.error or "")
 
 
-@pytest.mark.anyio
 async def test_vs_rephrase_generic_error(prompt_config_factory, monkeypatch: pytest.MonkeyPatch):
     """Unexpected errors should surface in response."""
     prompt_config_factory("optimizer_vs-rephrase", "Prompt {prompt}")
@@ -107,7 +102,6 @@ async def test_vs_rephrase_generic_error(prompt_config_factory, monkeypatch: pyt
     assert response.error == "broken"
 
 
-@pytest.mark.anyio
 async def test_perform_rephrase_missing_prompt(monkeypatch: pytest.MonkeyPatch):
     """Missing prompt fallback should return original text."""
     monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.find_prompt", lambda _: None)
@@ -124,7 +118,6 @@ async def test_perform_rephrase_missing_prompt(monkeypatch: pytest.MonkeyPatch):
     assert result == "Question?"
 
 
-@pytest.mark.anyio
 async def test_register_rephrase_tool(monkeypatch: pytest.MonkeyPatch):
     """Registered rephrase tool should call implementation and log info."""
 

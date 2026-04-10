@@ -54,7 +54,6 @@ class _DummyClient:
         return self._resources
 
 
-@pytest.mark.anyio
 async def test_verify_backend_success(caplog):
     """_verify_backend returns True when backend exposes capabilities."""
     caplog.set_level("INFO")
@@ -67,14 +66,12 @@ async def test_verify_backend_success(caplog):
     assert "tool(s)" in caplog.records[-1].msg
 
 
-@pytest.mark.anyio
 async def test_verify_backend_empty():
     """_verify_backend returns False when nothing is listed."""
     client = _DummyClient()
     assert await sqlcl._verify_backend(cast(Client[Any], client)) is False
 
 
-@pytest.mark.anyio
 async def test_verify_backend_exception(caplog):
     """_verify_backend handles enumeration failures gracefully."""
     caplog.set_level("WARNING")
@@ -83,7 +80,6 @@ async def test_verify_backend_exception(caplog):
     assert "failed to enumerate capabilities" in caplog.text
 
 
-@pytest.mark.anyio
 async def test_create_connection_store_success(monkeypatch):
     """_create_connection_store issues expected SQLcl commands."""
     recorded: dict[str, Any] = {}
@@ -140,7 +136,6 @@ async def test_create_connection_store_success(monkeypatch):
     assert not dummy_proc.killed
 
 
-@pytest.mark.anyio
 async def test_create_connection_store_special_chars(monkeypatch):
     """_create_connection_store quotes credentials containing special characters."""
     recorded: dict[str, Any] = {}
@@ -179,7 +174,6 @@ async def test_create_connection_store_special_chars(monkeypatch):
     assert '-url "db/service"' in input_cmd
 
 
-@pytest.mark.anyio
 async def test_create_connection_store_timeout(monkeypatch, caplog):
     """_create_connection_store kills process after timeout."""
     caplog.set_level("ERROR")
@@ -222,7 +216,6 @@ async def test_create_connection_store_timeout(monkeypatch, caplog):
     assert "Timed out creating connection store" in caplog.text
 
 
-@pytest.mark.anyio
 async def test_register_sqlcl_proxy_missing_binary(monkeypatch, caplog):
     """register_sqlcl_proxy logs warning when sqlcl is absent."""
     caplog.set_level("WARNING")
@@ -233,7 +226,6 @@ async def test_register_sqlcl_proxy_missing_binary(monkeypatch, caplog):
     assert "sqlcl not found" in caplog.text
 
 
-@pytest.mark.anyio
 async def test_register_sqlcl_proxy_no_capabilities(monkeypatch, caplog):
     """register_sqlcl_proxy aborts proxy mount if backend exposes no capabilities."""
     caplog.set_level("WARNING")
@@ -263,7 +255,6 @@ async def test_register_sqlcl_proxy_no_capabilities(monkeypatch, caplog):
     store_mock.assert_not_called()
 
 
-@pytest.mark.anyio
 async def test_register_sqlcl_proxy_success(monkeypatch):
     """register_sqlcl_proxy clears store, creates connections, then mounts proxy."""
     monkeypatch.setattr(sqlcl.shutil, "which", lambda name: "/usr/bin/sql")
@@ -323,7 +314,6 @@ async def test_register_sqlcl_proxy_success(monkeypatch):
     assert mounts[0][1] == "sqlcl"
 
 
-@pytest.mark.anyio
 async def test_register_sqlcl_proxy_store_error(monkeypatch, caplog):
     """register_sqlcl_proxy logs errors from connection store creation."""
     monkeypatch.setattr(sqlcl.shutil, "which", lambda name: "/usr/bin/sql")
@@ -352,7 +342,6 @@ async def test_register_sqlcl_proxy_store_error(monkeypatch, caplog):
     assert "store failed" in caplog.text
 
 
-@pytest.mark.anyio
 async def test_register_sqlcl_proxy_creation_failure(monkeypatch, caplog):
     """register_sqlcl_proxy logs and exits on proxy creation failure."""
     caplog.set_level("ERROR")
@@ -453,7 +442,6 @@ def test_coerce_schema_defaults_already_correct_type():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.anyio
 async def test_preflight_check_healthy(monkeypatch):
     """Preflight returns True when the process stays running (timeout fires)."""
 
@@ -486,7 +474,6 @@ async def test_preflight_check_healthy(monkeypatch):
     assert proc.killed is True
 
 
-@pytest.mark.anyio
 async def test_preflight_check_java_error(monkeypatch, caplog):
     """Preflight returns False when SQLcl reports a Java version error."""
     caplog.set_level("WARNING")
@@ -514,7 +501,6 @@ async def test_preflight_check_java_error(monkeypatch, caplog):
     assert "requires Java" in caplog.text
 
 
-@pytest.mark.anyio
 async def test_preflight_check_nonzero_exit(monkeypatch, caplog):
     """Preflight returns False when process exits with non-zero return code."""
     caplog.set_level("WARNING")
@@ -541,7 +527,6 @@ async def test_preflight_check_nonzero_exit(monkeypatch, caplog):
     assert "preflight failed" in caplog.text
 
 
-@pytest.mark.anyio
 async def test_preflight_check_clean_exit(monkeypatch):
     """Preflight returns True when process exits cleanly with rc=0 and no errors."""
 
@@ -566,7 +551,6 @@ async def test_preflight_check_clean_exit(monkeypatch):
     assert result is True
 
 
-@pytest.mark.anyio
 async def test_register_sqlcl_proxy_preflight_fails(monkeypatch, caplog):
     """register_sqlcl_proxy returns None when preflight fails."""
     caplog.set_level("WARNING")
@@ -581,7 +565,6 @@ async def test_register_sqlcl_proxy_preflight_fails(monkeypatch, caplog):
     assert result is None
 
 
-@pytest.mark.anyio
 async def test_preflight_check_spawn_failure(monkeypatch, caplog):
     """Preflight returns False when the subprocess cannot be spawned."""
     caplog.set_level("WARNING")

@@ -65,7 +65,6 @@ def test_is_model_usable_true_when_reachable(model_config_factory) -> None:
     assert vs_discovery._is_model_usable(ModelIdentity(provider="openai", id="text-embed")) is True
 
 
-@pytest.mark.anyio
 async def test_vs_discovery_disabled_returns_configured_table(model_config_factory):
     """When discovery disabled, tool returns configured table metadata."""
     model_config_factory(provider="openai", model_id="text-embed", model_type="embed")
@@ -89,7 +88,6 @@ async def test_vs_discovery_disabled_returns_configured_table(model_config_facto
     assert table.parsed.distance_strategy is None
 
 
-@pytest.mark.anyio
 async def test_vs_discovery_disabled_missing_settings_error(model_config_factory):
     """Missing settings should trigger error response."""
     model_config_factory(provider="openai", model_id="text-embed", model_type="embed")
@@ -107,7 +105,6 @@ async def test_vs_discovery_disabled_missing_settings_error(model_config_factory
     assert response.error == "Vector search settings incomplete — chunk_size and chunk_overlap are required"
 
 
-@pytest.mark.anyio
 async def test_vs_discovery_no_pool_returns_error():
     """Error out when no database pool available."""
     settings.database_configs = []
@@ -120,7 +117,6 @@ async def test_vs_discovery_no_pool_returns_error():
 
 
 @pytest.mark.db
-@pytest.mark.anyio
 async def test_vs_discovery_filters_without_enabled_model(vector_db_config, vector_store_table):
     """Filtering removes tables lacking enabled models."""
     del vector_store_table
@@ -133,7 +129,6 @@ async def test_vs_discovery_filters_without_enabled_model(vector_db_config, vect
 
 
 @pytest.mark.db
-@pytest.mark.anyio
 async def test_vs_discovery_database_round_trip(
     vector_db_config,
     vector_store_table,
@@ -157,7 +152,6 @@ async def test_vs_discovery_database_round_trip(
     assert "PYTEST_GENAI_TABLE" in names
 
 
-@pytest.mark.anyio
 async def test_vs_discovery_exception_path(monkeypatch: pytest.MonkeyPatch):
     """Unexpected errors propagate into error response."""
     settings.client_settings.vector_search.discovery = True
@@ -173,7 +167,6 @@ async def test_vs_discovery_exception_path(monkeypatch: pytest.MonkeyPatch):
     assert response.error == "explode"
 
 
-@pytest.mark.anyio
 async def test_register_discovery_tool(monkeypatch: pytest.MonkeyPatch):
     """Registered tool should invoke implementation and emit context info."""
 
