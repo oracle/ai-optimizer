@@ -6,10 +6,10 @@
 # Build from the project root directory:
 #  podman build -f src/client/Dockerfile -t ai-optimizer-client:latest .
 ##################################################
-FROM container-registry.oracle.com/os/oraclelinux:8 AS base
+FROM container-registry.oracle.com/os/oraclelinux:9-slim AS base
 
-RUN dnf --nodocs -y install python3.11 && \
-    dnf clean all
+RUN microdnf --nodocs -y install python3.11 && \
+    microdnf clean all
 
 ##################################################
 # Stage 2: Builder — venv + Python dependencies
@@ -17,9 +17,9 @@ RUN dnf --nodocs -y install python3.11 && \
 FROM base AS builder
 ENV VIRTUAL_ENV=/app/.venv
 
-RUN dnf --nodocs -y install python3.11-pip && \
+RUN microdnf --nodocs -y install python3.11-pip && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV && \
-    dnf -y remove python3.11-pip && dnf clean all
+    microdnf -y remove python3.11-pip && microdnf clean all
 
 COPY pyproject.toml /app/pyproject.toml
 

@@ -170,6 +170,32 @@ jobs:
             test-results-server.xml
             coverage-server.xml
 
+  check-docling-version:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.client == 'true' || needs.detect-changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Verify docling versions match
+        run: |
+          PYPROJECT=$(grep -oP 'docling==\K[0-9.]+' pyproject.toml)
+          SERVER=$(grep -oP 'docling==\K[0-9.]+' src/server/Dockerfile)
+          CLIENT=$(grep -oP 'docling==\K[0-9.]+' src/Dockerfile)
+          echo "pyproject.toml:       $PYPROJECT"
+          echo "src/server/Dockerfile: $SERVER"
+          echo "src/Dockerfile:        $CLIENT"
+          if [ -z "$PYPROJECT" ] || [ -z "$SERVER" ] || [ -z "$CLIENT" ]; then
+            echo "::error::Failed to extract docling version from one or more files"
+            exit 1
+          fi
+          if [ "$PYPROJECT" != "$SERVER" ] || [ "$PYPROJECT" != "$CLIENT" ]; then
+            echo "::error::docling version mismatch between pyproject.toml and Dockerfiles"
+            exit 1
+          fi
+
   check-helm:
     needs: detect-changes
     if: needs.detect-changes.outputs.helm == 'true'
@@ -221,6 +247,7 @@ jobs:
       - detect-changes
       - check-client
       - check-server
+      - check-docling-version
       - check-helm
       - check-opentofu
     if: always() && (github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch')
@@ -230,15 +257,17 @@ jobs:
       - name: Evaluate results
         run: |
           echo "detect-changes: ${{ needs.detect-changes.result }}"
-          echo "check-client:   ${{ needs.check-client.result }}"
-          echo "check-server:   ${{ needs.check-server.result }}"
-          echo "check-helm:     ${{ needs.check-helm.result }}"
-          echo "check-opentofu: ${{ needs.check-opentofu.result }}"
+          echo "check-client:          ${{ needs.check-client.result }}"
+          echo "check-server:          ${{ needs.check-server.result }}"
+          echo "check-docling-version: ${{ needs.check-docling-version.result }}"
+          echo "check-helm:            ${{ needs.check-helm.result }}"
+          echo "check-opentofu:        ${{ needs.check-opentofu.result }}"
 
           # Fail if any upstream job failed (skipped is OK)
           if [ "${{ needs.detect-changes.result }}" = "failure" ] || \
              [ "${{ needs.check-client.result }}" = "failure" ] || \
              [ "${{ needs.check-server.result }}" = "failure" ] || \
+             [ "${{ needs.check-docling-version.result }}" = "failure" ] || \
              [ "${{ needs.check-helm.result }}" = "failure" ] || \
              [ "${{ needs.check-opentofu.result }}" = "failure" ]; then
             echo "One or more jobs failed"

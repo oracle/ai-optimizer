@@ -6,10 +6,10 @@
 # Build from the project root directory:
 #  podman build -f src/server/Dockerfile -t ai-optimizer-server:latest .
 ##################################################
-FROM container-registry.oracle.com/os/oraclelinux:8 AS base
+FROM container-registry.oracle.com/os/oraclelinux:9-slim AS base
 
-RUN dnf --nodocs -y install python3.11 && \
-    dnf clean all
+RUN microdnf --nodocs -y install python3.11 && \
+    microdnf clean all
 
 ##################################################
 # Stage 2: Builder — venv + Python dependencies
@@ -17,22 +17,29 @@ RUN dnf --nodocs -y install python3.11 && \
 FROM base AS builder
 ENV VIRTUAL_ENV=/app/.venv
 
-RUN dnf --nodocs -y install python3.11-pip && \
+RUN microdnf --nodocs -y install python3.11-pip && \
     python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV && \
-    dnf -y remove python3.11-pip && dnf clean all
+    microdnf -y remove python3.11-pip && microdnf clean all
 
 COPY pyproject.toml /app/pyproject.toml
 
 # Generate requirements and install deps only (cached layer)
 # Avoid re-installing packages when only the source changes
 RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir wheel uv && \
-    ${VIRTUAL_ENV}/bin/pip install --no-cache-dir docling==2.80.0 --extra-index-url https://download.pytorch.org/whl/cpu && \
-    ${VIRTUAL_ENV}/bin/uv pip compile /app/pyproject.toml --extra server -o /tmp/requirements.txt && \
-    ${VIRTUAL_ENV}/bin/uv pip install -r /tmp/requirements.txt
+    ${VIRTUAL_ENV}/bin/pip install --no-cache-dir docling==2.84.0 --extra-index-url https://download.pytorch.org/whl/cpu && \
+    ${VIRTUAL_ENV}/bin/uv pip compile /app/pyproject.toml --extra server \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        --index-strategy unsafe-best-match \
+        -o /tmp/requirements.txt && \
+    ${VIRTUAL_ENV}/bin/uv pip install -r /tmp/requirements.txt \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        --index-strategy unsafe-best-match
 
 # Copy source and install project (deps already installed, so this is fast)
 COPY src /app/src
-RUN ${VIRTUAL_ENV}/bin/uv pip install "/app[server]" && \
+RUN ${VIRTUAL_ENV}/bin/uv pip install "/app[server]" \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        --index-strategy unsafe-best-match && \
     # Remove build-only tools from venv (keep setuptools for pkg_resources)
     ${VIRTUAL_ENV}/bin/pip uninstall -y pip wheel uv && \
     rm -rf ${VIRTUAL_ENV}/lib/python3.11/site-packages/pip* \
@@ -54,12 +61,17 @@ ENV RUNUSER=oracleai \
     TIKTOKEN_CACHE_DIR=/app/tmp \
     NLTK_DATA=/app/tmp
 
+RUN echo -e '[ol9_oracle_software]\n\
+name=Oracle Software for OracleLinux 9\n\
+baseurl=https://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/$basearch\n\
+gpgcheck=0\n\
+enabled=1' > /etc/yum.repos.d/oracle-software.repo
+
 # Runtime-only system packages (python3.11 already in base)
 RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    dnf config-manager --add-repo https://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/\$basearch && \
-    dnf --nodocs -y install sqlcl java-21-openjdk-headless --nogpgcheck && \
-    dnf clean all
+    microdnf --nodocs -y install sqlcl java-21-openjdk-headless && \
+    microdnf clean all
 
 # Prep the app directory
 RUN for dir in $TEMP $TNS_ADMIN /app/runtime/.oci; do \
