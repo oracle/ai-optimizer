@@ -19,5 +19,5 @@ spec:
       name: api
   selector:
     app.kubernetes.io/component: ollama
-    {{ include "global.selectorLabels" . | nindent 4 }}
+    {{- include "global.selectorLabels" . | nindent 4 }}
 {{ end -}}

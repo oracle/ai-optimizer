@@ -139,7 +139,28 @@ variable "optimizer_version" {
   type = string
 }
 
+variable "optimizer_branch" {
+  type = string
+}
+
 variable "deploy_optimizer" {
   type    = bool
   default = true
+}
+
+variable "ssl_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "ssl_cert_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "ssl_key_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
 }

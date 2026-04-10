@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent
 
-{{ if .Values.client.gateway.enabled -}}
+{{ if and .Values.client.enabled .Values.client.gateway.enabled -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:

@@ -11,7 +11,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore mxbai, ollama, sqlplus, sysdba, spfile, freepdb, tablespace, firewalld, hnsw
 -->
 
-This walkthrough will guide you through a basic installation of the {{< full_app_ref >}}. It will allow you to experiment with GenAI, using Retrieval-Augmented Generation (**RAG**) with the Oracle AI Database at the core.
+This walkthrough will guide you through a basic installation of the {{< full_app_ref >}}. It will allow you to experiment with GenAI, using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**) with the Oracle AI Database at the core.
 
 By the end of the walkthrough you will be familiar with:
 
@@ -19,7 +19,6 @@ By the end of the walkthrough you will be familiar with:
 - Configuring an Embedding Model
 - Configuring the Vector Storage
 - Splitting, Embedding, and Storing vectors
-- Configuring SelectAI
 - Experimenting with the {{< short_app_ref >}}
 
 What you'll need for the walkthrough:
@@ -48,12 +47,12 @@ If you are using `docker`, make the walkthrough easier by aliasing the `podman` 
 
 You will run four container images to establish the "Infrastructure":
 
-- On-Premises **LLM** - llama3.1
+- On-Premises **LLM** - qwen3:8b
 - On-Premises Embedding Model - mxbai-embed-large
-- Vector Storage/SelectAI - Oracle AI Database Free
+- Vector Storage - Oracle AI Database Free
 - The {{< short_app_ref >}}
 
-### LLM - llama3.1
+### LLM - qwen3:8b
 
 To enable the _ChatBot_ functionality, access to a **LLM** is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _llama3.1_ **LLM**.
 
@@ -87,7 +86,7 @@ To enable the _ChatBot_ functionality, access to a **LLM** is required. The walk
 1. Pull the **LLM** into the container:
 
    ```bash
-   podman exec -it ollama ollama pull llama3.1
+   podman exec -it ollama ollama pull qwen3:8b
    ```
 
 1. Test the **LLM**:
@@ -99,7 +98,7 @@ To enable the _ChatBot_ functionality, access to a **LLM** is required. The walk
 
    ```bash
    curl http://127.0.0.1:11434/api/generate -d '{
-   "model": "llama3.1",
+   "model": "qwen3:8b",
    "prompt": "Why is the sky blue?",
    "stream": false
    }'
@@ -218,7 +217,7 @@ Notice that there are no language models configured to use. Let's start the conf
 
 To configure the On-Premises **LLM**, navigate to the _Configuration_ screen and _Models_ tab:
 
-1. Enable the `llama3.1` model that you pulled earlier by clicking the _Edit_ button
+1. Enable the `qwen3:8b` model that you pulled earlier by clicking the _Edit_ button
 ![Configure LLM](images/models_edit.png)
 1. Tick the _Enabled_ checkbox, leave all other settings as-is, and _Save_
 ![Enable LLM](images/models_enable_llm.png)
@@ -283,7 +282,7 @@ Depending on the infrastructure, the embedding process can take a few minutes. A
 ![Split and Embed](images/split_embed_web.png)
 
 {{% notice style="code" title="Thumb Twiddling" icon="circle-info" %}}
-You can watch the progress of the embedding by streaming the server logs: `podman exec -it ai-optimizer-aio tail -f /app/apiserver_8000.log`
+You can watch the progress of the embedding by streaming the server logs: `podman exec -it ai-optimizer-aio tail -f /app/src/apiserver_8000.log`
 
 Chunks are processed in batches. Wait until the logs output: `POST ... HTTP/1.1" 200 OK` before continuing.
 {{% /notice %}}

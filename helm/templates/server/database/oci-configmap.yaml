@@ -5,8 +5,13 @@
 {{- if .Values.server.oci_config }}
 {{- /* Validate OCI config settings */ -}}
 {{- include "server.ociConfig.validate" . }}
-{{- /* Only create ConfigMap if configMapName is not specified (user wants us to create it) */ -}}
+{{- /* Only create ConfigMap if configMapName is not specified and at least one value is provided */ -}}
 {{- if not .Values.server.oci_config.configMapName }}
+{{- $tenancy := .Values.server.oci_config.tenancy | default "" }}
+{{- $user := .Values.server.oci_config.user | default "" }}
+{{- $fingerprint := .Values.server.oci_config.fingerprint | default "" }}
+{{- $region := .Values.server.oci_config.region | default "" }}
+{{- if or (ne $tenancy "") (ne $user "") (ne $fingerprint "") (ne $region "") }}
 {{- /* Determine the default ConfigMap name */ -}}
 {{- $configMapName := printf "%s-oci-config" .Release.Name }}
 
@@ -32,5 +37,6 @@ data:
   region: {{ .region | quote }}
     {{- end }}
   {{- end }}
+{{- end }}
 {{- end }}
 {{- end -}}

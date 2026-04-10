@@ -8,6 +8,10 @@ terraform {
       source  = "oracle/oci"
       version = "~> 7.31" // Last evaluated Jan-2026
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = ">= 4.0"
+    }
   }
   required_version = ">= 1.5"
 }

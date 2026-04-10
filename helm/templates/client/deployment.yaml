@@ -49,15 +49,29 @@ spec:
             runAsNonRoot: true
             runAsUser: 10001
           env:
-            - name: API_SERVER_URL
+            - name: AIO_ENV
+              value: {{ .Values.global.env | quote }}
+            - name: AIO_SERVER_URL
               value: {{ include "server.serviceUrl" . }}
-            - name: API_SERVER_PORT
+            - name: AIO_SERVER_PORT
               value: {{ .Values.server.service.port | default 8000 | quote }}
-            - name: API_SERVER_KEY
+            - name: AIO_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "global.apiSecretName" . }}
                   key: {{ include "global.apiSecretKey" . }}
+            {{- if .Values.client.ssl.enabled }}
+            - name: AIO_CLIENT_SSL
+              value: "true"
+            {{- if .Values.client.ssl.certFile }}
+            - name: AIO_CLIENT_SSL_CERT_FILE
+              value: {{ .Values.client.ssl.certFile | quote }}
+            {{- end }}
+            {{- if .Values.client.ssl.keyFile }}
+            - name: AIO_CLIENT_SSL_KEY_FILE
+              value: {{ .Values.client.ssl.keyFile | quote }}
+            {{- end }}
+            {{- end }}
             {{- range $key, $value := .Values.client.features }}
             {{- if $value }}
             - name: {{ snakecase $key | upper }}
@@ -73,6 +87,9 @@ spec:
             httpGet:
               path: {{ include "global.getPath" . }}ping
               port: client-port
+              {{- if .Values.client.ssl.enabled }}
+              scheme: HTTPS
+              {{- end }}
             {{- with omit .Values.client.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -82,6 +99,9 @@ spec:
             httpGet:
               path: {{ include "global.getPath" . }}ping
               port: client-port
+              {{- if .Values.client.ssl.enabled }}
+              scheme: HTTPS
+              {{- end }}
             {{- with omit .Values.client.readinessProbe "enabled" }}
                {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -95,6 +115,12 @@ spec:
               mountPath: "/app/tmp"
             - name: streamlit-config
               mountPath: /app/.streamlit
+            {{- if .Values.client.envSecret }}
+            - name: env-config
+              mountPath: /app/.env.{{ .Values.global.env }}
+              subPath: {{ include "client.envSecretKey" . }}
+              readOnly: true
+            {{- end }}
           {{- with .Values.client.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -104,6 +130,11 @@ spec:
         - name: streamlit-config
           configMap:
             name: {{ include "global.fullname" . }}-st-config
+        {{- if .Values.client.envSecret }}
+        - name: env-config
+          secret:
+            secretName: {{ include "client.envSecretName" . }}
+        {{- end }}
       {{- with .Values.client.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

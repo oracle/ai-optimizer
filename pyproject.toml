@@ -14,87 +14,177 @@ authors = [
     {name = "Oracle", email = "obaas_ww@oracle.com"}
 ]
 
-# Common dependencies that are always needed
+# - common dependencies that are always needed
 dependencies = [
-    "langchain-core==1.2.22",
+    "langchain-core==1.2.28",
     "httpx==0.28.1",
     "oracledb~=3.1",
-    "plotly==6.5.2",
+    "plotly==6.7.0",
+    "pydantic-settings==2.13.1"
 ]
 
 [project.optional-dependencies]
 # Server component dependencies
-server = [
-    "bokeh==3.8.2",
+# - server-base: shared stack for both runtime variants
+server-base = [
+    "bokeh==3.9.0",
+    "docling==2.84.0",          # When bumping docling, also need to update Dockerfiles
     "evaluate==0.4.6",
     "faiss-cpu==1.13.2",
-    "fastapi==0.129.0",
-    "fastmcp==2.14.5",
+    "fastmcp==3.2.0",
     "giskard==2.19.1",
-    #"langchain-aimlapi==0.1.0",
     "langchain-cohere==0.5.0",
-    "langchain-community==0.4.1",
     "langchain-fireworks==1.1.0",
     "langchain-google-genai==4.2.1",
-    "langchain-ibm==1.0.4",
-    "langchain-mcp-adapters==0.2.1",
-    "langchain-mistralai==1.1.1",
-    "langchain-nomic==1.0.1",
-    "langchain-oci==0.2.4",
-    "langchain-ollama==1.0.1",
-    "langchain-openai==1.1.10",
-    #"langchain-together==0.3.1",
-    "langgraph==1.0.9",
-    "litellm==1.81.13",
-    "llama-index==0.14.14",
+    "langchain-ibm==1.0.6",
+    "langchain-mcp-adapters==0.2.2",
+    "langchain-mistralai==1.1.2",
+    "langchain-oci==0.2.5",
+    "langchain-ollama==1.1.0",
+    "langchain-openai==1.1.12",
+    "langchain-oracledb==1.2.0",
+    "litellm==1.83.0",
+    "llama-index==0.14.20",
     "lxml==6.0.2",
     "matplotlib==3.10.8",
     "oci~=2.0",
-    "psutil==7.2.2",
-    "python-multipart==0.0.22",
-    "torch==2.10.0",
-    "umap-learn==0.5.11",
-    "uvicorn==0.41.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.41.0",
+    "pyagentspec==26.1.0",
+    "pypdf==6.9.2",
+    "python-multipart==0.0.24",
+    "umap-learn==0.5.11"
 ]
 
-# GUI component dependencies
+# - server: default LangGraph runtime
+server = [
+    "ai-optimizer[server-base]",
+    "langgraph==1.1.6"
+]
+
+# - server-wayflow: alternate Wayflow runtime
+server-wayflow = [
+    "ai-optimizer[server-base]",
+    "wayflowcore==26.1.1"
+]
+
+# - server-all: convenience bundle (LangGraph + Wayflow)
+server-all = [
+    "ai-optimizer[server]",
+    "ai-optimizer[server-wayflow]"
+]
+
+# - client: client side only
 client = [
-    "streamlit==1.54.0",
+    "streamlit==1.56.0",
 ]
 
-# Test dependencies
-test = [
+# - test: for testing/development
+dev = [
     "docker",
-    # Pin fakeredis<2.35.0: pydocket (transitive dep via fastmcp) imports
-    # FakeConnection/FakeServer from fakeredis.aioredis which were removed in 2.35.0.
-    # Remove this pin once pydocket releases a fix (see chrisguidry/docket#386).
-    "fakeredis<2.35.0",
     "mypy",
     "types-psutil",
     "pandas-stubs",
-    "pylint",
-    "pytest",
+    "ruff",
+    "pyright",
     "pytest-asyncio",
     "pytest-cov",
     "types-jsonschema",
     "yamllint"
 ]
 
-# All-in-one installation (server + client)
+# - all: all-in-one installation (server (langgraph) + client)
 all = [
     "ai-optimizer[server]",
     "ai-optimizer[client]",
 ]
 
-# All-in-one with tests
-all-test = [
+# - all: all-in-one for testing/development
+all-dev = [
     "ai-optimizer[server]",
     "ai-optimizer[client]",
-    "ai-optimizer[test]",
+    "ai-optimizer[dev]",
 ]
 
 [tool.setuptools]
-packages = ["src.server", "src.client", "src.common"]
+packages = ["src.server", "src.client"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "tests"]
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::RuntimeWarning:litellm",
+    "ignore::requests.exceptions.RequestsDependencyWarning",
+    ]
+markers = [
+    "unit: Unit tests (mocked dependencies, fast execution)",
+    "integration: Integration tests (real components, may require external services)",
+    "slow: Slow tests (deselect with '-m \"not slow\"')",
+    "db: Tests requiring Oracle database container (deselect with '-m \"not db\"')",
+    "wayflowcore: Tests exercising wayflowcore runtime (opt-in only; enable with --wayflowcore or '-m wayflowcore')",
+]
+
+[tool.pyright]
+# wayflowcore is an optional extra (`server-wayflow`) and is intentionally not
+# installed in the default dev env — it downgrades langgraph and related deps.
+# Exclude the wayflow runtime subtree so pyright doesn't report missing imports.
+exclude = [
+    "**/.venv",
+    "src/client/source",
+    "src/server/app/runtime/wayflow",
+    "src/server/tests/runtime/wayflow",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src"]
+extend-exclude = ["**/wip/**", "src/client/mcp", "docs/themes/relearn", "docs/public", "docs/static/demoware", "docs/demo"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "W",      # pycodestyle warnings
+    "I",      # isort
+    "PL",     # pylint (PLC, PLE, PLR, PLW)
+    "SIM",    # flake8-simplify
+    "SLF",    # flake8-self (protected-access)
+    "ARG",    # flake8-unused-arguments
+]
+ignore = [
+    "BLE001",  # broad-exception-caught
+    "PLR2004", # magic-value-comparison
+    "SIM102",  # collapsible-if
+]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-branches = 12
+max-locals = 16
+max-returns = 6
+max-statements = 40
+max-nested-blocks = 6
+max-bool-expr = 6
+
+[tool.ruff.lint.per-file-ignores]
+"src/client/source/**" = ["ALL"]
+"**/tests/**" = [
+    "E402",     # module-import-not-at-top-of-file
+    "SLF001",   # protected-access
+    "PLC0415",  # import-outside-toplevel
+    "ARG001",   # unused-function-argument
+    "ARG002",   # unused-method-argument
+    "ARG005",   # unused-lambda-argument
+    "PLR0913",  # too-many-arguments
+    "PLR0915",  # too-many-statements
+    "PLR2004",  # magic-value-comparison
+]
+
+[tool.ruff.format]
+quote-style = "double"
 
 [tool.setuptools_scm]
 root = "."

@@ -1,0 +1,350 @@
+"""
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+Tests for POST /v1/settings/import endpoint.
+"""
+# spell-checker: disable
+
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from server.app.api.v1.endpoints.settings import _client_store
+from server.app.core.settings import settings
+from server.app.database.schemas import DatabaseConfig
+from server.app.mcp.prompts.schemas import PromptConfig
+from server.app.models.schemas import ModelConfig
+from server.app.oci.schemas import OciProfileConfig
+
+pytestmark = [pytest.mark.unit, pytest.mark.anyio]
+
+ENDPOINT = "/v1/settings/import"
+SETTINGS_MODULE = "server.app.api.v1.endpoints.settings"
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _restore_settings():
+    """Save and restore settings state around each test."""
+    saved = {
+        "log_level": settings.log_level,
+        "database_configs": list(settings.database_configs),
+        "model_configs": list(settings.model_configs),
+        "oci_configs": list(settings.oci_configs),
+        "prompt_configs": list(settings.prompt_configs),
+    }
+    yield
+    for k, v in saved.items():
+        setattr(settings, k, v)
+    _client_store.clear()
+
+
+@pytest.fixture
+def mock_persist():
+    """Prevent persist_settings from doing real DB I/O."""
+    with patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock) as m:
+        yield m
+
+
+@pytest.fixture
+def mock_register_mcp_prompts():
+    """Prevent register_mcp_prompts from doing real FastMCP registration."""
+    with patch(f"{SETTINGS_MODULE}.register_mcp_prompts") as m:
+        yield m
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+
+async def test_import_no_auth(app_client):
+    """POST /import without API key returns 403."""
+    resp = await app_client.post(ENDPOINT, json={})
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Empty / no-op
+# ---------------------------------------------------------------------------
+
+
+async def test_import_empty_body(app_client, auth_headers, mock_persist):
+    """An empty body is a valid no-op — returns 200 with all sections null."""
+    resp = await app_client.post(ENDPOINT, json={}, headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"] is None
+    assert data["model_configs"] is None
+    assert data["oci_configs"] is None
+    assert data["prompt_configs"] is None
+    assert data["client_settings"] is None
+    assert data["scalars"] is None
+
+
+# ---------------------------------------------------------------------------
+# Model configs
+# ---------------------------------------------------------------------------
+
+
+async def test_import_model_creates_new(app_client, auth_headers, mock_persist):
+    """A new model ID is appended to settings."""
+    settings.model_configs = []
+    payload = {"model_configs": [{"id": "new-model", "type": "ll", "provider": "openai"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["model_configs"]["created"] == 1
+    assert data["model_configs"]["updated"] == 0
+    assert any(m.id == "new-model" for m in settings.model_configs)
+
+
+async def test_import_model_updates_existing(app_client, auth_headers, mock_persist):
+    """An existing model ID is updated in-place."""
+    settings.model_configs = [ModelConfig(id="existing", type="ll", provider="openai")]
+    payload = {"model_configs": [{"id": "existing", "type": "ll", "provider": "openai", "api_base": "http://updated"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["model_configs"]["updated"] == 1
+    assert data["model_configs"]["created"] == 0
+    assert settings.model_configs[0].api_base == "http://updated"
+
+
+# ---------------------------------------------------------------------------
+# Database configs
+# ---------------------------------------------------------------------------
+
+
+async def test_import_database_creates_new(app_client, auth_headers, mock_persist):
+    """A new database alias is appended with usable=False."""
+    settings.database_configs = []
+    payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "analytics_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["created"] == 1
+    new_db = next(db for db in settings.database_configs if db.alias == "ANALYTICS")
+    assert new_db.usable is False
+    assert new_db.pool is None
+
+
+async def test_import_database_updates_existing(app_client, auth_headers, mock_persist):
+    """An existing database alias is updated in-place with usable=False."""
+    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="old_dsn", usable=True)]
+    payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "new_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["updated"] == 1
+    assert settings.database_configs[0].dsn == "new_dsn"
+    assert settings.database_configs[0].usable is False
+
+
+async def test_import_database_skips_core(app_client, auth_headers, mock_persist):
+    """CORE alias is silently skipped."""
+    settings.database_configs = [DatabaseConfig(alias="CORE")]
+    payload = {"database_configs": [{"alias": "CORE", "dsn": "should_not_apply"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["skipped"] == 1
+    assert data["database_configs"]["created"] == 0
+    assert data["database_configs"]["updated"] == 0
+
+
+# ---------------------------------------------------------------------------
+# OCI configs
+# ---------------------------------------------------------------------------
+
+
+async def test_import_oci_creates_new(app_client, auth_headers, mock_persist):
+    """A new OCI profile is appended with usable=False."""
+    settings.oci_configs = []
+    payload = {"oci_configs": [{"auth_profile": "PROD", "region": "us-phoenix-1"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["oci_configs"]["created"] == 1
+    new_oci = next(p for p in settings.oci_configs if p.auth_profile == "PROD")
+    assert new_oci.usable is False
+
+
+async def test_import_oci_updates_existing(app_client, auth_headers, mock_persist):
+    """An existing OCI profile is updated in-place with usable=False."""
+    settings.oci_configs = [OciProfileConfig(auth_profile="PROD", region="us-ashburn-1", usable=True)]
+    payload = {"oci_configs": [{"auth_profile": "PROD", "region": "us-phoenix-1"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["oci_configs"]["updated"] == 1
+    assert settings.oci_configs[0].region == "us-phoenix-1"
+    assert settings.oci_configs[0].usable is False
+
+
+# ---------------------------------------------------------------------------
+# Prompt configs
+# ---------------------------------------------------------------------------
+
+
+async def test_import_prompt_updates_text(app_client, auth_headers, mock_persist, mock_register_mcp_prompts):
+    """Prompt text is updated via reconcile and register_mcp_prompts is called."""
+    settings.prompt_configs = [
+        PromptConfig(name="test_prompt", title="Test", text="old text"),
+    ]
+    payload = {"prompt_configs": [{"name": "test_prompt", "title": "Test", "text": "new text"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["prompt_configs"]["updated"] == 1
+    assert settings.prompt_configs[0].text == "new text"
+    mock_register_mcp_prompts.assert_called_once()
+
+
+async def test_import_prompt_skips_unknown(app_client, auth_headers, mock_persist, mock_register_mcp_prompts):
+    """Prompts with unknown names are silently skipped."""
+    settings.prompt_configs = [
+        PromptConfig(name="known", title="Known", text="text"),
+    ]
+    payload = {"prompt_configs": [{"name": "unknown", "title": "Unknown", "text": "text"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["prompt_configs"]["updated"] == 0
+    assert data["prompt_configs"]["skipped"] == 1
+
+
+async def test_import_prompt_skips_unchanged(app_client, auth_headers, mock_persist, mock_register_mcp_prompts):
+    """Prompts with the same text are counted as skipped."""
+    settings.prompt_configs = [
+        PromptConfig(name="stable", title="Stable", text="same text"),
+    ]
+    payload = {"prompt_configs": [{"name": "stable", "title": "Stable", "text": "same text"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["prompt_configs"]["updated"] == 0
+    assert data["prompt_configs"]["skipped"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Scalars
+# ---------------------------------------------------------------------------
+
+
+async def test_import_scalar_log_level(app_client, auth_headers, mock_persist):
+    """log_level is updated in settings."""
+    settings.log_level = "INFO"
+    payload = {"log_level": "DEBUG"}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["scalars"] == {"log_level": "DEBUG"}
+    assert settings.log_level == "DEBUG"
+
+
+async def test_import_ignores_protected_fields(app_client, auth_headers, mock_persist):
+    """Fields not in SettingsImport schema (env, api_key, etc.) are silently dropped."""
+    payload = {"env": "production", "api_key": "hacked", "server_port": 9999}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    # Protected fields should not have changed
+    assert settings.env != "production"
+    assert settings.api_key != "hacked"
+    assert settings.server_port != 9999
+
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+
+
+async def test_import_persists_once(app_client, auth_headers, mock_persist):
+    """persist_settings is called exactly once regardless of sections imported."""
+    payload = {
+        "log_level": "DEBUG",
+        "model_configs": [{"id": "m1", "type": "ll", "provider": "openai"}],
+        "database_configs": [{"alias": "DB1"}],
+    }
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    mock_persist.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Case insensitive matching
+# ---------------------------------------------------------------------------
+
+
+async def test_import_case_insensitive(app_client, auth_headers, mock_persist):
+    """Lowercase alias matches uppercase existing entry."""
+    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="old_dsn")]
+    payload = {"database_configs": [{"alias": "analytics", "dsn": "new_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["updated"] == 1
+    assert data["database_configs"]["created"] == 0
+    assert settings.database_configs[0].dsn == "new_dsn"
+
+
+# ---------------------------------------------------------------------------
+# Client settings
+# ---------------------------------------------------------------------------
+
+
+async def test_import_client_settings_applied(app_client, auth_headers, mock_persist):
+    """client_settings are applied to the default CONFIGURED client."""
+    payload = {"client_settings": {"database": {"alias": "ANALYTICS"}, "oci": {"auth_profile": "PROD"}}}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["client_settings"] is True
+    assert _client_store["CONFIGURED"].database.alias == "ANALYTICS"
+    assert _client_store["CONFIGURED"].oci.auth_profile == "PROD"
+
+
+async def test_import_client_settings_custom_client(app_client, auth_headers, mock_persist):
+    """client_settings with explicit client param targets that client only."""
+    payload = {"client_settings": {"database": {"alias": "ANALYTICS"}, "oci": {"auth_profile": "PROD"}}}
+
+    resp = await app_client.post(f"{ENDPOINT}?client=MY_SESSION", json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert _client_store["MY_SESSION"].database.alias == "ANALYTICS"
+    assert "CONFIGURED" not in _client_store

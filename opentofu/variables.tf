@@ -14,12 +14,25 @@ variable "deploy_optimizer" {
 }
 
 variable "optimizer_version" {
-  description = "Determines if latest release or main code line is used"
+  description = "Version to deploy: 'Stable' (latest release), 'Experimental' (main branch), or 'Branch' (specified Git branch)."
   type        = string
   default     = "Stable"
   validation {
-    condition     = var.optimizer_version == "Stable" || var.optimizer_version == "Experimental"
-    error_message = "optimizer_version must be either 'Stable' or 'Experimental'."
+    condition     = contains(["Stable", "Experimental", "Branch"], var.optimizer_version)
+    error_message = "optimizer_version must be 'Stable', 'Experimental', or 'Branch'."
+  }
+}
+
+variable "optimizer_branch" {
+  description = "Git branch name to deploy from (required when optimizer_version = 'Branch')."
+  type        = string
+  default     = ""
+}
+
+check "optimizer_branch_required" {
+  assert {
+    condition     = var.optimizer_version != "Branch" || var.optimizer_branch != ""
+    error_message = "optimizer_branch must be set when optimizer_version is 'Branch'."
   }
 }
 
@@ -252,6 +265,38 @@ variable "lb_max_shape" {
   description = "LoadBalancer maximum bandwidth (Mbps)."
   type        = number
   default     = 10
+}
+
+// TLS
+variable "ssl_mode" {
+  description = "TLS termination mode: 'none' (HTTP only), 'self-signed' (auto-generated cert), or 'provided' (user-supplied cert/key)."
+  type        = string
+  default     = "none"
+  validation {
+    condition     = contains(["none", "self-signed", "provided"], var.ssl_mode)
+    error_message = "ssl_mode must be 'none', 'self-signed', or 'provided'."
+  }
+}
+
+variable "ssl_certificate" {
+  description = "PEM-encoded TLS certificate (required when ssl_mode = 'provided')."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ssl_private_key" {
+  description = "PEM-encoded TLS private key (required when ssl_mode = 'provided')."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+check "ssl_provided_requires_cert_and_key" {
+  assert {
+    condition     = var.ssl_mode != "provided" || (var.ssl_certificate != "" && var.ssl_private_key != "")
+    error_message = "ssl_certificate and ssl_private_key must be set when ssl_mode is 'provided'."
+  }
 }
 
 // NSGs

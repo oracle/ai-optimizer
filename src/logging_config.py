@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Shared logging configuration for server and client packages.
 """
-# spell-checker:ignore scriptrunner
+# spell-checker:ignore scriptrunner byteflow
 
 import logging
 import os
@@ -66,7 +66,17 @@ def configure_logging(log_level: str | None = None) -> None:
                 "level": level,
             },
             "loggers": {
+                "asyncio": {
+                    "handlers": ["console"],
+                    "level": "WARNING",
+                    "propagate": False,
+                },
                 "docket.worker": {
+                    "handlers": ["console"],
+                    "level": "WARNING",
+                    "propagate": False,
+                },
+                "numba.core": {
                     "handlers": ["console"],
                     "level": "WARNING",
                     "propagate": False,

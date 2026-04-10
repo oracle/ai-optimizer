@@ -6,6 +6,10 @@ variable "optimizer_version" {
   type = string
 }
 
+variable "optimizer_branch" {
+  type = string
+}
+
 variable "app_version" {
   type = string
 }
@@ -84,4 +88,27 @@ variable "lb_http_port" {
 
 variable "lb_https_port" {
   type = number
+}
+
+variable "ssl_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "ssl_cert_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "ssl_key_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "ssl_ca_cert" {
+  type      = string
+  default   = ""
+  sensitive = true
 }

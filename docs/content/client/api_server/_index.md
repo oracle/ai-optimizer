@@ -11,8 +11,6 @@ The {{< full_app_ref >}} is powered by an API Server to allow for any client to 
 
 Each client connected to the API Server, including those from the {{< short_app_ref >}} GUI client, share the same configuration but maintain their own settings.  Database, Model, OCI, and Prompt configurations are used across all clients; but which database, models, OCI profile, and prompts set are specific to each client.
 
-When started as part of the {{< short_app_ref >}} "All-in-One" deployment, by setting `API_SERVER_CONTROL=TRUE` before startup, you can change the Port it listens on and the API Server Key.
-
 ![Server Configuration](images/api_server_config.png)
 
 If the API Server is started independently of the {{< short_app_ref >}} client, the configuration is shown, but cannot be modified from the client.

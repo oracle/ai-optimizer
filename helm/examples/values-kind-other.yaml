@@ -16,7 +16,7 @@ server:
       # Option 2: Provide individual components (commented out when using dsn)
       # host: "mydbhost.example.com"
       # port: "1521"
-      # service_name: "MYSERVICE"
+      # serviceName: "MYSERVICE"
     privAuthN:
       secretName: "db-priv-authn"
       passwordKey: "password"

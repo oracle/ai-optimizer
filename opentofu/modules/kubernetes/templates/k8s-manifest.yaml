@@ -99,14 +99,18 @@ spec:
             - sh
             - -c
             - |
-              if [ "${optimizer_version}" = "Experimental" ]; then
-                echo "Downloading Code from MAIN branch"
-                wget -qO- https://github.com/oracle/ai-optimizer/archive/refs/heads/main.tar.gz \
-                  | tar -xz -C /workspace --strip-components=1 ai-optimizer-main/src ai-optimizer-main/pyproject.toml
-              else
+              if [ "${optimizer_version}" = "Stable" ]; then
                 echo "Downloading Code from LATEST release"
                 wget -qO- https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz \
                   | tar -xz -C /workspace
+              else
+                echo "Downloading Code from branch: ${optimizer_branch}"
+                mkdir -p /tmp/src-archive
+                wget -qO- "https://github.com/oracle/ai-optimizer/archive/refs/heads/${optimizer_branch}.tar.gz" \
+                  | tar -xz -C /tmp/src-archive
+                mv /tmp/src-archive/*/src /workspace/src
+                mv /tmp/src-archive/*/pyproject.toml /workspace/pyproject.toml
+                rm -rf /tmp/src-archive
               fi
           securityContext:
             runAsUser: 1000

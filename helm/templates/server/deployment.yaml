@@ -48,13 +48,27 @@ spec:
             runAsNonRoot: true
             runAsUser: 10001
           env:
-            - name: API_SERVER_KEY
+            - name: AIO_ENV
+              value: {{ .Values.global.env | quote }}
+            - name: AIO_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "global.apiSecretName" . }}
                   key: {{ include "global.apiSecretKey" . }}
-            - name: ROOT_PATH
+            - name: AIO_SERVER_URL_PREFIX
               value: {{ include "global.getPath" . | trimSuffix "/" | quote }}
+            {{- if .Values.server.ssl.enabled }}
+            - name: AIO_SERVER_SSL
+              value: "true"
+            {{- if .Values.server.ssl.certFile }}
+            - name: AIO_SERVER_SSL_CERT_FILE
+              value: {{ .Values.server.ssl.certFile | quote }}
+            {{- end }}
+            {{- if .Values.server.ssl.keyFile }}
+            - name: AIO_SERVER_SSL_KEY_FILE
+              value: {{ .Values.server.ssl.keyFile | quote }}
+            {{- end }}
+            {{- end }}
             {{- if (default false .Values.server.oci_config.oke) }}
             - name: OCI_CLI_REGION
               value: {{ .Values.server.oci_config.region }}
@@ -99,6 +113,9 @@ spec:
             httpGet:
               path: /v1/liveness
               port: server-port
+              {{- if .Values.server.ssl.enabled }}
+              scheme: HTTPS
+              {{- end }}
             {{- with omit .Values.server.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -108,6 +125,9 @@ spec:
             httpGet:
               path: /v1/readiness
               port: server-port
+              {{- if .Values.server.ssl.enabled }}
+              scheme: HTTPS
+              {{- end }}
             {{- with omit .Values.server.readinessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -125,7 +145,13 @@ spec:
             {{- end }}
             {{- if and .Values.server.oci_config .Values.server.oci_config.fileSecretName }}
             - name: oci-config
-              mountPath: "/app/runtime/.oci"
+              mountPath: "/app/.oci"
+            {{- end }}
+            {{- if .Values.server.envSecret }}
+            - name: env-config
+              mountPath: /app/.env.{{ .Values.global.env }}
+              subPath: {{ include "server.envSecretKey" . }}
+              readOnly: true
             {{- end }}
           {{- with .Values.server.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -143,6 +169,11 @@ spec:
           secret:
             secretName: {{ .Values.server.oci_config.fileSecretName | quote }}
             optional: true
+        {{- end }}
+        {{- if .Values.server.envSecret }}
+        - name: env-config
+          secret:
+            secretName: {{ include "server.envSecretName" . }}
         {{- end }}
       {{- with .Values.server.volumes }}
         {{- toYaml . | nindent 8 }}

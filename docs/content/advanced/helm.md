@@ -89,6 +89,7 @@ The `global:` sections contains values that are shared across the chart and its 
 | global.api.secretKey | string | `"apiKey"` | Key name inside the Secret that contains the API key when secretName defined. |
 | global.api.secretName | string | `""` | Name of the Secret that stores the API key. This allows you to keep the API key out of the values file and manage it securely via Secrets. Example: "optimizer-api-keys" |
 | global.baseUrlPath | string | `"/"` | URL path appended to the host. Example: "/test" results in URLs like http://hostname/test/... |
+| global.env | string | `"prd"` | Environment name. Controls which .env file pydantic-settings reads (`.env.{env}`) and the mount path for envSecret. |
 
 ---
 
@@ -116,10 +117,10 @@ Configure the Oracle Database used by the {{< short_app_ref >}} API Server.
 | server.database.oci | Optional | | For ADB-S, OCID of the Autonomous Database Exclude for SIDB-FREE/ADB-FREE/OTHER |
 | server.database.oci.ocid | string | `""` | OCID of the Autonomous Database |
 | server.database.other | Optional | | For OTHER, connection details for external database |
-| server.database.other.dsn | string | `""` | Full DSN string (e.g: host:port/service) - Either dsn OR (host+port+service_name) |
+| server.database.other.dsn | string | `""` | Full DSN string (e.g: host:port/service) - Either dsn OR (host+port+serviceName) |
 | server.database.other.host | string | `""` | Database host (required if dsn not provided) |
 | server.database.other.port | string/int | `""` | Database port (required if dsn not provided) |
-| server.database.other.service_name | string | `""` | Database service name (required if dsn not provided) |
+| server.database.other.serviceName | string | `""` | Database service name (required if dsn not provided) |
 | server.database.authN | Required |  | Application User Authentication/Connection Details If defined, used to create the user defined in the authN secret |
 | server.database.authN.secretName | string | `"db-authn"` | Name of Secret containing the authentication/connection details |
 | server.database.authN.usernameKey | string | `"username"` | Key in secretName containing the username |
@@ -185,7 +186,7 @@ Option 2 - Using individual components:
     other:
       host: "mydbhost.example.com"
       port: "1521"
-      service_name: "MYSERVICE"
+      serviceName: "MYSERVICE"
 ```
 
 ##### Server Oracle Cloud Infrastructure Settings
@@ -238,6 +239,49 @@ Configure 3rd-Party AI Models used by the {{< short_app_ref >}} API Server.  Cre
 | server.models.openAI | object | `{"secretKey":"apiKey","secretName":""}` | OpenAI API Key |
 | server.models.perplexity | object | `{"secretKey":"apiKey","secretName":""}` | Perplexity API Key |
 
+##### Server Environment Configuration
+
+Application settings can be provided via a `.env.{env}` file (where `{env}` is set by `global.env`, default `prd`) stored as a Kubernetes Secret. The application uses [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) to read the file directly. Pod environment variables always take precedence over values in the `.env` file. See [Configuration](/env_config/) for available variables.
+
+You can either reference a pre-existing Secret or let Helm create one from key-value pairs:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| server.envSecret.secretName | string | `""` | Name of a pre-existing Secret containing the `.env.{env}` file content. When set, Helm will not create a Secret. |
+| server.envSecret.secretKey | string | `"server.env"` | Key within the Secret that holds the file content. |
+| server.envSecret.content | object | `{}` | Key-value pairs for Helm to generate the Secret. Ignored when `secretName` is set. |
+
+###### Examples
+
+**User-provided Secret**
+
+Create the Secret yourself and reference it:
+```bash
+kubectl create secret generic my-server-env \
+  --from-file=server.env=.env.prd \
+  -n ai-optimizer
+```
+
+```yaml
+server:
+  envSecret:
+    secretName: "my-server-env"
+    secretKey: "server.env"
+```
+
+**Helm-generated Secret**
+
+Let Helm create the Secret from inline values:
+```yaml
+server:
+  envSecret:
+    content:
+      AIO_LOG_LEVEL: INFO
+      AIO_DB_POOL_SIZE: "5"
+      AIO_GENAI_COMPARTMENT_ID: "ocid1.compartment..."
+      AIO_GENAI_REGION: "us-chicago-1"
+```
+
 ---
 #### Client Settings
 
@@ -266,6 +310,26 @@ Disable specific {{< short_app_ref >}} in the frontend web client.
 | client.features.disableOciCfg | bool | `false` | Disable OCI Configuration |
 | client.features.disableSettings | bool | `false` | Disable the Import/Export of Settings |
 
+##### Client Environment Configuration
+
+The client supports the same `.env.{env}` Secret mechanism as the [server](#server-environment-configuration). Pod environment variables always take precedence.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| client.envSecret.secretName | string | `""` | Name of a pre-existing Secret containing the `.env.{env}` file content. When set, Helm will not create a Secret. |
+| client.envSecret.secretKey | string | `"client.env"` | Key within the Secret that holds the file content. |
+| client.envSecret.content | object | `{}` | Key-value pairs for Helm to generate the Secret. Ignored when `secretName` is set. |
+
+###### Examples
+
+**Helm-generated Secret**
+```yaml
+client:
+  envSecret:
+    content:
+      AIO_LOG_LEVEL: INFO
+```
+
 #### Ollama Settings
 
 The `ollama:` section contains values that are used to automatically install [Ollama](https://ollama.com/) and optionally pull models.
@@ -280,7 +344,7 @@ It is recommended only to enable this functionality when you have access to a GP
 | ollama.image.repository | string | `"docker.io/ollama/ollama"` | Image Repository |
 | ollama.image.tag | string | `"latest"` | Image Tag |
 | ollama.models.enabled | bool | `true` | Enable automatic pulling of models |
-| ollama.models.modelPullList | list | `["llama3.1","mxbai-embed-large"]` | List of models to automatically pull |
+| ollama.models.modelPullList | list | `["qwen3:8b","mxbai-embed-large"]` | List of models to automatically pull |
 | ollama.resources | object | `{}` | Requests and limits for the container. Often used to ensure pod is running on a GPU worker |
 | ollama.nodeSelector | object | `{}` | Constrain pods to specific nodes Often used to ensure pod is running on a GPU worker |
 | ollama.affinity | object | `{}` | Rules for scheduling pods Often used to ensure pod is running on a GPU worker |

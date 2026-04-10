@@ -33,6 +33,18 @@ git commit --signoff
 Only pull requests from committers that can be verified as having signed the OCA
 can be accepted.
 
+## Linting
+
+This project uses [pylint](https://pylint.readthedocs.io/) for static analysis. Configuration is in `.pylintrc` at the repository root.
+
+Run pylint from the repository root:
+
+```bash
+pylint src/
+```
+
+Ensure pylint passes with no errors before submitting a pull request.
+
 ## Pull request process
 
 1. Ensure there is an issue created to track and discuss the fix or enhancement

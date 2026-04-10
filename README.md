@@ -57,11 +57,20 @@ To run the application on bare-metal; download the [source](https://github.com/o
    uv pip install -e ".[all]"
    ```
 
+1. Configure Settings:
+
+   ```bash
+   cp .env.example .env.dev
+   ```
+
+   Edit the .env.dev file and set any defaults.  
+   To utilize database functionality, at a minimum, set the `AIO_DB_*` parameters.
+
 1. Start Streamlit:
 
    ```bash
    cd src/
-   streamlit run launch_client.py --server.port 8501
+   ./entrypoint.py client
    ```
 
 1. Navigate to `http://localhost:8501`.

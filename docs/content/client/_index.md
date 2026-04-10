@@ -1,5 +1,5 @@
 +++
-title = 'AI Optimizer'
+title = 'AI Optimizer Client'
 weight = 20
 +++
 

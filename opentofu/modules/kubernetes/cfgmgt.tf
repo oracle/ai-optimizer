@@ -22,6 +22,10 @@ locals {
     deploy_buildkit   = var.byo_ocir_url == ""
     deploy_optimizer  = var.deploy_optimizer
     optimizer_version = var.optimizer_version
+    optimizer_branch  = var.optimizer_branch
+    ssl_enabled       = var.ssl_enabled
+    ssl_cert_b64      = var.ssl_enabled ? base64encode(var.ssl_cert_pem) : ""
+    ssl_key_b64       = var.ssl_enabled ? base64encode(var.ssl_key_pem) : ""
   })
 }
 
@@ -52,7 +56,7 @@ resource "null_resource" "apply" {
 
   provisioner "local-exec" {
     command = <<EOT
-      python3 ${path.root}/cfgmgt/apply.py ${var.label_prefix}${local.orm_pe != "" ? " --private_endpoint ${local.orm_pe}" : ""} --optimizer_version ${var.optimizer_version}
+      python3 ${path.root}/cfgmgt/apply.py ${var.label_prefix}${local.orm_pe != "" ? " --private_endpoint ${local.orm_pe}" : ""} --optimizer_version ${var.optimizer_version}${var.optimizer_version == "Branch" ? " --local_chart_path ${abspath("${path.root}/../helm")}" : ""}
     EOT
   }
   depends_on = [

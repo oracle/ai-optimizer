@@ -5,8 +5,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Server package initialization and logging configuration.
 """
 
-from logging_config import configure_logging
-# from server.app.core.settings import settings
+import warnings
 
-# configure_logging(settings.log_level)
-configure_logging()
+from logging_config import configure_logging
+from server.app.core.settings import settings
+
+# Suppress cosmetic RequestsDependencyWarning from requests (chardet >= 6, charset-normalizer >= 4)
+warnings.filterwarnings("ignore", message=r"urllib3.*chardet.*doesn't match a supported version")
+
+
+configure_logging(settings.log_level)

@@ -4,11 +4,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Unit tests for logging_config.py
 """
-# pylint: disable=protected-access
 
 import logging
-from _version import __version__
+
 import logging_config
+from _version import __version__
 
 
 class TestInjectVersion:
@@ -47,7 +47,7 @@ class TestInjectVersion:
 
         logging_config._inject_version(record)
 
-        assert record.__version__ == "existing"
+        assert getattr(record, "__version__") == "existing"
 
 
 class TestConfigureLogging:
@@ -90,23 +90,23 @@ class TestConfigureLogging:
         logging_config.configure_logging()
 
         for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-            logger = logging.getLogger(name)
-            assert logger.propagate is False
+            LOGGER = logging.getLogger(name)
+            assert LOGGER.propagate is False
 
     def test_pil_logger_configured(self):
-        """configure_logging should configure PIL logger."""
+        """configure_logging should configure PIL LOGGER."""
         logging_config.configure_logging()
 
-        logger = logging.getLogger("PIL")
-        assert logger.propagate is False
-        assert logger.level == logging.INFO
+        LOGGER = logging.getLogger("PIL")
+        assert LOGGER.propagate is False
+        assert LOGGER.level == logging.INFO
 
     def test_streamlit_logger_configured(self):
-        """configure_logging should configure streamlit logger."""
+        """configure_logging should configure streamlit LOGGER."""
         logging_config.configure_logging()
 
-        logger = logging.getLogger("streamlit")
-        assert logger.propagate is False
+        LOGGER = logging.getLogger("streamlit")
+        assert LOGGER.propagate is False
 
 
 class TestFormatterConfig:

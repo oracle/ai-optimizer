@@ -9,9 +9,9 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
 
-The {{< full_app_ref >}} is not configured out-of-the-box. To enable full functionality, you must configure a language model, an embedding model, a database, and, optionally, Oracle Cloud Infrastructure (OCI).
+The {{< full_app_ref >}} can be used immediately to interact with language models without any pre-configuration. To enable full functionality, including RAG and settings persistence, you will need to configure a database, models, and optionally Oracle Cloud Infrastructure (OCI).
 
-After you configure the {{< short_app_ref >}}, you can export the settings and import them into another deployment or restore them after a restart.
+Configuration can be done through the GUI, [environment files](/env_config/), or a combination of both. After you configure the {{< short_app_ref >}}, you can export the settings and import them into another deployment or restore them after a restart.
 
 ## 🤖 Model Configuration
 

@@ -11,6 +11,7 @@ module "vm" {
   for_each             = var.infrastructure == "VM" ? { managed = true } : {}
   source               = "./modules/vm"
   optimizer_version    = var.optimizer_version
+  optimizer_branch     = local.optimizer_branch
   app_version          = local.app_version #Triggers Upgrades
   label_prefix         = local.label_prefix
   tenancy_id           = var.tenancy_ocid
@@ -20,6 +21,10 @@ module "vm" {
   lb_id                = oci_load_balancer_load_balancer.lb.id
   lb_http_port         = local.lb_http_port
   lb_https_port        = local.lb_https_port
+  ssl_enabled          = local.ssl_enabled
+  ssl_cert_pem         = local.ssl_cert_pem
+  ssl_key_pem          = local.ssl_key_pem
+  ssl_ca_cert          = local.ssl_ca_cert_pem
   db_name              = local.db_name
   db_conn              = local.db_conn
   vm_is_gpu_shape      = var.vm_is_gpu_shape
