@@ -39,12 +39,11 @@ server-base = [
     "langchain-ibm==1.0.6",
     "langchain-mcp-adapters==0.2.2",
     "langchain-mistralai==1.1.2",
-    "langchain-nomic==1.0.1",
     "langchain-oci==0.2.5",
     "langchain-ollama==1.1.0",
     "langchain-openai==1.1.12",
     "langchain-oracledb==1.2.0",
-    "litellm==1.82.6",
+    "litellm==1.83.0",
     "llama-index==0.14.20",
     "lxml==6.0.2",
     "matplotlib==3.10.8",
@@ -82,10 +81,6 @@ client = [
 # - test: for testing/development
 dev = [
     "docker",
-    # Pin fakeredis<2.35.0: pydocket (transitive dep via fastmcp) imports
-    # FakeConnection/FakeServer from fakeredis.aioredis which were removed in 2.35.0.
-    # Remove this pin once pydocket releases a fix (see chrisguidry/docket#386).
-    "fakeredis<2.35.0",
     "mypy",
     "types-psutil",
     "pandas-stubs",

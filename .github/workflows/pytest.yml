@@ -17,6 +17,8 @@ jobs:
   detect-changes:
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       client: ${{ steps.changes.outputs.client }}
       server: ${{ steps.changes.outputs.server }}
@@ -174,6 +176,8 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.client == 'true' || needs.detect-changes.outputs.server == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout Code
@@ -200,6 +204,8 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.helm == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout Code
@@ -237,6 +243,8 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.opentofu == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout Code
@@ -262,6 +270,7 @@ jobs:
       - check-opentofu
     if: always() && (github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    permissions: {}
 
     steps:
       - name: Evaluate results
