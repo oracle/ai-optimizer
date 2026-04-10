@@ -101,7 +101,11 @@ def get_genai_models(profile: OciProfileConfig, regional: bool = False) -> list[
             LOGGER.info("Registered %i GenAI Models", len(genai_models))
         except oci.exceptions.ServiceError as ex:
             LOGGER.info("Unable to get GenAI Models in Region: %s (%s)", region["region_name"], ex.message)
-        except (oci.exceptions.RequestException, urllib3.exceptions.MaxRetryError):
+        except (
+            oci.exceptions.RequestException,
+            oci.exceptions.ConnectTimeout,
+            urllib3.exceptions.MaxRetryError,
+        ):
             LOGGER.error("Timeout: Error querying GenAI services in %s", region["region_name"])
 
     return genai_models

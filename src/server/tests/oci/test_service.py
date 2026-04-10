@@ -198,6 +198,23 @@ class TestGetGenaiModels:
 
         assert not result
 
+    def test_handles_connect_timeout_gracefully(self):
+        """ConnectTimeout is caught and skipped.
+
+        ConnectTimeout is NOT a subclass of oci.exceptions.RequestException,
+        so it must be caught explicitly.
+        """
+        import oci.exceptions
+
+        profile = _make_profile()
+        mock_client = MagicMock()
+        mock_client.list_models.side_effect = oci.exceptions.ConnectTimeout("connect timeout=1")
+
+        with patch(f"{MODULE}.init_client", return_value=mock_client):
+            result = get_genai_models(profile, regional=True)
+
+        assert not result
+
 
 # ---------------------------------------------------------------------------
 # create_genai_models
