@@ -124,7 +124,7 @@ jobs:
   # Summary job
   security-summary:
     name: Security Summary
-    if: always() && !cancelled()
+    if: always() && !cancelled() && (github.event.pull_request.draft == false || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
     permissions: {}
     needs: [trivy-scan, macaron]
