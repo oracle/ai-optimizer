@@ -65,6 +65,10 @@ client = [
 # Test dependencies
 test = [
     "docker",
+    # Pin fakeredis<2.35.0: pydocket (transitive dep via fastmcp) imports
+    # FakeConnection/FakeServer from fakeredis.aioredis which were removed in 2.35.0.
+    # Remove this pin once pydocket releases a fix (see chrisguidry/docket#386).
+    "fakeredis<2.35.0",
     "mypy",
     "types-psutil",
     "pandas-stubs",
