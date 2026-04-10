@@ -64,16 +64,28 @@ from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
 
 try:
-    from wayflowcore.agent import Agent as RuntimeAgent
-    from wayflowcore.conversation import Conversation
-    from wayflowcore.flow import Flow as RuntimeFlow
-    from wayflowcore.messagelist import MessageList
-    from wayflowcore.models import LlmGenerationConfig
+    from wayflowcore.agent import Agent as RuntimeAgent  # pyright: ignore[reportMissingImports]
+    from wayflowcore.conversation import Conversation  # pyright: ignore[reportMissingImports]
+    from wayflowcore.flow import Flow as RuntimeFlow  # pyright: ignore[reportMissingImports]
+    from wayflowcore.messagelist import MessageList  # pyright: ignore[reportMissingImports]
+    from wayflowcore.models import LlmGenerationConfig  # pyright: ignore[reportMissingImports]
 
-    from server.app.runtime.wayflow.adapters.litellm import LiteLlmModel, register_litellm_model_factory
+    from server.app.runtime.wayflow.adapters.litellm import (  # pyright: ignore[reportMissingImports]
+        LiteLlmModel,
+        register_litellm_model_factory,
+    )
 
     WAYFLOWCORE_AVAILABLE = True
 except ModuleNotFoundError:
+    from typing import Any as _Any
+
+    RuntimeAgent: _Any = None
+    Conversation: _Any = None
+    RuntimeFlow: _Any = None
+    MessageList: _Any = None
+    LlmGenerationConfig: _Any = None
+    LiteLlmModel: _Any = None
+    register_litellm_model_factory: _Any = None
     WAYFLOWCORE_AVAILABLE = False
 
 # Tell pytest to skip collecting wayflowcore-only test modules when the
