@@ -173,14 +173,14 @@ async def test_import_legacy_v203_database_configs(app_client, auth_headers, moc
     assert new_db.dsn == "//host/svc"
 
 
-async def test_import_invalid_json_returns_400(app_client, auth_headers):
-    """Malformed JSON body returns 400, not 500."""
+async def test_import_invalid_json_returns_422(app_client, auth_headers):
+    """Malformed JSON body returns 422 (FastAPI's default), not 500."""
     resp = await app_client.post(
         ENDPOINT,
         content=b"{ not valid json }",
         headers={**auth_headers, "content-type": "application/json"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 @pytest.mark.parametrize("body", [[], "not an object", 42])
