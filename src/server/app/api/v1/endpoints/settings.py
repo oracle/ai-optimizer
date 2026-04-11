@@ -162,6 +162,18 @@ async def copy_to_server(client: str = Query(default="CONFIGURED")):
         return server_cs
 
 
+async def _parse_import_body(request: Request) -> SettingsImport:
+    """Read, migrate, and validate the raw /settings/import request body."""
+    try:
+        raw_body = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
+    try:
+        return SettingsImport.model_validate(migrate_legacy_settings(raw_body))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+
 @auth.post("/import", response_model=SettingsImportResult)
 async def import_settings(request: Request, client: str = Query(default="CONFIGURED")):
     """Import a partial or full configuration with incoming-wins semantics.
@@ -170,14 +182,7 @@ async def import_settings(request: Request, client: str = Query(default="CONFIGU
     validation so that payloads exported from older versions (e.g. v2.0.3's
     ``database_configs`` entries keyed by ``name``/``user``) are accepted.
     """
-    try:
-        raw_body = await request.json()
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
-    try:
-        body = SettingsImport.model_validate(migrate_legacy_settings(raw_body))
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    body = await _parse_import_body(request)
     async with _settings_lock:
         snapshot = {
             "db": [cfg.model_copy() for cfg in settings.database_configs],
