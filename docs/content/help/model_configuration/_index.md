@@ -20,7 +20,7 @@ When a user query enters the combined route, it passes through up to three LLM c
 
 2. **Execution** — Based on the classification result, the query is delegated to the appropriate sub-session. When the classification is `both`, the NL2SQL and VecSearch sub-sessions run in parallel.
 
-3. **Synthesis** — When both routes are used and the VecSearch result is deemed relevant, a final LLM call merges the two answers into a single coherent response.
+3. **Synthesis** — When both routes are used, a final LLM call merges the two answers into a single coherent response. Synthesis is skipped only if the optional grade node explicitly marks the VecSearch result as not relevant, in which case the NL2SQL answer is returned alone.
 
 ## Considerations for Developers
 
@@ -34,8 +34,10 @@ Some models may not perform optimally on very short, constrained classification 
 
 ### Customization Point
 
-The classifier model is derived from the primary `ll_model` configuration at runtime, using the same provider and model ID. This can be customized to use a separate, lighter model for classification and synthesis without affecting the models used by the NL2SQL or VecSearch sub-sessions.
+The classifier and synthesis calls use the same model as the primary `ll_model` — they are bound to it in the runtime wiring. Using a separate, lighter model for these lightweight calls is possible (the combined session accepts a distinct `classifier_model` parameter), but it requires a code change to pass a different value; there is no setting or UI field for it today. Substituting a smaller model here would not affect the models used by the NL2SQL or VecSearch sub-sessions.
 
 ## Fallback Behavior
 
 If classification fails or returns an unexpected value, the system defaults to running both routes. This ensures a response is always returned, even when the classifier encounters an error or produces an unrecognized output.
+
+Synthesis has its own fallback: if the final merge call fails, the system returns the NL2SQL and VecSearch answers concatenated under labelled headings rather than surfacing the error to the user.

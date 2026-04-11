@@ -11,7 +11,7 @@
 
 The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) capabilities. By integrating **Oracle AI Database** VectorSearch and SelectAI, the Sandbox enables users to enhance existing Large Language Models (LLMs) through RAG.
 
-If you find this project useful, please consider giving it a [Star](https://github.com/oracle/ai-optimizer/stargazers)!
+If you find this project useful, please consider giving it a [⭐](https://github.com/oracle/ai-optimizer/stargazers)!
 
 ## AI Optimizer Features
 
@@ -30,7 +30,7 @@ For more information, including more details on **Setup and Configuration** plea
 
 ### Prerequisites
 
-- Oracle AI Database incl. Oracle AI Database Free
+- Oracle AI Database incl. [Oracle AI Database Free](https://www.oracle.com/database/free/)
 - Python 3.11 (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
 - Access to an Embedding and Chat Model:
@@ -60,17 +60,16 @@ To run the application on bare-metal; download the [source](https://github.com/o
 1. Configure Settings:
 
    ```bash
-   cp .env.example .env.dev
+   cp src/.env.example src/.env.dev
    ```
 
-   Edit the .env.dev file and set any defaults.  
+   Edit the `src/.env.dev` file and set your default configuration.  
    To utilize database functionality, at a minimum, set the `AIO_DB_*` parameters.
 
 1. Start Streamlit:
 
    ```bash
-   cd src/
-   ./entrypoint.py client
+   src/entrypoint.py client
    ```
 
 1. Navigate to `http://localhost:8501`.
