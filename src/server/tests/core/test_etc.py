@@ -185,6 +185,22 @@ def test_migrate_legacy_settings_handles_missing_or_empty_database_configs():
     assert migrate_legacy_settings({"database_configs": None}) == {"database_configs": None}
 
 
+@pytest.mark.parametrize("payload", [[], None, "string", 42, [{"alias": "X"}]])
+def test_migrate_legacy_settings_returns_non_dict_unchanged(payload):
+    """Non-dict payloads pass through so Pydantic can surface the real validation error."""
+    assert migrate_legacy_settings(payload) is payload
+
+
+def test_load_config_file_non_object_json_returns_none(tmp_path):
+    """A JSON file whose top-level value is a list (not an object) returns None, not a crash."""
+    cfg = tmp_path / "configuration.json"
+    cfg.write_text(json.dumps([{"alias": "X"}]), encoding="utf-8")
+
+    result = load_config_file(cfg)
+
+    assert result is None
+
+
 # ---------------------------------------------------------------------------
 # apply_overlay — scalar fields
 # ---------------------------------------------------------------------------

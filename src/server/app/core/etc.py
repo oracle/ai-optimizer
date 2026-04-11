@@ -43,14 +43,18 @@ def _identity_fields(identity_spec: _IdentitySpec) -> frozenset[str]:
     return frozenset(identity_spec)
 
 
-def migrate_legacy_settings(data: dict) -> dict:
+def migrate_legacy_settings(data):
     """Normalise settings payloads exported from pre-2.1 versions.
 
     Handles v2.0.3 → 2.1 database_configs field renames:
       - name → alias
       - user → username
-    Returns a deep copy; no-op for already-current payloads.
+    Returns a deep copy; no-op for already-current payloads. Non-dict
+    inputs are returned unchanged so downstream Pydantic validation can
+    surface the appropriate error (instead of raising AttributeError here).
     """
+    if not isinstance(data, dict):
+        return data
     migrated = copy.deepcopy(data)
     for entry in migrated.get("database_configs") or []:
         if not isinstance(entry, dict):

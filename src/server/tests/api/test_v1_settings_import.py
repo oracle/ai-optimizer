@@ -183,6 +183,23 @@ async def test_import_invalid_json_returns_400(app_client, auth_headers):
     assert resp.status_code == 400
 
 
+@pytest.mark.parametrize("body", [[], "not an object", 42])
+async def test_import_non_object_body_returns_422(app_client, auth_headers, body):
+    """Syntactically valid but non-object JSON bodies yield 422 (not 500) from Pydantic."""
+    resp = await app_client.post(ENDPOINT, json=body, headers=auth_headers)
+    assert resp.status_code == 422
+
+
+async def test_import_null_body_returns_422(app_client, auth_headers):
+    """An explicit JSON `null` body yields 422, not 500."""
+    resp = await app_client.post(
+        ENDPOINT,
+        content=b"null",
+        headers={**auth_headers, "content-type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
 async def test_import_database_skips_core(app_client, auth_headers, mock_persist):
     """CORE alias is silently skipped."""
     settings.database_configs = [DatabaseConfig(alias="CORE")]
