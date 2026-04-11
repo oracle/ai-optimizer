@@ -6,9 +6,11 @@ Endpoint for retrieving server settings.
 """
 # spell-checker: ignore litellm
 
+import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
+from pydantic import ValidationError
 
 from server.app.api.v1.schemas.settings import (
     ImportSectionResult,
@@ -16,7 +18,7 @@ from server.app.api.v1.schemas.settings import (
     SettingsImportResult,
     SettingsResponse,
 )
-from server.app.core.etc import upsert_list_field
+from server.app.core.etc import migrate_legacy_settings, upsert_list_field
 from server.app.core.schemas import ClientSettings, ClientSettingsUpdate, LLModelSettings
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
@@ -161,8 +163,21 @@ async def copy_to_server(client: str = Query(default="CONFIGURED")):
 
 
 @auth.post("/import", response_model=SettingsImportResult)
-async def import_settings(body: SettingsImport, client: str = Query(default="CONFIGURED")):
-    """Import a partial or full configuration with incoming-wins semantics."""
+async def import_settings(request: Request, client: str = Query(default="CONFIGURED")):
+    """Import a partial or full configuration with incoming-wins semantics.
+
+    The raw body is migrated through ``migrate_legacy_settings`` before Pydantic
+    validation so that payloads exported from older versions (e.g. v2.0.3's
+    ``database_configs`` entries keyed by ``name``/``user``) are accepted.
+    """
+    try:
+        raw_body = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
+    try:
+        body = SettingsImport.model_validate(migrate_legacy_settings(raw_body))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
     async with _settings_lock:
         snapshot = {
             "db": [cfg.model_copy() for cfg in settings.database_configs],

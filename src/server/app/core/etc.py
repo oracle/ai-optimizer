@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Application settings loaded from etc/configuration.json files
 """
 
+import copy
 import json
 import logging
 from pathlib import Path
@@ -42,6 +43,25 @@ def _identity_fields(identity_spec: _IdentitySpec) -> frozenset[str]:
     return frozenset(identity_spec)
 
 
+def migrate_legacy_settings(data: dict) -> dict:
+    """Normalise settings payloads exported from pre-2.1 versions.
+
+    Handles v2.0.3 → 2.1 database_configs field renames:
+      - name → alias
+      - user → username
+    Returns a deep copy; no-op for already-current payloads.
+    """
+    migrated = copy.deepcopy(data)
+    for entry in migrated.get("database_configs") or []:
+        if not isinstance(entry, dict):
+            continue
+        if "alias" not in entry and "name" in entry:
+            entry["alias"] = entry.pop("name")
+        if "username" not in entry and "user" in entry:
+            entry["username"] = entry.pop("user")
+    return migrated
+
+
 def load_config_file(path: Optional[Path] = None) -> Optional[SettingsBase]:
     """Load and validate configuration.json.
 
@@ -55,7 +75,7 @@ def load_config_file(path: Optional[Path] = None) -> Optional[SettingsBase]:
 
     try:
         raw = config_path.read_text(encoding="utf-8")
-        data = json.loads(raw)
+        data = migrate_legacy_settings(json.loads(raw))
         return SettingsBase.model_validate(data)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         LOGGER.warning("Failed to load configuration file %s: %s", config_path, exc)

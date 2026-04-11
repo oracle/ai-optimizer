@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from server.app.core.etc import apply_overlay, load_config_file, upsert_list_field
+from server.app.core.etc import apply_overlay, load_config_file, migrate_legacy_settings, upsert_list_field
 from server.app.core.settings import SettingsBase, settings
 from server.app.database.schemas import DatabaseConfig
 from server.app.models.schemas import ModelConfig
@@ -84,6 +84,29 @@ def test_load_config_file_schema_mismatch(tmp_path):
     assert result is None
 
 
+def test_load_config_file_accepts_legacy_v203_shape(tmp_path):
+    """A v2.0.3-shaped configuration.json is migrated and loads successfully."""
+    cfg = tmp_path / "configuration.json"
+    cfg.write_text(
+        json.dumps(
+            {
+                "database_configs": [
+                    {"name": "DEFAULT", "user": "admin", "dsn": "//host/svc"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = load_config_file(cfg)
+
+    assert isinstance(result, SettingsBase)
+    assert len(result.database_configs) == 1
+    assert result.database_configs[0].alias == "DEFAULT"
+    assert result.database_configs[0].username == "admin"
+    assert result.database_configs[0].dsn == "//host/svc"
+
+
 def test_load_config_file_tracks_model_fields_set(tmp_path):
     """Only fields present in the JSON appear in model_fields_set."""
     cfg = tmp_path / "configuration.json"
@@ -94,6 +117,72 @@ def test_load_config_file_tracks_model_fields_set(tmp_path):
     assert result is not None
     assert "log_level" in result.model_fields_set
     assert "server_port" not in result.model_fields_set
+
+
+# ---------------------------------------------------------------------------
+# migrate_legacy_settings
+# ---------------------------------------------------------------------------
+
+
+def test_migrate_legacy_settings_renames_database_fields():
+    """v2.0.3 name/user fields are renamed to 2.1 alias/username."""
+    legacy = {
+        "database_configs": [
+            {"name": "DEFAULT", "user": "admin", "dsn": "//host/svc"},
+            {"name": "ANALYTICS", "user": "ro_user"},
+        ]
+    }
+
+    migrated = migrate_legacy_settings(legacy)
+
+    assert migrated["database_configs"][0] == {
+        "alias": "DEFAULT",
+        "username": "admin",
+        "dsn": "//host/svc",
+    }
+    assert migrated["database_configs"][1] == {"alias": "ANALYTICS", "username": "ro_user"}
+
+
+def test_migrate_legacy_settings_noop_for_current_shape():
+    """A 2.1-shaped payload passes through unchanged."""
+    current = {
+        "database_configs": [{"alias": "CORE", "username": "coreuser", "dsn": "//c/s"}],
+        "model_configs": [{"id": "m1", "provider": "openai", "type": "ll"}],
+        "oci_configs": [{"auth_profile": "DEFAULT"}],
+    }
+
+    migrated = migrate_legacy_settings(current)
+
+    assert migrated == current
+
+
+def test_migrate_legacy_settings_deep_copies_input():
+    """The caller's dict is not mutated."""
+    legacy = {"database_configs": [{"name": "DEFAULT", "user": "admin"}]}
+
+    migrate_legacy_settings(legacy)
+
+    assert legacy == {"database_configs": [{"name": "DEFAULT", "user": "admin"}]}
+
+
+def test_migrate_legacy_settings_preserves_new_fields_when_both_present():
+    """If both alias and name are present, alias wins and name is left alone."""
+    mixed = {"database_configs": [{"alias": "NEW", "name": "OLD", "username": "u", "user": "legacy"}]}
+
+    migrated = migrate_legacy_settings(mixed)
+
+    assert migrated["database_configs"][0]["alias"] == "NEW"
+    assert migrated["database_configs"][0]["username"] == "u"
+    # Untouched legacy keys remain — harmless for Pydantic with extras ignored
+    assert migrated["database_configs"][0]["name"] == "OLD"
+    assert migrated["database_configs"][0]["user"] == "legacy"
+
+
+def test_migrate_legacy_settings_handles_missing_or_empty_database_configs():
+    """No database_configs key, or an empty list, is a no-op."""
+    assert migrate_legacy_settings({}) == {}
+    assert migrate_legacy_settings({"database_configs": []}) == {"database_configs": []}
+    assert migrate_legacy_settings({"database_configs": None}) == {"database_configs": None}
 
 
 # ---------------------------------------------------------------------------
