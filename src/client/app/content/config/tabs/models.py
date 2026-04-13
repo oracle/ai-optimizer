@@ -13,7 +13,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core import helpers
-from client.app.core.api import api_delete, api_get, api_post, api_put
+from client.app.core.api import api_delete, api_get, api_post, api_post_stream, api_put
 
 LOGGER = logging.getLogger("client.content.config.tabs.models")
 
@@ -325,19 +325,51 @@ def edit_model(
 
 
 #####################################################
+# Pull Dialog
+#####################################################
+@st.dialog("Pull Ollama Model")
+def pull_model_dialog(provider: str, model_id: str) -> None:
+    """Stream Ollama model pull progress."""
+    st.write(f"Pulling **{provider}/{model_id}** from Ollama registry...")
+    quoted_id = urllib.parse.quote(model_id, safe="")
+    status_text = st.empty()
+    progress_bar = st.empty()
+
+    try:
+        for event in api_post_stream(f"models/pull/{provider}/{quoted_id}"):
+            if "error" in event:
+                st.error(f"Pull failed: {event['error']}")
+                return
+            status = event.get("status", "")
+            completed = event.get("completed", 0)
+            total = event.get("total", 0)
+            if total > 0:
+                progress_bar.progress(completed / total, text=status)
+            else:
+                status_text.text(status)
+    except httpx.HTTPStatusError as exc:
+        st.error(f"Pull failed: {helpers.extract_error_detail(exc)}")
+        return
+
+    helpers.refresh_settings()
+    st.success(f"Model **{model_id}** pulled successfully. You can now enable it.")
+
+
+#####################################################
 # Table Display
 #####################################################
 def render_model_rows(model_type: str) -> None:
     """Render rows of the models."""
     models = [m for m in state["settings"]["model_configs"] if m.get("type") == model_type]
-    data_col_widths = [0.06, 0.44, 0.38, 0.12]
+    data_col_widths = [0.06, 0.40, 0.34, 0.10, 0.10]
 
     table_col_format = st.columns(data_col_widths, vertical_alignment="center")
-    col1, col2, col3, col4 = table_col_format
+    col1, col2, col3, col4, col5 = table_col_format
     col1.markdown("&#x200B;", unsafe_allow_html=True, width="content")
     col2.markdown("**<u>Model</u>**", unsafe_allow_html=True)
     col3.markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
     col4.markdown("&#x200B;")
+    col5.markdown("&#x200B;")
 
     for model in models:
         model_id = model["id"]
@@ -375,6 +407,13 @@ def render_model_rows(model_type: str) -> None:
                 "model_provider": model_provider,
             },
         )
+        if model_provider == "ollama" and not model.get("usable", False):
+            col5.button(
+                "Pull",
+                on_click=pull_model_dialog,
+                key=f"runtime_{model_type}_{model_provider}_{model_id}_pull",
+                kwargs={"provider": model_provider, "model_id": model_id},
+            )
 
     if st.button(label="Add", type="primary", key=f"add_{model_type}_model"):
         edit_model(model_type=model_type, action="add")
