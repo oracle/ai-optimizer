@@ -183,8 +183,14 @@ async def generate_testset_endpoint(
     full_testsets = temp_directory / "all_testsets.jsonl"
 
     try:
-        for file in files:
-            await _process_pdf_file(file, temp_directory, name, embed_config, ll_config, questions, full_testsets)
+        num_files = len(files)
+        if num_files == 0:
+            raise HTTPException(status_code=400, detail="At least one file is required.")
+        questions = max(questions, num_files)
+        base_q, extra = divmod(questions, num_files)
+        for idx, file in enumerate(files):
+            file_questions = base_q + (1 if idx < extra else 0)
+            await _process_pdf_file(file, temp_directory, name, embed_config, ll_config, file_questions, full_testsets)
         db_id = await _store_generated_testset(full_testsets, name)
         pool = _require_core_pool()
         async with pool.acquire() as conn:
