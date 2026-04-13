@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.app.core.settings import settings
-from server.app.database.schemas import DatabaseConfig, DatabaseSensitive
+from server.app.database.schemas import DatabaseSensitive
 from server.app.embed.schemas import VectorStoreConfig
 from server.tests.conftest import assert_no_sensitive_keys, make_test_database_config
 
@@ -25,6 +25,7 @@ def _populate_configs():
     settings.database_configs = [
         make_test_database_config(),
         make_test_database_config(alias="PROD", username="produser", password="prod_secret", wallet_password=None),
+        make_test_database_config(alias="CORE", username="coreuser", password="core_secret"),
     ]
     yield
     settings.database_configs = original
@@ -84,7 +85,7 @@ async def test_list_databases(app_client, auth_headers):
     resp = await app_client.get("/v1/databases", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 2
+    assert len(body) == 3
     assert_no_sensitive_keys(body, SENSITIVE_KEYS, "alias")
 
 
@@ -95,9 +96,10 @@ async def test_list_databases_sensitive(app_client, auth_headers):
     resp = await app_client.get("/v1/databases", params={"include_sensitive": "true"}, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 2
-    assert body[0]["password"] == "secret"
-    assert body[0]["wallet_password"] == "wallet_secret"
+    assert len(body) == 3
+    test_cfg = next(b for b in body if b["alias"] == "TEST")
+    assert test_cfg["password"] == "secret"
+    assert test_cfg["wallet_password"] == "wallet_secret"
 
 
 @pytest.mark.unit
@@ -106,7 +108,8 @@ async def test_list_databases_sensitive_case_insensitive(app_client, auth_header
     """Query value casing should not affect include_sensitive behaviour."""
     resp = await app_client.get("/v1/databases", params={"include_sensitive": "TRUE"}, headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json()[0]["password"] == "secret"
+    test_cfg = next(b for b in resp.json() if b["alias"] == "TEST")
+    assert test_cfg["password"] == "secret"
 
 
 @pytest.mark.unit
@@ -199,6 +202,44 @@ async def test_create_database_duplicate_case_insensitive(app_client, auth_heade
         headers=auth_headers,
     )
     assert resp.status_code == 409
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_core_database_initializes_schema(app_client, auth_headers):
+    """POST CORE alias calls init_core_database instead of test_connection."""
+    settings.database_configs = [
+        make_test_database_config(),
+    ]
+    with (
+        patch("server.app.api.v1.endpoints.databases.init_core_database", new_callable=AsyncMock) as mock_init,
+        patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock) as mock_test,
+    ):
+        resp = await app_client.post(
+            "/v1/databases",
+            json={"alias": "CORE", "username": "coreuser"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 201
+    mock_init.assert_called_once()
+    mock_test.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database_requires_core_first(app_client, auth_headers):
+    """POST non-CORE alias returns 422 when no CORE database exists."""
+    settings.database_configs = [
+        make_test_database_config(),
+        make_test_database_config(alias="PROD", username="produser", password="prod_secret", wallet_password=None),
+    ]
+    resp = await app_client.post(
+        "/v1/databases",
+        json={"alias": "NEW_DB", "username": "newuser"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    assert "CORE" in resp.json()["detail"]
 
 
 @pytest.mark.unit
@@ -320,7 +361,6 @@ async def test_delete_vector_store_persist_failure_still_removes(app_client, aut
 @pytest.mark.anyio
 async def test_update_core_database_reinitializes(app_client, auth_headers, mock_persist_settings):
     """PUT on CORE alias closes existing pool, re-initialises, then persists."""
-    settings.database_configs.append(DatabaseConfig(alias="CORE", username="coreuser"))
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
         patch("server.app.api.v1.endpoints.databases.init_core_database", new_callable=AsyncMock) as mock_init,
@@ -375,7 +415,6 @@ async def test_create_database_connection_error(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_update_core_database_connection_failure(app_client, auth_headers, mock_persist_settings):
     """Rule 4 (CORE path): not-working → not-working = accept (200 with error)."""
-    settings.database_configs.append(DatabaseConfig(alias="CORE", username="coreuser"))
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
         patch(
@@ -517,7 +556,6 @@ async def test_delete_database_not_found(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_delete_database_core_forbidden(app_client, auth_headers):
     """DELETE CORE alias returns 403."""
-    settings.database_configs.append(DatabaseConfig(alias="CORE"))
     resp = await app_client.delete("/v1/databases/CORE", headers=auth_headers)
     assert resp.status_code == 403
 
@@ -526,7 +564,6 @@ async def test_delete_database_core_forbidden(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_delete_database_core_case_insensitive(app_client, auth_headers):
     """DELETE 'core' (lowercase) is also forbidden."""
-    settings.database_configs.append(DatabaseConfig(alias="CORE"))
     resp = await app_client.delete("/v1/databases/core", headers=auth_headers)
     assert resp.status_code == 403
 

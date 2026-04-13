@@ -314,10 +314,21 @@ def _check_prerequisites() -> tuple[list, list, bool]:
 def _setup_testbed_sources() -> list:
     """Determine available testset sources."""
     testset_sources = ["Database", "Local"]
-    if "runtime_testbed_db_testsets" not in state:
-        state.runtime_testbed_db_testsets = _get_testbed_db_testsets()
+    if "runtime_testbed_db_testsets" not in state or state.get("_core_unavailable"):
+        try:
+            _get_testbed_db_testsets.clear()
+            state.runtime_testbed_db_testsets = _get_testbed_db_testsets()
+            state.pop("_core_unavailable", None)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 503:
+                state.runtime_testbed_db_testsets = []
+                state["_core_unavailable"] = True
+            else:
+                raise
     if not state.runtime_testbed_db_testsets:
         testset_sources.remove("Database")
+    if state.get("_core_unavailable"):
+        st.warning("CORE database is not configured. Configure it in Settings > Databases.", icon="⚠️")
     return testset_sources
 
 
