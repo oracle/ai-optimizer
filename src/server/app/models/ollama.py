@@ -143,19 +143,17 @@ async def pull_ollama_model(api_base: str, model_name: str) -> AsyncGenerator[di
     url = f"{api_base.rstrip('/')}/api/pull"
     pull_read_timeout = 120.0  # Longer timeout for pull — gaps between progress lines during layer downloads
     try:
-        async with (
-            httpx.AsyncClient(timeout=httpx.Timeout(pull_read_timeout, connect=CONNECT_TIMEOUT)) as client,
-            client.stream("POST", url, json={"name": model_name}) as resp,
-        ):
-            resp.raise_for_status()
-            async for raw_line in resp.aiter_lines():
-                stripped = raw_line.strip()
-                if not stripped:
-                    continue
-                try:
-                    yield json.loads(stripped)
-                except json.JSONDecodeError:
-                    continue
+        async with httpx.AsyncClient(timeout=httpx.Timeout(pull_read_timeout, connect=CONNECT_TIMEOUT)) as client:  # noqa: SIM117
+            async with client.stream("POST", url, json={"name": model_name}) as resp:
+                resp.raise_for_status()
+                async for raw_line in resp.aiter_lines():
+                    stripped = raw_line.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        yield json.loads(stripped)
+                    except json.JSONDecodeError:
+                        continue
     except httpx.HTTPError as exc:
         LOGGER.warning("Ollama pull failed for '%s' at %s: %s", model_name, api_base, exc)
         yield {"error": str(exc)}

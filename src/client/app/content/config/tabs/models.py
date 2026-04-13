@@ -340,8 +340,6 @@ def pull_model_dialog(provider: str, model_id: str) -> None:
             if "error" in event:
                 st.error(f"Pull failed: {event['error']}")
                 return
-            if event.get("status") == "success":
-                break
             status = event.get("status", "")
             completed = event.get("completed", 0)
             total = event.get("total", 0)
