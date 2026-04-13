@@ -40,7 +40,7 @@ You will need to build the {{< short_app_ref >}} container images and stage them
 
 1. Build the {{< short_app_ref >}} images:
    
-   _Note:_ Depending on the Kubernetes worker node architecture, you may need to specify `--arch amd64` or `--arch aarm64`
+   _Note:_ Depending on the Kubernetes worker node architecture, you may need to specify `--arch amd64` or `--arch arm64`
 
     ```bash
     podman build -f src/client/Dockerfile -t ai-optimizer-client:latest .

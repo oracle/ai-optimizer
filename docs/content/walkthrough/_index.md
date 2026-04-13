@@ -54,7 +54,7 @@ You will run four container images to establish the "Infrastructure":
 
 ### LLM - qwen3:8b
 
-To enable the _ChatBot_ functionality, access to a **LLM** is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _llama3.1_ **LLM**.
+To enable the _ChatBot_ functionality, access to a **LLM** is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _qwen3:8b_ **LLM**.
 
 1. Start the *Ollama* container:
 
@@ -159,7 +159,7 @@ To start the Oracle AI Database Free:
    podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest
    ```
 
-1. Alter the `vector_memory_size` parameter and create a [new database user](../client/configuration/db_config#database-user):
+1. Alter the `vector_memory_size` parameter and create a [new database user](../client/configuration/databases#database-user):
 
    ```bash
    podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
@@ -221,7 +221,7 @@ To configure the On-Premises **LLM**, navigate to the _Configuration_ screen and
 ![Configure LLM](images/models_edit.png)
 1. Tick the _Enabled_ checkbox, leave all other settings as-is, and _Save_
 ![Enable LLM](images/models_enable_llm.png)
-{{% icon star %}} More information about configuring **LLM**s can be found in the [Model Configuration](../client/configuration/model_config) documentation.
+{{% icon star %}} More information about configuring **LLM**s can be found in the [Model Configuration](../client/configuration/models) documentation.
 
 #### Say "Hello?"
 
@@ -231,7 +231,7 @@ Navigate to the _ChatBot_ screen:
 
 The error about language models will have disappeared, but there are new warnings the database. You'll take care of that in the next steps.
 
-The `Chat model:` will have been pre-set to the only enabled **LLM** (_ollama/llama3.1_) and a dialog box to interact with the **LLM** will be ready for input.
+The `Chat model:` will have been pre-set to the only enabled **LLM** (_ollama/qwen3:8b_) and a dialog box to interact with the **LLM** will be ready for input.
 
 Feel free to play around with the different **LLM** Parameters, hovering over the {{% icon circle-question %}} icons to get more information on what they do.
 
@@ -244,7 +244,7 @@ To configure the On-Premises Embedding Model, navigate back to the _Configuratio
 1. Enable the `mxbai-embed-large` Embedding Model following the same process as you did for the Language Model.
 ![Configure Embedding Model](images/models_enable_embed.png)
 
-{{% icon star %}}  More information about configuring embedding models can be found in the [Model Configuration](../client/configuration/model_config) documentation.
+{{% icon star %}}  More information about configuring embedding models can be found in the [Model Configuration](../client/configuration/models) documentation.
 
 ### Configure the Database
 
@@ -257,7 +257,7 @@ To configure Oracle AI Database Free, navigate to the _Configuration_ screen and
 
 ![Configure Database](../client/configuration/images/database_config.png)
 
-{{% icon star %}} More information about configuring the database can be found in the [Database Configuration](../client/configuration/db_config) documentation.
+{{% icon star %}} More information about configuring the database can be found in the [Database Configuration](../client/configuration/databases) documentation.
 
 ## Split and Embed
 

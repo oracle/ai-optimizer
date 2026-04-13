@@ -56,8 +56,8 @@ The embedding process is initiated by clicking **Populate Vector Store**. The fo
     - **Local**: upload multiple documents from the client machine;
     - **Web**: load a single TXT, PDF, or HTML document from a specified URL;
     - **SQL**: define a query against an Oracle Database to extract text from a VARCHAR2 column and embed it row by row. When using this option, the following parameters must be provided:
-        - **DB Connection**: a connection string, for example:
-        ```CO/Welcome_12345@localhost:1521/FREEPDB1```
+        - **DB Connection**: an EZConnect string with credentials in the format `username/password@host:port/service`, for example:
+        ```DEMO/Welcome_12345@localhost:1521/FREEPDB1```
         - **SQL**: a query that returns a single text column, for example:
         ```select PRODUCT_NAME from PRODUCTS``` The embedded content is prefixed with the column name to provide additional context during similarity search.
 

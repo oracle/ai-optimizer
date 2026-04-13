@@ -34,3 +34,4 @@ flowchart TD
 - **Grade** (`optimizer_vs-grade`) filters retrieved documents for relevance before answer generation.
 - The final LLM node generates the answer using the system prompt and the retrieved (or graded) documents.
 - Unlike NL2SQL, VecSearch does not require a database connection name — it operates entirely through vector search MCP tools.
+- When the selected chat model has fewer than 7 billion parameters, the rephrase and grade nodes are automatically disabled to optimize performance. See [Model Configuration](/client/configuration/models/#automatic-optimization) for details.

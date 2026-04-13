@@ -21,7 +21,7 @@ The {{< full_app_ref >}} provides a streamlined environment where developers and
 
 ## Features
 
-- [Configuring Embedding and Chat Models](client/configuration/model_config)
+- [Configuring Embedding and Chat Models](client/configuration/models)
 - [Splitting and Embedding Documentation](client/tools/split_embed)
 - [Modifying System Prompts (Prompt Engineering)](client/tools/prompt_eng)
 - [Experimenting with **LLM** Parameters](client/chatbot)
@@ -51,7 +51,7 @@ The [Walkthrough](walkthrough) is a great way to familiarize yourself with the *
 
 {{% notice style="code" title="What do I actually need?" icon="circle-info" %}}
 <!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
-The **AI Optimizer** will start and allow interaction with language models without any database or pre-configuration. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database](client/configuration/db_config/) should be configured.
+The **AI Optimizer** will start and allow interaction with language models without any database or pre-configuration. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database](client/configuration/databases/) should be configured.
 {{% /notice %}}
 
 ### Bare-Metal Installation

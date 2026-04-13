@@ -1,6 +1,6 @@
 +++
 title = "🧬 AgentSpec Definitions"
-weight = 50
+weight = 60
 +++
 
 <!--
@@ -27,12 +27,5 @@ The {{< short_app_ref >}} provides three built-in AgentSpec definitions:
 Navigate to the **Configuration** page and select the **AgentSpec** tab.
 
 Each specification is listed with its name and description. Click the **Details** button to view the full serialized JSON definition. This JSON represents the complete AgentSpec that is built from the current sample configuration and can be used as a starting point for custom agent definitions.
-
-## REST API
-
-AgentSpec definitions are also available via the REST API:
-
-- `GET /v1/agentspec/specs` — List all available specifications
-- `GET /v1/agentspec/specs/{name}` — Get a specific specification by name
 
 For more information on the agent architecture and how these specifications are used at runtime, see the [Agents]({{< ref "/agents" >}}) documentation.

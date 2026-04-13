@@ -310,6 +310,3 @@ it should return something like:
 }
 ```
 
-{{% notice style="code" title="Documentation is Hard!" icon="circle-info" %}}
-More information coming soon... 25-June-2025
-{{% /notice %}}

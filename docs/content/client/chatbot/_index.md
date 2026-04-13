@@ -23,7 +23,7 @@ Use the "Clear History" button to reset the "context window" and start a fresh i
 
 ![Language Parameters](images/language_parameters.png#floatleft)
 
-You can select different, enabled models to experiment with.  To enable, disable, or add models, use the [Configuration - Models](../configuration/model_config) page.  Choose a Language Model based on your requirements, which may include:
+You can select different, enabled models to experiment with.  To enable, disable, or add models, use the [Configuration - Models](../configuration/models) page.  Choose a Language Model based on your requirements, which may include:
 
 **Privacy Concerns** - Local, Open-Source models offer more control over your data.
 

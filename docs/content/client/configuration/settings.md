@@ -1,6 +1,6 @@
 +++
 title = '💾 Settings'
-weight = 40
+weight = 10
 +++
 
 <!--

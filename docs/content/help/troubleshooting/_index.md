@@ -48,14 +48,20 @@ Update the database connection string to include a `https_proxy` and `https_prox
   For example:
    
   ```text
-  myadb_high = (
-  description=(
-      address=
-      (protocol=tcps)(port=1522)
-      (https_proxy=<proxy_host>)(https_proxy_port=<proxy_port>)  # <-- Add
-      (host=<adb_host>)
-  )(connect_data=(service_name=s<serviceName>))(security=(ssl_server_dn_match=yes))
-  )```
+  ADB_HIGH =
+  (DESCRIPTION = 
+    (ADDRESS = 
+      (PROTOCOL = tcps)(HOST = <adb_host>)(PORT = 1522)
+      (HTTPS_PROXY = <proxy_host>)(HTTPS_PROXY_PORT = <proxy_port>)  # <-- Add
+    )
+    (CONNECT_DATA = 
+      (SERVICE_NAME = <serviceName>)
+      (SECURITY = 
+        (ssl_server_dn_match=yes)
+      )
+    )
+  )
+  ```
 
 ## Client Fails to Load on Corporate Networks
 
