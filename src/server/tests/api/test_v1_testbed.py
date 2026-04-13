@@ -360,7 +360,9 @@ async def test_generate_testset_distributes_questions(app_client, auth_headers):
         patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
         patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
         patch("server.app.api.v1.endpoints.testbed._process_pdf_file", mock_process),
-        patch("server.app.api.v1.endpoints.testbed._store_generated_testset", new_callable=AsyncMock, return_value="AA"),
+        patch(
+            "server.app.api.v1.endpoints.testbed._store_generated_testset", new_callable=AsyncMock, return_value="AA"
+        ),
         patch("server.app.api.v1.endpoints.testbed.get_testset_qa", new_callable=AsyncMock, return_value=mock_qa_data),
     ):
         resp = await app_client.post(
@@ -395,7 +397,9 @@ async def test_generate_testset_enforces_min_one_per_file(app_client, auth_heade
         patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
         patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
         patch("server.app.api.v1.endpoints.testbed._process_pdf_file", mock_process),
-        patch("server.app.api.v1.endpoints.testbed._store_generated_testset", new_callable=AsyncMock, return_value="AA"),
+        patch(
+            "server.app.api.v1.endpoints.testbed._store_generated_testset", new_callable=AsyncMock, return_value="AA"
+        ),
         patch("server.app.api.v1.endpoints.testbed.get_testset_qa", new_callable=AsyncMock, return_value=mock_qa_data),
     ):
         resp = await app_client.post(
