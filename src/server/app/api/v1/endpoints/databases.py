@@ -61,6 +61,12 @@ async def get_database(alias: str, include_sensitive: bool = Query(default=False
 async def create_database(body: DatabaseConfig):
     """Add a new database configuration."""
     async with _settings_lock:
+        # Normalise CORE alias to exact casing so downstream lookups match
+        if body.alias.upper() == "CORE":
+            body.alias = "CORE"
+        core_exists = any(cfg.alias.upper() == "CORE" for cfg in settings.database_configs)
+        if not core_exists and body.alias != "CORE":
+            raise HTTPException(status_code=422, detail="The first database must use the alias 'CORE'")
         for cfg in settings.database_configs:
             if cfg.alias.lower() == body.alias.lower():
                 raise HTTPException(status_code=409, detail=f"Database config already exists: {body.alias}")
@@ -68,7 +74,10 @@ async def create_database(body: DatabaseConfig):
         settings.database_configs.append(body)
         error = None
         try:
-            await test_connection(body)
+            if body.alias == "CORE":
+                await init_core_database(body)
+            else:
+                await test_connection(body)
         except Exception as exc:
             error = str(exc)
         if not await persist_settings():
