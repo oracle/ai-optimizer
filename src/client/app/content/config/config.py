@@ -8,6 +8,7 @@ import logging
 import streamlit as st
 from streamlit import session_state as state
 
+from client.app.content.config.tabs.agentspec import display_agentspec
 from client.app.content.config.tabs.databases import display_databases
 from client.app.content.config.tabs.mcp import display_mcp
 from client.app.content.config.tabs.models import display_models
@@ -19,7 +20,7 @@ LOGGER = logging.getLogger("content.config.config")
 
 def main() -> None:
     """Streamlit GUI"""
-    tab_labels = ["💾 Settings", "🗄️ Databases", "🤖 Models", "☁️ OCI", "🔗 MCP"]
+    tab_labels = ["💾 Settings", "🗄️ Databases", "🤖 Models", "☁️ OCI", "🔗 MCP", "🧬 AgentSpec"]
     default_tab = tab_labels[0]
     if "config_active_tab" not in state or state.config_active_tab not in tab_labels:
         state.config_active_tab = default_tab
@@ -49,6 +50,8 @@ def main() -> None:
             display_oci()
         with tabs[4]:
             display_mcp()
+        with tabs[5]:
+            display_agentspec()
 
 
 if __name__ == "__main__":

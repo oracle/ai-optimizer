@@ -79,7 +79,7 @@ Available specs:
 |------|------|-------------|
 | `llm_only` | Agent | LLM-only conversational agent (no tools) |
 | `nl2sql_agent` | Agent | NL2SQL agent with dynamic MCP tool discovery |
-| `rag` | Flow | RAG pipeline: rephrase → retrieve → grade → answer |
+| `vecsearch_flow` | Flow | RAG pipeline: rephrase → retrieve → grade → answer |
 
 ### Loading a Spec in Your Application
 

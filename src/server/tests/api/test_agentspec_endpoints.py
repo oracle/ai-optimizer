@@ -27,12 +27,12 @@ class TestListSpecs:
 
     @pytest.mark.anyio
     async def test_contains_expected_spec_names(self, app_client, auth_headers):
-        """Response contains llm_only, nl2sql_agent, and rag specs."""
+        """Response contains llm_only, nl2sql_agent, and vecsearch_flow specs."""
         response = await app_client.get("/v1/agentspec/specs", headers=auth_headers)
         names = [s["name"] for s in response.json()]
         assert "llm_only" in names
         assert "nl2sql_agent" in names
-        assert "rag" in names
+        assert "vecsearch_flow" in names
 
     @pytest.mark.anyio
     async def test_each_spec_serializes_without_error(self, app_client, auth_headers):
@@ -71,7 +71,7 @@ class TestGetSpecByName:
         assert response.status_code == 404
 
     @pytest.mark.anyio
-    @pytest.mark.parametrize("name", ["llm_only", "nl2sql_agent", "rag"])
+    @pytest.mark.parametrize("name", ["llm_only", "nl2sql_agent", "vecsearch_flow"])
     async def test_each_individual_spec_serializes_without_error(self, app_client, auth_headers, name):
         """Each spec endpoint must return a valid serialized agentspec, not an error fallback."""
         response = await app_client.get(f"/v1/agentspec/specs/{name}", headers=auth_headers)
