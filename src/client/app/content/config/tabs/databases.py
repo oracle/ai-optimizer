@@ -143,14 +143,20 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
     # Use selected alias in widget keys so fields reset when selection changes
     key_suffix = selected or "new"
 
+    # When adding a new database and CORE doesn't exist, force alias to CORE
+    core_exists = any(a.upper() == "CORE" for a in database_aliases)
+    force_core = is_new and not core_exists
+
     # Configuration Form
     with st.container(border=True):
         if fields_disabled:
             st.info("CORE is the persistence database and cannot be modified while connected.", icon="ℹ️")
+        if force_core:
+            st.info("The first database must be configured as CORE.", icon="ℹ️")
         alias = st.text_input(
             "Alias:",
-            value="" if is_new else db_config.get("alias", ""),
-            disabled=not is_new,
+            value="CORE" if force_core else ("" if is_new else db_config.get("alias", "")),
+            disabled=force_core or not is_new,
             key=f"form_db_alias_{key_suffix}",
         )
         form_data = {

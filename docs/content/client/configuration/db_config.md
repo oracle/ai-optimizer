@@ -24,11 +24,22 @@ To configure the Database from the {{< short_app_ref >}}, navigate to `Configura
 
 ![Database Config](../images/database_config.png)
 
+#### CORE Database
+
+The first database configured must use the alias **CORE**. The CORE database is used for application persistence (settings, test sets, evaluations). When no database has been configured, the alias field will automatically be set to `CORE` and cannot be changed.
+
+#### Additional Databases
+
+Once the CORE database is configured, additional databases can be added with custom aliases by selecting **Add New...** from the database dropdown. These databases can be used for Vector Search and NL2SQL operations.
+
+#### Input Fields
+
 Provide the following input:
 
-- **DB Username**: The pre-created [database username](#database-user) where the embeddings will be stored
-- **DB Password**: The password for the **DB Username**
-- **Database Connect String**: The full connection string or [TNS Alias](#using-a-wallettns_admin-directory) for the Database. 
+- **Alias**: A unique identifier for the database configuration (automatically set to `CORE` for the first database)
+- **Username**: The pre-created [database username](#database-user) where the embeddings will be stored
+- **Password**: The password for the **Username**
+- **DSN (Connect String)**: The full connection string or [TNS Alias](#using-a-wallettns_admin-directory) for the Database. 
     This is normally in the form of 
     `
     (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=<hostname>)(PORT=<port>))(CONNECT_DATA=(SERVICE_NAME=<serviceName>)))
@@ -39,7 +50,7 @@ Provide the following input:
     `
 - **Wallet Password** (_Optional_): If the connection to the database uses mTLS, provide the wallet password. {{< icon "star" >}}Review [Using a Wallet](#using-a-wallettns_admin-directory) for additional setup instructions.
 
-Once all fields are set, click the `Save` button.
+Once all fields are set, click the `Create` or `Save` button.
 
 ---
 
