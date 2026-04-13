@@ -117,10 +117,11 @@ async def pull_model(provider: str, model_id: str):
         raise HTTPException(status_code=404, detail=f"Model config not found: {provider}/{model_id}")
     if not cfg.api_base:
         raise HTTPException(status_code=400, detail=f"Model {provider}/{model_id} has no API base URL configured")
+    api_base: str = cfg.api_base
 
     async def _stream():
         error_occurred = False
-        async for event in pull_ollama_model(cfg.api_base, model_id):
+        async for event in pull_ollama_model(api_base, model_id):
             if "error" in event:
                 error_occurred = True
             yield json.dumps(event) + "\n"

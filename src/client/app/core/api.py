@@ -216,17 +216,19 @@ def api_post_stream(
 ) -> Generator[dict, None, None]:
     """Streaming POST request to the API server. Yields parsed NDJSON dicts."""
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
-    with httpx.Client(headers=_headers(), timeout=timeout) as client:
-        with client.stream("POST", url, json=json_body) as resp:
-            resp.raise_for_status()
-            for line in resp.iter_lines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    yield json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+    with (
+        httpx.Client(headers=_headers(), timeout=timeout) as client,
+        client.stream("POST", url, json=json_body) as resp,
+    ):
+        resp.raise_for_status()
+        for raw_line in resp.iter_lines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            try:
+                yield json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
 
 
 def api_put(
