@@ -327,6 +327,8 @@ def _setup_testbed_sources() -> list:
                 raise
     if not state.runtime_testbed_db_testsets:
         testset_sources.remove("Database")
+    if state.get("_core_unavailable"):
+        st.warning("CORE database is not configured. Configure it in Settings > Databases.", icon="⚠️")
     return testset_sources
 
 
@@ -609,8 +611,6 @@ def main() -> None:
     testset_sources = _setup_testbed_sources()
 
     st.header("Testbed", divider="red")
-    if state.get("_core_unavailable"):
-        st.warning("CORE database is not configured. Configure it in Settings > Databases.", icon="⚠️")
     st.write(
         """
              Test Large Language and Embedding Configurations by generating or using an existing 'Test Set'.

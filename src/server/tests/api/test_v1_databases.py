@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.app.core.settings import settings
-from server.app.database.schemas import DatabaseConfig, DatabaseSensitive
+from server.app.database.schemas import DatabaseSensitive
 from server.app.embed.schemas import VectorStoreConfig
 from server.tests.conftest import assert_no_sensitive_keys, make_test_database_config
 
