@@ -7,7 +7,7 @@ weight = 20
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker: ignore pydantic fastmcp
+spell-checker: ignore pydantic fastmcp agentspec pyagentspec
 -->
 
 The {{< short_app_ref >}} exposes an [MCP](https://modelcontextprotocol.io/) server built on [FastMCP](https://gofastmcp.com/).  All registered tools are available over the MCP protocol at the `/mcp` endpoint and through the REST API at `/mcp/tools`.
