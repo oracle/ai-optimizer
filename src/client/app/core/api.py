@@ -5,12 +5,14 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore apiserver pypath
 
 import atexit
+import json
 import logging
 import os
 import secrets
 import subprocess
 import sys
 import time
+from collections.abc import Generator
 from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
@@ -204,6 +206,27 @@ def api_post(
         if toast:
             st.toast(toast, icon="✅")
         return resp.json()
+
+
+def api_post_stream(
+    path: str,
+    json_body: dict | None = None,
+    timeout: int = 600,
+    api_prefix: str = "/v1",
+) -> Generator[dict, None, None]:
+    """Streaming POST request to the API server. Yields parsed NDJSON dicts."""
+    url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
+    with httpx.Client(headers=_headers(), timeout=timeout) as client:
+        with client.stream("POST", url, json=json_body) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    continue
 
 
 def api_put(

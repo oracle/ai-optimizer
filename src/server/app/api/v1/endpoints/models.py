@@ -6,15 +6,18 @@ Endpoints for retrieving model configurations.
 """
 # spell-checker:ignore litellm ollama rerank
 
+import json
 from typing import Optional
 
 import litellm
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
 from server.app.models.connectivity import check_single_model
 from server.app.models.litellm_utils import find_model
+from server.app.models.ollama import pull_ollama_model
 from server.app.models.schemas import ModelConfig, ModelSensitive, ModelUpdate, SupportedProviderIds
 
 litellm.suppress_debug_info = True
@@ -98,6 +101,35 @@ async def models_supported(
 ) -> list[SupportedProviderIds]:
     """List supported providers and models from LiteLLM."""
     return _get_supported(model_provider=model_provider, model_type=model_type)
+
+
+# --- Pull endpoint (must be before /{provider}/{model_id:path}) ---
+
+
+@auth.post("/pull/{provider}/{model_id:path}")
+async def pull_model(provider: str, model_id: str):
+    """Pull an Ollama model and stream progress as NDJSON."""
+    if provider.casefold() != "ollama":
+        raise HTTPException(status_code=400, detail="Pull is only supported for Ollama models")
+
+    cfg = _find_model(provider, model_id)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=f"Model config not found: {provider}/{model_id}")
+    if not cfg.api_base:
+        raise HTTPException(status_code=400, detail=f"Model {provider}/{model_id} has no API base URL configured")
+
+    async def _stream():
+        error_occurred = False
+        async for event in pull_ollama_model(cfg.api_base, model_id):
+            if "error" in event:
+                error_occurred = True
+            yield json.dumps(event) + "\n"
+        if not error_occurred:
+            await check_single_model(cfg)
+            await persist_settings()
+            yield json.dumps({"status": "success"}) + "\n"
+
+    return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
 
 @auth.get("/{provider}/{model_id:path}", response_model=ModelConfig, response_model_exclude_unset=True)
