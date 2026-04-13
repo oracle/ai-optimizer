@@ -998,7 +998,7 @@ class TestRenderModelRows:
         ]
         state = make_model_state(model_configs=configs)
 
-        cols = [MagicMock(), MagicMock(), MagicMock(), MagicMock()]
+        cols = [MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()]
         mock_st.columns.side_effect = lambda widths, **kw: cols
         mock_st.button.return_value = False
 
@@ -1020,7 +1020,7 @@ class TestRenderModelRows:
         ]
         state = make_model_state(model_configs=configs)
 
-        cols = [MagicMock(), MagicMock(), MagicMock(), MagicMock()]
+        cols = [MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()]
         mock_st.columns.side_effect = lambda widths, **kw: cols
         mock_st.button.return_value = False
 
