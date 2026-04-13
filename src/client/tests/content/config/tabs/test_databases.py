@@ -328,7 +328,13 @@ class TestNoChangeDetection:
         from client.app.content.config.tabs.databases import _handle_form_submit
 
         state = make_state(["MYDB"], "MYDB")
-        db_config = {"username": "user", "password": "pass", "dsn": "dsn", "wallet_password": None}
+        db_config = {
+            "username": "user",
+            "password": "pass",
+            "dsn": "dsn",
+            "wallet_password": None,
+            "usable": True,
+        }
         form_data = {"username": "user", "password": "pass", "dsn": "dsn", "wallet_password": None}
 
         with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", state):
@@ -336,6 +342,32 @@ class TestNoChangeDetection:
 
         mock_st.toast.assert_called_once()
         assert "No changes" in mock_st.toast.call_args[0][0]
+
+    def test_no_changes_but_disconnected_proceeds_to_api(self, make_state, mock_st):
+        """Unchanged form still calls api_put when db is not usable (disconnected retry)."""
+        from client.app.content.config.tabs.databases import _handle_form_submit
+
+        state = make_state(["MYDB"], "MYDB")
+        db_config = {
+            "username": "user",
+            "password": "pass",
+            "dsn": "dsn",
+            "wallet_password": None,
+            "usable": False,
+        }
+        form_data = {"username": "user", "password": "pass", "dsn": "dsn", "wallet_password": None}
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers"),
+            patch(f"{MODULE}.api_put", return_value={"alias": "MYDB", "usable": True}) as mock_put,
+        ):
+            _handle_form_submit("MYDB", False, "MYDB", form_data, db_config)
+
+        mock_put.assert_called_once()
+        for call in mock_st.toast.call_args_list:
+            assert "No changes" not in call.args[0]
 
     def test_changes_proceed_to_api(self, make_state, mock_st):
         """When form data differs from db_config, api_put is called."""
