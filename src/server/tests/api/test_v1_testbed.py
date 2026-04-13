@@ -329,6 +329,92 @@ def test_qa_rows_not_double_encoded():
 
 
 # ---------------------------------------------------------------------------
+# POST /testbed/testset_generate — multi-file question distribution
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_generate_testset_no_files_returns_422(app_client, auth_headers):
+    """FastAPI rejects the request when no files are attached."""
+    resp = await app_client.post(
+        "/v1/testbed/testset_generate",
+        data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "5"},
+        files=[],
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_generate_testset_distributes_questions(app_client, auth_headers):
+    """Questions are distributed across files, not duplicated per file."""
+    mock_process = AsyncMock()
+    mock_qa_data = {"qa_data": [{"question": "Q1"}, {"question": "Q2"}, {"question": "Q3"}]}
+
+    with (
+        patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
+        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
+        patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
+        patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
+        patch("server.app.api.v1.endpoints.testbed._process_pdf_file", mock_process),
+        patch("server.app.api.v1.endpoints.testbed._store_generated_testset", new_callable=AsyncMock, return_value="AA"),
+        patch("server.app.api.v1.endpoints.testbed.get_testset_qa", new_callable=AsyncMock, return_value=mock_qa_data),
+    ):
+        resp = await app_client.post(
+            "/v1/testbed/testset_generate",
+            data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "7"},
+            files=[
+                ("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
+                ("files", ("b.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
+                ("files", ("c.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
+            ],
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    assert mock_process.await_count == 3
+    # 7 questions across 3 files: 3, 2, 2
+    q_per_file = [call.args[5] for call in mock_process.call_args_list]
+    assert q_per_file == [3, 2, 2]
+    assert sum(q_per_file) == 7
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_generate_testset_enforces_min_one_per_file(app_client, auth_headers):
+    """When questions < files, each file still gets at least 1 question."""
+    mock_process = AsyncMock()
+    mock_qa_data = {"qa_data": [{"question": "Q1"}, {"question": "Q2"}, {"question": "Q3"}]}
+
+    with (
+        patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
+        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
+        patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
+        patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
+        patch("server.app.api.v1.endpoints.testbed._process_pdf_file", mock_process),
+        patch("server.app.api.v1.endpoints.testbed._store_generated_testset", new_callable=AsyncMock, return_value="AA"),
+        patch("server.app.api.v1.endpoints.testbed.get_testset_qa", new_callable=AsyncMock, return_value=mock_qa_data),
+    ):
+        resp = await app_client.post(
+            "/v1/testbed/testset_generate",
+            data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "1"},
+            files=[
+                ("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
+                ("files", ("b.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
+                ("files", ("c.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
+            ],
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    assert mock_process.await_count == 3
+    q_per_file = [call.args[5] for call in mock_process.call_args_list]
+    assert q_per_file == [1, 1, 1]
+
+
+# ---------------------------------------------------------------------------
 # Filename sanitisation — canonical tests live in tests/core/test_file_utils.py
 # ---------------------------------------------------------------------------
 

@@ -910,7 +910,7 @@ class TestRenderTestsetGenerationUi:
         cols[0].number_input.return_value = 5
         cols[1].selectbox.return_value = "openai/m1"
         cols[2].selectbox.return_value = "openai/e1"
-        mock_st.file_uploader.return_value = None
+        mock_st.file_uploader.return_value = []
 
         state = _make_state({"runtime_testbed": {"uploader_key": 1}})
         with (
@@ -925,6 +925,84 @@ class TestRenderTestsetGenerationUi:
         assert "embed_model" in result
         assert "questions" in result
         assert "upload_file" in result
+        assert result["upload_file"] == []
+
+    def test_accepts_multiple_files(self):
+        """File uploader is configured to accept multiple PDF files."""
+        from client.app.content.testbed import _render_testset_generation_ui
+
+        mock_st = MagicMock()
+        cols = [MagicMock() for _ in range(3)]
+        mock_st.columns.return_value = cols
+        cols[0].number_input.return_value = 5
+        cols[1].selectbox.return_value = "openai/m1"
+        cols[2].selectbox.return_value = "openai/e1"
+        mock_st.file_uploader.return_value = [MagicMock()]
+
+        state = _make_state({"runtime_testbed": {"uploader_key": 1}})
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.selectbox_index", return_value=0),
+            patch(f"{MODULE}._model_identity_to_key", return_value=None),
+            patch(f"{MODULE}._sync_testbed_model"),
+        ):
+            result = _render_testset_generation_ui(["openai/m1"], ["openai/e1"])
+        mock_st.file_uploader.assert_called_once()
+        call_kwargs = mock_st.file_uploader.call_args
+        assert call_kwargs[1]["accept_multiple_files"] is True
+        assert call_kwargs[1]["type"] == ["pdf"]
+        assert len(result["upload_file"]) == 1
+
+    def test_min_questions_scales_with_file_count(self):
+        """Number input min_value equals the number of uploaded files."""
+        from client.app.content.testbed import _render_testset_generation_ui
+
+        mock_st = MagicMock()
+        cols = [MagicMock() for _ in range(3)]
+        mock_st.columns.return_value = cols
+        cols[0].number_input.return_value = 5
+        cols[1].selectbox.return_value = "openai/m1"
+        cols[2].selectbox.return_value = "openai/e1"
+        mock_st.file_uploader.return_value = [MagicMock() for _ in range(5)]
+
+        state = _make_state({"runtime_testbed": {"uploader_key": 1}})
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.selectbox_index", return_value=0),
+            patch(f"{MODULE}._model_identity_to_key", return_value=None),
+            patch(f"{MODULE}._sync_testbed_model"),
+        ):
+            _render_testset_generation_ui(["openai/m1"], ["openai/e1"])
+        call_kwargs = cols[0].number_input.call_args[1]
+        assert call_kwargs["min_value"] == 5
+        assert call_kwargs["max_value"] == 100
+
+    def test_max_questions_scales_when_files_exceed_100(self):
+        """max_value rises to match file count when more than 100 files uploaded."""
+        from client.app.content.testbed import _render_testset_generation_ui
+
+        mock_st = MagicMock()
+        cols = [MagicMock() for _ in range(3)]
+        mock_st.columns.return_value = cols
+        cols[0].number_input.return_value = 101
+        cols[1].selectbox.return_value = "openai/m1"
+        cols[2].selectbox.return_value = "openai/e1"
+        mock_st.file_uploader.return_value = [MagicMock() for _ in range(101)]
+
+        state = _make_state({"runtime_testbed": {"uploader_key": 1}})
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.selectbox_index", return_value=0),
+            patch(f"{MODULE}._model_identity_to_key", return_value=None),
+            patch(f"{MODULE}._sync_testbed_model"),
+        ):
+            _render_testset_generation_ui(["openai/m1"], ["openai/e1"])
+        call_kwargs = cols[0].number_input.call_args[1]
+        assert call_kwargs["min_value"] == 101
+        assert call_kwargs["max_value"] == 101
 
 
 # ---------------------------------------------------------------------------
@@ -1399,7 +1477,7 @@ class TestMain:
         """Calls _render_testset_generation_ui when toggle is on."""
         mock_st = MagicMock()
         state = _make_state({"runtime_generate_test": True})
-        mock_gen = MagicMock(return_value={"ll_model": "m", "embed_model": "e", "questions": 2, "upload_file": None})
+        mock_gen = MagicMock(return_value={"ll_model": "m", "embed_model": "e", "questions": 2, "upload_file": []})
         self._call(state, mock_st, **{f"{MODULE}._render_testset_generation_ui": mock_gen})
         mock_gen.assert_called_once()
 

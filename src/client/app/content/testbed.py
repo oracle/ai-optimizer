@@ -325,21 +325,23 @@ def _render_testset_generation_ui(available_ll_models: list, available_embed_mod
     """Render test set generation UI and return parameters."""
     test_upload_file = st.file_uploader(
         (
-            "Select a local PDF file to build a temporary Knowledge Base. "
+            "Select one or more local PDF files to build a temporary Knowledge Base. "
             "It will be used to generate a synthetic Q&A Test Set."
         ),
         key=f"runtime_uploader_{state.runtime_testbed['uploader_key']}",
-        accept_multiple_files=False,
+        accept_multiple_files=True,
         type=["pdf"],
     )
 
     col_left, col_center, col_right = st.columns([0.2, 0.35, 0.35])
+    min_questions = max(1, len(test_upload_file))
+    max_questions = max(100, min_questions)
     test_gen_questions = col_left.number_input(
         "Number of Q&A:",
         key="runtime_test_gen_questions",
-        min_value=1,
-        max_value=100,
-        value=2,
+        min_value=min_questions,
+        max_value=max_questions,
+        value=max(min_questions, 2),
     )
 
     testbed_settings = state["settings"]["client_settings"].get("testbed", {})
@@ -625,7 +627,7 @@ def main() -> None:
             "embed_model": gen_params["embed_model"],
             "questions": gen_params["questions"],
         }
-        button_load_disabled = gen_params["upload_file"] is None
+        button_load_disabled = len(gen_params["upload_file"]) == 0
 
     # Disable button if QA already loaded
     button_load_disabled = button_load_disabled or "runtime_testbed_qa" in state

@@ -26,7 +26,7 @@ From the Testbed page, switch to **Generate Q&A Test Set** and upload one or mor
 
 You can select any of the available models for the Q&A generation process. In many scenarios, it is useful to rely on a high-capability, higher-cost model to generate a high-quality evaluation dataset, while deploying a more cost-effective model in production.
 
-This phase not only generates the number of Q&A you need, but it will analyze the document provided extracting a set of topics that could help to classify the questions generated and can help to find the area to be improved.
+This phase not only generates the number of Q&A you need, but it will analyze the documents provided extracting a set of topics that could help to classify the questions generated and can help to find the area to be improved.
 
 Once the generation process is complete (which may take some time), the generated dataset is displayed:
 
