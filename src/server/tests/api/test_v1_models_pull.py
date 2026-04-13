@@ -98,7 +98,9 @@ async def test_pull_model_calls_check_and_persist(app_client, auth_headers):
     with (
         patch("server.app.api.v1.endpoints.models.pull_ollama_model", side_effect=_fake_pull_success),
         patch("server.app.api.v1.endpoints.models.check_single_model", new_callable=AsyncMock) as mock_check,
-        patch("server.app.api.v1.endpoints.models.persist_settings", new_callable=AsyncMock, return_value=True) as mock_persist,
+        patch(
+            "server.app.api.v1.endpoints.models.persist_settings", new_callable=AsyncMock, return_value=True
+        ) as mock_persist,
     ):
         resp = await app_client.post("/v1/models/pull/ollama/qwen3:8b", headers=auth_headers)
         # Consume the stream to trigger the post-pull logic
