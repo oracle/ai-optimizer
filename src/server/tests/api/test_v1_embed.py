@@ -229,6 +229,51 @@ async def test_sql_store(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_sql_store_with_db_alias(app_client, auth_headers, mock_client_db):
+    """Successfully stores SQL query results using an explicit db_alias."""
+    _, _, mock_cfg = mock_client_db
+    with (
+        patch(
+            "server.app.api.v1.endpoints.embed.get_database_settings",
+            return_value=mock_cfg,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.run_sql_query",
+            new_callable=AsyncMock,
+            return_value="/tmp/test/result.csv",
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.get_temp_directory",
+            return_value=MagicMock(),
+        ),
+    ):
+        resp = await app_client.post(
+            "/v1/embed/sql/store",
+            json={"query": "SELECT col FROM my_table", "db_alias": "TESTDB"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    assert "result.csv" in resp.json()[0]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_sql_store_invalid_db_alias(app_client, auth_headers):
+    """Returns 503 when db_alias refers to an unavailable database."""
+    with patch(
+        "server.app.api.v1.endpoints.embed.get_database_settings",
+        return_value=None,
+    ):
+        resp = await app_client.post(
+            "/v1/embed/sql/store",
+            json={"query": "SELECT col FROM my_table", "db_alias": "NONEXISTENT"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_sql_store_failure(app_client, auth_headers):
     """Returns 400 when SQL query fails."""
     with (

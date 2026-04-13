@@ -141,17 +141,24 @@ class TestFileSourceData:
         assert data.is_valid() is False
 
     def test_is_valid_sql_with_query(self):
-        """SQL source with a non-empty query is valid."""
+        """SQL source with a non-empty query and database alias is valid."""
         from client.app.content.tools.tabs.split_embed import FileSourceData
 
-        data = FileSourceData(file_source="SQL", sql_query="SELECT * FROM docs")
+        data = FileSourceData(file_source="SQL", sql_query="SELECT * FROM docs", sql_db_alias="CORE")
         assert data.is_valid() is True
 
     def test_is_valid_sql_empty_query(self):
         """SQL source with a whitespace-only query is invalid."""
         from client.app.content.tools.tabs.split_embed import FileSourceData
 
-        data = FileSourceData(file_source="SQL", sql_query="   ")
+        data = FileSourceData(file_source="SQL", sql_query="   ", sql_db_alias="CORE")
+        assert data.is_valid() is False
+
+    def test_is_valid_sql_no_db_alias(self):
+        """SQL source with a valid query but no database alias is invalid."""
+        from client.app.content.tools.tabs.split_embed import FileSourceData
+
+        data = FileSourceData(file_source="SQL", sql_query="SELECT * FROM docs")
         assert data.is_valid() is False
 
     def test_is_valid_unknown_source(self):

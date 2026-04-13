@@ -30,8 +30,9 @@ from server.app.api.v1.schemas.embed import (
     VectorStoreRefreshStatus,
 )
 from server.app.core.file_utils import get_temp_directory, safe_filename
-from server.app.core.settings import resolve_client
+from server.app.core.settings import resolve_client, settings
 from server.app.database.config import get_client_db_config as _resolve_db_config
+from server.app.database.config import get_database_settings
 from server.app.database.registry import discover_vector_stores, drop_vector_store
 from server.app.database.sql import execute_sql
 from server.app.embed.document import load_and_split_documents
@@ -319,8 +320,13 @@ async def store_sql_file(
     client: str = Header(default="server"),
 ) -> JSONResponse:
     """Store contents from a SQL query result as a file for embedding."""
-    LOGGER.debug("Received store_sql_file - query: %s", request.query)
-    db_config, _ = _get_client_db_config(client)
+    LOGGER.debug("Received store_sql_file - query: %s, db_alias: %s", request.query, request.db_alias)
+    if request.db_alias:
+        db_config = get_database_settings(settings.database_configs, request.db_alias)
+        if db_config is None or not db_config.pool or not db_config.usable:
+            raise HTTPException(status_code=503, detail=f"Database is not available: {request.db_alias}")
+    else:
+        db_config, _ = _get_client_db_config(client)
     temp_directory = get_temp_directory(client, "embedding")
 
     try:

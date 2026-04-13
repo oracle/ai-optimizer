@@ -108,6 +108,7 @@ class FileSourceData:
     oci_bucket: Optional[str] = None
     oci_files_selected: Optional[pd.DataFrame] = None
     sql_query: Optional[str] = None
+    sql_db_alias: Optional[str] = None
 
     def is_valid(self) -> bool:
         """Check if the current file source configuration is valid."""
@@ -116,7 +117,7 @@ class FileSourceData:
         if self.file_source == "Web":
             return bool(self.web_url and _is_url_accessible(self.web_url)[0])
         if self.file_source == "SQL":
-            return bool(self.sql_query and self.sql_query.strip())
+            return bool(self.sql_query and self.sql_query.strip() and self.sql_db_alias)
         if self.file_source == "OCI":
             return bool(self.oci_files_selected is not None and self.oci_files_selected["Process"].sum() > 0)
         return False
@@ -126,7 +127,7 @@ class FileSourceData:
         help_map = {
             "Local": "This button is disabled if no local files have been provided.",
             "Web": "This button is disabled if the URL was unable to be validated. Please check the URL.",
-            "SQL": "This button is disabled if no SQL query was provided.",
+            "SQL": "This button is disabled if no SQL query was provided or no database is selected.",
             "OCI": "This button is disabled if there are no documents from the source bucket selected for processing.",
         }
         return help_map.get(self.file_source or "", "")
@@ -334,10 +335,22 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict | None) -> FileS
     ######################################
     if data.file_source == "SQL":
         st.subheader("SQL query", divider=False)
+        db_lookup = helpers.state_configs_lookup("database_configs", "alias")
+        usable_aliases = [alias for alias, cfg in db_lookup.items() if cfg.get("usable")]
+        current_alias = state["settings"]["client_settings"].get("database", {}).get("alias")
+        default_index = usable_aliases.index(current_alias) if current_alias in usable_aliases else None
+        data.sql_db_alias = st.selectbox(
+            "Database:",
+            usable_aliases,
+            index=default_index,
+            key="runtime_sql_db_alias",
+            placeholder="Select database...",
+            help="Select the database to execute the SQL query against.",
+        )
         data.sql_query = st.text_input(
             "SQL:",
             key="runtime_sql_query",
-            help="SQL query returning text data. Executed against the configured database.",
+            help="SQL query returning text data.",
         )
         if data.sql_query and not data.sql_query.strip():
             st.error("Please enter a valid SQL query.")
@@ -584,7 +597,11 @@ def _process_populate_request(embed_config: dict, source_data: FileSourceData, r
     elif source_data.file_source == "Web":
         api_post("embed/web/store", json=[source_data.web_url], extra_headers=client_header)
     elif source_data.file_source == "SQL":
-        api_post("embed/sql/store", json={"query": source_data.sql_query}, extra_headers=client_header)
+        api_post(
+            "embed/sql/store",
+            json={"query": source_data.sql_query, "db_alias": source_data.sql_db_alias},
+            extra_headers=client_header,
+        )
     else:  # OCI
         oci_selected = source_data.oci_files_selected
         if oci_selected is None:
