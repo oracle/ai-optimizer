@@ -74,7 +74,7 @@ def _build_nl2sql_agent() -> dict:
     )
 
 
-def _build_rag() -> dict:
+def _build_vecsearch_flow() -> dict:
     return _serialize(
         build_vecsearch_flow(_SAMPLE_CLIENT_SETTINGS, _SAMPLE_SERVER_URL, _SAMPLE_API_KEY, _SAMPLE_PROMPT)
     )
@@ -83,7 +83,7 @@ def _build_rag() -> dict:
 _SPEC_BUILDERS = {
     "llm_only": ("LLM-only conversational agent (no tools)", _build_llm_only),
     "nl2sql_agent": ("NL2SQL agent with dynamic MCP tool discovery", _build_nl2sql_agent),
-    "rag": ("RAG pipeline: rephrase → retrieve → grade → answer", _build_rag),
+    "vecsearch_flow": ("RAG pipeline: rephrase → retrieve → grade → answer", _build_vecsearch_flow),
 }
 
 

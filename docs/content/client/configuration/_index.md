@@ -50,3 +50,9 @@ The {{< short_app_ref >}} now exposes an MCP Server. On server startup, an MCP e
 The {{< short_app_ref >}} natively supports the **SQLcl MCP Server** for Natural Language to SQL (NL2SQL) capabilities. When correctly configured, the SQLcl MCP server is automatically registered at startup.
 
 For more information on MCP settings, please read about [MCP](mcp/).
+
+## 🧬 AgentSpec
+
+The {{< short_app_ref >}} provides portable AgentSpec definitions that describe agent pipelines as serializable JSON. These definitions can be inspected, customized, and loaded into any compatible runtime.
+
+For more information on viewing AgentSpec definitions, please read about [AgentSpec](agentspec/).
