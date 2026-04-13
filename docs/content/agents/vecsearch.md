@@ -4,7 +4,7 @@ date: 2026-03-07
 draft: false
 ---
 
-The VecSearch flow implements a Retrieval-Augmented Generation (RAG) pipeline with conditional nodes for query rephrasing, store discovery, retrieval, and document grading.
+The VecSearch flow implements a Retrieval-Augmented Generation (RAG) pipeline with conditional nodes for query rephrasing, store discovery, retrieval, and document grading. It is exposed through the AgentSpec REST API under the name `rag`.
 
 ```mermaid
 flowchart TD
