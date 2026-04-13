@@ -127,8 +127,10 @@ async def pull_model(provider: str, model_id: str):
             yield json.dumps(event) + "\n"
         if not error_occurred:
             await check_single_model(cfg)
-            await persist_settings()
-            yield json.dumps({"status": "success"}) + "\n"
+            if not await persist_settings():
+                yield json.dumps({"error": _PERSIST_FAIL}) + "\n"
+            else:
+                yield json.dumps({"status": "success"}) + "\n"
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
 

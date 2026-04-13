@@ -110,6 +110,27 @@ async def test_pull_model_calls_check_and_persist(app_client, auth_headers):
     mock_persist.assert_called_once()
 
 
+# --- Persist failure ---
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_pull_model_persist_failure_emits_error(app_client, auth_headers):
+    """When persist_settings returns False, an error event is emitted instead of success."""
+    with (
+        patch("server.app.api.v1.endpoints.models.pull_ollama_model", side_effect=_fake_pull_success),
+        patch("server.app.api.v1.endpoints.models.check_single_model", new_callable=AsyncMock),
+        patch("server.app.api.v1.endpoints.models.persist_settings", new_callable=AsyncMock, return_value=False),
+    ):
+        resp = await app_client.post("/v1/models/pull/ollama/qwen3:8b", headers=auth_headers)
+
+    events = await _collect_ndjson(resp)
+    statuses = [e.get("status") for e in events]
+    assert "success" not in statuses
+    assert any("error" in e for e in events)
+    assert any("persist" in e.get("error", "").lower() for e in events if "error" in e)
+
+
 # --- Error from Ollama ---
 
 
