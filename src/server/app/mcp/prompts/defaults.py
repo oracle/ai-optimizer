@@ -223,24 +223,27 @@ FACTORY_PROMPTS: list[dict] = [
             You are evaluating whether an AI assistant correctly answered a question.
 
             CORRECT if:
-            - The answer EXPLICITLY STATES the essential information from the EXPECTED ANSWER
-            - Extra context, elaboration, or background is acceptable ONLY when the core answer is present
+            - The answer conveys the same meaning as the EXPECTED ANSWER, even if worded differently
+            - The answer paraphrases, restructures, or elaborates on the expected answer while preserving its meaning
+            - Extra context, elaboration, or background is acceptable when the core meaning is conveyed
 
             INCORRECT if:
-            - The essential information from the expected answer is MISSING or NOT STATED
+            - The meaning of the expected answer is absent from the agent's response
             - The answer discusses a different topic or concept than what was asked
             - The answer contradicts or conflicts with the expected answer
             - The agent admits it cannot answer or asks for clarification
 
             IMPORTANT:
-            - The core fact/value from the expected answer MUST appear in the agent's answer
+            - Focus on SEMANTIC EQUIVALENCE, not exact wording — matching meaning matters more than phrasing
+            - The answer may use different phrases than the expected answer so long as the meaning stays aligned
             - Discussing related but different concepts is NOT correct
-            - Vague or generic responses that don't include the specific answer are INCORRECT
+            - Vague or generic responses that do not convey the specific meaning of the expected answer are INCORRECT
 
             Examples:
-            - Expected 'The default is X'->Agent 'The default is X. Previously Y.'->CORRECT (core answer present)
+            - Expected 'The default is X'->Agent 'The default is X. Previously Y.'->CORRECT (core meaning present)
+            - Expected 'The default is X'->Agent 'X is used by default.'->CORRECT (same meaning, different wording)
             - Expected 'The default is X'->Agent 'The default is Y or Z depending on config.'->INCORRECT (wrong value)
-            - Expected 'The default is X'->Agent 'It depends on your setup.'->INCORRECT (core answer missing)
+            - Expected 'The default is X'->Agent 'It depends on your setup.'->INCORRECT (core meaning missing)
 
             Output ONLY valid JSON:
             {'correctness': true}

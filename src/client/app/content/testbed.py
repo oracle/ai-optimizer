@@ -402,9 +402,26 @@ def _render_existing_testset_ui(testset_sources: list) -> tuple[Optional[str], s
     else:
         endpoint = "testbed/testset_qa"
         testset_list = [f"{item['name']} -- Created: {item['created']}" for item in state.runtime_testbed_db_testsets]
+        current_db_testset = state.get("runtime_db_testset")
+        if current_db_testset not in testset_list:
+            testset_id = state.runtime_testbed.get("testset_id")
+            if testset_id is not None:
+                restored_label = next(
+                    (
+                        f"{item['name']} -- Created: {item['created']}"
+                        for item in state.runtime_testbed_db_testsets
+                        if item.get("tid") == testset_id
+                    ),
+                    None,
+                )
+                if restored_label:
+                    state.runtime_db_testset = restored_label
+                    current_db_testset = restored_label
+        select_index = selectbox_index(testset_list, current_db_testset, default=0)
         db_testset = st.selectbox(
             "Test Set:",
             options=testset_list,
+            index=select_index,
             key="runtime_db_testset",
             on_change=_reset_testset,
         )
