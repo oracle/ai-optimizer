@@ -234,7 +234,8 @@ FACTORY_PROMPTS: list[dict] = [
             - The agent admits it cannot answer or asks for clarification
 
             IMPORTANT:
-            - Focus on SEMANTIC EQUIVALENCE, not exact wording — the answer does not need to use the same phrases as the expected answer
+            - Focus on SEMANTIC EQUIVALENCE, not exact wording — matching meaning matters more than phrasing
+            - The answer may use different phrases than the expected answer so long as the meaning stays aligned
             - Discussing related but different concepts is NOT correct
             - Vague or generic responses that do not convey the specific meaning of the expected answer are INCORRECT
 
