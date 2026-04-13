@@ -15,23 +15,29 @@ import pytest
 
 from server.app.mcp.tools import registry
 
+_PACKAGE = registry._PACKAGE
+
+
+def _make_module(name: str, **attrs: object) -> types.ModuleType:
+    """Create a ModuleType and inject attributes via sys.modules-style assignment."""
+    mod = types.ModuleType(name)
+    for key, val in attrs.items():
+        object.__setattr__(mod, key, val)
+    return mod
+
 
 def test_register_mcp_tools_discovers_all(monkeypatch: pytest.MonkeyPatch) -> None:
     """register_mcp_tools should auto-discover and call every register_* function."""
     called: list[str] = []
 
     # Build fake modules with register_* callables.
-    mod_alpha = types.ModuleType("alpha")
-    mod_alpha.register_alpha_tool = lambda: called.append("alpha")
-
-    mod_beta = types.ModuleType("beta")
-    mod_beta.register_beta_tool = lambda: called.append("beta")
+    mod_alpha = _make_module("alpha", register_alpha_tool=lambda: called.append("alpha"))
+    mod_beta = _make_module("beta", register_beta_tool=lambda: called.append("beta"))
 
     # A module with no register_* should be imported but contribute nothing.
-    mod_empty = types.ModuleType("empty")
-    mod_empty.helper = lambda: None  # not a register_* name
+    mod_empty = _make_module("empty", helper=lambda: None)
 
-    fake_modules = {
+    fake_modules: dict[str, types.ModuleType] = {
         "alpha": mod_alpha,
         "beta": mod_beta,
         "empty": mod_empty,
@@ -43,39 +49,39 @@ def test_register_mcp_tools_discovers_all(monkeypatch: pytest.MonkeyPatch) -> No
         types.SimpleNamespace(name=name) for name in fake_modules
     ]
 
-    package = types.ModuleType(registry.__package__)
-    package.__path__ = ["/fake"]
+    package = _make_module(_PACKAGE)
+    package.__path__ = ["/fake"]  # type: ignore[attr-defined]
 
-    monkeypatch.setattr(registry, "LOGGER", MagicMock())
+    mock_logger = MagicMock()
+    monkeypatch.setattr(registry, "LOGGER", mock_logger)
 
     with (
         patch.object(registry.importlib, "import_module") as mock_import,
         patch.object(registry.pkgutil, "iter_modules", return_value=fake_module_infos),
     ):
         mock_import.side_effect = lambda name: (
-            package if name == registry.__package__ else fake_modules[name.rsplit(".", 1)[-1]]
+            package if name == _PACKAGE else fake_modules[name.rsplit(".", 1)[-1]]
         )
 
         registry.register_mcp_tools()
 
     assert sorted(called) == ["alpha", "beta"]
-    registry.LOGGER.info.assert_called_once_with("Registered %d MCP tool(s)", 2)
+    mock_logger.info.assert_called_once_with("Registered %d MCP tool(s)", 2)
 
 
 def test_register_mcp_tools_skips_reserved_modules(monkeypatch: pytest.MonkeyPatch) -> None:
     """Modules named registry, schemas, or __init__ must be skipped."""
-    called: list[str] = []
-
     fake_module_infos = [
         types.SimpleNamespace(name="registry"),
         types.SimpleNamespace(name="schemas"),
         types.SimpleNamespace(name="__init__"),
     ]
 
-    package = types.ModuleType(registry.__package__)
-    package.__path__ = ["/fake"]
+    package = _make_module(_PACKAGE)
+    package.__path__ = ["/fake"]  # type: ignore[attr-defined]
 
-    monkeypatch.setattr(registry, "LOGGER", MagicMock())
+    mock_logger = MagicMock()
+    monkeypatch.setattr(registry, "LOGGER", mock_logger)
 
     with (
         patch.object(registry.importlib, "import_module", return_value=package) as mock_import,
@@ -84,5 +90,5 @@ def test_register_mcp_tools_skips_reserved_modules(monkeypatch: pytest.MonkeyPat
         registry.register_mcp_tools()
 
     # import_module should only be called once for the package itself.
-    mock_import.assert_called_once_with(registry.__package__)
-    registry.LOGGER.info.assert_called_once_with("Registered %d MCP tool(s)", 0)
+    mock_import.assert_called_once_with(_PACKAGE)
+    mock_logger.info.assert_called_once_with("Registered %d MCP tool(s)", 0)
