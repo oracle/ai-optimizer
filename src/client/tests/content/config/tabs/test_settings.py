@@ -287,6 +287,51 @@ class TestCompareKeyedConfigs:
 
         assert "model_configs.gpt4.openai" in diffs["Missing in Current"]
 
+    def test_tolerates_missing_alias_in_uploaded(self):
+        """Legacy/hand-edited entries missing the identity field bucket as unkeyed, no crash."""
+        from client.app.content.config.tabs.settings import _compare_keyed_configs
+
+        diffs = {"Value Mismatch": {}, "Missing in Uploaded": {}, "Missing in Current": {}}
+        # Legacy v2.0.3 shape — `name`/`user` instead of `alias`/`username`.
+        legacy = [{"name": "DEFAULT", "user": "admin"}]
+
+        _compare_keyed_configs([], legacy, "database_configs", diffs, lambda i: i["alias"])
+
+        assert "database_configs.<unkeyed#0>" in diffs["Missing in Current"]
+        assert diffs["Missing in Current"]["database_configs.<unkeyed#0>"] == legacy[0]
+
+    def test_tolerates_missing_alias_in_current(self):
+        """Unkeyed current-side entries bucket to Missing in Uploaded."""
+        from client.app.content.config.tabs.settings import _compare_keyed_configs
+
+        diffs = {"Value Mismatch": {}, "Missing in Uploaded": {}, "Missing in Current": {}}
+        legacy = [{"name": "OLD"}]
+
+        _compare_keyed_configs(legacy, [], "database_configs", diffs, lambda i: i["alias"])
+
+        assert "database_configs.<unkeyed#0>" in diffs["Missing in Uploaded"]
+
+    def test_upload_legacy_config_does_not_crash(self):
+        """Full _compute_diff pipeline survives a v2.0.3-shaped database_configs list."""
+        from client.app.content.config.tabs.settings import _compute_diff
+
+        current = _make_settings_state()["settings"]
+        uploaded = {
+            "log_level": "INFO",
+            "database_configs": [{"name": "DEFAULT", "user": "admin", "dsn": "//host/svc"}],
+            "model_configs": [],
+            "oci_configs": [],
+            "prompt_configs": [],
+            "client_settings": {"database": {}},
+        }
+
+        # Must not raise KeyError: 'alias'
+        result = _compute_diff(current, uploaded)
+
+        assert isinstance(result, dict)
+        assert "Missing in Current" in result
+        assert any("database_configs" in k for k in result["Missing in Current"])
+
 
 # ---------------------------------------------------------------------------
 # _compare_dicts
@@ -511,6 +556,26 @@ class TestComputeDiff:
 
 class TestApplyUploadedSettings:
     """Tests for the _apply_uploaded_settings function."""
+
+    def test_apply_legacy_config_posts_raw_body(self, mock_st):
+        """Legacy v2.0.3-shaped payloads are POSTed as-is — server performs migration."""
+        state = _make_settings_state()
+        legacy = {"database_configs": [{"name": "DEFAULT", "user": "admin"}]}
+        mock_api_post = MagicMock(return_value={})
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.api_post", mock_api_post),
+            patch(f"{MODULE}.helpers") as mock_helpers,
+        ):
+            mock_helpers.refresh_settings = MagicMock()
+            from client.app.content.config.tabs.settings import _apply_uploaded_settings
+
+            _apply_uploaded_settings(legacy)
+
+        # Client does not migrate; server is the single source of truth for migration.
+        mock_api_post.assert_called_once_with("settings/import", json=legacy, toast="Settings imported.")
 
     def test_apply_calls_import_endpoint(self, mock_st):
         """Verify api_post is called with 'settings/import'."""

@@ -154,6 +154,52 @@ async def test_import_database_updates_existing(app_client, auth_headers, mock_p
     assert settings.database_configs[0].usable is False
 
 
+async def test_import_legacy_v203_database_configs(app_client, auth_headers, mock_persist):
+    """A v2.0.3-shaped database_configs payload (name/user) is migrated and imported."""
+    settings.database_configs = []
+    payload = {
+        "database_configs": [
+            {"name": "LEGACY", "user": "admin", "dsn": "//host/svc"},
+        ]
+    }
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["created"] == 1
+    new_db = next(db for db in settings.database_configs if db.alias == "LEGACY")
+    assert new_db.username == "admin"
+    assert new_db.dsn == "//host/svc"
+
+
+async def test_import_invalid_json_returns_422(app_client, auth_headers):
+    """Malformed JSON body returns 422 (FastAPI's default), not 500."""
+    resp = await app_client.post(
+        ENDPOINT,
+        content=b"{ not valid json }",
+        headers={**auth_headers, "content-type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.parametrize("body", [[], "not an object", 42])
+async def test_import_non_object_body_returns_422(app_client, auth_headers, body):
+    """Syntactically valid but non-object JSON bodies yield 422 (not 500) from Pydantic."""
+    resp = await app_client.post(ENDPOINT, json=body, headers=auth_headers)
+    assert resp.status_code == 422
+
+
+async def test_import_null_body_returns_422(app_client, auth_headers):
+    """An explicit JSON `null` body yields 422, not 500."""
+    resp = await app_client.post(
+        ENDPOINT,
+        content=b"null",
+        headers={**auth_headers, "content-type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
 async def test_import_database_skips_core(app_client, auth_headers, mock_persist):
     """CORE alias is silently skipped."""
     settings.database_configs = [DatabaseConfig(alias="CORE")]

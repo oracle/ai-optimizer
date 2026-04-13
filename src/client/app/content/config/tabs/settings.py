@@ -84,10 +84,37 @@ _PROMPT_DIFF_FORMATTERS = {
 }
 
 
+def _safe_extract_key(key_fn, item):
+    """Extract a key via *key_fn*, returning (key, True) or (None, False) on failure.
+
+    Shields the diff from legacy/hand-edited entries missing their identity field;
+    the server's ``migrate_legacy_settings`` handles known renames at import time.
+    """
+    try:
+        return key_fn(item), True
+    except (KeyError, TypeError):
+        return None, False
+
+
 def _compare_keyed_configs(current_items: list, uploaded_items: list, path: str, differences: dict, key_fn) -> None:
     """Compare config lists by matching on a unique key."""
-    current_by_key = {key_fn(item): item for item in current_items}
-    uploaded_by_key = {key_fn(item): item for item in uploaded_items}
+    current_by_key: dict = {}
+    uploaded_by_key: dict = {}
+    unkeyed_current: list = []
+    unkeyed_uploaded: list = []
+    for item in current_items:
+        key, ok = _safe_extract_key(key_fn, item)
+        if ok:
+            current_by_key[key] = item
+        else:
+            unkeyed_current.append(item)
+    for item in uploaded_items:
+        key, ok = _safe_extract_key(key_fn, item)
+        if ok:
+            uploaded_by_key[key] = item
+        else:
+            unkeyed_uploaded.append(item)
+
     for key in sorted(set(current_by_key) | set(uploaded_by_key), key=str):
         label = key if isinstance(key, str) else ".".join(str(k) for k in key)
         item_path = f"{path}.{label}"
@@ -97,6 +124,11 @@ def _compare_keyed_configs(current_items: list, uploaded_items: list, path: str,
             differences["Missing in Uploaded"][item_path] = current_by_key[key]
         else:
             differences["Missing in Current"][item_path] = uploaded_by_key[key]
+
+    for i, item in enumerate(unkeyed_current):
+        differences["Missing in Uploaded"][f"{path}.<unkeyed#{i}>"] = item
+    for i, item in enumerate(unkeyed_uploaded):
+        differences["Missing in Current"][f"{path}.<unkeyed#{i}>"] = item
 
 
 def _compare_dicts(current: dict, uploaded: dict, path: str, differences: dict) -> None:
