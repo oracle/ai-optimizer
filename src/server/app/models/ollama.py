@@ -6,8 +6,10 @@ Ollama model discovery — queries a running Ollama server for pulled models.
 """
 # spell-checker: ignore ollama nomic
 
+import json
 import logging
 import os
+from collections.abc import AsyncGenerator
 
 import httpx
 
@@ -129,3 +131,29 @@ async def load_ollama_models() -> None:
         LOGGER.info("Removed %d Ollama model(s) no longer pulled", len(removed))
 
     LOGGER.info("Discovered %d Ollama model(s) at %s", len(models), api_base)
+
+
+async def pull_ollama_model(api_base: str, model_name: str) -> AsyncGenerator[dict, None]:
+    """Stream pull progress from an Ollama server as dicts.
+
+    Each yielded dict mirrors the NDJSON lines from Ollama's ``/api/pull``
+    endpoint (keys like ``status``, ``completed``, ``total``, ``digest``).
+    On error an ``{"error": "..."}`` dict is yielded.
+    """
+    url = f"{api_base.rstrip('/')}/api/pull"
+    pull_read_timeout = 120.0  # Longer timeout for pull — gaps between progress lines during layer downloads
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(pull_read_timeout, connect=CONNECT_TIMEOUT)) as client:  # noqa: SIM117
+            async with client.stream("POST", url, json={"name": model_name}) as resp:
+                resp.raise_for_status()
+                async for raw_line in resp.aiter_lines():
+                    stripped = raw_line.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        yield json.loads(stripped)
+                    except json.JSONDecodeError:
+                        continue
+    except httpx.HTTPError as exc:
+        LOGGER.warning("Ollama pull failed for '%s' at %s: %s", model_name, api_base, exc)
+        yield {"error": str(exc)}

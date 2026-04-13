@@ -6,6 +6,8 @@ weight = 20
 <!--
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+spell-checker: ignore ollama relref varchar
 -->
 
 The first phase in building a RAG chatbot based on vector search is document splitting and embedding. During this phase, source documents are divided into chunks, vector embeddings are generated for each chunk, and the resulting embeddings are stored in a vector store. At query time, relevant chunks are retrieved using vector distance search and injected into the Large Language Model (LLM) context to produce grounded answers based on the provided information.
@@ -56,8 +58,7 @@ The embedding process is initiated by clicking **Populate Vector Store**. The fo
     - **Local**: upload multiple documents from the client machine;
     - **Web**: load a single TXT, PDF, or HTML document from a specified URL;
     - **SQL**: define a query against an Oracle Database to extract text from a VARCHAR2 column and embed it row by row. When using this option, the following parameters must be provided:
-        - **DB Connection**: an EZConnect string with credentials in the format `username/password@host:port/service`, for example:
-        ```DEMO/Welcome_12345@localhost:1521/FREEPDB1```
+        - **Database**: select the target database from the list of configured and connected databases (see [Database Configuration]({{< relref "/client/configuration/db_config" >}}));
         - **SQL**: a query that returns a single text column, for example:
         ```select PRODUCT_NAME from PRODUCTS``` The embedded content is prefixed with the column name to provide additional context during similarity search.
 

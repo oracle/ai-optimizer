@@ -14,6 +14,7 @@ class SqlStoreRequest(BaseModel):
     """Request body for storing SQL query results for embedding."""
 
     query: str
+    db_alias: Optional[str] = None
 
 
 class VectorStoreRefreshRequest(BaseModel):
