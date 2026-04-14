@@ -438,3 +438,22 @@ async def test_list_testsets_db_unavailable(app_client, auth_headers):
     ):
         resp = await app_client.get("/v1/testbed/testsets", headers=auth_headers)
     assert resp.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_generate_testset_db_unavailable_fails_fast(app_client, auth_headers):
+    """Returns 503 immediately (before any LLM work) when CORE DB is unavailable."""
+    mock_process = AsyncMock()
+    with (
+        patch("server.app.api.v1.endpoints.testbed.get_core_pool", return_value=None),
+        patch("server.app.api.v1.endpoints.testbed._process_pdf_file", mock_process),
+    ):
+        resp = await app_client.post(
+            "/v1/testbed/testset_generate",
+            data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "2"},
+            files=[("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf"))],
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+    mock_process.assert_not_awaited()
