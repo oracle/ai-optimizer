@@ -308,6 +308,18 @@ class TestIsEmbeddingModel:
         """'llama' family is not an embedding model."""
         assert _is_embedding_model({"details": {"families": ["llama"]}}) is False
 
+    def test_embed_in_name_detected(self):
+        """Models with 'embed' in their name are detected even with a non-embed family."""
+        assert _is_embedding_model({"name": "qwen3-embedding:latest", "details": {"families": ["qwen3"]}}) is True
+
+    def test_embed_in_name_mxbai(self):
+        """'mxbai-embed-large' detected via name even if family check were to miss it."""
+        assert _is_embedding_model({"name": "mxbai-embed-large:latest", "details": {"families": ["bert"]}}) is True
+
+    def test_embed_name_case_insensitive(self):
+        """Name-based detection is case-insensitive."""
+        assert _is_embedding_model({"name": "MyModel-Embed:v1", "details": {}}) is True
+
     def test_missing_details(self):
         """Entry without 'details' defaults to non-embedding."""
         assert _is_embedding_model({"name": "some-model"}) is False

@@ -54,6 +54,7 @@ def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict
     if not is_new:
         changes = {k: v for k, v in form_data.items() if db_config.get(k) != v}
         if not changes and db_config.get("usable"):
+            helpers.sync_client_setting("database", "alias", selected)
             st.toast("No changes detected.", icon="ℹ️")
             return
 
@@ -76,8 +77,10 @@ def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict
             with st.spinner("Updating database configuration...", show_time=True):
                 result = api_put(f"databases/{selected}", json=helpers.build_payload(form_data), timeout=45)
         helpers.refresh_settings()
+        active_alias = new_alias if is_new else selected
+        if active_alias and not result.get("error"):
+            helpers.sync_client_setting("database", "alias", active_alias)
         if is_new:
-            state["settings"]["client_settings"].setdefault("database", {})["alias"] = new_alias
             state["_pending_db_select"] = new_alias
         if result.get("error"):
             st.warning(f"Saved, but connection failed: {result['error']}")
@@ -290,6 +293,11 @@ def display_databases() -> None:
     current_alias = state["settings"]["client_settings"].get("database", {}).get("alias")
 
     selected, is_new = _render_databases(database_lookup, database_aliases, current_alias)
+
+    # Auto-sync: if a real DB is shown but not yet active in client_settings, set it now.
+    # This handles the case where the server restarted and in-memory client_settings was reset.
+    if not is_new and selected and selected != current_alias:
+        helpers.sync_client_setting("database", "alias", selected)
 
     if not is_new:
         _render_vector_stores(database_lookup, selected)

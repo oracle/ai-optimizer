@@ -141,7 +141,7 @@ async def test_import_database_creates_new(app_client, auth_headers, mock_persis
 
 
 async def test_import_database_updates_existing(app_client, auth_headers, mock_persist):
-    """An existing database alias is updated in-place with usable=False."""
+    """An existing database alias with changed credentials is reset to usable=False."""
     settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="old_dsn", usable=True)]
     payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "new_dsn"}]}
 
@@ -152,6 +152,20 @@ async def test_import_database_updates_existing(app_client, auth_headers, mock_p
     assert data["database_configs"]["updated"] == 1
     assert settings.database_configs[0].dsn == "new_dsn"
     assert settings.database_configs[0].usable is False
+
+
+async def test_import_database_preserves_usable_when_creds_unchanged(app_client, auth_headers, mock_persist):
+    """An existing database alias imported with unchanged credentials keeps usable=True."""
+    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", usable=True)]
+    payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "same_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["updated"] == 1
+    assert settings.database_configs[0].dsn == "same_dsn"
+    assert settings.database_configs[0].usable is True
 
 
 async def test_import_legacy_v203_database_configs(app_client, auth_headers, mock_persist):

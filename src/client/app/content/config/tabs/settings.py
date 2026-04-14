@@ -332,7 +332,7 @@ def _spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
         .read_text(encoding="utf-8")
         .format(
             provider=provider,
-            sys_prompt=yaml.dump(sys_prompt).rstrip("\n...") if file_name.endswith(".yaml") else sys_prompt,
+            sys_prompt=yaml.dump(sys_prompt, default_style='"').rstrip("\n") if file_name.endswith(".yaml") else sys_prompt,
             ll_model=ll_config,
             vector_search={**embed_config, "vector_store": vector_store_name},
             database_config=db_config,

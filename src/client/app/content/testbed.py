@@ -78,8 +78,13 @@ def _reset_testset(cache: bool = False) -> None:
 
 @st.cache_data(show_spinner="Retrieving TestSets")
 def _get_testbed_db_testsets() -> list:
-    """Get database testsets (cached)."""
-    return api_get("testbed/testsets")
+    """Get database testsets (cached). Returns empty list if CORE database is unavailable."""
+    try:
+        return api_get("testbed/testsets")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 503:
+            return []
+        raise
 
 
 #####################################################

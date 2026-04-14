@@ -66,6 +66,11 @@ def is_small_model(model_id: Optional[str]) -> bool:
     return param_count < SMALL_MODEL_THRESHOLD_B
 
 
+def _strip_latest(model_id: str) -> str:
+    """Strip the ':latest' tag from an Ollama model id."""
+    return model_id[: -len(":latest")] if model_id.endswith(":latest") else model_id
+
+
 def find_model(
     provider: str,
     model_id: str,
@@ -73,12 +78,21 @@ def find_model(
     enabled_only: bool = True,
     case_insensitive: bool = False,
 ) -> Optional[ModelConfig]:
-    """Search ``settings.model_configs`` for a matching model."""
+    """Search ``settings.model_configs`` for a matching model.
+
+    For Ollama models the ``':latest'`` tag is stripped before comparison so that
+    a vector store recorded as ``ollama/qwen3-embedding:latest`` still resolves to
+    the discovered model ``ollama/qwen3-embedding``.
+    """
+    is_ollama = provider.lower() in ("ollama", "ollama_chat")
+    lookup_id = _strip_latest(model_id) if is_ollama else model_id
+
     for mc in settings.model_configs:
+        mc_id = _strip_latest(mc.id or "") if is_ollama else (mc.id or "")
         if case_insensitive:
-            if (mc.provider or "").lower() != provider.lower() or (mc.id or "").lower() != model_id.lower():
+            if (mc.provider or "").lower() != provider.lower() or mc_id.lower() != lookup_id.lower():
                 continue
-        elif mc.provider != provider or mc.id != model_id:
+        elif mc.provider != provider or mc_id != lookup_id:
             continue
         if model_type and mc.type != model_type:
             continue

@@ -222,9 +222,24 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
         # --- Database configs ---
         if body.database_configs is not None:
             non_core = [db for db in body.database_configs if db.alias.upper() != "CORE"]
+            # Index pre-import snapshots by alias so we can detect credential changes
+            _DB_CONN_FIELDS = {"username", "password", "dsn", "wallet_password", "wallet_location", "config_dir"}
+            pre_import_db = {cfg.alias: cfg for cfg in snapshot["db"]}
             created, updated = upsert_list_field("database_configs", non_core)
-            for item in created + updated:
+            # New configs have no pool — always mark unusable
+            for item in created:
                 item.usable, item.pool = False, None
+            # Existing configs: only invalidate if connection-relevant fields changed
+            for item in updated:
+                prior = pre_import_db.get(item.alias)
+                if prior is None:
+                    item.usable, item.pool = False, None
+                    continue
+                creds_changed = any(
+                    getattr(item, f) != getattr(prior, f) for f in _DB_CONN_FIELDS
+                )
+                if creds_changed:
+                    item.usable, item.pool = False, None
             result.database_configs = ImportSectionResult(
                 created=len(created),
                 updated=len(updated),
