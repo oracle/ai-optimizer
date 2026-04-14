@@ -229,6 +229,8 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
                 prior = pre_import_db.get(item.alias)
                 if not prior or any(getattr(item, f) != getattr(prior, f) for f in _DB_CONN_FIELDS):
                     item.usable, item.pool = False, None
+                else:
+                    item.usable, item.pool = prior.usable, prior.pool
             result.database_configs = ImportSectionResult(
                 created=len(created),
                 updated=len(updated),
@@ -252,10 +254,9 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
             before = {pc.name: pc.text for pc in settings.prompt_configs}
             reconcile_prompt_customizations(body.prompt_configs)
             register_mcp_prompts()
-            changed = sum(1 for pc in settings.prompt_configs if before.get(pc.name) != pc.text)
             result.prompt_configs = ImportSectionResult(
-                updated=changed,
-                skipped=len(body.prompt_configs) - changed,
+                updated=(n := sum(1 for pc in settings.prompt_configs if before.get(pc.name) != pc.text)),
+                skipped=len(body.prompt_configs) - n,
             )
 
         # --- Client settings ---
@@ -277,8 +278,7 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
                 snapshot["db"], snapshot["models"], snapshot["oci"], snapshot["log_level"],
             )
             _restore_prompts(snapshot["prompts"])
-            _client_store.clear()
-            _client_store.update(snapshot["store"])
+            _client_store.clear(), _client_store.update(snapshot["store"])
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
 
         return result
