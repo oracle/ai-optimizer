@@ -59,7 +59,7 @@ jobs:
           restore-keys: |
             trivy-db-
 
-      - name: Run Trivy Scan
+      - name: Run Trivy Scan (CRITICAL - SARIF)
         # Skips ibm_watsonx_ai/connections.py: docstring shows a Google BigQuery
         # service-account JSON example with placeholder values, which Trivy's
         # secret scanner flags as a GCP service-account credential.
@@ -71,7 +71,7 @@ jobs:
             -v "${{ github.workspace }}/.trivy-cache:/root/.cache/trivy" \
             ghcr.io/aquasecurity/trivy:0.69.3 \
             image \
-            --severity HIGH,CRITICAL \
+            --severity CRITICAL \
             --format sarif \
             --output /workspace/trivy-results.sarif \
             --ignore-unfixed \
@@ -84,6 +84,22 @@ jobs:
         uses: github/codeql-action/upload-sarif@d4b3ca9fa7f69d38bfcd667bdc45bc373d16277e # v4
         with:
           sarif_file: trivy-results.sarif
+
+      - name: Run Trivy Scan (HIGH+CRITICAL - Log)
+        # HIGH findings logged for maintainer awareness but not uploaded
+        # to the Security tab to avoid surfacing non-actionable OS-level alerts.
+        if: always()
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}/.trivy-cache:/root/.cache/trivy" \
+            ghcr.io/aquasecurity/trivy:0.69.3 \
+            image \
+            --severity HIGH,CRITICAL \
+            --format table \
+            --ignore-unfixed \
+            --skip-files "**/ibm_watsonx_ai/connections.py" \
+            "aio:${{ github.sha }}"
           category: trivy-aio
 
   # Macaron - check GitHub Actions for known vulnerabilities
