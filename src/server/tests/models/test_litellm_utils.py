@@ -92,8 +92,14 @@ def test_find_model_disabled_included():
     assert find_model("openai", "gpt-4o", enabled_only=False) is mc
 
 
-# ---------------------------------------------------------------------------
-# normalize_ollama_model_key
+@pytest.mark.unit
+def test_find_model_strips_ollama_latest_tag():
+    """find_model strips :latest from Ollama model IDs for matching."""
+    mc = ModelConfig(id="qwen3-embedding", type="embed", provider="ollama", enabled=True)
+    settings.model_configs = [mc]
+    assert find_model("ollama", "qwen3-embedding:latest", model_type="embed") is mc
+
+
 # ---------------------------------------------------------------------------
 # LiteLlmModelSpec
 # ---------------------------------------------------------------------------

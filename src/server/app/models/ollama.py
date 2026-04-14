@@ -25,9 +25,17 @@ _EMBED_FAMILIES = {"bert", "nomic-bert"}
 
 
 def _is_embedding_model(entry: dict) -> bool:
-    """Return True if the Ollama model entry is an embedding model."""
+    """Return True if the Ollama model entry is an embedding model.
+
+    Checks both the model family reported by Ollama (e.g. bert, nomic-bert) and
+    the model name itself — models like ``qwen3-embedding`` or ``mxbai-embed-large``
+    report a generic language-model family but are embedding-only models.
+    """
     families = entry.get("details", {}).get("families") or []
-    return any(f.casefold() in _EMBED_FAMILIES for f in families)
+    if any(f.casefold() in _EMBED_FAMILIES for f in families):
+        return True
+    name = entry.get("name", "").casefold()
+    return "embed" in name
 
 
 async def _get_context_length(client: httpx.AsyncClient, api_base: str, model_name: str) -> int | None:

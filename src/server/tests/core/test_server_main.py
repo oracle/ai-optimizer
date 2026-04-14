@@ -10,7 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.app.core.settings import settings
+from server.app.core.settings import SettingsBase, settings
+from server.app.database.schemas import DatabaseConfig
 
 MODULE = "server.app.main"
 
@@ -23,11 +24,15 @@ pytestmark = [pytest.mark.unit, pytest.mark.anyio]
 
 
 @pytest.fixture(autouse=True)
-def _restore_model_configs():
-    """Save and restore settings.model_configs around each test."""
-    saved = list(settings.model_configs)
+def _restore_settings_state():
+    """Save and restore settings state around each test."""
+    saved_models = list(settings.model_configs)
+    saved_dbs = list(settings.database_configs)
+    saved_cs = settings.client_settings.model_copy(deep=True)
     yield
-    settings.model_configs = saved
+    settings.model_configs = saved_models
+    settings.database_configs = saved_dbs
+    settings.client_settings = saved_cs
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +98,69 @@ class TestApplyConfiguredOverlay:
             await _apply_configured_overlay(set())
 
         mock_persist.assert_awaited_once_with("CONFIGURED", is_current=True)
+
+    async def test_overlay_promotes_first_db_to_core_when_no_core(self):
+        """When no CORE exists, the first DB is promoted to CORE and clients are synced."""
+        settings.database_configs = []
+        settings.client_settings.database.alias = "DEFAULT"
+        source = SettingsBase.model_validate(
+            {"database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}]}
+        )
+
+        with (
+            patch(f"{MODULE}.load_config_file", return_value=source),
+            patch(f"{MODULE}.row_exists", new_callable=AsyncMock),
+            patch(f"{MODULE}.reconcile_prompt_customizations"),
+            patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
+        ):
+            from server.app.main import _apply_configured_overlay
+
+            await _apply_configured_overlay(set())
+
+        assert settings.database_configs[0].alias == "CORE"
+        assert settings.database_configs[0].dsn == "//host/svc"
+        assert settings.client_settings.database.alias == "CORE"
+
+    async def test_overlay_no_promotion_when_core_exists(self):
+        """When CORE already exists, the source DB alias is not changed."""
+        settings.database_configs = [DatabaseConfig(alias="CORE")]
+        source = SettingsBase.model_validate(
+            {"database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}]}
+        )
+
+        with (
+            patch(f"{MODULE}.load_config_file", return_value=source),
+            patch(f"{MODULE}.row_exists", new_callable=AsyncMock),
+            patch(f"{MODULE}.reconcile_prompt_customizations"),
+            patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
+        ):
+            from server.app.main import _apply_configured_overlay
+
+            await _apply_configured_overlay(set())
+
+        aliases = [db.alias for db in settings.database_configs]
+        assert "CORE" in aliases
+        assert "DEFAULT" in aliases
+
+    async def test_overlay_normalizes_lowercase_core(self):
+        """A lowercase 'core' alias from config file is normalized to exact 'CORE'."""
+        settings.database_configs = []
+        source = SettingsBase.model_validate(
+            {"database_configs": [{"alias": "core", "dsn": "//host/svc"}]}
+        )
+
+        with (
+            patch(f"{MODULE}.load_config_file", return_value=source),
+            patch(f"{MODULE}.row_exists", new_callable=AsyncMock),
+            patch(f"{MODULE}.reconcile_prompt_customizations"),
+            patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
+        ):
+            from server.app.main import _apply_configured_overlay
+
+            await _apply_configured_overlay(set())
+
+        assert settings.database_configs[0].alias == "CORE"
+        assert settings.database_configs[0].dsn == "//host/svc"
 
 
 # ---------------------------------------------------------------------------

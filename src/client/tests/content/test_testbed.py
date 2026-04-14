@@ -894,6 +894,29 @@ class TestSetupTestbedSources:
         assert result == ["Local"]
 
 
+    def test_503_sets_core_unavailable_and_warns(self):
+        """A 503 from the testsets API sets _core_unavailable and shows a warning.
+
+        The 503 must propagate from _get_testbed_db_testsets up to
+        _setup_testbed_sources so the recovery flag is set and the UI
+        shows a warning.  If the inner function swallows the 503 the
+        flag is never set — this test catches that regression.
+        """
+        from client.app.content.testbed import _setup_testbed_sources
+
+        state = _make_state()
+        mock_st = MagicMock()
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.api_get", side_effect=make_http_error(503, "CORE database is not available")),
+        ):
+            result = _setup_testbed_sources()
+        assert state.get("_core_unavailable") is True
+        assert result == ["Local"]
+        mock_st.warning.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # TestRenderTestsetGenerationUi
 # ---------------------------------------------------------------------------

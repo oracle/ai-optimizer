@@ -17,7 +17,7 @@ import server.app.core.environ  # noqa: F401, E402  # side-effect: loads .env
 from _version import __version__
 from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
-from server.app.core.etc import apply_overlay, load_config_file
+from server.app.core.etc import apply_overlay, ensure_core_alias, load_config_file
 from server.app.core.mcp import MCPApiKeyMiddleware, mcp
 from server.app.core.settings import _client_store, settings
 from server.app.database.config import close_pool, get_database_settings
@@ -53,6 +53,7 @@ async def _apply_configured_overlay(protected: set[str]) -> None:
 
     if source is not None:
         apply_overlay(source, protected, exclude_fields={"oci_configs", "prompt_configs"})
+        ensure_core_alias(settings.database_configs, settings.client_settings, _client_store)
         has_models = "model_configs" in source.model_fields_set if from_file else bool(source.model_configs)
         if has_models:
             settings.model_configs = source.model_configs

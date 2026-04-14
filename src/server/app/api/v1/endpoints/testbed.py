@@ -166,6 +166,8 @@ async def generate_testset_endpoint(
     client: str = Header(default="server"),
 ):
     """Generate a Q&A testset from uploaded PDF files."""
+    # Fail fast: verify CORE DB is available before starting expensive LLM work.
+    pool = _require_core_pool()
     oci_profile = get_oci_profile(client)
     try:
         ll_config = get_giskard_config(
@@ -191,8 +193,7 @@ async def generate_testset_endpoint(
         for idx, file in enumerate(files):
             file_questions = base_q + (1 if idx < extra else 0)
             await _process_pdf_file(file, temp_directory, name, embed_config, ll_config, file_questions, full_testsets)
-        db_id = await _store_generated_testset(full_testsets, name)
-        pool = _require_core_pool()
+        db_id = await _store_generated_testset(full_testsets, name, pool)
         async with pool.acquire() as conn:
             return await get_testset_qa(conn, db_id)
 
@@ -304,12 +305,11 @@ async def _process_pdf_file(
         destination.write(source.read())
 
 
-async def _store_generated_testset(full_testsets: Path, name: str) -> str:
+async def _store_generated_testset(full_testsets: Path, name: str, pool) -> str:
     """Read the combined JSONL file and persist the testset in the database."""
     with open(full_testsets, "rb") as fh:
         content = jsonl_to_json_content(fh.read())
     created = datetime.now().isoformat()
-    pool = _require_core_pool()
     async with pool.acquire() as conn:
         db_id = await upsert_qa(conn, name, created, content)
         await conn.commit()
