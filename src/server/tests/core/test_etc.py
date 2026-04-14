@@ -17,7 +17,7 @@ from server.app.core.etc import (
     migrate_legacy_settings,
     upsert_list_field,
 )
-from server.app.core.schemas import ClientSettings
+from server.app.core.schemas import ClientSettings, DatabaseSettings
 from server.app.core.settings import SettingsBase, settings
 from server.app.database.schemas import DatabaseConfig
 from server.app.models.schemas import ModelConfig
@@ -553,8 +553,8 @@ def test_ensure_core_alias_noop_when_exact_core():
 def test_ensure_core_alias_normalizes_lowercase():
     """A lowercase 'core' is normalized to exact 'CORE'."""
     db_configs = [DatabaseConfig(alias="core", dsn="x")]
-    cs = ClientSettings(database={"alias": "core"})
-    store = {"sess1": ClientSettings(database={"alias": "core"})}
+    cs = ClientSettings(database=DatabaseSettings(alias="core"))
+    store = {"sess1": ClientSettings(database=DatabaseSettings(alias="core"))}
     ensure_core_alias(db_configs, client_settings=cs, client_store=store)
     assert db_configs[0].alias == "CORE"
     assert cs.database.alias == "CORE"
@@ -577,8 +577,8 @@ def test_ensure_core_alias_noop_on_empty_list():
 def test_ensure_core_alias_syncs_client_settings():
     """Client settings referencing the old alias are updated to CORE."""
     db_configs = [DatabaseConfig(alias="LEGACY", dsn="x")]
-    cs = ClientSettings(database={"alias": "LEGACY"})
-    store = {"sess1": ClientSettings(database={"alias": "LEGACY"})}
+    cs = ClientSettings(database=DatabaseSettings(alias="LEGACY"))
+    store = {"sess1": ClientSettings(database=DatabaseSettings(alias="LEGACY"))}
     ensure_core_alias(db_configs, client_settings=cs, client_store=store)
     assert db_configs[0].alias == "CORE"
     assert cs.database.alias == "CORE"
@@ -588,7 +588,7 @@ def test_ensure_core_alias_syncs_client_settings():
 def test_ensure_core_alias_leaves_unrelated_clients():
     """Client settings referencing a different alias are left unchanged."""
     db_configs = [DatabaseConfig(alias="LEGACY", dsn="x")]
-    cs = ClientSettings(database={"alias": "OTHER"})
+    cs = ClientSettings(database=DatabaseSettings(alias="OTHER"))
     ensure_core_alias(db_configs, client_settings=cs)
     assert db_configs[0].alias == "CORE"
     assert cs.database.alias == "OTHER"
