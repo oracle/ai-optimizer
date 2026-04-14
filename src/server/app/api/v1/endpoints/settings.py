@@ -30,7 +30,7 @@ from server.app.core.settings import (
     resolve_client,
     settings,
 )
-from server.app.database.schemas import DatabaseSensitive
+from server.app.database.schemas import DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import delete_row, load_settings, persist_client_settings, persist_settings
 from server.app.mcp.prompts.registry import load_factory_prompts, reconcile_prompt_customizations, register_mcp_prompts
 from server.app.models.connectivity import check_model_reachability
@@ -41,6 +41,7 @@ from server.app.models.schemas import ModelSensitive
 from server.app.oci.schemas import OciSensitive
 
 LOGGER = logging.getLogger(__name__)
+_DB_CONN_FIELDS = set(DatabaseUpdate.model_fields)
 
 
 class LegacyMigratingImportRoute(APIRoute):
@@ -222,23 +223,11 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
         # --- Database configs ---
         if body.database_configs is not None:
             non_core = [db for db in body.database_configs if db.alias.upper() != "CORE"]
-            # Index pre-import snapshots by alias so we can detect credential changes
-            _DB_CONN_FIELDS = {"username", "password", "dsn", "wallet_password", "wallet_location", "config_dir"}
             pre_import_db = {cfg.alias: cfg for cfg in snapshot["db"]}
             created, updated = upsert_list_field("database_configs", non_core)
-            # New configs have no pool — always mark unusable
-            for item in created:
-                item.usable, item.pool = False, None
-            # Existing configs: only invalidate if connection-relevant fields changed
-            for item in updated:
+            for item in created + updated:
                 prior = pre_import_db.get(item.alias)
-                if prior is None:
-                    item.usable, item.pool = False, None
-                    continue
-                creds_changed = any(
-                    getattr(item, f) != getattr(prior, f) for f in _DB_CONN_FIELDS
-                )
-                if creds_changed:
+                if not prior or any(getattr(item, f) != getattr(prior, f) for f in _DB_CONN_FIELDS):
                     item.usable, item.pool = False, None
             result.database_configs = ImportSectionResult(
                 created=len(created),
@@ -271,8 +260,7 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
 
         # --- Client settings ---
         if body.client_settings is not None:
-            cs = body.client_settings.model_copy(deep=True)
-            cs.client = client
+            cs = body.client_settings.model_copy(deep=True, update={"client": client})
             if client not in _client_store:
                 _ensure_capacity()
             _client_store[client] = cs
@@ -286,10 +274,7 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
         # --- Persist once — rollback everything on failure ---
         if not await persist_settings():
             (settings.database_configs, settings.model_configs, settings.oci_configs, settings.log_level) = (
-                snapshot["db"],
-                snapshot["models"],
-                snapshot["oci"],
-                snapshot["log_level"],
+                snapshot["db"], snapshot["models"], snapshot["oci"], snapshot["log_level"],
             )
             _restore_prompts(snapshot["prompts"])
             _client_store.clear()

@@ -94,35 +94,35 @@ class TestCreateDatabase:
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
-            patch(f"{MODULE}.helpers"),
+            patch(f"{MODULE}.helpers") as mock_helpers,
             patch(f"{MODULE}.api_post", mock_api_post),
         ):
             _handle_form_submit("Add New...", True, form_alias, form_data, {})
 
-        return state, mock_api_post
+        return state, mock_api_post, mock_helpers
 
     def test_sets_pending_db_select(self, make_state, mock_st):
         """_pending_db_select is set so the selectbox switches on the next rerun."""
-        state, _ = self._run_create(make_state, mock_st, "MY_DB")
+        state, _, _ = self._run_create(make_state, mock_st, "MY_DB")
         assert state.get("_pending_db_select") == "MY_DB"
 
     def test_sets_client_settings_alias(self, make_state, mock_st):
-        """client_settings.database.alias is updated to the newly created alias."""
-        state, _ = self._run_create(make_state, mock_st, "MY_DB")
-        assert state["settings"]["client_settings"]["database"]["alias"] == "MY_DB"
+        """sync_client_setting is called with the newly created alias."""
+        _, _, mock_helpers = self._run_create(make_state, mock_st, "MY_DB")
+        mock_helpers.sync_client_setting.assert_called_with("database", "alias", "MY_DB")
 
     def test_api_post_called_with_toast(self, make_state, mock_st):
         """api_post is called with a toast message containing the new alias."""
-        _, mock_post = self._run_create(make_state, mock_st, "MY_DB")
+        _, mock_post, _ = self._run_create(make_state, mock_st, "MY_DB")
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
         assert kwargs.get("toast") and "MY_DB" in kwargs["toast"]
 
     def test_strips_alias_whitespace(self, make_state, mock_st):
         """Leading/trailing whitespace is stripped from the alias before use."""
-        state, _ = self._run_create(make_state, mock_st, "  SPACED  ")
+        state, _, mock_helpers = self._run_create(make_state, mock_st, "  SPACED  ")
         assert state.get("_pending_db_select") == "SPACED"
-        assert state["settings"]["client_settings"]["database"]["alias"] == "SPACED"
+        mock_helpers.sync_client_setting.assert_called_with("database", "alias", "SPACED")
 
     def test_connection_error_shows_warning(self, make_state, mock_st):
         """When the API returns an error field, st.warning is called."""
@@ -337,7 +337,7 @@ class TestNoChangeDetection:
         }
         form_data = {"username": "user", "password": "pass", "dsn": "dsn", "wallet_password": None}
 
-        with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", state):
+        with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", state), patch(f"{MODULE}.helpers"):
             _handle_form_submit("MYDB", False, "MYDB", form_data, db_config)
 
         mock_st.toast.assert_called_once()

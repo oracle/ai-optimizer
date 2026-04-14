@@ -18,6 +18,7 @@ from langchain_core.embeddings.embeddings import Embeddings
 from langchain_oci import OCIGenAIEmbeddings
 
 from server.app.core.settings import settings
+from server.app.models.connectivity import _normalize_ollama_name as _strip_latest
 from server.app.models.schemas import ModelConfig, ModelIdentity
 from server.app.oci.client import get_signer, init_client
 from server.app.oci.schemas import OciProfileConfig
@@ -64,11 +65,6 @@ def is_small_model(model_id: Optional[str]) -> bool:
     if param_count is None:
         return False
     return param_count < SMALL_MODEL_THRESHOLD_B
-
-
-def _strip_latest(model_id: str) -> str:
-    """Strip the ':latest' tag from an Ollama model id."""
-    return model_id[: -len(":latest")] if model_id.endswith(":latest") else model_id
 
 
 def find_model(
