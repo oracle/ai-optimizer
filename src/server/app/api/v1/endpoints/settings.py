@@ -19,7 +19,7 @@ from server.app.api.v1.schemas.settings import (
     SettingsImportResult,
     SettingsResponse,
 )
-from server.app.core.etc import migrate_legacy_settings, upsert_list_field
+from server.app.core.etc import ensure_core_alias, migrate_legacy_settings, upsert_list_field
 from server.app.core.schemas import ClientSettings, ClientSettingsUpdate, LLModelSettings
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
@@ -215,26 +215,34 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
             "models": [cfg.model_copy() for cfg in settings.model_configs],
             "oci": [cfg.model_copy() for cfg in settings.oci_configs],
             "prompts": {pc.name: pc.text for pc in settings.prompt_configs},
-            "store": dict(_client_store),
+            "store": {k: v.model_copy(deep=True) for k, v in _client_store.items()},
+            "client_settings": settings.client_settings.model_copy(deep=True),
             "log_level": settings.log_level,
         }
         result = SettingsImportResult()
 
         # --- Database configs ---
         if body.database_configs is not None:
-            non_core = [db for db in body.database_configs if db.alias.upper() != "CORE"]
+            core_exists = any(c.alias.upper() == "CORE" for c in settings.database_configs)
+            if core_exists:
+                importable = [db for db in body.database_configs if db.alias.upper() != "CORE"]
+            else:
+                importable = list(body.database_configs)
+            skipped = len(body.database_configs) - len(importable)
             pre_import_db = {cfg.alias: cfg for cfg in snapshot["db"]}
-            created, updated = upsert_list_field("database_configs", non_core)
+            created, updated = upsert_list_field("database_configs", importable)
             for item in created + updated:
                 prior = pre_import_db.get(item.alias)
                 if not prior or any(getattr(item, f) != getattr(prior, f) for f in _DB_CONN_FIELDS):
                     item.usable, item.pool = False, None
                 else:
                     item.usable, item.pool = prior.usable, prior.pool
+            if not core_exists:
+                ensure_core_alias(settings.database_configs, settings.client_settings, _client_store)
             result.database_configs = ImportSectionResult(
                 created=len(created),
                 updated=len(updated),
-                skipped=len(body.database_configs) - len(non_core),
+                skipped=skipped,
             )
 
         # --- Model configs ---
@@ -274,8 +282,12 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
         # --- Persist once — rollback everything on failure ---
         if not await persist_settings():
             (settings.database_configs, settings.model_configs, settings.oci_configs, settings.log_level) = (
-                snapshot["db"], snapshot["models"], snapshot["oci"], snapshot["log_level"],
+                snapshot["db"],
+                snapshot["models"],
+                snapshot["oci"],
+                snapshot["log_level"],
             )
+            settings.client_settings = snapshot["client_settings"]
             _restore_prompts(snapshot["prompts"])
             _client_store.clear()
             _client_store.update(snapshot["store"])

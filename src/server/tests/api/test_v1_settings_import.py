@@ -37,6 +37,7 @@ def _restore_settings():
         "model_configs": list(settings.model_configs),
         "oci_configs": list(settings.oci_configs),
         "prompt_configs": list(settings.prompt_configs),
+        "client_settings": settings.client_settings.model_copy(deep=True),
     }
     yield
     for k, v in saved.items():
@@ -127,7 +128,7 @@ async def test_import_model_updates_existing(app_client, auth_headers, mock_pers
 
 async def test_import_database_creates_new(app_client, auth_headers, mock_persist):
     """A new database alias is appended with usable=False."""
-    settings.database_configs = []
+    settings.database_configs = [DatabaseConfig(alias="CORE")]
     payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "analytics_dsn"}]}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -142,7 +143,10 @@ async def test_import_database_creates_new(app_client, auth_headers, mock_persis
 
 async def test_import_database_updates_existing(app_client, auth_headers, mock_persist):
     """An existing database alias with changed credentials is reset to usable=False."""
-    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="old_dsn", usable=True)]
+    settings.database_configs = [
+        DatabaseConfig(alias="CORE"),
+        DatabaseConfig(alias="ANALYTICS", dsn="old_dsn", usable=True),
+    ]
     payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "new_dsn"}]}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -150,13 +154,17 @@ async def test_import_database_updates_existing(app_client, auth_headers, mock_p
     assert resp.status_code == 200
     data = resp.json()
     assert data["database_configs"]["updated"] == 1
-    assert settings.database_configs[0].dsn == "new_dsn"
-    assert settings.database_configs[0].usable is False
+    analytics = next(db for db in settings.database_configs if db.alias == "ANALYTICS")
+    assert analytics.dsn == "new_dsn"
+    assert analytics.usable is False
 
 
 async def test_import_database_preserves_usable_when_creds_unchanged(app_client, auth_headers, mock_persist):
     """An existing database alias imported with unchanged credentials keeps usable=True."""
-    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", usable=True)]
+    settings.database_configs = [
+        DatabaseConfig(alias="CORE"),
+        DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", usable=True),
+    ]
     payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "same_dsn"}]}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -164,13 +172,17 @@ async def test_import_database_preserves_usable_when_creds_unchanged(app_client,
     assert resp.status_code == 200
     data = resp.json()
     assert data["database_configs"]["updated"] == 1
-    assert settings.database_configs[0].dsn == "same_dsn"
-    assert settings.database_configs[0].usable is True
+    analytics = next(db for db in settings.database_configs if db.alias == "ANALYTICS")
+    assert analytics.dsn == "same_dsn"
+    assert analytics.usable is True
 
 
 async def test_import_database_preserves_usable_false_when_creds_unchanged(app_client, auth_headers, mock_persist):
     """A stale export with usable=True must not override a runtime usable=False."""
-    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", usable=False)]
+    settings.database_configs = [
+        DatabaseConfig(alias="CORE"),
+        DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", usable=False),
+    ]
     payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "same_dsn", "usable": True}]}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -181,7 +193,10 @@ async def test_import_database_preserves_usable_false_when_creds_unchanged(app_c
 
 async def test_import_database_resets_usable_when_timeout_changes(app_client, auth_headers, mock_persist):
     """Changing tcp_connect_timeout invalidates the pool."""
-    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", tcp_connect_timeout=30, usable=True)]
+    settings.database_configs = [
+        DatabaseConfig(alias="CORE"),
+        DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", tcp_connect_timeout=30, usable=True),
+    ]
     payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "same_dsn", "tcp_connect_timeout": 10}]}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -191,7 +206,7 @@ async def test_import_database_resets_usable_when_timeout_changes(app_client, au
 
 
 async def test_import_legacy_v203_database_configs(app_client, auth_headers, mock_persist):
-    """A v2.0.3-shaped database_configs payload (name/user) is migrated and imported."""
+    """A v2.0.3-shaped single-database payload is promoted to CORE when no CORE exists."""
     settings.database_configs = []
     payload = {
         "database_configs": [
@@ -204,7 +219,8 @@ async def test_import_legacy_v203_database_configs(app_client, auth_headers, moc
     assert resp.status_code == 200
     data = resp.json()
     assert data["database_configs"]["created"] == 1
-    new_db = next(db for db in settings.database_configs if db.alias == "LEGACY")
+    assert data["database_configs"]["skipped"] == 0
+    new_db = next(db for db in settings.database_configs if db.alias == "CORE")
     assert new_db.username == "admin"
     assert new_db.dsn == "//host/svc"
 
@@ -237,7 +253,7 @@ async def test_import_null_body_returns_422(app_client, auth_headers):
 
 
 async def test_import_database_skips_core(app_client, auth_headers, mock_persist):
-    """CORE alias is silently skipped."""
+    """CORE alias is silently skipped when CORE already exists."""
     settings.database_configs = [DatabaseConfig(alias="CORE")]
     payload = {"database_configs": [{"alias": "CORE", "dsn": "should_not_apply"}]}
 
@@ -248,6 +264,93 @@ async def test_import_database_skips_core(app_client, auth_headers, mock_persist
     assert data["database_configs"]["skipped"] == 1
     assert data["database_configs"]["created"] == 0
     assert data["database_configs"]["updated"] == 0
+
+
+async def test_import_promotes_first_db_to_core_when_no_core(app_client, auth_headers, mock_persist):
+    """When no CORE exists, the first imported database is promoted to CORE."""
+    settings.database_configs = []
+    payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "analytics_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["created"] == 1
+    assert data["database_configs"]["skipped"] == 0
+    new_db = next(db for db in settings.database_configs if db.alias == "CORE")
+    assert new_db.dsn == "analytics_dsn"
+
+
+async def test_import_no_promotion_when_core_exists(app_client, auth_headers, mock_persist):
+    """When CORE exists, a non-CORE database is imported with its original alias."""
+    settings.database_configs = [DatabaseConfig(alias="CORE", dsn="core_dsn")]
+    payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "analytics_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["created"] == 1
+    assert data["database_configs"]["skipped"] == 0
+    aliases = {db.alias for db in settings.database_configs}
+    assert aliases == {"CORE", "ANALYTICS"}
+
+
+async def test_import_empty_database_configs_no_crash(app_client, auth_headers, mock_persist):
+    """An empty database_configs list does not crash when no CORE exists."""
+    settings.database_configs = []
+    payload = {"database_configs": []}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["created"] == 0
+    assert data["database_configs"]["skipped"] == 0
+    assert settings.database_configs == []
+
+
+async def test_import_updates_existing_then_promotes_to_core(app_client, auth_headers, mock_persist):
+    """An existing non-CORE DB is updated in-place, then promoted to CORE."""
+    settings.database_configs = [DatabaseConfig(alias="LEGACY", dsn="old_dsn")]
+    payload = {"database_configs": [{"alias": "LEGACY", "dsn": "new_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["updated"] == 1
+    assert data["database_configs"]["created"] == 0
+    assert len(settings.database_configs) == 1
+    assert settings.database_configs[0].alias == "CORE"
+    assert settings.database_configs[0].dsn == "new_dsn"
+
+
+async def test_import_normalizes_lowercase_core_alias(app_client, auth_headers, mock_persist):
+    """A lowercase 'core' alias is normalized to exact 'CORE' string."""
+    settings.database_configs = []
+    payload = {"database_configs": [{"alias": "core", "dsn": "core_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert settings.database_configs[0].alias == "CORE"
+    assert settings.database_configs[0].dsn == "core_dsn"
+
+
+async def test_import_no_promotion_when_incoming_has_core(app_client, auth_headers, mock_persist):
+    """When no CORE exists but incoming already has a CORE alias, it is imported as-is."""
+    settings.database_configs = []
+    payload = {"database_configs": [{"alias": "CORE", "dsn": "core_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["created"] == 1
+    assert data["database_configs"]["skipped"] == 0
+    assert settings.database_configs[0].alias == "CORE"
+    assert settings.database_configs[0].dsn == "core_dsn"
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +487,21 @@ async def test_import_persists_once(app_client, auth_headers, mock_persist):
     mock_persist.assert_called_once()
 
 
+async def test_import_rollback_does_not_promote_core(app_client, auth_headers):
+    """When persistence fails, CORE promotion is skipped and aliases stay consistent."""
+    settings.database_configs = [DatabaseConfig(alias="LEGACY", dsn="old")]
+    settings.client_settings.database.alias = "LEGACY"
+    payload = {"database_configs": [{"alias": "LEGACY", "dsn": "new"}]}
+
+    with patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock, return_value=False):
+        resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 503
+    # Rollback should restore original state — no CORE promotion occurred
+    assert settings.database_configs[0].alias == "LEGACY"
+    assert settings.client_settings.database.alias == "LEGACY"
+
+
 # ---------------------------------------------------------------------------
 # Case insensitive matching
 # ---------------------------------------------------------------------------
@@ -391,7 +509,7 @@ async def test_import_persists_once(app_client, auth_headers, mock_persist):
 
 async def test_import_case_insensitive(app_client, auth_headers, mock_persist):
     """Lowercase alias matches uppercase existing entry."""
-    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="old_dsn")]
+    settings.database_configs = [DatabaseConfig(alias="CORE"), DatabaseConfig(alias="ANALYTICS", dsn="old_dsn")]
     payload = {"database_configs": [{"alias": "analytics", "dsn": "new_dsn"}]}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -400,7 +518,8 @@ async def test_import_case_insensitive(app_client, auth_headers, mock_persist):
     data = resp.json()
     assert data["database_configs"]["updated"] == 1
     assert data["database_configs"]["created"] == 0
-    assert settings.database_configs[0].dsn == "new_dsn"
+    analytics = next(db for db in settings.database_configs if db.alias == "ANALYTICS")
+    assert analytics.dsn == "new_dsn"
 
 
 # ---------------------------------------------------------------------------
