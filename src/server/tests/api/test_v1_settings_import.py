@@ -168,6 +168,17 @@ async def test_import_database_preserves_usable_when_creds_unchanged(app_client,
     assert settings.database_configs[0].usable is True
 
 
+async def test_import_database_preserves_usable_false_when_creds_unchanged(app_client, auth_headers, mock_persist):
+    """A stale export with usable=True must not override a runtime usable=False."""
+    settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", usable=False)]
+    payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "same_dsn", "usable": True}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert settings.database_configs[0].usable is False
+
+
 async def test_import_database_resets_usable_when_timeout_changes(app_client, auth_headers, mock_persist):
     """Changing tcp_connect_timeout invalidates the pool."""
     settings.database_configs = [DatabaseConfig(alias="ANALYTICS", dsn="same_dsn", tcp_connect_timeout=30, usable=True)]

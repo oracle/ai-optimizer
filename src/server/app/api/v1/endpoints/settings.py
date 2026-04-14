@@ -261,10 +261,9 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
 
         # --- Client settings ---
         if body.client_settings is not None:
-            cs = body.client_settings.model_copy(deep=True, update={"client": client})
             if client not in _client_store:
                 _ensure_capacity()
-            _client_store[client] = cs
+            _client_store[client] = body.client_settings.model_copy(deep=True, update={"client": client})
             result.client_settings = True
 
         # --- Importable scalars ---
@@ -278,7 +277,8 @@ async def import_settings(body: SettingsImport, client: str = Query(default="CON
                 snapshot["db"], snapshot["models"], snapshot["oci"], snapshot["log_level"],
             )
             _restore_prompts(snapshot["prompts"])
-            _client_store.clear(), _client_store.update(snapshot["store"])
+            _client_store.clear()
+            _client_store.update(snapshot["store"])
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
 
         return result
