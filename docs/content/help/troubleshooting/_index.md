@@ -69,4 +69,4 @@ Update the database connection string to include a `https_proxy` and `https_prox
 The {{< short_app_ref >}} Client fails to load in certain network environments.  The browser console shows a JavaScript file (`index.<hash>.js`) blocked with `NS_ERROR_CORRUPTED_CONNECTION` (Firefox) or a similar connection error.
 
 **_Solution_**:
-This is typically caused by a corporate firewall, deep packet inspection (DPI), or SSL inspection appliance corrupting the unencrypted HTTP traffic.  Enable HTTPS on the client to encrypt the connection end-to-end.  See [TLS / HTTPS]({{< relref "/advanced/tls" >}}) for configuration details.
+This is typically caused by a corporate firewall, deep packet inspection (DPI), or SSL inspection appliance corrupting the unencrypted HTTP traffic.  Enable HTTPS on the client to encrypt the connection end-to-end.  See [TLS / HTTPS]({{% relref "/advanced/tls" %}}) for configuration details.

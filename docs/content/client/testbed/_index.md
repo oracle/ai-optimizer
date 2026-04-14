@@ -84,7 +84,7 @@ If you decide to target a specific Vector Store, it can be selected from the dro
 
 The evaluation requires selecting a **Judge Language Model** that acts as an automated evaluator. The judge compares each agent response against the reference answer and determines correctness based on **semantic equivalence** -- the agent's answer does not need to use the same wording as the reference, but it must convey the same meaning.
 
-The judge's behavior is controlled by the **Testbed Judge Prompt**, which can be customized through the [Prompts](../tools/prompt_eng) configuration page. Adjusting this prompt allows you to fine-tune the evaluation strictness -- for example, requiring more precise answers or allowing broader interpretations.
+The judge's behavior is controlled by the **Testbed Judge Prompt**, which can be customized through the [Prompts]({{% relref "/client/tools/prompt_eng" %}}) configuration page. Adjusting this prompt allows you to fine-tune the evaluation strictness -- for example, requiring more precise answers or allowing broader interpretations.
 
 ### Results
 

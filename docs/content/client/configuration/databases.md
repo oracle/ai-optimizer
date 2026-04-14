@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore tablespace mycomplexsecret mycomplexwalletsecret 
 -->
 
-To use the Retrieval-Augmented Generation (RAG) functionality of the {{< short_app_ref >}}, you will need to setup/enable an [embedding model](../models) and have access to an **Oracle AI Database**. Both the [Always Free Oracle Autonomous Database Serverless (ADB-S)](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/autonomous-always-free.html) and the [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) are supported. They are a great, no-cost, way to get up and running quickly.
+To use the Retrieval-Augmented Generation (RAG) functionality of the {{< short_app_ref >}}, you will need to setup/enable an [embedding model]({{% relref "/client/configuration/models" %}}) and have access to an **Oracle AI Database**. Both the [Always Free Oracle Autonomous Database Serverless (ADB-S)](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/autonomous-always-free.html) and the [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) are supported. They are a great, no-cost, way to get up and running quickly.
 
 ## Configuration
 

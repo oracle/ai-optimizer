@@ -23,7 +23,7 @@ Use the "Clear History" button to reset the "context window" and start a fresh i
 
 ![Language Parameters](images/language_parameters.png#floatleft)
 
-You can select different, enabled models to experiment with.  To enable, disable, or add models, use the [Configuration - Models](../configuration/models) page.  Choose a Language Model based on your requirements, which may include:
+You can select different, enabled models to experiment with.  To enable, disable, or add models, use the [Configuration - Models]({{% relref "/client/configuration/models" %}}) page.  Choose a Language Model based on your requirements, which may include:
 
 **Privacy Concerns** - Local, Open-Source models offer more control over your data.
 
@@ -54,7 +54,7 @@ The {{< short_app_ref >}} provides tools to augment Large Language Models with y
 
 ## Vector Search
 
-Once you've created embeddings using [Split/Embed](../tools/split_embed), the Vector Search tool will be available. After selecting Vector Search, three additional options will pop up:
+Once you've created embeddings using [Split/Embed]({{% relref "/client/tools/split_embed" %}}), the Vector Search tool will be available. After selecting Vector Search, three additional options will pop up:
 * **Store Discovery**: Dynamically discover Vector Stores for use in Retrieval Augmented Generation.
 * **Prompt Rephrase**: Rephrase the user prompt, based on context and history, for a more meaningful Vector Search.
 * **Document Grading**: Grade the results from a Vector Search to determine their relevancy. 

@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore genai vllm pplx
 -->
 
-The {{< full_app_ref >}} can be configured using environment files (`.env.*`) to pre-configure settings at startup. This is optional — the application will start and function without any environment file, but features like RAG, settings persistence, and the Testbed require access to a "CORE" [database](client/configuration/databases/).
+The {{< full_app_ref >}} can be configured using environment files (`.env.*`) to pre-configure settings at startup. This is optional — the application will start and function without any environment file, but features like RAG, settings persistence, and the Testbed require access to a "CORE" [database]({{% relref "/client/configuration/databases" %}}).
 
 ## How It Works
 
@@ -47,7 +47,7 @@ Edit `src/.env.dev` and uncomment/set the values you need.
 
 {{% notice style="code" title="No configuration required" icon="circle-info" %}}
 <!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
-The **AI Optimizer** will start without any `.env.*` file or environment variables set. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database](/client/configuration/databases/) should be configured.
+The **AI Optimizer** will start without any `.env.*` file or environment variables set. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database]({{% relref "/client/configuration/databases" %}}) should be configured.
 {{% /notice %}}
 
 ## Available Variables
@@ -58,11 +58,11 @@ The following variables can be set in the `.env.*` file. All variables use the `
 
 | Variable | Description | Default |
 |---|---|---|
-| `AIO_API_KEY` | API key for authenticating requests to the API Server. If not set, a key is auto-generated at startup and can be obtained from the [API Server](client/api_server/) page. | _(auto-generated)_ |
+| `AIO_API_KEY` | API key for authenticating requests to the API Server. If not set, a key is auto-generated at startup and can be obtained from the [API Server]({{% relref "/client/api_server" %}}) page. | _(auto-generated)_ |
 
 ### Database
 
-Database variables configure the CORE database connection. For more details, see [Database Configuration](client/configuration/databases/).
+Database variables configure the CORE database connection. For more details, see [Database Configuration]({{% relref "/client/configuration/databases" %}}).
 
 | Variable | Description |
 |---|---|
@@ -105,7 +105,7 @@ Database variables configure the CORE database connection. For more details, see
 
 ### OCI CLI Overrides
 
-These override the DEFAULT OCI profile. For more details, see [OCI Configuration](client/configuration/oci/).
+These override the DEFAULT OCI profile. For more details, see [OCI Configuration]({{% relref "/client/configuration/oci" %}}).
 
 | Variable | Description |
 |---|---|

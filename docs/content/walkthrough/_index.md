@@ -159,7 +159,7 @@ To start the Oracle AI Database Free:
    podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest
    ```
 
-1. Alter the `vector_memory_size` parameter and create a [new database user](../client/configuration/databases#database-user):
+1. Alter the `vector_memory_size` parameter and create a [new database user]({{% relref "/client/configuration/databases#database-user" %}}):
 
    ```bash
    podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
@@ -204,7 +204,7 @@ As the container is running in a VM, a port-forward is required from the localho
 podman machine ssh -- -N -L 8501:localhost:8501
 ```
 {{% /tab %}}
-{{% /tabs %}}
+{{< /tabs >}}
 
 With the "Infrastructure" in-place, you're ready to configure the {{< short_app_ref >}}. 
 
@@ -221,7 +221,7 @@ To configure the On-Premises **LLM**, navigate to the _Configuration_ screen and
 ![Configure LLM](images/models_edit.png)
 1. Tick the _Enabled_ checkbox, leave all other settings as-is, and _Save_
 ![Enable LLM](images/models_enable_llm.png)
-{{% icon star %}} More information about configuring **LLM**s can be found in the [Model Configuration](../client/configuration/models) documentation.
+{{% icon star %}} More information about configuring **LLM**s can be found in the [Model Configuration]({{% relref "/client/configuration/models" %}}) documentation.
 
 #### Say "Hello?"
 
@@ -244,7 +244,7 @@ To configure the On-Premises Embedding Model, navigate back to the _Configuratio
 1. Enable the `mxbai-embed-large` Embedding Model following the same process as you did for the Language Model.
 ![Configure Embedding Model](images/models_enable_embed.png)
 
-{{% icon star %}}  More information about configuring embedding models can be found in the [Model Configuration](../client/configuration/models) documentation.
+{{% icon star %}}  More information about configuring embedding models can be found in the [Model Configuration]({{% relref "/client/configuration/models" %}}) documentation.
 
 ### Configure the Database
 
@@ -257,7 +257,7 @@ To configure Oracle AI Database Free, navigate to the _Configuration_ screen and
 
 ![Configure Database](../client/configuration/images/database_config.png)
 
-{{% icon star %}} More information about configuring the database can be found in the [Database Configuration](../client/configuration/databases) documentation.
+{{% icon star %}} More information about configuring the database can be found in the [Database Configuration]({{% relref "/client/configuration/databases" %}}) documentation.
 
 ## Split and Embed
 

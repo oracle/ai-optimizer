@@ -131,7 +131,7 @@ With this approach the tool is available immediately after registration — no a
 
 ### Internal Agent Use (AgentSpec)
 
-The {{< short_app_ref >}} uses [AgentSpec]({{< ref "agents" >}}) to define agents and flows as portable configurations.  There are two ways to bind MCP tools to an agent:
+The {{< short_app_ref >}} uses [AgentSpec]({{% relref "agents" %}}) to define agents and flows as portable configurations.  There are two ways to bind MCP tools to an agent:
 
 **MCPToolBox** — Connects to the MCP server and discovers *all* available tools at runtime.  The built-in NL2SQL Agent uses this pattern.  Any custom tool registered on the server is automatically available without code changes.
 
@@ -169,7 +169,7 @@ def build_math_agentspec(
 
 When a user asks "What is 3 + 4?", the LLM sees `optimizer_add` in its available tools, calls it with `a=3, b=4`, and returns the result.
 
-See the [Agents and Flows]({{< ref "agents" >}}) documentation for the full define → load → execute pattern, including how to wire an agent into the chat endpoint.
+See the [Agents and Flows]({{% relref "agents" %}}) documentation for the full define → load → execute pattern, including how to wire an agent into the chat endpoint.
 
 ## Tips
 
