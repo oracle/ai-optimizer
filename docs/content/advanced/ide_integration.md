@@ -192,85 +192,27 @@ The SQLcl tool list is dynamic because it comes from the SQLcl MCP proxy. When a
 
 For general API usage, see [API Server]({{< ref "client/api_server" >}}) and [API Examples]({{< ref "advanced/api_examples" >}}).
 
-## IDE Integration Guides
+## IDE Integration Notes
 
-### VS Code
+The IDEs and coding agents listed above do not need separate Optimizer-side configuration. In most cases, the only Optimizer-specific setup is:
 
-VS Code is relevant both directly and as the base platform for several agent extensions. When the extension or agent supports MCP, use the generated MCP client configuration from `/mcp/client-config`.
+1. start the API Server
+2. retrieve the generated MCP configuration from `/mcp/client-config`
+3. paste the `oracle-ai-optimizer` server entry into the tool-specific MCP settings
+4. verify the connection using `/mcp/tools` or `/mcp/prompts`
 
-Recommended path:
+The client-specific guidance is mostly about which transport to prefer:
 
-1. Start the Optimizer server.
-2. Fetch `/mcp/client-config`.
-3. Copy the `oracle-ai-optimizer` server definition into the MCP configuration expected by the tool.
-4. Reconnect the tool and verify tools are visible.
-
-### JetBrains AI Assistant
-
-JetBrains AI Assistant is a strong fit because it supports remote MCP servers. Use the same generated Optimizer MCP configuration and map the values into JetBrains' MCP settings.
-
-Recommended path:
-
-- use MCP
-- point to `http://localhost:8000/mcp/`
-- send `X-API-Key`
-
-### Continue
-
-Continue supports MCP-based workflows and is a good candidate for an IDE integration guide.
-
-Recommended path:
-
-- use MCP rather than the OpenAI-style route
-- add an `mcpServers` entry based on `/mcp/client-config`
-- use Continue's agent-oriented workflow when tools are required
-
-### Cursor
-
-Cursor is best documented as an MCP-capable client.
-
-Recommended path:
-
-- use the generated MCP configuration
-- treat the Optimizer as an external tool-and-context server
-- keep OpenAI-style base-URL configuration as a fallback pattern only when a compatibility layer is in front of the Optimizer APIs
-
-### Claude Code
-
-Claude Code is a natural fit for the native MCP story. It can use the Optimizer MCP server as an external tool source for documentation retrieval and database-aware workflows.
-
-Recommended path:
-
-- use MCP
-- verify tools via `/mcp/tools`
-- verify prompts via `/mcp/prompts`
-
-### Windsurf / Cascade
-
-Windsurf belongs in this segment because MCP support makes it compatible with the same generated configuration approach.
-
-Recommended path:
-
-- use the Optimizer MCP config
-- keep the integration focused on tool access, retrieval, and multi-step workflows
-
-### Cline
-
-Cline belongs in two categories:
-
-- **preferred:** MCP integration
-- **fallback:** OpenAI-style compatibility integration
-
-Prefer the MCP route when possible because it matches the built-in server capabilities directly.
-
-### Aider
-
-Aider is not an IDE plugin, but it is worth mentioning because many development workflows mix terminal agents and IDE agents.
-
-Aider fits the **OpenAI-style compatibility** bucket, so it should be documented as:
-
-- suitable when a compatibility layer or proxy is present
-- not a native fit for the built-in Optimizer chat wire format
+| Tool | Best Fit | Notes |
+|------|----------|-------|
+| **VS Code** | MCP | Use the generated MCP configuration with the tool or extension you install in VS Code. |
+| **JetBrains AI Assistant** | MCP | Use the Optimizer MCP endpoint as a remote MCP server. |
+| **Continue** | MCP | Prefer an `mcpServers` entry based on `/mcp/client-config`. |
+| **Cursor** | MCP | Treat the Optimizer as an external MCP tool-and-context server. |
+| **Claude Code** | MCP | Use MCP and verify tool visibility with `/mcp/tools`. |
+| **Windsurf / Cascade** | MCP | Use the same generated MCP configuration approach. |
+| **Cline** | MCP, then compatibility layer if needed | Prefer MCP when available; otherwise use an OpenAI-style adapter in front of the Optimizer APIs. |
+| **aider** | OpenAI-style compatibility layer | Aider is useful in terminal workflows, but it is not a native fit for the built-in Optimizer chat wire format. |
 
 ## Advanced Features
 
