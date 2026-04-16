@@ -7,144 +7,56 @@ weight = 15
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker: ignore apikey cline jsonl langgraph nl2sql sqlcl streamable windsurf
+spell-checker: ignore apikey cline jsonl langgraph nl2sql sqlcl streamable windsurf aider
 -->
+
+Any IDE or coding agent that supports MCP can connect directly to the {{< short_app_ref >}} and use the same RAG tools, prompts, and resources that the built-in client uses.  For tools that do not support MCP, a limited OpenAI-style compatibility path is available.
 
 ## Supported IDEs
 
-The recommended IDE integration path for the {{< short_app_ref >}} is the built-in **MCP server**. Modern IDE agents that support MCP can connect directly to the Optimizer and use the same server for tool access, prompts, and resources.
+| Tool | Type | Primary Integration |
+|------|------|---------------------|
+| **VS Code** | Editor / Agent Host | MCP |
+| **JetBrains AI Assistant** | IDE Assistant | MCP |
+| **Continue** | Code Assistant | MCP |
+| **Cursor** | AI-First Editor | MCP |
+| **Claude Code** | Coding Agent | MCP |
+| **Windsurf / Cascade** | IDE Agent | MCP |
+| **Cline** | Autonomous Agent | MCP |
+| **aider** | Terminal Assistant | OpenAI-style compatibility layer |
 
-Some tools also support an **OpenAI-style** integration path. For the built-in FastAPI server, that path should be treated as a **compatibility-layer pattern**, not as a native OpenAI wire-compatible implementation.
-
-The following IDEs and coding agents are useful targets for this integration segment:
-
-| Tool | Type | Platform | Primary Integration Method |
-|------|------|----------|----------------------------|
-| **VS Code** | Editor / Agent Host | Desktop | MCP |
-| **JetBrains AI Assistant** | IDE Assistant | JetBrains IDEs | MCP |
-| **Continue** | Code Assistant | VS Code, JetBrains | MCP |
-| **Cursor** | AI-First Editor | Desktop | MCP |
-| **Claude Code** | Coding Agent | Terminal / Editor workflows | MCP |
-| **Windsurf / Cascade** | IDE Agent | Desktop | MCP |
-| **Cline** | Autonomous Agent | VS Code | MCP or OpenAI-style compatibility layer |
-| **aider** | Terminal Assistant | Command Line | OpenAI-style compatibility layer |
-
-**Key capabilities available through IDE integration:**
-
-- Chat with **RAG-powered** responses using Oracle AI Vector Search
-- Natural-language database access through **NL2SQL** when SQLcl proxy support is available
-- Multi-tool workflows that combine documentation retrieval and live database reads
-- Shared model catalog across clients
-- Separate conversation and settings context per client
-
-## Quick Start
+## Prerequisites
 
 1. Install and configure the {{< short_app_ref >}}.
 2. Configure at least one usable language model.
 3. Configure a database if you want Vector Search or NL2SQL features.
-4. Install **Oracle SQLcl** if you want NL2SQL tools.
-5. Start the API Server. See [API Server]({{< ref "client/api_server" >}}).
+4. If you want Vector Search, embed your documents first — see [Split & Embed]({{< ref "client/tools" >}}).
+5. Install **Oracle SQLcl** if you want NL2SQL tools.
+6. Start the API Server — see [API Server]({{< ref "client/api_server" >}}).
 
-If `AIO_API_KEY` was not set before startup, the generated API key can be obtained from the [API Server]({{< ref "client/api_server" >}}) page. For environment-based configuration, see [Configuration]({{< ref "env_config" >}}).
+If `AIO_API_KEY` was not set before startup, retrieve the generated key from the [API Server]({{< ref "client/api_server" >}}) page or via [Configuration]({{< ref "env_config" >}}).
 
-Useful verification commands:
+Verify the server before connecting an IDE:
 
 ```bash
 curl http://localhost:8000/v1/liveness
-curl http://localhost:8000/v1/healthz
-curl http://localhost:8000/mcp/healthz
-curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/client-config
+curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/healthz
 ```
 
-Expected results:
+## MCP Integration
 
-- `/v1/liveness` returns `{"status":"alive"}`
-- `/v1/healthz` returns application version and status
-- `/mcp/healthz` returns MCP health information and currently available tools
-- `/mcp/client-config` returns a ready-to-use MCP client configuration
+This is the preferred path for any IDE or agent that supports MCP.
 
-## Integration Modes
+### Get the Client Configuration
 
-There are two useful integration modes.
-
-### 1. Native MCP Integration
-
-This is the preferred path for IDEs and agents that support MCP directly.
-
-Use:
-
-- MCP endpoint: `http://localhost:8000/mcp/`
-- Auth header: `X-API-Key: YOUR_API_KEY`
-- Generated client config: `GET /mcp/client-config`
-
-This path gives the IDE direct access to:
-
-- registered MCP tools
-- registered prompts
-- registered resources
-- SQLcl-backed tools when available
-
-### 2. OpenAI-Style Compatibility Integration
-
-This path is for tools that only know how to speak to an OpenAI-like API surface.
-
-The built-in Optimizer FastAPI server exposes useful chat endpoints such as:
-
-- `POST /v1/chat/completions`
-- `POST /v1/chat/streams`
-- `GET /v1/chat/history`
-- `PATCH /v1/chat/history`
-
-However, these routes are **Optimizer-specific**, not drop-in OpenAI wire-compatible routes. In particular:
-
-- requests use the Optimizer chat schema
-- responses do not use the OpenAI `choices` envelope
-- streaming events use the Optimizer event format
-
-So this mode should be documented as:
-
-- a compatibility-layer pattern
-- or a fit for the separate [Spring AI]({{< ref "advanced/source_code/springai" >}}) sample
-
-## Model Context Protocol (MCP)
-
-The {{< short_app_ref >}} exposes an MCP server at `/mcp/`, built on FastMCP. This is the cleanest way to integrate modern coding agents and IDE assistants.
-
-### MCP Server URL
-
-```text
-http://localhost:8000/mcp/
-```
-
-### Authentication
-
-MCP requests use the same API key as the REST API:
-
-```http
-X-API-Key: YOUR_API_KEY
-```
-
-### Built-In MCP Endpoints
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /mcp/healthz` | MCP health probe and tool list |
-| `GET /mcp/client-config` | Generated client configuration |
-| `GET /mcp/tools` | Registered MCP tools |
-| `GET /mcp/prompts` | Registered MCP prompts |
-| `GET /mcp/resources` | Registered MCP resources |
-| `/mcp/` | MCP server endpoint using streamable HTTP |
-
-### Generated Client Configuration
-
-The easiest bootstrap path is:
+The server generates a ready-to-use client configuration:
 
 ```bash
 curl -H "X-API-Key: $AIO_API_KEY" \
-  http://localhost:8000/mcp/client-config
+  http://localhost:8000/mcp/client-config | jq .
 ```
 
-Example response:
+Example output:
 
 ```json
 {
@@ -161,256 +73,115 @@ Example response:
 }
 ```
 
-For LangGraph-oriented clients that expect a slightly different shape:
+Paste the `oracle-ai-optimizer` entry into your IDE's MCP server configuration.
+
+{{% notice style="note" %}}
+IDE clients connect as the `server` client by default.  Use **Copy Client Settings** on the [API Server]({{< ref "client/api_server" >}}) page to push your GUI configuration — models, database, tools — to that client before connecting.
+{{% /notice %}}
+
+### Per-IDE Setup
+
+| Tool | Where to add the MCP config | Notes |
+|------|-----------------------------|-------|
+| **VS Code** | MCP extension settings | Use the generated config directly. |
+| **JetBrains AI** | Settings → AI Assistant → MCP Servers | Add as a remote MCP server. |
+| **Continue** | `~/.continue/config.json` → `mcpServers` | See Continue's MCP documentation. |
+| **Cursor** | Settings → MCP | Paste the generated entry. |
+| **Claude Code** | `~/.claude.json` or project MCP config | Verify tool visibility with `/mcp/tools` after adding. |
+| **Windsurf / Cascade** | MCP settings | Use the generated config directly. |
+| **Cline** | VS Code extension settings → MCP Servers | Add server URL and `X-API-Key` header. |
+
+After adding the server, verify the connection:
 
 ```bash
-curl -H "X-API-Key: $AIO_API_KEY" \
-  "http://localhost:8000/mcp/client-config?client=langgraph"
+curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/tools
+curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/prompts
 ```
-
-### Auto-Discovery
-
-At startup, the MCP layer auto-registers:
-
-- **Tools** from `src/server/app/mcp/tools/`
-- **Prompts** from the prompt registry
-- **Resources** from the MCP resource registry
-- **SQLcl proxy tools** when the SQLcl transport is available
 
 ### Available MCP Tools
 
-The built-in Vector Search tools are:
+| Tool | Purpose |
+|------|---------|
+| `optimizer_vs-discovery` | List available vector stores |
+| `optimizer_vs-retriever` | Retrieve relevant chunks from vector stores |
+| `optimizer_vs-grade` | Grade document relevance |
+| `optimizer_vs-rephrase` | Rephrase queries using conversation history |
 
-| Tool | Purpose | Typical Use |
-|------|---------|-------------|
-| `optimizer_vs-discovery` | Discover relevant vector stores | Narrow retrieval scope |
-| `optimizer_vs-retriever` | Retrieve relevant chunks from vector stores | Documentation search, RAG |
-| `optimizer_vs-grade` | Grade relevance of retrieved chunks | Internal filtering / routing |
-| `optimizer_vs-rephrase` | Rephrase or contextualize retrieval queries | Better retrieval quality |
+SQLcl tools (`sqlcl_*`) are registered automatically when SQLcl is available and a database is configured.  They provide read-only database access: schema inspection, SQL execution, and session metadata.
 
-The SQLcl tool list is dynamic because it comes from the SQLcl MCP proxy. When available, these tools provide read-only database-oriented capabilities such as schema inspection, querying, and operational lookups.
+## OpenAI-Style Compatibility
 
-For general API usage, see [API Server]({{< ref "client/api_server" >}}) and [API Examples]({{< ref "advanced/api_examples" >}}).
+Some tools — primarily terminal assistants like aider — do not support MCP and need an OpenAI-style endpoint.
 
-## IDE Integration Notes
+The {{< short_app_ref >}} exposes `/v1/chat/completions` and `/v1/chat/streams`, but these are **Optimizer-specific** endpoints, not drop-in OpenAI wire-compatible routes:
 
-The IDEs and coding agents listed above do not need separate Optimizer-side configuration. In most cases, the only Optimizer-specific setup is:
+- Authentication uses `X-API-Key`, not `Authorization: Bearer`.
+- Responses do not use the OpenAI `choices` envelope.
+- Streaming uses the Optimizer event format.
 
-1. start the API Server
-2. retrieve the generated MCP configuration from `/mcp/client-config`
-3. paste the `oracle-ai-optimizer` server entry into the tool-specific MCP settings
-4. verify the connection using `/mcp/tools` or `/mcp/prompts`
+For tools that cannot speak MCP or accommodate a custom auth header, the recommended path is the [Spring AI]({{< ref "advanced/source_code/springai" >}}) sample or a thin reverse-proxy adapter.
 
-The client-specific guidance is mostly about which transport to prefer:
+### aider
 
-| Tool | Best Fit | Notes |
-|------|----------|-------|
-| **VS Code** | MCP | Use the generated MCP configuration with the tool or extension you install in VS Code. |
-| **JetBrains AI Assistant** | MCP | Use the Optimizer MCP endpoint as a remote MCP server. |
-| **Continue** | MCP | Prefer an `mcpServers` entry based on `/mcp/client-config`. |
-| **Cursor** | MCP | Treat the Optimizer as an external MCP tool-and-context server. |
-| **Claude Code** | MCP | Use MCP and verify tool visibility with `/mcp/tools`. |
-| **Windsurf / Cascade** | MCP | Use the same generated MCP configuration approach. |
-| **Cline** | MCP, then compatibility layer if needed | Prefer MCP when available; otherwise use an OpenAI-style adapter in front of the Optimizer APIs. |
-| **aider** | OpenAI-style compatibility layer | Aider is useful in terminal workflows, but it is not a native fit for the built-in Optimizer chat wire format. |
+aider does not support MCP and sends `Authorization: Bearer`, which the Optimizer does not accept directly.  Use a reverse proxy to rewrite the auth header, or point aider at the [Spring AI]({{< ref "advanced/source_code/springai" >}}) sample endpoint instead.
 
-## Advanced Features
+## Tool Configuration
 
-### RAG-Powered Development
+Each client maintains independent settings, including which tools are enabled.  Set `tools_enabled` per client:
 
-Once a vector store is configured, IDE agents can use the Optimizer for documentation-grounded answers.
+```bash
+curl -X PUT "http://localhost:8000/v1/settings?client=my-ide-session" \
+  -H "X-API-Key: $AIO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tools_enabled": ["Vector Search", "NL2SQL"]}'
+```
 
-Typical workflow:
+| `tools_enabled` | Behavior |
+|-----------------|----------|
+| `[]` | LLM only |
+| `["Vector Search"]` | RAG, no database access |
+| `["NL2SQL"]` | Database queries only |
+| `["Vector Search", "NL2SQL"]` | Combined multi-tool workflow |
 
-1. Embed documentation into a vector store.
-2. Enable **Vector Search** in client settings.
-3. Connect an IDE agent through MCP.
-4. Ask questions that benefit from documentation retrieval.
-
-This is especially useful for:
-
-- Oracle documentation
-- internal runbooks
-- product manuals
-- architecture notes
-- project-specific technical references
-
-### NL2SQL Integration
-
-When SQLcl proxy support is available, IDE agents can use NL2SQL-oriented tools for read-only database workflows.
-
-Typical use cases:
-
-- inspect schema structure
-- list objects or tables
-- retrieve current state from the database
-- compare live state with recommendations found through RAG
-
-### Multi-Tool Workflows
-
-With both **Vector Search** and **NL2SQL** enabled, the Optimizer can support combined workflows such as:
-
-1. retrieve best-practice guidance from documentation
-2. inspect the live database state
-3. synthesize both into one answer
-
-This is one of the strongest reasons to position MCP as the primary integration path.
-
-### Multi-Model Support
-
-Configured models are shared across clients. IDE workflows can point at the same Optimizer instance while selecting different enabled models through client settings.
-
-Examples:
-
-- cloud-hosted OpenAI-compatible models
-- local Ollama models
-- OCI-backed models
-- other LiteLLM-backed providers configured in the Optimizer
-
-### Separate Client Contexts
-
-Each IDE session can maintain an independent client identity.
-
-For chat routes, set the `client` header:
+Use the `client` header on chat requests to isolate conversation history and settings across IDE sessions:
 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "X-API-Key: $AIO_API_KEY" \
   -H "client: my-ide-session" \
   -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "Hello"}
-    ]
-  }'
+  -d '{"messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-This keeps conversation history separate across editor sessions, assistants, or users.
+## Tool Routing
 
-### Configuring Tools Per Client
+When both tools are enabled the runtime routes automatically based on question semantics.  See [VecSearch Flow]({{< ref "agents/vecsearch" >}}) and [NL2SQL Agent]({{< ref "agents/nl2sql" >}}) for how each path works.
 
-The main tool flags are:
+## Troubleshooting
 
-- `Vector Search`
-- `NL2SQL`
+**`403 Forbidden`** — The `X-API-Key` header is missing or incorrect.  Retrieve the key from the [API Server]({{< ref "client/api_server" >}}) page.
 
-Update them through the settings endpoint:
+**MCP tools not visible** — Check `/mcp/healthz` and confirm tools are registered:
 
 ```bash
-curl -X PUT "http://localhost:8000/v1/settings?client=my-ide-session" \
-  -H "X-API-Key: $AIO_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tools_enabled": ["Vector Search", "NL2SQL"]
-  }'
+curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/healthz
 ```
 
-Useful combinations:
+**NL2SQL tools missing** — Verify SQLcl is in `PATH` and a database is configured.  Check server logs for the SQLcl proxy registration message.
 
-- `[]` - LLM-only behavior
-- `["Vector Search"]` - RAG only
-- `["NL2SQL"]` - database access only
-- `["Vector Search", "NL2SQL"]` - combined multi-tool workflow
-
-## Intelligent Tool Routing
-
-The Optimizer runtime uses `tools_enabled` to determine whether the session behaves as:
-
-- `llm_only`
-- `vecsearch`
-- `nl2sql`
-- `combined`
-
-When both tools are enabled, the system can support combined workflows that use documentation retrieval and database querying together.
-
-Typical routing patterns:
-
-| User Question | Likely Route |
-|---------------|--------------|
-| "How do I configure Oracle RAC?" | `vecsearch` |
-| "List the current application users." | `nl2sql` |
-| "What should PGA be set to, and what is it set to now?" | `combined` |
-
-## Configuration Best Practices
-
-### 1. Prefer MCP When Available
-
-If the IDE or coding agent supports MCP, use MCP first. It matches the native Optimizer feature set better than an OpenAI-style shim.
-
-### 2. Use Explicit Client IDs
-
-Give each IDE session or automation workflow its own client identity so history and settings do not bleed together.
-
-### 3. Separate RAG and Database Readiness Checks
-
-For reliable demos and IDE workflows, verify:
-
-- a usable LLM is enabled
-- a database is configured
-- vector stores exist if Vector Search is enabled
-- SQLcl tooling is available if NL2SQL is expected
-
-### 4. Use Compatibility Layers Only Where Needed
-
-For OpenAI-style clients that cannot speak MCP, put a thin adapter or proxy in front of the Optimizer APIs rather than pretending the built-in server is OpenAI wire-compatible.
-
-## Examples
-
-### Example: Read MCP Client Config
+**Model not found** — Confirm the model is enabled in **Configuration → Models** and list available models to verify:
 
 ```bash
-curl -H "X-API-Key: $AIO_API_KEY" \
-  http://localhost:8000/mcp/client-config | jq .
+curl -H "X-API-Key: $AIO_API_KEY" "http://localhost:8000/v1/models?model_type=ll"
 ```
 
-### Example: Verify MCP Tools
-
-```bash
-curl -H "X-API-Key: $AIO_API_KEY" \
-  http://localhost:8000/mcp/tools | jq .
-```
-
-### Example: Optimizer Chat Request
-
-```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "X-API-Key: $AIO_API_KEY" \
-  -H "client: my-session" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {
-        "role": "user",
-        "content": "What is Oracle AI Vector Search?"
-      }
-    ]
-  }' | jq .
-```
-
-### Example: Enable Both Tools for a Client
-
-```bash
-curl -X PUT "http://localhost:8000/v1/settings?client=my-session" \
-  -H "X-API-Key: $AIO_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tools_enabled": ["Vector Search", "NL2SQL"]
-  }' | jq .
-```
-
-## Next Steps
-
-1. Start the server and verify `/mcp/healthz`.
-2. Fetch `/mcp/client-config`.
-3. Configure one MCP-capable IDE client.
-4. Verify `/mcp/tools` and `/mcp/prompts`.
-5. Enable Vector Search and, if applicable, NL2SQL for a test client.
-6. Add a compatibility layer only for tools that cannot use MCP.
-
-For related material, see:
+## Related
 
 - [Custom MCP Tools]({{< ref "advanced/mcp" >}})
-- [Spring AI]({{< ref "advanced/source_code/springai" >}})
+- [VecSearch Flow]({{< ref "agents/vecsearch" >}})
+- [NL2SQL Agent]({{< ref "agents/nl2sql" >}})
+- [Split & Embed]({{< ref "client/tools" >}})
 - [API Server]({{< ref "client/api_server" >}})
 - [API Examples]({{< ref "advanced/api_examples" >}})
+- [Spring AI]({{< ref "advanced/source_code/springai" >}})
 - [Troubleshooting]({{< ref "help/troubleshooting" >}})
