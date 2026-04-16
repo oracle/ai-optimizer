@@ -1,7 +1,4 @@
-+++
-title = 'IDE Integration'
-weight = 15
-+++
+# IDE Integration
 
 <!--
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
