@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore genai vllm pplx
 -->
 
-The {{< full_app_ref >}} can be configured using environment files (`.env.*`) to pre-configure settings at startup. This is optional — the application will start and function without any environment file, but features like RAG, settings persistence, and the Testbed require access to a "CORE" [database](client/configuration/db_config/).
+The {{< full_app_ref >}} can be configured using environment files (`.env.*`) to pre-configure settings at startup. This is optional — the application will start and function without any environment file, but features like RAG, settings persistence, and the Testbed require access to a "CORE" [database]({{% relref "/client/configuration/databases" %}}).
 
 ## How It Works
 
@@ -33,6 +33,8 @@ The {{< short_app_ref >}} follows this precedence order (highest to lowest):
 3. **Config file values** (e.g. `~/.oci/config`)
 4. **Application defaults**
 
+Additionally, non-prefixed environment variables take precedence over their `AIO_` equivalents for database (`DB_USERNAME`, `DB_PASSWORD`, `DB_DSN`, `DB_WALLET_LOCATION`) and OCI CLI (`OCI_CLI_AUTH`, `OCI_CLI_TENANCY`, etc.) settings.
+
 ## Getting Started
 
 To create an environment file, copy the provided example:
@@ -45,7 +47,7 @@ Edit `src/.env.dev` and uncomment/set the values you need.
 
 {{% notice style="code" title="No configuration required" icon="circle-info" %}}
 <!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
-The **AI Optimizer** will start without any `.env.*` file or environment variables set. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database](/client/configuration/db_config/) should be configured.
+The **AI Optimizer** will start without any `.env.*` file or environment variables set. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database]({{% relref "/client/configuration/databases" %}}) should be configured.
 {{% /notice %}}
 
 ## Available Variables
@@ -56,11 +58,11 @@ The following variables can be set in the `.env.*` file. All variables use the `
 
 | Variable | Description | Default |
 |---|---|---|
-| `AIO_API_KEY` | API key for authenticating requests to the API Server. If not set, a key is auto-generated at startup and can be obtained from the [API Server](client/api_server/) page. | _(auto-generated)_ |
+| `AIO_API_KEY` | API key for authenticating requests to the API Server. If not set, a key is auto-generated at startup and can be obtained from the [API Server]({{% relref "/client/api_server" %}}) page. | _(auto-generated)_ |
 
 ### Database
 
-Database variables configure the CORE database connection. For more details, see [Database Configuration](client/configuration/db_config/).
+Database variables configure the CORE database connection. For more details, see [Database Configuration]({{% relref "/client/configuration/databases" %}}).
 
 | Variable | Description |
 |---|---|
@@ -68,6 +70,7 @@ Database variables configure the CORE database connection. For more details, see
 | `AIO_DB_PASSWORD` | Database password |
 | `AIO_DB_DSN` | Connection string or TNS alias |
 | `AIO_DB_WALLET_PASSWORD` | _(Optional)_ Wallet password for mTLS |
+| `AIO_DB_WALLET_LOCATION` | _(Optional)_ Path to the wallet directory for mTLS connections |
 | `AIO_DB_POOL_SIZE` | Connection pool size (default: `5`) |
 
 ### Logging
@@ -86,6 +89,7 @@ Database variables configure the CORE database connection. For more details, see
 | `AIO_SERVER_SSL` | Enable TLS for the API Server | `false` |
 | `AIO_SERVER_SSL_CERT_FILE` | Path to TLS certificate (PEM). If SSL is enabled without this, a self-signed certificate is generated. | _(none)_ |
 | `AIO_SERVER_SSL_KEY_FILE` | Path to TLS private key (PEM) | _(none)_ |
+| `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the API Server to become ready at startup | `180` |
 
 ### Client
 
@@ -101,7 +105,7 @@ Database variables configure the CORE database connection. For more details, see
 
 ### OCI CLI Overrides
 
-These override the DEFAULT OCI profile. For more details, see [OCI Configuration](client/configuration/oci_config/).
+These override the DEFAULT OCI profile. For more details, see [OCI Configuration]({{% relref "/client/configuration/oci" %}}).
 
 | Variable | Description |
 |---|---|
@@ -114,6 +118,12 @@ These override the DEFAULT OCI profile. For more details, see [OCI Configuration
 | `AIO_OCI_CLI_KEY_CONTENT` | Inline private key content |
 | `AIO_OCI_CLI_PASSPHRASE` | Private key passphrase |
 | `AIO_OCI_CLI_SECURITY_TOKEN_FILE` | Path to security token file |
+
+### NL2SQL
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_SQLCL_HOME` | Override the SQLcl connection store directory. Also accepts `SQLCL_HOME`. | _(temporary directory)_ |
 
 ### OCI GenAI
 

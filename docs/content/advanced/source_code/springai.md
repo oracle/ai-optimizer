@@ -3,7 +3,7 @@ title = 'Spring AI'
 weight = 10
 +++
 
-After having downloaded and unzipped the SpringAI file from the [Settings](/client/configuration/settings) screen, you can open and set the latest two things in the code to be executed. For the detailed description, please refer to the **README.md** file included
+After having downloaded and unzipped the SpringAI file from the [Settings]({{% relref "/client/configuration/settings" %}}) screen, you can open and set the latest two things in the code to be executed. For the detailed description, please refer to the **README.md** file included
 
 ### Prerequisites
 Before using a microservice that exploit OpenAI API, make sure you have a developer token from OpenAI. To do this, create an account at [OpenAI](https://platform.openai.com/signup) and generate the token at [API Keys](https://platform.openai.com/account/api-keys).
@@ -310,6 +310,3 @@ it should return something like:
 }
 ```
 
-{{% notice style="code" title="Documentation is Hard!" icon="circle-info" %}}
-More information coming soon... 25-June-2025
-{{% /notice %}}

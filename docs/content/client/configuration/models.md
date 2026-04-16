@@ -1,6 +1,6 @@
 +++
 title = '🤖 Model Configuration'
-weight = 10
+weight = 30
 +++
 <!--
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
@@ -110,16 +110,17 @@ You can manually enable or disable these features using the **Grade** and **Reph
 
 Please follow the [Getting Started](https://docs.oracle.com/en-us/iaas/Content/generative-ai/getting-started.htm) guide for deploying the service in your OCI tenancy.
 
-To use OCI GenAI, the {{< short_app_ref >}} must be configured for [OCI access](oci_config); including the Compartment OCID for the OCI GenAI service.
+To use OCI GenAI, the {{< short_app_ref >}} must be configured for [OCI access](oci); including the Compartment OCID for the OCI GenAI service.
 
->[!code]Skip the GUI!
->OCI GenAI models can be enabled via environment variables. See [OCI GenAI](/env_config/#oci-genai) configuration.
->
->Alternatively, you can specify the following in the `~/.oci/config` configfile under the appropriate OCI profile:
->```shell
->genai_compartment_id=<OCI Compartment OCID of the OCI GenAI Service>
->genai_region=<OCI GenAI Region>
->```
+{{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
+OCI GenAI models can be enabled via environment variables. See [OCI GenAI](/env_config/#oci-genai) configuration.
+
+Alternatively, you can specify the following in the `~/.oci/config` configfile under the appropriate OCI profile:
+```shell
+genai_compartment_id=<OCI Compartment OCID of the OCI GenAI Service>
+genai_region=<OCI GenAI Region>
+```
+{{% /notice %}}
 
 {{% /tab %}}
 {{% tab title="Ollama" %}}
@@ -129,8 +130,9 @@ To use OCI GenAI, the {{< short_app_ref >}} must be configured for [OCI access](
 
 When configuring an Ollama model in the {{< short_app_ref >}}, set the `API Server` URL (e.g `http://127.0.0.1:11434`) and leave the API Key blank. Substitute the IP Address with the IP of where Ollama is running.
 
->[!code]Skip the GUI!
->Ollama models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
+Ollama models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% /notice %}}
 
 ## Quick-start
 
@@ -162,8 +164,9 @@ For more information and instructions on running Ollama on other platforms, plea
 
 [HuggingFace](https://huggingface.co/) is a platform where the machine learning community collaborates on models, datasets, and applications. It provides a large selection of models that can be run both in the cloud and On-Premises.
 
->[!code]Skip the GUI!
->HuggingFace models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
+HuggingFace models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% /notice %}}
 
 ## Quick-start
 
@@ -209,8 +212,9 @@ Example of running thenlper/gte-base in a container:
 
 **WARNING:** Cohere is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
 
->[!code]Skip the GUI!
->Cohere models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
+Cohere models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% /notice %}}
 {{% /tab %}}
 {{% tab title="OpenAI" %}}
 # OpenAI
@@ -219,8 +223,9 @@ Example of running thenlper/gte-base in a container:
 
 **WARNING:** OpenAI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
 
->[!code]Skip the GUI!
->OpenAI models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
+OpenAI models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% /notice %}}
 
 {{% /tab %}}
 {{% tab title="CompatOpenAI" %}}
@@ -236,7 +241,8 @@ Many "AI Runners" provide OpenAI compatible APIs.  These can be used without any
 
 **WARNING:** Perplexity AI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
 
->[!code]Skip the GUI!
->Perplexity models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
+Perplexity models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+{{% /notice %}}
 {{% /tab %}}
 {{< /tabs >}}

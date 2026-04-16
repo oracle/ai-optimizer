@@ -4,7 +4,6 @@
 [![Test Suite](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml)
 [![Validate IaC](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml)
 [![Validate Container Images](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml)
-[![Security Scan](https://github.com/oracle/ai-optimizer/actions/workflows/security_scan.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/security_scan.yml)
 [![Deploy Documentation](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml)
 
 ## Description

@@ -12,7 +12,7 @@ spell-checker: ignore opentofu ollama imagelink kubeconfig
 
 The {{< full_app_ref >}} can easily be deployed in Oracle Cloud Infrastructure (**OCI**) using Infrastructure as Code (**IaC**) provided in the source [opentofu](https://github.com/oracle/ai-optimizer/tree/main/opentofu) directory.
 
-Choose between deploying a light-weight [Virtual Machine](#virtual-machine) or robust [Oracle Kubernetes Engine (**OKE**)](#oracle-kubernetes-engine) along with the **Oracle Autonomous Database** for a fully configured {{< short_app_ref >}} environment, ready to use.  
+Choose between deploying a light-weight [Virtual Machine](#virtual-machine) or robust [Oracle Kubernetes Engine (**OKE**)](#oracle-kubernetes-engine) along with the **Oracle Autonomous Database** for a fully configured {{< short_app_ref >}} environment, ready to use.
 
 While the **IaC** can be run from a command-line with prior experience, the steps outlined here use [Oracle Cloud Resource Manager](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/resourcemanager.htm) to simplify the process.  To get started:
 
@@ -20,12 +20,12 @@ While the **IaC** can be run from a command-line with prior experience, the step
 
 ## Virtual Machine
 
-The Virtual Machine (VM) deployment provisions both the {{< short_app_ref >}} API Server and GUI Client together in an "All-in-One" configuration for experimentation and development.  
+The Virtual Machine (VM) deployment provisions both the {{< short_app_ref >}} API Server and GUI Client together in an "All-in-One" configuration for experimentation and development.
 
-There will be an option to deploy on a **GPU**, which will be more expensive then a **CPU** but will, as part of the deployment, make available one local Large Language Model and one Embedding Model for use out-of-the-box. 
+There will be an option to deploy on a **GPU**, which will be more expensive then a **CPU** but will, as part of the deployment, make available one local Large Language Model and one Embedding Model for use out-of-the-box.
 
 {{% notice style="code" title="Models Needed!" icon="traffic-light" %}}
-If deploying the VM IaC on a **CPU**, you will need to [configure a model](/client/configuration/model_config) for functionality. 
+If deploying the VM IaC on a **CPU**, you will need to [configure a model]({{% relref "/client/configuration/models" %}}) for functionality.
 {{% /notice %}}
 
 ### Configure Variables
@@ -79,7 +79,7 @@ The Application Information tab will provide the URL's to access the {{< short_a
 Although the infrastructure is deployed, the {{< short_app_ref >}} may still be initializing, which can result in a 502 Bad Gateway error when accessing the URLs. Please allow up to 10 minutes for the configuration to complete.
 {{% /notice %}}
 
-To get a better understanding of how the API Server works and to obtain the API Key for making REST calls, review the [API Server documentation](/client/api_server/).
+To get a better understanding of how the API Server works and to obtain the API Key for making REST calls, review the [API Server documentation]({{% relref "/client/api_server" %}}).
 
 ### Cleanup
 
@@ -147,7 +147,7 @@ The Application Information tab will provide the URL's to access the {{< short_a
 Although the infrastructure is deployed, the {{< short_app_ref >}} may still be initializing, which can result in a 502 Bad Gateway error when accessing the URLs. Please allow up to 10 minutes for the configuration to complete.
 {{% /notice %}}
 
-To get a better understanding of how the API Server works and to obtain the API Key for making REST calls, review the [API Server documentation](/client/api_server/).
+To get a better understanding of how the API Server works and to obtain the API Key for making REST calls, review the [API Server documentation]({{% relref "/client/api_server" %}}).
 
 ### Cleanup
 

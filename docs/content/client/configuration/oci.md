@@ -1,6 +1,6 @@
 +++
 title = '☁️ OCI Configuration'
-weight = 30
+weight = 40
 +++
 
 <!--

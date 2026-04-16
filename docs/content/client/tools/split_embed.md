@@ -58,7 +58,7 @@ The embedding process is initiated by clicking **Populate Vector Store**. The fo
     - **Local**: upload multiple documents from the client machine;
     - **Web**: load a single TXT, PDF, or HTML document from a specified URL;
     - **SQL**: define a query against an Oracle Database to extract text from a VARCHAR2 column and embed it row by row. When using this option, the following parameters must be provided:
-        - **Database**: select the target database from the list of configured and connected databases (see [Database Configuration]({{< relref "/client/configuration/db_config" >}}));
+        - **Database**: select the target database from the list of configured and connected databases (see [Database Configuration]({{% relref "/client/configuration/databases" %}}));
         - **SQL**: a query that returns a single text column, for example:
         ```select PRODUCT_NAME from PRODUCTS``` The embedded content is prefixed with the column name to provide additional context during similarity search.
 

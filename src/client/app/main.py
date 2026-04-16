@@ -30,7 +30,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
     menu_items={
         "Get Help": "https://oracle.github.io/ai-optimizer/",
-        "Report a bug": "https://github.com/oracle/ai-optimizer/issues/new",
+        "Report a bug": "https://github.com/oracle/ai-optimizer/issues/new?template=2-bug_report.yml",
         "About": f"Version: v{__version__}\n\nClient: {state.optimizer_client}",
     },
 )

@@ -58,7 +58,7 @@ The **AI Optimizer** can be used to interact with language models without having
 Oracle AI Database provides:
 
 - the Vector Store for split and embedded documents used for Retrieval Augmented Generation (RAG).
-- storage for the [Testbed](testbed) Q&A Test Sets and Evaluations
+- storage for the [Testbed]({{% relref "/client/testbed" %}}) Q&A Test Sets and Evaluations
 - storage of {{< short_app_ref >}} settings and configuration
 
 ## Document Source

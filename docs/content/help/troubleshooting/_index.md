@@ -48,14 +48,20 @@ Update the database connection string to include a `https_proxy` and `https_prox
   For example:
    
   ```text
-  myadb_high = (
-  description=(
-      address=
-      (protocol=tcps)(port=1522)
-      (https_proxy=<proxy_host>)(https_proxy_port=<proxy_port>)  # <-- Add
-      (host=<adb_host>)
-  )(connect_data=(service_name=s<serviceName>))(security=(ssl_server_dn_match=yes))
-  )```
+  ADB_HIGH =
+  (DESCRIPTION = 
+    (ADDRESS = 
+      (PROTOCOL = tcps)(HOST = <adb_host>)(PORT = 1522)
+      (HTTPS_PROXY = <proxy_host>)(HTTPS_PROXY_PORT = <proxy_port>)  # <-- Add
+    )
+    (CONNECT_DATA = 
+      (SERVICE_NAME = <serviceName>)
+      (SECURITY = 
+        (ssl_server_dn_match=yes)
+      )
+    )
+  )
+  ```
 
 ## Client Fails to Load on Corporate Networks
 
@@ -63,4 +69,4 @@ Update the database connection string to include a `https_proxy` and `https_prox
 The {{< short_app_ref >}} Client fails to load in certain network environments.  The browser console shows a JavaScript file (`index.<hash>.js`) blocked with `NS_ERROR_CORRUPTED_CONNECTION` (Firefox) or a similar connection error.
 
 **_Solution_**:
-This is typically caused by a corporate firewall, deep packet inspection (DPI), or SSL inspection appliance corrupting the unencrypted HTTP traffic.  Enable HTTPS on the client to encrypt the connection end-to-end.  See [TLS / HTTPS]({{< relref "/advanced/tls" >}}) for configuration details.
+This is typically caused by a corporate firewall, deep packet inspection (DPI), or SSL inspection appliance corrupting the unencrypted HTTP traffic.  Enable HTTPS on the client to encrypt the connection end-to-end.  See [TLS / HTTPS]({{% relref "/advanced/tls" %}}) for configuration details.

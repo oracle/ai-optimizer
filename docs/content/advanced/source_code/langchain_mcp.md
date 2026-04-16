@@ -157,7 +157,7 @@ The free version of **Claude Desktop** does not natively support remote MCP serv
  If the question matches content stored in the vector store, the response will be grounded in that knowledge base. Otherwise, the LLM will fall back to its general training or other configured tools.
  
 {{% notice style="code" title="Notice" icon="circle-info" %}}
-IIf you encounter issues during startup, inspect the logs for compatibility problems related to older Node.js or npx versions used by the mcp-remote library.
+If you encounter issues during startup, inspect the logs for compatibility problems related to older Node.js or npx versions used by the mcp-remote library.
 
 Check installed Node.js versions with:
 ```bash
