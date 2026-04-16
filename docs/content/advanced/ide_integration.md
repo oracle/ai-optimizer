@@ -1,4 +1,7 @@
-# IDE Integration
++++
+title = 'IDE Integration'
+weight = 15
++++
 
 <!--
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
