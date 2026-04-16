@@ -12,14 +12,14 @@ spell-checker: ignore apikey cline jsonl langgraph nl2sql sqlcl streamable winds
 
 ## Supported IDEs
 
-In 2.1, the recommended IDE integration path for the {{< short_app_ref >}} is the built-in **MCP server**. Modern IDE agents that support MCP can connect directly to the Optimizer and use the same server for tool access, prompts, and resources.
+The recommended IDE integration path for the {{< short_app_ref >}} is the built-in **MCP server**. Modern IDE agents that support MCP can connect directly to the Optimizer and use the same server for tool access, prompts, and resources.
 
 Some tools also support an **OpenAI-style** integration path. For the built-in FastAPI server, that path should be treated as a **compatibility-layer pattern**, not as a native OpenAI wire-compatible implementation.
 
 The following IDEs and coding agents are useful targets for this integration segment:
 
-| Tool | Type | Platform | Primary Integration Method in 2.1 |
-|------|------|----------|-----------------------------------|
+| Tool | Type | Platform | Primary Integration Method |
+|------|------|----------|----------------------------|
 | **VS Code** | Editor / Agent Host | Desktop | MCP |
 | **JetBrains AI Assistant** | IDE Assistant | JetBrains IDEs | MCP |
 | **Continue** | Code Assistant | VS Code, JetBrains | MCP |
@@ -39,45 +39,15 @@ The following IDEs and coding agents are useful targets for this integration seg
 
 ## Quick Start
 
-### Prerequisites
-
-1. Install the {{< short_app_ref >}} and its dependencies.
+1. Install and configure the {{< short_app_ref >}}.
 2. Configure at least one usable language model.
 3. Configure a database if you want Vector Search or NL2SQL features.
 4. Install **Oracle SQLcl** if you want NL2SQL tools.
+5. Start the API Server. See [API Server]({{< ref "client/api_server" >}}).
 
-For bare-metal development, the project README uses:
+If `AIO_API_KEY` was not set before startup, the generated API key can be obtained from the [API Server]({{< ref "client/api_server" >}}) page. For environment-based configuration, see [Configuration]({{< ref "env_config" >}}).
 
-```bash
-python3.11 -m venv .venv --copies
-source .venv/bin/activate
-pip3.11 install --upgrade pip wheel setuptools uv
-uv pip install -e ".[all]"
-cp src/.env.example src/.env.dev
-```
-
-### Start the Server
-
-Use the project entrypoint so environment loading and runtime setup behave the same way as the supported application flow:
-
-```bash
-src/entrypoint.py server
-```
-
-By default, the server listens on `http://localhost:8000`.
-
-### Set or Retrieve the API Key
-
-The server uses the `AIO_API_KEY` setting and expects clients to send it as the `X-API-Key` header.
-
-To set an explicit key:
-
-```bash
-export AIO_API_KEY="your-secure-api-key"
-src/entrypoint.py server
-```
-
-### Verify the Server
+Useful verification commands:
 
 ```bash
 curl http://localhost:8000/v1/liveness
@@ -95,7 +65,7 @@ Expected results:
 
 ## Integration Modes
 
-There are two useful integration modes in 2.1.
+There are two useful integration modes.
 
 ### 1. Native MCP Integration
 
@@ -118,7 +88,7 @@ This path gives the IDE direct access to:
 
 This path is for tools that only know how to speak to an OpenAI-like API surface.
 
-In 2.1, the built-in Optimizer FastAPI server exposes useful chat endpoints such as:
+The built-in Optimizer FastAPI server exposes useful chat endpoints such as:
 
 - `POST /v1/chat/completions`
 - `POST /v1/chat/streams`
@@ -220,79 +190,7 @@ The built-in Vector Search tools are:
 
 The SQLcl tool list is dynamic because it comes from the SQLcl MCP proxy. When available, these tools provide read-only database-oriented capabilities such as schema inspection, querying, and operational lookups.
 
-### Verified on `main`
-
-This page was checked against the current `main` branch:
-
-- `GET /mcp/client-config` returns a valid MCP server entry
-- MCP routes enforce `X-API-Key`
-- `POST /v1/chat/completions` returns the Optimizer-native response object with fields such as `role`, `content`, `route`, and `token_usage`
-
-That last point is why MCP is the primary recommendation for IDE integration in 2.1.
-
-## Optimizer REST API for IDE Workflows
-
-Even when the IDE uses MCP, it is useful to understand the built-in REST API surface because it controls models, settings, client state, and chat history.
-
-### API Base URL
-
-```text
-http://localhost:8000/v1
-```
-
-### Authentication
-
-The REST API also uses:
-
-```http
-X-API-Key: YOUR_API_KEY
-```
-
-### Chat Endpoints
-
-| Method | Endpoint | Notes |
-|--------|----------|-------|
-| `POST` | `/v1/chat/completions` | Non-streaming Optimizer chat response |
-| `POST` | `/v1/chat/streams` | Streaming chat endpoint |
-| `GET` | `/v1/chat/history` | Get per-client history |
-| `PATCH` | `/v1/chat/history` | Clear per-client history |
-
-The chat endpoints use the `client` **header** to identify the session:
-
-```http
-client: my-ide-session
-```
-
-### Model Endpoints
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/v1/models` | List configured models |
-| `GET` | `/v1/models/supported` | List supported providers and model families |
-| `GET` | `/v1/models/{provider}/{id}` | Get one model config |
-| `POST` | `/v1/models` | Add a model |
-| `PUT` | `/v1/models/{provider}/{id}` | Update a model |
-
-### Settings Endpoints
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/v1/settings?client=...` | Read settings for a client |
-| `PUT` | `/v1/settings?client=...` | Update client settings |
-| `POST` | `/v1/settings?client=...` | Create a client configuration |
-
-Settings endpoints use the `client` **query parameter** rather than the `client` header.
-
-### Database and Embed Endpoints
-
-These endpoints are useful for preparing RAG workflows used by IDE agents:
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/v1/databases` | List configured databases |
-| `GET` | `/v1/databases/{alias}` | Get one database config |
-| `GET` | `/v1/embed/{vs}/files` | Inspect files in a vector store |
-| `DELETE` | `/v1/embed/{vs}` | Drop a vector store |
+For general API usage, see [API Server]({{< ref "client/api_server" >}}) and [API Examples]({{< ref "advanced/api_examples" >}}).
 
 ## IDE Integration Guides
 
@@ -309,7 +207,7 @@ Recommended path:
 
 ### JetBrains AI Assistant
 
-JetBrains AI Assistant is a strong fit for the 2.1 story because it supports remote MCP servers. Use the same generated Optimizer MCP configuration and map the values into JetBrains' MCP settings.
+JetBrains AI Assistant is a strong fit because it supports remote MCP servers. Use the same generated Optimizer MCP configuration and map the values into JetBrains' MCP settings.
 
 Recommended path:
 
@@ -329,7 +227,7 @@ Recommended path:
 
 ### Cursor
 
-Cursor is best documented in 2.1 as an MCP-capable client.
+Cursor is best documented as an MCP-capable client.
 
 Recommended path:
 
@@ -363,7 +261,7 @@ Cline belongs in two categories:
 - **preferred:** MCP integration
 - **fallback:** OpenAI-style compatibility integration
 
-For 2.1 documentation, prefer the MCP route when possible because it matches the built-in server capabilities directly.
+Prefer the MCP route when possible because it matches the built-in server capabilities directly.
 
 ### Aider
 
@@ -514,111 +412,6 @@ For reliable demos and IDE workflows, verify:
 
 For OpenAI-style clients that cannot speak MCP, put a thin adapter or proxy in front of the Optimizer APIs rather than pretending the built-in server is OpenAI wire-compatible.
 
-## Troubleshooting
-
-### Connection Refused
-
-```bash
-curl http://localhost:8000/v1/liveness
-lsof -i :8000
-src/entrypoint.py server
-```
-
-### Authentication Failed
-
-The server returns **403 Forbidden** when `X-API-Key` is missing or incorrect.
-
-Check:
-
-- the client sends `X-API-Key`
-- the value matches `AIO_API_KEY`
-- the IDE MCP config includes the header exactly
-
-### Model Not Found
-
-Check configured models:
-
-```bash
-curl -H "X-API-Key: $AIO_API_KEY" \
-  http://localhost:8000/v1/models
-```
-
-Then enable or fix the model in the Optimizer configuration UI or API.
-
-### MCP Tools Not Visible
-
-Check:
-
-```bash
-curl http://localhost:8000/mcp/healthz
-curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/tools
-```
-
-If SQLcl tools are missing, the SQLcl proxy may not be available in the current environment.
-
-### Vector Search Not Working
-
-Check:
-
-- an embedding model is configured and usable
-- a database is configured
-- at least one vector store exists
-- `Vector Search` is enabled in `tools_enabled`
-
-### NL2SQL Not Working
-
-Check:
-
-- SQLcl is installed and reachable
-- a database is configured
-- `NL2SQL` is enabled in `tools_enabled`
-- the SQLcl proxy initialized successfully
-
-## API Reference
-
-### Core Probes
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/v1/liveness` | Liveness probe |
-| `GET` | `/v1/readiness` | Readiness probe |
-| `GET` | `/v1/healthz` | Application health and version |
-| `GET` | `/mcp/healthz` | MCP health and available tools |
-
-### MCP Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/mcp/client-config` | Generated MCP config |
-| `GET` | `/mcp/tools` | List tools |
-| `GET` | `/mcp/prompts` | List prompts |
-| `GET` | `/mcp/resources` | List resources |
-
-### Chat and Settings Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/v1/chat/completions` | Non-streaming chat |
-| `POST` | `/v1/chat/streams` | Streaming chat |
-| `GET` | `/v1/chat/history` | Chat history |
-| `PATCH` | `/v1/chat/history` | Clear chat history |
-| `GET` | `/v1/settings` | Read client settings |
-| `PUT` | `/v1/settings` | Update client settings |
-
-### OpenAPI Documentation
-
-Interactive API docs:
-
-```text
-http://localhost:8000/v1/docs
-```
-
-OpenAPI schema:
-
-```text
-http://localhost:8000/v1/openapi.json
-```
-
 ## Examples
 
 ### Example: Read MCP Client Config
@@ -677,3 +470,5 @@ For related material, see:
 - [Custom MCP Tools]({{< ref "advanced/mcp" >}})
 - [Spring AI]({{< ref "advanced/source_code/springai" >}})
 - [API Server]({{< ref "client/api_server" >}})
+- [API Examples]({{< ref "advanced/api_examples" >}})
+- [Troubleshooting]({{< ref "help/troubleshooting" >}})
