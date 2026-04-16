@@ -30,11 +30,11 @@ Any IDE or coding agent that supports MCP can connect directly to the {{< short_
 1. Install and configure the {{< short_app_ref >}}.
 2. Configure at least one usable language model.
 3. Configure a database if you want Vector Search or NL2SQL features.
-4. If you want Vector Search, embed your documents first — see [Split & Embed]({{< ref "client/tools" >}}).
+4. If you want Vector Search, embed your documents first — see [Split & Embed]({{% relref "client/tools/split_embed" %}}).
 5. Install **Oracle SQLcl** if you want NL2SQL tools.
-6. Start the API Server — see [API Server]({{< ref "client/api_server" >}}).
+6. Start the API Server — see [API Server]({{% relref "client/api_server" %}}).
 
-If `AIO_API_KEY` was not set before startup, retrieve the generated key from the [API Server]({{< ref "client/api_server" >}}) page or via [Configuration]({{< ref "env_config" >}}).
+If `AIO_API_KEY` was not set before startup, retrieve the generated key from the [API Server]({{% relref "client/api_server" %}}) page or via [Configuration]({{% relref "env_config" %}}).
 
 Verify the server before connecting an IDE:
 
@@ -73,23 +73,11 @@ Example output:
 }
 ```
 
-Paste the `oracle-ai-optimizer` entry into your IDE's MCP server configuration.
+Paste the `oracle-ai-optimizer` entry into your IDE's MCP server configuration.  Refer to your tool's MCP documentation for the exact location — most tools expose this under a dedicated MCP or AI server settings panel.
 
 {{% notice style="note" %}}
-IDE clients connect as the `server` client by default.  Use **Copy Client Settings** on the [API Server]({{< ref "client/api_server" >}}) page to push your GUI configuration — models, database, tools — to that client before connecting.
+IDE clients connect as the `server` client by default.  Use **Copy Client Settings** on the [API Server]({{% relref "client/api_server" %}}) page to push your GUI client settings to that client before connecting.
 {{% /notice %}}
-
-### Per-IDE Setup
-
-| Tool | Where to add the MCP config | Notes |
-|------|-----------------------------|-------|
-| **VS Code** | MCP extension settings | Use the generated config directly. |
-| **JetBrains AI** | Settings → AI Assistant → MCP Servers | Add as a remote MCP server. |
-| **Continue** | `~/.continue/config.json` → `mcpServers` | See Continue's MCP documentation. |
-| **Cursor** | Settings → MCP | Paste the generated entry. |
-| **Claude Code** | `~/.claude.json` or project MCP config | Verify tool visibility with `/mcp/tools` after adding. |
-| **Windsurf / Cascade** | MCP settings | Use the generated config directly. |
-| **Cline** | VS Code extension settings → MCP Servers | Add server URL and `X-API-Key` header. |
 
 After adding the server, verify the connection:
 
@@ -116,14 +104,15 @@ Some tools — primarily terminal assistants like aider — do not support MCP a
 The {{< short_app_ref >}} exposes `/v1/chat/completions` and `/v1/chat/streams`, but these are **Optimizer-specific** endpoints, not drop-in OpenAI wire-compatible routes:
 
 - Authentication uses `X-API-Key`, not `Authorization: Bearer`.
-- Responses do not use the OpenAI `choices` envelope.
-- Streaming uses the Optimizer event format.
+- Model selection comes from the client's saved settings, not the `model` field in the request body.
+- Responses return a custom `{role, content, route, vs_metadata, token_usage}` object, not the OpenAI `choices` envelope.
+- Streaming uses custom SSE event types, not OpenAI delta events.
 
-For tools that cannot speak MCP or accommodate a custom auth header, the recommended path is the [Spring AI]({{< ref "advanced/source_code/springai" >}}) sample or a thin reverse-proxy adapter.
+For tools that cannot speak MCP or accommodate a custom auth header, the recommended path is the [Spring AI]({{% relref "advanced/source_code/springai" %}}) sample or a thin reverse-proxy adapter.
 
 ### aider
 
-aider does not support MCP and sends `Authorization: Bearer`, which the Optimizer does not accept directly.  Use a reverse proxy to rewrite the auth header, or point aider at the [Spring AI]({{< ref "advanced/source_code/springai" >}}) sample endpoint instead.
+aider does not support MCP and sends `Authorization: Bearer`, which the Optimizer does not accept directly.  Use a reverse proxy to rewrite the auth header, or point aider at the [Spring AI]({{% relref "advanced/source_code/springai" %}}) sample endpoint instead.
 
 ## Tool Configuration
 
@@ -143,6 +132,8 @@ curl -X PUT "http://localhost:8000/v1/settings?client=my-ide-session" \
 | `["NL2SQL"]` | Database queries only |
 | `["Vector Search", "NL2SQL"]` | Combined multi-tool workflow |
 
+Enabling Vector Search also depends on vector search settings such as which store to query and whether discovery, rephrase, and grade nodes are active.  Models under 7B parameters automatically disable rephrase and grade.  See [VecSearch Flow]({{% relref "agents/vecsearch" %}}) and [Chatbot]({{% relref "client/chatbot" %}}) for details.
+
 Use the `client` header on chat requests to isolate conversation history and settings across IDE sessions:
 
 ```bash
@@ -155,11 +146,11 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 ## Tool Routing
 
-When both tools are enabled the runtime routes automatically based on question semantics.  See [VecSearch Flow]({{< ref "agents/vecsearch" >}}) and [NL2SQL Agent]({{< ref "agents/nl2sql" >}}) for how each path works.
+When both tools are enabled the runtime routes automatically based on question semantics.  See [VecSearch Flow]({{% relref "agents/vecsearch" %}}) and [NL2SQL Agent]({{% relref "agents/nl2sql" %}}) for how each path works.
 
 ## Troubleshooting
 
-**`403 Forbidden`** — The `X-API-Key` header is missing or incorrect.  Retrieve the key from the [API Server]({{< ref "client/api_server" >}}) page.
+**`403 Forbidden`** — The `X-API-Key` header is missing or incorrect.  Retrieve the key from the [API Server]({{% relref "client/api_server" %}}) page.
 
 **MCP tools not visible** — Check `/mcp/healthz` and confirm tools are registered:
 
@@ -169,19 +160,19 @@ curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/healthz
 
 **NL2SQL tools missing** — Verify SQLcl is in `PATH` and a database is configured.  Check server logs for the SQLcl proxy registration message.
 
-**Model not found** — Confirm the model is enabled in **Configuration → Models** and list available models to verify:
+**Model not found** — Confirm the model is enabled in **Configuration → Models** and list configured models to verify:
 
 ```bash
-curl -H "X-API-Key: $AIO_API_KEY" "http://localhost:8000/v1/models?model_type=ll"
+curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/v1/models
 ```
 
 ## Related
 
-- [Custom MCP Tools]({{< ref "advanced/mcp" >}})
-- [VecSearch Flow]({{< ref "agents/vecsearch" >}})
-- [NL2SQL Agent]({{< ref "agents/nl2sql" >}})
-- [Split & Embed]({{< ref "client/tools" >}})
-- [API Server]({{< ref "client/api_server" >}})
-- [API Examples]({{< ref "advanced/api_examples" >}})
-- [Spring AI]({{< ref "advanced/source_code/springai" >}})
-- [Troubleshooting]({{< ref "help/troubleshooting" >}})
+- [Custom MCP Tools]({{% relref "advanced/mcp" %}})
+- [VecSearch Flow]({{% relref "agents/vecsearch" %}})
+- [NL2SQL Agent]({{% relref "agents/nl2sql" %}})
+- [Split & Embed]({{% relref "client/tools/split_embed" %}})
+- [API Server]({{% relref "client/api_server" %}})
+- [API Examples]({{% relref "advanced/api_examples" %}})
+- [Spring AI]({{% relref "advanced/source_code/springai" %}})
+- [Troubleshooting]({{% relref "help/troubleshooting" %}})
