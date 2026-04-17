@@ -390,6 +390,13 @@ def lm_sidebar() -> list[str]:
     ll_model = state["settings"]["client_settings"].get("ll_model", {})
     current_model = f"{ll_model.get('provider', '')}/{ll_model.get('id', '')}" if ll_model else None
 
+    # Selectbox falls back to index 0 when current_model isn't in options, but
+    # on_change only fires on real user input — so persist the auto-selection.
+    if model_options and current_model not in model_options:
+        provider, model_id = model_options[0].split("/", 1)
+        update_client_settings({"ll_model": {"provider": provider, "id": model_id}})
+        current_model = model_options[0]
+
     if model_options:
         st.sidebar.subheader("Language Model Parameters", divider="red")
         st.sidebar.selectbox(
