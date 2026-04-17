@@ -15,7 +15,7 @@ from typing import Optional, cast, get_args
 import oci.config
 import oci.object_storage
 
-from .client import init_client
+from .client import init_client, populate_principal_identity
 from .schemas import OciAuthType, OciProfileConfig
 
 LOGGER = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ def _check_usable(profile: OciProfileConfig) -> Optional[str]:
 
     Returns None on success, or the error message on failure.
     """
+    populate_principal_identity(profile)
     try:
         client = init_client(
             oci.object_storage.ObjectStorageClient,

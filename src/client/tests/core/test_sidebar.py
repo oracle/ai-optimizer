@@ -725,7 +725,7 @@ class TestLmSidebar:
         state["settings"]["model_configs"] = [
             {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": True},
         ]
-        state["settings"]["client_settings"]["ll_model"] = {"temperature": 0.5}
+        state["settings"]["client_settings"]["ll_model"] = {"provider": "p", "id": "m1", "temperature": 0.5}
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
@@ -737,6 +737,48 @@ class TestLmSidebar:
         # Temperature, Max Output Tokens, Top P, Frequency Penalty, Presence Penalty = 5 sliders
         assert mock_st.sidebar.slider.call_count == 5
         assert mock_st.sidebar.selectbox.call_count == 1
+
+    def test_auto_persists_first_model_when_none_selected(self, mock_st):
+        """When client_settings has no ll_model provider/id but usable models exist,
+        the selectbox silently defaults to index 0 — so lm_sidebar must persist
+        that selection, otherwise the server sees ll_model.{provider,id}=None and
+        chat prompts fail with 'No language model configured'.
+        """
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "cohere.command-r-plus", "type": "ll", "enabled": True, "provider": "oci", "usable": True},
+            {"id": "meta.llama-3", "type": "ll", "enabled": True, "provider": "oci", "usable": True},
+        ]
+        state["settings"]["client_settings"]["ll_model"] = {}
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+            patch(f"{MODULE}.update_client_settings") as mock_update,
+        ):
+            from client.app.core.sidebar import lm_sidebar
+
+            lm_sidebar()
+        mock_update.assert_any_call({"ll_model": {"provider": "oci", "id": "cohere.command-r-plus"}})
+
+    def test_no_persist_when_current_model_valid(self, mock_st):
+        """Verify update_client_settings is NOT called when the saved ll_model is already
+        in the usable options — guards against a rerender loop."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "openai", "usable": True},
+        ]
+        state["settings"]["client_settings"]["ll_model"] = {"provider": "openai", "id": "m1"}
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+            patch(f"{MODULE}.update_client_settings") as mock_update,
+        ):
+            from client.app.core.sidebar import lm_sidebar
+
+            lm_sidebar()
+        mock_update.assert_not_called()
 
 
 class TestVectorSearchSidebar:
