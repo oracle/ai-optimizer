@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectbox litellm
+# spell-checker:ignore selectbox litellm ollama
 
 import logging
 import urllib.parse
@@ -130,7 +130,9 @@ def _remove_model(provider: str, model_id: str) -> bool:
 #####################################################
 # Dialog helpers
 #####################################################
-def _initialize_model(action: str, model_type: str, model_id: str | None, model_provider: str | None) -> dict[str, Any]:
+def _initialize_model(
+    action: str, model_type: str, model_id: str | None, model_provider: str | None
+) -> dict[str, Any]:
     """Initialize model configuration based on action type."""
     if action == "edit" and model_provider and model_id:
         model = _fetch_model(model_provider, model_id) or {}
@@ -147,7 +149,9 @@ def _initialize_model(action: str, model_type: str, model_id: str | None, model_
 
 def _render_provider_selection(model: dict, supported_models: list, action: str) -> tuple[dict, list, bool]:
     """Render provider selection UI and return updated model, provider models, and OCI flag."""
-    provider_index = next((i for i, item in enumerate(supported_models) if item["provider"] == model["provider"]), None)
+    provider_index = next(
+        (i for i, item in enumerate(supported_models) if item["provider"] == model["provider"]), None
+    )
     disable_for_oci = model.get("provider") == "oci"
 
     model["provider"] = st.selectbox(
@@ -352,7 +356,7 @@ def pull_model_dialog(provider: str, model_id: str) -> None:
         return
 
     helpers.refresh_settings()
-    st.success(f"Model **{model_id}** pulled successfully. You can now enable it.")
+    st.success(f"Model **{model_id}** pulled successfully.")
 
 
 #####################################################
@@ -363,40 +367,40 @@ def render_model_rows(model_type: str) -> None:
     models = [m for m in state["settings"]["model_configs"] if m.get("type") == model_type]
     data_col_widths = [0.06, 0.40, 0.34, 0.10, 0.10]
 
-    table_col_format = st.columns(data_col_widths, vertical_alignment="center")
-    col1, col2, col3, col4, col5 = table_col_format
-    col1.markdown("&#x200B;", unsafe_allow_html=True, width="content")
-    col2.markdown("**<u>Model</u>**", unsafe_allow_html=True)
-    col3.markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
-    col4.markdown("&#x200B;")
-    col5.markdown("&#x200B;")
+    header_cols = st.columns(data_col_widths, vertical_alignment="center")
+    header_cols[0].markdown("&#x200B;", unsafe_allow_html=True, width="content")
+    header_cols[1].markdown("**<u>Model</u>**", unsafe_allow_html=True)
+    header_cols[2].markdown("**<u>Provider URL</u>**", unsafe_allow_html=True)
+    header_cols[3].markdown("&#x200B;")
+    header_cols[4].markdown("&#x200B;")
 
     for model in models:
         model_id = model["id"]
         model_provider = model["provider"]
         enabled = model.get("enabled", False)
-        col1.text_input(
+        row = st.columns(data_col_widths, vertical_alignment="center")
+        row[0].text_input(
             "Enabled",
             value=helpers.bool_to_emoji(enabled),
             key=f"runtime_{model_type}_{model_provider}_{model_id}_{enabled}",
             label_visibility="collapsed",
             disabled=True,
         )
-        col2.text_input(
+        row[1].text_input(
             "Model",
             value=f"{model_provider}/{model_id}",
             key=f"runtime_{model_type}_{model_provider}_{model_id}",
             label_visibility="collapsed",
             disabled=True,
         )
-        col3.text_input(
+        row[2].text_input(
             "Server",
             value=model.get("api_base", ""),
             key=f"runtime_{model_type}_{model_provider}_{model_id}_api_base",
             label_visibility="collapsed",
             disabled=True,
         )
-        col4.button(
+        row[3].button(
             "Edit",
             on_click=edit_model,
             key=f"runtime_{model_type}_{model_provider}_{model_id}_edit",
@@ -408,7 +412,7 @@ def render_model_rows(model_type: str) -> None:
             },
         )
         if model_provider == "ollama" and not model.get("usable", False):
-            col5.button(
+            row[4].button(
                 "Pull",
                 on_click=pull_model_dialog,
                 key=f"runtime_{model_type}_{model_provider}_{model_id}_pull",

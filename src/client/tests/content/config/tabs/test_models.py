@@ -981,6 +981,125 @@ class TestHandleDialogSubmission:
 
 
 # ---------------------------------------------------------------------------
+# pull_model_dialog
+# ---------------------------------------------------------------------------
+
+
+class TestPullModelDialog:
+    """Test pull_model_dialog streaming Ollama pull behavior."""
+
+    def _unwrap(self):
+        """Return the underlying pull_model_dialog function, unwrapped from st.dialog."""
+        from client.app.content.config.tabs.models import pull_model_dialog
+
+        return getattr(pull_model_dialog, "__wrapped__", pull_model_dialog)
+
+    def test_progress_events_update_progress_bar(self, mock_st):
+        """Events with total > 0 update the progress bar with completed/total."""
+        status = MagicMock()
+        bar = MagicMock()
+        mock_st.empty.side_effect = [status, bar]
+
+        events = [{"status": "downloading", "completed": 50, "total": 100}]
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.api_post_stream", return_value=iter(events)),
+            patch(f"{MODULE}.helpers"),
+        ):
+            self._unwrap()("ollama", "llama3")
+
+        bar.progress.assert_called_once_with(0.5, text="downloading")
+        status.text.assert_not_called()
+
+    def test_status_events_update_status_text(self, mock_st):
+        """Events with total == 0 update the status text rather than the bar."""
+        status = MagicMock()
+        bar = MagicMock()
+        mock_st.empty.side_effect = [status, bar]
+
+        events = [{"status": "pulling manifest", "completed": 0, "total": 0}]
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.api_post_stream", return_value=iter(events)),
+            patch(f"{MODULE}.helpers"),
+        ):
+            self._unwrap()("ollama", "llama3")
+
+        status.text.assert_called_once_with("pulling manifest")
+        bar.progress.assert_not_called()
+
+    def test_error_event_calls_st_error_and_returns(self, mock_st):
+        """An event containing 'error' triggers st.error and stops the stream."""
+        mock_st.empty.side_effect = [MagicMock(), MagicMock()]
+        events = [
+            {"error": "model not found"},
+            {"status": "should not be processed", "completed": 0, "total": 0},
+        ]
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.api_post_stream", return_value=iter(events)),
+            patch(f"{MODULE}.helpers") as hlp,
+        ):
+            self._unwrap()("ollama", "llama3")
+
+        mock_st.error.assert_called_once()
+        assert "model not found" in mock_st.error.call_args.args[0]
+        hlp.refresh_settings.assert_not_called()
+        mock_st.success.assert_not_called()
+
+    def test_success_refreshes_and_shows_success(self, mock_st):
+        """After the stream completes, refresh_settings and st.success are called."""
+        mock_st.empty.side_effect = [MagicMock(), MagicMock()]
+        events = [{"status": "done", "completed": 100, "total": 100}]
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.api_post_stream", return_value=iter(events)),
+            patch(f"{MODULE}.helpers") as hlp,
+        ):
+            self._unwrap()("ollama", "llama3")
+
+        hlp.refresh_settings.assert_called_once()
+        mock_st.success.assert_called_once()
+        assert "llama3" in mock_st.success.call_args.args[0]
+
+    def test_http_error_shows_error_and_skips_success(self, mock_st):
+        """HTTPStatusError from the stream surfaces via st.error; no success shown."""
+        mock_st.empty.side_effect = [MagicMock(), MagicMock()]
+        mock_resp = MagicMock(status_code=500, content=b'{"detail":"boom"}')
+        mock_resp.json.return_value = {"detail": "boom"}
+        error = httpx.HTTPStatusError("boom", request=MagicMock(), response=mock_resp)
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.api_post_stream", side_effect=error),
+            patch(f"{MODULE}.helpers") as hlp,
+        ):
+            from client.app.core.helpers import extract_error_detail
+
+            hlp.extract_error_detail.side_effect = extract_error_detail
+            self._unwrap()("ollama", "llama3")
+
+        mock_st.error.assert_called_once()
+        hlp.refresh_settings.assert_not_called()
+        mock_st.success.assert_not_called()
+
+    def test_url_encodes_model_id(self, mock_st):
+        """model_id with slashes is percent-encoded in the stream path."""
+        mock_st.empty.side_effect = [MagicMock(), MagicMock()]
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.api_post_stream", return_value=iter([])) as mock_stream,
+            patch(f"{MODULE}.helpers"),
+        ):
+            self._unwrap()("ollama", "library/llama3")
+
+        mock_stream.assert_called_once_with("models/pull/ollama/library%2Fllama3")
+
+
+# ---------------------------------------------------------------------------
 # render_model_rows
 # ---------------------------------------------------------------------------
 
@@ -1010,6 +1129,112 @@ class TestRenderModelRows:
             render_model_rows("ll")
 
         assert cols[3].button.call_count == 1
+
+    def test_pull_button_rendered_for_unusable_ollama(self, make_model_state, mock_st):
+        """Ollama models with usable=False get a Pull button bound to pull_model_dialog."""
+        from client.app.content.config.tabs.models import pull_model_dialog, render_model_rows
+
+        configs = [
+            {
+                "id": "llama3",
+                "provider": "ollama",
+                "type": "ll",
+                "enabled": False,
+                "api_base": "http://ollama",
+                "usable": False,
+            },
+        ]
+        state = make_model_state(model_configs=configs)
+
+        header_cols = [MagicMock() for _ in range(5)]
+        row_cols = [MagicMock() for _ in range(5)]
+        call_sequence = iter([header_cols, row_cols])
+        mock_st.columns.side_effect = lambda widths, **kw: next(call_sequence)
+        mock_st.button.return_value = False
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers"),
+        ):
+            render_model_rows("ll")
+
+        row_cols[4].button.assert_called_once()
+        _, kwargs = row_cols[4].button.call_args
+        assert kwargs["on_click"] is pull_model_dialog
+        assert kwargs["kwargs"] == {"provider": "ollama", "model_id": "llama3"}
+
+    def test_no_pull_button_for_usable_ollama(self, make_model_state, mock_st):
+        """Ollama models already usable do not get a Pull button."""
+        from client.app.content.config.tabs.models import render_model_rows
+
+        configs = [
+            {
+                "id": "llama3",
+                "provider": "ollama",
+                "type": "ll",
+                "enabled": True,
+                "api_base": "http://ollama",
+                "usable": True,
+            },
+        ]
+        state = make_model_state(model_configs=configs)
+
+        header_cols = [MagicMock() for _ in range(5)]
+        row_cols = [MagicMock() for _ in range(5)]
+        call_sequence = iter([header_cols, row_cols])
+        mock_st.columns.side_effect = lambda widths, **kw: next(call_sequence)
+        mock_st.button.return_value = False
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers"),
+        ):
+            render_model_rows("ll")
+
+        row_cols[4].button.assert_not_called()
+
+    def test_pull_button_uses_per_row_columns(self, make_model_state, mock_st):
+        """Each model row gets its own st.columns call so Pull aligns with its row."""
+        from client.app.content.config.tabs.models import render_model_rows
+
+        configs = [
+            {"id": "gpt-4o", "provider": "openai", "type": "ll", "enabled": True, "api_base": "http://a"},
+            {
+                "id": "llama3",
+                "provider": "ollama",
+                "type": "ll",
+                "enabled": False,
+                "api_base": "http://ollama",
+                "usable": False,
+            },
+        ]
+        state = make_model_state(model_configs=configs)
+
+        created_cols = []
+
+        def _cols(widths, **_kw):
+            cs = [MagicMock() for _ in range(len(widths))]
+            created_cols.append(cs)
+            return cs
+
+        mock_st.columns.side_effect = _cols
+        mock_st.button.return_value = False
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers"),
+        ):
+            render_model_rows("ll")
+
+        # header + one per model
+        assert len(created_cols) == 3
+        openai_row = created_cols[1]
+        ollama_row = created_cols[2]
+        openai_row[4].button.assert_not_called()
+        ollama_row[4].button.assert_called_once()
 
     def test_edit_button_kwargs(self, make_model_state, mock_st):
         """Edit button kwargs contain model_type, action, model_id, model_provider."""
