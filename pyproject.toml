@@ -16,7 +16,7 @@ authors = [
 
 # - common dependencies that are always needed
 dependencies = [
-    "langchain-core==1.2.28",
+    "langchain-core==1.2.31",
     "httpx==0.28.1",
     "oracledb~=3.1",
     "plotly==6.7.0",
@@ -28,31 +28,27 @@ dependencies = [
 # - server-base: shared stack for both runtime variants
 server-base = [
     "bokeh==3.9.0",
-    "docling==2.84.0",          # When bumping docling, also need to update Dockerfiles
+    "docling==2.89.0",          # When bumping docling, also need to update Dockerfiles
     "evaluate==0.4.6",
     "faiss-cpu==1.13.2",
-    "fastmcp==3.2.0",
+    "fastmcp==3.2.4",
     "giskard==2.19.1",
-    "langchain-cohere==0.5.0",
+    "langchain-cohere==0.5.1",
     "langchain-fireworks==1.1.0",
-    "langchain-google-genai==4.2.1",
+    "langchain-google-genai==4.2.2",
     "langchain-ibm==1.0.6",
     "langchain-mcp-adapters==0.2.2",
     "langchain-mistralai==1.1.2",
     "langchain-oci==0.2.5",
     "langchain-ollama==1.1.0",
-    "langchain-openai==1.1.12",
     "langchain-oracledb==1.2.0",
     "litellm==1.83.0",
     "llama-index==0.14.20",
-    "lxml==6.0.2",
     "matplotlib==3.10.8",
-    "oci~=2.0",
     "opentelemetry-exporter-otlp-proto-grpc==1.41.0",
     "pyagentspec==26.1.0",
-    "pypdf==6.9.2",
-    "python-multipart==0.0.24",
-    "umap-learn==0.5.11"
+    "pypdf==6.10.2",
+    "umap-learn==0.5.12"
 ]
 
 # - server: default LangGraph runtime
