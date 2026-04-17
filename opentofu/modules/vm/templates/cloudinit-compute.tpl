@@ -11,6 +11,7 @@ users:
 
 package_update: false
 packages:
+  - policycoreutils-python-utils
   - python3.11
   - jdk-26-headless
   - sqlcl

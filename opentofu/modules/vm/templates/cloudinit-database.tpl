@@ -5,6 +5,7 @@
 
 package_update: false
 packages:
+  - policycoreutils-python-utils
   - python39-oci-cli
   - jdk-26-headless
   - sqlcl
