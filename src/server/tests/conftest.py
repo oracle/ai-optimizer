@@ -53,6 +53,13 @@ import logging
 
 atexit.register(lambda: setattr(logging, "raiseExceptions", False))
 
+# Suppress "Task was destroyed but it is pending!" from asyncio logger.
+# oracledb's async pool machinery can leave background connection tasks
+# pending when a pool is created against an unreachable host and then closed.
+logging.getLogger("asyncio").addFilter(
+    lambda record: "Task was destroyed but it is pending" not in record.getMessage()
+)
+
 from pyagentspec.flows.flow import Flow
 from pyagentspec.flows.nodes import EndNode, LlmNode
 
@@ -139,7 +146,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 # ---------------------------------------------------------------------------
-# Oracle container constants
+# Oracle container and constants
 # ---------------------------------------------------------------------------
 
 TEST_DB_CONFIG = {
@@ -151,6 +158,44 @@ TEST_DB_CONFIG = {
 ORACLE_IMAGE = "container-registry.oracle.com/database/free:latest-lite"
 CONTAINER_NAME = "server-test-oracle"
 READY_LOG_MARKER = "DATABASE IS READY TO USE!"
+
+
+@contextmanager
+def _oracle_container() -> Generator:
+    try:
+        client = docker.from_env()
+    except DockerException as exc:  # pragma: no cover - unit tests mock this
+        pytest.skip(f"Docker not available: {exc}", allow_module_level=True)
+
+    _remove_existing(client)
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="server_db_startup_"))
+    temp_dir.chmod(0o755)
+    container = None
+    try:
+        _write_startup_scripts(temp_dir)
+        container = client.containers.run(
+            ORACLE_IMAGE,
+            name=CONTAINER_NAME,
+            environment={
+                "ORACLE_PWD": TEST_DB_CONFIG["db_password"],
+                "ORACLE_PDB": TEST_DB_CONFIG["db_dsn"].rsplit("/", maxsplit=1)[-1],
+            },
+            ports={"1521/tcp": int(TEST_DB_CONFIG["db_dsn"].split(":")[1].split("/")[0])},
+            volumes={str(temp_dir.absolute()): {"bind": "/opt/oracle/scripts/startup", "mode": "ro"}},
+            detach=True,
+        )
+        _wait_for_ready(container)
+        yield container
+    finally:
+        if container is not None:
+            try:
+                container.stop(timeout=60)
+                container.remove()
+            except DockerException:
+                pass
+            time.sleep(1)
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -198,44 +243,6 @@ def _remove_existing(client) -> None:
         with contextlib.suppress(DockerException):
             container.remove(force=True)
         time.sleep(1)
-
-
-@contextmanager
-def _oracle_container() -> Generator:
-    try:
-        client = docker.from_env()
-    except DockerException as exc:  # pragma: no cover - unit tests mock this
-        pytest.skip(f"Docker not available: {exc}", allow_module_level=True)
-
-    _remove_existing(client)
-
-    temp_dir = Path(tempfile.mkdtemp(prefix="server_db_startup_"))
-    temp_dir.chmod(0o755)
-    container = None
-    try:
-        _write_startup_scripts(temp_dir)
-        container = client.containers.run(
-            ORACLE_IMAGE,
-            name=CONTAINER_NAME,
-            environment={
-                "ORACLE_PWD": TEST_DB_CONFIG["db_password"],
-                "ORACLE_PDB": TEST_DB_CONFIG["db_dsn"].rsplit("/", maxsplit=1)[-1],
-            },
-            ports={"1521/tcp": int(TEST_DB_CONFIG["db_dsn"].split(":")[1].split("/")[0])},
-            volumes={str(temp_dir.absolute()): {"bind": "/opt/oracle/scripts/startup", "mode": "ro"}},
-            detach=True,
-        )
-        _wait_for_ready(container)
-        yield container
-    finally:
-        if container is not None:
-            try:
-                container.stop(timeout=60)
-                container.remove()
-            except DockerException:
-                pass
-            time.sleep(1)
-        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

@@ -73,7 +73,7 @@ body:
         Please share some system information related to the environment your app is running in.
 
         Example:
-          - **Version**: 1.13.0 _(found in `common/_version.py`)_
+          - **Version**: 1.13.0 _(found in `_version.py`)_
           - **Python version**: 3.11 _(get it with `$ python --version`)_
           - **Operating System**: MacOs 12.6
           - **Browser**: Chrome

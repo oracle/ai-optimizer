@@ -117,7 +117,7 @@ def helm_repo_add_if_missing(repos_to_add):
             sys.exit(1)
 
     print("⬆️ Checking for Helm updates...")
-    _, stderr, rc = run_cmd(["helm", "repo", "update"], capture_output=False)
+    _, stderr, rc = run_cmd(["helm", "repo", "update"] + list(repos_to_add.keys()), capture_output=False)
     if rc != 0:
         print(f"❌ Failed to update repos:\n{stderr}")
         sys.exit(1)
