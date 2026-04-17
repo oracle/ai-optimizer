@@ -113,6 +113,8 @@ write_files:
 runcmd:
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
+  - semanage fcontext -a -t bin_t "/app(/.*)?"                                                                                                              
+  - restorecon -RF /app  
   - systemctl daemon-reexec
   - systemctl daemon-reload
   - systemctl enable ai-optimizer.service

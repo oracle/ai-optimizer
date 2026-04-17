@@ -15,6 +15,11 @@ data "oci_core_images" "images" {
     regex = true
   }
 
+  filter {
+    name   = "operating_system_version"
+    values = [split(".", var.compute_os_ver)[0]]
+  }
+
   sort_by    = "TIMECREATED"
   sort_order = "DESC"
 }

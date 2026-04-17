@@ -80,7 +80,7 @@ module "kubernetes" {
   cpu_node_pool_size         = var.k8s_cpu_node_pool_size
   api_endpoint_allowed_cidrs = var.k8s_api_endpoint_allowed_cidrs
   run_cfgmgt                 = var.k8s_run_cfgmgt
-  compute_os_ver             = local.compute_os_ver
+  compute_os_ver             = local.k8s_node_os_ver
   compute_cpu_ocpu           = var.compute_cpu_ocpu
   compute_gpu_shape          = var.compute_gpu_shape
   compute_cpu_shape          = var.compute_cpu_shape

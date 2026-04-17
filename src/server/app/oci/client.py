@@ -37,6 +37,40 @@ def get_signer(profile: OciProfileConfig) -> Optional[object]:
     return None
 
 
+def populate_principal_identity(profile: OciProfileConfig) -> None:
+    """For principal-based auth, fill missing tenancy/region from the signer's metadata.
+
+    Instance/OKE/resource principals carry identity via instance metadata, so the
+    SDK user shouldn't have to provide tenancy separately. Without this, downstream
+    APIs that take an explicit tenancy_id (e.g. list_region_subscriptions) fail
+    with ValueError. No-op for api_key and security_token profiles.
+    """
+    if profile.authentication not in ("instance_principal", "oke_workload_identity", "resource_principal"):
+        return
+    if profile.tenancy and profile.region:
+        return
+    try:
+        signer = get_signer(profile)
+    except Exception:
+        LOGGER.warning(
+            "Failed to create %s signer for profile '%s'",
+            profile.authentication,
+            profile.auth_profile,
+            exc_info=True,
+        )
+        return
+    if signer is None:
+        return
+    if not profile.tenancy:
+        tenancy = getattr(signer, "tenancy_id", None)
+        if tenancy:
+            profile.tenancy = tenancy
+    if not profile.region:
+        region = getattr(signer, "region", None)
+        if region:
+            profile.region = region
+
+
 def init_client(client_type: Callable[..., T], profile: OciProfileConfig, **kwargs) -> T:
     """Create any OCI SDK client from an OciProfileConfig.
 

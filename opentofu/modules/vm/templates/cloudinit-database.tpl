@@ -5,8 +5,8 @@
 
 package_update: false
 packages:
-  - python36-oci-cli
-  - jre
+  - python39-oci-cli
+  - jdk-26-headless
   - sqlcl
 
 write_files:

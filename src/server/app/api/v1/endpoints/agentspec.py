@@ -20,7 +20,8 @@ from server.app.agentspec.agent_llm_only import build_llm_only_agentspec
 from server.app.agentspec.agent_nl2sql import build_nl2sql_agentspec
 from server.app.agentspec.flow_vecsearch import build_vecsearch_flow
 from server.app.api.v1.schemas.agents import AgentSpecResponse
-from server.app.core.schemas import ClientSettings
+from server.app.core.schemas import ClientSettings, DatabaseSettings, LLModelSettings, VectorSearchSettings
+from server.app.core.settings import settings
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,30 +32,40 @@ auth = APIRouter(prefix="/agentspec")
 # Developers can substitute their own provider, model, and MCP endpoint.
 # ---------------------------------------------------------------------------
 
-# fmt: off
-_SAMPLE_CLIENT_SETTINGS = ClientSettings(
-    **{
-        "ll_model": {
-            "provider": "ollama",
-            "id": "qwen3:8b",
-            "max_tokens": 1024,
-            "temperature": 0.1,
-        },
-        "database": {"alias": "MYDB"},
-        "vector_search": {
-            "discovery": True,
-            "rephrase": True,
-            "grade": True,
-            "search_type": "Similarity",
-            "top_k": 8,
-            "score_threshold": 0.65,
-        },
-    }
-)
-# fmt: on
 _SAMPLE_SERVER_URL = "http://localhost:8001/mcp"
 _SAMPLE_API_KEY = "your-api-key"
 _SAMPLE_PROMPT = "You are a helpful assistant."
+
+
+def _sample_client_settings() -> ClientSettings:
+    """Build showcase ClientSettings using an LL model from settings.
+
+    Prefers an enabled LL model, otherwise uses any configured LL model so the
+    spec still serializes for inspection. Falls back to an ollama/qwen3:8b
+    placeholder only when no LL model config exists at all.
+    """
+    ll_models = [c for c in settings.model_configs if c.type == "ll" and c.provider and c.id]
+    chosen = next((c for c in ll_models if c.enabled), ll_models[0] if ll_models else None)
+    provider = chosen.provider if chosen else "ollama"
+    model_id = chosen.id if chosen else "qwen3:8b"
+    return ClientSettings(
+        ll_model=LLModelSettings(
+            provider=provider,
+            id=model_id,
+            max_tokens=1024,
+            temperature=0.1,
+        ),
+        database=DatabaseSettings(alias="MYDB"),
+        vector_search=VectorSearchSettings(
+            discovery=True,
+            rephrase=True,
+            grade=True,
+            search_type="Similarity",
+            top_k=8,
+            score_threshold=0.65,
+        ),
+    )
+
 
 _serializer = AgentSpecSerializer(plugins=[get_litellm_serialization_plugin()])
 
@@ -65,18 +76,18 @@ def _serialize(component) -> dict:
 
 
 def _build_llm_only() -> dict:
-    return _serialize(build_llm_only_agentspec(_SAMPLE_CLIENT_SETTINGS, _SAMPLE_PROMPT))
+    return _serialize(build_llm_only_agentspec(_sample_client_settings(), _SAMPLE_PROMPT))
 
 
 def _build_nl2sql_agent() -> dict:
     return _serialize(
-        build_nl2sql_agentspec(_SAMPLE_CLIENT_SETTINGS, _SAMPLE_SERVER_URL, _SAMPLE_API_KEY, _SAMPLE_PROMPT)
+        build_nl2sql_agentspec(_sample_client_settings(), _SAMPLE_SERVER_URL, _SAMPLE_API_KEY, _SAMPLE_PROMPT)
     )
 
 
 def _build_vecsearch_flow() -> dict:
     return _serialize(
-        build_vecsearch_flow(_SAMPLE_CLIENT_SETTINGS, _SAMPLE_SERVER_URL, _SAMPLE_API_KEY, _SAMPLE_PROMPT)
+        build_vecsearch_flow(_sample_client_settings(), _SAMPLE_SERVER_URL, _SAMPLE_API_KEY, _SAMPLE_PROMPT)
     )
 
 
