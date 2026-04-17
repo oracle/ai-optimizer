@@ -45,6 +45,7 @@ server-base = [
     "litellm==1.83.0",
     "llama-index==0.14.20",
     "matplotlib==3.10.8",
+    "oci~=2.0",
     "opentelemetry-exporter-otlp-proto-grpc==1.41.0",
     "pyagentspec==26.1.0",
     "pypdf==6.10.2",
