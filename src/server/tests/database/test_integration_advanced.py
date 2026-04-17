@@ -217,6 +217,7 @@ class TestConcurrentAccess:
             async def _select(i):
                 async with pool.acquire() as conn:
                     result = await execute_sql(conn, "SELECT :val FROM DUAL", {"val": i})
+                    assert result is not None
                     return result[0][0]
 
             results = await asyncio.gather(*[_select(i) for i in range(10)])
@@ -270,6 +271,7 @@ class TestConcurrentAccess:
             async def _work(i):
                 async with pool.acquire() as conn:
                     r = await execute_sql(conn, "SELECT :val FROM DUAL", {"val": i})
+                    assert r is not None
                     results.append(r[0][0])
 
             # More tasks than pool size
