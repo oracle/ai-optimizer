@@ -100,7 +100,6 @@ jobs:
             --ignore-unfixed \
             --skip-files "**/ibm_watsonx_ai/connections.py" \
             "aio:${{ github.sha }}"
-          category: trivy-aio
 
   # Macaron - check GitHub Actions for known vulnerabilities
   macaron:
@@ -122,45 +121,3 @@ jobs:
           policy_file: check-github-actions
           policy_purl: "pkg:github.com/${{ github.repository }}@.*"
           reports_retention_days: 90
-
-  # Summary job
-  security-summary:
-    name: Security Summary
-    if: always() && !cancelled() && (github.event.pull_request.draft == false || github.event_name != 'pull_request')
-    runs-on: ubuntu-latest
-    permissions: {}
-    needs: [trivy-scan, macaron]
-
-    steps:
-      - name: Check Results
-        run: |
-          echo "========================================================"
-          echo "Security Scan Summary"
-          echo "========================================================"
-          echo "Trigger: ${{ github.event_name }}"
-          echo ""
-
-          FAILED=false
-
-          if [ "${{ needs.trivy-scan.result }}" = "success" ]; then
-            echo "✅ Trivy security scan: passed"
-          else
-            echo "❌ Trivy security scan: ${{ needs.trivy-scan.result }}"
-            FAILED=true
-          fi
-
-          if [ "${{ needs.macaron.result }}" = "success" ]; then
-            echo "✅ Macaron GitHub Actions check: passed"
-          else
-            echo "❌ Macaron GitHub Actions check: ${{ needs.macaron.result }}"
-            FAILED=true
-          fi
-
-          echo "========================================================"
-
-          if [ "$FAILED" = "true" ]; then
-            echo "❌ One or more security checks failed"
-            exit 1
-          else
-            echo "✅ All security checks passed"
-          fi
