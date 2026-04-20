@@ -464,6 +464,8 @@ def _render_populate_vs_section(embed_config: dict, create_new_vs: bool) -> int 
     st.header("Populate Vector Store", divider="red")
 
     client_settings = state["settings"]["client_settings"]
+    db_alias = client_settings.get("database", {}).get("alias")
+    st.markdown(f"##### **Database:** `{db_alias}`")
     should_fetch_files = False
     vs_table = None
 
@@ -514,7 +516,6 @@ def _render_populate_vs_section(embed_config: dict, create_new_vs: bool) -> int 
         )
         vs_table = vs_settings.get("vector_store")
         embed_config["vector_store"] = vs_table
-        db_alias = client_settings.get("database", {}).get("alias")
         embed_config["description"] = (
             next(
                 (
