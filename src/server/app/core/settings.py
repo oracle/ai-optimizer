@@ -79,6 +79,8 @@ class Settings(SettingsBase, BaseSettings):
     db_wallet_location: Optional[str] = Field(default=None, exclude=True)
     db_pool_size: int = Field(default=5, exclude=True)
 
+    max_clients: int = Field(default=64, ge=1, exclude=True)
+
     # OCI CLI — applied to DEFAULT profile at startup (excluded from serialization)
     oci_cli_auth: Optional[str] = Field(default=None, exclude=True)
     oci_cli_tenancy: Optional[str] = Field(default=None, exclude=True)
@@ -136,7 +138,6 @@ settings = Settings()
 # ---------------------------------------------------------------------------
 # Per-client settings store
 # ---------------------------------------------------------------------------
-_MAX_CLIENTS = 64
 _PROTECTED_CLIENTS = frozenset(("CONFIGURED", "FACTORY", "server"))
 _client_store: OrderedDict[str, ClientSettings] = OrderedDict()
 _client_store_lock = threading.Lock()
@@ -145,7 +146,7 @@ _settings_lock = asyncio.Lock()
 
 def _ensure_capacity() -> None:
     """Evict the least-recently-used entry (never protected clients) when the store is full."""
-    while len(_client_store) >= _MAX_CLIENTS:
+    while len(_client_store) >= settings.max_clients:
         for key in _client_store:
             if key not in _PROTECTED_CLIENTS:
                 del _client_store[key]

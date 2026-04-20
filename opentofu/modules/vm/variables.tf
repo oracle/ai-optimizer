@@ -82,11 +82,19 @@ variable "db_conn" {
   })
 }
 
-variable "lb_http_port" {
+variable "lb_client_http_port" {
   type = number
 }
 
-variable "lb_https_port" {
+variable "lb_client_https_port" {
+  type = number
+}
+
+variable "lb_server_http_port" {
+  type = number
+}
+
+variable "lb_server_https_port" {
   type = number
 }
 

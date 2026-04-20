@@ -12,7 +12,6 @@ import pytest
 
 from server.app.core.schemas import ClientSettings
 from server.app.core.settings import (
-    _MAX_CLIENTS,
     _PROTECTED_CLIENTS,
     SettingsBase,
     _apply_default_ll_model,
@@ -170,7 +169,7 @@ class TestEnsureCapacity:
     """Test LRU eviction for client store."""
 
     def test_under_capacity_no_eviction(self):
-        """No eviction when under _MAX_CLIENTS."""
+        """No eviction when under settings.max_clients."""
         _client_store.clear()
         _client_store["c1"] = ClientSettings(client="c1")
         _client_store["c2"] = ClientSettings(client="c2")
@@ -184,13 +183,13 @@ class TestEnsureCapacity:
         """Oldest non-protected entry is evicted when at capacity."""
         _client_store.clear()
         # Fill to capacity with non-protected clients
-        for i in range(_MAX_CLIENTS):
+        for i in range(settings.max_clients):
             _client_store[f"client_{i}"] = ClientSettings(client=f"client_{i}")
 
         _ensure_capacity()
 
         assert "client_0" not in _client_store
-        assert len(_client_store) == _MAX_CLIENTS - 1
+        assert len(_client_store) == settings.max_clients - 1
 
     def test_only_protected_clients_remain_no_eviction(self):
         """When only protected clients remain, no eviction occurs."""
@@ -209,7 +208,7 @@ class TestEnsureCapacity:
         # Add protected first, then non-protected to fill
         for name in _PROTECTED_CLIENTS:
             _client_store[name] = ClientSettings(client=name)
-        remaining = _MAX_CLIENTS - len(_PROTECTED_CLIENTS)
+        remaining = settings.max_clients - len(_PROTECTED_CLIENTS)
         for i in range(remaining):
             _client_store[f"c_{i}"] = ClientSettings(client=f"c_{i}")
 

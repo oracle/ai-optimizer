@@ -17,8 +17,11 @@ from pathlib import Path
 
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
+from fastmcp.server.providers import Provider
+from fastmcp.server.providers.fastmcp_provider import FastMCPProvider
 from fastmcp.server.providers.proxy import ProxyProvider, _create_client_factory
 from fastmcp.server.server import FastMCP as FastMCPServer
+from fastmcp.server.transforms.namespace import Namespace
 from fastmcp.tools import Tool
 
 from server.app.core.mcp import mcp
@@ -112,6 +115,18 @@ def _resolve_dbtools_home() -> Path:
 
 
 _DBTOOLS_HOME = _resolve_dbtools_home()
+
+# Live state for the mounted SQLcl proxy. register_sqlcl_proxy() populates this
+# at startup; refresh_sqlcl_proxy() tears it down and rebuilds it when the
+# database configuration changes so the SQLcl daemon re-reads the connection store.
+# State is wrapped in a class so attribute mutations don't need `global`.
+class _ProxyState:
+    transport: StdioTransport | None = None
+    provider: Provider | None = None
+
+
+_state = _ProxyState()
+_refresh_lock = asyncio.Lock()
 
 
 def _clear_connection_store(dbtools_home: Path) -> None:
@@ -271,8 +286,15 @@ async def _create_connection_store(
         LOGGER.error("Timed out creating connection store for: %s", alias)
 
 
-async def _mount_sqlcl_proxy(sqlcl_binary: str, dbtools_home: Path, env_vars: dict) -> StdioTransport | None:
-    """Create an MCP transport, verify the backend, and mount the SQLcl proxy."""
+async def _mount_sqlcl_proxy(
+    sqlcl_binary: str, dbtools_home: Path, env_vars: dict
+) -> tuple[StdioTransport, Provider] | None:
+    """Create an MCP transport, verify the backend, and mount the SQLcl proxy.
+
+    Returns ``(transport, mounted_provider)`` on success so callers can later
+    tear the proxy down by removing the provider from ``mcp.providers`` and
+    closing the transport.
+    """
     transport: StdioTransport | None = None
     try:
         LOGGER.debug("SQLcl proxy: creating StdioTransport")
@@ -292,9 +314,13 @@ async def _mount_sqlcl_proxy(sqlcl_binary: str, dbtools_home: Path, env_vars: di
         client_factory = _create_client_factory(client)
         proxy = FastMCPServer(name="SQLclProxy")
         proxy.add_provider(_SanitizingProxyProvider(client_factory))
-        mcp.mount(proxy, namespace="sqlcl")
+        # Equivalent to mcp.mount(proxy, namespace="sqlcl"), but we keep a
+        # reference to the wrapped provider so refresh_sqlcl_proxy() can
+        # remove it from mcp.providers on teardown.
+        mounted_provider = FastMCPProvider(proxy).wrap_transform(Namespace("sqlcl"))
+        mcp.providers.append(mounted_provider)
         LOGGER.info("Mounted SQLcl MCP proxy")
-        return transport
+        return transport, mounted_provider
     except Exception as ex:
         LOGGER.error("Failed to create SQLcl MCP proxy: %s", ex)
         if transport is not None:
@@ -302,8 +328,12 @@ async def _mount_sqlcl_proxy(sqlcl_binary: str, dbtools_home: Path, env_vars: di
         return None
 
 
-async def register_sqlcl_proxy() -> StdioTransport | None:
-    """Discover SQLcl, set up connection stores, and mount the MCP proxy."""
+async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | None:
+    """Discover SQLcl, set up connection stores, and mount the MCP proxy.
+
+    Caller must hold ``_refresh_lock``.  Returns ``(transport, mounted_provider)``
+    on success.
+    """
     sqlcl_binary = shutil.which("sql")
     if not sqlcl_binary:
         LOGGER.warning("Not enabling SQLcl MCP server, sqlcl not found in PATH.")
@@ -356,11 +386,62 @@ async def register_sqlcl_proxy() -> StdioTransport | None:
     return await _mount_sqlcl_proxy(sqlcl_binary, dbtools_home, env_vars)
 
 
-async def close_sqlcl_proxy(transport: StdioTransport | None) -> None:
-    """Close the FastMCP proxy transport, terminating the SQLcl daemon process."""
+async def _teardown_active_unlocked() -> None:
+    """Unmount the current provider and close the current transport. Caller holds ``_refresh_lock``."""
+    if _state.provider is not None and _state.provider in mcp.providers:
+        mcp.providers.remove(_state.provider)
+    await _close_transport(_state.transport)
+    _state.transport = None
+    _state.provider = None
+
+
+async def register_sqlcl_proxy() -> StdioTransport | None:
+    """Startup entrypoint: register the SQLcl proxy and cache the transport."""
+    async with _refresh_lock:
+        await _teardown_active_unlocked()  # defensive — startup should see no prior state
+        result = await _register_sqlcl_proxy_unlocked()
+        if result is not None:
+            _state.transport, _state.provider = result
+        return _state.transport
+
+
+async def refresh_sqlcl_proxy() -> bool:
+    """Tear down and rebuild the SQLcl MCP proxy.
+
+    Called after ``settings.database_configs`` mutates so the SQLcl daemon sees
+    the updated connection store.  Best-effort: failures are logged, and
+    ``settings.nl2sql_available`` reflects the outcome so the UI stays honest.
+    """
+    async with _refresh_lock:
+        await _teardown_active_unlocked()
+        try:
+            result = await _register_sqlcl_proxy_unlocked()
+        except Exception as ex:
+            LOGGER.error("SQLcl proxy refresh failed: %s", ex)
+            result = None
+
+        if result is not None:
+            _state.transport, _state.provider = result
+        settings.nl2sql_available = _state.transport is not None
+        return _state.transport is not None
+
+
+async def _close_transport(transport: StdioTransport | None) -> None:
+    """Close a SQLcl MCP proxy transport, swallowing teardown errors."""
     if transport is None:
         return
     try:
         await transport.close()
     except Exception:
         LOGGER.debug("SQLcl proxy transport close error", exc_info=True)
+
+
+async def close_sqlcl_proxy() -> None:
+    """Close the currently-mounted SQLcl proxy, terminating the SQLcl daemon.
+
+    Reads the active transport from module state so callers don't have to track
+    handles themselves — this keeps shutdown correct even after a refresh has
+    swapped in a new transport.
+    """
+    async with _refresh_lock:
+        await _teardown_active_unlocked()

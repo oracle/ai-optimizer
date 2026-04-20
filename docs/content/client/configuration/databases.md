@@ -7,7 +7,7 @@ weight = 20
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker: ignore tablespace mycomplexsecret mycomplexwalletsecret 
+spell-checker: ignore enquote mysupersecret tablespace varchar relref
 -->
 
 To use the Retrieval-Augmented Generation (RAG) functionality of the {{< short_app_ref >}}, you will need to setup/enable an [embedding model]({{% relref "/client/configuration/models" %}}) and have access to an **Oracle AI Database**. Both the [Always Free Oracle Autonomous Database Serverless (ADB-S)](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/autonomous-always-free.html) and the [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) are supported. They are a great, no-cost, way to get up and running quickly.
@@ -90,33 +90,36 @@ A database user is required to store the embeddings, used for **RAG**, into the 
 
 ```sql
 DECLARE
+    c_user_name     CONSTANT VARCHAR2(30) := 'DEMO';
     c_user_password dba_users.password%TYPE := 'MYSUPERSECRET';
     v_default_perm  database_properties.property_value%TYPE;
     v_default_temp  database_properties.property_value%TYPE;
     v_sql           VARCHAR2(500);
-BEGIN    
-    -- Get default permanent tablespace
-    SELECT property_value 
-      INTO v_default_perm
-      FROM database_properties 
-     WHERE property_name = 'DEFAULT_PERMANENT_TABLESPACE';
+BEGIN
+    SELECT property_value
+    INTO v_default_perm
+    FROM database_properties
+    WHERE property_name = 'DEFAULT_PERMANENT_TABLESPACE';
 
-    -- Get default temporary tablespace
-    SELECT property_value 
-      INTO v_default_temp
-      FROM database_properties 
-     WHERE property_name = 'DEFAULT_TEMP_TABLESPACE';
+    SELECT property_value
+    INTO v_default_temp
+    FROM database_properties
+    WHERE property_name = 'DEFAULT_TEMP_TABLESPACE';
 
-    -- Build dynamic CREATE USER statement
-    v_sql := 'CREATE USER demo IDENTIFIED BY "' || c_user_password || '" ' ||
-             'DEFAULT TABLESPACE ' || v_default_perm || ' ' ||
-             'TEMPORARY TABLESPACE ' || v_default_temp;
+    v_sql := 'CREATE USER ' || DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) ||
+            ' IDENTIFIED BY "' || c_user_password || '" ' ||
+            'DEFAULT TABLESPACE ' || v_default_perm || ' ' ||
+            'TEMPORARY TABLESPACE ' || v_default_temp;
     EXECUTE IMMEDIATE v_sql;
+
+    EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO ' ||
+        DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE);
+    EXECUTE IMMEDIATE 'ALTER USER ' ||
+        DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) || ' DEFAULT ROLE ALL';
+    EXECUTE IMMEDIATE 'ALTER USER ' ||
+        DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) || ' QUOTA UNLIMITED ON DATA';
 END;
 /
-GRANT "DB_DEVELOPER_ROLE" TO "DEMO";
-ALTER USER "DEMO" DEFAULT ROLE ALL;
-ALTER USER "DEMO" QUOTA UNLIMITED ON DATA;
 ```
 
 {{% notice style="default" title="One schema fits none..." icon="circle-info" %}}

@@ -15,6 +15,7 @@ from server.app.database.config import close_pool
 from server.app.database.registry import drop_vector_store, init_core_database, test_connection
 from server.app.database.schemas import DatabaseConfig, DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import persist_settings
+from server.app.mcp.proxies.sqlcl import refresh_sqlcl_proxy
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,6 +24,30 @@ auth = APIRouter(prefix="/databases")
 SENSITIVE_FIELDS = set(DatabaseSensitive.model_fields.keys())
 
 _PERSIST_FAIL = "Failed to persist settings"
+
+
+def _sqlcl_relevant(cfg: DatabaseConfig) -> bool:
+    """Whether *cfg* has the credentials SQLcl needs to store a connection."""
+    return bool(cfg.username and cfg.password and cfg.dsn)
+
+
+async def _maybe_refresh_sqlcl(cfg: DatabaseConfig, originals: dict | None = None) -> None:
+    """Rebuild the SQLcl proxy when the change affects its connection store.
+
+    Skips the multi-second refresh when neither the current nor previous config
+    had the credentials SQLcl would have written to its store.
+    """
+    if _sqlcl_relevant(cfg):
+        await refresh_sqlcl_proxy()
+        return
+    if originals is None:
+        return
+    # Reconstruct the pre-update view so we notice "had creds → cleared them".
+    prev_username = originals.get("username", cfg.username)
+    prev_password = originals.get("password", cfg.password)
+    prev_dsn = originals.get("dsn", cfg.dsn)
+    if prev_username and prev_password and prev_dsn:
+        await refresh_sqlcl_proxy()
 
 
 def _check_username_dsn_conflict(username: str | None, dsn: str | None, exclude: DatabaseConfig | None = None) -> None:
@@ -87,7 +112,8 @@ async def create_database(body: DatabaseConfig):
         result = body.model_dump(exclude=SENSITIVE_FIELDS)
         if error:
             result["error"] = error
-        return JSONResponse(content=result, status_code=201)
+    await _maybe_refresh_sqlcl(body)
+    return JSONResponse(content=result, status_code=201)
 
 
 @auth.put("/{alias}", response_model_exclude_unset=True)
@@ -149,7 +175,8 @@ async def update_database(alias: str, body: DatabaseUpdate):
         result = cfg.model_dump(exclude=SENSITIVE_FIELDS)
         if error:
             result["error"] = error
-        return result
+    await _maybe_refresh_sqlcl(cfg, originals=originals)
+    return result
 
 
 @auth.delete("/{alias}", status_code=204)
@@ -167,7 +194,7 @@ async def remove_database(alias: str):
             settings.database_configs.insert(idx, cfg)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         await close_pool(cfg.pool)
-        return None
+    await refresh_sqlcl_proxy()
 
 
 @auth.delete("/{alias}/vector-stores/{table_name}", status_code=204)

@@ -13,7 +13,6 @@ import pytest
 from server.app.api.v1.endpoints.settings import SENSITIVE_FIELDS
 from server.app.core.schemas import ClientSettings
 from server.app.core.settings import (
-    _MAX_CLIENTS,
     _PROTECTED_CLIENTS,
     _client_store,
     _ensure_capacity,
@@ -417,15 +416,15 @@ def test_lru_eviction_oldest_non_protected():
         _client_store[name] = ClientSettings(client=name)
 
     # Fill remaining slots
-    for i in range(_MAX_CLIENTS - len(_PROTECTED_CLIENTS)):
+    for i in range(settings.max_clients - len(_PROTECTED_CLIENTS)):
         _client_store[f"c{i}"] = ClientSettings(client=f"c{i}")
 
-    assert len(_client_store) == _MAX_CLIENTS
+    assert len(_client_store) == settings.max_clients
 
     # Trigger eviction — oldest non-protected key is "c0"
     _ensure_capacity()
 
-    assert len(_client_store) == _MAX_CLIENTS - 1
+    assert len(_client_store) == settings.max_clients - 1
     assert "c0" not in _client_store
     for name in _PROTECTED_CLIENTS:
         assert name in _client_store

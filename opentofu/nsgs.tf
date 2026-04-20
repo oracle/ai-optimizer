@@ -12,48 +12,66 @@ resource "oci_core_network_security_group" "lb" {
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "lb_http_ingress" {
-  for_each = toset(
-    local.ssl_enabled
-    ? distinct(concat(
-      split(",", replace(var.client_allowed_cidrs, "/\\s+/", "")),
-      split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))
-    ))
-    : split(",", replace(var.client_allowed_cidrs, "/\\s+/", ""))
-  )
+resource "oci_core_network_security_group_security_rule" "lb_client_http_ingress" {
+  for_each                  = local.client_allowed_cidrs
   network_security_group_id = oci_core_network_security_group.lb.id
-  description               = "Loadbalancer HTTP Access - ${each.value}."
+  description               = "Loadbalancer Client HTTP Access - ${each.value}."
   direction                 = "INGRESS"
   protocol                  = "6"
   source                    = each.value
   source_type               = "CIDR_BLOCK"
   tcp_options {
     destination_port_range {
-      min = local.lb_http_port
-      max = local.lb_http_port
+      min = local.lb_client_http_port
+      max = local.lb_client_http_port
     }
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "lb_https_ingress" {
-  for_each = toset(
-    local.ssl_enabled
-    ? distinct(concat(
-      split(",", replace(var.client_allowed_cidrs, "/\\s+/", "")),
-      split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))
-    ))
-    : split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))
-  )
+resource "oci_core_network_security_group_security_rule" "lb_client_https_ingress" {
+  for_each                  = local.ssl_enabled ? local.client_allowed_cidrs : toset([])
   network_security_group_id = oci_core_network_security_group.lb.id
-  description               = "Loadbalancer HTTPS Access - ${each.value}."
+  description               = "Loadbalancer Client HTTPS Access - ${each.value}."
   direction                 = "INGRESS"
   protocol                  = "6"
   source                    = each.value
   source_type               = "CIDR_BLOCK"
   tcp_options {
     destination_port_range {
-      min = local.lb_https_port
-      max = local.lb_https_port
+      min = local.lb_client_https_port
+      max = local.lb_client_https_port
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "lb_server_http_ingress" {
+  for_each                  = local.server_allowed_cidrs
+  network_security_group_id = oci_core_network_security_group.lb.id
+  description               = "Loadbalancer Server HTTP Access - ${each.value}."
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  source                    = each.value
+  source_type               = "CIDR_BLOCK"
+  tcp_options {
+    destination_port_range {
+      min = local.lb_server_http_port
+      max = local.lb_server_http_port
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "lb_server_https_ingress" {
+  for_each                  = local.ssl_enabled ? local.server_allowed_cidrs : toset([])
+  network_security_group_id = oci_core_network_security_group.lb.id
+  description               = "Loadbalancer Server HTTPS Access - ${each.value}."
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  source                    = each.value
+  source_type               = "CIDR_BLOCK"
+  tcp_options {
+    destination_port_range {
+      min = local.lb_server_https_port
+      max = local.lb_server_https_port
     }
   }
 }

@@ -23,8 +23,9 @@ output "optimizer_client_url" {
 output "optimizer_server_url" {
   description = "URL for AI Optimizer and Toolkit Server API Access"
   value = var.deploy_optimizer ? format(
-    "%s://%s/v1/docs", local.ssl_enabled ? "https" : "http",
-    oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address
+    "%s://%s:%d/v1/docs", local.ssl_enabled ? "https" : "http",
+    oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address,
+    local.ssl_enabled ? local.lb_server_https_port : local.lb_server_http_port,
   ) : "N/A"
 }
 

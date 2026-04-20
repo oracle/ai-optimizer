@@ -100,6 +100,7 @@ The `server:` sections contains values that are used to configure the {{< short_
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | server.replicaCount | int | `1` | Number of desired pod replicas for the Deployment when autoscaling is disabled |
+| server.maxClients | int | `64` | Max number of distinct client sessions cached in memory (LRU eviction beyond this) |
 | server.image.repository | string | `"localhost/ai-optimizer-server"` | Image Repository |
 | server.image.tag | string | `"latest"` | Image Tag |
 | server.imagePullSecrets | list | `[]` | Secret name containing image pull secrets |

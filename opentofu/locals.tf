@@ -86,9 +86,13 @@ locals {
 
 // Load Balancer
 locals {
-  lb_http_port  = 80
-  lb_https_port = 443
-  ssl_enabled   = var.ssl_mode != "none"
+  lb_client_http_port  = 80
+  lb_client_https_port = 443
+  lb_server_http_port  = 8000
+  lb_server_https_port = 8443
+  client_allowed_cidrs = toset(compact(split(",", replace(var.client_allowed_cidrs, "/\\s+/", ""))))
+  server_allowed_cidrs = toset(compact(split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))))
+  ssl_enabled          = var.ssl_mode != "none"
   ssl_cert_pem = (
     var.ssl_mode == "self-signed" ? tls_locally_signed_cert.server[0].cert_pem :
     var.ssl_mode == "provided" ? var.ssl_certificate :

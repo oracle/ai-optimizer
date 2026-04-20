@@ -5,10 +5,9 @@ disableWidgetStateDuplicationWarning = true
 
 [browser]
 gatherUsageStats = false
-serverAddress = "localhost"
 
 [server]
-cookieSecret = "oaie-client-cookie"
+cookieSecret = "aio-client-cookie"
 headless = true
 
 [client]
