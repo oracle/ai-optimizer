@@ -43,6 +43,9 @@ server:
   # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
   replicaCount: 1
 
+  # -- Max number of distinct client sessions cached in memory (LRU eviction beyond this)
+  maxClients: 64
+
   # autoscaling: HPA when enabled, requires metrics-server to be installed
   autoscaling:
     enabled: false

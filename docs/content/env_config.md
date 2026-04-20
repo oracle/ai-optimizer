@@ -90,6 +90,7 @@ Database variables configure the CORE database connection. For more details, see
 | `AIO_SERVER_SSL_CERT_FILE` | Path to TLS certificate (PEM). If SSL is enabled without this, a self-signed certificate is generated. | _(none)_ |
 | `AIO_SERVER_SSL_KEY_FILE` | Path to TLS private key (PEM) | _(none)_ |
 | `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the API Server to become ready at startup | `180` |
+| `AIO_MAX_CLIENTS` | Max number of distinct client sessions cached in memory (LRU eviction beyond this) | `64` |
 
 ### Client
 

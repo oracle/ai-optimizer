@@ -57,6 +57,8 @@ spec:
                   key: {{ include "global.apiSecretKey" . }}
             - name: AIO_SERVER_URL_PREFIX
               value: {{ include "global.getPath" . | trimSuffix "/" | quote }}
+            - name: AIO_MAX_CLIENTS
+              value: {{ .Values.server.maxClients | quote }}
             {{- if .Values.server.ssl.enabled }}
             - name: AIO_SERVER_SSL
               value: "true"
