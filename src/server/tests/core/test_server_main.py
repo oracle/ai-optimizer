@@ -226,6 +226,6 @@ class TestLifespan:
             async with lifespan(MagicMock()):
                 pass
 
-            mock_close_sqlcl.assert_awaited_once_with(mock_transport)
+            mock_close_sqlcl.assert_awaited_once_with()
             # close_pool called once per database config
             assert mock_close_pool.await_count == len(saved_db_configs)

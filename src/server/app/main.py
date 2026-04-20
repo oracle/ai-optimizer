@@ -104,8 +104,7 @@ async def lifespan(_app: FastAPI):
     await load_ollama_models()
     register_mcp_prompts()
     register_mcp_tools()
-    sqlcl_transport = await register_sqlcl_proxy()
-    settings.nl2sql_available = sqlcl_transport is not None
+    settings.nl2sql_available = await register_sqlcl_proxy() is not None
 
     # --- Phase 6: Model reachability ---
     await check_model_reachability()
@@ -113,7 +112,7 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
-        await close_sqlcl_proxy(sqlcl_transport)
+        await close_sqlcl_proxy()
         for db in settings.database_configs:
             await close_pool(db.pool)
 

@@ -38,6 +38,13 @@ def mock_persist_settings():
         yield mock_persist
 
 
+@pytest.fixture(autouse=True)
+def mock_refresh_sqlcl():
+    """Prevent the SQLcl proxy refresh from spawning a real sqlcl daemon in tests."""
+    with patch("server.app.api.v1.endpoints.databases.refresh_sqlcl_proxy", new_callable=AsyncMock) as mock_refresh:
+        yield mock_refresh
+
+
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_list_databases_no_auth(app_client):
@@ -637,3 +644,162 @@ async def test_delete_vector_store_requires_pool(app_client, auth_headers):
     )
 
     assert resp.status_code == 409
+
+
+# --- SQLcl refresh hook ---
+#
+# The SQLcl MCP daemon caches the connection store it reads at startup, so any
+# database CRUD that the daemon should see must trigger a proxy refresh.  The
+# refresh is expensive (a multi-second tear-down/rebuild), so creates/updates
+# that can't affect the store (no credentials) must skip it.
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database_refreshes_sqlcl_with_creds(app_client, auth_headers, mock_refresh_sqlcl):
+    """Creating a DB with full credentials triggers a SQLcl proxy refresh."""
+    with patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock):
+        resp = await app_client.post(
+            "/v1/databases",
+            json={"alias": "WITH_CREDS", "username": "u", "password": "p", "dsn": "d"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 201
+    mock_refresh_sqlcl.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database_skips_sqlcl_without_creds(app_client, auth_headers, mock_refresh_sqlcl):
+    """Creating a DB row without full credentials leaves the SQLcl store untouched."""
+    with patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock):
+        resp = await app_client.post(
+            "/v1/databases",
+            json={"alias": "NO_CREDS", "username": "u"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 201
+    mock_refresh_sqlcl.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database_persist_failure_skips_sqlcl(
+    app_client, auth_headers, mock_refresh_sqlcl, mock_persist_settings
+):
+    """Persist rollback must not leave SQLcl rebuilt around a dropped config."""
+    mock_persist_settings.return_value = False
+    with patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock):
+        resp = await app_client.post(
+            "/v1/databases",
+            json={"alias": "ROLLBACK_DB", "username": "u", "password": "p", "dsn": "d"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+    mock_refresh_sqlcl.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database_duplicate_skips_sqlcl(app_client, auth_headers, mock_refresh_sqlcl):
+    """Conflict (409) before mutation must not trigger a refresh."""
+    resp = await app_client.post(
+        "/v1/databases",
+        json={"alias": "TEST", "username": "u", "password": "p", "dsn": "d"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 409
+    mock_refresh_sqlcl.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_database_refreshes_sqlcl(app_client, auth_headers, mock_refresh_sqlcl):
+    """Updating a config with credentials triggers a SQLcl refresh so the daemon sees the new creds."""
+    # Give TEST full creds so the updated config is SQLcl-relevant.
+    cfg = settings.database_configs[0]
+    cfg.username = "u"
+    cfg.password = "p"
+    cfg.dsn = "d"
+    with (
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+        patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock),
+    ):
+        resp = await app_client.put(
+            "/v1/databases/TEST",
+            json={"password": "new_password"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    mock_refresh_sqlcl.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_database_rejection_skips_sqlcl(app_client, auth_headers, mock_refresh_sqlcl):
+    """Rule 1: working + new fails → 422 reject; the proxy must not be rebuilt."""
+    cfg = settings.database_configs[0]
+    cfg.usable = True
+    cfg.pool = MagicMock()
+    cfg.username = "u"
+    cfg.password = "p"
+    cfg.dsn = "d"
+    with (
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+        patch(
+            "server.app.api.v1.endpoints.databases.test_connection",
+            new_callable=AsyncMock,
+            side_effect=Exception("ORA-12541"),
+        ),
+    ):
+        resp = await app_client.put(
+            "/v1/databases/TEST",
+            json={"dsn": "//bad-host:9999/X"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 422
+    mock_refresh_sqlcl.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_database_removing_creds_refreshes_sqlcl(app_client, auth_headers, mock_refresh_sqlcl):
+    """Clearing credentials must drop the alias from the SQLcl store."""
+    cfg = settings.database_configs[0]
+    cfg.username = "u"
+    cfg.password = "p"
+    cfg.dsn = "d"
+    with (
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+        patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock),
+    ):
+        resp = await app_client.put(
+            "/v1/databases/TEST",
+            json={"password": None},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    mock_refresh_sqlcl.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_database_refreshes_sqlcl(app_client, auth_headers, mock_refresh_sqlcl):
+    """Deleting a database always refreshes the SQLcl proxy."""
+    with patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock):
+        resp = await app_client.delete("/v1/databases/TEST", headers=auth_headers)
+    assert resp.status_code == 204
+    mock_refresh_sqlcl.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_database_persist_failure_skips_sqlcl(
+    app_client, auth_headers, mock_refresh_sqlcl, mock_persist_settings
+):
+    """Persist rollback on DELETE must not leave SQLcl rebuilt around a restored config."""
+    mock_persist_settings.return_value = False
+    with patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock):
+        resp = await app_client.delete("/v1/databases/TEST", headers=auth_headers)
+    assert resp.status_code == 503
+    mock_refresh_sqlcl.assert_not_awaited()
