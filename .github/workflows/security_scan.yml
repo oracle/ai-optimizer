@@ -51,6 +51,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Prepare Trivy Cache Directory
+        run: mkdir -p "${{ github.workspace }}/.trivy-cache"
+
       - name: Cache Trivy DB
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
