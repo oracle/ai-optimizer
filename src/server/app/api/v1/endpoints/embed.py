@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 
@@ -421,7 +421,7 @@ async def store_web_file(
     description="Store Local Files for Embedding.",
 )
 async def store_local_file(
-    files: list[UploadFile],
+    files: list[UploadFile] = File(...),
     client: str = Header(default="server"),
 ) -> JSONResponse:
     """Store uploaded local files for embedding (supports ZIP extraction)."""

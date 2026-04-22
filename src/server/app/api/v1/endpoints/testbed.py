@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from giskard.llm import set_llm_model
 from giskard.rag import QATestset, evaluate
 from giskard.rag.base import AgentAnswer
@@ -23,7 +23,7 @@ from litellm.exceptions import APIConnectionError
 
 from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.chat import MessageResponse
-from server.app.api.v1.schemas.testbed import Evaluation, EvaluationReport, QASetData, QASets
+from server.app.api.v1.schemas.testbed import Evaluation, EvaluationReport, QASetData, QASets, RejectedFile
 from server.app.core.file_utils import get_temp_directory, safe_filename
 from server.app.core.settings import resolve_client
 from server.app.database.config import get_core_pool
@@ -42,6 +42,7 @@ from server.app.testbed.database import (
 )
 from server.app.testbed.generation import (
     _GISKARD_LOCK,
+    MIN_CHUNKS_PER_FILE,
     build_knowledge_base,
     get_giskard_config,
     jsonl_to_json_content,
@@ -128,7 +129,7 @@ async def delete_testset_endpoint(tid: str):
 
 @auth.post("/testset_load", response_model=QASetData)
 async def upload_testset(
-    files: list[UploadFile],
+    files: list[UploadFile] = File(...),
     name: str = Form(),
     tid: Optional[str] = Form(default=None),
 ):
@@ -158,7 +159,7 @@ async def upload_testset(
 
 @auth.post("/testset_generate", response_model=QASetData)
 async def generate_testset_endpoint(
-    files: list[UploadFile],
+    files: list[UploadFile] = File(...),
     name: str = Form(),
     ll_model: str = Form(),
     embed_model: str = Form(),
@@ -185,17 +186,39 @@ async def generate_testset_endpoint(
     full_testsets = temp_directory / "all_testsets.jsonl"
 
     try:
-        num_files = len(files)
-        if num_files == 0:
+        if len(files) == 0:
             raise HTTPException(status_code=400, detail="At least one file is required.")
-        questions = max(questions, num_files)
-        base_q, extra = divmod(questions, num_files)
-        for idx, file in enumerate(files):
+
+        accepted: list[tuple[str, list]] = []
+        rejected: list[RejectedFile] = []
+        for file in files:
+            filename, text_nodes, reason = await _load_file_chunks(file, temp_directory, embed_config)
+            if reason is not None:
+                rejected.append(RejectedFile(filename=filename, reason=reason))
+            else:
+                accepted.append((filename, text_nodes))
+
+        if not accepted:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "No uploaded files contained enough text to generate a testset.",
+                    "rejected_files": [r.model_dump() for r in rejected],
+                },
+            )
+
+        num_accepted = len(accepted)
+        questions = max(questions, num_accepted)
+        base_q, extra = divmod(questions, num_accepted)
+        for idx, (_filename, text_nodes) in enumerate(accepted):
             file_questions = base_q + (1 if idx < extra else 0)
-            await _process_pdf_file(file, temp_directory, name, embed_config, ll_config, file_questions, full_testsets)
+            await _process_pdf_file(
+                text_nodes, temp_directory, name, embed_config, ll_config, file_questions, full_testsets
+            )
         db_id = await _store_generated_testset(full_testsets, name, pool)
         async with pool.acquire() as conn:
-            return await get_testset_qa(conn, db_id)
+            qa_result = await get_testset_qa(conn, db_id)
+        return QASetData(qa_data=qa_result["qa_data"], rejected_files=rejected)
 
     except KeyError as ex:
         if "None of" in str(ex) and "are in the columns" in str(ex):
@@ -274,8 +297,39 @@ async def evaluate_testset(
 # ---------------------------------------------------------------------------
 
 
-async def _process_pdf_file(
+async def _load_file_chunks(
     file: UploadFile,
+    temp_directory: Path,
+    embed_config: dict,
+) -> tuple[str, list, Optional[str]]:
+    """Read a PDF upload, split into chunks, and validate the chunk count.
+
+    Returns ``(original_filename, text_nodes, rejection_reason)``. When
+    ``rejection_reason`` is not ``None`` the file should be skipped.
+    """
+    file_content = await file.read()
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Uploaded file has no filename.")
+    original_name = file.filename
+    disk_path = temp_directory / safe_filename(original_name)
+    with open(disk_path, "wb") as fh:
+        fh.write(file_content)
+
+    text_nodes = load_and_split(disk_path, embed_config.get("max_chunk_size", 512))
+    if len(text_nodes) < MIN_CHUNKS_PER_FILE:
+        return (
+            original_name,
+            [],
+            (
+                f"Extracted only {len(text_nodes)} text chunks; at least "
+                f"{MIN_CHUNKS_PER_FILE} are required to generate a testset."
+            ),
+        )
+    return original_name, text_nodes, None
+
+
+async def _process_pdf_file(
+    text_nodes: list,
     temp_directory: Path,
     name: str,
     embed_config: dict,
@@ -283,16 +337,7 @@ async def _process_pdf_file(
     questions: int,
     full_testsets: Path,
 ) -> None:
-    """Process a single uploaded PDF: read, split, generate testset, and append."""
-    file_content = await file.read()
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="Uploaded file has no filename.")
-    filename = temp_directory / safe_filename(file.filename)
-    with open(filename, "wb") as fh:
-        fh.write(file_content)
-
-    text_nodes = load_and_split(filename, embed_config.get("max_chunk_size", 512))
-
+    """Build a Giskard testset from pre-split chunks and append to the combined JSONL."""
     async with _GISKARD_LOCK:
         test_set = await asyncio.to_thread(build_knowledge_base, text_nodes, questions, ll_config, embed_config)
 

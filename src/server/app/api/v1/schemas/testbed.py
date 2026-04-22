@@ -19,10 +19,20 @@ class QASets(BaseModel):
     created: str = Field(description="Date QA Set was loaded")
 
 
+class RejectedFile(BaseModel):
+    """A PDF that was skipped during testset generation."""
+
+    filename: str = Field(description="Original filename of the rejected PDF")
+    reason: str = Field(description="Why the file was rejected")
+
+
 class QASetData(BaseModel):
     """Q&A data container for a testset."""
 
     qa_data: list[str | dict[str, Any]] = Field(description="QA Set Data (list of QA objects)")
+    rejected_files: list[RejectedFile] = Field(
+        default_factory=list, description="Files skipped during generation with reasons"
+    )
 
 
 class Evaluation(BaseModel):

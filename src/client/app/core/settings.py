@@ -28,6 +28,7 @@ class ClientSettings(BaseSettings):
 
     api_key: Optional[str] = None
     server_url: str = "http://localhost"
+    server_address: str = "127.0.0.1"
     server_port: int = 8000
     server_url_prefix: str = ""
 

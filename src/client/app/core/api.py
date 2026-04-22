@@ -42,7 +42,7 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
             "uvicorn",
             "server.app.main:app",
             "--host",
-            "127.0.0.1",
+            settings.server_address,
             "--port",
             port,
         ],

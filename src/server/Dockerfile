@@ -70,7 +70,7 @@ enabled=1' > /etc/yum.repos.d/oracle-software.repo
 # Runtime-only system packages (python3.11 already in base)
 RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    microdnf --nodocs -y install sqlcl java-21-openjdk-headless && \
+    microdnf --nodocs -y install sqlcl java-21-openjdk-headless mesa-libGL && \
     microdnf clean all
 
 # Prep the app directory
