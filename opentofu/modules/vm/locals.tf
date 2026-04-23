@@ -3,8 +3,9 @@
 # spell-checker: disable
 
 locals {
-  streamlit_client_port = 8501
-  fastapi_server_port   = 8000
+  streamlit_client_port      = 8501
+  fastapi_server_port        = 8000
+  lb_idle_timeout_in_seconds = 1800
 }
 
 locals {

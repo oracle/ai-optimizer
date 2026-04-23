@@ -10,12 +10,10 @@ users:
     homedir: /app
 
 package_update: false
-packages:
-  - policycoreutils-python-utils
-  - python3.11
-  - jdk-26-headless
-  - sqlcl
-  - zstd
+# Packages are installed via /tmp/install_packages.sh in runcmd (with DNS wait
+# and dnf retries). The cloud-config `packages:` module fires before the OCI
+# VCN resolver is reliably ready, causing intermittent metadata-download
+# failures against yum.<region>.oci.oraclecloud.com.
 
 write_files:
   - path: /etc/systemd/system/ai-optimizer.service
@@ -41,6 +39,33 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
+  - path: /tmp/install_packages.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Wait for DNS to be ready, then dnf install with retries.
+      # Works around an OCI cloud-init race where the VCN resolver isn't
+      # serving queries by the time dnf hits the regional yum mirror.
+      set -u
+      PKGS="$@"
+      RESOLVE_HOST="yum.oracle.com"
+      REGION=$(curl -fsS -m 5 -H "Authorization: Bearer Oracle" \
+        http://169.254.169.254/opc/v2/instance/region 2>/dev/null || true)
+      if [ -n "$REGION" ]; then
+        RESOLVE_HOST="yum.$REGION.oci.oraclecloud.com"
+      fi
+      for i in $(seq 1 60); do
+        getent hosts "$RESOLVE_HOST" >/dev/null 2>&1 && break
+        sleep 2
+      done
+      for attempt in 1 2 3 4 5; do
+        dnf install -y $PKGS && exit 0
+        echo "dnf install attempt $attempt failed; cleaning and retrying"
+        dnf clean all || true
+        sleep 10
+      done
+      exit 1
+
   - path: /tmp/root_setup.sh
     permissions: '0755'
     content: |
@@ -63,14 +88,17 @@ write_files:
     content: |
       #!/bin/bash
       # Download/Setup Source Code
+      # --retry/--retry-connrefused: tolerate transient DNS/connect failures
+      # immediately after boot while the VCN resolver settles.
+      CURL_OPTS="-fsSL --retry 10 --retry-delay 5 --retry-connrefused --retry-all-errors"
       if [ "${optimizer_version}" = "Stable" ]; then
           echo "Downloading Code from LATEST release"
-          curl -L "https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz" \
+          curl $CURL_OPTS "https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz" \
             | tar -xz -C /app
       else
           echo "Downloading Code from branch: ${optimizer_branch}"
           mkdir -p /tmp/src-archive
-          curl -L "https://github.com/oracle/ai-optimizer/archive/refs/heads/${optimizer_branch}.tar.gz" \
+          curl $CURL_OPTS "https://github.com/oracle/ai-optimizer/archive/refs/heads/${optimizer_branch}.tar.gz" \
             | tar -xz -C /tmp/src-archive
           mv /tmp/src-archive/*/src /app/src
           mv /tmp/src-archive/*/pyproject.toml /app/pyproject.toml
@@ -102,6 +130,7 @@ write_files:
       AIO_DB_DSN=${db_service}
       AIO_OCI_CLI_AUTH=instance_principal
       AIO_CLIENT_ADDRESS=0.0.0.0
+      AIO_SERVER_ADDRESS=0.0.0.0
       %{~ if db_type == "ADB" }
       AIO_DB_WALLET_PASSWORD=${db_password}
       %{~ endif }
@@ -112,10 +141,11 @@ write_files:
       chmod 640 /app/src/.env.vm
 
 runcmd:
+  - /tmp/install_packages.sh policycoreutils-python-utils python3.11 jdk-26-headless sqlcl zstd mesa-libGL
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
-  - semanage fcontext -a -t bin_t "/app(/.*)?"                                                                                                              
-  - restorecon -RF /app  
+  - semanage fcontext -a -t bin_t "/app(/.*)?"
+  - restorecon -RF /app
   - systemctl daemon-reexec
   - systemctl daemon-reload
   - systemctl enable ai-optimizer.service

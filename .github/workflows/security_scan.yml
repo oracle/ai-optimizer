@@ -54,11 +54,15 @@ jobs:
       - name: Prepare Trivy Cache Directory
         run: mkdir -p "${{ github.workspace }}/.trivy-cache"
 
+      - name: Get Date
+        id: date
+        run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
       - name: Cache Trivy DB
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ github.workspace }}/.trivy-cache
-          key: trivy-db-${{ github.run_id }}
+          key: trivy-db-${{ steps.date.outputs.today }}
           restore-keys: |
             trivy-db-
 
@@ -72,7 +76,7 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}:/workspace" \
             -v "${{ github.workspace }}/.trivy-cache:/root/.cache/trivy" \
-            ghcr.io/aquasecurity/trivy:0.69.3 \
+            ghcr.io/aquasecurity/trivy:0.70.0 \
             image \
             --severity CRITICAL \
             --format sarif \
@@ -87,6 +91,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
         with:
           sarif_file: trivy-results.sarif
+          category: trivy-aio
 
       - name: Run Trivy Scan (HIGH+CRITICAL - Log)
         # HIGH findings logged for maintainer awareness but not uploaded
@@ -96,13 +101,19 @@ jobs:
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}/.trivy-cache:/root/.cache/trivy" \
-            ghcr.io/aquasecurity/trivy:0.69.3 \
+            ghcr.io/aquasecurity/trivy:0.70.0 \
             image \
             --severity HIGH,CRITICAL \
             --format table \
             --ignore-unfixed \
             --skip-files "**/ibm_watsonx_ai/connections.py" \
             "aio:${{ github.sha }}"
+
+      - name: Fix Trivy Cache Permissions
+        # Trivy runs as root inside the container, so cache files are owned by
+        # root. Reclaim ownership so the actions/cache post-step can tar them.
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}/.trivy-cache"
 
   # Macaron - check GitHub Actions for known vulnerabilities
   macaron:

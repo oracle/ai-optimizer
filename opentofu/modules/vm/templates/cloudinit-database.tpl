@@ -4,11 +4,9 @@
 # spell-checker: disable
 
 package_update: false
-packages:
-  - policycoreutils-python-utils
-  - python39-oci-cli
-  - jdk-26-headless
-  - sqlcl
+# Packages are installed via /tmp/install_packages.sh (provided by the
+# compute template, see cloudinit-compute.tpl). Cloud-config's `packages:`
+# fires before the OCI VCN resolver is reliably ready.
 
 write_files:
   - path: /tmp/db_priv_sql.sh
@@ -94,6 +92,7 @@ write_files:
       fi
 
 runcmd:
+  - /tmp/install_packages.sh policycoreutils-python-utils python39-oci-cli jdk-26-headless sqlcl
   - su - oracleai -c '/tmp/db_setup.sh'
   - su - oracleai -c '/tmp/db_priv_sql.sh'
-  - rm /tmp/db_setup.sh /tmp/db_priv_sql.sh
+  - rm /tmp/db_setup.sh /tmp/db_priv_sql.sh /tmp/install_packages.sh

@@ -93,7 +93,7 @@ jobs:
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
-            ghcr.io/aquasecurity/trivy:0.69.3 \
+            ghcr.io/aquasecurity/trivy:0.70.0 \
             config \
             --format sarif \
             --output /workspace/trivy-results.sarif \

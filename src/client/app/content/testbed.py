@@ -507,7 +507,16 @@ def _process_testset_request(endpoint: Optional[str], api_params: dict, testset_
                 )
                 response = api_get(endpoint, params={"tid": state.runtime_testbed["testset_id"]})
     except httpx.HTTPStatusError as exc:
-        st.error(f"Error Generating TestSet: {extract_error_detail(exc)}", icon="🚨")
+        detail = extract_error_detail(exc)
+        if isinstance(detail, dict) and "rejected_files" in detail:
+            rejected = detail.get("rejected_files") or []
+            lines = "\n".join(f"- **{r.get('filename', '?')}**: {r.get('reason', '')}" for r in rejected)
+            st.error(
+                f"Error Generating TestSet: {detail.get('message', 'Rejected files')}\n\n{lines}",
+                icon="🚨",
+            )
+        else:
+            st.error(f"Error Generating TestSet: {detail}", icon="🚨")
         st.stop()
     except (ValueError, KeyError, TypeError) as ex:
         LOGGER.error("Exception: %s", ex)
@@ -516,6 +525,10 @@ def _process_testset_request(endpoint: Optional[str], api_params: dict, testset_
 
     try:
         state.runtime_testbed_qa = response["qa_data"]
+        rejected = response.get("rejected_files") or []
+        if rejected:
+            details = "\n".join(f"- **{r['filename']}**: {r['reason']}" for r in rejected)
+            st.warning(f"Skipped {len(rejected)} file(s) during generation:\n\n{details}", icon="⚠️")
         st.success(f"{len(state.runtime_testbed_qa)} Q&A Loaded.", icon="✅")
     except UnboundLocalError as ex:
         LOGGER.exception("Failed to load Tests: %s", ex)

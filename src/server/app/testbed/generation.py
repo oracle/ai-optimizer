@@ -23,6 +23,11 @@ LOGGER = logging.getLogger(__name__)
 # Serialize Giskard operations that set global LLM state
 _GISKARD_LOCK = asyncio.Lock()
 
+# Minimum chunks per PDF required for Giskard's KnowledgeBase. Below this, UMAP's
+# spectral init calls scipy eigsh with k >= N and raises. 10 gives margin over
+# the hard scipy floor while still admitting modestly sized documents.
+MIN_CHUNKS_PER_FILE = 10
+
 
 def jsonl_to_json_content(content: str | bytes) -> str:
     """Convert JSONL or JSON content to a valid JSON string."""
