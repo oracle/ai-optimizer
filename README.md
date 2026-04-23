@@ -14,9 +14,9 @@ If you find this project useful, please consider giving it a [⭐](https://githu
 
 ## AI Optimizer Features
 
-- [Configuring Embedding and Chat Models](https://oracle.github.io/ai-optimizer/client/configuration/model_config)
+- [Configuring Embedding and Chat Models](https://oracle.github.io/ai-optimizer/client/configuration/models)
 - [Splitting and Embedding Documentation](https://oracle.github.io/ai-optimizer/client/tools/split_embed)
-- [Auto-refresh Vector Store from OCI Object Storage buckets](https://oracle.github.io/ai-optimizer/server/api/v1/embed)
+- [Auto-refresh Vector Store from OCI Object Storage buckets](https://oracle.github.io/ai-optimizer/client/tools/split_embed)
 - [Modifying System Prompts (Prompt Engineering)](https://oracle.github.io/ai-optimizer/client/tools/prompt_eng)
 - [Experimenting with **LLM** Parameters](https://oracle.github.io/ai-optimizer/client/chatbot)
 - [Testbed for auto-generated or existing Q&A datasets](https://oracle.github.io/ai-optimizer/client/testbed)
@@ -36,7 +36,7 @@ For more information, including more details on **Setup and Configuration** plea
   - API Keys for Third-Party Models
   - On-Premises Models<sub>\*</sub>
 
-<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [Infrastructure](https://oracle.github.io/ai-optimizer/infrastructure) documentation.</sub>
+<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs.</sub>
 
 #### Bare-Metal Installation
 
