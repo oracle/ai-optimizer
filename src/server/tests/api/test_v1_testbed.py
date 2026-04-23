@@ -8,6 +8,7 @@ Tests for testbed API endpoints.
 
 import io
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -351,10 +352,10 @@ def _mock_load_chunks_factory(per_file_results):
     iterator = iter(per_file_results)
 
     async def _side_effect(file, temp_directory, embed_config):
-        filename, chunks, reason = next(iterator)
+        filename, disk_path, reason = next(iterator)
         # consume the upload body so downstream assertions aren't tripped by unread streams
         await file.read()
-        return filename, chunks, reason
+        return filename, disk_path, reason
 
     return AsyncMock(side_effect=_side_effect)
 
@@ -365,9 +366,12 @@ async def test_generate_testset_distributes_questions(app_client, auth_headers):
     """Questions are distributed across files, not duplicated per file."""
     mock_process = AsyncMock()
     mock_qa_data = {"qa_data": [{"question": "Q1"}, {"question": "Q2"}, {"question": "Q3"}]}
-    chunks = ["node"] * 20
     mock_load = _mock_load_chunks_factory(
-        [("a.pdf", chunks, None), ("b.pdf", chunks, None), ("c.pdf", chunks, None)]
+        [
+            ("a.pdf", Path("/tmp/a.pdf"), None),
+            ("b.pdf", Path("/tmp/b.pdf"), None),
+            ("c.pdf", Path("/tmp/c.pdf"), None),
+        ]
     )
 
     with (
@@ -399,6 +403,11 @@ async def test_generate_testset_distributes_questions(app_client, auth_headers):
     q_per_file = [call.args[5] for call in mock_process.call_args_list]
     assert q_per_file == [3, 2, 2]
     assert sum(q_per_file) == 7
+    assert [call.args[0] for call in mock_process.call_args_list] == [
+        Path("/tmp/a.pdf"),
+        Path("/tmp/b.pdf"),
+        Path("/tmp/c.pdf"),
+    ]
     assert resp.json()["rejected_files"] == []
 
 
@@ -408,9 +417,12 @@ async def test_generate_testset_enforces_min_one_per_file(app_client, auth_heade
     """When questions < files, each file still gets at least 1 question."""
     mock_process = AsyncMock()
     mock_qa_data = {"qa_data": [{"question": "Q1"}, {"question": "Q2"}, {"question": "Q3"}]}
-    chunks = ["node"] * 20
     mock_load = _mock_load_chunks_factory(
-        [("a.pdf", chunks, None), ("b.pdf", chunks, None), ("c.pdf", chunks, None)]
+        [
+            ("a.pdf", Path("/tmp/a.pdf"), None),
+            ("b.pdf", Path("/tmp/b.pdf"), None),
+            ("c.pdf", Path("/tmp/c.pdf"), None),
+        ]
     )
 
     with (
@@ -448,11 +460,14 @@ async def test_generate_testset_rejects_small_file_and_proceeds(app_client, auth
     """Files below MIN_CHUNKS_PER_FILE are skipped and reported; accepted files still run."""
     mock_process = AsyncMock()
     mock_qa_data = {"qa_data": [{"question": "Q1"}, {"question": "Q2"}]}
-    big_chunks = ["node"] * 20
     mock_load = _mock_load_chunks_factory(
         [
-            ("small.pdf", [], "Extracted only 3 text chunks; at least 10 are required to generate a testset."),
-            ("big.pdf", big_chunks, None),
+            (
+                "small.pdf",
+                Path("/tmp/small.pdf"),
+                "Extracted only 3 text chunks; at least 10 are required to generate a testset.",
+            ),
+            ("big.pdf", Path("/tmp/big.pdf"), None),
         ]
     )
 
@@ -481,6 +496,7 @@ async def test_generate_testset_rejects_small_file_and_proceeds(app_client, auth
     assert resp.status_code == 200
     # Only the accepted file was processed; its question count is the full ask.
     assert mock_process.await_count == 1
+    assert mock_process.call_args_list[0].args[0] == Path("/tmp/big.pdf")
     assert mock_process.call_args_list[0].args[5] == 4
     payload = resp.json()
     assert len(payload["rejected_files"]) == 1
@@ -490,13 +506,51 @@ async def test_generate_testset_rejects_small_file_and_proceeds(app_client, auth
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_load_file_chunks_same_name_no_overwrite(tmp_path):
+    """Two uploads sharing a basename must resolve to distinct bytes on disk.
+
+    Regression guard: the staged file was previously keyed only by
+    ``safe_filename(original_name)``, so the second upload overwrote the first
+    and generation later ran against the wrong PDF.
+    """
+    from fastapi import UploadFile
+
+    from server.app.api.v1.endpoints import testbed as testbed_mod
+
+    bytes_a = b"PDF-CONTENT-A"
+    bytes_b = b"PDF-CONTENT-B"
+    file_a = UploadFile(filename="dup.pdf", file=io.BytesIO(bytes_a))
+    file_b = UploadFile(filename="dup.pdf", file=io.BytesIO(bytes_b))
+
+    # load_and_split is mocked so the validator only cares about the count.
+    with patch.object(testbed_mod, "load_and_split", return_value=[object()] * 20):
+        name_a, path_a, reason_a = await testbed_mod._load_file_chunks(file_a, tmp_path, {})
+        name_b, path_b, reason_b = await testbed_mod._load_file_chunks(file_b, tmp_path, {})
+
+    assert reason_a is None and reason_b is None
+    assert name_a == "dup.pdf" and name_b == "dup.pdf"
+    assert path_a != path_b, "Same-named uploads must resolve to distinct disk paths"
+    assert path_a.read_bytes() == bytes_a
+    assert path_b.read_bytes() == bytes_b
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_generate_testset_all_rejected_returns_400(app_client, auth_headers):
     """If every file is below the chunk floor, the endpoint returns 400 with the rejection list."""
     mock_process = AsyncMock()
     mock_load = _mock_load_chunks_factory(
         [
-            ("tiny1.pdf", [], "Extracted only 1 text chunks; at least 10 are required to generate a testset."),
-            ("tiny2.pdf", [], "Extracted only 2 text chunks; at least 10 are required to generate a testset."),
+            (
+                "tiny1.pdf",
+                Path("/tmp/tiny1.pdf"),
+                "Extracted only 1 text chunks; at least 10 are required to generate a testset.",
+            ),
+            (
+                "tiny2.pdf",
+                Path("/tmp/tiny2.pdf"),
+                "Extracted only 2 text chunks; at least 10 are required to generate a testset.",
+            ),
         ]
     )
 

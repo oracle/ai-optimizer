@@ -11,6 +11,7 @@ import json
 import logging
 import pickle
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -189,14 +190,14 @@ async def generate_testset_endpoint(
         if len(files) == 0:
             raise HTTPException(status_code=400, detail="At least one file is required.")
 
-        accepted: list[tuple[str, list]] = []
+        accepted: list[tuple[str, Path]] = []
         rejected: list[RejectedFile] = []
         for file in files:
-            filename, text_nodes, reason = await _load_file_chunks(file, temp_directory, embed_config)
+            filename, disk_path, reason = await _load_file_chunks(file, temp_directory, embed_config)
             if reason is not None:
                 rejected.append(RejectedFile(filename=filename, reason=reason))
             else:
-                accepted.append((filename, text_nodes))
+                accepted.append((filename, disk_path))
 
         if not accepted:
             raise HTTPException(
@@ -210,10 +211,10 @@ async def generate_testset_endpoint(
         num_accepted = len(accepted)
         questions = max(questions, num_accepted)
         base_q, extra = divmod(questions, num_accepted)
-        for idx, (_filename, text_nodes) in enumerate(accepted):
+        for idx, (_filename, disk_path) in enumerate(accepted):
             file_questions = base_q + (1 if idx < extra else 0)
             await _process_pdf_file(
-                text_nodes, temp_directory, name, embed_config, ll_config, file_questions, full_testsets
+                disk_path, temp_directory, name, embed_config, ll_config, file_questions, full_testsets
             )
         db_id = await _store_generated_testset(full_testsets, name, pool)
         async with pool.acquire() as conn:
@@ -301,35 +302,41 @@ async def _load_file_chunks(
     file: UploadFile,
     temp_directory: Path,
     embed_config: dict,
-) -> tuple[str, list, Optional[str]]:
-    """Read a PDF upload, split into chunks, and validate the chunk count.
+) -> tuple[str, Path, Optional[str]]:
+    """Save a PDF upload, validate its chunk count, and return the saved path.
 
-    Returns ``(original_filename, text_nodes, rejection_reason)``. When
-    ``rejection_reason`` is not ``None`` the file should be skipped.
+    Returns ``(original_filename, saved_path, rejection_reason)``. Accepted
+    files are re-split later, one at a time, to keep memory bounded across a
+    multi-file request.
     """
     file_content = await file.read()
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file has no filename.")
     original_name = file.filename
-    disk_path = temp_directory / safe_filename(original_name)
+    # Stage each upload in its own sub-directory so two files sharing a basename
+    # don't overwrite each other on disk before generation runs.
+    file_dir = Path(tempfile.mkdtemp(dir=temp_directory))
+    disk_path = file_dir / safe_filename(original_name)
     with open(disk_path, "wb") as fh:
         fh.write(file_content)
 
-    text_nodes = load_and_split(disk_path, embed_config.get("max_chunk_size", 512))
-    if len(text_nodes) < MIN_CHUNKS_PER_FILE:
+    chunk_count = len(
+        await asyncio.to_thread(load_and_split, disk_path, embed_config.get("max_chunk_size", 512))
+    )
+    if chunk_count < MIN_CHUNKS_PER_FILE:
         return (
             original_name,
-            [],
+            disk_path,
             (
-                f"Extracted only {len(text_nodes)} text chunks; at least "
+                f"Extracted only {chunk_count} text chunks; at least "
                 f"{MIN_CHUNKS_PER_FILE} are required to generate a testset."
             ),
         )
-    return original_name, text_nodes, None
+    return original_name, disk_path, None
 
 
 async def _process_pdf_file(
-    text_nodes: list,
+    disk_path: Path,
     temp_directory: Path,
     name: str,
     embed_config: dict,
@@ -337,7 +344,8 @@ async def _process_pdf_file(
     questions: int,
     full_testsets: Path,
 ) -> None:
-    """Build a Giskard testset from pre-split chunks and append to the combined JSONL."""
+    """Build a Giskard testset from one saved PDF and append to the combined JSONL."""
+    text_nodes = await asyncio.to_thread(load_and_split, disk_path, embed_config.get("max_chunk_size", 512))
     async with _GISKARD_LOCK:
         test_set = await asyncio.to_thread(build_knowledge_base, text_nodes, questions, ll_config, embed_config)
 
