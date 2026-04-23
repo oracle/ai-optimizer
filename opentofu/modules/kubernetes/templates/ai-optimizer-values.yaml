@@ -47,6 +47,7 @@ server:
 
 client:
   enabled: true
+  cookieSecret: "${client_cookie_secret}"
   image:
     repository: ${repository_base}/ai-optimizer-client
     tag: "latest"

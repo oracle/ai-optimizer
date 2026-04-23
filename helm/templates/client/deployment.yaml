@@ -20,10 +20,11 @@ spec:
       {{- include "global.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.client.podAnnotations }}
       annotations:
+        checksum/client-cookie-secret: {{ include "client.cookieSecretChecksum" . | quote }}
+        {{- with .Values.client.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         app.kubernetes.io/component: client
         {{- include "global.labels" . | nindent 8 }}
@@ -60,6 +61,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "global.apiSecretName" . }}
                   key: {{ include "global.apiSecretKey" . }}
+            - name: AIO_CLIENT_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "client.cookieSecretName" . }}
+                  key: {{ include "client.cookieSecretKey" . }}
             {{- if .Values.client.ssl.enabled }}
             - name: AIO_CLIENT_SSL
               value: "true"

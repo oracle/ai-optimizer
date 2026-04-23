@@ -95,6 +95,7 @@ module "kubernetes" {
   ssl_enabled                = local.ssl_enabled
   ssl_cert_pem               = local.ssl_cert_pem
   ssl_key_pem                = local.ssl_key_pem
+  client_cookie_secret       = random_password.client_cookie.result
   providers = {
     oci.home_region = oci.home_region
   }

@@ -21,7 +21,6 @@ data:
 
     [server]
     port = "8501"
-    cookieSecret = "{{ randAlphaNum 32 | b64enc }}"
     headless = true
     fileWatcherType = "none"
     {{- $path := include "global.getPath" . | trimSuffix "/" }}

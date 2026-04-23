@@ -130,6 +130,7 @@ write_files:
       AIO_DB_DSN=${db_service}
       AIO_OCI_CLI_AUTH=instance_principal
       AIO_CLIENT_ADDRESS=0.0.0.0
+      AIO_CLIENT_COOKIE_SECRET=${client_cookie_secret}
       AIO_SERVER_ADDRESS=0.0.0.0
       %{~ if db_type == "ADB" }
       AIO_DB_WALLET_PASSWORD=${db_password}

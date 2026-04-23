@@ -7,7 +7,6 @@ disableWidgetStateDuplicationWarning = true
 gatherUsageStats = false
 
 [server]
-cookieSecret = "aio-client-cookie"
 headless = true
 
 [client]

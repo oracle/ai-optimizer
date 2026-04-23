@@ -147,6 +147,16 @@ def start_client(script_dir: Path) -> None:
         os.environ.get("AIO_CLIENT_ADDRESS", "localhost"),
     ]
 
+    # server.cookieSecret is marked sensitive=True in Streamlit and is reachable
+    # only through its env var — never via CLI. Promote AIO_CLIENT_COOKIE_SECRET
+    # into STREAMLIT_SERVER_COOKIE_SECRET so the value is inherited by execvp
+    # without ever landing in argv (which would leak to ps / shell history /
+    # /proc/<pid>/cmdline). If AIO var is unset, let Streamlit's own default
+    # handle it — a per-process random key, safe for single-replica only.
+    cookie_secret = os.environ.get("AIO_CLIENT_COOKIE_SECRET", "")
+    if cookie_secret:
+        os.environ["STREAMLIT_SERVER_COOKIE_SECRET"] = cookie_secret
+
     if os.environ.get("AIO_CLIENT_SSL", "false").lower() == "true":
         cert, key = ensure_ssl_cert(script_dir, "AIO_CLIENT_SSL_CERT_FILE", "AIO_CLIENT_SSL_KEY_FILE")
         args.extend(["--server.sslCertFile", str(cert), "--server.sslKeyFile", str(key)])
