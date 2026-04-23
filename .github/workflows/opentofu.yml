@@ -32,7 +32,7 @@ jobs:
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/opentofu/opentofu:latest
+      image: ghcr.io/opentofu/opentofu:1.11.6
     permissions:
       contents: read
 

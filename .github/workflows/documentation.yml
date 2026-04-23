@@ -24,39 +24,65 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 # Default to bash
 defaults:
   run:
     shell: bash
+
+env:
+  HUGO_VERSION: 0.160.1
+  RELEARN_VERSION: 9.0.3
+
+# Workflow-level concurrency with separate lanes per event type:
+#   - pull_request: grouped per ref so PR pushes cancel stale PR runs.
+#   - push/dispatch: shared "pages" group so publishes serialize and
+#     superseded runs are replaced before building stale artifacts.
+# Splitting by event prevents PR validation from blocking production deploys
+# (and vice versa) while still guaranteeing ordered publishes.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('docs-pr-{0}', github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Validate job — runs on PRs to catch broken relref links and template errors
   validate:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    env:
-      HUGO_VERSION: 0.160.1
     steps:
-      - name: Install Hugo CLI
-        run: |
-          wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
-          && sudo dpkg -i ${{ runner.temp }}/hugo.deb
-
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Download Hugo Theme
+      - name: Cache Hugo
+        id: cache-hugo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/hugo
+          key: hugo-${{ env.HUGO_VERSION }}-extended-linux-amd64
+
+      - name: Install Hugo
+        if: steps.cache-hugo.outputs.cache-hit != 'true'
         run: |
-          mkdir -p docs/themes/relearn \
-          && curl -L $(curl -s https://api.github.com/repos/McShelby/hugo-theme-relearn/releases/latest \
-          | grep "tarball_url" | cut -d '"' -f 4) \
-          | tar -xz -C docs/themes/relearn --strip-components=1 --exclude='*/exampleSite'
+          mkdir -p ~/hugo
+          curl -fsSL -o /tmp/hugo.tar.gz \
+            "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.tar.gz"
+          tar -xzf /tmp/hugo.tar.gz -C ~/hugo hugo
+
+      - name: Add Hugo to PATH
+        run: echo "$HOME/hugo" >> "$GITHUB_PATH"
+
+      - name: Cache Relearn Theme
+        id: cache-relearn
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: docs/themes/relearn
+          key: relearn-theme-${{ env.RELEARN_VERSION }}
+
+      - name: Download Relearn Theme
+        if: steps.cache-relearn.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p docs/themes/relearn
+          curl -fsSL "https://github.com/McShelby/hugo-theme-relearn/archive/refs/tags/${RELEARN_VERSION}.tar.gz" \
+            | tar -xz -C docs/themes/relearn --strip-components=1 --exclude='*/exampleSite'
 
       - name: Validate Docs
         run: hugo --gc --source docs
@@ -65,29 +91,43 @@ jobs:
   build:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    env:
-      HUGO_VERSION: 0.160.1
     steps:
-      - name: Install Hugo CLI
-        run: |
-          wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
-          && sudo dpkg -i ${{ runner.temp }}/hugo.deb
-
-      - name: Install Dart Sass
-        run: sudo snap install dart-sass
-
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          submodules: recursive
           fetch-depth: 0
 
-      - name: Download Hugo Theme
+      - name: Cache Hugo
+        id: cache-hugo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/hugo
+          key: hugo-${{ env.HUGO_VERSION }}-extended-linux-amd64
+
+      - name: Install Hugo
+        if: steps.cache-hugo.outputs.cache-hit != 'true'
         run: |
-          mkdir -p docs/themes/relearn \
-          && curl -L $(curl -s https://api.github.com/repos/McShelby/hugo-theme-relearn/releases/latest \
-          | grep "tarball_url" | cut -d '"' -f 4) \
-          | tar -xz -C docs/themes/relearn --strip-components=1 --exclude='*/exampleSite'
+          mkdir -p ~/hugo
+          curl -fsSL -o /tmp/hugo.tar.gz \
+            "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.tar.gz"
+          tar -xzf /tmp/hugo.tar.gz -C ~/hugo hugo
+
+      - name: Add Hugo to PATH
+        run: echo "$HOME/hugo" >> "$GITHUB_PATH"
+
+      - name: Cache Relearn Theme
+        id: cache-relearn
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: docs/themes/relearn
+          key: relearn-theme-${{ env.RELEARN_VERSION }}
+
+      - name: Download Relearn Theme
+        if: steps.cache-relearn.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p docs/themes/relearn
+          curl -fsSL "https://github.com/McShelby/hugo-theme-relearn/archive/refs/tags/${RELEARN_VERSION}.tar.gz" \
+            | tar -xz -C docs/themes/relearn --strip-components=1 --exclude='*/exampleSite'
 
       - name: Setup Pages
         id: pages
@@ -96,41 +136,67 @@ jobs:
       - name: Install Node.js dependencies
         run: "[[ -f package-lock.json || -f npm-shrinkwrap.json ]] && npm ci || true"
 
-      - name: Build Versioned Docs
-        env:
-          HUGO_CACHEDIR: ${{ runner.temp }}/hugo_cache
-          HUGO_ENVIRONMENT: production
-          TZ: Europe/London
-          BASE_URL: "${{ steps.pages.outputs.base_url }}"
+      - name: Compute Tag List
+        id: tags
         run: |
-          # --- Determine which versions to build ---
-          # Latest tag = current major; also include last tag from previous major
           LATEST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
           if [ -z "$LATEST_TAG" ]; then
-            echo "No version tags found, building main only"
-            hugo --gc --minify --source docs --baseURL "${BASE_URL}/"
+            echo "No version tags found — main-only build"
+            echo "latest=" >> "$GITHUB_OUTPUT"
+            echo "hash=no-tags" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           CURRENT_MAJOR=$(echo "$LATEST_TAG" | cut -d. -f1)
           PREV_MAJOR_NUM=$(( ${CURRENT_MAJOR#v} - 1 ))
 
-          # All tags from current major (descending order)
           mapfile -t CURRENT_TAGS < <(git tag --sort=-version:refname | grep -E "^${CURRENT_MAJOR}\.[0-9]+\.[0-9]+$")
-
-          # Last tag from previous major (if any)
           PREV_TAG=$(git tag --sort=-version:refname | grep -E "^v${PREV_MAJOR_NUM}\.[0-9]+\.[0-9]+$" | head -1)
 
-          # Combine all tags to build
           ALL_TAGS=("${CURRENT_TAGS[@]}")
           if [ -n "$PREV_TAG" ]; then
             ALL_TAGS+=("$PREV_TAG")
           fi
 
+          TAGS_HASH=$(printf "%s\n" "${ALL_TAGS[@]}" | sha256sum | cut -c1-16)
+          ALL_TAGS_CSV=$(IFS=,; echo "${ALL_TAGS[*]}")
+
           echo "Latest tag: $LATEST_TAG"
           echo "All doc versions: ${ALL_TAGS[*]}"
 
-          # --- Helper: generate version overlay TOML ---
+          echo "latest=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "all=$ALL_TAGS_CSV" >> "$GITHUB_OUTPUT"
+          echo "hash=$TAGS_HASH" >> "$GITHUB_OUTPUT"
+
+      # Cache historical doc + helm artifacts. Immutable tags mean a cache
+      # hit on the key below guarantees the files are reusable without
+      # rebuilding. Any change to the Hugo binary, theme version, layouts,
+      # config, or the tag list invalidates the cache and forces a full
+      # rebuild. HUGO_VERSION is part of the key so a Hugo upgrade does
+      # not silently serve output generated by the previous Hugo release.
+      - name: Cache Historical Builds
+        if: steps.tags.outputs.latest != ''
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: docs/public
+          key: docs-historical-v1-hugo${{ env.HUGO_VERSION }}-relearn${{ env.RELEARN_VERSION }}-${{ hashFiles('docs/hugo.toml', 'docs/layouts/**', 'docs/assets/**', 'docs/static/**', 'docs/archetypes/**') }}-${{ steps.tags.outputs.hash }}
+
+      - name: Build Versioned Docs
+        env:
+          HUGO_CACHEDIR: ${{ runner.temp }}/hugo_cache
+          HUGO_ENVIRONMENT: production
+          TZ: Europe/London
+          BASE_URL: "${{ steps.pages.outputs.base_url }}"
+          LATEST_TAG: "${{ steps.tags.outputs.latest }}"
+          ALL_TAGS_CSV: "${{ steps.tags.outputs.all }}"
+        run: |
+          if [ -z "$LATEST_TAG" ]; then
+            hugo --gc --minify --source docs --baseURL "${BASE_URL}/"
+            exit 0
+          fi
+
+          IFS=',' read -ra ALL_TAGS <<< "$ALL_TAGS_CSV"
+
           generate_version_overlay() {
             local current_version="$1"
             local overlay_file="$2"
@@ -162,8 +228,24 @@ jobs:
             done
           }
 
-          # --- Build latest release tag to root ---
+          # --- Build latest release tag to root (always) ---
           echo "=== Building latest release ($LATEST_TAG) to root ==="
+          # Clear stale root content before rebuilding. The cache may have
+          # restored a prior latest's full tree at the root, including
+          # top-level directories. If the new latest renames or drops a
+          # section, that directory would otherwise linger and get deployed
+          # alongside the rebuilt site. Remove everything at the root except
+          # the preserved subtrees (main/, helm/, and each historical tag
+          # directory — those are rebuilt or repackaged by later steps).
+          if [ -d "$GITHUB_WORKSPACE/docs/public" ]; then
+            FIND_ARGS=("$GITHUB_WORKSPACE/docs/public" -mindepth 1 -maxdepth 1 -not -name main -not -name helm)
+            for TAG in "${ALL_TAGS[@]}"; do
+              if [ "$TAG" != "$LATEST_TAG" ]; then
+                FIND_ARGS+=(-not -name "$TAG")
+              fi
+            done
+            find "${FIND_ARGS[@]}" -exec rm -rf {} +
+          fi
           WORKDIR=$(mktemp -d)
           git worktree add "$WORKDIR" "$LATEST_TAG"
           rm -rf "$WORKDIR/docs/themes" "$WORKDIR/docs/layouts"
@@ -178,8 +260,9 @@ jobs:
             --baseURL "${BASE_URL}/"
           git worktree remove "$WORKDIR" --force
 
-          # --- Build main branch to /main/ ---
+          # --- Build main branch to /main/ (always) ---
           echo "=== Building main branch to /main/ ==="
+          rm -rf "$GITHUB_WORKSPACE/docs/public/main"
           generate_version_overlay "v0.0.0" "docs/version-overlay.toml"
           hugo \
             --gc --minify \
@@ -188,11 +271,23 @@ jobs:
             --config hugo.toml,version-overlay.toml \
             --baseURL "${BASE_URL}/main/"
 
-          # --- Build remaining tagged versions to subdirectories ---
+          # --- Historical tags (skip if restored from cache) ---
+          # Cache-hit detection uses an explicit ".build-complete" marker that
+          # is only written after hugo exits 0. A partial build from a prior
+          # failure leaves no marker (and is also wiped on failure), so a
+          # broken tag is retried on every run instead of being frozen.
+          REBUILT=0
           for TAG in "${ALL_TAGS[@]}"; do
             if [ "$TAG" = "$LATEST_TAG" ]; then
               continue
             fi
+            TAG_DIR="$GITHUB_WORKSPACE/docs/public/${TAG}"
+            if [ -f "$TAG_DIR/.build-complete" ]; then
+              echo "=== Cached: $TAG (skipping) ==="
+              continue
+            fi
+            # Clear any partial remnants from a prior failed run before rebuilding
+            rm -rf "$TAG_DIR"
             echo "=== Building $TAG to /${TAG}/ ==="
             WORKDIR=$(mktemp -d)
             git worktree add "$WORKDIR" "$TAG"
@@ -200,44 +295,49 @@ jobs:
             cp -r docs/themes "$WORKDIR/docs/themes"
             cp -r docs/layouts "$WORKDIR/docs/layouts"
             generate_version_overlay "$TAG" "$WORKDIR/docs/version-overlay.toml"
-            hugo \
-              --gc --minify \
-              --source "$WORKDIR/docs" \
-              --destination "$GITHUB_WORKSPACE/docs/public/${TAG}" \
-              --config hugo.toml,version-overlay.toml \
-              --baseURL "${BASE_URL}/${TAG}/" \
-            || echo "WARNING: Build failed for $TAG, skipping"
-            git worktree remove "$WORKDIR" --force
-          done
-
-      - name: Package Tags Helm chart
-        run: |
-          TAGS=$(git tag --sort=creatordate)
-          for TAG in $TAGS; do
-            echo "Processing tag: $TAG"
-
-            # Create a temporary worktree to avoid changing the current working directory
-            WORKDIR=$(mktemp -d)
-            git worktree add "$WORKDIR" "$TAG"
-
-            # Extract version from tag (remove 'v' prefix if present)
-            if [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              VERSION=${TAG#v}
-              echo "Packaging Helm chart with version: $VERSION"
-              helm package "$WORKDIR/helm" -d docs/public/helm --version "$VERSION" --app-version "$VERSION" --debug
+            if hugo \
+                --gc --minify \
+                --source "$WORKDIR/docs" \
+                --destination "$TAG_DIR" \
+                --config hugo.toml,version-overlay.toml \
+                --baseURL "${BASE_URL}/${TAG}/"; then
+              touch "$TAG_DIR/.build-complete"
             else
-              echo "Tag $TAG does not match version format (vMAJOR.MINOR.PATCH), packaging without version override"
-              helm package "$WORKDIR/helm" -d docs/public/helm --debug
+              echo "WARNING: Build failed for $TAG, discarding partial output"
+              rm -rf "$TAG_DIR"
             fi
-
-            # Clean up
-            git worktree remove "$WORKDIR"
+            git worktree remove "$WORKDIR" --force
+            REBUILT=$((REBUILT + 1))
           done
+          echo "Rebuilt $REBUILT historical tag(s); remainder served from cache"
 
-      - name: Package Main Helm chart
+      - name: Package Tagged Helm Charts
         run: |
           mkdir -p docs/public/helm
-          helm package helm -d docs/public/helm --debug
+          TAGS=$(git tag --sort=creatordate)
+          PACKAGED=0
+          for TAG in $TAGS; do
+            if [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              VERSION=${TAG#v}
+              # Skip if a chart for this version is already packaged (from cache)
+              if ls docs/public/helm/*-"${VERSION}".tgz >/dev/null 2>&1; then
+                echo "Cached: helm $TAG"
+                continue
+              fi
+              echo "Packaging helm chart for $TAG (version: $VERSION)"
+              WORKDIR=$(mktemp -d)
+              git worktree add "$WORKDIR" "$TAG"
+              helm package "$WORKDIR/helm" -d docs/public/helm --version "$VERSION" --app-version "$VERSION" --debug
+              git worktree remove "$WORKDIR"
+              PACKAGED=$((PACKAGED + 1))
+            else
+              echo "Tag $TAG does not match vMAJOR.MINOR.PATCH — skipping"
+            fi
+          done
+          echo "Packaged $PACKAGED new chart(s); remainder served from cache"
+
+      - name: Package Main Helm chart
+        run: helm package helm -d docs/public/helm --debug
 
       - name: Index Helm charts
         run: helm repo index docs/public/helm --url "${{ steps.pages.outputs.base_url }}/helm"

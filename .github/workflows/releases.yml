@@ -3,9 +3,9 @@ on:
   release:
     types: [published]
 
-env:
-  IAC: ${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}-iac
-  SRC: ${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}-src
+concurrency:
+  group: releases-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
 
 jobs:
   build-release:
@@ -17,15 +17,19 @@ jobs:
       id-token: write
 
     steps:
-      - name: Output Environment
-        run: |
-          echo "IAC: ${{ env.IAC }}"
-          echo "SRC: ${{ env.SRC }}"
-
       - name: Checkout Code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+
+      - name: Compute Artifact Names
+        id: names
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}"
+          echo "iac=${REPO_NAME}-iac" >> "$GITHUB_OUTPUT"
+          echo "src=${REPO_NAME}-src" >> "$GITHUB_OUTPUT"
+          echo "IAC artifact base: ${REPO_NAME}-iac"
+          echo "SRC artifact base: ${REPO_NAME}-src"
 
       - name: Validate and Extract Version from Tag
         id: version
@@ -55,10 +59,10 @@ jobs:
 
       - name: Build and Push Source
         run: |
-          zip -r $RUNNER_TEMP/${{ env.SRC }}.zip src pyproject.toml .dockerignore
-          tar -czf "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" src pyproject.toml .dockerignore
-          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.SRC }}.zip" --clobber
-          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" --clobber
+          zip -r $RUNNER_TEMP/${{ steps.names.outputs.src }}.zip src pyproject.toml .dockerignore
+          tar -czf "$RUNNER_TEMP/${{ steps.names.outputs.src }}.tar.gz" src pyproject.toml .dockerignore
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ steps.names.outputs.src }}.zip" --clobber
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ steps.names.outputs.src }}.tar.gz" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNNER_TEMP: ${{ runner.temp }}
@@ -67,10 +71,10 @@ jobs:
       - name: Build and Push Infrastructure as Code
         run: |
           cd opentofu
-          zip -r $RUNNER_TEMP/${{ env.IAC }}.zip . \
+          zip -r $RUNNER_TEMP/${{ steps.names.outputs.iac }}.zip . \
             -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" \
             -x "cfgmgt/stage/*.*" "*.tfplan*" "examples/*" "*.md" ".gitignore"
-          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.IAC }}.zip" --clobber
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ steps.names.outputs.iac }}.zip" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNNER_TEMP: ${{ runner.temp }}
