@@ -40,6 +40,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Verify app_version is 0.0.0
+        working-directory: ./opentofu
+        run: |
+          if ! grep -qE '^\s*app_version\s*=\s*"0\.0\.0"\s*$' versions.tf; then
+            echo "::error file=opentofu/versions.tf::app_version must be \"0.0.0\" outside of the release workflow"
+            grep -nE '^\s*app_version\s*=' versions.tf || true
+            exit 1
+          fi
+
       # Terraform validation steps
       - name: Install Cache Dependencies
         run: apk add --no-cache tar zstd
