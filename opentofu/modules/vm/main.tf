@@ -33,6 +33,9 @@ resource "oci_load_balancer_listener" "client_lb_listener" {
   default_backend_set_name = oci_load_balancer_backend_set.client_lb_backend_set.name
   port                     = var.lb_client_http_port
   protocol                 = "HTTP"
+  connection_configuration {
+    idle_timeout_in_seconds = local.lb_idle_timeout_in_seconds
+  }
 }
 
 resource "oci_load_balancer_listener" "server_lb_listener" {
@@ -42,6 +45,9 @@ resource "oci_load_balancer_listener" "server_lb_listener" {
   default_backend_set_name = oci_load_balancer_backend_set.server_lb_backend_set.name
   port                     = var.lb_server_http_port
   protocol                 = "HTTP"
+  connection_configuration {
+    idle_timeout_in_seconds = local.lb_idle_timeout_in_seconds
+  }
 }
 
 // HTTPS-only listeners
@@ -69,6 +75,9 @@ resource "oci_load_balancer_listener" "client_https_lb_listener" {
     verify_peer_certificate = false
     protocols               = ["TLSv1.2", "TLSv1.3"]
   }
+  connection_configuration {
+    idle_timeout_in_seconds = local.lb_idle_timeout_in_seconds
+  }
 }
 
 resource "oci_load_balancer_listener" "server_https_lb_listener" {
@@ -82,6 +91,9 @@ resource "oci_load_balancer_listener" "server_https_lb_listener" {
     certificate_name        = oci_load_balancer_certificate.ssl[0].certificate_name
     verify_peer_certificate = false
     protocols               = ["TLSv1.2", "TLSv1.3"]
+  }
+  connection_configuration {
+    idle_timeout_in_seconds = local.lb_idle_timeout_in_seconds
   }
 }
 
