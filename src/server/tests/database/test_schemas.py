@@ -6,6 +6,8 @@ Tests for server.app.database.schemas — Pydantic model defaults and validation
 """
 # spell-checker: disable
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -152,7 +154,7 @@ class TestControlCharRejection:
     @pytest.mark.parametrize("char", _FORBIDDEN, ids=_FORBIDDEN_IDS)
     def test_database_config_rejects_control_char(self, field: str, char: str):
         """DatabaseConfig refuses control chars in every string field."""
-        kwargs = {"alias": "TEST"}
+        kwargs: dict[str, Any] = {"alias": "TEST"}
         kwargs[field] = f"a{char}b"
         with pytest.raises(ValidationError) as excinfo:
             DatabaseConfig(**kwargs)
@@ -162,7 +164,7 @@ class TestControlCharRejection:
     @pytest.mark.parametrize("char", _FORBIDDEN, ids=_FORBIDDEN_IDS)
     def test_database_update_rejects_control_char(self, field: str, char: str):
         """DatabaseUpdate refuses control chars in every string field."""
-        kwargs = {field: f"a{char}b"}
+        kwargs: dict[str, Any] = {field: f"a{char}b"}
         with pytest.raises(ValidationError) as excinfo:
             DatabaseUpdate(**kwargs)
         assert field in str(excinfo.value)
@@ -410,7 +412,7 @@ class TestControlCharRejection:
     )
     def test_legitimate_values_still_accepted(self, field: str, value: str):
         """The validator must not reject ordinary credential/path values."""
-        kwargs = {"alias": "TEST", field: value}
+        kwargs: dict[str, Any] = {"alias": "TEST", field: value}
         # Constructing succeeds and preserves the value verbatim.
         dc = DatabaseConfig(**kwargs)
         assert getattr(dc, field) == value

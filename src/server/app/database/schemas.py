@@ -20,14 +20,14 @@ _FORBIDDEN_CONTROL_CHARS = frozenset({"\n", "\r", "\x00"})
 
 
 def _reject_chars(
-    value: Optional[str], field_name: str, forbidden: frozenset[str]
+    value: Optional[str], field_name: Optional[str], forbidden: frozenset[str]
 ) -> Optional[str]:
     if value is None:
         return value
     bad = sorted({c for c in value if c in forbidden})
     if bad:
         raise ValueError(
-            f"{field_name} must not contain control characters "
+            f"{field_name or 'value'} must not contain control characters "
             f"{[repr(c) for c in bad]}"
         )
     return value
@@ -39,7 +39,7 @@ def _descriptor_has_linebreak_inside_quote(dsn: str) -> bool:
     for ch in dsn:
         if ch == '"':
             in_quote = not in_quote
-        elif in_quote and (ch == "\n" or ch == "\r"):
+        elif in_quote and ch in ("\n", "\r"):
             return True
     return False
 
@@ -97,7 +97,7 @@ def _descriptor_has_linebreak_inside_unquoted_value(dsn: str) -> bool:
     return False
 
 
-def _validate_dsn(value: Optional[str], field_name: str) -> Optional[str]:
+def _validate_dsn(value: Optional[str], field_name: Optional[str]) -> Optional[str]:
     """Validate a DSN: reject NUL; allow line breaks only inside descriptors.
 
     Oracle connect descriptors (``(DESCRIPTION=...)``) are legitimately
@@ -127,28 +127,29 @@ def _validate_dsn(value: Optional[str], field_name: str) -> Optional[str]:
     """
     if value is None:
         return value
+    name = field_name or "value"
     if "\x00" in value:
-        raise ValueError(f"{field_name} must not contain NUL")
+        raise ValueError(f"{name} must not contain NUL")
 
     trimmed = value.strip()
     if trimmed.startswith("("):
         if _descriptor_has_linebreak_inside_quote(trimmed):
             raise ValueError(
-                f"{field_name} contains a line break inside a quoted "
+                f"{name} contains a line break inside a quoted "
                 f"descriptor value; remove the line break from the quoted "
                 f"value (Oracle ignores descriptor whitespace outside "
                 f"quotes, but inside a quote the newline changes the value)"
             )
         if _descriptor_has_linebreak_inside_unquoted_value(trimmed):
             raise ValueError(
-                f"{field_name} contains a line break inside an unquoted "
+                f"{name} contains a line break inside an unquoted "
                 f"descriptor value; line breaks are only permitted between "
                 f"structural tokens ((, ), =), not inside a value"
             )
         return trimmed
     if "\n" in trimmed or "\r" in trimmed:
         raise ValueError(
-            f"{field_name} contains a line break but is not an Oracle "
+            f"{name} contains a line break but is not an Oracle "
             f"connect descriptor; only (DESCRIPTION=...) descriptors may "
             f"span multiple lines"
         )
