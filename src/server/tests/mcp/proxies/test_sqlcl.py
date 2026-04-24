@@ -187,6 +187,63 @@ async def test_create_connection_store_special_chars(monkeypatch):
     assert '-url "db/service"' in input_cmd
 
 
+async def test_create_connection_store_flattens_newlines_for_sqlcl_stdin(monkeypatch):
+    """Multi-line descriptors are flattened to a single line before SQLcl stdin.
+
+    SQLcl's stdin parser treats \\n as a command boundary. Oracle's descriptor
+    whitespace is insignificant, so replacing newlines with spaces at the
+    sink preserves semantics while keeping SQLcl's stream coherent.
+
+    Crucially, internal spaces inside descriptor values are NOT disturbed —
+    only CR/LF are replaced. A DN like "CN=adb, OU=foo" passes through
+    unchanged.
+    """
+    recorded: dict[str, Any] = {}
+
+    class DummyProc:
+        async def communicate(self, data):
+            recorded["input"] = data.decode()
+            return b"", b""
+
+    async def _fake_exec(*args, **_kwargs):
+        return DummyProc()
+
+    async def _passthrough(coro, timeout):
+        return await coro
+
+    monkeypatch.setattr(sqlcl.asyncio, "create_subprocess_exec", _fake_exec)
+    monkeypatch.setattr(sqlcl.asyncio, "wait_for", AsyncMock(side_effect=_passthrough))
+
+    multiline_dsn = (
+        "(DESCRIPTION =\n"
+        "  (ADDRESS = (PROTOCOL = tcps)(HOST = h)(PORT = 1522))\n"
+        "  (CONNECT_DATA = (SERVICE_NAME = svc))\n"
+        "  (SECURITY = (SSL_SERVER_CERT_DN = \"CN=h, OU=foo\"))\n"
+        ")"
+    )
+
+    await sqlcl._create_connection_store(
+        sqlcl_binary="/usr/bin/sql",
+        alias="TEST",
+        username="scott",
+        password="tiger",
+        dsn=multiline_dsn,
+        env={},
+        dbtools_home=sqlcl._DBTOOLS_HOME,
+    )
+
+    input_cmd = recorded["input"]
+    # The `conn` line sent to SQLcl contains no raw newlines.
+    conn_line, _, _ = input_cmd.partition("\nexit")
+    assert "\n" not in conn_line and "\r" not in conn_line
+    # Meaningful spaces inside the DN value pass through unchanged —
+    # _quote_sqlcl_value escapes the surrounding `"` to `\"`, but the
+    # DN contents (including the spaces) are preserved byte-for-byte.
+    assert r'\"CN=h, OU=foo\"' in conn_line
+    # Descriptor structure (with internal spaces) is preserved.
+    assert "(CONNECT_DATA = (SERVICE_NAME = svc))" in conn_line
+
+
 async def test_create_connection_store_timeout(monkeypatch, caplog):
     """_create_connection_store kills process after timeout."""
     caplog.set_level("ERROR")

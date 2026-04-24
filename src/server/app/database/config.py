@@ -20,7 +20,41 @@ from .schemas import DatabaseConfig
 
 LOGGER = logging.getLogger(__name__)
 _CORE_TNS_ADMIN = PROJECT_ROOT / "server" / "tns_admin"
-_RE_RETRY = re.compile(r"\(retry_count=\d+\)|\(retry_delay=\d+\)", re.IGNORECASE)
+# Matches Oracle descriptor retry tokens tolerating insignificant whitespace
+# (docs often show the spaced `(RETRY_COUNT = 5)` form). The schema preserves
+# descriptor whitespace verbatim to avoid corrupting values like
+# SSL_SERVER_CERT_DN, so this regex accepts it instead.
+_RE_RETRY = re.compile(
+    r"\(\s*retry_count\s*=\s*\d+\s*\)|\(\s*retry_delay\s*=\s*\d+\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _strip_retry_tokens(dsn: str) -> str:
+    """Remove retry_count / retry_delay tokens from the structural part of
+    a connect descriptor, leaving quoted values untouched.
+
+    A descriptor value like ``(MY_WALLET_DIRECTORY="/path/(retry_count=5)/w")``
+    can legitimately contain the literal substring ``(retry_count=5)``; the
+    retry-strip must not delete text from inside a quoted value. This
+    scanner splits the DSN on unescaped double quotes and only applies the
+    regex to segments that are outside any quoted region.
+    """
+    if not dsn:
+        return dsn
+    parts: list[str] = []
+    segment_start = 0
+    in_quote = False
+    for i, ch in enumerate(dsn):
+        if ch == '"':
+            segment = dsn[segment_start:i]
+            parts.append(segment if in_quote else _RE_RETRY.sub("", segment))
+            parts.append(ch)
+            in_quote = not in_quote
+            segment_start = i + 1
+    tail = dsn[segment_start:]
+    parts.append(tail if in_quote else _RE_RETRY.sub("", tail))
+    return "".join(parts)
 
 
 def get_database_settings(db_configs: list[DatabaseConfig], alias: str) -> Optional[DatabaseConfig]:
@@ -46,7 +80,7 @@ def _build_connect_args(db_config: DatabaseConfig) -> dict:
     args: dict = {
         "user": db_config.username,
         "password": db_config.password,
-        "dsn": _RE_RETRY.sub("", db_config.dsn or ""),
+        "dsn": _strip_retry_tokens(db_config.dsn or ""),
         "config_dir": config_dir,
     }
     if db_config.wallet_password:
