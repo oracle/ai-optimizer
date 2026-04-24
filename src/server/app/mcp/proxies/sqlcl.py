@@ -232,6 +232,20 @@ def _quote_sqlcl_value(value: str) -> str:
     return '"' + escaped + '"'
 
 
+def _flatten_dsn_for_stdin(dsn: str) -> str:
+    """Replace CR/LF in a DSN with spaces for SQLcl stdin.
+
+    The Pydantic schema only permits CR/LF inside a connect descriptor,
+    where Oracle treats such whitespace as insignificant — so replacing
+    them with a single space is semantics-preserving. SQLcl's stdin
+    parser treats newlines as command boundaries, hence this narrow
+    reshape at the sink rather than at the schema (where it would
+    corrupt meaningful spaces inside descriptor *values* like
+    SSL_SERVER_CERT_DN).
+    """
+    return dsn.replace("\r", " ").replace("\n", " ")
+
+
 async def _create_connection_store(
     sqlcl_binary: str,
     alias: str,
@@ -252,7 +266,7 @@ async def _create_connection_store(
         "-password",
         _quote_sqlcl_value(password),
         "-url",
-        _quote_sqlcl_value(dsn),
+        _quote_sqlcl_value(_flatten_dsn_for_stdin(dsn)),
     ]
     conn_command = " ".join(conn_parts)
 

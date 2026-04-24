@@ -122,6 +122,87 @@ async def test_create_pool_strips_retry_params_case_insensitive():
 
 
 @pytest.mark.unit
+async def test_create_pool_preserves_retry_like_text_inside_quoted_values():
+    """Retry-token stripping must not reach inside quoted descriptor values.
+
+    If a user's wallet path or DN literally contains the substring
+    ``(retry_count=N)`` (contrived but possible), the widened retry regex
+    would delete it and corrupt the value. The quote-aware scanner in
+    ``_strip_retry_tokens`` must leave quoted regions alone.
+    """
+    dsn = (
+        '(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=h)(PORT=1521))'
+        '(CONNECT_DATA=(SERVICE_NAME=svc))'
+        # Literal "(retry_count=5)" inside a quoted value — must survive.
+        '(SECURITY=(MY_WALLET_DIRECTORY="/opt/wallets/(retry_count=5)/prod")))'
+    )
+    cfg = DatabaseConfig(alias="TEST", username="u", password="p", dsn=dsn)
+
+    with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
+        await create_pool(cfg)
+
+    _, kwargs = mock_create.call_args
+    # The literal text inside the quoted wallet path is preserved.
+    assert '"/opt/wallets/(retry_count=5)/prod"' in kwargs["dsn"]
+
+
+@pytest.mark.unit
+async def test_create_pool_strips_outside_quoted_value_even_with_retry_like_content():
+    """Sanity check: structural retry tokens are still stripped when a DSN
+    *also* contains retry-like text inside a quoted value."""
+    dsn = (
+        '(DESCRIPTION=(RETRY_COUNT=7)(RETRY_DELAY=3)'
+        '(ADDRESS=(HOST=h))'
+        '(SECURITY=(MY_WALLET_DIRECTORY="/keep/(retry_count=5)/me")))'
+    )
+    cfg = DatabaseConfig(alias="TEST", username="u", password="p", dsn=dsn)
+
+    with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
+        await create_pool(cfg)
+
+    _, kwargs = mock_create.call_args
+    # Structural retry tokens are gone.
+    assert "(RETRY_COUNT=7)" not in kwargs["dsn"]
+    assert "(RETRY_DELAY=3)" not in kwargs["dsn"]
+    # But the lookalike inside the quoted path survives.
+    assert '"/keep/(retry_count=5)/me"' in kwargs["dsn"]
+
+
+@pytest.mark.unit
+async def test_create_pool_strips_retry_params_from_docstyle_multiline_descriptor():
+    """Retry params are stripped even from the multi-line, spaced descriptor
+    format shown in the troubleshooting docs.
+
+    The schema normalizes descriptor whitespace so the _RE_RETRY regex in
+    config.py — which only matches the compact ``(retry_count=N)`` form —
+    still fires and removes the params before they reach oracledb. Without
+    this, an unreachable database with retry params would hang startup for
+    ``retry_count * retry_delay`` seconds.
+    """
+    docstyle_dsn = (
+        "(DESCRIPTION =\n"
+        "  (RETRY_COUNT = 5)\n"
+        "  (RETRY_DELAY = 2)\n"
+        "  (ADDRESS = (PROTOCOL = tcps)(HOST = unreachable)(PORT = 1522))\n"
+        "  (CONNECT_DATA = (SERVICE_NAME = svc))\n"
+        ")"
+    )
+    cfg = DatabaseConfig(alias="TEST", username="u", password="p", dsn=docstyle_dsn)
+
+    with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
+        await create_pool(cfg)
+
+    _, kwargs = mock_create.call_args
+    assert "retry_count" not in kwargs["dsn"].lower()
+    assert "retry_delay" not in kwargs["dsn"].lower()
+    # The rest of the descriptor survives with its original whitespace
+    # (the schema preserves descriptor internals verbatim to avoid
+    # corrupting DNs and path values).
+    assert "(HOST = unreachable)" in kwargs["dsn"]
+    assert "(SERVICE_NAME = svc)" in kwargs["dsn"]
+
+
+@pytest.mark.unit
 async def test_create_pool_tcp_connect_timeout_from_config():
     """create_pool() passes tcp_connect_timeout from config."""
     cfg = DatabaseConfig(alias="TEST", username="u", password="p", dsn="dsn", tcp_connect_timeout=10)
