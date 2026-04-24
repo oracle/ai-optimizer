@@ -13,6 +13,7 @@ locals {
     db_name              = lower(var.db_name)
     node_pool_gpu_deploy = var.node_pool_gpu_deploy
     ssl_enabled          = var.ssl_enabled
+    client_cookie_secret = var.client_cookie_secret
   })
 }
 

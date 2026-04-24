@@ -99,7 +99,7 @@ Database variables configure the CORE database connection. For more details, see
 | `AIO_CLIENT_ADDRESS` | Client listen address | `localhost` |
 | `AIO_CLIENT_URL_PREFIX` | URL path prefix for the Client | _(none)_ |
 | `AIO_CLIENT_PORT` | Client listen port | `8501` |
-| `AIO_CLIENT_COOKIE_SECRET` | Secret for client session cookies | _(none)_ |
+| `AIO_CLIENT_COOKIE_SECRET` | Signing key for the client's XSRF cookies. Required for multi-replica deployments and must be identical across all replicas; when unset, Streamlit generates a per-process random key (single-replica / local use only). | _(none)_ |
 | `AIO_CLIENT_SSL` | Enable TLS for the Client | `false` |
 | `AIO_CLIENT_SSL_CERT_FILE` | Path to TLS certificate (PEM) | _(none)_ |
 | `AIO_CLIENT_SSL_KEY_FILE` | Path to TLS private key (PEM) | _(none)_ |

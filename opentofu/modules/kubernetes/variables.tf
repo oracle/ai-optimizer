@@ -164,3 +164,9 @@ variable "ssl_key_pem" {
   default   = ""
   sensitive = true
 }
+
+variable "client_cookie_secret" {
+  description = "Streamlit XSRF-cookie signing key. Rendered into ai-optimizer-values.yaml as client.cookieSecret so the Helm chart's required contract is satisfied without operator input."
+  type        = string
+  sensitive   = true
+}

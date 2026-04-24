@@ -120,3 +120,9 @@ variable "ssl_ca_cert" {
   default   = ""
   sensitive = true
 }
+
+variable "client_cookie_secret" {
+  description = "Streamlit XSRF-cookie signing key. Baked into .env.vm so the client service has a stable, operator-owned secret that survives systemd restarts."
+  type        = string
+  sensitive   = true
+}

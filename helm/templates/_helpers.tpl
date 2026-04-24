@@ -90,6 +90,76 @@ Define the API Key Secret with Defaults
 
 
 {{/* ******************************************
+Validate that either client.cookieSecret or client.cookieSecretName is provided.
+The cookie secret signs Streamlit's XSRF tokens; a committed default would make
+the key public, and an auto-generated one would diverge across replicas. Operator
+must own it explicitly — same contract as global.api.apiKey.
+*********************************************** */}}
+{{- define "client.cookieKeyOrSecretName.required" -}}
+  {{- $cookieSecret := .Values.client.cookieSecret | trim | default "" -}}
+  {{- $secretName := .Values.client.cookieSecretName | trim | default "" -}}
+
+  {{- if and (eq $cookieSecret "") (eq $secretName "") -}}
+    {{- fail "You must specify either client.cookieSecret or client.cookieSecretName" -}}
+  {{- end -}}
+
+  {{- if and (ne $cookieSecret "") (ne $secretName "") -}}
+    {{- fail "You cannot specify both client.cookieSecret and client.cookieSecretName; please choose one" -}}
+  {{- end -}}
+{{- end -}}
+
+{{/* ******************************************
+Define the Client Cookie Secret name/key with defaults.
+Trim first so whitespace-only values are treated as unset (consistent with the
+validator above). Without the trim, a value like "   " would be truthy and skip
+the `default` fallback, producing invalid manifests (metadata.name: "   ") or
+letting a whitespace cookieSecret clobber an operator-owned external Secret.
+*********************************************** */}}
+{{- define "client.cookieSecretName" -}}
+{{- $explicit := .Values.client.cookieSecretName | trim -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-client-cookie" .Release.Name }}{{- end -}}
+{{- end }}
+
+{{- define "client.cookieSecretKey" -}}
+{{- $explicit := .Values.client.cookieSecretKey | trim -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}cookieSecret{{- end -}}
+{{- end }}
+
+{{/* ******************************************
+Checksum used to roll the client Deployment when the cookie-signing secret
+changes. Two branches:
+
+  * Inline path (.Values.client.cookieSecret set): hash the rendered secret.yaml.
+    The hash changes whenever the chart-managed Secret's value changes.
+
+  * External path (.Values.client.cookieSecretName set): use `lookup` to read
+    the operator-owned Secret from the cluster and hash its current data. On
+    `helm upgrade` after the operator rotates the Secret in place, the content
+    changes → hash changes → pods roll. During `helm template` / `--dry-run` /
+    first install, `lookup` returns empty; we fall back to a name-keyed
+    sentinel so the annotation is still stable and distinct per configuration.
+
+Rotation workflow for the external path: operator rotates the Secret, then
+runs `helm upgrade` (or equivalent CD step). Fully automated rotation on
+Secret-change requires a reloader controller and is out of scope for this chart.
+*********************************************** */}}
+{{- define "client.cookieSecretChecksum" -}}
+{{- if .Values.client.cookieSecret | trim -}}
+{{- include (print $.Template.BasePath "/client/secret.yaml") . | sha256sum -}}
+{{- else -}}
+  {{- $name := include "client.cookieSecretName" . -}}
+  {{- $key := include "client.cookieSecretKey" . -}}
+  {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
+  {{- if and $found $found.data (hasKey $found.data $key) -}}
+{{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
+  {{- else -}}
+{{- printf "unresolved:%s:%s" $name $key | sha256sum -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
 Set the path based on baseUrlPath
 Always returns a path with leading and trailing slashes for proper concatenation.
 *********************************************** */}}

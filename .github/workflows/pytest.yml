@@ -72,8 +72,8 @@ jobs:
           fi
           echo "python-variants=$VARIANTS" >> $GITHUB_OUTPUT
 
-          # Helm
-          if echo "$CHANGED" | grep -qE '^helm/'; then
+          # Helm — chart sources or the pytest contract suite under tests/helm/
+          if echo "$CHANGED" | grep -qE '^helm/|^tests/helm/'; then
             echo "helm=true" >> $GITHUB_OUTPUT
           else
             echo "helm=false" >> $GITHUB_OUTPUT
@@ -171,7 +171,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yamllint
+          pip install yamllint pytest pyyaml
           HELM_INSTALL_SCRIPT=$(mktemp)
           curl -fsSL -o "$HELM_INSTALL_SCRIPT" https://raw.githubusercontent.com/helm/helm/v4.1.4/scripts/get-helm-3
           EXPECTED_HASH="38b65f882d9cae3891755bdb03becc6a01ae6f9cb24826c191f219ddfee70a5d"
@@ -197,6 +197,9 @@ jobs:
         run: helm package helm/ --destination "$RUNNER_TEMP/helm-package"
         env:
           RUNNER_TEMP: ${{ runner.temp }}
+
+      - name: Run Helm contract tests
+        run: pytest tests/helm/ -v
 
   check-opentofu:
     needs: detect-changes

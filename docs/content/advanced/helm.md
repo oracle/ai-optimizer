@@ -296,6 +296,9 @@ The frontend web client can be disabled by setting `global.enableClient` to `fal
 | client.imagePullSecrets | list | `[]` | Secret name containing image pull secrets |
 | client.image.repository | string | `"localhost/ai-optimizer-client"` | Image Repository |
 | client.image.tag | string | `"latest"` | Image Tag |
+| client.cookieSecret | string | `""` | Signing key for the client's XSRF cookies. Either provide `cookieSecret` inline (Helm creates the Secret) or provide `cookieSecretName` referring to an existing Secret. Exactly one must be set; install fails otherwise. Must be shared across all replicas. Recommended to supply at command line or via `cookieSecretName` to avoid storing in the values file. Example: "abcd1234opt5678" |
+| client.cookieSecretName | string | `""` | Name of a pre-existing Secret containing the cookie signing key. Rotation contract: after rotating the Secret's contents in place, run `helm upgrade` so the chart reads the new value and rolls the client Deployment. Example: "optimizer-cookie-keys" |
+| client.cookieSecretKey | string | `"cookieSecret"` | Key name inside the Secret that contains the cookie signing key. |
 
 ##### Client Features Settings
 
@@ -457,6 +460,7 @@ helm repo add ai-optimizer https://oracle.github.io/ai-optimizer/helm
       --namespace ai-optimizer \
       --install ai-optimizer . \
       --set global.api.apiKey="my-api-key" \
+      --set client.cookieSecret="$(openssl rand -base64 32)" \
       --values ./values-kind.yaml
     ```
 

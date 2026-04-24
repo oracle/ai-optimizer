@@ -27,6 +27,15 @@ resource "random_password" "adb_rest" {
   }
 }
 
+// Cookie Secret
+resource "random_password" "client_cookie" {
+  length  = 48
+  special = false
+  keepers = {
+    uuid = "uuid()"
+  }
+}
+
 // Load Balancer
 resource "oci_load_balancer_load_balancer" "lb" {
   compartment_id = local.compartment_ocid

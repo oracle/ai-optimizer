@@ -10,13 +10,14 @@ locals {
 
 locals {
   cloud_init_compute = templatefile("${path.module}/templates/cloudinit-compute.tpl", {
-    db_type           = var.db_conn.db_type
-    db_password       = var.db_conn.password
-    db_service        = var.db_conn.service
-    optimizer_version = var.optimizer_version
-    optimizer_branch  = var.optimizer_branch
-    app_version       = var.app_version
-    install_ollama    = var.vm_is_gpu_shape ? true : false
+    db_type              = var.db_conn.db_type
+    db_password          = var.db_conn.password
+    db_service           = var.db_conn.service
+    optimizer_version    = var.optimizer_version
+    optimizer_branch     = var.optimizer_branch
+    app_version          = var.app_version
+    install_ollama       = var.vm_is_gpu_shape ? true : false
+    client_cookie_secret = var.client_cookie_secret
   })
 
   cloud_init_database = templatefile("${path.module}/templates/cloudinit-database.tpl", {
