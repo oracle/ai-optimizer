@@ -323,6 +323,58 @@ async def test_local_store(app_client, auth_headers):
     assert "test.txt" in body
 
 
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "traversal_name,expected_basename",
+    [
+        ("../../../etc/cron.d/pwned", "pwned"),
+        ("/app/launch_server.py", "launch_server.py"),
+        ("subdir/../escape.sh", "escape.sh"),
+    ],
+)
+async def test_local_store_neutralises_path_traversal(
+    app_client, auth_headers, traversal_name, expected_basename
+):
+    """Regression: uploads with traversal filenames must land inside temp_directory only.
+
+    Bug 39236176 (F5): `temp_directory / upload_file.filename` silently accepted
+    `..` segments and absolute paths. The fix uses safe_filename(); this test
+    guards the fix by asserting the uploaded bytes only appear under the
+    sanitised basename inside the sandboxed temp directory.
+    """
+    import tempfile
+    from pathlib import Path
+
+    payload = b"traversal-payload"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        with patch(
+            "server.app.api.v1.endpoints.embed.get_temp_directory",
+            return_value=tmp_path,
+        ):
+            resp = await app_client.post(
+                "/v1/embed/local/store",
+                files=[("files", (traversal_name, io.BytesIO(payload), "text/plain"))],
+                headers=auth_headers,
+            )
+        assert resp.status_code == 200
+        # File landed at the sanitised basename, inside temp_directory.
+        safe_path = tmp_path / expected_basename
+        assert safe_path.exists()
+        assert safe_path.read_bytes() == payload
+        # The payload did not escape temp_directory.
+        for candidate in (
+            Path("/etc/cron.d/pwned"),
+            Path("/app/launch_server.py"),
+            tmp_path.parent / expected_basename,
+        ):
+            if candidate.exists():
+                assert candidate.read_bytes() != payload, (
+                    f"Traversal wrote outside temp_directory to {candidate}"
+                )
+
+
 # ---------------------------------------------------------------------------
 # POST / (split and embed)
 # ---------------------------------------------------------------------------

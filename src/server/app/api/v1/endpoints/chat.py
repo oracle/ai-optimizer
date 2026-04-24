@@ -8,6 +8,7 @@ Chat endpoints — replaces LangGraph-backed ``/completions``, ``/streams``, ``/
 
 import json
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -23,6 +24,7 @@ from server.app.api.v1.schemas.chat import (
     TokenUsage,
     VsMetadata,
 )
+from server.app.api.v1.schemas.common import ClientId
 from server.app.core.settings import resolve_client, settings
 from server.app.runtime.common import LLMConfigurationError, clean_llm_error
 
@@ -50,7 +52,7 @@ def get_orchestrator() -> ChatOrchestrator:
 @auth.post("/completions", response_model=ChatResponse)
 async def chat_completions(
     body: ChatRequest,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ):
     """Full (non-streaming) chat completion.
 
@@ -88,7 +90,7 @@ async def chat_completions(
 @auth.post("/streams")
 async def chat_stream(
     body: ChatRequest,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ):
     """Streaming chat completion via ``StreamingResponse``.
 
@@ -151,13 +153,13 @@ async def chat_stream(
 
 
 @auth.get("/history", response_model=ChatHistoryResponse)
-async def chat_history_return(client: str = Header(default="server")):
+async def chat_history_return(client: Annotated[ClientId, Header()] = "server"):
     """Get conversation history for a client."""
     return ChatHistoryResponse(client=client, messages=_orchestrator.history.get(client))
 
 
 @auth.patch("/history", response_model=ChatHistoryResponse)
-async def chat_history_clean(client: str = Header(default="server")):
+async def chat_history_clean(client: Annotated[ClientId, Header()] = "server"):
     """Clear conversation history for a client."""
     _orchestrator.clear_history(client)
     return ChatHistoryResponse(client=client, messages=[], cleared=True)

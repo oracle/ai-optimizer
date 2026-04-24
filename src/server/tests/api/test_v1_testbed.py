@@ -585,6 +585,45 @@ async def test_generate_testset_all_rejected_returns_400(app_client, auth_header
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "traversal_name,expected_basename",
+    [
+        ("../../../etc/cron.d/pwned", "pwned"),
+        ("/app/launch_server.py", "launch_server.py"),
+        ("subdir/../escape.pdf", "escape.pdf"),
+    ],
+)
+async def test_load_file_chunks_neutralises_path_traversal(
+    tmp_path, traversal_name, expected_basename
+):
+    """Regression: testbed uploads with traversal filenames stay inside temp_directory.
+
+    Bug 39236176 (F5): `temp_directory / upload_file.filename` silently accepted
+    `..` and absolute paths. _load_file_chunks now uses safe_filename(); this
+    test guards the fix by asserting the saved disk_path is under a staging
+    sub-directory of temp_directory, with the sanitised basename.
+    """
+    from fastapi import UploadFile
+
+    from server.app.api.v1.endpoints import testbed as testbed_mod
+
+    payload = b"%PDF-traversal-payload"
+    upload = UploadFile(filename=traversal_name, file=io.BytesIO(payload))
+    with patch.object(testbed_mod, "load_and_split", return_value=[object()] * 20):
+        _name, disk_path, reason = await testbed_mod._load_file_chunks(upload, tmp_path, {})
+
+    assert reason is None
+    assert disk_path.name == expected_basename
+    resolved_disk = disk_path.resolve()
+    resolved_root = tmp_path.resolve()
+    assert resolved_disk.is_relative_to(resolved_root), (
+        f"Traversal escaped temp_directory: {resolved_disk}"
+    )
+    assert disk_path.read_bytes() == payload
+
+
 # ---------------------------------------------------------------------------
 # DB unavailable
 # ---------------------------------------------------------------------------

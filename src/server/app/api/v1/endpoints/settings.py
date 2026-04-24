@@ -8,11 +8,12 @@ Endpoint for retrieving server settings.
 
 import json
 import logging
-from typing import Callable
+from typing import Annotated, Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.routing import APIRoute
 
+from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.settings import (
     ImportSectionResult,
     SettingsImport,
@@ -100,7 +101,7 @@ SENSITIVE_FIELDS = {
 
 @auth.get("", response_model=SettingsResponse, response_model_exclude_unset=True)
 async def get_client_settings(
-    client: str = Query(default="CONFIGURED"),
+    client: Annotated[ClientId, Query()] = "CONFIGURED",
     include_sensitive: bool = Query(default=False, include_in_schema=False),
 ):
     """Return application settings combined with client settings."""
@@ -141,7 +142,7 @@ def _reconcile_ll_model_tokens(current: LLModelSettings, incoming: LLModelSettin
 
 
 @auth.put("", response_model=ClientSettings)
-async def update_client_settings(body: ClientSettingsUpdate, client: str = Query(default="CONFIGURED")):
+async def update_client_settings(body: ClientSettingsUpdate, client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Update client settings in memory."""
     async with _settings_lock:
         cs = resolve_client(client)
@@ -165,7 +166,7 @@ async def update_client_settings(body: ClientSettingsUpdate, client: str = Query
 
 
 @auth.post("", response_model=SettingsResponse, status_code=201, response_model_exclude_unset=True)
-async def create_client_settings(client: str = Query(default="CONFIGURED")):
+async def create_client_settings(client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Create a new client session from persisted CONFIGURED defaults."""
     async with _settings_lock:
         if client in _client_store:
@@ -183,7 +184,7 @@ async def create_client_settings(client: str = Query(default="CONFIGURED")):
 
 
 @auth.post("/server/copy", response_model=ClientSettings)
-async def copy_to_server(client: str = Query(default="CONFIGURED")):
+async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Copy a source client's client_settings to the SERVER client."""
     async with _settings_lock:
         source_cs = resolve_client(client)
@@ -201,7 +202,7 @@ async def copy_to_server(client: str = Query(default="CONFIGURED")):
 
 
 @_import_router.post("/import", response_model=SettingsImportResult)
-async def import_settings(body: SettingsImport, client: str = Query(default="CONFIGURED")):
+async def import_settings(body: SettingsImport, client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Import a partial or full configuration with incoming-wins semantics.
 
     The raw body is migrated through ``migrate_legacy_settings`` by
@@ -360,7 +361,7 @@ async def reset_to_factory():
 
 
 @auth.delete("", status_code=204)
-async def delete_client_settings(client: str = Query(...)):
+async def delete_client_settings(client: Annotated[ClientId, Query()]):
     """Delete a client session from the in-memory store and the database."""
     async with _settings_lock:
         if client in _PROTECTED_CLIENTS:

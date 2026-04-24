@@ -14,7 +14,7 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from giskard.llm import set_llm_model
@@ -24,6 +24,7 @@ from litellm.exceptions import APIConnectionError
 
 from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.chat import MessageResponse
+from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.testbed import Evaluation, EvaluationReport, QASetData, QASets, RejectedFile
 from server.app.core.file_utils import get_temp_directory, safe_filename
 from server.app.core.settings import resolve_client
@@ -165,7 +166,7 @@ async def generate_testset_endpoint(
     ll_model: str = Form(),
     embed_model: str = Form(),
     questions: int = Form(default=2),
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ):
     """Generate a Q&A testset from uploaded PDF files."""
     # Fail fast: verify CORE DB is available before starting expensive LLM work.
@@ -248,7 +249,7 @@ async def generate_testset_endpoint(
 async def evaluate_testset(
     tid: str,
     judge: str,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ):
     """Run an evaluation against a testset using the configured chatbot and judge model."""
     if _GISKARD_LOCK.locked():
