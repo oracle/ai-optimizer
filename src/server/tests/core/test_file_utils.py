@@ -36,6 +36,37 @@ def test_safe_filename_rejects_invalid(value):
 
 
 # ---------------------------------------------------------------------------
+# F5 regression — the `temp_directory / safe_filename(name)` composition must
+# confine the resulting path to temp_directory for every PoC payload the
+# reviewer supplied on bug 39236176. These assertions protect the call sites
+# in embed.store_local_file and testbed._load_file_chunks from regressing
+# back to the raw `temp_directory / upload_file.filename` pattern.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "../../../etc/cron.d/x",
+        "/app/launch_server.py",
+        "/app/server/main.py",
+        "../../../../root/.ssh/authorized_keys",
+        "..\\..\\windows\\system32\\drivers\\etc\\hosts",
+        "subdir/../evil.sh",
+    ],
+)
+def test_safe_filename_confines_path_to_temp_directory(tmp_path, payload):
+    """safe_filename keeps the resolved path inside the intended temp_directory."""
+    temp_directory = tmp_path / "client" / "embedding"
+    temp_directory.mkdir(parents=True)
+    resolved = (temp_directory / safe_filename(payload)).resolve()
+    assert resolved.is_relative_to(temp_directory.resolve()), (
+        f"Payload {payload!r} escaped temp_directory: {resolved}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # get_temp_directory
 # ---------------------------------------------------------------------------
 

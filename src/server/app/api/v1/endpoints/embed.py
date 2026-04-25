@@ -14,6 +14,7 @@ import os
 import shutil
 import zipfile
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlparse
 
 import httpx
@@ -23,6 +24,7 @@ from pydantic import HttpUrl
 
 from server.app.api.v1.endpoints.oci import _find_oci_profile
 from server.app.api.v1.schemas.chat import MessageResponse
+from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.embed import (
     EmbedProcessingResult,
     SqlStoreRequest,
@@ -214,7 +216,7 @@ def _get_client_db_config(client: str):
 )
 async def embed_drop_vs(
     vs: str,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> MessageResponse:
     """Drop a vector store table."""
     LOGGER.debug("Received %s embed_drop_vs: %s", client, vs)
@@ -254,7 +256,7 @@ async def embed_drop_vs(
 )
 async def embed_get_files(
     vs: str,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Get list of files in a vector store with statistics."""
     LOGGER.debug("Received %s embed_get_files: %s", client, vs)
@@ -280,7 +282,7 @@ async def embed_get_files(
 )
 async def comment_vs(
     request: VectorStoreConfig,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> MessageResponse:
     """Update the comment on an existing vector store."""
     LOGGER.info("Received comment_vs - request: %s", request)
@@ -317,7 +319,7 @@ async def comment_vs(
 )
 async def store_sql_file(
     request: SqlStoreRequest,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store contents from a SQL query result as a file for embedding."""
     LOGGER.debug("Received store_sql_file - query: %s, db_alias: %s", request.query, request.db_alias)
@@ -352,7 +354,7 @@ async def store_sql_file(
 )
 async def store_web_file(
     request: list[HttpUrl],
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store contents from web URLs for embedding."""
     LOGGER.debug("Received store_web_file - request: %s", request)
@@ -422,7 +424,7 @@ async def store_web_file(
 )
 async def store_local_file(
     files: list[UploadFile] = File(...),
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store uploaded local files for embedding (supports ZIP extraction)."""
     LOGGER.debug("Received store_local_file - files: %s", files)
@@ -476,7 +478,7 @@ async def store_local_file(
 async def split_embed(
     request: VectorStoreConfig,
     rate_limit: int = 0,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> EmbedProcessingResult:
     """Load stored files, split them into chunks, embed, and populate the vector store."""
     LOGGER.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
@@ -558,7 +560,7 @@ async def split_embed(
 )
 async def refresh_vector_store(
     request: VectorStoreRefreshRequest,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> VectorStoreRefreshStatus:
     """Refresh an existing vector store with new/modified documents from an OCI bucket."""
     LOGGER.debug("Received refresh_vector_store - request: %s", request)
