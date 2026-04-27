@@ -449,21 +449,21 @@ async def test_update_vs_comment_rejects_identifier_injection():
 
 
 @pytest.mark.unit
-async def test_update_vs_comment_escapes_string_literal_injection():
-    """Single quotes in a malicious description are doubled into the literal.
+async def test_update_vs_comment_doubles_single_quotes_in_description():
+    """Single quotes in the description are doubled into the SQL literal.
 
-    If unescaped, the payload's leading ``x'`` would close the outer
-    ``'GENAI: ...'`` string. Asserting the SELECT subquery appears with
-    surrounding quotes doubled proves it stays inside the literal.
+    Description values reach the SQL string literal unescaped from the
+    JSON layer, so the comment-update path must double every ``'`` so the
+    value stays inside the surrounding ``'GENAI: ...'`` literal.
     """
-    payload = "x' || (SELECT password FROM dba_users WHERE username='SYS') || 'x"
+    payload = "x' || (SELECT col FROM tbl WHERE name='X') || 'x"
     comment_json = _generate_comment(description=payload)
-    # Sanity: json.dumps does not escape single quotes — payload survives intact.
-    assert "'SYS'" in comment_json
+    # Sanity: json.dumps does not escape single quotes — value survives intact.
+    assert "'X'" in comment_json
 
     sql = await _capture_comment_sql(make_test_vs_config(vector_store=_VS_INJECT_TABLE), comment_json)
     body = _assert_well_formed_literal(sql)
-    assert "username=''SYS''" in body
+    assert "name=''X''" in body
     assert "x''" in body
 
 

@@ -12,10 +12,10 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from server.app.embed.schemas import VectorStoreConfig
 
-# SQLcl's stdin parser treats newline as a command boundary regardless of
-# quoting, so a newline in a credential/path field escapes into a new SQLcl
-# command. Reject control chars at the schema boundary for fields where
-# they have no legitimate use.
+# Reject control chars at the schema boundary for credential/path fields
+# where they have no legitimate use. Downstream consumers may parse these
+# values as line-based protocols where embedded line breaks would change
+# their interpretation.
 _FORBIDDEN_CONTROL_CHARS = frozenset({"\n", "\r", "\x00"})
 
 
@@ -58,10 +58,9 @@ def _descriptor_has_linebreak_inside_unquoted_value(dsn: str) -> bool:
 
     A line break between two value-content characters (e.g.
     ``(HOST=adb\\nhost)`` or ``(MY_WALLET_DIRECTORY=/opt/my\\nwallet)``)
-    is inside a value. oracledb and SQLcl parse such inputs differently,
-    and the sink-level newline-to-space flatten would silently mutate the
-    SQLcl copy of the value. Reject fast at the schema so both paths
-    always see the same input.
+    is inside a value. Different downstream parsers handle such inputs
+    inconsistently, so reject fast at the schema to ensure all paths see
+    the same input.
 
     Line breaks adjacent to ``(``, ``)``, ``=``, or ``"`` (after skipping
     other whitespace) are considered structural and allowed.
@@ -107,9 +106,7 @@ def _validate_dsn(value: Optional[str], field_name: Optional[str]) -> Optional[s
     spaces that must not be rewritten.
 
     Line breaks inside a double-quoted descriptor value are rejected:
-    they would diverge the oracledb path (which keeps the newline inside
-    the value) from the SQLcl path (whose stdin parser would still break
-    on the newline even if we preserved it inside the quote), so such a
+    different downstream parsers handle them inconsistently, so such a
     DSN cannot be used reliably. Failing fast at validation is clearer
     than a silent path-dependent connection failure.
 
@@ -118,12 +115,6 @@ def _validate_dsn(value: Optional[str], field_name: Optional[str]) -> Optional[s
     fail fast rather than be silently reshaped. Outer whitespace is
     trimmed so a trailing newline from clipboard paste does not trip the
     descriptor check.
-
-    Downstream consumers handle descriptor-internal whitespace themselves:
-    the retry-token strip in ``database.config`` is quote-aware, and the
-    SQLcl proxy collapses CR/LF to spaces at the sink (Oracle ignores
-    descriptor whitespace, but SQLcl's stdin parser treats newlines as
-    command boundaries).
     """
     if value is None:
         return value

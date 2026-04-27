@@ -174,7 +174,8 @@ async def process_report(conn: oracledb.AsyncConnection, eid: str) -> Optional[d
         return None
 
     eid_val, evaluated, correctness, settings_val, rag_report_val = results[0]
-    # Refuse anything that isn't a dict — None for missing rows, bytes from legacy BLOB, attacker-injected scalars.
+    # rag_report must be a dict; refuse anything else (None for missing
+    # rows, legacy non-dict scalars, or unexpected types).
     if not isinstance(rag_report_val, dict):
         return None
 

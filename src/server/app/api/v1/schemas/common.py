@@ -9,13 +9,12 @@ from typing import Annotated
 
 from pydantic import AfterValidator, StringConstraints
 
-# Deny-list targeting exactly the F6 threat model (bug 39236183): any
-# character that alters filesystem path semantics or injects into logs.
-# The pattern accepts every printable ASCII byte (0x21–0x7E) and the
-# AfterValidator then rejects path separators and bare dot-components.
-# Everything else — `:`, `+`, `#`, `?`, `$`, `!`, etc. — is allowed so
-# that identifiers persisted by the unconstrained v2.1 API (DB column is
-# VARCHAR2(255)) stay reachable across the upgrade.
+# Constraints for ClientId. The pattern accepts every printable ASCII
+# byte (0x21–0x7E) and the AfterValidator then rejects path separators
+# and bare dot-components. Permissive characters (`:`, `+`, `#`, `?`,
+# `$`, `!`, etc.) are allowed so identifiers persisted by the prior
+# unconstrained API (DB column is VARCHAR2(255)) stay reachable across
+# the upgrade.
 #
 # Rejected:
 #   * whitespace (space, tab, newline, CR, FF, VT) and control chars

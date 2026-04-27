@@ -34,11 +34,10 @@ def _strip_retry_tokens(dsn: str) -> str:
     """Remove retry_count / retry_delay tokens from the structural part of
     a connect descriptor, leaving quoted values untouched.
 
-    A descriptor value like ``(MY_WALLET_DIRECTORY="/path/(retry_count=5)/w")``
-    can legitimately contain the literal substring ``(retry_count=5)``; the
-    retry-strip must not delete text from inside a quoted value. This
-    scanner splits the DSN on unescaped double quotes and only applies the
-    regex to segments that are outside any quoted region.
+    Quoted descriptor values may contain text that matches the retry-token
+    regex (e.g. paths with parenthesised segments), so the scanner splits
+    the DSN on unescaped double quotes and only applies the regex to
+    segments that are outside any quoted region.
     """
     if not dsn:
         return dsn

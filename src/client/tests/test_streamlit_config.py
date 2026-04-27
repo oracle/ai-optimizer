@@ -24,10 +24,9 @@ class TestStreamlitConfigIntegrity:
     def test_no_committed_cookie_secret(self):
         """server.cookieSecret must not be baked into source control.
 
-        Streamlit uses this value to sign XSRF tokens. A committed secret makes the
-        signing key public and lets any attacker forge valid XSRF tokens for every
-        deployment that doesn't override it. The runtime entrypoint supplies a
-        per-instance value via STREAMLIT_SERVER_COOKIE_SECRET instead.
+        Streamlit uses this value to sign XSRF tokens, so it must be
+        per-deployment and never shared. The runtime entrypoint supplies
+        a per-instance value via STREAMLIT_SERVER_COOKIE_SECRET.
         """
         with STREAMLIT_CONFIG.open("rb") as handle:
             config = tomllib.load(handle)

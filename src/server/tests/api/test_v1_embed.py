@@ -329,25 +329,24 @@ async def test_local_store(app_client, auth_headers):
 @pytest.mark.parametrize(
     "traversal_name,expected_basename",
     [
-        ("../../../etc/cron.d/pwned", "pwned"),
-        ("/app/launch_server.py", "launch_server.py"),
-        ("subdir/../escape.sh", "escape.sh"),
+        ("../../../up/file", "file"),
+        ("/abs/launch.py", "launch.py"),
+        ("subdir/../sibling.sh", "sibling.sh"),
     ],
 )
 async def test_local_store_neutralises_path_traversal(
     app_client, auth_headers, traversal_name, expected_basename
 ):
-    """Regression: uploads with traversal filenames must land inside temp_directory only.
+    """Uploads with traversal-shaped filenames must land inside temp_directory only.
 
-    Bug 39236176 (F5): `temp_directory / upload_file.filename` silently accepted
-    `..` segments and absolute paths. The fix uses safe_filename(); this test
-    guards the fix by asserting the uploaded bytes only appear under the
-    sanitised basename inside the sandboxed temp directory.
+    The store path runs upload filenames through `safe_filename()`; this
+    test asserts the uploaded bytes appear only under the sanitised
+    basename inside the sandboxed temp directory.
     """
     import tempfile
     from pathlib import Path
 
-    payload = b"traversal-payload"
+    payload = b"sample-payload"
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         with patch(
@@ -366,13 +365,13 @@ async def test_local_store_neutralises_path_traversal(
         assert safe_path.read_bytes() == payload
         # The payload did not escape temp_directory.
         for candidate in (
-            Path("/etc/cron.d/pwned"),
-            Path("/app/launch_server.py"),
+            Path("/up/file"),
+            Path("/abs/launch.py"),
             tmp_path.parent / expected_basename,
         ):
             if candidate.exists():
                 assert candidate.read_bytes() != payload, (
-                    f"Traversal wrote outside temp_directory to {candidate}"
+                    f"Path resolved outside temp_directory to {candidate}"
                 )
 
 
@@ -860,12 +859,11 @@ async def test_web_store_pdf_streaming(app_client, auth_headers):
 
 
 # ---------------------------------------------------------------------------
-# _extract_zip — bug 39236230 (F18) regression tests
+# _extract_zip — size-cap and nested-archive guard tests
 #
-# The helper's declared-size caps plus the stdlib `ZipExtFile._left`
-# truncation make the legacy "10 MB zip → 10 GB extraction" bomb
-# ineffective. These tests lock in the cap values and the nested-archive
-# skip, so a future refactor cannot silently remove the defence.
+# The helper enforces declared-size caps and skips nested archive members.
+# These tests pin the cap values and the nested-archive skip so a future
+# refactor cannot silently remove them.
 # ---------------------------------------------------------------------------
 
 
@@ -1007,11 +1005,9 @@ def test_extract_zip_skips_nested_archives(tmp_path, bad_ext):
 async def test_local_store_rolls_back_batch_when_later_zip_fails(app_client, auth_headers):
     """Mixed batch: earlier uploads are discarded when a later ZIP fails.
 
-    Bug 39236230 P1: previously `good.txt` followed by a corrupt `bad.zip`
-    would land `good.txt` in the shared embedding temp directory, then
-    raise 400. The client saw a failed upload but a subsequent embed run
-    would ingest `good.txt`. With request-level staging, either every
-    upload in the batch is promoted or none of them are.
+    Request-level staging makes the batch atomic: either every upload in
+    the batch is promoted into the shared embedding temp directory, or
+    none of them are.
     """
     import tempfile
     from pathlib import Path
@@ -1162,14 +1158,13 @@ class _ExplodingZipSource:
 def test_extract_zip_translates_decompressor_read_errors_to_400(tmp_path, exc_factory, exc_id):
     """Decompressor read failures surface as 400 across DEFLATE / bzip2 / LZMA.
 
-    Reviewer P2: ZIPs using bzip2 or LZMA compression raise ``OSError``
-    or ``lzma.LZMAError`` (respectively) from the decompressor on
-    corrupt member data — neither is a ``BadZipFile`` nor a
-    ``zlib.error``. Without explicit translation those leak to
+    ZIPs using bzip2 or LZMA compression raise ``OSError`` or
+    ``lzma.LZMAError`` (respectively) from the decompressor on corrupt
+    member data — neither is a ``BadZipFile`` nor a ``zlib.error``.
+    Without explicit translation those would surface from
     ``store_local_file`` as 500 for user-controlled bad uploads. The
-    fix wraps the read side of the per-member streaming copy in a
-    handler that catches ``OSError | zlib.error | lzma.LZMAError`` and
-    re-raises as HTTP 400.
+    read side of the per-member streaming copy catches
+    ``OSError | zlib.error | lzma.LZMAError`` and re-raises as HTTP 400.
     """
     import zipfile as _zf
 
@@ -1255,11 +1250,11 @@ def test_extract_zip_translates_infolist_error_to_400(tmp_path):
 def test_extract_zip_handles_member_named_like_backup_prefix(tmp_path):
     """A member called `.backup_<other>` does not collide with backup storage.
 
-    Reviewer regression: if an archive contains both `foo.txt` and
-    `.backup_foo.txt` and dest already holds `foo.txt`, the backup of
-    the pre-existing `foo.txt` previously clobbered the staged
-    `.backup_foo.txt`, so the request would succeed with the wrong bytes
-    for the `.backup_foo.txt` member.
+    The backup-naming scheme used during promotion must not collide with
+    archive members whose name happens to start with `.backup_`. If an
+    archive contains both `foo.txt` and `.backup_foo.txt` and dest
+    already holds `foo.txt`, both members must land with their archive
+    bytes intact.
     """
     from server.app.api.v1.endpoints.embed import _extract_zip
 
@@ -1287,13 +1282,13 @@ def test_extract_zip_handles_member_named_like_backup_prefix(tmp_path):
 async def test_local_store_locks_before_creating_staging_dir(app_client, auth_headers):
     """The per-client lock must be acquired *before* the staging directory exists.
 
-    Bug 39236230 P2: holding the lock only around `_promote_atomically`
-    leaves a window where the staging directory is being populated but
-    nothing has appeared in temp_directory. A concurrent `split_embed`
-    on the same client can enter `_prepare_work_dir`, see no files, and
-    return 404 even though the upload is mid-flight. The fix takes the
-    lock at the top of `store_local_file` so producer/consumer are
-    serialised across the entire upload.
+    Holding the lock only around `_promote_atomically` would leave a
+    window where the staging directory is being populated but nothing
+    has appeared in temp_directory. A concurrent `split_embed` on the
+    same client could enter `_prepare_work_dir`, see no files, and
+    return 404 even though the upload is mid-flight. Taking the lock at
+    the top of `store_local_file` serialises producer/consumer across
+    the entire upload.
     """
     import tempfile
     from pathlib import Path
@@ -1343,10 +1338,10 @@ async def test_local_store_locks_before_creating_staging_dir(app_client, auth_he
 def test_extract_zip_rejects_directory_collision_in_dest(tmp_path):
     """A pre-existing directory at dest/<member-name> must not be replaced.
 
-    Bug 39236230 P3: backup-and-rename of a directory silently moves
-    a live work tree out from under whichever request created it.
-    Surfacing this as a 409 matches the previous open("wb") behaviour
-    (IsADirectoryError) and protects concurrent split_embed work_dirs.
+    Backup-and-rename of a directory would silently move a live work
+    tree out from under whichever request created it. Surfacing this as
+    a 409 matches the open("wb") behaviour (IsADirectoryError) and
+    protects concurrent split_embed work_dirs.
     """
     from server.app.api.v1.endpoints.embed import _extract_zip
 
@@ -1398,9 +1393,9 @@ async def test_local_store_rejects_directory_collision(app_client, auth_headers)
 async def test_client_lock_evicts_lru_when_full(monkeypatch):
     """The lock registry caps at settings.max_clients, evicting the LRU first.
 
-    Bug 39236230 P3: an unbounded `_client_promotion_locks` lets every
-    new Client header value accumulate process state until restart.
-    Bound it with the same LRU pattern as `_client_store`.
+    `_client_promotion_locks` is bounded with the same LRU pattern as
+    `_client_store` so an unbounded sequence of Client header values
+    cannot accumulate process state until restart.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
     from server.app.core.settings import settings as core_settings
@@ -1458,10 +1453,10 @@ async def test_client_lock_skips_in_use_entry_during_eviction(monkeypatch):
 async def test_client_lock_skips_entry_with_queued_waiter(monkeypatch):
     """A registry entry with users>0 from a queued waiter survives eviction.
 
-    Reviewer P2: between `release()` (which clears `_locked`) and the
-    woken waiter resuming, the underlying ``asyncio.Lock`` reports
+    Between `release()` (which clears `_locked`) and the woken waiter
+    resuming, the underlying ``asyncio.Lock`` reports
     ``locked() == False`` even though a queued waiter is about to
-    acquire it. A registry that gates eviction on ``locked()`` would
+    acquire it. A registry that gated eviction on ``locked()`` could
     cull such an entry under client pressure; a subsequent request for
     the same client would then create a *second* Lock and run
     concurrently with the still-pending waiter, defeating the per-client
@@ -1525,12 +1520,12 @@ async def test_client_lock_skips_entry_with_queued_waiter(monkeypatch):
 async def test_client_lock_normalizes_key():
     """Two raw client strings that resolve to the same temp dir share one lock.
 
-    Bug 39236230 P3: `get_temp_directory(client, ...)` sanitises *client*
-    via `safe_filename` (= `Path(client).name`), so `Client: team/a` and
+    `get_temp_directory(client, ...)` sanitises *client* via
+    `safe_filename` (= `Path(client).name`), so `Client: team/a` and
     `Client: a` both write to `<base>/a/embedding`. If `_client_lock`
-    keys by the raw header value, those two requests take *different*
-    locks while operating on the *same* on-disk files — defeating the
-    serialisation guarantee. The lock key has to use the same
+    keys by the raw header value, those two requests would take
+    *different* locks while operating on the *same* on-disk files —
+    defeating the serialisation guarantee. The lock key uses the same
     canonicalisation the filesystem does.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
@@ -1552,10 +1547,10 @@ async def test_client_lock_normalizes_key():
 async def test_local_store_acquires_per_client_lock(app_client, auth_headers):
     """`store_local_file` must take the per-client promotion lock.
 
-    Bug 39236230: without serialization, the staging→temp_directory
-    backup/rename sequence in `_promote_atomically` races with another
-    concurrent caller that touches the same basename, losing the newer
-    upload or raising FileNotFoundError after a TOCTOU exists() check.
+    Without serialization, the staging→temp_directory backup/rename
+    sequence in `_promote_atomically` would race with another concurrent
+    caller that touches the same basename, losing the newer upload or
+    raising FileNotFoundError after a TOCTOU exists() check.
     """
     import tempfile
     from pathlib import Path
@@ -1652,13 +1647,13 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
 async def test_local_store_promotes_metadata_last(app_client, auth_headers):
     """`.file_metadata.json` is the final move into temp_directory.
 
-    Bug 39236230: ``sorted()`` placed the dot-prefixed metadata first,
-    opening a race with a concurrent ``_prepare_work_dir`` call on the
-    shared embedding temp directory — it could snapshot the directory
+    Promoting metadata last means a concurrent consumer either sees no
+    metadata yet (and waits) or sees metadata with every document
+    already in place. A sort that placed the dot-prefixed metadata first
+    would open a race with a concurrent ``_prepare_work_dir`` call on
+    the shared embedding temp directory: it could snapshot the directory
     while only the metadata had landed, decide "no files found", delete
-    the work dir, and return 404. Promoting metadata last means any
-    concurrent consumer either sees no metadata yet (and waits) or sees
-    metadata with every document already in place.
+    the work dir, and return 404.
     """
     import tempfile
     from pathlib import Path
@@ -1710,12 +1705,12 @@ async def test_local_store_promotes_metadata_last(app_client, auth_headers):
 async def test_local_store_restores_overwritten_file_on_promotion_failure(app_client, auth_headers):
     """Pre-existing files in temp_directory are byte-identical after a rollback.
 
-    Bug 39236230 latest P1: if this batch's promotion phase overwrites a
-    file that was already in temp_directory and a later shutil.move
-    raises OSError, rolling back by moving the new file back into
-    staging is not sufficient — the pre-existing content was already
-    replaced by the atomic rename. Backups of colliding destinations
-    must be captured before the move so the original can be restored.
+    If this batch's promotion phase overwrites a file that was already
+    in temp_directory and a later shutil.move raises OSError, rolling
+    back by moving the new file back into staging is not sufficient —
+    the pre-existing content was already replaced by the atomic rename.
+    Backups of colliding destinations must be captured before the move
+    so the original can be restored.
     """
     import tempfile
     from pathlib import Path
@@ -1818,10 +1813,10 @@ def test_extract_zip_restores_overwritten_destination_on_promotion_failure(tmp_p
 def test_extract_zip_returns_500_on_promotion_failure(tmp_path):
     """shutil.move failures during promotion surface as HTTPException(500).
 
-    Bug 39236230 P2: the generic-exception path in store_local_file
-    previously swallowed OSError from mid-promotion moves, logging the
-    error and returning 200 even though the archive was only partially
-    applied. Raising HTTPException forces the caller to propagate.
+    A generic-exception path in store_local_file would swallow OSError
+    from mid-promotion moves and return 200 even though the archive was
+    only partially applied. Raising HTTPException forces the caller to
+    propagate the failure.
     """
     import zipfile as _zf
 
@@ -1862,9 +1857,10 @@ def test_extract_zip_returns_500_on_promotion_failure(tmp_path):
 async def test_local_store_rejects_corrupt_zip(app_client, auth_headers):
     """POST /v1/embed/local/store surfaces corrupt ZIP uploads as 400.
 
-    Bug 39236230 regression: previously the caller's generic except-block
-    logged BadZipFile and returned 200, leaving any partially-extracted
-    members in temp_directory for a subsequent embed pass to ingest.
+    A generic except-block that logged BadZipFile and returned 200 would
+    leave any partially-extracted members in temp_directory for a
+    subsequent embed pass to ingest. The endpoint must surface the
+    failure as 400 with no on-disk residue.
     """
     import tempfile
     from pathlib import Path
@@ -1994,12 +1990,11 @@ def test_extract_zip_preserves_preexisting_file_on_failure(tmp_path):
 def test_extract_zip_rolls_back_on_mid_member_failure(tmp_path):
     """Streaming extraction must stay atomic across CRC / decompression failures.
 
-    Simulates the reviewer's scenario on bug 39236230: a malformed
-    member fails its integrity check after the streaming read has
-    already written partial bytes to the staging file, and a previous
-    member already extracted successfully. Both the partial member AND
-    the previously-extracted file must be removed before the exception
-    propagates.
+    A malformed member can fail its integrity check after the streaming
+    read has already written partial bytes to the staging file, while a
+    previous member already extracted successfully. Both the partial
+    member AND the earlier-extracted file must be removed before the
+    exception propagates.
     """
     import zipfile as _zf
 
@@ -2039,10 +2034,9 @@ def test_extract_zip_rolls_back_on_mid_member_failure(tmp_path):
 def test_extract_zip_raises_400_for_non_zip_input(tmp_path):
     """Non-ZIP uploads surface as HTTPException(400) rather than BadZipFile.
 
-    Bug 39236230: the caller's generic `except Exception` otherwise
-    swallows BadZipFile and returns success even though extraction never
-    happened (and may have left artefacts behind under other failure
-    modes).
+    A caller's generic `except Exception` would otherwise swallow
+    BadZipFile and return success even though extraction never happened
+    (and could leave artefacts behind under other failure modes).
     """
     from server.app.api.v1.endpoints.embed import _extract_zip
 
@@ -2058,16 +2052,17 @@ def test_extract_zip_raises_400_for_non_zip_input(tmp_path):
 
 @pytest.mark.unit
 def test_extract_zip_stdlib_bounds_lying_file_size(tmp_path):
-    """Defence in depth: stdlib bounds per-member output at ZipInfo.file_size.
+    """Stdlib bounds per-member output at ZipInfo.file_size.
 
-    Even if an attacker's central-directory entry lies about file_size
-    (passing our pre-check), ZipExtFile._read1 truncates each chunk to
-    `self._left`. In practice CRC-32 validation then detects the lie
-    and raises BadZipFile before the full decompressed stream can be
-    materialised in memory. Either outcome bounds the damage; this test
-    pins that guarantee so a future refactor that removes the pre-checks
-    on the assumption "caller will bound the output" still fails loudly
-    instead of silently OOMing.
+    Even when a central-directory entry's declared file_size disagrees
+    with the actual decompressed payload (passing our pre-check),
+    ZipExtFile._read1 truncates each chunk to `self._left`. In practice
+    CRC-32 validation then detects the mismatch and raises BadZipFile
+    before the full decompressed stream can be materialised in memory.
+    Either outcome bounds the damage; this test pins that guarantee so
+    a future refactor that removes the pre-checks on the assumption
+    "caller will bound the output" still fails loudly instead of
+    silently OOMing.
     """
     import zipfile
 

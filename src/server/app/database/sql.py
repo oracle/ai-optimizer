@@ -25,8 +25,8 @@ _FETCH_PAGE_SIZE = 1_000
 
 # Matches the output of ``generate_vs_metadata`` (``re.sub(r"\W", "_", ...).upper()``)
 # so legacy stores with non-ASCII aliases (e.g. ``CAFÉ_OPENAI_...``) stay operable.
-# Paired with ``fullmatch``: ``$`` would match before a final ``\n``, so ``match()``
-# would accept ``"VS\n"`` and leak the newline into DDL interpolation.
+# Used with ``fullmatch`` so the entire identifier must consist of word
+# characters (no embedded whitespace or punctuation).
 _VS_TABLE_NAME_PATTERN = re.compile(r"\w+")
 
 

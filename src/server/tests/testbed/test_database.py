@@ -299,10 +299,10 @@ async def test_process_report_with_data():
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_process_report_legacy_blob_returns_none():
-    """Defence-in-depth: a non-dict scalar in rag_report must be refused, not interpreted."""
+async def test_process_report_non_dict_returns_none():
+    """Non-dict values in rag_report must be refused, not coerced."""
     eid_bytes = bytes.fromhex("aabbccdd")
-    rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, b"\x80\x04legacy-pickle")]
+    rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, b"unsupported-legacy-blob")]
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
         result = await process_report(conn, "AABBCCDD")
@@ -322,14 +322,20 @@ async def test_process_report_missing_rag_report_returns_none():
 
 
 # ---------------------------------------------------------------------------
-# Defence-in-depth: pickle must not be re-introduced
+# Guard: testbed modules must not import deserializers that execute code on read
 # ---------------------------------------------------------------------------
 
 
+_UNSAFE_DESERIALIZERS = {"pickle", "marshal", "shelve", "dill"}
+
+
 @pytest.mark.unit
-def test_no_pickle_in_testbed_modules():
-    """Regression guard — re-importing pickle in either module reopens the RCE."""
-    db_module = importlib.import_module("server.app.testbed.database")
-    endpoints_module = importlib.import_module("server.app.api.v1.endpoints.testbed")
-    assert "pickle" not in vars(db_module), "pickle re-introduced in server.app.testbed.database"
-    assert "pickle" not in vars(endpoints_module), "pickle re-introduced in server.app.api.v1.endpoints.testbed"
+def test_no_unsafe_deserializers_in_testbed_modules():
+    """Testbed modules must not import deserializers that execute code on load."""
+    for module_name in (
+        "server.app.testbed.database",
+        "server.app.api.v1.endpoints.testbed",
+    ):
+        module = importlib.import_module(module_name)
+        offending = _UNSAFE_DESERIALIZERS & set(vars(module))
+        assert not offending, f"unsafe deserializer(s) {sorted(offending)} imported in {module_name}"

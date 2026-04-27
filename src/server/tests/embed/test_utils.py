@@ -192,11 +192,11 @@ class TestRunSqlQuerySync:
         assert mock_cursor.arraysize == 100
 
     def test_sets_transaction_read_only_before_user_query(self, tmp_path):
-        """Defense-in-depth: SET TRANSACTION READ ONLY runs before the user query.
+        """SET TRANSACTION READ ONLY runs before the user query.
 
-        Oracle blocks any DML/DDL in a read-only transaction (ORA-01456 / ORA-01453),
-        which closes the residual side-effect-via-PL/SQL-function vector that the
-        SELECT-only allow-list cannot detect.
+        Oracle blocks any DML/DDL in a read-only transaction
+        (ORA-01456 / ORA-01453), independent of the parser-level
+        allow-list.
         """
         description = [("COL_A",)]
         rows = [[(1,)], []]
@@ -214,8 +214,8 @@ class TestRunSqlQuerySync:
         assert executed.index("SET TRANSACTION READ ONLY") < executed.index("SELECT * FROM t")
 
     def test_oracledb_error_during_user_query_returns_empty_string(self, tmp_path):
-        """oracledb.Error raised by the user query (e.g. ORA-01456 from a function
-        attempting DML in the read-only transaction) returns empty string."""
+        """oracledb.Error raised by the user query (e.g. ORA-01456 from a
+        read-only transaction) returns empty string."""
         description = [("COL_A",)]
         mock_conn, mock_cursor = _make_mock_connection(description, [])
         mock_cursor.execute = MagicMock(

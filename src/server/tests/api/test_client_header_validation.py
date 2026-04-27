@@ -5,15 +5,12 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Contract tests for the `Client:` header (and `client` query param on
 `/v1/settings/*`).
 
-Bug 39236183 (F6): the `Client:` header flowed unvalidated into
-`get_temp_directory(client, function)`, where `Path(...) / client` allowed
-traversal and absolute-path overrides. These tests pin the Pydantic
-`ClientId` contract at every endpoint that accepts the identifier, so a
-malformed value is rejected with 422 before any handler logic runs. The
-contract is deliberately a deny-list (path separators, whitespace, null /
-control characters, bare dot-components) so identifiers persisted by the
-unconstrained v2.1 API — e.g. `team:blue`, `alice+dev@example.com` —
-stay reachable across the upgrade.
+These tests pin the Pydantic `ClientId` contract at every endpoint that
+accepts the identifier, so a malformed value is rejected with 422 before
+any handler logic runs. The contract rejects path separators, whitespace,
+null / control characters, and bare dot-components, while permitting
+identifiers persisted by the prior unconstrained API (e.g. `team:blue`,
+`alice+dev@example.com`) so they stay reachable across the upgrade.
 """
 # spell-checker: disable
 
@@ -25,16 +22,16 @@ from server.tests.api.conftest import _create_mock_pool
 
 INVALID_CLIENT_VALUES = [
     "",  # Pydantic min_length
-    "/app/server",  # absolute path → traversal in old `get_temp_directory`
-    "/app/tns_admin",  # absolute path → wallet deletion PoC
-    "/app",
-    "../../../app",
-    "client/../etc",
+    "/abs/one",  # absolute path
+    "/abs/two",  # absolute path
+    "/abs",
+    "../../../up",  # parent traversal
+    "mixed/../etc",
     "client\nwithnewline",
     "client withspace",
     "\ttab\tseparated",
     ".",  # bare current-directory name
-    "..",  # bare traversal component
+    "..",  # bare parent component
     "a" * 256,  # exceeds 255-char ceiling
     "client\\with\\backslash",  # Windows-style separator
 ]

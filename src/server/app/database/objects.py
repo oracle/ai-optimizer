@@ -22,7 +22,8 @@ RENAME_DDL = [
         END LOOP;
     END;
     """,
-    # Swap legacy BLOB rag_report for JSON; purge old rows since the pickled payload is the RCE surface.
+    # Replace legacy BLOB rag_report with JSON; purge old rows since the
+    # column-type change makes prior payloads unreadable by current code.
     """
     DECLARE
         l_type user_tab_columns.data_type%TYPE;

@@ -228,7 +228,7 @@ class TestRagReportMigration:
                 conn,
                 """
                 INSERT INTO aio_evaluations (evaluated, correctness, rag_report)
-                VALUES (SYSTIMESTAMP, 0.5, UTL_RAW.CAST_TO_RAW('legacy-pickle-payload'))
+                VALUES (SYSTIMESTAMP, 0.5, UTL_RAW.CAST_TO_RAW('legacy-blob-payload'))
                 """,
             )
 
