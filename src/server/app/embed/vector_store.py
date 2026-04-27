@@ -31,7 +31,7 @@ from langchain_oracledb.vectorstores.oraclevs import (
 from server.app.database.config import create_sync_connection
 from server.app.database.registry import discover_vector_stores
 from server.app.database.schemas import DatabaseConfig
-from server.app.database.sql import ResultSetTooLargeError, execute_sql, validate_oracle_identifier
+from server.app.database.sql import ResultSetTooLargeError, execute_sql, validate_vs_table_name
 from server.app.embed.document import DoclingDocumentChunk, json_to_doc
 from server.app.embed.schemas import VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
@@ -127,11 +127,10 @@ def _create_temp_vector_store(
     """Create a temporary vector store for staging."""
     if vector_store.vector_store is None:
         raise ValueError("vector_store.vector_store must be set")
-    validate_oracle_identifier(vector_store.vector_store)
+    safe_name = validate_vs_table_name(vector_store.vector_store)
     vector_store_tmp = copy.copy(vector_store)
-    raw_tmp_name = f"{vector_store.vector_store}_TMP"
-    vector_store_tmp.vector_store = raw_tmp_name
-    safe_tmp_name = validate_oracle_identifier(raw_tmp_name)
+    safe_tmp_name = f"{safe_name}_TMP"
+    vector_store_tmp.vector_store = safe_tmp_name
 
     # Drop temp table if exists
     try:
@@ -143,13 +142,13 @@ def _create_temp_vector_store(
         else:
             raise
 
-    LOGGER.info("Establishing temporary vector store: %s", raw_tmp_name)
+    LOGGER.info("Establishing temporary vector store: %s", safe_tmp_name)
     strategy = vector_store.distance_strategy or DistanceStrategy.COSINE
 
     vs_tmp = OracleVS(
         client=db_conn,
         embedding_function=embed_client,
-        table_name=raw_tmp_name,
+        table_name=safe_tmp_name,
         distance_strategy=strategy,
         query="AI Optimizer for Apps - Powered by Oracle",
     )
@@ -197,10 +196,10 @@ def _merge_and_index_vector_store(
     """Merge temporary vector store into real one and create index."""
     if vector_store.vector_store is None:
         raise ValueError("vector_store.vector_store must be set")
-    safe_name = validate_oracle_identifier(vector_store.vector_store)
+    safe_name = validate_vs_table_name(vector_store.vector_store)
     if vector_store_tmp.vector_store is None:
         raise ValueError("vector_store_tmp.vector_store must be set")
-    safe_tmp_name = validate_oracle_identifier(vector_store_tmp.vector_store)
+    safe_tmp_name = validate_vs_table_name(vector_store_tmp.vector_store)
     strategy = vector_store.distance_strategy or DistanceStrategy.COSINE
 
     vs_real = OracleVS(
@@ -220,8 +219,7 @@ def _merge_and_index_vector_store(
         LOGGER.info("Deleting stale chunks for %d modified files", len(modified_filenames))
         delete_sql = f"DELETE FROM \"{safe_name}\" WHERE JSON_VALUE(metadata, '$.filename') = :fname"
         with db_conn.cursor() as cur:
-            for filename in modified_filenames:
-                cur.execute(delete_sql, {"fname": filename})
+            cur.executemany(delete_sql, [{"fname": fn} for fn in modified_filenames])
         db_conn.commit()
 
     merge_sql = f"""
@@ -305,7 +303,9 @@ async def update_vs_comment(
     """Update the GENAI comment on an existing vector store table."""
     if vector_store.vector_store is None:
         raise ValueError("vector_store.vector_store must be set")
-    safe_name = validate_oracle_identifier(vector_store.vector_store)
+    safe_name = validate_vs_table_name(vector_store.vector_store)
+    # COMMENT ON TABLE is DDL — Oracle accepts no bind variables for either
+    # the identifier or the body, so escape both manually.
     safe_comment = comment_json.replace("'", "''")
     sql = f"COMMENT ON TABLE \"{safe_name}\" IS 'GENAI: {safe_comment}'"
     await execute_sql(conn, sql)
@@ -336,7 +336,7 @@ async def get_total_chunks_count(
     vector_store_name: str,
 ) -> int:
     """Get total number of chunks in the vector store."""
-    safe_name = validate_oracle_identifier(vector_store_name)
+    safe_name = validate_vs_table_name(vector_store_name)
     try:
         rows = await execute_sql(conn, f'SELECT COUNT(*) FROM "{safe_name}"')
         return rows[0][0] if rows else 0
@@ -354,7 +354,7 @@ async def get_processed_objects_metadata(
     Aggregates server-side so result-set size is one row per file rather than
     one row per chunk — bounding API memory regardless of corpus size.
     """
-    safe_name = validate_oracle_identifier(vector_store_name)
+    safe_name = validate_vs_table_name(vector_store_name)
     try:
         LOGGER.info("Retrieving metadata from %s", vector_store_name)
         new_format_sql = (
@@ -426,7 +426,7 @@ async def get_vector_store_files(
     rather than per chunk, so the API process never materializes per-chunk
     metadata regardless of corpus size.
     """
-    safe_name = validate_oracle_identifier(vector_store_name)
+    safe_name = validate_vs_table_name(vector_store_name)
     LOGGER.info("Retrieving file list from %s", vector_store_name)
     sql = (
         "SELECT JSON_VALUE(metadata, '$.filename'),"

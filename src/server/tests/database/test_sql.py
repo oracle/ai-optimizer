@@ -15,7 +15,7 @@ from server.app.database.sql import (
     DEFAULT_MAX_ROWS,
     ResultSetTooLargeError,
     execute_sql,
-    validate_oracle_identifier,
+    validate_vs_table_name,
 )
 
 
@@ -235,55 +235,88 @@ async def test_execute_sql_reraises_when_no_args():
 
 
 # ---------------------------------------------------------------------------
-# validate_oracle_identifier
+# validate_vs_table_name (strict — defense in depth for COMMENT ON / DDL)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestValidateOracleIdentifier:
-    """Test Oracle identifier validation."""
+class TestValidateVsTableName:
+    """``\\w+`` validator for vector-store table names — matches the output of
+    ``generate_vs_metadata`` (Unicode ``re.sub(r"\\W", "_", ...)``) so legacy
+    non-ASCII auto-generated stores remain operable, while every SQL
+    metacharacter (quotes, whitespace, ``;``, ``--``, parens) is still rejected.
+    """
 
     @pytest.mark.parametrize(
         "name",
         [
+            # Auto-generated names from the current generator
             "MY_TABLE",
-            "table123",
-            "A",
             "VS_TMP",
-            "OCI_EMBED_V3_500_50_COSINE_HNSW",
-            "SYS$SESSION",
-            "TEMP#1",
+            "OPENAI_TEXT_EMBEDDING_3_SMALL_1000_100_COSINE_HNSW",
+            "MY_STORE_OCI_EMBED_V3_500_50_DOT_PRODUCT_HNSW_TMP",
+            "A",
+            "TBL_123",
+            "_LEADING_UNDERSCORE",
+            # Legacy auto-generated names where Unicode \W preserved word chars.
+            # These predate this hardening and must remain droppable / editable.
+            "CAFÉ_OPENAI_EMBED_HNSW",
+            "ДОКА_OPENAI_EMBED_HNSW",
+            "文档_OPENAI_EMBED_HNSW",
+            # Lowercase / mixed-case forms come back from discover_vector_stores
+            # if a table was created with a quoted lowercase identifier.
+            "lowercase",
+            "Mixed_Case",
+        ],
+    )
+    def test_accepts_word_chars(self, name):
+        """``\\w+`` names — including legacy non-ASCII — round-trip unchanged."""
+        assert validate_vs_table_name(name) == name
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            # SQL metacharacter payloads
+            "X IS 'x'--",
+            "VS' OR '1'='1",
+            "VS;DROP TABLE T",
+            'table"name',
+            'A"B',
+            'A""B',
+            # Whitespace and punctuation outside \w
             "has space",
-            "CUSTOMER-DATA",
-            "dot.name",
+            "with-hyphen",
+            "with.dot",
             "semi;colon",
             "slash/path",
+            "SYS$SESSION",
+            "TEMP#1",
+            "name with\nnewline",
+            "name\twith\ttab",
+            "parens(here)",
+            # Anchoring-bypass regression: ``$`` matches before a trailing ``\n``,
+            # so a naive ``match(r"^\w+$", ...)`` would let these through and
+            # interpolate the newline straight into DDL.
+            "VS\n",
+            "VS\r",
+            "VS\r\n",
+            "\nVS",
+            "VS\nDROP TABLE T",
         ],
     )
-    def test_valid_identifiers(self, name):
-        """Non-empty names without double-quotes are returned unchanged."""
-        assert validate_oracle_identifier(name) == name
+    def test_rejects_sql_metacharacters(self, name):
+        """Quotes, whitespace, ``;``, ``--``, parens, ``$``/``#``, and any
+        leading/trailing line breaks are all rejected."""
+        with pytest.raises(ValueError, match="Invalid vector store table name"):
+            validate_vs_table_name(name)
 
-    def test_quote_escaping(self):
-        """Embedded double-quotes are escaped to prevent identifier breakout."""
-        assert validate_oracle_identifier('table"name') == 'table""name'
-        assert validate_oracle_identifier('a"b"c') == 'a""b""c'
+    def test_rejects_empty(self):
+        with pytest.raises(ValueError, match="Invalid vector store table name"):
+            validate_vs_table_name("")
 
-    @pytest.mark.parametrize(
-        "name",
-        [
-            "",
-        ],
-    )
-    def test_invalid_identifiers(self, name):
-        """Empty string is rejected."""
-        with pytest.raises(ValueError, match="Invalid Oracle identifier"):
-            validate_oracle_identifier(name)
-
-    def test_none_raises(self):
-        """None input raises (via falsy check)."""
+    def test_rejects_none(self):
         with pytest.raises((ValueError, TypeError)):
-            validate_oracle_identifier(None)  # type: ignore[arg-type]
+            validate_vs_table_name(None)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

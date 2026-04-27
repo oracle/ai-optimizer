@@ -7,6 +7,7 @@ Shared async SQL execution utility for Oracle database operations.
 # spell-checker:ignore setinputsizes
 
 import logging
+import re
 from typing import Optional
 
 import oracledb
@@ -17,9 +18,16 @@ LOGGER = logging.getLogger(__name__)
 # raises a clear error instead of silently allocating gigabytes.
 DEFAULT_MAX_ROWS = 100_000
 
-# Page size used when streaming rows; capped against max_rows so a small
-# caller-supplied cap does not over-allocate on the first fetch.
+# Page size used when streaming rows. Capped against max_rows + 1 so a small
+# caller-supplied cap detects overflow within the first fetch instead of
+# triggering a second round-trip on the cap-exceeded path.
 _FETCH_PAGE_SIZE = 1_000
+
+# Matches the output of ``generate_vs_metadata`` (``re.sub(r"\W", "_", ...).upper()``)
+# so legacy stores with non-ASCII aliases (e.g. ``CAFÉ_OPENAI_...``) stay operable.
+# Paired with ``fullmatch``: ``$`` would match before a final ``\n``, so ``match()``
+# would accept ``"VS\n"`` and leak the newline into DDL interpolation.
+_VS_TABLE_NAME_PATTERN = re.compile(r"\w+")
 
 
 class ResultSetTooLargeError(RuntimeError):
@@ -31,16 +39,17 @@ class ResultSetTooLargeError(RuntimeError):
     """
 
 
-def validate_oracle_identifier(name: str) -> str:
-    """Sanitise *name* for use inside a double-quoted Oracle identifier.
+def validate_vs_table_name(name: str) -> str:
+    """Validator for vector-store table names — defense in depth for DDL paths.
 
-    - Rejects empty / None names.
-    - Escapes embedded double-quotes (``"`` → ``""``) to prevent breakout.
-    - Returns the sanitized name; callers MUST use the return value.
+    Restricts to Python's Unicode ``\\w+``, the same grammar
+    ``generate_vs_metadata`` produces. SQL metacharacters (quotes, whitespace,
+    ``;``, ``--``, parentheses) are outside ``\\w`` and therefore rejected
+    before reaching the DDL/DML layer that wraps the name in ``"..."``.
     """
-    if not name:
-        raise ValueError(f"Invalid Oracle identifier: {name!r}")
-    return name.replace('"', '""')
+    if not name or not _VS_TABLE_NAME_PATTERN.fullmatch(name):
+        raise ValueError(f"Invalid vector store table name: {name!r}")
+    return name
 
 
 async def execute_sql(
@@ -80,7 +89,7 @@ async def execute_sql(
             raise
 
         if cursor.description:
-            page_size = max(1, min(_FETCH_PAGE_SIZE, max_rows))
+            page_size = max(1, min(_FETCH_PAGE_SIZE, max_rows + 1))
             result: list = []
             while True:
                 batch = await cursor.fetchmany(page_size)
