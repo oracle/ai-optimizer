@@ -22,12 +22,7 @@ RENAME_DDL = [
         END LOOP;
     END;
     """,
-    # Bug 39236203 (F10): rag_report previously stored a pickle blob, which
-    # turned any DB-write primitive into RCE on read. Drop the legacy BLOB
-    # column and re-add it as JSON. Existing rows are deleted before the swap
-    # because their pickled payload is exactly the threat surface we want
-    # gone, and leaving them behind with a NULL rag_report would make
-    # /testbed/evaluations list rows whose detail endpoint then 404s.
+    # Swap legacy BLOB rag_report for JSON; purge old rows since the pickled payload is the RCE surface.
     """
     DECLARE
         l_type user_tab_columns.data_type%TYPE;

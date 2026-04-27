@@ -300,12 +300,7 @@ async def test_process_report_with_data():
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_process_report_legacy_blob_returns_none():
-    """Legacy BLOB rows from before the migration must not be unpickled.
-
-    Defence-in-depth: even though the migration drops these rows, an attacker
-    with DB write access could still poke a non-dict value into the column.
-    process_report must refuse to interpret it.
-    """
+    """Defence-in-depth: a non-dict scalar in rag_report must be refused, not interpreted."""
     eid_bytes = bytes.fromhex("aabbccdd")
     rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, b"\x80\x04legacy-pickle")]
     conn = AsyncMock()
@@ -333,11 +328,7 @@ async def test_process_report_missing_rag_report_returns_none():
 
 @pytest.mark.unit
 def test_no_pickle_in_testbed_modules():
-    """Regression guard: neither testbed module may import pickle.
-
-    Re-introducing pickle.loads on a DB blob reopens Bug 39236203 (F10):
-    insecure deserialization escalates any DB-write primitive into RCE.
-    """
+    """Regression guard — re-importing pickle in either module reopens the RCE."""
     db_module = importlib.import_module("server.app.testbed.database")
     endpoints_module = importlib.import_module("server.app.api.v1.endpoints.testbed")
     assert "pickle" not in vars(db_module), "pickle re-introduced in server.app.testbed.database"

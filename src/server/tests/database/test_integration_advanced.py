@@ -200,14 +200,7 @@ class TestCascadeDeletes:
 
 
 class TestRagReportMigration:
-    """Bug 39236203 (F10) — upgrade path correctness.
-
-    Dropping the legacy BLOB column leaves every old evaluation row with a
-    NULL rag_report. get_evaluations() still lists those rows, but
-    process_report() (correctly) refuses NULL, so /testbed/evaluation 404s for
-    EIDs the list endpoint just exposed. The migration must purge those rows
-    so the list and detail endpoints stay consistent.
-    """
+    """BLOB→JSON migration drops legacy rows so list/detail endpoints stay consistent."""
 
     async def test_legacy_blob_rows_purged_on_upgrade(self, schema_connection):
         conn = schema_connection

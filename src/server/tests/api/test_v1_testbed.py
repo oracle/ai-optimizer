@@ -315,13 +315,7 @@ async def test_upload_testset_multi_file(app_client, auth_headers):
 
 @pytest.mark.unit
 def test_serialise_report_coerces_nan_to_null():
-    """Mixed-result reports contain NaN; the persisted dict must be valid JSON.
-
-    CustomCorrectnessMetric omits ``correctness_reason`` for correct rows, so
-    pandas fills that column with ``float('nan')``. Both Oracle's DB_TYPE_JSON
-    bind and FastAPI's response serializer reject NaN/Inf, so _serialise_report
-    must coerce them to None before insert_evaluation runs.
-    """
+    """NaN/Inf cells must coerce to None — strict JSON encoding rejects them."""
     from server.app.api.v1.endpoints.testbed import _serialise_report
 
     mixed_df = pd.DataFrame(
@@ -341,12 +335,8 @@ def test_serialise_report_coerces_nan_to_null():
 
     payload = _serialise_report(report)
 
-    # Strict JSON encoding refuses NaN/Inf. If anything slipped through,
-    # this raises ValueError — which is exactly the prod failure the
-    # reviewer flagged.
     json.dumps(payload, allow_nan=False)
 
-    # NaN/Inf cells must round-trip as None.
     assert payload["report"]["correctness_reason"]["0"] is None
     assert payload["report"]["correctness_reason"]["1"] == "Wrong answer"
     assert payload["correct_by_topic"]["score"]["topic_b"] is None

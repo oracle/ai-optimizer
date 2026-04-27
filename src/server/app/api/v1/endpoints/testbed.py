@@ -298,22 +298,16 @@ async def evaluate_testset(
 # ---------------------------------------------------------------------------
 
 
+def _df_to_json_safe(obj) -> dict:
+    return json.loads(obj.to_json())
+
+
 def _serialise_report(report) -> dict:
-    """Reduce a Giskard RAGReport to the JSON-safe dicts process_report consumes.
-
-    Storing pickle blobs in the DB would let any DB-write primitive escalate
-    into RCE on read (Bug 39236203). The endpoint never re-hydrates the report
-    object, so we persist only the derived dicts.
-
-    DataFrames are routed through ``to_json`` rather than ``to_dict`` because
-    mixed-result reports leave NaN cells (e.g. ``correctness_reason`` on rows
-    the judge marked correct), and NaN/Inf are rejected by both Oracle's
-    DB_TYPE_JSON bind and FastAPI's response serializer.
-    """
+    """Reduce a Giskard RAGReport to JSON-safe dicts (NaN/Inf → None for Oracle/FastAPI)."""
     return {
-        "report": json.loads(report.to_pandas().to_json()),
-        "correct_by_topic": json.loads(report.correctness_by_topic().to_json()),
-        "failures": json.loads(report.failures.to_json()),
+        "report": _df_to_json_safe(report.to_pandas()),
+        "correct_by_topic": _df_to_json_safe(report.correctness_by_topic()),
+        "failures": _df_to_json_safe(report.failures),
     }
 
 
