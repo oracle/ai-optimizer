@@ -191,6 +191,47 @@ class TestRunSqlQuerySync:
 
         assert mock_cursor.arraysize == 100
 
+    def test_sets_transaction_read_only_before_user_query(self, tmp_path):
+        """Defense-in-depth: SET TRANSACTION READ ONLY runs before the user query.
+
+        Oracle blocks any DML/DDL in a read-only transaction (ORA-01456 / ORA-01453),
+        which closes the residual side-effect-via-PL/SQL-function vector that the
+        SELECT-only allow-list cannot detect.
+        """
+        description = [("COL_A",)]
+        rows = [[(1,)], []]
+        mock_conn, mock_cursor = _make_mock_connection(description, rows)
+
+        with patch(f"{MODULE}.create_sync_connection") as mock_create:
+            mock_create.return_value.__enter__ = MagicMock(return_value=mock_conn)
+            mock_create.return_value.__exit__ = MagicMock(return_value=False)
+
+            _run_sql_query_sync(_make_db_config(), "SELECT * FROM t", str(tmp_path))
+
+        executed = [c.args[0] for c in mock_cursor.execute.call_args_list]
+        assert executed[0] == "SET TRANSACTION READ ONLY"
+        assert "SELECT * FROM t" in executed[1:]
+        assert executed.index("SET TRANSACTION READ ONLY") < executed.index("SELECT * FROM t")
+
+    def test_oracledb_error_during_user_query_returns_empty_string(self, tmp_path):
+        """oracledb.Error raised by the user query (e.g. ORA-01456 from a function
+        attempting DML in the read-only transaction) returns empty string."""
+        description = [("COL_A",)]
+        mock_conn, mock_cursor = _make_mock_connection(description, [])
+        mock_cursor.execute = MagicMock(
+            side_effect=[None, oracledb.Error("ORA-01456: may not perform insert/delete/update operation")]
+        )
+
+        with patch(f"{MODULE}.create_sync_connection") as mock_create:
+            mock_create.return_value.__enter__ = MagicMock(return_value=mock_conn)
+            mock_create.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = _run_sql_query_sync(
+                _make_db_config(), "SELECT my_pkg.do_dml() FROM dual", str(tmp_path)
+            )
+
+        assert result == ""
+
 
 # ---------------------------------------------------------------------------
 # run_sql_query (async wrapper)
