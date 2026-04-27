@@ -13,6 +13,7 @@ import org.springframework.ai.embedding.EmbeddingModel;
 
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -55,6 +57,7 @@ class AIController {
 	private final String legacyTable;
 	private final String userTable;
 	private final String contextInstr;
+	private final boolean initializeVectorStore;
 	private final String searchType;
 	private final int TOPK;
 	private JdbcTemplate jdbcTemplate;
@@ -70,17 +73,18 @@ class AIController {
 	private Helper helper;
 
 	AIController(
-			String modelOpenAI,
-			String modelOllamaAI,
-			@Lazy  ChatClient chatClient,
-			EmbeddingModel embeddingModel,
-			OracleVectorStore vectorStore,
-			JdbcTemplate jdbcTemplate,
-			String legacyTable,
-			String userTable,
-			String contextInstr,
-			String searchType,
-			int TOPK) {
+        String modelOpenAI,
+        String modelOllamaAI,
+        @Lazy ChatClient chatClient,
+        EmbeddingModel embeddingModel,
+        OracleVectorStore vectorStore,
+        JdbcTemplate jdbcTemplate,
+        String legacyTable,
+        String userTable,
+        String contextInstr,
+        String searchType,
+        @Value("${app.vector-store.initialize:false}") boolean initializeVectorStore,
+        int TOPK) {
 
 		this.modelOpenAI = modelOpenAI;
 		this.modelOllamaAI = modelOllamaAI;
@@ -91,6 +95,7 @@ class AIController {
 		this.userTable = userTable;
 		this.contextInstr = contextInstr;
 		this.searchType = searchType;
+		this.initializeVectorStore = initializeVectorStore;
 		this.TOPK = TOPK;
 		this.jdbcTemplate = jdbcTemplate;
 
@@ -103,6 +108,7 @@ class AIController {
 	*
  	* @param message: the message to be routed to the LLM 
  	*/
+	@PreAuthorize("hasRole('AI_CLIENT')")
 	@GetMapping("/v1/service/llm")
 	Map<String, String> completion(@RequestParam(value = "message", defaultValue = "Tell me a joke") String message) {
 
@@ -119,37 +125,55 @@ class AIController {
 	* If table already exists, it will not be overrided.
 	*
  	*/
-	@PostConstruct
-	public void insertData() {
-		String sqlUser = "SELECT USER FROM DUAL";
-		String user = "";
-		String sql = "";
-		String newTable = legacyTable + "_SPRINGAI";
+@PostConstruct
+public void insertData() {
+    if (!initializeVectorStore) {
+        LOGGER.info("Vector store initialization is disabled.");
+        return;
+    }
 
-		user = jdbcTemplate.queryForObject(sqlUser, String.class);
-		if (helper.doesTableExist(legacyTable, user,this.jdbcTemplate) != -1) {
-			// RUNNING LOCAL
-			LOGGER.info("Running local with user: " + user);
-			sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
-					"SELECT ID, TEXT, METADATA, EMBEDDING FROM " + user + "." + legacyTable;
-		} else {
-			// RUNNING in OBAAS
-			LOGGER.info("Running on OBaaS with user: " + user);
-			LOGGER.info("copying langchain table from schema/user: " + userTable);
-			sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
-					"SELECT ID, TEXT, METADATA, EMBEDDING FROM "+ userTable+"." + legacyTable;
-		}
-		// Execute the insert
-		LOGGER.info("doesExist" + user + ": " + helper.doesTableExist(newTable, user,this.jdbcTemplate));
-		if (helper.countRecordsInTable(newTable, user,this.jdbcTemplate) == 0) {
-			// First microservice execution
-			LOGGER.info("Table " + user + "." + newTable + " doesn't exist: create from "+userTable+"." + legacyTable);
-			jdbcTemplate.update(sql);
-		} else {
-			// Table conversion already done
-			LOGGER.info("Table " + user+"."+newTable + " exists: drop before if you want use with new contents " + userTable + "." + legacyTable);
-		}
-	}
+    String sqlUser = "SELECT USER FROM DUAL";
+    String user = "";
+    String sql = "";
+    String newTable = legacyTable + "_SPRINGAI";
+
+    user = jdbcTemplate.queryForObject(sqlUser, String.class);
+
+    if (helper.doesTableExist(legacyTable, user, this.jdbcTemplate) != -1) {
+        // RUNNING LOCAL
+        LOGGER.info("Running local with user: {}", user);
+        sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
+                "SELECT ID, TEXT, METADATA, EMBEDDING FROM " + user + "." + legacyTable;
+    } else {
+        // RUNNING in OBAAS
+        LOGGER.info("Running on OBaaS with user: {}", user);
+        LOGGER.info("Copying langchain table from schema/user: {}", userTable);
+        sql = "INSERT INTO " + user + "." + newTable + " (ID, CONTENT, METADATA, EMBEDDING) " +
+                "SELECT ID, TEXT, METADATA, EMBEDDING FROM " + userTable + "." + legacyTable;
+    }
+
+    LOGGER.info(
+            "Table existence check for {}.{}: {}",
+            user,
+            newTable,
+            helper.doesTableExist(newTable, user, this.jdbcTemplate));
+
+    if (helper.countRecordsInTable(newTable, user, this.jdbcTemplate) == 0) {
+        LOGGER.info(
+                "Table {}.{} is empty. Initializing from {}.{}",
+                user,
+                newTable,
+                userTable,
+                legacyTable);
+
+        jdbcTemplate.update(sql);
+    } else {
+        LOGGER.info(
+                "Table {}.{} already contains records. Skipping initialization.",
+                user,
+                newTable);
+    }
+}
 
 
 	/**
@@ -160,6 +184,7 @@ class AIController {
  	* @param message: the message to be routed to the LLM along the prompt/context
 	* @return the llm response in one shot or in streaming
  	*/
+	@PreAuthorize("hasRole('AI_CLIENT')")
 	@PostMapping(value = "/v1/chat/completions", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public ResponseBodyEmitter streamCompletions(@RequestBody ChatRequest request) {
 		ResponseBodyEmitter bodyEmitter = new ResponseBodyEmitter();
@@ -231,6 +256,7 @@ class AIController {
 	* @param topK: the number of chunks to be included in the context
 	* @return the list of the nearest topK chunks
  	*/
+	@PreAuthorize("hasRole('AI_CLIENT')")
 	@GetMapping("/v1/service/search")
 	List<Map<String, Object>> search(@RequestParam(value = "message", defaultValue = "Tell me a joke") String query,
 			@RequestParam(value = "topk", defaultValue = "5") Integer topK) {
@@ -257,6 +283,7 @@ class AIController {
  	* @param chunks: the list of chunks
 	* @return the list of vector embeddings created and stored along the chunks
  	*/
+	@PreAuthorize("hasRole('AI_CLIENT')")
 	@PostMapping("/v1/service/store-chunks")
 	List<List<Double>> store(@RequestBody List<String> chunks) {
 		List<List<Double>> allVectors = new ArrayList<>();
@@ -285,6 +312,7 @@ class AIController {
  	* @param requestBody: the message to be routed to the LLM along the prompt/context
 	* @return in this case it will be returned a list with only one model on which is based this microservice
  	*/
+	@PreAuthorize("hasRole('AI_CLIENT')")
 	@GetMapping("/v1/models")
 	Map<String, Object> models(@RequestBody(required = false) Map<String, String> requestBody) {
 		String modelId = "custom";

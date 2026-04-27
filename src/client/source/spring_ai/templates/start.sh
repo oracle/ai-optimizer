@@ -33,6 +33,7 @@ done
 
 # env_vars
 export SPRING_AI_OPENAI_API_KEY=${{OPENAI_API_KEY}}
+export AI_SERVICE_API_KEY=${AI_SERVICE_API_KEY}
 export DB_DSN="jdbc:oracle:thin:@{database_config[dsn]}"
 export DB_USERNAME="{database_config[username]}"
 export DB_PASSWORD="{database_config[password]}"

@@ -1,5 +1,13 @@
 server:
   port: 9090
+
+app:
+  security:
+    api-key: ${AI_SERVICE_API_KEY}
+  vector-store:
+    initialize: false
+    allow-user-writes: false
+    
 spring:
   datasource:
     url: ${DB_DSN}
