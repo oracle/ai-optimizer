@@ -9,7 +9,6 @@ Testbed endpoints — manage test sets, generate Q&A from PDFs, and run evaluati
 import asyncio
 import json
 import logging
-import pickle
 import shutil
 import tempfile
 from datetime import datetime
@@ -279,7 +278,7 @@ async def evaluate_testset(
                 evaluated=evaluated,
                 correctness=report.correctness,
                 settings_json=json.dumps(cs.model_dump(mode="json")),
-                rag_report=pickle.dumps(report),
+                rag_report=_serialise_report(report),
             )
             await conn.commit()
 
@@ -297,6 +296,25 @@ async def evaluate_testset(
 # ---------------------------------------------------------------------------
 # Internal helpers for POST endpoints
 # ---------------------------------------------------------------------------
+
+
+def _serialise_report(report) -> dict:
+    """Reduce a Giskard RAGReport to the JSON-safe dicts process_report consumes.
+
+    Storing pickle blobs in the DB would let any DB-write primitive escalate
+    into RCE on read (Bug 39236203). The endpoint never re-hydrates the report
+    object, so we persist only the derived dicts.
+
+    DataFrames are routed through ``to_json`` rather than ``to_dict`` because
+    mixed-result reports leave NaN cells (e.g. ``correctness_reason`` on rows
+    the judge marked correct), and NaN/Inf are rejected by both Oracle's
+    DB_TYPE_JSON bind and FastAPI's response serializer.
+    """
+    return {
+        "report": json.loads(report.to_pandas().to_json()),
+        "correct_by_topic": json.loads(report.correctness_by_topic().to_json()),
+        "failures": json.loads(report.failures.to_json()),
+    }
 
 
 async def _load_file_chunks(

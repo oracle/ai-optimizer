@@ -6,9 +6,11 @@ Tests for testbed async database operations.
 """
 # spell-checker:disable
 
+import importlib
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import oracledb
 import pytest
 
 from server.app.testbed.database import (
@@ -223,10 +225,35 @@ async def test_insert_evaluation():
         evaluated="2026-01-01T00:00:00",
         correctness=0.9,
         settings_json='{"client": "test"}',
-        rag_report=b"pickled_data",
+        rag_report={"report": {}, "correct_by_topic": {}, "failures": {}},
     )
     assert result == "cafebabe"
-    cursor.setinputsizes.assert_called_once()
+    # rag_report must bind as JSON, never as a binary BLOB.
+    kwargs = cursor.setinputsizes.call_args.kwargs
+    assert kwargs["rag_report"] is oracledb.DB_TYPE_JSON
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_insert_evaluation_serialises_dict_payload():
+    """rag_report dict is forwarded into the bind dict for JSON storage."""
+    eid_bytes = bytes.fromhex("cafebabe")
+    ctx, cursor, _ = _make_async_cursor(out_value=eid_bytes)
+
+    conn = MagicMock()
+    conn.cursor.return_value = ctx
+
+    payload = {"report": {"a": 1}, "correct_by_topic": {"b": 2}, "failures": {"c": 3}}
+    await insert_evaluation(
+        conn,
+        tid="AABB",
+        evaluated="2026-01-01T00:00:00",
+        correctness=0.9,
+        settings_json='{"client": "test"}',
+        rag_report=payload,
+    )
+    binds = cursor.execute.call_args[0][1]
+    assert binds["rag_report"] == payload
 
 
 # ---------------------------------------------------------------------------
@@ -247,29 +274,18 @@ async def test_process_report_not_found():
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_process_report_with_data():
-    """Unpickles report and extracts metrics."""
-    mock_report = MagicMock()
-    mock_df = MagicMock()
-    mock_df.to_dict.return_value = {"col": "data"}
-    mock_report.to_pandas.return_value = mock_df
-
-    mock_topic = MagicMock()
-    mock_topic.to_dict.return_value = {"topic": "scores"}
-    mock_report.correctness_by_topic.return_value = mock_topic
-
-    mock_failures = MagicMock()
-    mock_failures.to_dict.return_value = {"fail": "info"}
-    mock_report.failures = mock_failures
-
+    """Reads JSON rag_report column and surfaces its three sub-dicts."""
     eid_bytes = bytes.fromhex("aabbccdd")
     settings_dict = {"client": "test"}
+    rag_report_json = {
+        "report": {"col": "data"},
+        "correct_by_topic": {"topic": "scores"},
+        "failures": {"fail": "info"},
+    }
 
-    rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, settings_dict, b"placeholder")]
+    rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, settings_dict, rag_report_json)]
     conn = AsyncMock()
-    with (
-        patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows),
-        patch("server.app.testbed.database.pickle.loads", return_value=mock_report),
-    ):
+    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
         result = await process_report(conn, "AABBCCDD")
 
     assert result is not None
@@ -279,3 +295,50 @@ async def test_process_report_with_data():
     assert result["correct_by_topic"] == {"topic": "scores"}
     assert result["failures"] == {"fail": "info"}
     assert result["settings"] == settings_dict
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_process_report_legacy_blob_returns_none():
+    """Legacy BLOB rows from before the migration must not be unpickled.
+
+    Defence-in-depth: even though the migration drops these rows, an attacker
+    with DB write access could still poke a non-dict value into the column.
+    process_report must refuse to interpret it.
+    """
+    eid_bytes = bytes.fromhex("aabbccdd")
+    rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, b"\x80\x04legacy-pickle")]
+    conn = AsyncMock()
+    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
+        result = await process_report(conn, "AABBCCDD")
+    assert result is None
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_process_report_missing_rag_report_returns_none():
+    """A row with NULL rag_report yields None rather than crashing."""
+    eid_bytes = bytes.fromhex("aabbccdd")
+    rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, None)]
+    conn = AsyncMock()
+    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
+        result = await process_report(conn, "AABBCCDD")
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Defence-in-depth: pickle must not be re-introduced
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_no_pickle_in_testbed_modules():
+    """Regression guard: neither testbed module may import pickle.
+
+    Re-introducing pickle.loads on a DB blob reopens Bug 39236203 (F10):
+    insecure deserialization escalates any DB-write primitive into RCE.
+    """
+    db_module = importlib.import_module("server.app.testbed.database")
+    endpoints_module = importlib.import_module("server.app.api.v1.endpoints.testbed")
+    assert "pickle" not in vars(db_module), "pickle re-introduced in server.app.testbed.database"
+    assert "pickle" not in vars(endpoints_module), "pickle re-introduced in server.app.api.v1.endpoints.testbed"

@@ -161,7 +161,7 @@ class TestCascadeDeletes:
             evaluated="2026-01-02T00:00:01.000",
             correctness=0.75,
             settings_json='{"model": "test"}',
-            rag_report=b"dummy",
+            rag_report={"report": {}, "correct_by_topic": {}, "failures": {}},
         )
         await conn.commit()
 
@@ -192,6 +192,97 @@ class TestCascadeDeletes:
 
         testsets = await get_testsets(conn)
         assert not any(t["tid"] == tid for t in testsets)
+
+
+# ---------------------------------------------------------------------------
+# rag_report migration: BLOB → JSON + legacy row purge
+# ---------------------------------------------------------------------------
+
+
+class TestRagReportMigration:
+    """Bug 39236203 (F10) — upgrade path correctness.
+
+    Dropping the legacy BLOB column leaves every old evaluation row with a
+    NULL rag_report. get_evaluations() still lists those rows, but
+    process_report() (correctly) refuses NULL, so /testbed/evaluation 404s for
+    EIDs the list endpoint just exposed. The migration must purge those rows
+    so the list and detail endpoints stay consistent.
+    """
+
+    async def test_legacy_blob_rows_purged_on_upgrade(self, schema_connection):
+        conn = schema_connection
+        from server.app.database.objects import RENAME_DDL, SCHEMA_DDL
+
+        conn.autocommit = True
+        try:
+            # Replace the canonical schema with a legacy (BLOB) one + seeded row.
+            await execute_sql(conn, "DROP TABLE aio_evaluations CASCADE CONSTRAINTS PURGE")
+            await execute_sql(
+                conn,
+                """
+                CREATE TABLE aio_evaluations (
+                    eid          RAW(16) DEFAULT SYS_GUID(),
+                    tid          RAW(16),
+                    evaluated    TIMESTAMP(9) WITH LOCAL TIME ZONE,
+                    correctness  NUMBER DEFAULT 0,
+                    settings     JSON,
+                    rag_report   BLOB,
+                    CONSTRAINT aio_evaluations_pk PRIMARY KEY (eid)
+                )
+                """,
+            )
+            await execute_sql(
+                conn,
+                """
+                INSERT INTO aio_evaluations (evaluated, correctness, rag_report)
+                VALUES (SYSTIMESTAMP, 0.5, UTL_RAW.CAST_TO_RAW('legacy-pickle-payload'))
+                """,
+            )
+
+            async def _scalar(sql: str):
+                rows = await execute_sql(conn, sql)
+                assert rows, f"Expected a row from: {sql}"
+                return rows[0][0]
+
+            assert await _scalar("SELECT COUNT(*) FROM aio_evaluations") == 1
+            assert (
+                await _scalar(
+                    "SELECT data_type FROM user_tab_columns "
+                    "WHERE table_name='AIO_EVALUATIONS' AND column_name='RAG_REPORT'"
+                )
+                == "BLOB"
+            )
+
+            for ddl in RENAME_DDL:
+                await execute_sql(conn, ddl)
+
+            assert (
+                await _scalar(
+                    "SELECT data_type FROM user_tab_columns "
+                    "WHERE table_name='AIO_EVALUATIONS' AND column_name='RAG_REPORT'"
+                )
+                == "JSON"
+            )
+            assert await _scalar("SELECT COUNT(*) FROM aio_evaluations") == 0, (
+                "Legacy evaluation rows must be purged so /testbed/evaluations and "
+                "/testbed/evaluation stay consistent after upgrade."
+            )
+
+            # Re-running the migration on the now-JSON column must be a no-op.
+            for ddl in RENAME_DDL:
+                await execute_sql(conn, ddl)
+            assert (
+                await _scalar(
+                    "SELECT data_type FROM user_tab_columns "
+                    "WHERE table_name='AIO_EVALUATIONS' AND column_name='RAG_REPORT'"
+                )
+                == "JSON"
+            )
+        finally:
+            # Restore canonical schema (including FK) for subsequent tests.
+            await execute_sql(conn, "DROP TABLE aio_evaluations CASCADE CONSTRAINTS PURGE")
+            for ddl in SCHEMA_DDL:
+                await execute_sql(conn, ddl)
 
 
 # ---------------------------------------------------------------------------

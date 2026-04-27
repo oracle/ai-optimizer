@@ -9,8 +9,9 @@ Tests for testbed API endpoints.
 import io
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from server.tests.api.conftest import _create_mock_pool
@@ -305,6 +306,68 @@ async def test_upload_testset_multi_file(app_client, auth_headers):
     assert len(combined) == 2
     assert combined[0]["question"] == "Q1"
     assert combined[1]["question"] == "Q2"
+
+
+# ---------------------------------------------------------------------------
+# _serialise_report — JSON-safety of the persisted Giskard report payload
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_serialise_report_coerces_nan_to_null():
+    """Mixed-result reports contain NaN; the persisted dict must be valid JSON.
+
+    CustomCorrectnessMetric omits ``correctness_reason`` for correct rows, so
+    pandas fills that column with ``float('nan')``. Both Oracle's DB_TYPE_JSON
+    bind and FastAPI's response serializer reject NaN/Inf, so _serialise_report
+    must coerce them to None before insert_evaluation runs.
+    """
+    from server.app.api.v1.endpoints.testbed import _serialise_report
+
+    mixed_df = pd.DataFrame(
+        {
+            "question": ["Q1", "Q2"],
+            "correct": [True, False],
+            "correctness_reason": [float("nan"), "Wrong answer"],
+        }
+    )
+    by_topic_df = pd.DataFrame({"score": [0.5, float("inf")]}, index=["topic_a", "topic_b"])
+    failures_df = pd.DataFrame({"reason": [float("nan")]}, index=[0])
+
+    report = MagicMock()
+    report.to_pandas.return_value = mixed_df
+    report.correctness_by_topic.return_value = by_topic_df
+    report.failures = failures_df
+
+    payload = _serialise_report(report)
+
+    # Strict JSON encoding refuses NaN/Inf. If anything slipped through,
+    # this raises ValueError — which is exactly the prod failure the
+    # reviewer flagged.
+    json.dumps(payload, allow_nan=False)
+
+    # NaN/Inf cells must round-trip as None.
+    assert payload["report"]["correctness_reason"]["0"] is None
+    assert payload["report"]["correctness_reason"]["1"] == "Wrong answer"
+    assert payload["correct_by_topic"]["score"]["topic_b"] is None
+    assert payload["failures"]["reason"]["0"] is None
+
+
+@pytest.mark.unit
+def test_serialise_report_preserves_shape_for_clean_dataframes():
+    """When DataFrames have no NaN, serialisation matches the legacy to_dict shape."""
+    from server.app.api.v1.endpoints.testbed import _serialise_report
+
+    report = MagicMock()
+    report.to_pandas.return_value = pd.DataFrame({"q": ["Q1"], "ok": [True]})
+    report.correctness_by_topic.return_value = pd.DataFrame({"score": [0.9]}, index=["t"])
+    report.failures = pd.DataFrame()
+
+    payload = _serialise_report(report)
+
+    assert payload["report"] == {"q": {"0": "Q1"}, "ok": {"0": True}}
+    assert payload["correct_by_topic"] == {"score": {"t": 0.9}}
+    assert payload["failures"] == {}
 
 
 # ---------------------------------------------------------------------------
