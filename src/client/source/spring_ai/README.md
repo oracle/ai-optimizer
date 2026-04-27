@@ -36,10 +36,11 @@ Get Started with Java Development](https://docs.oracle.com/en/database/oracle/or
 
 Download one of them through the `Download SpringAI` button. Unzip the content and set the executable permission on the `start.sh`  with `chmod 755 ./start.sh`.
 
-Edit `start.sh` to change the DB_PASSWORD or any other referece/credential changed by the dev env, as in this example:
+Edit `start.sh` to change the DB_PASSWORD, AI_SERVICE_API_KEY or any other referece/credential changed by the dev env, as in this example:
 ```
 export SPRING_AI_OPENAI_API_KEY=$OPENAI_API_KEY
 export DB_DSN="jdbc:oracle:thin:@localhost:1521/FREEPDB1"
+export AI_SERVICE_API_KEY=<AI_SERVICE_API_KEY>
 export DB_USERNAME=<DB_USER_NAME>
 export DB_PASSWORD=<DB_PASSWORD>
 export DISTANCE_TYPE=COSINE
@@ -80,12 +81,18 @@ This project contains a web service that will accept HTTP requests at
 
 
 ### Completions
+Export the API_SERVICE_KEY as an environment variable, making sure it matches the one defined in `start.sh`, for example:
+
+```
+export AI_SERVICE_API_KEY="Welcome12345" 
+```
+
 RAG call example with `openai` build profile with no-stream: 
 
 ```
 curl -N http://localhost:9090/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your_api_key" \
+  -H "X-API-Key: ${AI_SERVICE_API_KEY}"  \
   -d '{
     "model": "server",
     "messages": [{"role": "user", "content": "Can I use any kind of development environment to run the example?"}],
@@ -110,7 +117,7 @@ with stream output:
 ```
 curl -N http://localhost:9090/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your_api_key" \
+  -H "X-API-Key: ${AI_SERVICE_API_KEY}"  \
   -d '{
     "model": "server",
     "messages": [{"role": "user", "content": "Can I use any kind of development environment to run the example?"}],
@@ -119,7 +126,9 @@ curl -N http://localhost:9090/v1/chat/completions \
 ```
 or the request without Vector Search:
 ```
-curl --get --data-urlencode 'message=Can I use any kind of development environment to run the example?' localhost:9090/v1/service/llm | jq .
+curl --get --data-urlencode 'message=Can I use any kind of development environment to run the example?' \
+  -H "X-API-Key: ${AI_SERVICE_API_KEY}" \
+  http://localhost:9090/v1/service/llm | jq .
 ```
 
 response not grounded:
@@ -136,6 +145,7 @@ Store additional text chunks in the vector store:
 ```
 curl -X POST http://localhost:9090/v1/service/store-chunks \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: ${AI_SERVICE_API_KEY}" \
   -d '["First chunk of text.", "Second chunk.", "Another example."]'
 ```
 
