@@ -14,6 +14,15 @@ import oracledb
 
 LOGGER = logging.getLogger(__name__)
 
+# Hard ceiling on rows materialized by execute_sql so a pathological scan
+# raises a clear error instead of silently allocating gigabytes.
+DEFAULT_MAX_ROWS = 100_000
+
+# Page size used when streaming rows. Capped against max_rows + 1 so a small
+# caller-supplied cap detects overflow within the first fetch instead of
+# triggering a second round-trip on the cap-exceeded path.
+_FETCH_PAGE_SIZE = 1_000
+
 # Matches the output of ``generate_vs_metadata`` (``re.sub(r"\W", "_", ...).upper()``)
 # so legacy stores with non-ASCII aliases (e.g. ``CAFÉ_OPENAI_...``) stay operable.
 # Paired with ``fullmatch``: ``$`` would match before a final ``\n``, so ``match()``
@@ -21,16 +30,13 @@ LOGGER = logging.getLogger(__name__)
 _VS_TABLE_NAME_PATTERN = re.compile(r"\w+")
 
 
-def validate_oracle_identifier(name: str) -> str:
-    """Sanitise *name* for use inside a double-quoted Oracle identifier.
+class ResultSetTooLargeError(RuntimeError):
+    """Raised when a SELECT returns more rows than the caller's max_rows cap.
 
-    - Rejects empty / None names.
-    - Escapes embedded double-quotes (``"`` → ``""``) to prevent breakout.
-    - Returns the sanitized name; callers MUST use the return value.
+    Distinct type so callers that legitimately swallow oracledb errors during
+    discovery do not also mask correctness-critical overflows (e.g. metadata
+    queries whose empty result would cause stale-chunk retention).
     """
-    if not name:
-        raise ValueError(f"Invalid Oracle identifier: {name!r}")
-    return name.replace('"', '""')
 
 
 def validate_vs_table_name(name: str) -> str:
@@ -51,12 +57,16 @@ async def execute_sql(
     sql: str,
     binds: Optional[dict] = None,
     input_sizes: Optional[dict] = None,
+    max_rows: int = DEFAULT_MAX_ROWS,
 ) -> Optional[list]:
     """Execute a SQL statement and return results for SELECT queries.
 
     - SELECT: returns list of rows with LOB columns auto-read
     - DML/DDL: returns None
     - Swallows ORA-00955 (object already exists) and ORA-00942 (table/view does not exist)
+
+    Result sets larger than *max_rows* raise :class:`ResultSetTooLargeError`
+    instead of being truncated, so callers cannot silently lose rows.
     """
     LOGGER.debug("execute_sql: %s | binds=%s", sql.strip()[:120], binds)
 
@@ -79,13 +89,20 @@ async def execute_sql(
             raise
 
         if cursor.description:
-            rows = await cursor.fetchall()
-            result = []
-            for row in rows:
-                cols = []
-                for val in row:
-                    cols.append(await val.read() if isinstance(val, oracledb.AsyncLOB) else val)
-                result.append(tuple(cols))
-            return result
+            page_size = max(1, min(_FETCH_PAGE_SIZE, max_rows + 1))
+            result: list = []
+            while True:
+                batch = await cursor.fetchmany(page_size)
+                if not batch:
+                    return result
+                for row in batch:
+                    if len(result) >= max_rows:
+                        raise ResultSetTooLargeError(
+                            f"execute_sql result exceeds max_rows={max_rows}: {sql.strip()[:80]}"
+                        )
+                    cols = []
+                    for val in row:
+                        cols.append(await val.read() if isinstance(val, oracledb.AsyncLOB) else val)
+                    result.append(tuple(cols))
 
         return None

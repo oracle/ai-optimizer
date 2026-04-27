@@ -20,7 +20,7 @@ from server.app.database.registry import (
     drop_vector_store,
     init_core_database,
 )
-from server.app.database.sql import execute_sql, validate_oracle_identifier
+from server.app.database.sql import execute_sql
 from server.app.embed.vector_store import generate_vs_metadata, update_vs_comment
 from server.app.models.schemas import ModelIdentity
 from server.app.testbed.database import (
@@ -106,12 +106,6 @@ class TestDropVectorStore:
         # Cleanup
         await drop_vector_store(conn, table)
         await conn.commit()
-
-    async def test_drop_identifier_with_quotes(self, async_oracle_connection):
-        """validate_oracle_identifier escapes embedded quotes for safe DROP."""
-        safe = validate_oracle_identifier('table"name')
-        assert safe == 'table""name'
-
 
 # ---------------------------------------------------------------------------
 # Cascade deletes (FK ON DELETE CASCADE)
@@ -345,45 +339,6 @@ class TestConnectionTimeout:
 
         with pytest.raises(oracledb.Error):
             await execute_sql(conn, "SELECT 1 FROM DUAL")
-
-
-# ---------------------------------------------------------------------------
-# RAW identifier edge cases
-# ---------------------------------------------------------------------------
-
-
-class TestRawIdentifierEdgeCases:
-    """Test validate_oracle_identifier with edge case inputs against real DB."""
-
-    async def test_table_name_with_special_chars(self, async_oracle_connection):
-        """Tables with special characters in names work via quoted identifiers."""
-        conn = async_oracle_connection
-        name = "TEST$SPECIAL#TBL"
-
-        safe = validate_oracle_identifier(name)
-        await execute_sql(conn, f'CREATE TABLE "{safe}" (id NUMBER)')
-        await conn.commit()
-
-        result = await execute_sql(conn, f'SELECT COUNT(*) FROM "{safe}"')
-        assert result == [(0,)]
-
-        await execute_sql(conn, f'DROP TABLE "{safe}" PURGE')
-        await conn.commit()
-
-    async def test_table_name_with_spaces(self, async_oracle_connection):
-        """Quoted identifiers with spaces work in real Oracle."""
-        conn = async_oracle_connection
-        name = "MY TEST TABLE"
-
-        safe = validate_oracle_identifier(name)
-        await execute_sql(conn, f'CREATE TABLE "{safe}" (id NUMBER)')
-        await conn.commit()
-
-        result = await execute_sql(conn, f'SELECT COUNT(*) FROM "{safe}"')
-        assert result == [(0,)]
-
-        await execute_sql(conn, f'DROP TABLE "{safe}" PURGE')
-        await conn.commit()
 
 
 # ---------------------------------------------------------------------------
