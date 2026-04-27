@@ -19,7 +19,7 @@ from server.app.models.schemas import ModelIdentity
 from .config import close_pool, create_pool
 from .objects import RENAME_DDL, SCHEMA_DDL
 from .schemas import DatabaseConfig
-from .sql import execute_sql, validate_oracle_identifier
+from .sql import execute_sql, validate_vs_table_name
 
 LOGGER = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ async def drop_vector_store(conn: oracledb.AsyncConnection, table_name: str) -> 
     Runs ``DROP TABLE <name> PURGE``. Safe to call if the table does not
     exist — ``execute_sql`` silently ignores ORA-00942.
     """
-    safe_name = validate_oracle_identifier(table_name)
+    safe_name = validate_vs_table_name(table_name)
     LOGGER.info("Dropping vector store: %s", table_name)
     await execute_sql(conn, f'DROP TABLE "{safe_name}" PURGE')
 

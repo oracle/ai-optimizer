@@ -12,6 +12,7 @@ import json
 
 import oracledb
 import pytest
+from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
 from server.app.database.config import close_pool, create_pool
 from server.app.database.registry import (
@@ -20,6 +21,8 @@ from server.app.database.registry import (
     init_core_database,
 )
 from server.app.database.sql import execute_sql, validate_oracle_identifier
+from server.app.embed.vector_store import generate_vs_metadata, update_vs_comment
+from server.app.models.schemas import ModelIdentity
 from server.app.testbed.database import (
     delete_testset,
     get_evaluations,
@@ -28,7 +31,7 @@ from server.app.testbed.database import (
     insert_evaluation,
     upsert_qa,
 )
-from server.tests.conftest import make_core_db_config
+from server.tests.conftest import make_core_db_config, make_test_vs_config
 
 pytestmark = [pytest.mark.db]
 
@@ -381,3 +384,82 @@ class TestRawIdentifierEdgeCases:
 
         await execute_sql(conn, f'DROP TABLE "{safe}" PURGE')
         await conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# COMMENT ON TABLE injection regression (real DB)
+# ---------------------------------------------------------------------------
+
+
+class TestVectorStoreCommentInjection:
+    """End-to-end checks that injection PoCs cannot reach the COMMENT ON TABLE
+    statement: identifier payloads are rejected by the validator, and
+    string-literal payloads are escaped into the comment body as literals.
+    """
+
+    async def test_identifier_payload_rejected_before_db_call(self, async_oracle_connection):
+        """``update_vs_comment`` raises ``ValueError`` before any SQL is sent."""
+        cfg = make_test_vs_config(vector_store="X IS 'x'--")
+        with pytest.raises(ValueError, match="Invalid vector store table name"):
+            await update_vs_comment(async_oracle_connection, cfg, '{"alias": "x"}')
+
+    async def test_description_payload_is_literal_not_executed(self, async_oracle_connection):
+        """A ``'`` + subquery description survives as a literal in the round-trip.
+
+        Uses ``(SELECT 'PWNED' FROM DUAL)`` (the test user lacks DBA so the
+        original ``dba_users`` query won't run) — it's a precise discriminator:
+        if the SQL escape failed, the round-tripped description would contain
+        ``xPWNEDx``; if it held, it contains the original payload string.
+        """
+        conn = async_oracle_connection
+        table = "VS_INJECT_DESC_TEST"
+
+        await _create_genai_table(conn, table, {"alias": "stage", "chunk_size": 1})
+        try:
+            payload = "x' || (SELECT 'PWNED' FROM DUAL) || 'x"
+            _, comment_json = generate_vs_metadata(
+                embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+                chunk_size=1000,
+                chunk_overlap=100,
+                distance_strategy=DistanceStrategy.COSINE,
+                description=payload,
+            )
+
+            await update_vs_comment(conn, make_test_vs_config(vector_store=table), comment_json)
+            await conn.commit()
+
+            stores = await discover_vector_stores(conn)
+            match = next((s for s in stores if s.vector_store == table), None)
+            assert match is not None, "Updated vector store not found via discovery"
+            assert match.description == payload
+        finally:
+            await drop_vector_store(conn, table)
+            await conn.commit()
+
+    async def test_normal_description_round_trips(self, async_oracle_connection):
+        """Sanity check: ordinary metadata survives the COMMENT round-trip."""
+        conn = async_oracle_connection
+        table = "VS_INJECT_BASELINE_TEST"
+
+        await _create_genai_table(conn, table, {"alias": "stage", "chunk_size": 1})
+        try:
+            _, comment_json = generate_vs_metadata(
+                embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+                chunk_size=1000,
+                chunk_overlap=100,
+                distance_strategy=DistanceStrategy.COSINE,
+                alias="docs",
+                description="Project documentation",
+            )
+
+            await update_vs_comment(conn, make_test_vs_config(vector_store=table), comment_json)
+            await conn.commit()
+
+            stores = await discover_vector_stores(conn)
+            match = next((s for s in stores if s.vector_store == table), None)
+            assert match is not None
+            assert match.alias == "docs"
+            assert match.description == "Project documentation"
+        finally:
+            await drop_vector_store(conn, table)
+            await conn.commit()

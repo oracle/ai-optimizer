@@ -6,13 +6,21 @@ Tests for embed vector store utilities.
 """
 # spell-checker: disable
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
+from server.app.database.sql import validate_vs_table_name
 from server.app.embed.document import DoclingDocumentChunk
-from server.app.embed.vector_store import _prepare_documents, generate_vs_metadata
+from server.app.embed.vector_store import (
+    _prepare_documents,
+    generate_vs_metadata,
+    update_vs_comment,
+)
 from server.app.models.schemas import ModelIdentity
 from server.app.oci.bucket import detect_changed_objects
+from server.tests.conftest import make_test_vs_config
 
 # ---------------------------------------------------------------------------
 # generate_vs_metadata
@@ -61,6 +69,57 @@ def test_generate_vs_metadata_with_description():
         description="Test description",
     )
     assert '"description": "Test description"' in comment_json
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "alias,model_id",
+    [
+        ("café", "embed"),                # Latin accented (preserved as Unicode word char)
+        ("докс", "embed"),                # Cyrillic
+        ("тест", "embed"),                # different Cyrillic — must NOT collide with above
+        ("文档", "embed"),                # CJK
+        ("docs", "embed-é"),              # accent in model id
+        ("alias with space", "embed"),    # whitespace collapses to _
+        ("a-b.c/d", "embed"),             # punctuation collapses to _
+    ],
+)
+def test_generate_vs_metadata_output_passes_validator(alias, model_id):
+    """Generator output round-trips through ``validate_vs_table_name`` for any
+    free-text alias / model id.
+
+    The generator preserves Unicode word characters via ``re.sub(r"\\W", ...)``
+    and the validator accepts the same grammar (``\\w+``); aligning the two
+    avoids both (a) collisions from ASCII collapse and (b) ValueErrors on
+    legacy auto-generated stores.
+    """
+    model = ModelIdentity(provider="openai", id=model_id)
+    table_name, _ = generate_vs_metadata(
+        embedding_model=model,
+        chunk_size=1000,
+        chunk_overlap=0,
+        distance_strategy=DistanceStrategy.COSINE,
+        alias=alias,
+    )
+    assert validate_vs_table_name(table_name) == table_name
+
+
+@pytest.mark.unit
+def test_generate_vs_metadata_distinct_non_ascii_aliases_dont_collide():
+    """Distinct non-ASCII aliases of the same length must produce distinct
+    table names — guards against ASCII-collapse collisions where every
+    non-ASCII letter would map to ``_``.
+    """
+    model = ModelIdentity(provider="openai", id="embed")
+    common = {
+        "embedding_model": model,
+        "chunk_size": 1000,
+        "chunk_overlap": 0,
+        "distance_strategy": DistanceStrategy.COSINE,
+    }
+    name_a, _ = generate_vs_metadata(alias="дока", **common)
+    name_b, _ = generate_vs_metadata(alias="тест", **common)
+    assert name_a != name_b
 
 
 # ---------------------------------------------------------------------------
@@ -165,3 +224,91 @@ def test_detect_changed_objects_same_basename_different_prefix():
     assert len(new) == 1
     assert new[0]["name"] == "policies/q1.pdf"
     assert len(modified) == 0
+
+
+# ---------------------------------------------------------------------------
+# update_vs_comment — SQL-injection regression
+# ---------------------------------------------------------------------------
+
+
+_VS_INJECT_TABLE = "VS_INJECT_TEST"
+_COMMENT_PREFIX = f'COMMENT ON TABLE "{_VS_INJECT_TABLE}" IS \'GENAI: '
+
+
+def _generate_comment(description: str | None = None, alias: str | None = None) -> str:
+    """Build a comment_json the way the endpoint does."""
+    _, comment_json = generate_vs_metadata(
+        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        chunk_size=1000,
+        chunk_overlap=100,
+        distance_strategy=DistanceStrategy.COSINE,
+        index_type="HNSW",
+        alias=alias,
+        description=description,
+    )
+    return comment_json
+
+
+async def _capture_comment_sql(cfg, comment_json: str) -> str:
+    """Run update_vs_comment with execute_sql mocked; return the rendered SQL."""
+    mock_exec = AsyncMock()
+    with patch("server.app.embed.vector_store.execute_sql", new=mock_exec):
+        await update_vs_comment(MagicMock(), cfg, comment_json)
+    assert mock_exec.await_count == 1
+    assert mock_exec.await_args is not None
+    return mock_exec.await_args.args[1]
+
+
+def _assert_well_formed_literal(sql: str) -> str:
+    """Assert sql wraps a balanced 'GENAI: …' literal; return the literal body."""
+    assert sql.startswith(_COMMENT_PREFIX)
+    assert sql.endswith("'")
+    body = sql[len(_COMMENT_PREFIX):-1]
+    # Every ``'`` inside the body must be doubled (Oracle string-literal escape),
+    # so the count is always even.
+    assert body.count("'") % 2 == 0
+    return body
+
+
+@pytest.mark.unit
+async def test_update_vs_comment_rejects_identifier_injection():
+    """``X IS 'x'--`` table name is rejected before any SQL runs."""
+    cfg = make_test_vs_config(vector_store="X IS 'x'--")
+
+    with (
+        patch("server.app.embed.vector_store.execute_sql", new_callable=AsyncMock) as mock_exec,
+        pytest.raises(ValueError, match="Invalid vector store table name"),
+    ):
+        await update_vs_comment(MagicMock(), cfg, '{"alias": "x"}')
+
+    mock_exec.assert_not_called()
+
+
+@pytest.mark.unit
+async def test_update_vs_comment_escapes_string_literal_injection():
+    """Single quotes in a malicious description are doubled into the literal.
+
+    If unescaped, the payload's leading ``x'`` would close the outer
+    ``'GENAI: ...'`` string. Asserting the SELECT subquery appears with
+    surrounding quotes doubled proves it stays inside the literal.
+    """
+    payload = "x' || (SELECT password FROM dba_users WHERE username='SYS') || 'x"
+    comment_json = _generate_comment(description=payload)
+    # Sanity: json.dumps does not escape single quotes — payload survives intact.
+    assert "'SYS'" in comment_json
+
+    sql = await _capture_comment_sql(make_test_vs_config(vector_store=_VS_INJECT_TABLE), comment_json)
+    body = _assert_well_formed_literal(sql)
+    assert "username=''SYS''" in body
+    assert "x''" in body
+
+
+@pytest.mark.unit
+async def test_update_vs_comment_normal_payload_passes_through():
+    """Ordinary alias/description still produces a syntactically valid statement."""
+    comment_json = _generate_comment(alias="docs", description="Project documentation")
+
+    sql = await _capture_comment_sql(make_test_vs_config(vector_store=_VS_INJECT_TABLE), comment_json)
+    _assert_well_formed_literal(sql)
+    assert '"alias": "docs"' in sql
+    assert '"description": "Project documentation"' in sql
