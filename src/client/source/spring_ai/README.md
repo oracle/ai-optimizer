@@ -62,11 +62,6 @@ Drop the table `<VECTOR_STORE>_SPRINGAI`, if exists, running in sql:
 DROP TABLE <VECTOR_STORE>_SPRINGAI CASCADE CONSTRAINTS;
 COMMIT;
 ```
-Export the API_SERVICE_KEY as an environment variable, making sure it matches the one defined in `start.sh`, for example:
-
-```
-export AI_SERVICE_API_KEY="Welcome12345" 
-```
 
 Start with:
 
@@ -86,6 +81,12 @@ This project contains a web service that will accept HTTP requests at
 
 
 ### Completions
+Export the API_SERVICE_KEY as an environment variable, making sure it matches the one defined in `start.sh`, for example:
+
+```
+export AI_SERVICE_API_KEY="Welcome12345" 
+```
+
 RAG call example with `openai` build profile with no-stream: 
 
 ```
