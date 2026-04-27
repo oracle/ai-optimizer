@@ -9,12 +9,14 @@ variable "k8s_api_is_public" {
 }
 
 variable "k8s_api_endpoint_allowed_cidrs" {
-  description = "Comma separated string of CIDR blocks from which the API Endpoint can be accessed."
+  description = "Comma separated string of CIDR blocks from which the Kubernetes API endpoint can be accessed. Leave empty to avoid public API ingress; local configuration management requires a reachable source CIDR, typically your public IP as /32."
   type        = string
-  default     = "0.0.0.0/0"
+  default     = ""
   validation {
-    condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.k8s_api_endpoint_allowed_cidrs))
-    error_message = "Must be a comma separated string of valid CIDRs."
+    condition = trimspace(var.k8s_api_endpoint_allowed_cidrs) == "" || alltrue([
+      for cidr in split(",", replace(var.k8s_api_endpoint_allowed_cidrs, "/\\s+/", "")) : can(cidrnetmask(cidr))
+    ])
+    error_message = "Must be empty or a comma separated string of valid CIDRs."
   }
 }
 
@@ -48,14 +50,29 @@ variable "k8s_byo_ocir_url" {
   default     = ""
 }
 
+locals {
+  k8s_api_endpoint_allowed_cidrs = [
+    for cidr in split(",", replace(var.k8s_api_endpoint_allowed_cidrs, "/\\s+/", "")) : cidr
+    if cidr != ""
+  ]
+  k8s_api_endpoint_reachable_cidrs = [
+    for cidr in local.k8s_api_endpoint_allowed_cidrs : cidr
+    if length(regexall("^127\\.", cidr)) == 0
+  ]
+}
+
 # Validation: Configuration management requires either public API endpoint or ORM installation
 resource "terraform_data" "k8s_cfgmgt_validation" {
   count = var.infrastructure == "Kubernetes" ? 1 : 0
 
   lifecycle {
     precondition {
-      condition     = !var.k8s_run_cfgmgt || var.k8s_api_is_public || var.current_user_ocid != ""
-      error_message = "Cannot run configuration management with a private K8s API endpoint from local Terraform. Set k8s_api_is_public=true, k8s_run_cfgmgt=false, or use ORM."
+      condition = (
+        !var.k8s_run_cfgmgt ||
+        var.current_user_ocid != "" ||
+        (var.k8s_api_is_public && length(local.k8s_api_endpoint_reachable_cidrs) > 0)
+      )
+      error_message = "Local Kubernetes configuration management requires a reachable public API endpoint. Set k8s_api_endpoint_allowed_cidrs to your source CIDR, typically your public IP as /32, set k8s_run_cfgmgt=false, or deploy through OCI Resource Manager."
     }
   }
 }

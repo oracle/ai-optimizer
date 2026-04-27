@@ -3,7 +3,14 @@
 # spell-checker: disable
 
 locals {
-  api_endpoint_allowed_cidrs = split(",", replace(var.api_endpoint_allowed_cidrs, "/\\s+/", ""))
+  api_endpoint_allowed_cidrs = [
+    for cidr in split(",", replace(var.api_endpoint_allowed_cidrs, "/\\s+/", "")) : cidr
+    if cidr != ""
+  ]
+  api_endpoint_reachable_cidrs = [
+    for cidr in local.api_endpoint_allowed_cidrs : cidr
+    if length(regexall("^127\\.", cidr)) == 0
+  ]
   api_endpoint_custom_rules = var.api_is_public ? {
     for allowed_cidr in local.api_endpoint_allowed_cidrs :
     "Allow custom ingress to kube-apiserver from ${allowed_cidr}" => {

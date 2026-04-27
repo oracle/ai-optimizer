@@ -175,8 +175,9 @@ variables:
   k8s_api_endpoint_allowed_cidrs:
     type: array
     title: "API Endpoint Access Control"
-    required: true
-    default: "0.0.0.0/0"
+    description: "Leave empty to avoid public Kubernetes API ingress. For local Terraform configuration management, set this to your reachable source CIDR, typically your public IP as /32."
+    required: false
+    default: ""
     pattern: "$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
     visible: k8s_api_is_public
 
@@ -369,14 +370,14 @@ variables:
     type: array
     title: "Access Control for Application GUI"
     required: true
-    default: "0.0.0.0/0"
+    default: "127.0.0.0/8"
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
 
   server_allowed_cidrs:
     type: array
     title: "Access Control for Application API Server"
     required: true
-    default: "0.0.0.0/0"
+    default: "127.0.0.0/8"
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
 
   #########################################################################
@@ -473,7 +474,7 @@ variables:
     type: array
     title: "Access Control for the Autonomous Database"
     required: true
-    default: "0.0.0.0/0"
+    default: "127.0.0.0/8"
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
     visible:
       and:

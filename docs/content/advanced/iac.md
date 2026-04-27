@@ -52,6 +52,10 @@ Most of the other configuration options are self-explanatory, but let's highligh
 
 ![Stack - Access Control](../images/iac_stack_access_control.png)
 
+{{% notice style="code" title="Locked Down by Default!" icon="lock" %}}
+The Access Control fields are pre-populated with `127.0.0.0/8` (loopback only).  This is a deliberate "deny-by-default" so that an accidental Apply does not expose the deployment to the public internet.  You **must** replace these values with the CIDR blocks for your network before the {{< short_app_ref >}} GUI, API Server, or Autonomous Database will be reachable from your client.
+{{% /notice %}}
+
 To restrict access, provide a comma-separated list of CIDR blocks, for example: `192.168.1.0/24,10.0.0.0/16,203.0.113.42/32`
 
 In this example:
@@ -119,6 +123,13 @@ Most of the other configuration options are self-explanatory, but let's highligh
 
 ![Stack K8s - Access Control](../images/iac_stack_k8s_access_control.png)
 ![Stack - Access Control](../images/iac_stack_access_control.png)
+
+{{% notice style="code" title="Locked Down by Default!" icon="lock" %}}
+The Access Control fields are configured for "deny-by-default" so that an accidental Apply does not expose the deployment to the public internet:
+
+* **K8s API Endpoint Access Control** is left empty.  No NSG ingress rules are created for the public Kubernetes API endpoint, so the cluster control plane is not reachable from outside the VCN.  If you intend to manage the cluster from your workstation with `kubectl`, set this to your source CIDR (typically your public IP as `/32`).
+* **Application GUI**, **API Server**, and **Autonomous Database** Access Control fields are pre-populated with `127.0.0.0/8` (loopback only).  You **must** replace these values with the CIDR blocks for your network before the {{< short_app_ref >}} services will be reachable from your client.
+{{% /notice %}}
 
 To restrict access, provide a comma-separated list of CIDR blocks, for example: `192.168.1.0/24,10.0.0.0/16,203.0.113.42/32`
 
