@@ -303,7 +303,7 @@ check "ssl_provided_requires_cert_and_key" {
 variable "client_allowed_cidrs" {
   description = "Comma separated string of CIDR blocks from which the application client can be accessed."
   type        = string
-  default     = "0.0.0.0/0"
+  default     = "127.0.0.0/8"
   validation {
     condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.client_allowed_cidrs))
     error_message = "Must be a comma separated string of valid CIDRs."
@@ -313,7 +313,7 @@ variable "client_allowed_cidrs" {
 variable "server_allowed_cidrs" {
   description = "Comma separated string of CIDR blocks from which the application server can be accessed."
   type        = string
-  default     = "0.0.0.0/0"
+  default     = "127.0.0.0/8"
   validation {
     condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.server_allowed_cidrs))
     error_message = "Must be a comma separated string of valid CIDRs."
