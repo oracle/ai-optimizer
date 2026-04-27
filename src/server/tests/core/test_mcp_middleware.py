@@ -71,7 +71,7 @@ async def test_wrong_key_returns_403():
 
 @pytest.mark.unit
 async def test_no_configured_key_returns_403():
-    """Fail-secure: returns 403 when no key is configured on the server."""
+    """Returns 403 when no key is configured on the server."""
     wrapped = MCPApiKeyMiddleware(_inner_app)
     with patch("server.app.core.mcp.settings") as mock_settings:
         mock_settings.api_key = None

@@ -376,7 +376,7 @@ class TestApiPatch:
 
     def test_success(self):
         """Verify api_patch returns parsed JSON on a 200 response."""
-        resp = _resp(200, json_data={"patched": True})
+        resp = _resp(200, json_data={"updated": True})
         ctx, _ = _mock_client_ctx(response=resp)
         settings = _mock_settings()
         with (
@@ -386,7 +386,7 @@ class TestApiPatch:
             from client.app.core.api import api_patch
 
             result = api_patch("items/1", json={"field": "val"})
-        assert result == {"patched": True}
+        assert result == {"updated": True}
 
     def test_204_returns_none(self):
         """Verify api_patch returns None on a 204 No Content response."""
@@ -415,8 +415,8 @@ class TestApiPatch:
         ):
             from client.app.core.api import api_patch
 
-            api_patch("items/1", toast="Patched!")
-        mock_st.toast.assert_called_once_with("Patched!", icon="✅")
+            api_patch("items/1", toast="Updated!")
+        mock_st.toast.assert_called_once_with("Updated!", icon="✅")
 
     def test_http_error_raised(self):
         """Verify api_patch raises HTTPStatusError on a 500 response."""

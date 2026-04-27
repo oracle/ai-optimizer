@@ -33,8 +33,8 @@ def _remove_main_module():
 def _import_main(state, get_settings_side_effect):
     """Import client.app.main with all module-level dependencies mocked.
 
-    Patches target *source* modules so that ``from X import Y`` picks up mocks
-    during the fresh import.  Streamlit is patched via ``patch.object`` on the
+    Mock target *source* modules so that ``from X import Y`` picks up mocks
+    during the fresh import.  Streamlit is replaced via ``patch.object`` on the
     real module so ``from streamlit import session_state as state`` binds to
     our AttrDict.
     """

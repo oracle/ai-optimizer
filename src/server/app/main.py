@@ -129,8 +129,12 @@ mcp_app = mcp.http_app(
 app = FastAPI(
     title="Oracle AI Optimizer and Toolkit",
     version=__version__,
-    docs_url=f"{API_PREFIX}/docs",
-    openapi_url=f"{API_PREFIX}/openapi.json",
+    # Docs routes are served by the v1 router behind verify_api_key; disable
+    # the built-in unauthenticated ones FastAPI would otherwise register.
+    docs_url=None,
+    openapi_url=None,
+    redoc_url=None,
+    swagger_ui_oauth2_redirect_url=None,
     root_path=f"/{URL_PREFIX}" if URL_PREFIX else "",
     lifespan=combine_lifespans(lifespan, mcp_app.lifespan),
     license_info={

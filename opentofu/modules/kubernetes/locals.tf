@@ -4,23 +4,23 @@
 
 // Oracle Resource Manager
 locals {
-  create_orm_pe = var.orm_install ? contains(local.api_endpoint_allowed_cidrs, "0.0.0.0/0") ? false : true : false
+  create_orm_pe = var.orm_install && var.run_cfgmgt
   orm_pe        = local.create_orm_pe ? data.oci_resourcemanager_private_endpoint_reachable_ip.orm_pe_reachable_ip[0].ip_address : ""
 }
 
 // Configuration Management Validation
 locals {
-  can_apply_cfgmgt         = var.api_is_public || var.orm_install
+  can_apply_cfgmgt         = var.orm_install || (var.api_is_public && length(local.api_endpoint_reachable_cidrs) > 0)
   should_show_manual_steps = var.run_cfgmgt && !local.can_apply_cfgmgt
 
   cfgmgt_error_message = <<-EOT
-    Cannot run configuration management (Helm/kubectl) with a private K8s API endpoint from local Terraform.
+    Cannot run configuration management (Helm/kubectl) from local Terraform without a reachable K8s API endpoint.
 
-    The K8s API endpoint is configured as private (api_is_public=false) and this is not an ORM deployment.
-    Local Terraform cannot reach the K8s API through the NSG rules.
+    The K8s API endpoint is configured as private, or no non-loopback public CIDR is allowed, and this is not an ORM deployment.
+    Local Terraform cannot reach the K8s API through the current NSG rules.
 
     Solutions:
-      1. Set api_is_public = true to allow external access via NSG rules (recommended for initial setup)
+      1. Set api_is_public = true and allow your source CIDR, typically your public IP as /32
       2. Set run_cfgmgt = false and manually apply Helm from a bastion host with VCN access
       3. Use Oracle Resource Manager (ORM) for deployment (has private endpoint access)
 

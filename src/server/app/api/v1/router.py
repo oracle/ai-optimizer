@@ -11,6 +11,7 @@ from server.app.api.v1.endpoints import (
     agentspec,
     chat,
     databases,
+    docs,
     embed,
     help_text,
     models,
@@ -24,6 +25,7 @@ from server.app.api.v1.endpoints import (
 router = APIRouter()
 # -- Non Authenticated Endpoints
 router.include_router(probes.noauth, tags=["Probes"])
+router.include_router(docs.noauth, tags=["Docs"])
 
 # -- Authenticated Endpoints
 router.include_router(
@@ -74,5 +76,10 @@ router.include_router(
 router.include_router(
     embed.auth,
     tags=["Embed"],
+    dependencies=[Depends(verify_api_key)],
+)
+router.include_router(
+    docs.auth,
+    tags=["Docs"],
     dependencies=[Depends(verify_api_key)],
 )

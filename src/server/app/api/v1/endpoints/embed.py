@@ -7,13 +7,20 @@ Embed endpoints — file storage, document splitting, vector store population, a
 # spell-checker:ignore docos slugified webscrape
 
 import asyncio
+import contextlib
 import datetime
 import json
 import logging
+import lzma
 import os
 import shutil
+import tempfile
 import zipfile
+import zlib
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlparse
 
 import httpx
@@ -23,6 +30,7 @@ from pydantic import HttpUrl
 
 from server.app.api.v1.endpoints.oci import _find_oci_profile
 from server.app.api.v1.schemas.chat import MessageResponse
+from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.embed import (
     EmbedProcessingResult,
     SqlStoreRequest,
@@ -59,11 +67,92 @@ from server.app.oci.bucket import (
 
 LOGGER = logging.getLogger(__name__)
 
+# Per-client lock guarding mutations of the shared embedding temp
+# directory. Both `store_local_file` (full upload) and `split_embed`
+# (`_prepare_work_dir`) acquire the lock for the same client so the
+# backup/rename sequence in `_promote_atomically` cannot race with a
+# concurrent move-out of the same files. The registry is an LRU
+# bounded by `settings.max_clients` so a long-lived process cannot
+# accumulate locks for every transient Client header value seen.
+@dataclass
+class _LockEntry:
+    """Registry entry pairing a per-client lock with an in-use refcount.
+
+    `users` counts everyone currently inside `_client_lock(client)` —
+    both the holder and any queued waiters. The count is mutated only
+    under `_client_locks_guard`, so eviction can safely treat
+    ``users == 0`` as "no in-flight request relies on this entry" and
+    skip everything else. This is strictly tighter than checking
+    ``lock.locked()``: ``asyncio.Lock`` has a brief handoff window
+    between ``release()`` and a woken waiter resuming where ``locked()``
+    is False even though a waiter is queued, and evicting in that
+    window would let a subsequent request for the same client allocate
+    a second Lock and run concurrently with the still-pending waiter.
+    """
+
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    users: int = 0
+
+
+_client_promotion_locks: OrderedDict[str, _LockEntry] = OrderedDict()
+_client_locks_guard = asyncio.Lock()
+
+
+@contextlib.asynccontextmanager
+async def _client_lock(client: str):
+    """Per-client serialisation around shared embedding temp dir mutations.
+
+    Indexes by the same canonical form `get_temp_directory` uses
+    (`safe_filename(client)`) so two raw header values that resolve to
+    the same on-disk directory share one lock. Without this, e.g.
+    ``Client: team/a`` and ``Client: a`` would lock independently while
+    operating on the same files in `<base>/a/embedding`.
+
+    Caps the registry at ``settings.max_clients`` entries with LRU
+    eviction. Entries with ``users > 0`` are skipped during eviction
+    so an in-flight request — holder *or* queued waiter — retains its
+    mutual-exclusion guarantee even when the registry is under
+    pressure.
+    """
+    key = safe_filename(client)
+    async with _client_locks_guard:
+        entry = _client_promotion_locks.get(key)
+        if entry is None:
+            cap = max(1, settings.max_clients)
+            while len(_client_promotion_locks) >= cap:
+                evict_key = next(
+                    (k for k, e in _client_promotion_locks.items() if e.users == 0),
+                    None,
+                )
+                if evict_key is None:
+                    # Every entry is in use; accept temporary growth
+                    # rather than break in-flight serialisation.
+                    break
+                _client_promotion_locks.pop(evict_key)
+            entry = _LockEntry()
+            _client_promotion_locks[key] = entry
+        else:
+            _client_promotion_locks.move_to_end(key)
+        # Increment under the guard so a waiter is counted *before* it
+        # awaits `entry.lock` — eviction will see users >= 1 even
+        # during the asyncio release/resume handoff window.
+        entry.users += 1
+    try:
+        async with entry.lock:
+            yield
+    finally:
+        async with _client_locks_guard:
+            entry.users -= 1
+
+
 # ZIP extraction safety limits
 _ZIP_MAX_FILES = 500
 _ZIP_MAX_TOTAL_BYTES = 500 * 1024 * 1024  # 500 MB total decompressed
 _ZIP_MAX_FILE_BYTES = 100 * 1024 * 1024  # 100 MB per file
+_ZIP_STREAM_CHUNK = 64 * 1024  # copy buffer for streaming zip extraction
 _ZIP_BLOCKED_EXTENSIONS = frozenset({".zip", ".gz", ".tar", ".bz2", ".xz", ".7z", ".rar"})
+
+_METADATA_FILENAME = ".file_metadata.json"
 
 _WEB_FETCH_TIMEOUT = 60.0  # seconds
 
@@ -88,47 +177,195 @@ auth = APIRouter(prefix="/embed")
 # ---------------------------------------------------------------------------
 
 
-def _extract_zip(zip_path: Path, dest: Path) -> dict:
-    """Extract *zip_path* into *dest* with safety limits; return per-file metadata."""
-    with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        members = [m for m in zip_ref.infolist() if not m.filename.endswith("/")]
-        if len(members) > _ZIP_MAX_FILES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"ZIP exceeds max file count ({_ZIP_MAX_FILES}).",
-            )
-        total_size = sum(m.file_size for m in members)
-        if total_size > _ZIP_MAX_TOTAL_BYTES:
-            raise HTTPException(
-                status_code=400,
-                detail=(f"ZIP decompressed size exceeds limit ({_ZIP_MAX_TOTAL_BYTES // (1024 * 1024)} MB)."),
-            )
+def _promote_atomically(names, staging: Path, dest: Path, detail: str) -> None:
+    """Move *names* from *staging* into *dest* with rollback on OSError.
 
-        for info in members:
-            if info.file_size > _ZIP_MAX_FILE_BYTES:
+    Before each move, any file already at ``dest / name`` is stashed in
+    a private sub-directory of *staging* (created via ``mkdtemp`` so
+    its name cannot collide with any staged member basename, including
+    contrived names like ``.backup_foo.txt``).  A later mid-loop
+    OSError restores every touched destination to its pre-call bytes
+    rather than leaving whichever copy happened to win the last rename.
+    On successful completion the backup sub-directory is removed along
+    with *staging* by the caller's ``shutil.rmtree``.  Failure raises
+    :class:`HTTPException` (500) with *detail* once every reachable
+    backup has been restored and every new file undone.
+
+    *names* is any iterable of basename strings — iterating ``dict``
+    keys is the intended call site.
+    """
+    backup_dir = Path(tempfile.mkdtemp(dir=staging, prefix=".backup_"))
+    backups: dict[Path, Path] = {}  # dst_path -> backup_path
+    promoted: list[Path] = []
+
+    def _rollback() -> None:
+        # Clear any new file we wrote (promoted or not), then restore
+        # the backed-up original. Suppressed failures are best-effort —
+        # the subsequent rmtree of `backup_dir` will at worst leave
+        # dest empty for a name whose backup could not be moved back.
+        touched = set(backups) | set(promoted)
+        for dst_path in touched:
+            with contextlib.suppress(OSError):
+                dst_path.unlink(missing_ok=True)
+            backup_path = backups.get(dst_path)
+            if backup_path is not None and backup_path.exists():
+                with contextlib.suppress(OSError):
+                    shutil.move(str(backup_path), str(dst_path))
+
+    try:
+        for name in names:
+            dst_path = dest / name
+            # A directory at dst would otherwise be silently moved into
+            # the backup dir and replaced with our staged file —
+            # concurrent split_embed work_dirs and other in-flight
+            # subdirectories must not be clobbered.
+            if dst_path.is_dir():
+                _rollback()
                 raise HTTPException(
-                    status_code=400,
+                    status_code=409,
                     detail=(
-                        f"File {info.filename} exceeds per-file size limit ({_ZIP_MAX_FILE_BYTES // (1024 * 1024)} MB)."
+                        f"Cannot store '{name}': a directory with that name "
+                        f"already exists in the temp directory."
                     ),
                 )
+            backup_path = backup_dir / name
+            try:
+                shutil.move(str(dst_path), str(backup_path))
+            except FileNotFoundError:
+                pass  # nothing pre-existing to back up
+            else:
+                backups[dst_path] = backup_path
+            shutil.move(str(staging / name), str(dst_path))
+            promoted.append(dst_path)
+    except OSError as ex:
+        _rollback()
+        raise HTTPException(status_code=500, detail=detail) from ex
+    finally:
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
-        # All checks passed — extract
-        metadata: dict = {}
-        for info in members:
-            member_name = os.path.basename(info.filename)
-            if not member_name or Path(member_name).suffix.lower() in _ZIP_BLOCKED_EXTENSIONS:
-                continue
-            extracted_path = dest / member_name
-            with zip_ref.open(info) as source, extracted_path.open("wb") as target:
-                target.write(source.read())
 
-            metadata[member_name] = {
-                "size": extracted_path.stat().st_size,
-                "time_modified": datetime.datetime.fromtimestamp(
-                    extracted_path.stat().st_mtime, datetime.timezone.utc
-                ).isoformat(),
-            }
+def _extract_zip(zip_path: Path, dest: Path) -> dict:
+    """Extract *zip_path* into *dest* with safety limits; return per-file metadata.
+
+    Extraction is atomic per-archive: members are written into a staging
+    sub-directory of *dest*, then moved into *dest* only after every
+    member has been read and validated.  A failure at any point (size
+    cap, CRC mismatch, decompression error, I/O error) removes the
+    staging directory and leaves *dest* exactly as it was on entry —
+    including any pre-existing file whose basename collides with an
+    archive member.  Corrupt uploads surface as :class:`HTTPException`
+    (400) rather than :class:`zipfile.BadZipFile`, so the caller's
+    generic error handling does not silently swallow them.
+    """
+    # The constructor itself can raise for user-controlled archive
+    # problems that never reach `infolist`: BadZipFile for a missing /
+    # corrupt end-of-central-directory, NotImplementedError for an
+    # unsupported extract version or compression method advertised in
+    # the central directory, and RuntimeError / OSError for other
+    # header parse failures.  Translate the lot to 400 so bad uploads
+    # never become 500s.
+    try:
+        zip_ref = zipfile.ZipFile(zip_path, "r")
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError) as ex:
+        raise HTTPException(status_code=400, detail="Upload is not a valid ZIP archive.") from ex
+
+    with zip_ref:
+        # Wrap every path that can raise from corrupt archive data —
+        # infolist (central directory parse), open(info) (local header
+        # parse), and the copyfileobj read loop (decompressor output) —
+        # in one handler so BadZipFile AND zlib.error both become HTTP
+        # 400 instead of leaking out as 500s.
+        try:
+            members = [m for m in zip_ref.infolist() if not m.filename.endswith("/")]
+            if len(members) > _ZIP_MAX_FILES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"ZIP exceeds max file count ({_ZIP_MAX_FILES}).",
+                )
+            total_size = sum(m.file_size for m in members)
+            if total_size > _ZIP_MAX_TOTAL_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(f"ZIP decompressed size exceeds limit ({_ZIP_MAX_TOTAL_BYTES // (1024 * 1024)} MB)."),
+                )
+
+            for info in members:
+                if info.file_size > _ZIP_MAX_FILE_BYTES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"File {info.filename} exceeds per-file size limit "
+                            f"({_ZIP_MAX_FILE_BYTES // (1024 * 1024)} MB)."
+                        ),
+                    )
+
+            # All caps passed — stage members under a private sub-directory
+            # of dest so a mid-extraction failure cannot clobber any file
+            # already present in dest.
+            metadata: dict = {}
+            staging = Path(tempfile.mkdtemp(dir=dest, prefix=".zipextract_"))
+            try:
+                for info in members:
+                    member_name = os.path.basename(info.filename)
+                    if not member_name or Path(member_name).suffix.lower() in _ZIP_BLOCKED_EXTENSIONS:
+                        continue
+                    staging_path = staging / member_name
+                    # `zip_ref.open(info)` surfaces user-input archive
+                    # problems before any bytes are decompressed:
+                    # RuntimeError for encrypted members, NotImplementedError
+                    # for unsupported compression methods, and OSError for
+                    # certain local-header corruptions.  Translate them to
+                    # 400 here so the outer handler can keep treating
+                    # OSError from disk writes (staging_path.open, stat,
+                    # target.write) as 500.
+                    try:
+                        source_cm = zip_ref.open(info)
+                    except (RuntimeError, NotImplementedError, OSError) as ex:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="ZIP archive is corrupt or unreadable.",
+                        ) from ex
+                    # Stream member bytes, isolating the read side so a
+                    # corrupt DEFLATE / bzip2 / LZMA stream surfaces as
+                    # 400 instead of 500. bz2 raises plain OSError, lzma
+                    # raises lzma.LZMAError, and DEFLATE raises
+                    # zlib.error — none of which inherit from
+                    # BadZipFile, so the outer handler would otherwise
+                    # expose implementation errors. The write side stays uncaught: ENOSPC
+                    # / EROFS / etc. on the target are real server
+                    # failures and must remain 500.
+                    with source_cm as source, staging_path.open("wb") as target:
+                        while True:
+                            try:
+                                chunk = source.read(_ZIP_STREAM_CHUNK)
+                            except (OSError, zlib.error, lzma.LZMAError) as ex:
+                                raise HTTPException(
+                                    status_code=400,
+                                    detail="ZIP archive is corrupt or unreadable.",
+                                ) from ex
+                            if not chunk:
+                                break
+                            target.write(chunk)
+
+                    stat_result = staging_path.stat()
+                    metadata[member_name] = {
+                        "size": stat_result.st_size,
+                        "time_modified": datetime.datetime.fromtimestamp(
+                            stat_result.st_mtime, datetime.timezone.utc
+                        ).isoformat(),
+                    }
+                # Every member extracted cleanly — promote into dest.
+                # Colliding pre-existing files are backed up first and
+                # restored on any mid-promotion OSError, so dest is
+                # left either fully updated or untouched.
+                _promote_atomically(metadata, staging, dest, detail="Failed to finalise archive extraction.")
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
+        except (zipfile.BadZipFile, zlib.error) as ex:
+            raise HTTPException(
+                status_code=400,
+                detail="ZIP archive is corrupt or unreadable.",
+            ) from ex
     return metadata
 
 
@@ -163,7 +400,7 @@ def _prepare_work_dir(temp_directory: Path, work_dir: Path, client: str) -> list
             detail=f"Embed: Client {client} documents folder not found.",
         ) from exc
 
-    files = [f for f in work_dir.iterdir() if f.is_file() and f.name != ".file_metadata.json"]
+    files = [f for f in work_dir.iterdir() if f.is_file() and f.name != _METADATA_FILENAME]
     if not files:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(
@@ -175,7 +412,7 @@ def _prepare_work_dir(temp_directory: Path, work_dir: Path, client: str) -> list
 
 def _load_file_metadata(work_dir: Path):
     """Load .file_metadata.json from *work_dir* if it exists, else return None."""
-    metadata_path = work_dir / ".file_metadata.json"
+    metadata_path = work_dir / _METADATA_FILENAME
     if not metadata_path.exists():
         return None
     try:
@@ -214,7 +451,7 @@ def _get_client_db_config(client: str):
 )
 async def embed_drop_vs(
     vs: str,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> MessageResponse:
     """Drop a vector store table."""
     LOGGER.debug("Received %s embed_drop_vs: %s", client, vs)
@@ -254,7 +491,7 @@ async def embed_drop_vs(
 )
 async def embed_get_files(
     vs: str,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Get list of files in a vector store with statistics."""
     LOGGER.debug("Received %s embed_get_files: %s", client, vs)
@@ -280,7 +517,7 @@ async def embed_get_files(
 )
 async def comment_vs(
     request: VectorStoreConfig,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> MessageResponse:
     """Update the comment on an existing vector store."""
     LOGGER.info("Received comment_vs - request: %s", request)
@@ -317,7 +554,7 @@ async def comment_vs(
 )
 async def store_sql_file(
     request: SqlStoreRequest,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store contents from a SQL query result as a file for embedding."""
     LOGGER.debug("Received store_sql_file - query: %s, db_alias: %s", request.query, request.db_alias)
@@ -352,7 +589,7 @@ async def store_sql_file(
 )
 async def store_web_file(
     request: list[HttpUrl],
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store contents from web URLs for embedding."""
     LOGGER.debug("Received store_web_file - request: %s", request)
@@ -422,44 +659,69 @@ async def store_web_file(
 )
 async def store_local_file(
     files: list[UploadFile] = File(...),
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
-    """Store uploaded local files for embedding (supports ZIP extraction)."""
+    """Store uploaded local files for embedding (supports ZIP extraction).
+
+    The entire batch is staged under a private sub-directory of the
+    client's embedding temp directory and promoted atomically only after
+    every upload (and every ZIP extraction) has succeeded. A mid-batch
+    failure removes the staging directory and leaves the shared temp
+    directory — including files from prior /local/store requests — in
+    its pre-request state.
+    """
     LOGGER.debug("Received store_local_file - files: %s", files)
     temp_directory = get_temp_directory(client, "embedding")
 
-    file_metadata: dict = {}
-    for upload_file in files:
-        if not upload_file.filename:
-            continue
-        filename = temp_directory / safe_filename(upload_file.filename)
-        file_content = await upload_file.read()
-        with filename.open("wb") as f:
-            f.write(file_content)
+    # Acquire the per-client lock *before* any staging directory exists.
+    # Holding it across the full upload (staging → promotion) means a
+    # concurrent split_embed cannot enter `_prepare_work_dir` and find
+    # an empty temp_directory mid-upload, which would otherwise return
+    # 404 even as our request is about to land its files.
+    async with _client_lock(client):
+        request_staging = Path(tempfile.mkdtemp(dir=temp_directory, prefix=".request_"))
+        try:
+            file_metadata: dict = {}
+            for upload_file in files:
+                if not upload_file.filename:
+                    continue
+                staged_name = request_staging / safe_filename(upload_file.filename)
+                file_content = await upload_file.read()
+                with staged_name.open("wb") as f:
+                    f.write(file_content)
 
-        if filename.suffix.lower() == ".zip":
-            try:
-                LOGGER.info("Extracting zip file: %s", filename.name)
-                file_metadata.update(_extract_zip(filename, temp_directory))
-                filename.unlink()
-                LOGGER.info("Successfully extracted zip file: %s", upload_file.filename)
-            except HTTPException:
-                filename.unlink(missing_ok=True)
-                raise
-            except Exception as e:
-                filename.unlink(missing_ok=True)
-                LOGGER.error("Failed to extract zip file %s: %s", upload_file.filename, str(e))
-        else:
-            file_metadata[upload_file.filename] = {
-                "size": len(file_content),
-                "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            }
+                if staged_name.suffix.lower() == ".zip":
+                    LOGGER.info("Extracting zip file: %s", staged_name.name)
+                    file_metadata.update(_extract_zip(staged_name, request_staging))
+                    staged_name.unlink()
+                    LOGGER.info("Successfully extracted zip file: %s", upload_file.filename)
+                else:
+                    file_metadata[upload_file.filename] = {
+                        "size": len(file_content),
+                        "time_modified": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    }
 
-    # Store metadata in JSON file for later use
-    with (temp_directory / ".file_metadata.json").open("w") as f:
-        json.dump(file_metadata, f)
+            # Write metadata into staging so it promotes atomically with the files.
+            with (request_staging / _METADATA_FILENAME).open("w") as f:
+                json.dump(file_metadata, f)
 
-    stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != ".file_metadata.json"]
+            # Metadata is promoted *last* so a concurrent
+            # `_prepare_work_dir` on the shared temp directory never
+            # sees metadata without the documents it describes.
+            staged_names = sorted(item.name for item in request_staging.iterdir() if item.is_file())
+            ordered_names = [n for n in staged_names if n != _METADATA_FILENAME]
+            if _METADATA_FILENAME in staged_names:
+                ordered_names.append(_METADATA_FILENAME)
+            _promote_atomically(
+                ordered_names,
+                request_staging,
+                temp_directory,
+                detail="Failed to finalise upload to temporary directory.",
+            )
+        finally:
+            shutil.rmtree(request_staging, ignore_errors=True)
+
+    stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != _METADATA_FILENAME]
     return JSONResponse(status_code=200, content=stored_files)
 
 
@@ -476,7 +738,7 @@ async def store_local_file(
 async def split_embed(
     request: VectorStoreConfig,
     rate_limit: int = 0,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> EmbedProcessingResult:
     """Load stored files, split them into chunks, embed, and populate the vector store."""
     LOGGER.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
@@ -487,7 +749,14 @@ async def split_embed(
     oci_profile = get_oci_profile(client)
     work_dir = get_temp_directory(client, "embedding", unique=True)
 
-    files = await asyncio.to_thread(_prepare_work_dir, get_temp_directory(client, "embedding"), work_dir, client)
+    # `_prepare_work_dir` moves every file out of the shared embedding
+    # temp directory; serialize it on the same per-client lock as
+    # `store_local_file`'s promotion so the two cannot race on the same
+    # basenames.
+    async with _client_lock(client):
+        files = await asyncio.to_thread(
+            _prepare_work_dir, get_temp_directory(client, "embedding"), work_dir, client
+        )
     LOGGER.info("Processing Files: %s", files)
     file_metadata = await asyncio.to_thread(_load_file_metadata, work_dir)
 
@@ -558,7 +827,7 @@ async def split_embed(
 )
 async def refresh_vector_store(
     request: VectorStoreRefreshRequest,
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ) -> VectorStoreRefreshStatus:
     """Refresh an existing vector store with new/modified documents from an OCI bucket."""
     LOGGER.debug("Received refresh_vector_store - request: %s", request)

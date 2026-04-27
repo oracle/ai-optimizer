@@ -134,7 +134,7 @@ class TestLiteLlmModelConfig:
         assert restored.extra_kwargs == {}
 
     def test_factory_double_registration_does_not_recurse(self):
-        """Calling register_litellm_model_factory() twice must not stack patches."""
+        """Calling register_litellm_model_factory() twice must not stack wrappers."""
         from server.app.runtime.wayflow.adapters.litellm import register_litellm_model_factory
 
         # Already registered once by conftest; register again

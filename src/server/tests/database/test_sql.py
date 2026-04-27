@@ -11,7 +11,24 @@ from unittest.mock import AsyncMock, MagicMock
 import oracledb
 import pytest
 
-from server.app.database.sql import execute_sql, validate_oracle_identifier
+from server.app.database.sql import (
+    DEFAULT_MAX_ROWS,
+    ResultSetTooLargeError,
+    execute_sql,
+    validate_vs_table_name,
+)
+
+
+def _fetchmany_from(rows):
+    """Build an AsyncMock fetchmany side-effect that drains *rows* in chunks."""
+    pending = list(rows)
+
+    async def _fm(size):
+        chunk = pending[:size]
+        del pending[:size]
+        return chunk
+
+    return _fm
 
 # ---------------------------------------------------------------------------
 # Unit tests (no database required)
@@ -39,7 +56,7 @@ async def test_execute_sql_select():
     """SELECT returns list of tuples when cursor.description is set."""
     cursor = AsyncMock()
     cursor.description = [("COL1",)]
-    cursor.fetchall = AsyncMock(return_value=[(1,), (2,)])
+    cursor.fetchmany = AsyncMock(side_effect=_fetchmany_from([(1,), (2,)]))
     conn = _mock_conn(cursor)
 
     result = await execute_sql(conn, "SELECT 1 FROM DUAL")
@@ -56,13 +73,79 @@ async def test_execute_sql_select_with_lob():
 
     cursor = AsyncMock()
     cursor.description = [("COL1",)]
-    cursor.fetchall = AsyncMock(return_value=[(lob,)])
+    cursor.fetchmany = AsyncMock(side_effect=_fetchmany_from([(lob,)]))
     conn = _mock_conn(cursor)
 
     result = await execute_sql(conn, "SELECT clob_col FROM t")
 
     assert result == [("lob_content",)]
     lob.read.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_execute_sql_uses_fetchmany_not_fetchall():
+    """SELECT path streams via fetchmany; fetchall is never awaited."""
+    cursor = AsyncMock()
+    cursor.description = [("COL1",)]
+    cursor.fetchmany = AsyncMock(side_effect=_fetchmany_from([(1,)]))
+    cursor.fetchall = AsyncMock()
+    conn = _mock_conn(cursor)
+
+    await execute_sql(conn, "SELECT 1 FROM DUAL")
+
+    cursor.fetchmany.assert_awaited()
+    cursor.fetchall.assert_not_awaited()
+
+
+@pytest.mark.unit
+async def test_execute_sql_returns_rows_under_cap():
+    """Result sets within max_rows are returned in full."""
+    cursor = AsyncMock()
+    cursor.description = [("ID",)]
+    cursor.fetchmany = AsyncMock(side_effect=_fetchmany_from([(i,) for i in range(50)]))
+    conn = _mock_conn(cursor)
+
+    result = await execute_sql(conn, "SELECT id FROM t", max_rows=100)
+
+    assert result == [(i,) for i in range(50)]
+
+
+@pytest.mark.unit
+async def test_execute_sql_raises_when_result_exceeds_cap():
+    """Result sets larger than max_rows raise the specific overflow type."""
+    cursor = AsyncMock()
+    cursor.description = [("ID",)]
+    cursor.fetchmany = AsyncMock(side_effect=_fetchmany_from([(i,) for i in range(200)]))
+    conn = _mock_conn(cursor)
+
+    with pytest.raises(ResultSetTooLargeError, match="exceeds max_rows"):
+        await execute_sql(conn, "SELECT id FROM big_table", max_rows=10)
+
+
+@pytest.mark.unit
+def test_result_set_too_large_is_runtime_error():
+    """ResultSetTooLargeError is a RuntimeError subclass for backwards compatibility."""
+    assert issubclass(ResultSetTooLargeError, RuntimeError)
+
+
+@pytest.mark.unit
+async def test_execute_sql_custom_max_rows_at_boundary():
+    """Result of exactly max_rows succeeds (no off-by-one overflow)."""
+    cursor = AsyncMock()
+    cursor.description = [("ID",)]
+    cursor.fetchmany = AsyncMock(side_effect=_fetchmany_from([(i,) for i in range(5)]))
+    conn = _mock_conn(cursor)
+
+    result = await execute_sql(conn, "SELECT id FROM t", max_rows=5)
+
+    assert result == [(i,) for i in range(5)]
+
+
+@pytest.mark.unit
+def test_execute_sql_default_max_rows_constant():
+    """Default cap is exposed as a module constant for callers/tests."""
+    assert isinstance(DEFAULT_MAX_ROWS, int)
+    assert DEFAULT_MAX_ROWS >= 10_000
 
 
 @pytest.mark.unit
@@ -152,55 +235,86 @@ async def test_execute_sql_reraises_when_no_args():
 
 
 # ---------------------------------------------------------------------------
-# validate_oracle_identifier
+# validate_vs_table_name (strict — defense in depth for COMMENT ON / DDL)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestValidateOracleIdentifier:
-    """Test Oracle identifier validation."""
+class TestValidateVsTableName:
+    """``\\w+`` validator for vector-store table names — matches the output of
+    ``generate_vs_metadata`` (Unicode ``re.sub(r"\\W", "_", ...)``) so legacy
+    non-ASCII auto-generated stores remain operable, while every SQL
+    metacharacter (quotes, whitespace, ``;``, ``--``, parens) is still rejected.
+    """
 
     @pytest.mark.parametrize(
         "name",
         [
+            # Auto-generated names from the current generator
             "MY_TABLE",
-            "table123",
-            "A",
             "VS_TMP",
-            "OCI_EMBED_V3_500_50_COSINE_HNSW",
-            "SYS$SESSION",
-            "TEMP#1",
+            "OPENAI_TEXT_EMBEDDING_3_SMALL_1000_100_COSINE_HNSW",
+            "MY_STORE_OCI_EMBED_V3_500_50_DOT_PRODUCT_HNSW_TMP",
+            "A",
+            "TBL_123",
+            "_LEADING_UNDERSCORE",
+            # Legacy auto-generated names that must remain droppable / editable.
+            "CAFÉ_OPENAI_EMBED_HNSW",
+            "ДОКА_OPENAI_EMBED_HNSW",
+            "文档_OPENAI_EMBED_HNSW",
+            # Lowercase / mixed-case forms come back from discover_vector_stores
+            # if a table was created with a quoted lowercase identifier.
+            "lowercase",
+            "Mixed_Case",
+        ],
+    )
+    def test_accepts_word_chars(self, name):
+        """``\\w+`` names — including legacy non-ASCII — round-trip unchanged."""
+        assert validate_vs_table_name(name) == name
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            # SQL metacharacter payloads
+            "X IS 'x'--",
+            "VS' OR '1'='1",
+            "VS;DROP TABLE T",
+            'table"name',
+            'A"B',
+            'A""B',
+            # Whitespace and punctuation outside \w
             "has space",
-            "CUSTOMER-DATA",
-            "dot.name",
+            "with-hyphen",
+            "with.dot",
             "semi;colon",
             "slash/path",
+            "SYS$SESSION",
+            "TEMP#1",
+            "name with\nnewline",
+            "name\twith\ttab",
+            "parens(here)",
+            # Newline-bearing names must be rejected even when the visible
+            # prefix is otherwise identifier-shaped.
+            "VS\n",
+            "VS\r",
+            "VS\r\n",
+            "\nVS",
+            "VS\nDROP TABLE T",
         ],
     )
-    def test_valid_identifiers(self, name):
-        """Non-empty names without double-quotes are returned unchanged."""
-        assert validate_oracle_identifier(name) == name
+    def test_rejects_sql_metacharacters(self, name):
+        """Quotes, whitespace, ``;``, ``--``, parens, ``$``/``#``, and any
+        leading/trailing line breaks are all rejected."""
+        with pytest.raises(ValueError, match="Invalid vector store table name"):
+            validate_vs_table_name(name)
 
-    def test_quote_escaping(self):
-        """Embedded double-quotes are escaped to prevent identifier breakout."""
-        assert validate_oracle_identifier('table"name') == 'table""name'
-        assert validate_oracle_identifier('a"b"c') == 'a""b""c'
+    def test_rejects_empty(self):
+        with pytest.raises(ValueError, match="Invalid vector store table name"):
+            validate_vs_table_name("")
 
-    @pytest.mark.parametrize(
-        "name",
-        [
-            "",
-        ],
-    )
-    def test_invalid_identifiers(self, name):
-        """Empty string is rejected."""
-        with pytest.raises(ValueError, match="Invalid Oracle identifier"):
-            validate_oracle_identifier(name)
-
-    def test_none_raises(self):
-        """None input raises (via falsy check)."""
+    def test_rejects_none(self):
         with pytest.raises((ValueError, TypeError)):
-            validate_oracle_identifier(None)  # type: ignore[arg-type]
+            validate_vs_table_name(None)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

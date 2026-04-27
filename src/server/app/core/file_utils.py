@@ -15,7 +15,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def safe_filename(raw: str) -> str:
-    """Strip path components from a string to prevent directory traversal.
+    """Return only the final filename component from path-like input.
 
     Raises :class:`~fastapi.HTTPException` (400) for empty, ``'.'``, or ``'..'`` names.
     """

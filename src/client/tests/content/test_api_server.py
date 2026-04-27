@@ -107,7 +107,7 @@ class TestServerActivity:
         ):
             from client.app.content.api_server import _server_activity
 
-            # Access the unwrapped function to bypass the @st.fragment decorator
+            # Access the unwrapped function directly for the unit test
             fn = getattr(_server_activity, "__wrapped__", _server_activity)
             fn()
 

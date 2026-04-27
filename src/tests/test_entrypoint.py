@@ -89,9 +89,9 @@ class TestPrepareOciConfig:
 
         runtime_dir = tmp_path / "runtime" / ".oci"
 
-        # Monkey-patch the hard-coded paths
+        # Override the hard-coded paths
         monkeypatch.setattr(entrypoint, "prepare_oci_config", lambda: None)  # reset
-        # Instead, call the logic directly with patched paths
+        # Instead, call the logic directly with test paths
         import shutil
 
         shutil.copytree(oci_dir, runtime_dir, dirs_exist_ok=True)
@@ -333,6 +333,75 @@ class TestStartClient:
         args = mock_exec.call_args[0][1]
         assert "8502" in args
         assert "0.0.0.0" in args
+
+    def test_cookie_secret_promoted_to_streamlit_env_var(self, tmp_path, monkeypatch):
+        """start_client must export STREAMLIT_SERVER_COOKIE_SECRET (not pass a CLI flag).
+
+        Streamlit marks server.cookieSecret sensitive=True and only reads it via
+        the STREAMLIT_SERVER_COOKIE_SECRET env var, so the process arguments
+        should remain free of the configured value.
+        """
+        secret = "operator-provided-secret-value"
+        monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", secret)
+        monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
+        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp") as mock_exec:
+            entrypoint.start_client(tmp_path)
+
+        args = mock_exec.call_args[0][1]
+        assert "--server.cookieSecret" not in args
+        assert secret not in args, "secret must never appear anywhere in argv"
+        assert os.environ.get("STREAMLIT_SERVER_COOKIE_SECRET") == secret
+
+    def test_cookie_secret_not_promoted_when_unset(self, tmp_path, monkeypatch):
+        """start_client must NOT set STREAMLIT_SERVER_COOKIE_SECRET when AIO var is unset.
+
+        Leaving it unset lets Streamlit's upstream default handle the local/dev
+        case (per-process random key) without this layer pretending otherwise.
+        """
+        monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
+        monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
+        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp") as mock_exec:
+            entrypoint.start_client(tmp_path)
+
+        args = mock_exec.call_args[0][1]
+        assert "--server.cookieSecret" not in args
+        assert "STREAMLIT_SERVER_COOKIE_SECRET" not in os.environ
+
+    def test_cookie_secret_empty_string_treated_as_unset(self, tmp_path, monkeypatch):
+        """Empty AIO_CLIENT_COOKIE_SECRET must not create a Streamlit env var."""
+        monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", "")
+        monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
+        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp") as mock_exec:
+            entrypoint.start_client(tmp_path)
+
+        args = mock_exec.call_args[0][1]
+        assert "--server.cookieSecret" not in args
+        assert "STREAMLIT_SERVER_COOKIE_SECRET" not in os.environ
+
+    def test_cookie_secret_never_leaks_to_argv(self, tmp_path, monkeypatch):
+        """Defence-in-depth: the secret value must not appear in any argv element."""
+        secret = "sentinel-xyz-should-not-be-in-argv-123"
+        monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", secret)
+        monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
+        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp") as mock_exec:
+            entrypoint.start_client(tmp_path)
+
+        args = mock_exec.call_args[0][1]
+        assert not any(secret in str(a) for a in args), (
+            f"secret leaked into argv: {args}"
+        )
 
 
 class TestMain:

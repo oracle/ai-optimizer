@@ -21,7 +21,25 @@ RENAME_DDL = [
             END;
         END LOOP;
     END;
+    """,
+    # Replace legacy BLOB rag_report with JSON; purge old rows since the
+    # column-type change makes prior payloads unreadable by current code.
     """
+    DECLARE
+        l_type user_tab_columns.data_type%TYPE;
+    BEGIN
+        SELECT data_type INTO l_type
+          FROM user_tab_columns
+         WHERE table_name = 'AIO_EVALUATIONS'
+           AND column_name = 'RAG_REPORT';
+        IF l_type = 'BLOB' THEN
+            EXECUTE IMMEDIATE 'DELETE FROM aio_evaluations';
+            EXECUTE IMMEDIATE 'ALTER TABLE aio_evaluations DROP COLUMN rag_report';
+            EXECUTE IMMEDIATE 'ALTER TABLE aio_evaluations ADD rag_report JSON';
+        END IF;
+    EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
+    END;
+    """,
 ]
 
 SCHEMA_DDL = [
@@ -59,7 +77,7 @@ SCHEMA_DDL = [
         evaluated           TIMESTAMP(9) WITH LOCAL TIME ZONE,
         correctness         NUMBER DEFAULT 0,
         settings            JSON,
-        rag_report          BLOB,
+        rag_report          JSON,
         CONSTRAINT aio_evaluations_pk PRIMARY KEY (eid),
         CONSTRAINT aio_evaluations_fk FOREIGN KEY (tid)
             REFERENCES aio_testsets(tid) ON DELETE CASCADE,

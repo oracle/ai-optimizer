@@ -14,7 +14,7 @@ adb_data_storage_size_in_gb     = 20
 adb_is_cpu_auto_scaling_enabled = true
 adb_license_model               = "LICENSE_INCLUDED"
 adb_networking                  = "SECURE_ACCESS"
-adb_whitelist_cidrs             = "0.0.0.0/0"
+adb_whitelist_cidrs             = "127.0.0.0/8"
 
 # Compute
 compute_cpu_shape = "VM.Standard.E5.Flex"
@@ -24,6 +24,7 @@ compute_cpu_ocpu  = 2
 lb_min_shape = 10
 lb_max_shape = 10
 
-# Network Access
-client_allowed_cidrs = "0.0.0.0/0"
-server_allowed_cidrs = "0.0.0.0/0"
+# Network Access - Note that this will block all access
+# You should specify a limited CIDR for your network
+client_allowed_cidrs = "127.0.0.0/8"
+server_allowed_cidrs = "127.0.0.0/8"

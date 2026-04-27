@@ -56,7 +56,7 @@ def _mock_mcp_session(prompt_result: GetPromptResult) -> AsyncMock:
 
 
 def _patch_mcp_context(mock_session):
-    """Return patches for streamable_http_client and ClientSession.
+    """Return mocks for streamable_http_client and ClientSession.
 
     streamable_http_client is an async context manager yielding (read, write, _).
     ClientSession is an async context manager wrapping the session object.

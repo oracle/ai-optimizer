@@ -184,7 +184,7 @@ def _evaluation_report(eid: Optional[str] = None, report: Optional[dict] = None)
     """Display evaluation report dialog."""
 
     def _create_gauge(value):
-        # Workaround for Plotly bug: use 0.1 to ensure needle visibility
+        # Use a small floor so Plotly renders the needle visibly.
         gauge_value = max(0.1, value) if value < 1 else value
         return go.Figure(
             go.Indicator(
@@ -520,7 +520,7 @@ def _process_testset_request(endpoint: Optional[str], api_params: dict, testset_
         st.stop()
     except (ValueError, KeyError, TypeError) as ex:
         LOGGER.error("Exception: %s", ex)
-        st.error(f"Looks like you found a bug: {ex}", icon="🚨")
+        st.error(f"Unexpected error: {ex}", icon="🚨")
         st.stop()
 
     try:

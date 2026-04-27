@@ -328,7 +328,7 @@ class TestExtractTokenUsage:
         assert llm_b.last_token_usage is None
 
     def test_stale_branch_not_returned_after_clear(self):
-        """Verify a branch that didn't run this turn can't leak stale token_usage.
+        """Verify a branch that didn't run this turn can't return stale token_usage.
 
         Simulates: turn N ran branch_a (setting its usage), turn N+1 runs
         branch_b only.  After _clear_token_usage + branch_b execution,

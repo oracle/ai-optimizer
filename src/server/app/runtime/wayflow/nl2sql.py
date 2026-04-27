@@ -58,8 +58,7 @@ async def build_nl2sql_agent(
     prompt = await fetch_prompt_with_fallback(server_url, api_key, PROMPT_NAME, DEFAULT_NL2SQL_INSTRUCTION)
     agentspec_agent = build_nl2sql_agentspec(client_settings, server_url, api_key, prompt)
 
-    # WayFlow requires OAuth for MCP auth validation, but this project uses
-    # API key auth via sensitive_headers. Bypass the OAuth check.
+    # Configure WayFlow for this project's header-based MCP authentication.
     enable_mcp_without_auth()
 
     loader = AgentSpecLoader(plugins=[get_litellm_wayflow_plugin()])

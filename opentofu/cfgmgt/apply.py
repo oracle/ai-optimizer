@@ -299,10 +299,10 @@ def patch_oracle_operator():
     ]
     _, stderr, rc = run_cmd(cmd, capture_output=False)
     if rc != 0:
-        print(f"❌ Failed to patch operator:\n{stderr}")
+        print(f"❌ Failed to update operator:\n{stderr}")
         sys.exit(1)
 
-    print("✅ Oracle operator patched.\n")
+    print("✅ Oracle operator updated.\n")
 
     # Wait for operator to be ready
     print("⏳ Waiting for Oracle Database Operator to be ready...")

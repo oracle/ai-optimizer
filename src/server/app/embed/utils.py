@@ -90,6 +90,10 @@ def _run_sql_query_sync(
     try:
         with create_sync_connection(db_config) as connection, connection.cursor() as cursor:
             cursor.arraysize = batch_size
+            # Read-only transaction so Oracle rejects any DML/DDL with
+            # ORA-01456 / ORA-01453 even if the parser-level allow-list
+            # admits a query that has side effects.
+            cursor.execute("SET TRANSACTION READ ONLY")
             cursor.execute(query)
 
             desc = cursor.description

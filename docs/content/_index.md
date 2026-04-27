@@ -34,7 +34,7 @@ The {{< short_app_ref >}} streamlines the entire workflow from prototyping to pr
 The {{< short_app_ref >}} is available to install in your own environment, which may be a developer's desktop, on-premises data center environment, or a cloud provider. It can be run either on bare-metal, within a container, or in a Kubernetes Cluster.
 
 {{% notice style="code" title="Prefer a Step-by-Step?" icon="circle-info" %}}
-<!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
+<!-- Hard-coding AI Optimizer to avoid raw HTML, this is an exception -->
 The [Walkthrough]({{% relref "/walkthrough" %}}) is a great way to familiarize yourself with the **AI Optimizer** and its features in a development environment.
 {{% /notice %}}
 
@@ -50,7 +50,7 @@ The [Walkthrough]({{% relref "/walkthrough" %}}) is a great way to familiarize y
 ~\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [{{< short_app_ref >}}]({{% relref "/client" %}}) documentation.~
 
 {{% notice style="code" title="What do I actually need?" icon="circle-info" %}}
-<!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
+<!-- Hard-coding AI Optimizer to avoid raw HTML, this is an exception -->
 The **AI Optimizer** will start and allow interaction with language models without any database or pre-configuration. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database]({{% relref "/client/configuration/databases" %}}) should be configured.
 {{% /notice %}}
 

@@ -9,8 +9,9 @@ Tests for testbed API endpoints.
 import io
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from server.tests.api.conftest import _create_mock_pool
@@ -308,6 +309,58 @@ async def test_upload_testset_multi_file(app_client, auth_headers):
 
 
 # ---------------------------------------------------------------------------
+# _serialise_report — JSON-safety of the persisted Giskard report payload
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_serialise_report_coerces_nan_to_null():
+    """NaN/Inf cells must coerce to None — strict JSON encoding rejects them."""
+    from server.app.api.v1.endpoints.testbed import _serialise_report
+
+    mixed_df = pd.DataFrame(
+        {
+            "question": ["Q1", "Q2"],
+            "correct": [True, False],
+            "correctness_reason": [float("nan"), "Wrong answer"],
+        }
+    )
+    by_topic_df = pd.DataFrame({"score": [0.5, float("inf")]}, index=["topic_a", "topic_b"])
+    failures_df = pd.DataFrame({"reason": [float("nan")]}, index=[0])
+
+    report = MagicMock()
+    report.to_pandas.return_value = mixed_df
+    report.correctness_by_topic.return_value = by_topic_df
+    report.failures = failures_df
+
+    payload = _serialise_report(report)
+
+    json.dumps(payload, allow_nan=False)
+
+    assert payload["report"]["correctness_reason"]["0"] is None
+    assert payload["report"]["correctness_reason"]["1"] == "Wrong answer"
+    assert payload["correct_by_topic"]["score"]["topic_b"] is None
+    assert payload["failures"]["reason"]["0"] is None
+
+
+@pytest.mark.unit
+def test_serialise_report_preserves_shape_for_clean_dataframes():
+    """When DataFrames have no NaN, serialisation matches the legacy to_dict shape."""
+    from server.app.api.v1.endpoints.testbed import _serialise_report
+
+    report = MagicMock()
+    report.to_pandas.return_value = pd.DataFrame({"q": ["Q1"], "ok": [True]})
+    report.correctness_by_topic.return_value = pd.DataFrame({"score": [0.9]}, index=["t"])
+    report.failures = pd.DataFrame()
+
+    payload = _serialise_report(report)
+
+    assert payload["report"] == {"q": {"0": "Q1"}, "ok": {"0": True}}
+    assert payload["correct_by_topic"] == {"score": {"t": 0.9}}
+    assert payload["failures"] == {}
+
+
+# ---------------------------------------------------------------------------
 # QA serialisation (evaluate_testset builds JSONL from DB rows)
 # ---------------------------------------------------------------------------
 
@@ -509,9 +562,8 @@ async def test_generate_testset_rejects_small_file_and_proceeds(app_client, auth
 async def test_load_file_chunks_same_name_no_overwrite(tmp_path):
     """Two uploads sharing a basename must resolve to distinct bytes on disk.
 
-    Regression guard: the staged file was previously keyed only by
-    ``safe_filename(original_name)``, so the second upload overwrote the first
-    and generation later ran against the wrong PDF.
+    Each upload is staged in its own sub-directory so a second upload with
+    the same basename does not overwrite the first.
     """
     from fastapi import UploadFile
 
@@ -583,6 +635,44 @@ async def test_generate_testset_all_rejected_returns_400(app_client, auth_header
 # ---------------------------------------------------------------------------
 # Filename sanitisation — canonical tests live in tests/core/test_file_utils.py
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "traversal_name,expected_basename",
+    [
+        ("../../../up/file", "file"),
+        ("/abs/launch.py", "launch.py"),
+        ("subdir/../sibling.pdf", "sibling.pdf"),
+    ],
+)
+async def test_load_file_chunks_uses_sanitized_upload_basename(
+    tmp_path, traversal_name, expected_basename
+):
+    """Testbed uploads with path-like filenames stay inside temp_directory.
+
+    `_load_file_chunks` runs the upload's filename through `safe_filename()`;
+    this test asserts the saved disk_path is under a staging sub-directory
+    of temp_directory and uses only the sanitised basename.
+    """
+    from fastapi import UploadFile
+
+    from server.app.api.v1.endpoints import testbed as testbed_mod
+
+    payload = b"%PDF-sample-payload"
+    upload = UploadFile(filename=traversal_name, file=io.BytesIO(payload))
+    with patch.object(testbed_mod, "load_and_split", return_value=[object()] * 20):
+        _name, disk_path, reason = await testbed_mod._load_file_chunks(upload, tmp_path, {})
+
+    assert reason is None
+    assert disk_path.name == expected_basename
+    resolved_disk = disk_path.resolve()
+    resolved_root = tmp_path.resolve()
+    assert resolved_disk.is_relative_to(resolved_root), (
+        f"Resolved path escaped temp_directory: {resolved_disk}"
+    )
+    assert disk_path.read_bytes() == payload
 
 
 # ---------------------------------------------------------------------------

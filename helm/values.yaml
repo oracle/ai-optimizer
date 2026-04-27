@@ -343,6 +343,24 @@ client:
     certFile: ""
     keyFile: ""
 
+  # -- Streamlit XSRF-cookie signing secret. The operator MUST supply either:
+  #   1) cookieSecret — an inline 32+ char random string; Helm creates a Secret.
+  #   2) cookieSecretName — the name of a pre-existing Secret in the release namespace.
+  # Exactly one of the two must be set. There is no auto-generation: a shared,
+  # stable value is required across all replicas of the client Deployment, and
+  # silent generation would diverge keys across replicas under scale-out.
+  # Same contract as global.api.apiKey / global.api.secretName.
+  cookieSecret: ""
+  # -- Name of a pre-existing Secret containing the XSRF cookie signing key.
+  # Rotation contract: after rotating the Secret's contents in place, run
+  # `helm upgrade` so the chart reads the new value via `lookup` and rolls the
+  # client Deployment. Without the upgrade, running pods keep the stale value
+  # cached from container start. Automated rotation on Secret-change requires
+  # a reloader controller and is out of scope for this chart.
+  cookieSecretName: ""
+  # -- Key inside cookieSecretName / the generated Secret that holds the value.
+  cookieSecretKey: "cookieSecret"
+
   # Gateway: controls the Gateway API resources to expose the service
   gateway:
     enabled: false

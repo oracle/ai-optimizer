@@ -12,6 +12,7 @@ import json
 
 import oracledb
 import pytest
+from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
 from server.app.database.config import close_pool, create_pool
 from server.app.database.registry import (
@@ -19,7 +20,9 @@ from server.app.database.registry import (
     drop_vector_store,
     init_core_database,
 )
-from server.app.database.sql import execute_sql, validate_oracle_identifier
+from server.app.database.sql import execute_sql
+from server.app.embed.vector_store import generate_vs_metadata, update_vs_comment
+from server.app.models.schemas import ModelIdentity
 from server.app.testbed.database import (
     delete_testset,
     get_evaluations,
@@ -28,7 +31,7 @@ from server.app.testbed.database import (
     insert_evaluation,
     upsert_qa,
 )
-from server.tests.conftest import make_core_db_config
+from server.tests.conftest import make_core_db_config, make_test_vs_config
 
 pytestmark = [pytest.mark.db]
 
@@ -104,12 +107,6 @@ class TestDropVectorStore:
         await drop_vector_store(conn, table)
         await conn.commit()
 
-    async def test_drop_identifier_with_quotes(self, async_oracle_connection):
-        """validate_oracle_identifier escapes embedded quotes for safe DROP."""
-        safe = validate_oracle_identifier('table"name')
-        assert safe == 'table""name'
-
-
 # ---------------------------------------------------------------------------
 # Cascade deletes (FK ON DELETE CASCADE)
 # ---------------------------------------------------------------------------
@@ -164,7 +161,7 @@ class TestCascadeDeletes:
             evaluated="2026-01-02T00:00:01.000",
             correctness=0.75,
             settings_json='{"model": "test"}',
-            rag_report=b"dummy",
+            rag_report={"report": {}, "correct_by_topic": {}, "failures": {}},
         )
         await conn.commit()
 
@@ -195,6 +192,90 @@ class TestCascadeDeletes:
 
         testsets = await get_testsets(conn)
         assert not any(t["tid"] == tid for t in testsets)
+
+
+# ---------------------------------------------------------------------------
+# rag_report migration: BLOB → JSON + legacy row purge
+# ---------------------------------------------------------------------------
+
+
+class TestRagReportMigration:
+    """BLOB→JSON migration drops legacy rows so list/detail endpoints stay consistent."""
+
+    async def test_legacy_blob_rows_purged_on_upgrade(self, schema_connection):
+        conn = schema_connection
+        from server.app.database.objects import RENAME_DDL, SCHEMA_DDL
+
+        conn.autocommit = True
+        try:
+            # Replace the canonical schema with a legacy (BLOB) one + seeded row.
+            await execute_sql(conn, "DROP TABLE aio_evaluations CASCADE CONSTRAINTS PURGE")
+            await execute_sql(
+                conn,
+                """
+                CREATE TABLE aio_evaluations (
+                    eid          RAW(16) DEFAULT SYS_GUID(),
+                    tid          RAW(16),
+                    evaluated    TIMESTAMP(9) WITH LOCAL TIME ZONE,
+                    correctness  NUMBER DEFAULT 0,
+                    settings     JSON,
+                    rag_report   BLOB,
+                    CONSTRAINT aio_evaluations_pk PRIMARY KEY (eid)
+                )
+                """,
+            )
+            await execute_sql(
+                conn,
+                """
+                INSERT INTO aio_evaluations (evaluated, correctness, rag_report)
+                VALUES (SYSTIMESTAMP, 0.5, UTL_RAW.CAST_TO_RAW('legacy-blob-payload'))
+                """,
+            )
+
+            async def _scalar(sql: str):
+                rows = await execute_sql(conn, sql)
+                assert rows, f"Expected a row from: {sql}"
+                return rows[0][0]
+
+            assert await _scalar("SELECT COUNT(*) FROM aio_evaluations") == 1
+            assert (
+                await _scalar(
+                    "SELECT data_type FROM user_tab_columns "
+                    "WHERE table_name='AIO_EVALUATIONS' AND column_name='RAG_REPORT'"
+                )
+                == "BLOB"
+            )
+
+            for ddl in RENAME_DDL:
+                await execute_sql(conn, ddl)
+
+            assert (
+                await _scalar(
+                    "SELECT data_type FROM user_tab_columns "
+                    "WHERE table_name='AIO_EVALUATIONS' AND column_name='RAG_REPORT'"
+                )
+                == "JSON"
+            )
+            assert await _scalar("SELECT COUNT(*) FROM aio_evaluations") == 0, (
+                "Legacy evaluation rows must be purged so /testbed/evaluations and "
+                "/testbed/evaluation stay consistent after upgrade."
+            )
+
+            # Re-running the migration on the now-JSON column must be a no-op.
+            for ddl in RENAME_DDL:
+                await execute_sql(conn, ddl)
+            assert (
+                await _scalar(
+                    "SELECT data_type FROM user_tab_columns "
+                    "WHERE table_name='AIO_EVALUATIONS' AND column_name='RAG_REPORT'"
+                )
+                == "JSON"
+            )
+        finally:
+            # Restore canonical schema (including FK) for subsequent tests.
+            await execute_sql(conn, "DROP TABLE aio_evaluations CASCADE CONSTRAINTS PURGE")
+            for ddl in SCHEMA_DDL:
+                await execute_sql(conn, ddl)
 
 
 # ---------------------------------------------------------------------------
@@ -345,39 +426,75 @@ class TestConnectionTimeout:
 
 
 # ---------------------------------------------------------------------------
-# RAW identifier edge cases
+# COMMENT ON TABLE input handling (real DB)
 # ---------------------------------------------------------------------------
 
 
-class TestRawIdentifierEdgeCases:
-    """Test validate_oracle_identifier with edge case inputs against real DB."""
+class TestVectorStoreCommentInputHandling:
+    """End-to-end checks for table-name validation and comment escaping."""
 
-    async def test_table_name_with_special_chars(self, async_oracle_connection):
-        """Tables with special characters in names work via quoted identifiers."""
+    async def test_identifier_payload_rejected_before_db_call(self, async_oracle_connection):
+        """``update_vs_comment`` raises ``ValueError`` before any SQL is sent."""
+        cfg = make_test_vs_config(vector_store="X IS 'x'--")
+        with pytest.raises(ValueError, match="Invalid vector store table name"):
+            await update_vs_comment(async_oracle_connection, cfg, '{"alias": "x"}')
+
+    async def test_description_payload_is_literal_not_executed(self, async_oracle_connection):
+        """A ``'`` + subquery description survives as a literal in the round-trip.
+
+        Uses ``(SELECT 'SENTINEL' FROM DUAL)`` as a benign discriminator:
+        if the SQL escape failed, the round-tripped description would contain
+        ``xSENTINELx``; if it held, it contains the original payload string.
+        """
         conn = async_oracle_connection
-        name = "TEST$SPECIAL#TBL"
+        table = "VS_INJECT_DESC_TEST"
 
-        safe = validate_oracle_identifier(name)
-        await execute_sql(conn, f'CREATE TABLE "{safe}" (id NUMBER)')
-        await conn.commit()
+        await _create_genai_table(conn, table, {"alias": "stage", "chunk_size": 1})
+        try:
+            payload = "x' || (SELECT 'SENTINEL' FROM DUAL) || 'x"
+            _, comment_json = generate_vs_metadata(
+                embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+                chunk_size=1000,
+                chunk_overlap=100,
+                distance_strategy=DistanceStrategy.COSINE,
+                description=payload,
+            )
 
-        result = await execute_sql(conn, f'SELECT COUNT(*) FROM "{safe}"')
-        assert result == [(0,)]
+            await update_vs_comment(conn, make_test_vs_config(vector_store=table), comment_json)
+            await conn.commit()
 
-        await execute_sql(conn, f'DROP TABLE "{safe}" PURGE')
-        await conn.commit()
+            stores = await discover_vector_stores(conn)
+            match = next((s for s in stores if s.vector_store == table), None)
+            assert match is not None, "Updated vector store not found via discovery"
+            assert match.description == payload
+        finally:
+            await drop_vector_store(conn, table)
+            await conn.commit()
 
-    async def test_table_name_with_spaces(self, async_oracle_connection):
-        """Quoted identifiers with spaces work in real Oracle."""
+    async def test_normal_description_round_trips(self, async_oracle_connection):
+        """Sanity check: ordinary metadata survives the COMMENT round-trip."""
         conn = async_oracle_connection
-        name = "MY TEST TABLE"
+        table = "VS_INJECT_BASELINE_TEST"
 
-        safe = validate_oracle_identifier(name)
-        await execute_sql(conn, f'CREATE TABLE "{safe}" (id NUMBER)')
-        await conn.commit()
+        await _create_genai_table(conn, table, {"alias": "stage", "chunk_size": 1})
+        try:
+            _, comment_json = generate_vs_metadata(
+                embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+                chunk_size=1000,
+                chunk_overlap=100,
+                distance_strategy=DistanceStrategy.COSINE,
+                alias="docs",
+                description="Project documentation",
+            )
 
-        result = await execute_sql(conn, f'SELECT COUNT(*) FROM "{safe}"')
-        assert result == [(0,)]
+            await update_vs_comment(conn, make_test_vs_config(vector_store=table), comment_json)
+            await conn.commit()
 
-        await execute_sql(conn, f'DROP TABLE "{safe}" PURGE')
-        await conn.commit()
+            stores = await discover_vector_stores(conn)
+            match = next((s for s in stores if s.vector_store == table), None)
+            assert match is not None
+            assert match.alias == "docs"
+            assert match.description == "Project documentation"
+        finally:
+            await drop_vector_store(conn, table)
+            await conn.commit()

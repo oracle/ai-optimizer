@@ -191,7 +191,7 @@ class TestBuildCallKwargsSafety:
         model = LiteLlmModel(
             provider="openai",
             model_id="gpt-4o",
-            extra_kwargs={"model": "attacker-model"},
+            extra_kwargs={"model": "override-model"},
         )
         kwargs = model._build_call_kwargs(self._simple_prompt())
         assert kwargs["model"] == "openai/gpt-4o"
@@ -218,7 +218,7 @@ class TestBuildCallKwargsSafety:
 
     def test_gen_config_residual_keys_cannot_override_model(self):
         """Residual keys in generation_config must not override critical fields like model."""
-        gen = LlmGenerationConfig.from_dict({"temperature": 0.5, "model": "attacker-model"})
+        gen = LlmGenerationConfig.from_dict({"temperature": 0.5, "model": "override-model"})
         model = LiteLlmModel(provider="openai", model_id="gpt-4o", generation_config=gen)
         kwargs = model._build_call_kwargs(self._simple_prompt())
         assert kwargs["model"] == "openai/gpt-4o"

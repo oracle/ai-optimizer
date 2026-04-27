@@ -36,13 +36,42 @@ def test_safe_filename_rejects_invalid(value):
 
 
 # ---------------------------------------------------------------------------
+# The `temp_directory / safe_filename(name)` composition must keep saved files
+# under temp_directory for path-like client input. These assertions protect
+# call sites that join upload-provided filenames into staging directories.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "../../../up/file",
+        "/abs/launch.py",
+        "/abs/server/main.py",
+        "../../../../home/user/.ssh/authorized_keys",
+        "..\\..\\windows\\system32\\drivers\\etc\\hosts",
+        "subdir/../sibling.sh",
+    ],
+)
+def test_safe_filename_confines_path_to_temp_directory(tmp_path, payload):
+    """safe_filename keeps the resolved path inside the intended temp_directory."""
+    temp_directory = tmp_path / "client" / "embedding"
+    temp_directory.mkdir(parents=True)
+    resolved = (temp_directory / safe_filename(payload)).resolve()
+    assert resolved.is_relative_to(temp_directory.resolve()), (
+        f"Payload {payload!r} escaped temp_directory: {resolved}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # get_temp_directory
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_get_temp_directory_sanitizes_inputs():
-    """get_temp_directory strips traversal segments from client/function."""
+    """get_temp_directory strips path segments from client/function."""
     assert safe_filename("../../tmp/evil") == "evil"
     assert safe_filename("normal") == "normal"
 

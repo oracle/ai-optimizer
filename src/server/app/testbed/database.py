@@ -8,7 +8,6 @@ Async database operations for testbed tables (aio_testsets, aio_testset_qa, aio_
 
 import json
 import logging
-import pickle
 from typing import Optional
 
 import oracledb
@@ -126,7 +125,7 @@ async def insert_evaluation(
     evaluated: str,
     correctness: float,
     settings_json: str,
-    rag_report: bytes,
+    rag_report: dict,
 ) -> str:
     """Insert an evaluation record, returning the evaluation ID (hex)."""
     LOGGER.info("Insert evaluation; TID: %s", tid)
@@ -147,7 +146,7 @@ async def insert_evaluation(
         out_eid = cursor.var(oracledb.DB_TYPE_RAW)
         cursor.setinputsizes(
             settings=oracledb.DB_TYPE_JSON,
-            rag_report=oracledb.DB_TYPE_BLOB,
+            rag_report=oracledb.DB_TYPE_JSON,
         )
         await cursor.execute(
             plsql,
@@ -164,7 +163,7 @@ async def insert_evaluation(
 
 
 async def process_report(conn: oracledb.AsyncConnection, eid: str) -> Optional[dict]:
-    """Load a pickled Giskard report and extract evaluation metrics."""
+    """Load an evaluation's stored JSON report and surface its metrics."""
     sql = f"""
         SELECT eid, to_char(evaluated, {_ISO_TS_FMT}) as evaluated, correctness, settings, rag_report
           FROM aio_evaluations WHERE eid=:eid
@@ -174,21 +173,19 @@ async def process_report(conn: oracledb.AsyncConnection, eid: str) -> Optional[d
     if not results:
         return None
 
-    eid_val, evaluated, correctness, settings_val, rag_report_blob = results[0]
-    # SECURITY: pickle is safe here — the blob was serialized by this server
-    # via insert_evaluation() and is never accepted from external input.
-    report = pickle.loads(rag_report_blob)  # nosec B301
-    full_report = report.to_pandas()
-    by_topic = report.correctness_by_topic()
-    failures = report.failures
+    eid_val, evaluated, correctness, settings_val, rag_report_val = results[0]
+    # rag_report must be a dict; refuse anything else (None for missing
+    # rows, legacy non-dict scalars, or unexpected types).
+    if not isinstance(rag_report_val, dict):
+        return None
 
     return {
         "eid": eid_val.hex() if hasattr(eid_val, "hex") else eid_val,
         "evaluated": evaluated,
         "correctness": correctness,
         "settings": settings_val if isinstance(settings_val, dict) else json.loads(settings_val),
-        "report": full_report.to_dict(),
-        "correct_by_topic": by_topic.to_dict(),
-        "failures": failures.to_dict(),
+        "report": rag_report_val.get("report", {}),
+        "correct_by_topic": rag_report_val.get("correct_by_topic", {}),
+        "failures": rag_report_val.get("failures", {}),
         "html_report": "<html><body></body></html>",
     }

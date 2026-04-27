@@ -31,7 +31,7 @@ from langchain_oracledb.vectorstores.oraclevs import (
 from server.app.database.config import create_sync_connection
 from server.app.database.registry import discover_vector_stores
 from server.app.database.schemas import DatabaseConfig
-from server.app.database.sql import execute_sql, validate_oracle_identifier
+from server.app.database.sql import ResultSetTooLargeError, execute_sql, validate_vs_table_name
 from server.app.embed.document import DoclingDocumentChunk, json_to_doc
 from server.app.embed.schemas import VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
@@ -127,11 +127,10 @@ def _create_temp_vector_store(
     """Create a temporary vector store for staging."""
     if vector_store.vector_store is None:
         raise ValueError("vector_store.vector_store must be set")
-    validate_oracle_identifier(vector_store.vector_store)
+    safe_name = validate_vs_table_name(vector_store.vector_store)
     vector_store_tmp = copy.copy(vector_store)
-    raw_tmp_name = f"{vector_store.vector_store}_TMP"
-    vector_store_tmp.vector_store = raw_tmp_name
-    safe_tmp_name = validate_oracle_identifier(raw_tmp_name)
+    safe_tmp_name = f"{safe_name}_TMP"
+    vector_store_tmp.vector_store = safe_tmp_name
 
     # Drop temp table if exists
     try:
@@ -143,13 +142,13 @@ def _create_temp_vector_store(
         else:
             raise
 
-    LOGGER.info("Establishing temporary vector store: %s", raw_tmp_name)
+    LOGGER.info("Establishing temporary vector store: %s", safe_tmp_name)
     strategy = vector_store.distance_strategy or DistanceStrategy.COSINE
 
     vs_tmp = OracleVS(
         client=db_conn,
         embedding_function=embed_client,
-        table_name=raw_tmp_name,
+        table_name=safe_tmp_name,
         distance_strategy=strategy,
         query="AI Optimizer for Apps - Powered by Oracle",
     )
@@ -197,10 +196,10 @@ def _merge_and_index_vector_store(
     """Merge temporary vector store into real one and create index."""
     if vector_store.vector_store is None:
         raise ValueError("vector_store.vector_store must be set")
-    safe_name = validate_oracle_identifier(vector_store.vector_store)
+    safe_name = validate_vs_table_name(vector_store.vector_store)
     if vector_store_tmp.vector_store is None:
         raise ValueError("vector_store_tmp.vector_store must be set")
-    safe_tmp_name = validate_oracle_identifier(vector_store_tmp.vector_store)
+    safe_tmp_name = validate_vs_table_name(vector_store_tmp.vector_store)
     strategy = vector_store.distance_strategy or DistanceStrategy.COSINE
 
     vs_real = OracleVS(
@@ -220,8 +219,7 @@ def _merge_and_index_vector_store(
         LOGGER.info("Deleting stale chunks for %d modified files", len(modified_filenames))
         delete_sql = f"DELETE FROM \"{safe_name}\" WHERE JSON_VALUE(metadata, '$.filename') = :fname"
         with db_conn.cursor() as cur:
-            for filename in modified_filenames:
-                cur.execute(delete_sql, {"fname": filename})
+            cur.executemany(delete_sql, [{"fname": fn} for fn in modified_filenames])
         db_conn.commit()
 
     merge_sql = f"""
@@ -305,7 +303,9 @@ async def update_vs_comment(
     """Update the GENAI comment on an existing vector store table."""
     if vector_store.vector_store is None:
         raise ValueError("vector_store.vector_store must be set")
-    safe_name = validate_oracle_identifier(vector_store.vector_store)
+    safe_name = validate_vs_table_name(vector_store.vector_store)
+    # COMMENT ON TABLE is DDL — Oracle accepts no bind variables for either
+    # the identifier or the body, so escape both manually.
     safe_comment = comment_json.replace("'", "''")
     sql = f"COMMENT ON TABLE \"{safe_name}\" IS 'GENAI: {safe_comment}'"
     await execute_sql(conn, sql)
@@ -336,7 +336,7 @@ async def get_total_chunks_count(
     vector_store_name: str,
 ) -> int:
     """Get total number of chunks in the vector store."""
-    safe_name = validate_oracle_identifier(vector_store_name)
+    safe_name = validate_vs_table_name(vector_store_name)
     try:
         rows = await execute_sql(conn, f'SELECT COUNT(*) FROM "{safe_name}"')
         return rows[0][0] if rows else 0
@@ -349,49 +349,68 @@ async def get_processed_objects_metadata(
     conn: oracledb.AsyncConnection,
     vector_store_name: str,
 ) -> dict:
-    """Get metadata of previously processed objects for a vector store."""
-    safe_name = validate_oracle_identifier(vector_store_name)
+    """Get metadata of previously processed objects for a vector store.
+
+    Aggregates server-side so result-set size is one row per file rather than
+    one row per chunk — bounding API memory regardless of corpus size.
+    """
+    safe_name = validate_vs_table_name(vector_store_name)
     try:
         LOGGER.info("Retrieving metadata from %s", vector_store_name)
-        rows = await execute_sql(conn, f'SELECT DISTINCT metadata FROM "{safe_name}"')
-        if not rows:
-            return {}
+        new_format_sql = (
+            "SELECT JSON_VALUE(metadata, '$.filename'),"
+            " MAX(JSON_VALUE(metadata, '$.etag')),"
+            " MAX(JSON_VALUE(metadata, '$.time_modified')),"
+            " MAX(JSON_VALUE(metadata, '$.size'))"
+            f' FROM "{safe_name}"'
+            " WHERE JSON_VALUE(metadata, '$.filename') IS NOT NULL"
+            " GROUP BY JSON_VALUE(metadata, '$.filename')"
+        )
+        rows = await execute_sql(conn, new_format_sql)
 
         processed_objects: dict = {}
-        for row in rows:
-            metadata = row[0]
-            if isinstance(metadata, dict) and metadata.get("filename"):
-                processed_objects[metadata["filename"]] = {
-                    "etag": metadata.get("etag"),
-                    "time_modified": metadata.get("time_modified"),
-                    "size": metadata.get("size"),
+        if rows:
+            for filename, etag, time_modified, size_str in rows:
+                processed_objects[filename] = {
+                    "etag": etag,
+                    "time_modified": time_modified,
+                    "size": int(size_str) if size_str is not None else None,
                 }
-
-        if processed_objects:
             LOGGER.info(
-                "Found %i previously processed objects (new format) in %s", len(processed_objects), vector_store_name
+                "Found %i previously processed objects (new format) in %s",
+                len(processed_objects),
+                vector_store_name,
             )
             return processed_objects
 
-        # Try old format with 'source' field
         LOGGER.info("No filename field found, trying old format with 'source' field")
-        for row in rows:
-            metadata = row[0]
-            if isinstance(metadata, dict) and metadata.get("source"):
-                processed_objects[os.path.basename(metadata["source"])] = {
+        legacy_sql = (
+            "SELECT DISTINCT JSON_VALUE(metadata, '$.source')"
+            f' FROM "{safe_name}"'
+            " WHERE JSON_VALUE(metadata, '$.source') IS NOT NULL"
+        )
+        legacy_rows = await execute_sql(conn, legacy_sql)
+        if legacy_rows:
+            for (source,) in legacy_rows:
+                processed_objects[os.path.basename(source)] = {
                     "etag": None,
                     "time_modified": None,
                     "size": None,
                 }
-
-        if processed_objects:
             LOGGER.info(
-                "Found %s previously processed objects (old format) in %s", len(processed_objects), vector_store_name
+                "Found %s previously processed objects (old format) in %s",
+                len(processed_objects),
+                vector_store_name,
             )
         else:
             LOGGER.info("No previously processed objects found in %s", vector_store_name)
         return processed_objects
 
+    except ResultSetTooLargeError:
+        # Surfacing this is correctness-critical: an empty fallback would
+        # cause refresh to classify every bucket object as new, skip the
+        # stale-chunk DELETE, and leave outdated embeddings in place.
+        raise
     except Exception as ex:
         LOGGER.warning("Could not retrieve processed objects metadata from %s: %s", vector_store_name, ex)
         return {}
@@ -401,10 +420,26 @@ async def get_vector_store_files(
     conn: oracledb.AsyncConnection,
     vector_store_name: str,
 ) -> dict:
-    """Get list of files embedded in a vector store with statistics."""
-    safe_name = validate_oracle_identifier(vector_store_name)
+    """Get list of files embedded in a vector store with statistics.
+
+    Aggregates server-side: one result row per ``(filename, source)`` pair
+    rather than per chunk, so the API process never materializes per-chunk
+    metadata regardless of corpus size.
+    """
+    safe_name = validate_vs_table_name(vector_store_name)
     LOGGER.info("Retrieving file list from %s", vector_store_name)
-    rows = await execute_sql(conn, f'SELECT metadata FROM "{safe_name}"')
+    sql = (
+        "SELECT JSON_VALUE(metadata, '$.filename'),"
+        " JSON_VALUE(metadata, '$.source'),"
+        " COUNT(*),"
+        " MAX(JSON_VALUE(metadata, '$.etag')),"
+        " MAX(JSON_VALUE(metadata, '$.time_modified')),"
+        " MAX(JSON_VALUE(metadata, '$.size'))"
+        f' FROM "{safe_name}"'
+        " GROUP BY JSON_VALUE(metadata, '$.filename'),"
+        " JSON_VALUE(metadata, '$.source')"
+    )
+    rows = await execute_sql(conn, sql)
     if not rows:
         return {
             "vector_store": vector_store_name,
@@ -418,36 +453,32 @@ async def get_vector_store_files(
     total_identified_chunks = 0
     orphaned_chunks = 0
 
-    for row in rows:
-        metadata = row[0]
+    for filename_raw, source_raw, raw_count, etag, time_modified, size_str in rows:
+        count = int(raw_count)
 
-        if not isinstance(metadata, dict):
-            orphaned_chunks += 1
-            continue
-
-        filename = metadata.get("filename")
-        if not filename and "source" in metadata:
-            filename = os.path.basename(metadata.get("source", ""))
-
+        filename = filename_raw or (os.path.basename(source_raw) if source_raw else None)
         if not filename:
-            orphaned_chunks += 1
+            orphaned_chunks += count
             continue
 
-        if filename not in files_info:
-            size_value = metadata.get("size")
-            if size_value is not None:
-                size_value = int(size_value)
-
+        size_value = int(size_str) if size_str is not None else None
+        existing = files_info.get(filename)
+        if existing is None:
             files_info[filename] = {
                 "filename": filename,
-                "chunk_count": 0,
-                "etag": metadata.get("etag"),
-                "time_modified": metadata.get("time_modified"),
+                "chunk_count": count,
+                "etag": etag,
+                "time_modified": time_modified,
                 "size": size_value,
             }
-
-        files_info[filename]["chunk_count"] += 1
-        total_identified_chunks += 1
+        else:
+            # Same filename arrived from both new + legacy metadata rows; merge.
+            existing["chunk_count"] += count
+            existing["etag"] = existing["etag"] or etag
+            existing["time_modified"] = existing["time_modified"] or time_modified
+            if existing["size"] is None:
+                existing["size"] = size_value
+        total_identified_chunks += count
 
     file_list = sorted(files_info.values(), key=lambda x: x["filename"])
 
@@ -462,5 +493,10 @@ async def get_vector_store_files(
     if orphaned_chunks > 0:
         LOGGER.warning("Found %s orphaned chunks in %s", orphaned_chunks, vector_store_name)
 
-    LOGGER.info("Found %s files with %s total chunks in %s", len(file_list), len(rows), vector_store_name)
+    LOGGER.info(
+        "Found %s files with %s total chunks in %s",
+        len(file_list),
+        total_identified_chunks + orphaned_chunks,
+        vector_store_name,
+    )
     return result

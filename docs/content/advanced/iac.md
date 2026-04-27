@@ -52,6 +52,10 @@ Most of the other configuration options are self-explanatory, but let's highligh
 
 ![Stack - Access Control](../images/iac_stack_access_control.png)
 
+{{% notice style="code" title="Configure Access Before Use" icon="lock" %}}
+The default Access Control values do not grant access from external clients. Before using the {{< short_app_ref >}} GUI, API Server, or Autonomous Database, replace the defaults with the smallest CIDR ranges required for your client networks. For individual workstations, prefer single-host `/32` entries.
+{{% /notice %}}
+
 To restrict access, provide a comma-separated list of CIDR blocks, for example: `192.168.1.0/24,10.0.0.0/16,203.0.113.42/32`
 
 In this example:
@@ -119,6 +123,13 @@ Most of the other configuration options are self-explanatory, but let's highligh
 
 ![Stack K8s - Access Control](../images/iac_stack_k8s_access_control.png)
 ![Stack - Access Control](../images/iac_stack_access_control.png)
+
+{{% notice style="code" title="Configure Access Before Use" icon="lock" %}}
+The default Access Control settings do not grant external client access:
+
+* **K8s API Endpoint Access Control** is left empty, so no public Kubernetes API ingress rule is created. If you intend to manage the cluster from your workstation with `kubectl`, set this to the smallest required source CIDR, typically your public IP as `/32`.
+* **Application GUI**, **API Server**, and **Autonomous Database** Access Control fields use placeholder values that are not intended for client access. Replace them with the smallest CIDR ranges required for your client networks before using the {{< short_app_ref >}} services.
+{{% /notice %}}
 
 To restrict access, provide a comma-separated list of CIDR blocks, for example: `192.168.1.0/24,10.0.0.0/16,203.0.113.42/32`
 

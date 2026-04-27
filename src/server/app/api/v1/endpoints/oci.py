@@ -8,9 +8,11 @@ Endpoints for retrieving OCI profile configurations.
 
 import logging
 import os
+from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
+from server.app.api.v1.schemas.common import ClientId
 from server.app.core.file_utils import get_temp_directory
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
@@ -201,7 +203,7 @@ async def oci_download_objects(
     bucket_name: str,
     auth_profile: str,
     request: list[str],
-    client: str = Header(default="server"),
+    client: Annotated[ClientId, Header()] = "server",
 ):
     """Download objects from a bucket to the client's temp directory."""
     profile = _find_oci_profile(auth_profile)

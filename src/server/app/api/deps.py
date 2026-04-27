@@ -20,7 +20,7 @@ async def verify_api_key(
 ) -> str:
     """Validate the X-API-Key header against the configured API key.
 
-    Rejects all requests when no API key is configured (fail-secure).
+    Rejects requests when no API key is configured.
     """
     configured_key = settings.api_key
     if api_key is None or configured_key is None or not hmac.compare_digest(api_key, configured_key):

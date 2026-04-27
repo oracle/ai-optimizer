@@ -51,7 +51,7 @@ You can develop and replace the provided client with any REST capable client.
 ![Database](./images/vector_storage.png)
 
 {{% notice style="code" title="Reduced capabilities" icon="circle-info" %}}
-<!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
+<!-- Hard-coding AI Optimizer to avoid raw HTML, this is an exception -->
 The **AI Optimizer** can be used to interact with language models without having the database configured, but additional functionality such as RAG, will not be available without the database.
 {{% /notice %}}
 

@@ -900,7 +900,7 @@ class TestSetupTestbedSources:
         The 503 must propagate from _get_testbed_db_testsets up to
         _setup_testbed_sources so the recovery flag is set and the UI
         shows a warning.  If the inner function swallows the 503 the
-        flag is never set — this test catches that regression.
+        flag is never set.
         """
         from client.app.content.testbed import _setup_testbed_sources
 
@@ -1445,7 +1445,7 @@ class TestMain:
 
         mock_st.columns.side_effect = _make_cols
 
-        patches = {
+        replacements = {
             f"{MODULE}._check_prerequisites": MagicMock(return_value=(["openai/m1"], ["openai/e1"], False)),
             f"{MODULE}._setup_testbed_sources": MagicMock(return_value=["Local"]),
             f"{MODULE}._render_existing_testset_ui": MagicMock(
@@ -1462,12 +1462,12 @@ class TestMain:
             f"{MODULE}._reset_testset": MagicMock(),
             f"{MODULE}.pd": MagicMock(),
         }
-        patches.update(extra_patches)
+        replacements.update(extra_patches)
 
         with ExitStack() as stack:
             stack.enter_context(patch(f"{MODULE}.st", mock_st))
             stack.enter_context(patch(f"{MODULE}.state", state))
-            for k, v in patches.items():
+            for k, v in replacements.items():
                 stack.enter_context(patch(k, v))
             main()
 
