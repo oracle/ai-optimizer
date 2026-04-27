@@ -327,17 +327,17 @@ async def test_local_store(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "traversal_name,expected_basename",
+    "path_like_name,expected_basename",
     [
         ("../../../up/file", "file"),
         ("/abs/launch.py", "launch.py"),
         ("subdir/../sibling.sh", "sibling.sh"),
     ],
 )
-async def test_local_store_neutralises_path_traversal(
-    app_client, auth_headers, traversal_name, expected_basename
+async def test_local_store_uses_sanitized_upload_basename(
+    app_client, auth_headers, path_like_name, expected_basename
 ):
-    """Uploads with traversal-shaped filenames must land inside temp_directory only.
+    """Uploads with path-like filenames must land inside temp_directory only.
 
     The store path runs upload filenames through `safe_filename()`; this
     test asserts the uploaded bytes appear only under the sanitised
@@ -355,7 +355,7 @@ async def test_local_store_neutralises_path_traversal(
         ):
             resp = await app_client.post(
                 "/v1/embed/local/store",
-                files=[("files", (traversal_name, io.BytesIO(payload), "text/plain"))],
+                files=[("files", (path_like_name, io.BytesIO(payload), "text/plain"))],
                 headers=auth_headers,
             )
         assert resp.status_code == 200
@@ -363,7 +363,7 @@ async def test_local_store_neutralises_path_traversal(
         safe_path = tmp_path / expected_basename
         assert safe_path.exists()
         assert safe_path.read_bytes() == payload
-        # The payload did not escape temp_directory.
+        # The payload was written only under temp_directory.
         for candidate in (
             Path("/up/file"),
             Path("/abs/launch.py"),

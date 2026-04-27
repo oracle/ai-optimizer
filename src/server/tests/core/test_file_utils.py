@@ -36,11 +36,9 @@ def test_safe_filename_rejects_invalid(value):
 
 
 # ---------------------------------------------------------------------------
-# The `temp_directory / safe_filename(name)` composition must confine the
-# resulting path to temp_directory for every traversal-shaped input. These
-# assertions protect the call sites in embed.store_local_file and
-# testbed._load_file_chunks from regressing to a raw
-# `temp_directory / upload_file.filename` pattern.
+# The `temp_directory / safe_filename(name)` composition must keep saved files
+# under temp_directory for path-like client input. These assertions protect
+# call sites that join upload-provided filenames into staging directories.
 # ---------------------------------------------------------------------------
 
 
@@ -73,7 +71,7 @@ def test_safe_filename_confines_path_to_temp_directory(tmp_path, payload):
 
 @pytest.mark.unit
 def test_get_temp_directory_sanitizes_inputs():
-    """get_temp_directory strips traversal segments from client/function."""
+    """get_temp_directory strips path segments from client/function."""
     assert safe_filename("../../tmp/evil") == "evil"
     assert safe_filename("normal") == "normal"
 

@@ -89,9 +89,9 @@ class TestPrepareOciConfig:
 
         runtime_dir = tmp_path / "runtime" / ".oci"
 
-        # Monkey-patch the hard-coded paths
+        # Override the hard-coded paths
         monkeypatch.setattr(entrypoint, "prepare_oci_config", lambda: None)  # reset
-        # Instead, call the logic directly with patched paths
+        # Instead, call the logic directly with test paths
         import shutil
 
         shutil.copytree(oci_dir, runtime_dir, dirs_exist_ok=True)
@@ -338,8 +338,8 @@ class TestStartClient:
         """start_client must export STREAMLIT_SERVER_COOKIE_SECRET (not pass a CLI flag).
 
         Streamlit marks server.cookieSecret sensitive=True and only reads it via
-        the STREAMLIT_SERVER_COOKIE_SECRET env var. Passing it in argv would also
-        leak it to ps, shell history, and /proc/<pid>/cmdline.
+        the STREAMLIT_SERVER_COOKIE_SECRET env var, so the process arguments
+        should remain free of the configured value.
         """
         secret = "operator-provided-secret-value"
         monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", secret)
@@ -374,7 +374,7 @@ class TestStartClient:
         assert "STREAMLIT_SERVER_COOKIE_SECRET" not in os.environ
 
     def test_cookie_secret_empty_string_treated_as_unset(self, tmp_path, monkeypatch):
-        """Empty AIO_CLIENT_COOKIE_SECRET must not leak an empty STREAMLIT env var."""
+        """Empty AIO_CLIENT_COOKIE_SECRET must not create a Streamlit env var."""
         monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", "")
         monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
         monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)

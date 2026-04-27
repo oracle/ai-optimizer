@@ -36,7 +36,7 @@ Modifications to agentspec builders or adapters affect **both** runtimes. Any ch
 
 ## Keeping Runtimes in Sync
 
-Bug fixes and feature changes implemented in one runtime **must be carried over to the other**. For example, if a streaming fix is applied in `langgraph/chat.py`, the equivalent fix should be applied to `wayflow/chat.py`. The implementations will differ (LangGraph uses graph compilation and `ToolNode`; WayFlow uses `wayflowcore` flow loading), but the user-facing behavior must stay consistent.
+Behavior fixes and feature changes implemented in one runtime **must be carried over to the other**. For example, if streaming behavior is changed in `langgraph/chat.py`, the equivalent change should be applied to `wayflow/chat.py`. The implementations will differ (LangGraph uses graph compilation and `ToolNode`; WayFlow uses `wayflowcore` flow loading), but the user-facing behavior must stay consistent.
 
 When making changes:
 - Fix or implement in one runtime first

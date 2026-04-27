@@ -331,7 +331,7 @@ def _extract_zip(zip_path: Path, dest: Path) -> dict:
                     # raises lzma.LZMAError, and DEFLATE raises
                     # zlib.error — none of which inherit from
                     # BadZipFile, so the outer handler would otherwise
-                    # leak them. The write side stays uncaught: ENOSPC
+                    # expose implementation errors. The write side stays uncaught: ENOSPC
                     # / EROFS / etc. on the target are real server
                     # failures and must remain 500.
                     with source_cm as source, staging_path.open("wb") as target:

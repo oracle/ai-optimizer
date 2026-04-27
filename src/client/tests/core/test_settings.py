@@ -21,7 +21,7 @@ class TestClientSettingsFields:
         """Instantiate ClientSettings with env-file loading disabled."""
         from client.app.core.settings import ClientSettings
 
-        # Bypass .env file by providing _env_file=None
+        # Disable .env file loading by providing _env_file=None
         return ClientSettings(_env_file=None, **kwargs)  # type: ignore[call-arg]
 
     def test_api_key_none_by_default(self, monkeypatch):

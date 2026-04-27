@@ -121,7 +121,7 @@ async def test_oauth2_redirect_disabled(app_client):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_liveness_still_unauth(app_client):
-    """Regression: liveness probe remains unauthenticated."""
+    """Liveness probe remains unauthenticated."""
     resp = await app_client.get("/v1/liveness")
     assert resp.status_code == 200
 
@@ -129,7 +129,7 @@ async def test_liveness_still_unauth(app_client):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_readiness_still_unauth(app_client):
-    """Regression: readiness probe remains unauthenticated."""
+    """Readiness probe remains unauthenticated."""
     resp = await app_client.get("/v1/readiness")
     assert resp.status_code == 200
 
@@ -137,6 +137,6 @@ async def test_readiness_still_unauth(app_client):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_healthz_still_unauth(app_client):
-    """Regression: healthz probe remains unauthenticated."""
+    """Healthz probe remains unauthenticated."""
     resp = await app_client.get("/v1/healthz")
     assert resp.status_code == 200

@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Regression gates for the committed Streamlit config at client/app/.streamlit/config.toml.
+Checks for the committed Streamlit config at client/app/.streamlit/config.toml.
 """
 # spell-checker: disable
 
@@ -15,7 +15,7 @@ STREAMLIT_CONFIG = (
 
 
 class TestStreamlitConfigIntegrity:
-    """Regression gates for src/client/app/.streamlit/config.toml."""
+    """Checks for src/client/app/.streamlit/config.toml."""
 
     def test_config_file_exists(self):
         """The committed Streamlit config must exist so the other assertions are meaningful."""

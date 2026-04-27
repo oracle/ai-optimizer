@@ -647,10 +647,10 @@ async def test_generate_testset_all_rejected_returns_400(app_client, auth_header
         ("subdir/../sibling.pdf", "sibling.pdf"),
     ],
 )
-async def test_load_file_chunks_neutralises_path_traversal(
+async def test_load_file_chunks_uses_sanitized_upload_basename(
     tmp_path, traversal_name, expected_basename
 ):
-    """Testbed uploads with traversal-shaped filenames stay inside temp_directory.
+    """Testbed uploads with path-like filenames stay inside temp_directory.
 
     `_load_file_chunks` runs the upload's filename through `safe_filename()`;
     this test asserts the saved disk_path is under a staging sub-directory

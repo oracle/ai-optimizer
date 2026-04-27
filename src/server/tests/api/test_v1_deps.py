@@ -37,7 +37,7 @@ async def test_verify_api_key_none_provided():
 
 @pytest.mark.unit
 async def test_verify_api_key_none_configured():
-    """Raises 403 when no API key is configured (fail-secure)."""
+    """Raises 403 when no API key is configured."""
     with patch("server.app.api.deps.settings") as mock_settings:
         mock_settings.api_key = None
         with pytest.raises(HTTPException) as exc_info:

@@ -391,7 +391,7 @@ async def test_get_vector_store_files_orphans_counted():
 
 
 # ---------------------------------------------------------------------------
-# update_vs_comment — SQL-injection regression
+# update_vs_comment input handling
 # ---------------------------------------------------------------------------
 
 

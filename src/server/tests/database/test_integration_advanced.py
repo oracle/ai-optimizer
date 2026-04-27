@@ -426,15 +426,12 @@ class TestConnectionTimeout:
 
 
 # ---------------------------------------------------------------------------
-# COMMENT ON TABLE injection regression (real DB)
+# COMMENT ON TABLE input handling (real DB)
 # ---------------------------------------------------------------------------
 
 
-class TestVectorStoreCommentInjection:
-    """End-to-end checks that injection PoCs cannot reach the COMMENT ON TABLE
-    statement: identifier payloads are rejected by the validator, and
-    string-literal payloads are escaped into the comment body as literals.
-    """
+class TestVectorStoreCommentInputHandling:
+    """End-to-end checks for table-name validation and comment escaping."""
 
     async def test_identifier_payload_rejected_before_db_call(self, async_oracle_connection):
         """``update_vs_comment`` raises ``ValueError`` before any SQL is sent."""

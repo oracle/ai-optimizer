@@ -258,8 +258,7 @@ class TestValidateVsTableName:
             "A",
             "TBL_123",
             "_LEADING_UNDERSCORE",
-            # Legacy auto-generated names where Unicode \W preserved word chars.
-            # These predate this hardening and must remain droppable / editable.
+            # Legacy auto-generated names that must remain droppable / editable.
             "CAFÉ_OPENAI_EMBED_HNSW",
             "ДОКА_OPENAI_EMBED_HNSW",
             "文档_OPENAI_EMBED_HNSW",
@@ -294,9 +293,8 @@ class TestValidateVsTableName:
             "name with\nnewline",
             "name\twith\ttab",
             "parens(here)",
-            # Anchoring-bypass regression: ``$`` matches before a trailing ``\n``,
-            # so a naive ``match(r"^\w+$", ...)`` would let these through and
-            # interpolate the newline straight into DDL.
+            # Newline-bearing names must be rejected even when the visible
+            # prefix is otherwise identifier-shaped.
             "VS\n",
             "VS\r",
             "VS\r\n",

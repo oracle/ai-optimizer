@@ -70,7 +70,7 @@ def _enable_tool_error_handling(graph):
 
 
 def _unwrap_tool_content_blocks(tool):
-    """Patch a LangChain MCP tool to extract text from content blocks.
+    """Wrap a LangChain MCP tool to extract text from content blocks.
 
     ``langchain_mcp_adapters`` wraps every MCP text result in LangChain
     content blocks: ``[{"type": "text", "text": "<payload>"}]``.  When
@@ -78,7 +78,7 @@ def _unwrap_tool_content_blocks(tool):
     it into a string, so downstream nodes (LlmNode, EndNode) see the
     wrapper instead of the actual payload.
 
-    This patches the tool's async coroutine so the ``content_and_artifact``
+    This wraps the tool's async coroutine so the ``content_and_artifact``
     return value yields the raw text string instead of the content-block
     list, which ``ToolNodeExecutor`` then passes through unchanged.
     """
@@ -161,7 +161,7 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
 
         ``langchain_mcp_adapters`` wraps MCP text results in content blocks
         which breaks pyagentspec's data-edge pipeline in flow graphs. This
-        patches each tool so downstream nodes receive the raw text payload.
+        wraps each tool so downstream nodes receive the raw text payload.
         """
         if converted_components is None:
             converted_components = {}

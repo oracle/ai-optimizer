@@ -201,7 +201,7 @@ class ChatOrchestrator(BaseChatOrchestrator):
     async def refresh_prompts(self) -> None:
         """Re-fetch prompts and update cached sessions in-place.
 
-        For agent sessions the ``custom_instruction`` is patched directly.
+        For agent sessions the ``custom_instruction`` is assigned directly.
         For NL2SQL agent sessions the session is rebuilt (to re-apply
         connection context on top of the new prompt).
         For flow sessions the flow is rebuilt with the new prompt and the

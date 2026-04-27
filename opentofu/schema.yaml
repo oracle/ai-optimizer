@@ -159,7 +159,7 @@ variables:
   optimizer_version:
     type: enum
     title: "Optimizer Version"
-    description: "Warning: Experimental may contain bugs!"
+    description: "Warning: Experimental may be unstable!"
     required: true
     default: "Stable"
     enum:

@@ -14,7 +14,7 @@ Giskard analyzes documents to identify high-level topics associated with the gen
 
 ![Generation](images/generation.png)
 
-The dataset generation phase is optional but strongly recommended, especially during proof-of-concept activities. Manually creating high-quality test datasets requires substantial human effort, whereas automated generation reduces both time and cost.
+The dataset generation phase is optional but strongly recommended, especially during early evaluations. Manually creating high-quality test datasets requires substantial human effort, whereas automated generation reduces both time and cost.
 
 After the dataset is generated, each question is submitted to the configured agent. The agent's responses are collected and compared against the expected answers by an LLM acting as an automated judge. The judge evaluates each response for semantic correctness and provides a justification for its decision, as illustrated in the following diagram:
 

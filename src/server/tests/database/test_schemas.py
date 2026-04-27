@@ -117,18 +117,16 @@ class TestDatabaseUpdate:
 
 
 # ---------------------------------------------------------------------------
-# Control-character rejection (SQLcl stdin-injection hardening)
+# Control-character rejection for SQLcl-bound fields
 # ---------------------------------------------------------------------------
 
 
 class TestControlCharRejection:
     """Credential/identifier fields must reject newline, CR, and NUL.
 
-    SQLcl's stdin parser treats ``\\n`` as a command boundary regardless of
-    quoting, so a newline in any of these fields turns into a new SQLcl
-    command — including ``host <os-cmd>`` for arbitrary shell execution.
-    Rejection at the Pydantic boundary blocks every ingress path
-    (configuration.json, env vars, HTTP endpoints) uniformly.
+    SQLcl-bound values are validated at the Pydantic boundary so
+    configuration.json, environment variables, and HTTP endpoints apply
+    the same input contract.
     """
 
     # Fields for which newline/CR/NUL are all rejected.

@@ -167,7 +167,7 @@ class TestApplyEnvOverrides:
         assert cfg.api_base == "http://new:1234/v1"
 
     def test_patches_multiple_models_same_provider(self, monkeypatch):
-        """All models sharing a provider are patched."""
+        """All models sharing a provider are updated."""
         cfg1 = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key="old1")
         cfg2 = ModelConfig(id="text-embed", type="embed", provider="openai", api_key="old2")
         settings.model_configs = [cfg1, cfg2]

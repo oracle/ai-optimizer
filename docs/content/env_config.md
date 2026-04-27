@@ -46,7 +46,7 @@ cp src/.env.example src/.env.dev
 Edit `src/.env.dev` and uncomment/set the values you need.
 
 {{% notice style="code" title="No configuration required" icon="circle-info" %}}
-<!-- Hard-coding AI Optimizer to avoid unsafe HTML, this is an exception -->
+<!-- Hard-coding AI Optimizer to avoid raw HTML, this is an exception -->
 The **AI Optimizer** will start without any `.env.*` file or environment variables set. However, to persist settings across restarts and to enable features like RAG and the Testbed, at a minimum a [database]({{% relref "/client/configuration/databases" %}}) should be configured.
 {{% /notice %}}
 

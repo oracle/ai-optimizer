@@ -322,20 +322,20 @@ async def test_process_report_missing_rag_report_returns_none():
 
 
 # ---------------------------------------------------------------------------
-# Guard: testbed modules must not import deserializers that execute code on read
+# Guard: testbed report handling must stay on JSON-compatible loaders
 # ---------------------------------------------------------------------------
 
 
-_UNSAFE_DESERIALIZERS = {"pickle", "marshal", "shelve", "dill"}
+_DISALLOWED_REPORT_LOADERS = {"pickle", "marshal", "shelve", "dill"}
 
 
 @pytest.mark.unit
-def test_no_unsafe_deserializers_in_testbed_modules():
-    """Testbed modules must not import deserializers that execute code on load."""
+def test_report_modules_use_json_compatible_loaders():
+    """Testbed report modules must not import object-stream loaders."""
     for module_name in (
         "server.app.testbed.database",
         "server.app.api.v1.endpoints.testbed",
     ):
         module = importlib.import_module(module_name)
-        offending = _UNSAFE_DESERIALIZERS & set(vars(module))
-        assert not offending, f"unsafe deserializer(s) {sorted(offending)} imported in {module_name}"
+        offending = _DISALLOWED_REPORT_LOADERS & set(vars(module))
+        assert not offending, f"unexpected report loader(s) {sorted(offending)} imported in {module_name}"
