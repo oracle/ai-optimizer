@@ -320,6 +320,24 @@ def make_test_model_config(**overrides) -> ModelConfig:
     return ModelConfig(**{**defaults, **overrides})
 
 
+def make_test_vs_config(**overrides):
+    """Standard VectorStoreConfig used across embed and database tests."""
+    from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
+
+    from server.app.embed.schemas import VectorStoreConfig
+    from server.app.models.schemas import ModelIdentity
+
+    defaults = {
+        "vector_store": "VS_TEST",
+        "embedding_model": ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        "chunk_size": 1000,
+        "chunk_overlap": 100,
+        "distance_strategy": DistanceStrategy.COSINE,
+        "index_type": "HNSW",
+    }
+    return VectorStoreConfig(**{**defaults, **overrides})
+
+
 def assert_no_sensitive_keys(entries: list[dict], sensitive_keys: set, identity_key: str) -> None:
     """Assert that no entry in the list contains any sensitive key, and that identity_key is present."""
     for entry in entries:

@@ -7,11 +7,18 @@ Shared async SQL execution utility for Oracle database operations.
 # spell-checker:ignore setinputsizes
 
 import logging
+import re
 from typing import Optional
 
 import oracledb
 
 LOGGER = logging.getLogger(__name__)
+
+# Matches the output of ``generate_vs_metadata`` (``re.sub(r"\W", "_", ...).upper()``)
+# so legacy stores with non-ASCII aliases (e.g. ``CAFÉ_OPENAI_...``) stay operable.
+# Paired with ``fullmatch``: ``$`` would match before a final ``\n``, so ``match()``
+# would accept ``"VS\n"`` and leak the newline into DDL interpolation.
+_VS_TABLE_NAME_PATTERN = re.compile(r"\w+")
 
 
 def validate_oracle_identifier(name: str) -> str:
@@ -24,6 +31,19 @@ def validate_oracle_identifier(name: str) -> str:
     if not name:
         raise ValueError(f"Invalid Oracle identifier: {name!r}")
     return name.replace('"', '""')
+
+
+def validate_vs_table_name(name: str) -> str:
+    """Validator for vector-store table names — defense in depth for DDL paths.
+
+    Restricts to Python's Unicode ``\\w+``, the same grammar
+    ``generate_vs_metadata`` produces. SQL metacharacters (quotes, whitespace,
+    ``;``, ``--``, parentheses) are outside ``\\w`` and therefore rejected
+    before reaching the DDL/DML layer that wraps the name in ``"..."``.
+    """
+    if not name or not _VS_TABLE_NAME_PATTERN.fullmatch(name):
+        raise ValueError(f"Invalid vector store table name: {name!r}")
+    return name
 
 
 async def execute_sql(
