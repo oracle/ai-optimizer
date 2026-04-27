@@ -90,6 +90,10 @@ def _run_sql_query_sync(
     try:
         with create_sync_connection(db_config) as connection, connection.cursor() as cursor:
             cursor.arraysize = batch_size
+            # Defense-in-depth: any DML/DDL slipping past _is_select_only (e.g.
+            # via PL/SQL function calls in the projection) will be rejected by
+            # Oracle with ORA-01456 / ORA-01453 in a read-only transaction.
+            cursor.execute("SET TRANSACTION READ ONLY")
             cursor.execute(query)
 
             desc = cursor.description
