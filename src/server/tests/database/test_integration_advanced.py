@@ -445,17 +445,16 @@ class TestVectorStoreCommentInjection:
     async def test_description_payload_is_literal_not_executed(self, async_oracle_connection):
         """A ``'`` + subquery description survives as a literal in the round-trip.
 
-        Uses ``(SELECT 'PWNED' FROM DUAL)`` (the test user lacks DBA so the
-        original ``dba_users`` query won't run) — it's a precise discriminator:
+        Uses ``(SELECT 'SENTINEL' FROM DUAL)`` as a benign discriminator:
         if the SQL escape failed, the round-tripped description would contain
-        ``xPWNEDx``; if it held, it contains the original payload string.
+        ``xSENTINELx``; if it held, it contains the original payload string.
         """
         conn = async_oracle_connection
         table = "VS_INJECT_DESC_TEST"
 
         await _create_genai_table(conn, table, {"alias": "stage", "chunk_size": 1})
         try:
-            payload = "x' || (SELECT 'PWNED' FROM DUAL) || 'x"
+            payload = "x' || (SELECT 'SENTINEL' FROM DUAL) || 'x"
             _, comment_json = generate_vs_metadata(
                 embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
                 chunk_size=1000,
