@@ -7,7 +7,7 @@ app:
   vector-store:
     initialize: false
     allow-user-writes: false
-    
+
 spring:
   datasource:
     url: ${DB_DSN}
