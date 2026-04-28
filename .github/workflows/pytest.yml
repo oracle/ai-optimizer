@@ -87,20 +87,22 @@ jobs:
           fi
 
       - name: Verify docling versions match
-        if: steps.changes.outputs.python-variants != '[]'
+        if: steps.changes.outputs.python-variants != '[]' || steps.changes.outputs.opentofu == 'true'
         run: |
           PYPROJECT=$(grep -oP 'docling==\K[0-9.]+' pyproject.toml)
           SERVER=$(grep -oP 'docling==\K[0-9.]+' src/server/Dockerfile)
           CLIENT=$(grep -oP 'docling==\K[0-9.]+' src/Dockerfile)
-          echo "pyproject.toml:       $PYPROJECT"
-          echo "src/server/Dockerfile: $SERVER"
-          echo "src/Dockerfile:        $CLIENT"
-          if [ -z "$PYPROJECT" ] || [ -z "$SERVER" ] || [ -z "$CLIENT" ]; then
+          CLOUDINIT=$(grep -oP 'docling==\K[0-9.]+' opentofu/modules/vm/templates/cloudinit-compute.tpl)
+          echo "pyproject.toml:                                       $PYPROJECT"
+          echo "src/server/Dockerfile:                                $SERVER"
+          echo "src/Dockerfile:                                       $CLIENT"
+          echo "opentofu/modules/vm/templates/cloudinit-compute.tpl:  $CLOUDINIT"
+          if [ -z "$PYPROJECT" ] || [ -z "$SERVER" ] || [ -z "$CLIENT" ] || [ -z "$CLOUDINIT" ]; then
             echo "::error::Failed to extract docling version from one or more files"
             exit 1
           fi
-          if [ "$PYPROJECT" != "$SERVER" ] || [ "$PYPROJECT" != "$CLIENT" ]; then
-            echo "::error::docling version mismatch between pyproject.toml and Dockerfiles"
+          if [ "$PYPROJECT" != "$SERVER" ] || [ "$PYPROJECT" != "$CLIENT" ] || [ "$PYPROJECT" != "$CLOUDINIT" ]; then
+            echo "::error::docling version mismatch between pyproject.toml, Dockerfiles, and cloudinit-compute.tpl"
             exit 1
           fi
 

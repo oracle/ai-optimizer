@@ -25,6 +25,7 @@ from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.chat import MessageResponse
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.testbed import Evaluation, EvaluationReport, QASetData, QASets, RejectedFile
+from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory, safe_filename
 from server.app.core.settings import resolve_client
 from server.app.database.config import get_core_pool
@@ -232,9 +233,15 @@ async def generate_testset_endpoint(
             ) from ex
         raise
     except ValueError as ex:
-        raise HTTPException(status_code=400, detail=str(ex)) from ex
+        raise HTTPException(
+            status_code=400,
+            detail=response_error_detail(ex, "Testset generation failed."),
+        ) from ex
     except APIConnectionError as ex:
-        raise HTTPException(status_code=424, detail=f"Model API error: {ex}") from ex
+        raise HTTPException(
+            status_code=424,
+            detail=response_error_detail(ex, "Model API error."),
+        ) from ex
     except HTTPException:
         raise
     except Exception as ex:
@@ -333,9 +340,7 @@ async def _load_file_chunks(
     with open(disk_path, "wb") as fh:
         fh.write(file_content)
 
-    chunk_count = len(
-        await asyncio.to_thread(load_and_split, disk_path, embed_config.get("max_chunk_size", 512))
-    )
+    chunk_count = len(await asyncio.to_thread(load_and_split, disk_path, embed_config.get("max_chunk_size", 512)))
     if chunk_count < MIN_CHUNKS_PER_FILE:
         return (
             original_name,

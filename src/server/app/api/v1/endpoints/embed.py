@@ -37,6 +37,7 @@ from server.app.api.v1.schemas.embed import (
     VectorStoreRefreshRequest,
     VectorStoreRefreshStatus,
 )
+from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory, safe_filename
 from server.app.core.settings import resolve_client, settings
 from server.app.database.config import get_client_db_config as _resolve_db_config
@@ -66,6 +67,7 @@ from server.app.oci.bucket import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
 
 # Per-client lock guarding mutations of the shared embedding temp
 # directory. Both `store_local_file` (full upload) and `split_embed`
@@ -223,10 +225,7 @@ def _promote_atomically(names, staging: Path, dest: Path, detail: str) -> None:
                 _rollback()
                 raise HTTPException(
                     status_code=409,
-                    detail=(
-                        f"Cannot store '{name}': a directory with that name "
-                        f"already exists in the temp directory."
-                    ),
+                    detail=(f"Cannot store '{name}': a directory with that name already exists in the temp directory."),
                 )
             backup_path = backup_dir / name
             try:
@@ -274,7 +273,7 @@ def _extract_zip(zip_path: Path, dest: Path) -> dict:
         # infolist (central directory parse), open(info) (local header
         # parse), and the copyfileobj read loop (decompressor output) —
         # in one handler so BadZipFile AND zlib.error both become HTTP
-        # 400 instead of leaking out as 500s.
+        # 400 instead of becoming generic 500s.
         try:
             members = [m for m in zip_ref.infolist() if not m.filename.endswith("/")]
             if len(members) > _ZIP_MAX_FILES:
@@ -754,9 +753,7 @@ async def split_embed(
     # `store_local_file`'s promotion so the two cannot race on the same
     # basenames.
     async with _client_lock(client):
-        files = await asyncio.to_thread(
-            _prepare_work_dir, get_temp_directory(client, "embedding"), work_dir, client
-        )
+        files = await asyncio.to_thread(_prepare_work_dir, get_temp_directory(client, "embedding"), work_dir, client)
     LOGGER.info("Processing Files: %s", files)
     file_metadata = await asyncio.to_thread(_load_file_metadata, work_dir)
 
@@ -807,7 +804,10 @@ async def split_embed(
             skipped_files=processing_results["skipped_files"],
         )
     except (ValueError, RuntimeError) as ex:
-        raise HTTPException(status_code=500, detail=str(ex)) from ex
+        raise HTTPException(
+            status_code=500,
+            detail=response_error_detail(ex, "Vector store operation failed."),
+        ) from ex
     except Exception as ex:
         LOGGER.error("An exception occurred: %s", ex)
         raise HTTPException(status_code=500, detail="An unexpected error occurred during embedding.") from ex
@@ -847,7 +847,10 @@ async def refresh_vector_store(
         async with pool.acquire() as conn:
             vs_config = await get_vector_store_by_alias(conn, request.vector_store_alias)
     except ValueError as ex:
-        raise HTTPException(status_code=400, detail=str(ex)) from ex
+        raise HTTPException(
+            status_code=400,
+            detail=response_error_detail(ex, "Vector store lookup failed."),
+        ) from ex
     if vs_config.vector_store is None or vs_config.embedding_model is None:
         raise HTTPException(status_code=400, detail="Vector store or embedding model not configured")
     LOGGER.info("Found vector store: %s with model %s", vs_config.vector_store, vs_config.embedding_model)
@@ -902,8 +905,10 @@ async def refresh_vector_store(
             parsing_mode=request.parsing_mode or "fast",
         )
     except ValueError as ex:
-        LOGGER.error("Validation error in refresh_vector_store: %s", ex)
-        raise HTTPException(status_code=400, detail=str(ex)) from ex
+        raise HTTPException(
+            status_code=400,
+            detail=response_error_detail(ex, "Vector store refresh failed."),
+        ) from ex
     except Exception as ex:
         LOGGER.error("Unexpected error in refresh_vector_store: %s", ex)
         raise HTTPException(status_code=500, detail="An unexpected error occurred during refresh.") from ex

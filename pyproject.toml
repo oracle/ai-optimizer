@@ -16,11 +16,11 @@ authors = [
 
 # - common dependencies that are always needed
 dependencies = [
-    "langchain-core==1.2.31",
+    "langchain-core==1.3.2",
     "httpx==0.28.1",
     "oracledb~=3.1",
     "plotly==6.7.0",
-    "pydantic-settings==2.13.1"
+    "pydantic-settings==2.14.0"
 ]
 
 [project.optional-dependencies]
@@ -28,25 +28,25 @@ dependencies = [
 # - server-base: shared stack for both runtime variants
 server-base = [
     "bokeh==3.9.0",
-    "docling==2.89.0",          # When bumping docling, also need to update Dockerfiles
+    "docling==2.91.0",          # When bumping docling, also update Dockerfiles and opentofu cloudinit-compute.tpl
     "evaluate==0.4.6",
     "faiss-cpu==1.13.2",
     "fastmcp==3.2.4",
     "giskard==2.19.1",
     "langchain-cohere==0.5.1",
-    "langchain-fireworks==1.1.0",
+    "langchain-fireworks==1.2.0",
     "langchain-google-genai==4.2.2",
-    "langchain-ibm==1.0.6",
+    "langchain-ibm==1.0.7",
     "langchain-mcp-adapters==0.2.2",
     "langchain-mistralai==1.1.2",
     "langchain-oci==0.2.5",
     "langchain-ollama==1.1.0",
     "langchain-oracledb==1.2.0",
-    "litellm==1.83.0",
-    "llama-index==0.14.20",
-    "matplotlib==3.10.8",
+    "litellm==1.83.14",
+    "llama-index==0.14.21",
+    "matplotlib==3.10.9",
     "oci~=2.0",
-    "opentelemetry-exporter-otlp-proto-grpc==1.41.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.41.1",
     "pyagentspec==26.1.0",
     "pypdf==6.10.2",
     "umap-learn==0.5.12"

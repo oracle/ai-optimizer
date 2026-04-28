@@ -334,14 +334,12 @@ async def test_local_store(app_client, auth_headers):
         ("subdir/../sibling.sh", "sibling.sh"),
     ],
 )
-async def test_local_store_uses_sanitized_upload_basename(
-    app_client, auth_headers, path_like_name, expected_basename
-):
+async def test_local_store_uses_upload_basename(app_client, auth_headers, path_like_name, expected_basename):
     """Uploads with path-like filenames must land inside temp_directory only.
 
     The store path runs upload filenames through `safe_filename()`; this
-    test asserts the uploaded bytes appear only under the sanitised
-    basename inside the sandboxed temp directory.
+    test asserts the uploaded bytes appear under the expected basename
+    inside the temporary directory.
     """
     import tempfile
     from pathlib import Path
@@ -359,7 +357,7 @@ async def test_local_store_uses_sanitized_upload_basename(
                 headers=auth_headers,
             )
         assert resp.status_code == 200
-        # File landed at the sanitised basename, inside temp_directory.
+        # File landed at the expected basename, inside temp_directory.
         safe_path = tmp_path / expected_basename
         assert safe_path.exists()
         assert safe_path.read_bytes() == payload
@@ -370,9 +368,7 @@ async def test_local_store_uses_sanitized_upload_basename(
             tmp_path.parent / expected_basename,
         ):
             if candidate.exists():
-                assert candidate.read_bytes() != payload, (
-                    f"Path resolved outside temp_directory to {candidate}"
-                )
+                assert candidate.read_bytes() != payload, f"Path resolved outside temp_directory to {candidate}"
 
 
 # ---------------------------------------------------------------------------
@@ -1055,7 +1051,7 @@ def test_extract_zip_translates_constructor_errors_to_400(tmp_path, exc_to_raise
     version / compression method signalled in the central directory),
     RuntimeError, or OSError from the ZipFile constructor itself, before
     any infolist/open call is reached. These all represent user-input
-    errors and must translate to HTTP 400 rather than leaking as 500.
+    errors and must translate to HTTP 400 rather than a generic 500.
     """
     import zipfile as _zf
 
@@ -1100,7 +1096,7 @@ def test_extract_zip_translates_member_open_errors_to_400(tmp_path, exc_to_raise
     compression methods raise NotImplementedError, and certain header
     corruptions raise OSError before any decompression begins. All
     three are user-input issues and must translate to HTTP 400 rather
-    than leaking as a 500.
+    than a generic 500.
     """
     import zipfile as _zf
 
@@ -1498,18 +1494,14 @@ async def test_client_lock_skips_entry_with_queued_waiter(monkeypatch):
     await asyncio.sleep(0)
 
     entry = embed_mod._client_promotion_locks["client_a"]
-    assert entry.users >= 2, (
-        f"holder + waiter must both count toward users; got {entry.users}"
-    )
+    assert entry.users >= 2, f"holder + waiter must both count toward users; got {entry.users}"
 
     # Trigger the eviction path: cap is 1, "client_a" is in use.
     # Request a new client — eviction must not cull "client_a"; it
     # should instead allow temporary growth past the cap.
     async with embed_mod._client_lock("client_b"):
         registry_keys = set(embed_mod._client_promotion_locks)
-        assert "client_a" in registry_keys, (
-            f"in-use entry was evicted despite queued waiter; got {registry_keys}"
-        )
+        assert "client_a" in registry_keys, f"in-use entry was evicted despite queued waiter; got {registry_keys}"
 
     let_holder_finish.set()
     await asyncio.gather(holder_task, waiter_task)
@@ -1520,7 +1512,7 @@ async def test_client_lock_skips_entry_with_queued_waiter(monkeypatch):
 async def test_client_lock_normalizes_key():
     """Two raw client strings that resolve to the same temp dir share one lock.
 
-    `get_temp_directory(client, ...)` sanitises *client* via
+    `get_temp_directory(client, ...)` normalizes *client* via
     `safe_filename` (= `Path(client).name`), so `Client: team/a` and
     `Client: a` both write to `<base>/a/embedding`. If `_client_lock`
     keys by the raw header value, those two requests would take
@@ -1668,11 +1660,7 @@ async def test_local_store_promotes_metadata_last(app_client, auth_headers):
         dst_s = str(dst)
         # Only record the staging → temp_directory promotion moves —
         # not the backup staging or any inner _extract_zip moves.
-        if (
-            ".request_" in src_s
-            and ".request_" not in dst_s
-            and ".backup_" not in src_s
-        ):
+        if ".request_" in src_s and ".request_" not in dst_s and ".backup_" not in src_s:
             move_order.append(Path(dst_s).name)
         return real_move(src_s, dst_s)
 
@@ -1695,9 +1683,7 @@ async def test_local_store_promotes_metadata_last(app_client, auth_headers):
             )
     assert resp.status_code == 200
     assert move_order, "no promotion moves recorded"
-    assert move_order[-1] == ".file_metadata.json", (
-        f"metadata must promote last; got order={move_order}"
-    )
+    assert move_order[-1] == ".file_metadata.json", f"metadata must promote last; got order={move_order}"
 
 
 @pytest.mark.unit
@@ -2077,3 +2063,145 @@ def test_extract_zip_stdlib_bounds_lying_file_size(tmp_path):
         info.file_size = 16  # lie: claim 16 bytes, archive holds 1 MiB
         with zf.open(info) as src_member, pytest.raises(zipfile.BadZipFile):
             src_member.read()
+
+
+# ---------------------------------------------------------------------------
+# Fallback response details
+# ---------------------------------------------------------------------------
+
+
+_SOURCE_DETAIL_TOKENS = ("marker-alpha", "marker-beta", "marker-gamma")
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_runtime_error_returns_fallback_detail(app_client, auth_headers):
+    """RuntimeError paths return the configured fallback detail."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared_dir = tmp_path / "shared"
+        shared_dir.mkdir()
+        (shared_dir / "test.txt").write_text("content")
+
+        work_counter = 0
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            nonlocal work_counter
+            if unique:
+                work_counter += 1
+                wd = tmp_path / f"work_{work_counter}"
+                wd.mkdir(exist_ok=True)
+                return wd
+            return shared_dir
+
+        raised = RuntimeError("marker-alpha marker-beta marker-gamma")
+        mock_results = {"processed_files": [], "skipped_files": [], "total_chunks": 0}
+        with (
+            patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            patch("server.app.api.v1.endpoints.embed.get_oci_profile", return_value=MagicMock()),
+            patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], mock_results),
+            ),
+            patch("server.app.api.v1.endpoints.embed.get_client_embed", return_value=MagicMock()),
+            patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                new_callable=AsyncMock,
+                side_effect=raised,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert detail
+    for token in _SOURCE_DETAIL_TOKENS:
+        assert token not in detail
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_refresh_value_error_returns_fallback_detail(app_client, auth_headers):
+    """The refresh path returns the configured fallback detail."""
+    raised = ValueError("marker-alpha marker-beta marker-gamma")
+    with (
+        patch("server.app.api.v1.endpoints.embed.get_oci_profile", return_value=MagicMock()),
+        patch(
+            "server.app.api.v1.endpoints.embed.get_vector_store_by_alias",
+            new_callable=AsyncMock,
+            side_effect=raised,
+        ),
+    ):
+        resp = await app_client.post(
+            "/v1/embed/refresh",
+            json={"vector_store_alias": "test", "bucket_name": "my-bucket"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert detail
+    for token in _SOURCE_DETAIL_TOKENS:
+        assert token not in detail
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_refresh_bucket_value_error_returns_fallback_detail(app_client, auth_headers):
+    """The bucket refresh path returns the configured fallback detail."""
+    mock_vs = VectorStoreConfig(
+        vector_store="MY_VS",
+        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        chunk_size=1000,
+        chunk_overlap=100,
+    )
+    raised = ValueError("marker-alpha marker-beta marker-gamma")
+    with (
+        patch("server.app.api.v1.endpoints.embed.get_oci_profile", return_value=MagicMock()),
+        patch(
+            "server.app.api.v1.endpoints.embed.get_vector_store_by_alias",
+            new_callable=AsyncMock,
+            return_value=mock_vs,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.get_bucket_objects_with_metadata",
+            return_value=[{"name": "x.pdf", "etag": "a", "time_modified": "2026-01-01", "size": 1}],
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.get_processed_objects_metadata",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.detect_changed_objects",
+            return_value=([{"name": "x.pdf"}], []),
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.refresh_vector_store_from_bucket",
+            new_callable=AsyncMock,
+            side_effect=raised,
+        ),
+    ):
+        resp = await app_client.post(
+            "/v1/embed/refresh",
+            json={"vector_store_alias": "test", "bucket_name": "my-bucket"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert detail
+    for token in _SOURCE_DETAIL_TOKENS:
+        assert token not in detail

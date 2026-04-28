@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
+from server.app.core.error_detail import response_error_detail
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.config import close_pool
@@ -121,7 +122,7 @@ async def create_database(body: DatabaseConfig):
             else:
                 await test_connection(body)
         except Exception as exc:
-            error = str(exc)
+            error = response_error_detail(exc, "Database connection failed.")
         if not await persist_settings():
             settings.database_configs.remove(body)
             await close_pool(body.pool)
@@ -169,7 +170,7 @@ async def update_database(alias: str, body: DatabaseUpdate):
             else:
                 await test_connection(cfg)
         except Exception as exc:
-            error = str(exc)
+            error = response_error_detail(exc, "Database connection failed.")
 
         def _restore():
             for field, value in originals.items():

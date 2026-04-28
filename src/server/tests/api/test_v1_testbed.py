@@ -647,14 +647,12 @@ async def test_generate_testset_all_rejected_returns_400(app_client, auth_header
         ("subdir/../sibling.pdf", "sibling.pdf"),
     ],
 )
-async def test_load_file_chunks_uses_sanitized_upload_basename(
-    tmp_path, traversal_name, expected_basename
-):
+async def test_load_file_chunks_uses_upload_basename(tmp_path, traversal_name, expected_basename):
     """Testbed uploads with path-like filenames stay inside temp_directory.
 
     `_load_file_chunks` runs the upload's filename through `safe_filename()`;
     this test asserts the saved disk_path is under a staging sub-directory
-    of temp_directory and uses only the sanitised basename.
+    of temp_directory and uses the expected basename.
     """
     from fastapi import UploadFile
 
@@ -669,9 +667,7 @@ async def test_load_file_chunks_uses_sanitized_upload_basename(
     assert disk_path.name == expected_basename
     resolved_disk = disk_path.resolve()
     resolved_root = tmp_path.resolve()
-    assert resolved_disk.is_relative_to(resolved_root), (
-        f"Resolved path escaped temp_directory: {resolved_disk}"
-    )
+    assert resolved_disk.is_relative_to(resolved_root), f"Resolved path escaped temp_directory: {resolved_disk}"
     assert disk_path.read_bytes() == payload
 
 
@@ -709,3 +705,70 @@ async def test_generate_testset_db_unavailable_fails_fast(app_client, auth_heade
         )
     assert resp.status_code == 503
     mock_process.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Fallback response details
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_generate_testset_api_error_returns_fallback_detail(app_client, auth_headers):
+    """Model API errors return the configured fallback detail."""
+    from litellm.exceptions import APIConnectionError
+
+    api_err = APIConnectionError(
+        message="marker-alpha marker-beta marker-gamma",
+        llm_provider="openai",
+        model="gpt-4o",
+    )
+    mock_load = _mock_load_chunks_factory([("a.pdf", Path("/tmp/a.pdf"), None)])
+    with (
+        patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
+        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
+        patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
+        patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
+        patch("server.app.api.v1.endpoints.testbed._load_file_chunks", mock_load),
+        patch("server.app.api.v1.endpoints.testbed._process_pdf_file", side_effect=api_err),
+    ):
+        resp = await app_client.post(
+            "/v1/testbed/testset_generate",
+            data={"name": "T", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "1"},
+            files=[("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf"))],
+            headers=auth_headers,
+        )
+    assert resp.status_code == 424
+    detail = resp.json()["detail"]
+    assert detail
+    for token in ("marker-alpha", "marker-beta", "marker-gamma"):
+        assert token not in detail
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_generate_testset_value_error_returns_fallback_detail(app_client, auth_headers):
+    """ValueError paths return the configured fallback detail."""
+    raised = ValueError("marker-alpha marker-beta marker-gamma")
+    mock_load = _mock_load_chunks_factory([("a.pdf", Path("/tmp/a.pdf"), None)])
+    with (
+        patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
+        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
+        patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
+        patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
+        patch("server.app.api.v1.endpoints.testbed._load_file_chunks", mock_load),
+        patch("server.app.api.v1.endpoints.testbed._process_pdf_file", side_effect=raised),
+    ):
+        resp = await app_client.post(
+            "/v1/testbed/testset_generate",
+            data={"name": "T", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "1"},
+            files=[("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf"))],
+            headers=auth_headers,
+        )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert detail
+    for token in ("marker-alpha", "marker-beta", "marker-gamma"):
+        assert token not in detail

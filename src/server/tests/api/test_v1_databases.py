@@ -390,11 +390,11 @@ async def test_create_database_persists_settings(app_client, auth_headers, mock_
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_create_database_connection_error(app_client, auth_headers):
-    """POST returns 201 with error field when connection test fails."""
+    """POST returns 201 with a fallback error field when connection test fails."""
     with patch(
         "server.app.api.v1.endpoints.databases.test_connection",
         new_callable=AsyncMock,
-        side_effect=Exception("ORA-12541: TNS:no listener"),
+        side_effect=Exception("marker-alpha marker-beta marker-gamma"),
     ):
         resp = await app_client.post(
             "/v1/databases",
@@ -404,7 +404,9 @@ async def test_create_database_connection_error(app_client, auth_headers):
     assert resp.status_code == 201
     body = resp.json()
     assert body["usable"] is False
-    assert "ORA-12541" in body["error"]
+    assert body["error"]
+    for token in ("marker-alpha", "marker-beta", "marker-gamma"):
+        assert token not in body["error"]
 
 
 @pytest.mark.unit
@@ -416,7 +418,7 @@ async def test_update_core_database_connection_failure(app_client, auth_headers,
         patch(
             "server.app.api.v1.endpoints.databases.init_core_database",
             new_callable=AsyncMock,
-            side_effect=Exception("ORA-12541: TNS:no listener"),
+            side_effect=Exception("marker-alpha marker-beta marker-gamma"),
         ),
     ):
         resp = await app_client.put(
@@ -427,7 +429,9 @@ async def test_update_core_database_connection_failure(app_client, auth_headers,
     assert resp.status_code == 200
     body = resp.json()
     assert body["usable"] is False
-    assert "ORA-12541" in body["error"]
+    assert body["error"]
+    for token in ("marker-alpha", "marker-beta", "marker-gamma"):
+        assert token not in body["error"]
     mock_persist_settings.assert_called_once()
 
 
@@ -441,7 +445,7 @@ async def test_update_database_connection_error_not_usable(app_client, auth_head
         patch(
             "server.app.api.v1.endpoints.databases.test_connection",
             new_callable=AsyncMock,
-            side_effect=Exception("ORA-12541: TNS:no listener"),
+            side_effect=Exception("marker-alpha marker-beta marker-gamma"),
         ),
     ):
         resp = await app_client.put(
@@ -452,7 +456,9 @@ async def test_update_database_connection_error_not_usable(app_client, auth_head
     assert resp.status_code == 200
     body = resp.json()
     assert body["usable"] is False
-    assert "ORA-12541" in body["error"]
+    assert body["error"]
+    for token in ("marker-alpha", "marker-beta", "marker-gamma"):
+        assert token not in body["error"]
 
 
 @pytest.mark.unit
@@ -469,7 +475,7 @@ async def test_update_usable_database_rejects_broken_config(app_client, auth_hea
         patch(
             "server.app.api.v1.endpoints.databases.test_connection",
             new_callable=AsyncMock,
-            side_effect=Exception("ORA-12541: TNS:no listener"),
+            side_effect=Exception("marker-alpha marker-beta marker-gamma"),
         ),
     ):
         resp = await app_client.put(
@@ -478,7 +484,10 @@ async def test_update_usable_database_rejects_broken_config(app_client, auth_hea
             headers=auth_headers,
         )
     assert resp.status_code == 422
-    assert "ORA-12541" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert detail
+    for token in ("marker-alpha", "marker-beta", "marker-gamma"):
+        assert token not in detail
     # Old config fully restored
     assert cfg.usable is True
     assert cfg.dsn == original_dsn
