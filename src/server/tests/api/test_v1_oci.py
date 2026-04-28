@@ -516,3 +516,65 @@ async def test_update_previously_unusable_persist_fails_on_success(app_client, a
             assert cfg.tenancy == "ocid1.tenancy.oc1..test"
             assert cfg.usable is False
             break
+
+
+# ---------------------------------------------------------------------------
+# Fallback response details for bucket/compartment/object listings
+# ---------------------------------------------------------------------------
+
+
+_OCI_SOURCE_DETAIL_TOKENS = ("marker-alpha", "marker-beta", "marker-gamma")
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_compartments_error_returns_fallback_detail(app_client, auth_headers):
+    """get_compartments errors return the configured fallback detail."""
+    raised = RuntimeError("marker-alpha marker-beta marker-gamma")
+    with patch(
+        "server.app.api.v1.endpoints.oci.get_compartments",
+        side_effect=raised,
+    ):
+        resp = await app_client.get("/v1/oci/compartments/TEST", headers=auth_headers)
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert detail
+    for token in _OCI_SOURCE_DETAIL_TOKENS:
+        assert token not in detail
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_buckets_error_returns_fallback_detail(app_client, auth_headers):
+    """get_buckets errors return the configured fallback detail."""
+    raised = RuntimeError("marker-alpha marker-beta marker-gamma")
+    with patch(
+        "server.app.api.v1.endpoints.oci.get_buckets",
+        side_effect=raised,
+    ):
+        resp = await app_client.get(
+            "/v1/oci/buckets/COMPARTMENT_TEST/TEST",
+            headers=auth_headers,
+        )
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert detail
+    for token in _OCI_SOURCE_DETAIL_TOKENS:
+        assert token not in detail
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_bucket_objects_error_returns_fallback_detail(app_client, auth_headers):
+    """get_bucket_object_names errors return the configured fallback detail."""
+    raised = RuntimeError("marker-alpha marker-beta marker-gamma")
+    with patch(
+        "server.app.api.v1.endpoints.oci.get_bucket_object_names",
+        side_effect=raised,
+    ):
+        resp = await app_client.get("/v1/oci/objects/my-bucket/TEST", headers=auth_headers)
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert detail
+    for token in _OCI_SOURCE_DETAIL_TOKENS:
+        assert token not in detail

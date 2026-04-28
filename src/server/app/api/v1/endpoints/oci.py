@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from server.app.api.v1.schemas.common import ClientId
+from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
@@ -175,7 +176,10 @@ async def oci_list_compartments(auth_profile: str):
     try:
         return get_compartments(profile)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=response_error_detail(exc, "OCI compartment listing failed."),
+        ) from exc
 
 
 @auth.get("/buckets/{compartment_ocid}/{auth_profile}", response_model=list[str])
@@ -185,7 +189,10 @@ async def oci_list_buckets(compartment_ocid: str, auth_profile: str):
     try:
         return get_buckets(compartment_ocid, profile)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=response_error_detail(exc, "OCI bucket listing failed."),
+        ) from exc
 
 
 @auth.get("/objects/{bucket_name}/{auth_profile}", response_model=list[str])
@@ -195,7 +202,10 @@ async def oci_list_bucket_objects(bucket_name: str, auth_profile: str):
     try:
         return get_bucket_object_names(bucket_name, profile)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=response_error_detail(exc, "OCI object listing failed."),
+        ) from exc
 
 
 @auth.post("/objects/download/{bucket_name}/{auth_profile}", response_model=list[str])
