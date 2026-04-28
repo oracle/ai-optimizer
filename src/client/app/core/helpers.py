@@ -44,6 +44,9 @@ def refresh_settings(clear_runtime: bool = True) -> None:
     if settings is not None:
         state.settings = settings
         state.pop("mcp_configs", None)
+        # Invalidate per-profile sensitive-field caches on refresh.
+        state.pop("_oci_sensitive_loaded", None)
+        state.pop("_template_export", None)
         if clear_runtime:
             clear_runtime_state()
 

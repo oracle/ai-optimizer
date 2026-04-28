@@ -14,6 +14,7 @@ from typing import Optional
 import oracledb
 
 from server.app.core.paths import PROJECT_ROOT
+from server.app.core.secrets import reveal
 from server.app.core.settings import resolve_client, settings
 
 from .schemas import DatabaseConfig
@@ -78,12 +79,12 @@ def _build_connect_args(db_config: DatabaseConfig) -> dict:
 
     args: dict = {
         "user": db_config.username,
-        "password": db_config.password,
+        "password": reveal(db_config.password),
         "dsn": _strip_retry_tokens(db_config.dsn or ""),
         "config_dir": config_dir,
     }
     if db_config.wallet_password:
-        args["wallet_password"] = db_config.wallet_password
+        args["wallet_password"] = reveal(db_config.wallet_password)
     if db_config.wallet_location:
         args["wallet_location"] = db_config.wallet_location
 

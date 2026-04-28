@@ -19,6 +19,8 @@ If the API Server is started independently of the {{< short_app_ref >}} client, 
 
 During the startup of the API Server, a `server` client is created and populated with minimal settings.  The `server` client is the default when calling the API Server outside of the {{< short_app_ref >}} GUI client.  To copy your {{< short_app_ref >}} GUI client settings to the `server` client for use with external application clients, click the "Copy Client Settings".  
 
+The "API Server Key" field on this page shows the key external clients must send when calling the API Server.  In All-in-One deployments, the {{< short_app_ref >}} client creates and shares this key with the API Server when one has not been configured.  When running the API Server as a standalone process, configure `AIO_API_KEY` explicitly and distribute it through your normal secret-management process.
+
 ![Server Settings](images/api_server_settings.png)
 
 You can review how the `server` client is configured by expanding the `{...}` brackets.

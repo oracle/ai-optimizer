@@ -159,6 +159,42 @@ async def test_persist_settings_round_trip_json(core_pool):
     assert restored.api_key is None
 
 
+async def test_persist_settings_stores_real_secret_values(core_pool):
+    """Persisted JSON carries the configured value, not the masked sentinel."""
+    from pydantic import SecretStr
+
+    from server.app.core.secrets import reveal
+    from server.app.models.schemas import ModelConfig
+
+    sentinel = "SENTINEL_MODEL_KEY_ROUNDTRIP"
+    saved_models = settings.model_configs[:]
+    settings.model_configs = [
+        ModelConfig(type="ll", provider="openai", id="test-model", api_key=SecretStr(sentinel))
+    ]
+    try:
+        await persist_settings()
+        rows = await _read_aio_settings(core_pool)
+        assert len(rows) == 1
+
+        raw = rows[0][1]
+        # ``oracledb`` may return numeric JSON values as ``Decimal`` (e.g. the
+        # epoch ``created`` field on ModelConfig); ``default=str`` lets the
+        # assertion stringify them without rejecting the dump.
+        raw_str = raw if isinstance(raw, str) else json.dumps(raw, default=str)
+        # Stored value survived the round-trip; masked sentinel is absent.
+        assert sentinel in raw_str
+        assert "**********" not in raw_str
+
+        # Re-loading restores a SecretStr-typed field with the stored value.
+        data = json.loads(raw_str) if isinstance(raw, str) else raw
+        restored = SettingsBase.model_validate(data)
+        restored_key = restored.model_configs[0].api_key
+        assert isinstance(restored_key, SecretStr)
+        assert reveal(restored_key) == sentinel
+    finally:
+        settings.model_configs = saved_models
+
+
 # ---------------------------------------------------------------------------
 # load_settings tests
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -26,7 +26,7 @@ class ClientSettings(BaseSettings):
         extra="ignore",
     )
 
-    api_key: Optional[str] = None
+    api_key: Optional[SecretStr] = None
     server_url: str = "http://localhost"
     server_address: str = "127.0.0.1"
     server_port: int = 8000

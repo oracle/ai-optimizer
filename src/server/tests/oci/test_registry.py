@@ -9,7 +9,9 @@ Tests for server.app.oci.registry.
 from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 
+from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import settings
 from server.app.oci.registry import (
     _OCI_CLI_FIELD_MAP,
@@ -101,13 +103,15 @@ class TestApplyOciCliOverrides:
     )
     def test_env_var_overrides_profile_field(self, monkeypatch, env_var, profile_field, value):
         """Each OCI_CLI_* env var overrides the corresponding profile field."""
+        from server.app.core.secrets import reveal
+
         profile = OciProfileConfig(auth_profile="DEFAULT")
         monkeypatch.setenv(env_var, value)
 
         changed = _apply_oci_cli_overrides(profile)
 
         assert changed is True
-        assert getattr(profile, profile_field) == value
+        assert reveal(getattr(profile, profile_field)) == value
 
     @pytest.mark.usefixtures("_clear_oci_cli_env")
     @pytest.mark.parametrize(
@@ -125,13 +129,20 @@ class TestApplyOciCliOverrides:
     )
     def test_aio_setting_overrides_profile_field(self, monkeypatch, settings_attr, profile_field, value):
         """Each AIO_OCI_CLI_* setting overrides the corresponding profile field."""
+        from server.app.core.secrets import reveal
+
         profile = OciProfileConfig(auth_profile="DEFAULT")
-        monkeypatch.setattr(settings, settings_attr, value)
+        # SecretStr on Settings for the credential fields mirrors the runtime
+        # shape produced by ``env_prefix`` loading.
+        if settings_attr in ("oci_cli_key_content", "oci_cli_passphrase"):
+            monkeypatch.setattr(settings, settings_attr, SecretStr(value))
+        else:
+            monkeypatch.setattr(settings, settings_attr, value)
 
         changed = _apply_oci_cli_overrides(profile)
 
         assert changed is True
-        assert getattr(profile, profile_field) == value
+        assert reveal(getattr(profile, profile_field)) == value
 
     @pytest.mark.usefixtures("_clear_oci_cli_env")
     def test_env_var_takes_precedence_over_aio_setting(self, monkeypatch):
@@ -184,7 +195,7 @@ class TestApplyOciCliOverrides:
     @pytest.mark.usefixtures("_clear_oci_cli_env")
     def test_key_file_override_clears_key_content(self, monkeypatch):
         """Overriding key_file clears key_content so the file-based key wins."""
-        profile = OciProfileConfig(auth_profile="DEFAULT", key_content="embedded-key")
+        profile = OciProfileConfig(auth_profile="DEFAULT", key_content=SecretStr("embedded-key"))
         monkeypatch.setenv("OCI_CLI_KEY_FILE", "/new/key.pem")
 
         _apply_oci_cli_overrides(profile)
@@ -195,13 +206,37 @@ class TestApplyOciCliOverrides:
     @pytest.mark.usefixtures("_clear_oci_cli_env")
     def test_key_content_override_clears_key_file(self, monkeypatch):
         """Overriding key_content clears key_file so the inline key wins."""
+        from server.app.core.secrets import reveal
+
         profile = OciProfileConfig(auth_profile="DEFAULT", key_file="/old/key.pem")
         monkeypatch.setenv("OCI_CLI_KEY_CONTENT", "-----BEGIN RSA PRIVATE KEY-----")
 
         _apply_oci_cli_overrides(profile)
 
-        assert profile.key_content == "-----BEGIN RSA PRIVATE KEY-----"
+        assert reveal(profile.key_content) == "-----BEGIN RSA PRIVATE KEY-----"
         assert profile.key_file is None
+
+    @pytest.mark.usefixtures("_clear_oci_cli_env")
+    def test_env_var_assignment_yields_secretstr_for_reveal_dump(self, monkeypatch):
+        """OCI_CLI_* secret env vars produce SecretStr-typed profile fields
+        that round-trip through ``model_dump`` in both default and reveal modes.
+        """
+        profile = OciProfileConfig(auth_profile="DEFAULT")
+        monkeypatch.setenv("OCI_CLI_KEY_CONTENT", "-----BEGIN RSA-----")
+        monkeypatch.setenv("OCI_CLI_PASSPHRASE", "phrase-from-env")
+
+        _apply_oci_cli_overrides(profile)
+
+        assert isinstance(profile.key_content, SecretStr)
+        assert isinstance(profile.pass_phrase, SecretStr)
+
+        dumped = profile.model_dump(mode="json", context={REVEAL_KEY: True})
+        assert dumped["key_content"] == "-----BEGIN RSA-----"
+        assert dumped["pass_phrase"] == "phrase-from-env"
+
+        masked = profile.model_dump()
+        assert masked["key_content"] == "**********"
+        assert masked["pass_phrase"] == "**********"
 
 
 # ---------------------------------------------------------------------------

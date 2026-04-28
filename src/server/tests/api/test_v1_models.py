@@ -9,6 +9,7 @@ Tests for models endpoint.
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from server.app.core.settings import settings
 from server.app.models.schemas import ModelConfig, ModelSensitive
@@ -26,14 +27,14 @@ def _populate_configs():
             id="test-llm",
             type="ll",
             provider="openai",
-            api_key="sk-secret-key",
+            api_key=SecretStr("sk-secret-key"),
             temperature=0.7,
         ),
         ModelConfig(
             id="test-embed",
             type="embed",
             provider="openai",
-            api_key="sk-embed-key",
+            api_key=SecretStr("sk-embed-key"),
         ),
     ]
     yield
@@ -68,14 +69,13 @@ async def test_list_models(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_list_models_sensitive(app_client, auth_headers):
-    """Response includes sensitive fields when include_sensitive=true."""
+async def test_list_models_uses_standard_projection(app_client, auth_headers):
+    """The list endpoint uses the standard projection when extra params are present."""
     resp = await app_client.get("/v1/models", params={"include_sensitive": "true"}, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 2
-    assert body[0]["api_key"] == "sk-secret-key"
-    assert body[1]["api_key"] == "sk-embed-key"
+    assert_no_sensitive_keys(body, SENSITIVE_KEYS, "id")
 
 
 @pytest.mark.unit
@@ -312,8 +312,8 @@ async def test_delete_model_no_auth(app_client):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_get_model_include_sensitive(app_client, auth_headers):
-    """GET with include_sensitive=true returns api_key."""
+async def test_get_model_alternate_projection(app_client, auth_headers):
+    """Fetch the alternate projection for a single model."""
     resp = await app_client.get(
         "/v1/models/openai/test-llm",
         params={"include_sensitive": "true"},

@@ -286,7 +286,8 @@ async def app_client():
 @pytest.fixture
 def auth_headers():
     """Headers dict with a valid API key."""
-    return {"X-API-Key": settings.api_key}
+    from server.app.core.secrets import reveal
+    return {"X-API-Key": reveal(settings.api_key)}
 
 
 # ---------------------------------------------------------------------------

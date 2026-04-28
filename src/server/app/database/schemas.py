@@ -8,8 +8,9 @@ Pydantic models and dataclasses for database configuration.
 from typing import Annotated, Optional
 
 import oracledb
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, SecretStr, ValidationInfo, field_validator
 
+from server.app.core.secrets import SecretField
 from server.app.embed.schemas import VectorStoreConfig
 
 # Reject control chars at the schema boundary for credential/path fields
@@ -150,12 +151,25 @@ def _validate_dsn(value: Optional[str], field_name: Optional[str]) -> Optional[s
 class DatabaseSensitive(BaseModel):
     """Sensitive database fields."""
 
-    password: Optional[str] = None
-    wallet_password: Optional[str] = None
+    password: SecretField = None
+    wallet_password: SecretField = None
 
-    @field_validator("password", "wallet_password")
+    # ``mode="before"`` so the validator inspects the raw input string rather
+    # than the already-wrapped ``SecretStr`` (whose ``repr()`` is the masked
+    # sentinel).  Returning the str lets Pydantic complete the SecretStr
+    # coercion afterwards.
+    @field_validator("password", "wallet_password", mode="before")
     @classmethod
-    def _no_control_chars_sensitive(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+    def _no_control_chars_sensitive(cls, v, info: ValidationInfo):
+        if v is None:
+            return v
+        if isinstance(v, SecretStr):
+            v = v.get_secret_value()
+        if not isinstance(v, str):
+            # Pass non-strings through; Pydantic's downstream coercion
+            # produces a proper ValidationError instead of a TypeError from
+            # ``_reject_chars`` iterating a non-iterable.
+            return v
         return _reject_chars(v, info.field_name, _FORBIDDEN_CONTROL_CHARS)
 
 

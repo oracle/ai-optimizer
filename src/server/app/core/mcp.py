@@ -12,6 +12,7 @@ import json
 from fastmcp import FastMCP
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 
 mcp = FastMCP("Oracle AI Optimizer")
@@ -30,7 +31,7 @@ class MCPApiKeyMiddleware:
 
         headers = dict(scope.get("headers", []))
         api_key = headers.get(b"x-api-key", b"").decode("utf-8", errors="ignore")
-        configured_key = settings.api_key
+        configured_key = reveal(settings.api_key)
 
         if not configured_key or not api_key or not hmac.compare_digest(api_key, configured_key):
             body = json.dumps({"detail": "Forbidden"}).encode("utf-8")

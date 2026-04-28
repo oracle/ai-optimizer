@@ -103,7 +103,18 @@ all-dev = [
 ]
 
 [tool.setuptools]
-packages = ["src.server", "src.client"]
+# ``src/`` is the package root; the wheel ships its contents at the top
+# level (``server``, ``client``, plus the bare-name modules below) so
+# runtime imports like ``from server.app...`` resolve directly.
+py-modules = ["_version", "entrypoint", "launch_client", "logging_config", "logging_redaction"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
+include = ["server*", "client*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "tests"]
@@ -129,6 +140,7 @@ markers = [
 # Exclude the wayflow runtime subtree so pyright doesn't report missing imports.
 exclude = [
     "**/.venv",
+    "build",
     "src/client/source",
     "src/server/app/runtime/wayflow",
     "src/server/tests/runtime/wayflow",

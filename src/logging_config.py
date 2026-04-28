@@ -12,6 +12,7 @@ import warnings
 from logging.config import dictConfig
 
 from _version import __version__
+from logging_redaction import RedactingFilter
 
 _FORMATTER_FORMAT = "%(asctime)s (v%(__version__)s) - %(levelname)-8s - (%(name)s): %(message)s"
 _FORMATTER_DATEFMT = "%Y-%b-%d %H:%M:%S"
@@ -49,6 +50,9 @@ def configure_logging(log_level: str | None = None) -> None:
         {
             "version": 1,
             "disable_existing_loggers": False,
+            "filters": {
+                "redact": {"()": "logging_redaction.RedactingFilter"},
+            },
             "formatters": {
                 "standard": {
                     "format": _FORMATTER_FORMAT,
@@ -59,6 +63,7 @@ def configure_logging(log_level: str | None = None) -> None:
                 "console": {
                     "class": "logging.StreamHandler",
                     "formatter": "standard",
+                    "filters": ["redact"],
                 },
             },
             "root": {
@@ -121,5 +126,21 @@ def configure_logging(log_level: str | None = None) -> None:
 
     for handler in logging.getLogger().handlers:
         handler.addFilter(_inject_version)
+
+    # Surface the redaction filter's keyset provenance once at startup.
+    # ``key_source == "static"`` means the schema-derived path failed and the
+    # filter is running on the conservative fallback set; this is diagnostic only.
+    for handler in logging.getLogger().handlers:
+        for flt in handler.filters:
+            if isinstance(flt, RedactingFilter):
+                logging.getLogger("logging_redaction").debug(
+                    "redaction filter initialized with %d sensitive keys (source=%s)",
+                    flt.key_count,
+                    flt.key_source,
+                )
+                break
+        else:
+            continue
+        break
 
     logging.captureWarnings(True)

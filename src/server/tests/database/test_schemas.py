@@ -9,8 +9,9 @@ Tests for server.app.database.schemas — Pydantic model defaults and validation
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
+from server.app.core.secrets import REVEAL_KEY, reveal
 from server.app.database.schemas import (
     DatabaseConfig,
     DatabaseSensitive,
@@ -92,9 +93,13 @@ class TestDatabaseConfig:
 
     def test_inherits_sensitive_fields(self):
         """DatabaseConfig inherits password and wallet_password from DatabaseSensitive."""
-        dc = DatabaseConfig(alias="TEST", password="secret", wallet_password="wallet_secret")
-        assert dc.password == "secret"
-        assert dc.wallet_password == "wallet_secret"
+        dc = DatabaseConfig(
+            alias="TEST",
+            password=SecretStr("secret"),
+            wallet_password=SecretStr("wallet_secret"),
+        )
+        assert reveal(dc.password) == "secret"
+        assert reveal(dc.wallet_password) == "wallet_secret"
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +176,19 @@ class TestControlCharRejection:
     def test_database_sensitive_rejects_control_char_in_password(self, char: str):
         """DatabaseSensitive (base class) refuses control chars in password."""
         with pytest.raises(ValidationError):
-            DatabaseSensitive(password=f"a{char}b")
+            DatabaseSensitive(password=SecretStr(f"a{char}b"))
+
+    @pytest.mark.parametrize("bad_value", [123, 12.5, True, ["x"], {"k": "v"}])
+    def test_database_config_non_string_password_yields_validation_error(self, bad_value):
+        """Non-string ``password`` values raise ValidationError."""
+        with pytest.raises(ValidationError):
+            DatabaseConfig(alias="TEST", password=bad_value)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("bad_value", [123, 12.5, True, ["x"], {"k": "v"}])
+    def test_database_update_non_string_password_yields_validation_error(self, bad_value):
+        """The same contract applies to the update schema."""
+        with pytest.raises(ValidationError):
+            DatabaseUpdate(password=bad_value)  # type: ignore[arg-type]
 
     def test_password_with_embedded_newline_is_rejected(self):
         """A password containing an embedded newline must be rejected at the schema layer."""
@@ -179,7 +196,7 @@ class TestControlCharRejection:
             DatabaseConfig(
                 alias="TEST",
                 username="scott",
-                password='x"\ny\n#',
+                password=SecretStr('x"\ny\n#'),
                 dsn="db",
             )
         assert "password" in str(excinfo.value)
@@ -410,7 +427,61 @@ class TestControlCharRejection:
     )
     def test_legitimate_values_still_accepted(self, field: str, value: str):
         """The validator must not reject ordinary credential/path values."""
+        from server.app.core.secrets import reveal
         kwargs: dict[str, Any] = {"alias": "TEST", field: value}
         # Constructing succeeds and preserves the value verbatim.
         dc = DatabaseConfig(**kwargs)
-        assert getattr(dc, field) == value
+        # ``password`` / ``wallet_password`` are stored as ``SecretStr``;
+        # reveal them for the comparison.  Other fields pass through.
+        assert reveal(getattr(dc, field)) == value
+
+
+# ---------------------------------------------------------------------------
+# Sensitive-field rendering: defaults to masked, opt-in reveal via context
+# ---------------------------------------------------------------------------
+
+
+class TestSensitiveFieldRendering:
+    """Sensitive fields render as the masked sentinel by default."""
+
+    def test_repr_is_masked(self):
+        dc = DatabaseConfig(alias="TEST", password=SecretStr("hunter2"), wallet_password=SecretStr("walletpw"))
+        assert "hunter2" not in repr(dc)
+        assert "walletpw" not in repr(dc)
+
+    def test_str_is_masked(self):
+        dc = DatabaseConfig(alias="TEST", password=SecretStr("hunter2"), wallet_password=SecretStr("walletpw"))
+        assert "hunter2" not in str(dc)
+        assert "walletpw" not in str(dc)
+
+    def test_default_dump_is_masked(self):
+        dc = DatabaseConfig(alias="TEST", password=SecretStr("hunter2"), wallet_password=SecretStr("walletpw"))
+        dumped = dc.model_dump()
+        assert dumped["password"] == "**********"
+        assert dumped["wallet_password"] == "**********"
+
+    def test_default_dump_json_is_masked(self):
+        dc = DatabaseConfig(alias="TEST", password=SecretStr("hunter2"), wallet_password=SecretStr("walletpw"))
+        dumped_json = dc.model_dump_json()
+        assert "hunter2" not in dumped_json
+        assert "walletpw" not in dumped_json
+        assert "**********" in dumped_json
+
+    def test_reveal_context_unmasks(self):
+        dc = DatabaseConfig(alias="TEST", password=SecretStr("hunter2"), wallet_password=SecretStr("walletpw"))
+        dumped = dc.model_dump(context={REVEAL_KEY: True})
+        assert dumped["password"] == "hunter2"
+        assert dumped["wallet_password"] == "walletpw"
+
+    def test_reveal_context_unmasks_json(self):
+        dc = DatabaseConfig(alias="TEST", password=SecretStr("hunter2"), wallet_password=SecretStr("walletpw"))
+        dumped_json = dc.model_dump_json(context={REVEAL_KEY: True})
+        assert "hunter2" in dumped_json
+        assert "walletpw" in dumped_json
+        assert "**********" not in dumped_json
+
+    def test_none_passes_through(self):
+        dc = DatabaseConfig(alias="TEST")
+        dumped = dc.model_dump()
+        assert dumped["password"] is None
+        assert dumped["wallet_password"] is None

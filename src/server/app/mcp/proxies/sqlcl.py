@@ -26,6 +26,7 @@ from fastmcp.tools import Tool
 
 from server.app.core.mcp import mcp
 from server.app.core.paths import PROJECT_ROOT
+from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 from server.app.database.config import has_required_credentials
 
@@ -370,7 +371,11 @@ async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | 
 
     # 2. Create connection stores for each database with valid credentials
     for db in settings.database_configs:
-        if not has_required_credentials(db) or not db.username or not db.password or not db.dsn:
+        # Reveal the SecretStr password before the guard so the narrowed
+        # local can flow into ``_create_connection_store`` without a second
+        # None-check at the call site.
+        db_password = reveal(db.password)
+        if not has_required_credentials(db) or not db.username or not db_password or not db.dsn:
             continue
 
         config_dir = db.config_dir or tns_admin
@@ -381,7 +386,7 @@ async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | 
                 sqlcl_binary=sqlcl_binary,
                 alias=db.alias,
                 username=db.username,
-                password=db.password,
+                password=db_password,
                 dsn=db.dsn,
                 env=db_env,
                 dbtools_home=dbtools_home,

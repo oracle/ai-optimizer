@@ -52,11 +52,12 @@ async def test_openapi_json_injects_root_path_servers():
     generated clients target the prefixed deployment correctly.
     """
     assert settings.api_key is not None
+    api_key_value = settings.api_key.get_secret_value()
     async with AsyncClient(
         transport=ASGITransport(app=app, root_path="/api"),
         base_url="http://test",
     ) as client:
-        resp = await client.get("/v1/openapi.json", headers={"X-API-Key": settings.api_key})
+        resp = await client.get("/v1/openapi.json", headers={"X-API-Key": api_key_value})
     assert resp.status_code == 200
     servers = resp.json().get("servers", [])
     assert {"url": "/api"} in servers
@@ -91,12 +92,12 @@ async def test_swagger_docs_shell_is_public(app_client):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_swagger_docs_shell_does_not_leak_spec(app_client):
-    """The shell must not inline the OpenAPI spec — it is fetched post-auth."""
+async def test_swagger_docs_shell_uses_deferred_spec(app_client):
+    """The shell uses deferred OpenAPI spec loading."""
     resp = await app_client.get("/v1/docs")
     assert resp.status_code == 200
     body = resp.text
-    # No schema keys or endpoint paths baked into the unauthenticated HTML.
+    # No schema keys or endpoint paths are baked into the HTML shell.
     assert '"openapi":' not in body
     assert '"paths":' not in body
     assert "/v1/liveness" not in body

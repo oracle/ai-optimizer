@@ -9,6 +9,7 @@ Tests for LiteLLM configuration builder and embedding client factory.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from server.app.core.settings import settings
 from server.app.models.litellm_utils import (
@@ -113,7 +114,7 @@ def test_model_spec_basic():
         type="ll",
         provider="openai",
         api_base="https://api.openai.com/v1",
-        api_key="sk-123",
+        api_key=SecretStr("sk-123"),
         temperature=0.7,
         enabled=True,
     )
@@ -269,7 +270,7 @@ def test_to_litellm_kwargs_basic():
         type="ll",
         provider="openai",
         api_base="https://api.openai.com/v1",
-        api_key="sk-123",
+        api_key=SecretStr("sk-123"),
         temperature=0.7,
         enabled=True,
     )
@@ -457,7 +458,7 @@ def test_get_client_embed_default():
         id="text-embedding-3-small",
         type="embed",
         provider="openai",
-        api_key="sk-123",
+        api_key=SecretStr("sk-123"),
         enabled=True,
     )
     settings.model_configs = [mc]

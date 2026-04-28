@@ -192,6 +192,20 @@ class TestRefreshSettings:
             refresh_settings()
         assert state["settings"] == original_settings
 
+    def test_clears_per_profile_cache_flags(self):
+        """Refresh invalidates per-profile sensitive-field cache flags."""
+        state = _make_state({"_oci_sensitive_loaded": True, "_template_export": {"x": 1}})
+        server_data = {"database_configs": [], "client_settings": {}}
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.get_server_settings", return_value=server_data),
+        ):
+            from client.app.core.helpers import refresh_settings
+
+            refresh_settings()
+        assert not state.get("_oci_sensitive_loaded")
+        assert "_template_export" not in state
+
 
 # ---------------------------------------------------------------------------
 # sync_client_setting

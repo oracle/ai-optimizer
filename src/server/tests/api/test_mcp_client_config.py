@@ -73,7 +73,8 @@ async def test_client_config_default(app_client, auth_headers):
     assert server["url"] == expected_url
     assert server["type"] == "streamableHttp"
     assert server["transport"] == "streamable-http"
-    assert server["headers"]["X-API-Key"] == settings.api_key
+    from server.app.core.secrets import reveal
+    assert server["headers"]["X-API-Key"] == reveal(settings.api_key)
 
 
 @pytest.mark.unit

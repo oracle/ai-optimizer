@@ -13,11 +13,12 @@ import threading
 from collections import OrderedDict
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from server.app.core.paths import PROJECT_ROOT
 from server.app.core.schemas import ClientSettings
+from server.app.core.secrets import SecretField
 from server.app.database.schemas import DatabaseConfig
 from server.app.mcp.prompts.schemas import PromptConfig
 from server.app.models.schemas import ModelConfig
@@ -58,7 +59,7 @@ class SettingsBase(BaseModel):
     prompt_configs: list[PromptConfig] = []
     client_settings: ClientSettings = ClientSettings()
     nl2sql_available: bool = False
-    api_key: Optional[str] = Field(default=None, exclude=True)
+    api_key: SecretField = Field(default=None, exclude=True)
 
 
 class Settings(SettingsBase, BaseSettings):
@@ -73,9 +74,9 @@ class Settings(SettingsBase, BaseSettings):
 
     # Database — flat fields loaded from AIO_DB_* env vars (excluded from serialization)
     db_username: Optional[str] = Field(default=None, exclude=True)
-    db_password: Optional[str] = Field(default=None, exclude=True)
+    db_password: Optional[SecretStr] = Field(default=None, exclude=True)
     db_dsn: Optional[str] = Field(default=None, exclude=True)
-    db_wallet_password: Optional[str] = Field(default=None, exclude=True)
+    db_wallet_password: Optional[SecretStr] = Field(default=None, exclude=True)
     db_wallet_location: Optional[str] = Field(default=None, exclude=True)
     db_pool_size: int = Field(default=5, exclude=True)
 
@@ -88,8 +89,8 @@ class Settings(SettingsBase, BaseSettings):
     oci_cli_user: Optional[str] = Field(default=None, exclude=True)
     oci_cli_fingerprint: Optional[str] = Field(default=None, exclude=True)
     oci_cli_key_file: Optional[str] = Field(default=None, exclude=True)
-    oci_cli_key_content: Optional[str] = Field(default=None, exclude=True)
-    oci_cli_passphrase: Optional[str] = Field(default=None, exclude=True)
+    oci_cli_key_content: Optional[SecretStr] = Field(default=None, exclude=True)
+    oci_cli_passphrase: Optional[SecretStr] = Field(default=None, exclude=True)
     oci_cli_security_token_file: Optional[str] = Field(default=None, exclude=True)
     genai_compartment_id: Optional[str] = Field(default=None, exclude=True)
     genai_region: Optional[str] = Field(default=None, exclude=True)
@@ -101,9 +102,16 @@ class Settings(SettingsBase, BaseSettings):
         Precedence: DB_* env var > AIO_DB_* (.env / export).
         """
         username = os.environ.get("DB_USERNAME") or self.db_username
-        password = os.environ.get("DB_PASSWORD") or self.db_password
+        # Env-var values arrive as ``str``; promote them to ``SecretStr`` so
+        # the precedence ``or self.db_password`` produces a single SecretStr |
+        # None type rather than a mixed str | SecretStr | None.
+        db_password_env = os.environ.get("DB_PASSWORD")
+        password: Optional[SecretStr] = SecretStr(db_password_env) if db_password_env else self.db_password
         dsn = os.environ.get("DB_DSN") or self.db_dsn
-        wallet_password = os.environ.get("DB_WALLET_PASSWORD") or self.db_wallet_password
+        wallet_password_env = os.environ.get("DB_WALLET_PASSWORD")
+        wallet_password: Optional[SecretStr] = (
+            SecretStr(wallet_password_env) if wallet_password_env else self.db_wallet_password
+        )
         wallet_location = os.environ.get("DB_WALLET_LOCATION") or self.db_wallet_location
 
         if any([username, password, dsn]):
@@ -122,7 +130,7 @@ class Settings(SettingsBase, BaseSettings):
     def _generate_api_key_if_missing(self) -> "Settings":
         if self.api_key is None:
             object.__setattr__(self, "_api_key_generated", True)
-            self.api_key = secrets.token_urlsafe(32)
+            self.api_key = SecretStr(secrets.token_urlsafe(32))
         else:
             object.__setattr__(self, "_api_key_generated", False)
         return self
