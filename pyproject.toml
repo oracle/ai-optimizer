@@ -42,7 +42,7 @@ server-base = [
     "langchain-oci==0.2.5",
     "langchain-ollama==1.1.0",
     "langchain-oracledb==1.2.0",
-    "litellm==1.83.0",
+    "litellm==1.83.7",
     "llama-index==0.14.20",
     "matplotlib==3.10.8",
     "oci~=2.0",
