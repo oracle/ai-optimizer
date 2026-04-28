@@ -19,6 +19,24 @@ from logging_redaction import (
 )
 
 
+def _server_schemas_importable() -> bool:
+    try:
+        from server.app.database.schemas import DatabaseSensitive  # noqa: F401
+        from server.app.models.defaults import ENV_OVERRIDES  # noqa: F401
+        from server.app.models.schemas import ModelSensitive  # noqa: F401
+        from server.app.oci.schemas import OciSensitive  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+_SERVER_SCHEMAS_AVAILABLE = _server_schemas_importable()
+_requires_server_schemas = pytest.mark.skipif(
+    not _SERVER_SCHEMAS_AVAILABLE,
+    reason="server schemas not importable (client-only test env)",
+)
+
+
 def _make_record(msg: str, args: tuple = ()) -> logging.LogRecord:
     return logging.LogRecord(
         name="test",
@@ -222,6 +240,7 @@ class TestDsnRedaction:
 class TestFilterAttributes:
     """Filter exposes ``key_count`` / ``key_source`` for caller-side observability."""
 
+    @_requires_server_schemas
     def test_schemas_path_default(self, filt):
         # Server schemas are importable in this test environment.
         assert filt.key_source == "schemas"
@@ -258,6 +277,7 @@ class TestKeysetParity:
     where the server schemas are not on the path.
     """
 
+    @_requires_server_schemas
     def test_schema_and_static_match(self):
         keys, source = _sensitive_keys()
         assert source == "schemas"
