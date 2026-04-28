@@ -93,28 +93,24 @@ async def test_get_client_settings_excludes_sensitive(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_get_client_settings_includes_sensitive(app_client, auth_headers):
-    """Response includes sensitive fields when include_sensitive=true."""
+async def test_get_client_settings_uses_standard_projection(app_client, auth_headers):
+    """``GET /v1/settings`` uses the standard projection when extra params are present."""
     resp = await app_client.get("/v1/settings", params={"include_sensitive": "true"}, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
 
-    # api_key should still be excluded (Field(exclude=True) on SettingsBase)
     assert "api_key" not in body
 
-    # Database sensitive fields should be present
+    # Sensitive fields are omitted from every nested config.
     for db_entry in body.get("database_configs", []):
-        assert "password" in db_entry
-
-    # Model sensitive fields should be present
+        assert "password" not in db_entry
+        assert "wallet_password" not in db_entry
     for model_entry in body.get("model_configs", []):
-        assert "api_key" in model_entry
-
-    # OCI sensitive fields should be present
+        assert "api_key" not in model_entry
     for oci_entry in body.get("oci_configs", []):
-        assert "fingerprint" in oci_entry
+        for key in ("fingerprint", "key_content", "pass_phrase", "security_token_file"):
+            assert key not in oci_entry
 
-    # client_settings should be present from GET /settings
     assert "client_settings" in body
 
 
@@ -624,3 +620,39 @@ class TestReconcileLlModelTokens:
             _reconcile_ll_model_tokens(current, incoming)
         # Capped to new model's max_input_tokens
         assert incoming.max_tokens == 1000
+
+
+# ---------------------------------------------------------------------------
+# /v1/settings/export
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_export_requires_confirm_header(app_client, auth_headers):
+    """POST /v1/settings/export requires the confirmation header."""
+    resp = await app_client.post("/v1/settings/export", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "X-Confirm-Export" in resp.json()["detail"]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_export_rejects_falsy_confirm_header(app_client, auth_headers):
+    """X-Confirm-Export must be the expected literal value."""
+    headers = {**auth_headers, "X-Confirm-Export": "yes"}
+    resp = await app_client.post("/v1/settings/export", headers=headers)
+    assert resp.status_code == 400
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_export_uses_reveal_projection_with_confirm_header(app_client, auth_headers):
+    """With the confirm header, response uses the export projection."""
+    headers = {**auth_headers, "X-Confirm-Export": "true"}
+    resp = await app_client.post("/v1/settings/export", headers=headers)
+    assert resp.status_code == 200
+    body = resp.text
+    # Defensive: regardless of fixture-set values, the masked sentinel must
+    # not appear anywhere in the export body.
+    assert "**********" not in body

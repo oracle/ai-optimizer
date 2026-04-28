@@ -1596,6 +1596,103 @@ class TestRenderSourceCodeTemplatesSection:
         mock_lc_zip.assert_called_once()
         mock_spring_zip.assert_called_once()
 
+    def test_repeated_renders_reuse_cached_export(self, mock_st):
+        """The export projection is fetched once per session and reused on
+        subsequent reruns until invalidated by ``helpers.refresh_settings``.
+        """
+        state = AttrDict({"settings": {}, "optimizer_client": "test-client"})
+        cols = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.columns.return_value = cols
+        configs_return = ({"provider": "openai"}, {"provider": "openai"}, "openai")
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._get_model_configs", return_value=configs_return),
+            patch(f"{MODULE}.get_server_settings", return_value={"settings": {}}) as mock_get,
+            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()),
+            patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()),
+        ):
+            from client.app.content.config.tabs.settings import _render_source_code_templates_section
+
+            _render_source_code_templates_section()
+            _render_source_code_templates_section()
+            _render_source_code_templates_section()
+
+        assert mock_get.call_count == 1
+
+    def test_renders_with_initially_masked_state_without_persisting_reveal(self, mock_st, tmp_path):
+        """The renderer obtains the reveal projection for template generation
+        but must restore ``state['settings']`` afterwards so the reveal data
+        is not visible to other UI panels that read session state.
+        """
+        masked_db = {"alias": "TEST", "username": "u", "dsn": "//h:1521/s"}
+        masked_model = {"id": "gpt-4o", "type": "ll", "provider": "openai", "enabled": True, "usable": True}
+        masked_state = AttrDict(
+            {
+                "settings": {
+                    "database_configs": [masked_db],
+                    "model_configs": [masked_model],
+                    "prompt_configs": [{"name": "optimizer_basic-default", "text": "p"}],
+                    "client_settings": {
+                        "database": {"alias": "TEST"},
+                        "ll_model": {"provider": "openai", "id": "gpt-4o"},
+                        "vector_search": {},
+                        "tools_enabled": [],
+                    },
+                },
+                "optimizer_client": "test",
+            }
+        )
+        reveal_payload = {
+            "database_configs": [
+                {"alias": "TEST", "username": "u", "password": "the-db-password", "dsn": "//h:1521/s"},
+            ],
+            "model_configs": [
+                {
+                    "id": "gpt-4o",
+                    "type": "ll",
+                    "provider": "openai",
+                    "api_key": "sk-the-key",
+                    "enabled": True,
+                    "usable": True,
+                },
+            ],
+            "prompt_configs": [{"name": "optimizer_basic-default", "text": "p"}],
+            "client_settings": masked_state["settings"]["client_settings"],
+        }
+
+        ll_config = {"provider": "openai", "id": "gpt-4o"}
+        embed_config = {"provider": "openai", "id": "text-embed", "alias": ""}
+        del tmp_path  # template files not exercised; renderers are mocked
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", masked_state),
+            patch(f"{MODULE}.get_server_settings", return_value=reveal_payload),
+            patch(f"{MODULE}._get_model_configs", return_value=(ll_config, embed_config, "openai")),
+            patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()) as mock_spring_zip,
+            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()) as mock_lc_zip,
+        ):
+            from client.app.content.config.tabs.settings import _render_source_code_templates_section
+
+            _render_source_code_templates_section()
+
+        # Render produced both download payloads.
+        mock_spring_zip.assert_called_once()
+        mock_lc_zip.assert_called_once()
+
+        # The langchain renderer received the reveal payload directly.
+        lc_arg = mock_lc_zip.call_args[0][0]
+        assert lc_arg["database_configs"][0]["password"] == "the-db-password"
+        assert lc_arg["model_configs"][0]["api_key"] == "sk-the-key"
+
+        # state.settings is back to the masked dict — the reveal projection
+        # did not persist where other UI paths can read it.
+        post_db = masked_state["settings"]["database_configs"][0]
+        post_model = masked_state["settings"]["model_configs"][0]
+        assert "password" not in post_db
+        assert "api_key" not in post_model
+
 
 # ---------------------------------------------------------------------------
 # display_settings

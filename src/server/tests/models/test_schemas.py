@@ -9,8 +9,9 @@ Tests for server.app.models.schemas Pydantic models.
 import time
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
+from server.app.core.secrets import REVEAL_KEY, reveal
 from server.app.models.schemas import (
     EmbeddingModelParameters,
     LanguageModelParameters,
@@ -78,8 +79,8 @@ class TestModelSensitive:
 
     def test_api_key_set(self):
         """api_key stores the provided value."""
-        m = ModelSensitive(api_key="sk-test")
-        assert m.api_key == "sk-test"
+        m = ModelSensitive(api_key=SecretStr("sk-test"))
+        assert reveal(m.api_key) == "sk-test"
 
 
 # ---------------------------------------------------------------------------
@@ -166,8 +167,8 @@ class TestModelConfig:
 
     def test_inherits_model_sensitive(self):
         """ModelSensitive fields are accessible on ModelConfig."""
-        cfg = ModelConfig(type="ll", api_key="sk-key")
-        assert cfg.api_key == "sk-key"
+        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-key"))
+        assert reveal(cfg.api_key) == "sk-key"
 
     def test_inherits_model_identity(self):
         """ModelIdentity fields are accessible on ModelConfig."""
@@ -244,11 +245,51 @@ class TestModelUpdate:
 
     def test_inherits_api_key_from_model_sensitive(self):
         """api_key is available via ModelSensitive inheritance."""
-        u = ModelUpdate(api_key="new-key")
-        assert u.api_key == "new-key"
+        u = ModelUpdate(api_key=SecretStr("new-key"))
+        assert reveal(u.api_key) == "new-key"
 
     def test_empty_dump_has_no_keys(self):
         """Dumping a default instance with exclude_unset yields empty dict."""
         u = ModelUpdate()
         dumped = u.model_dump(exclude_unset=True)
         assert dumped == {}
+
+
+# ---------------------------------------------------------------------------
+# Sensitive-field rendering
+# ---------------------------------------------------------------------------
+
+
+class TestSensitiveFieldRendering:
+    """``api_key`` renders masked by default."""
+
+    def test_repr_is_masked(self):
+        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        assert "sk-secret" not in repr(cfg)
+
+    def test_default_dump_is_masked(self):
+        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        dumped = cfg.model_dump()
+        assert dumped["api_key"] == "**********"
+
+    def test_default_dump_json_is_masked(self):
+        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        dumped_json = cfg.model_dump_json()
+        assert "sk-secret" not in dumped_json
+        assert "**********" in dumped_json
+
+    def test_reveal_context_unmasks(self):
+        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        dumped = cfg.model_dump(context={REVEAL_KEY: True})
+        assert dumped["api_key"] == "sk-secret"
+
+    def test_reveal_context_unmasks_json(self):
+        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        dumped_json = cfg.model_dump_json(context={REVEAL_KEY: True})
+        assert "sk-secret" in dumped_json
+        assert "**********" not in dumped_json
+
+    def test_none_passes_through(self):
+        cfg = ModelConfig(type="ll")
+        dumped = cfg.model_dump()
+        assert dumped["api_key"] is None

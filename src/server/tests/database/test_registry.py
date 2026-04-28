@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import oracledb
 import pytest
+from pydantic import SecretStr
 
 from server.app.database.config import close_pool
 from server.app.database.registry import discover_vector_stores, drop_vector_store, init_core_database
@@ -92,7 +93,7 @@ def _make_mock_pool(conn):
 @pytest.mark.unit
 async def test_test_connection_success():
     """test_connection sets usable=True, stores pool, and discovers vector stores."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password="p", dsn="d")
+    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
     mock_conn = AsyncMock()
     mock_pool = _make_mock_pool(mock_conn)
 
@@ -110,7 +111,7 @@ async def test_test_connection_success():
 @pytest.mark.unit
 async def test_test_connection_failure():
     """test_connection sets usable=False, closes pool, and re-raises on failure."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password="p", dsn="d")
+    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
 
     with (
         patch(
@@ -131,7 +132,7 @@ async def test_test_connection_failure():
 @pytest.mark.unit
 async def test_init_core_database_success():
     """init_core_database runs DDL and returns the pool on success."""
-    cfg = DatabaseConfig(alias="CORE", username="u", password="p", dsn="d")
+    cfg = DatabaseConfig(alias="CORE", username="u", password=SecretStr("p"), dsn="d")
     mock_conn = AsyncMock()
     mock_pool = _make_mock_pool(mock_conn)
 
@@ -156,7 +157,7 @@ async def test_init_core_database_success():
 @pytest.mark.unit
 async def test_init_core_database_failure():
     """init_core_database cleans up pool, sets usable=False, and re-raises."""
-    cfg = DatabaseConfig(alias="CORE", username="u", password="p", dsn="d")
+    cfg = DatabaseConfig(alias="CORE", username="u", password=SecretStr("p"), dsn="d")
 
     with (
         patch(

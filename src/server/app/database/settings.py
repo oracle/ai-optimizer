@@ -13,6 +13,7 @@ from typing import Optional
 import oracledb
 
 from server.app.core.schemas import ClientSettings
+from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _PROTECTED_CLIENTS, SettingsBase, settings
 
 from .config import get_core_pool
@@ -56,7 +57,11 @@ async def persist_settings(client: str = "CONFIGURED", is_current: bool = True) 
         LOGGER.warning("persist_settings: CORE database not available — skipping")
         return True
 
-    payload = SettingsBase.model_validate(settings).model_dump(mode="json", exclude={"oci_configs", "client_settings"})
+    payload = SettingsBase.model_validate(settings).model_dump(
+        mode="json",
+        context={REVEAL_KEY: True},
+        exclude={"oci_configs", "client_settings"},
+    )
 
     try:
         async with pool.acquire() as conn:
@@ -159,7 +164,7 @@ async def persist_client_settings(client: str, cs: ClientSettings, is_current: b
         LOGGER.warning("persist_client_settings: CORE database not available — skipping")
         return True
 
-    payload = {"client_settings": cs.model_dump(mode="json")}
+    payload = {"client_settings": cs.model_dump(mode="json", context={REVEAL_KEY: True})}
 
     try:
         async with pool.acquire() as conn:

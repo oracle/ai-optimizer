@@ -9,7 +9,9 @@ Tests for server.app.oci.schemas Pydantic models.
 from typing import Any, cast
 
 import pytest
+from pydantic import SecretStr
 
+from server.app.core.secrets import REVEAL_KEY, reveal
 from server.app.oci.schemas import OciProfileConfig, OciProfileUpdate, OciSensitive
 
 # ---------------------------------------------------------------------------
@@ -54,15 +56,15 @@ class TestOciProfileConfig:
         cfg = OciProfileConfig(
             auth_profile="TEST",
             fingerprint="aa:bb:cc",
-            key_content="key-data",
+            key_content=SecretStr("key-data"),
             key_file="/path/to/key",
-            pass_phrase="pass",
+            pass_phrase=SecretStr("pass"),
             security_token_file="/path/to/token",
         )
         assert cfg.fingerprint == "aa:bb:cc"
-        assert cfg.key_content == "key-data"
+        assert reveal(cfg.key_content) == "key-data"
         assert cfg.key_file == "/path/to/key"
-        assert cfg.pass_phrase == "pass"
+        assert reveal(cfg.pass_phrase) == "pass"
         assert cfg.security_token_file == "/path/to/token"
 
     def test_namespace_readonly_field(self):
@@ -101,3 +103,48 @@ class TestOciProfileUpdate:
         u = OciProfileUpdate(tenancy="ocid1.tenancy.oc1..test")
         dumped = u.model_dump(exclude_unset=True)
         assert dumped == {"tenancy": "ocid1.tenancy.oc1..test"}
+
+
+# ---------------------------------------------------------------------------
+# Sensitive-field rendering
+# ---------------------------------------------------------------------------
+
+
+class TestSensitiveFieldRendering:
+    """``key_content`` and ``pass_phrase`` render masked by default."""
+
+    def test_repr_is_masked(self):
+        cfg = OciProfileConfig(
+            auth_profile="TEST", key_content=SecretStr("rsa-private"), pass_phrase=SecretStr("shh-secret")
+        )
+        assert "rsa-private" not in repr(cfg)
+        assert "shh-secret" not in repr(cfg)
+
+    def test_default_dump_is_masked(self):
+        cfg = OciProfileConfig(
+            auth_profile="TEST", key_content=SecretStr("rsa-private"), pass_phrase=SecretStr("shh-secret")
+        )
+        dumped = cfg.model_dump()
+        assert dumped["key_content"] == "**********"
+        assert dumped["pass_phrase"] == "**********"
+
+    def test_reveal_context_unmasks(self):
+        cfg = OciProfileConfig(
+            auth_profile="TEST", key_content=SecretStr("rsa-private"), pass_phrase=SecretStr("shh-secret")
+        )
+        dumped = cfg.model_dump(context={REVEAL_KEY: True})
+        assert dumped["key_content"] == "rsa-private"
+        assert dumped["pass_phrase"] == "shh-secret"
+
+    def test_fingerprint_and_token_file_remain_plain(self):
+        """These response-masked fields are not credentials and must remain str."""
+        cfg = OciProfileConfig(
+            auth_profile="TEST",
+            fingerprint="aa:bb:cc",
+            security_token_file="/path/to/token",
+        )
+        assert cfg.fingerprint == "aa:bb:cc"
+        assert cfg.security_token_file == "/path/to/token"
+        dumped = cfg.model_dump()
+        assert dumped["fingerprint"] == "aa:bb:cc"
+        assert dumped["security_token_file"] == "/path/to/token"

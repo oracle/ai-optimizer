@@ -10,6 +10,7 @@ import logging
 import os
 from typing import cast, get_args
 
+from server.app.core.secrets import coerce_secret_str
 from server.app.core.settings import settings
 
 from .config import _check_usable, parse_oci_config_file
@@ -17,6 +18,10 @@ from .schemas import OciAuthType, OciProfileConfig
 from .service import create_genai_models
 
 LOGGER = logging.getLogger(__name__)
+
+# Profile fields typed ``SecretField``; raw env-var strings are wrapped
+# before assignment.
+_SECRET_PROFILE_FIELDS = frozenset({"key_content", "pass_phrase"})
 
 # Mapping of OCI CLI env vars to (settings_attr, profile_field, is_sensitive).
 # Precedence: OCI_CLI_* env var > AIO_OCI_CLI_* setting > config file value.
@@ -68,7 +73,9 @@ def _apply_oci_cli_overrides(profile: OciProfileConfig) -> bool:
         if val is None:
             continue
         if field in ("key_file", "security_token_file"):
-            val = os.path.expanduser(val)
+            val = os.path.expanduser(val) if isinstance(val, str) else val
+        if field in _SECRET_PROFILE_FIELDS:
+            val = coerce_secret_str(val)
         current = getattr(profile, field)
         if val != current:
             setattr(profile, field, val)

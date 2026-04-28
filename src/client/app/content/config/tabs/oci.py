@@ -284,11 +284,21 @@ def _render_oci_genai_section(oci_lookup: dict, selected_oci_auth_profile: str, 
 
 
 def _get_oci(force: bool = False) -> None:
-    """Get a dictionary of all OCI Configurations with sensitive fields."""
+    """Populate the OCI configs in session state for display and editing."""
     if force or not state.get("_oci_sensitive_loaded"):
         try:
-            LOGGER.info("Refreshing OCI configs (with sensitive fields)")
-            state["settings"]["oci_configs"] = api_get("oci", params={"include_sensitive": "true"})
+            LOGGER.info("Refreshing OCI configs (per-profile fetch)")
+            masked = api_get("oci")
+            detailed: list[dict] = []
+            for entry in masked:
+                profile = entry.get("auth_profile")
+                if not profile:
+                    detailed.append(entry)
+                    continue
+                detailed.append(
+                    api_get(f"oci/{profile}", params={"include_sensitive": "true"})
+                )
+            state["settings"]["oci_configs"] = detailed
             state["_oci_sensitive_loaded"] = True
         except httpx.HTTPStatusError as ex:
             st.error(f"Unable to load OCI configs: {helpers.extract_error_detail(ex)}", icon="🚨")

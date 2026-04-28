@@ -31,9 +31,11 @@ class TestClientSettingsFields:
         assert s.api_key is None
 
     def test_api_key_accepts_string(self):
-        """Explicit string api_key is preserved."""
+        """Explicit string api_key is preserved (wrapped as SecretStr)."""
+        from client.app.core.secrets import reveal
+
         s = self._make(api_key="my-secret")
-        assert s.api_key == "my-secret"
+        assert reveal(s.api_key) == "my-secret"
 
     def test_server_url_default(self):
         """Default server_url is http://localhost."""

@@ -14,6 +14,8 @@ import oci.generative_ai_inference
 import oci.retry
 import oci.signer
 
+from server.app.core.secrets import reveal
+
 from .schemas import OciProfileConfig
 
 T = TypeVar("T")
@@ -105,9 +107,9 @@ def init_client(client_type: Callable[..., T], profile: OciProfileConfig, **kwar
         with open(profile.security_token_file, "r", encoding="utf-8") as f:
             token = f.read()
         if profile.key_file:
-            private_key = oci.signer.load_private_key_from_file(profile.key_file, profile.pass_phrase)
+            private_key = oci.signer.load_private_key_from_file(profile.key_file, reveal(profile.pass_phrase))
         else:
-            private_key = oci.signer.load_private_key(profile.key_content or "", profile.pass_phrase)
+            private_key = oci.signer.load_private_key(reveal(profile.key_content) or "", reveal(profile.pass_phrase))
         sec_token_signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
         return client_type(
             config={"region": profile.region},
@@ -121,10 +123,10 @@ def init_client(client_type: Callable[..., T], profile: OciProfileConfig, **kwar
         "fingerprint": profile.fingerprint,
         "tenancy": profile.tenancy,
         "region": profile.region,
-        "pass_phrase": profile.pass_phrase,
+        "pass_phrase": reveal(profile.pass_phrase),
     }
     if profile.key_content:
-        config_dict["key_content"] = profile.key_content
+        config_dict["key_content"] = reveal(profile.key_content)
     elif profile.key_file:
         config_dict["key_file"] = profile.key_file
     return client_type(config_dict, **client_kwargs)

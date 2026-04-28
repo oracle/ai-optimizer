@@ -13,6 +13,7 @@ from streamlit import session_state as state
 
 from client.app.core.api import _base_url, api_post, get_server_settings
 from client.app.core.helpers import load_chat_history
+from client.app.core.secrets import reveal
 from client.app.core.settings import settings as client_settings
 
 LOGGER = logging.getLogger("client.content.api_server")
@@ -39,7 +40,7 @@ st.text_input(
 )
 st.text_input(
     "API Server Key:",
-    value=client_settings.api_key or "",
+    value=reveal(client_settings.api_key) or "",
     type="password",
     disabled=True,
 )

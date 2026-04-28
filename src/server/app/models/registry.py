@@ -8,10 +8,15 @@ AI model registry and startup lifecycle.
 import logging
 import os
 
+from server.app.core.secrets import coerce_secret_str
 from server.app.core.settings import settings
 
 from .defaults import ENV_OVERRIDES, FACTORY_MODELS
 from .schemas import ModelConfig
+
+# ModelConfig fields typed ``SecretField``; raw env-var strings are wrapped
+# before assignment.
+_SECRET_FIELDS = frozenset({"api_key"})
 
 LOGGER = logging.getLogger(__name__)
 
@@ -65,7 +70,8 @@ def apply_env_overrides() -> None:
             value = os.getenv(env_var)
         if value is None:
             continue
+        coerced = coerce_secret_str(value) if field in _SECRET_FIELDS else value
         for model in settings.model_configs:
             if model.provider and model.provider.casefold() == provider.casefold():
-                setattr(model, field, value)
+                setattr(model, field, coerced)
                 model.enabled = True

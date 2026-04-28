@@ -20,7 +20,9 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 import streamlit as st
+from pydantic import SecretStr
 
+from client.app.core.secrets import reveal
 from client.app.core.settings import settings
 
 LOGGER = logging.getLogger(__name__)
@@ -95,7 +97,7 @@ def start_server() -> None:
         shared_key = secrets.token_urlsafe(32)
         env["AIO_API_KEY"] = shared_key
         os.environ["AIO_API_KEY"] = shared_key
-        settings.api_key = shared_key
+        settings.api_key = SecretStr(shared_key)
         LOGGER.info("Generated shared AIO API key for all-in-one mode.")
 
     log_path = Path(src_dir) / f"apiserver_{port}.log"
@@ -161,7 +163,7 @@ def _base_url(api_prefix: str = "/v1") -> str:
 
 
 def _headers() -> dict:
-    return {"X-API-Key": settings.api_key or ""}
+    return {"X-API-Key": reveal(settings.api_key) or ""}
 
 
 def api_get(
@@ -284,15 +286,22 @@ def api_delete(
             st.toast(toast, icon="✅")
 
 
-def get_server_settings(client: str, include_sensitive: bool = True) -> dict | None:
+def get_server_settings(client: str, include_sensitive: bool = False) -> dict | None:
     """Fetch server settings (including database and OCI configs) from /settings.
 
     Returns ``None`` on any HTTP error so callers can decide how to recover
     (e.g. spawn the subprocess server in All-In-One mode).
+
+    When *include_sensitive* is True, this routes through the dedicated
+    export endpoint. For ``include_sensitive=False`` the response uses the
+    standard settings endpoint.
     """
+    if include_sensitive:
+        return export_server_settings(client)
+
     base = _base_url()
     headers = _headers()
-    params = {"client": client, "include_sensitive": str(include_sensitive).lower()}
+    params = {"client": client}
     try:
         with httpx.Client(headers=headers, timeout=5) as client_settings:
             resp = client_settings.get(f"{base}/settings", params=params)
@@ -300,4 +309,19 @@ def get_server_settings(client: str, include_sensitive: bool = True) -> dict | N
             return resp.json()
     except httpx.HTTPError:
         LOGGER.warning("Failed to fetch server settings from %s", base)
+        return None
+
+
+def export_server_settings(client: str) -> dict | None:
+    """Fetch the explicit settings export. Returns ``None`` on HTTP error."""
+    base = _base_url()
+    headers = {**_headers(), "X-Confirm-Export": "true"}
+    params = {"client": client}
+    try:
+        with httpx.Client(headers=headers, timeout=5) as client_settings:
+            resp = client_settings.post(f"{base}/settings/export", params=params)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError:
+        LOGGER.warning("Failed to export server settings from %s", base)
         return None

@@ -10,6 +10,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from server.app.core.secrets import SecretField
+
 OciAuthType = Literal[
     "api_key",
     "instance_principal",
@@ -20,11 +22,15 @@ OciAuthType = Literal[
 
 
 class OciSensitive(BaseModel):
-    """Sensitive OCI profile fields excluded from default API responses."""
+    """OCI profile fields excluded from default API responses.
+
+    ``fingerprint`` and ``security_token_file`` remain plain ``str``.
+    ``key_content`` and ``pass_phrase`` use ``SecretStr``.
+    """
 
     fingerprint: Optional[str] = None
-    key_content: Optional[str] = None
-    pass_phrase: Optional[str] = None
+    key_content: SecretField = None
+    pass_phrase: SecretField = None
     security_token_file: Optional[str] = None
 
 

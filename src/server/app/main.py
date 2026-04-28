@@ -72,7 +72,6 @@ async def lifespan(_app: FastAPI):
     protected: set[str] = set(settings.model_fields_set)
     if settings.api_key_generated:
         protected.discard("api_key")
-        LOGGER.warning("AIO_API_KEY not set — using generated key: %s", settings.api_key)
 
     # --- Phase 2: Init CORE database ---
     core_db = get_database_settings(settings.database_configs, "CORE")

@@ -78,14 +78,13 @@ async def test_list_oci_profiles(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_list_oci_profiles_sensitive(app_client, auth_headers):
-    """Response includes sensitive fields when include_sensitive=true."""
+async def test_list_oci_profiles_uses_standard_projection(app_client, auth_headers):
+    """The list endpoint uses the standard projection when extra params are present."""
     resp = await app_client.get("/v1/oci", params={"include_sensitive": "true"}, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 2
-    assert body[0]["fingerprint"] == "aa:bb:cc"
-    assert body[0]["key_content"] == "private-key-data"
+    assert_no_sensitive_keys(body, SENSITIVE_KEYS, "auth_profile")
 
 
 @pytest.mark.unit
@@ -212,6 +211,31 @@ async def test_update_oci_profile_partial(app_client, auth_headers):
     body = resp.json()
     assert body["region"] == "us-phoenix-1"
     assert body["tenancy"] == "ocid1.tenancy.oc1..test"  # unchanged
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_oci_profile_clears_fingerprint_on_empty_string(app_client, auth_headers):
+    """Submitting an empty string for ``fingerprint`` clears it.
+
+    ``fingerprint`` is response-masked but is a public identifier, not a
+    credential value: it is intentionally outside ``SECRET_UPDATE_FIELDS``.
+    A blank submit must therefore actually clear the field, not preserve it.
+    Test asserts only that ``fingerprint`` is cleared; downstream effects
+    on ``usable`` (an api_key-auth profile becoming unusable when the
+    fingerprint is removed) belong with the existing OCI auth-validity tests.
+    """
+    with patch(MOCK_CHECK, return_value=None):
+        resp = await app_client.put(
+            "/v1/oci/TEST",
+            json={"fingerprint": ""},
+            headers=auth_headers,
+        )
+    assert resp.status_code in (200, 422)
+    # Verify in-memory state regardless of HTTP status — the update is
+    # applied before _check_usable runs.
+    cfg = next(c for c in settings.oci_configs if c.auth_profile == "TEST")
+    assert cfg.fingerprint in (None, "")
 
 
 # --- _check_usable integration ---
