@@ -8,6 +8,7 @@ Tests for the LLM-only agent definition (AgentSpec layer only).
 
 import pytest
 from pyagentspec.agent import Agent as AgentSpecAgent
+from pydantic import SecretStr
 
 from server.app.agentspec.adapters.litellm import LiteLlmConfig
 from server.app.agentspec.agent_llm_only import build_llm_config, build_llm_only_agentspec
@@ -90,7 +91,7 @@ class TestBuildLlmConfig:
         original = app_settings.model_configs[:]
         try:
             app_settings.model_configs = [
-                ModelConfig(provider="openai", id="gpt-4o", type="ll", api_key="sk-test-key-123"),
+                ModelConfig(provider="openai", id="gpt-4o", type="ll", api_key=SecretStr("sk-test-key-123")),
             ]
             cs = ClientSettings.model_validate({"ll_model": {"provider": "openai", "id": "gpt-4o"}})
             llm = build_llm_config(cs)

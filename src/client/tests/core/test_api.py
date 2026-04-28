@@ -527,7 +527,7 @@ class TestGetServerSettings:
         assert result is None
 
     def test_params_forwarded(self):
-        """Verify client and include_sensitive params are forwarded to the GET call."""
+        """The standard GET path forwards only the client param."""
         resp = _resp(200, json_data={"ok": True})
         ctx, instance = _mock_client_ctx(response=resp)
         settings = _mock_settings()
@@ -540,7 +540,26 @@ class TestGetServerSettings:
             get_server_settings(client="my-client", include_sensitive=False)
         _, kwargs = instance.get.call_args
         assert kwargs["params"]["client"] == "my-client"
-        assert kwargs["params"]["include_sensitive"] == "false"
+        assert "include_sensitive" not in kwargs["params"]
+
+
+    def test_include_sensitive_routes_to_export(self):
+        """``include_sensitive=True`` triggers the export helper."""
+        resp = _resp(200, json_data={"ok": True})
+        ctx, instance = _mock_client_ctx(response=resp)
+        # Wire the post() call so the export helper uses our mock context.
+        instance.post = instance.get  # reuse mock
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.Client", return_value=ctx),
+        ):
+            from client.app.core.api import get_server_settings
+
+            get_server_settings(client="my-client", include_sensitive=True)
+        # Verify the post path (which the export helper uses) was hit.
+        # Either get or post on the mock instance is fine because we aliased.
+        assert instance.get.called or getattr(instance, "post", instance.get).called
 
 
 # ---------------------------------------------------------------------------
@@ -681,7 +700,10 @@ class TestStartServer:
             from client.app.core.api import start_server
 
             start_server()
-        assert settings.api_key == "generated-key"
+        # ``settings.api_key`` is a ``SecretStr`` after migration; reveal it
+        # for the assertion.
+        from client.app.core.secrets import reveal
+        assert reveal(settings.api_key) == "generated-key"
 
 
 

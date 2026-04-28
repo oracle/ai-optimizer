@@ -874,38 +874,49 @@ class TestGetOci:
     """Test get_oci state population."""
 
     def test_success_populates_state(self, mock_st):
-        """Successful API call populates oci_configs in state."""
+        """``_get_oci`` fetches the masked list, then re-fetches each
+        profile via the per-id endpoint with ``include_sensitive=true``.
+        """
         from client.app.content.config.tabs.oci import _get_oci
 
         state = make_oci_state()
-        api_data = [{"auth_profile": "DEFAULT"}]
+        masked_list = [{"auth_profile": "DEFAULT"}]
+        detailed = {"auth_profile": "DEFAULT", "key_content": "stored-key"}
+
+        # First api_get call returns the masked list, subsequent calls
+        # return the per-profile detailed entry.
+        api_get_mock = MagicMock(side_effect=[masked_list, detailed])
 
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
-            patch(f"{MODULE}.api_get", return_value=api_data),
+            patch(f"{MODULE}.api_get", api_get_mock),
         ):
             _get_oci()
 
-        assert state["settings"]["oci_configs"] == api_data
+        assert state["settings"]["oci_configs"] == [detailed]
         assert state["_oci_sensitive_loaded"] is True
+        # Two calls: list, then per-profile.
+        assert api_get_mock.call_count == 2
 
     def test_force_true_refreshes(self, mock_st):
         """force=True reloads even when already loaded."""
         from client.app.content.config.tabs.oci import _get_oci
 
         state = make_oci_state(extra={"_oci_sensitive_loaded": True})
-        api_data = [{"auth_profile": "REFRESHED"}]
+        masked_list = [{"auth_profile": "REFRESHED"}]
+        detailed = {"auth_profile": "REFRESHED", "key_content": "stored-key"}
+        api_get_mock = MagicMock(side_effect=[masked_list, detailed])
 
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
-            patch(f"{MODULE}.api_get", return_value=api_data) as mock_get,
+            patch(f"{MODULE}.api_get", api_get_mock),
         ):
             _get_oci(force=True)
 
-        mock_get.assert_called_once()
-        assert state["settings"]["oci_configs"] == api_data
+        assert api_get_mock.call_count == 2
+        assert state["settings"]["oci_configs"] == [detailed]
 
     def test_http_error_shows_st_error(self, mock_st):
         """HTTPStatusError calls st.error."""

@@ -12,6 +12,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+from server.app.core.secrets import SecretField
+
 # Pattern to extract parameter count from model names (e.g., "llama3.2:1b" -> 1.0)
 _PARAM_PATTERN = re.compile(r"(\d+(?:\.\d+)?)[bB](?![a-zA-Z])")
 _SMALL_MODEL_THRESHOLD_B = 7
@@ -37,7 +39,7 @@ class EmbeddingModelParameters(BaseModel):
 class ModelSensitive(BaseModel):
     """Sensitive model fields excluded from default API responses."""
 
-    api_key: Optional[str] = None
+    api_key: SecretField = None
 
 
 class SupportedProviderIds(BaseModel):

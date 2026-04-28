@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastmcp import Client
+from pydantic import SecretStr
 
 from server.app.core.mcp import mcp
 from server.app.core.settings import settings
@@ -218,7 +219,7 @@ async def test_create_connection_store_flattens_newlines_for_sqlcl_stdin(monkeyp
         "(DESCRIPTION =\n"
         "  (ADDRESS = (PROTOCOL = tcps)(HOST = h)(PORT = 1522))\n"
         "  (CONNECT_DATA = (SERVICE_NAME = svc))\n"
-        "  (SECURITY = (SSL_SERVER_CERT_DN = \"CN=h, OU=foo\"))\n"
+        '  (SECURITY = (SSL_SERVER_CERT_DN = "CN=h, OU=foo"))\n'
         ")"
     )
 
@@ -239,7 +240,7 @@ async def test_create_connection_store_flattens_newlines_for_sqlcl_stdin(monkeyp
     # Meaningful spaces inside the DN value pass through unchanged —
     # _quote_sqlcl_value escapes the surrounding `"` to `\"`, but the
     # DN contents (including the spaces) are preserved byte-for-byte.
-    assert r'\"CN=h, OU=foo\"' in conn_line
+    assert r"\"CN=h, OU=foo\"" in conn_line
     # Descriptor structure (with internal spaces) is preserved.
     assert "(CONNECT_DATA = (SERVICE_NAME = svc))" in conn_line
 
@@ -367,7 +368,9 @@ async def test_register_sqlcl_proxy_success(monkeypatch):
 
     monkeypatch.setattr(sqlcl, "_create_connection_store", _fake_store)
 
-    good = DatabaseConfig(alias="CORE", username="scott", password="tiger", dsn="db", config_dir="/tmp/custom")
+    good = DatabaseConfig(
+        alias="CORE", username="scott", password=SecretStr("tiger"), dsn="db", config_dir="/tmp/custom"
+    )
     bad = DatabaseConfig(alias="BAD")
     settings.database_configs = [good, bad]
 
@@ -429,7 +432,7 @@ async def test_register_sqlcl_proxy_store_error(monkeypatch, caplog):
     sqlcl._state.provider = None
 
     settings.database_configs = [
-        DatabaseConfig(alias="CORE", username="scott", password="tiger", dsn="db"),
+        DatabaseConfig(alias="CORE", username="scott", password=SecretStr("tiger"), dsn="db"),
     ]
 
     caplog.set_level("ERROR")

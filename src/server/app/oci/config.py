@@ -14,6 +14,7 @@ from typing import Optional, cast, get_args
 
 import oci.config
 import oci.object_storage
+from pydantic import SecretStr
 
 from .client import init_client, populate_principal_identity
 from .schemas import OciAuthType, OciProfileConfig
@@ -31,7 +32,8 @@ def _profile_from_section(profile_name: str, section: Mapping[str, str]) -> OciP
     key_file = section.get("key_file")
     if key_file:
         key_file = os.path.expanduser(key_file)
-    key_content = section.get("key_content")
+    key_content_raw = section.get("key_content")
+    pass_phrase_raw = section.get("pass_phrase")
     raw_auth = section.get("authentication", "api_key").strip().lower()
     authentication: OciAuthType = cast(OciAuthType, raw_auth) if raw_auth in get_args(OciAuthType) else "api_key"
 
@@ -43,8 +45,8 @@ def _profile_from_section(profile_name: str, section: Mapping[str, str]) -> OciP
         fingerprint=section.get("fingerprint"),
         tenancy=section.get("tenancy"),
         key_file=key_file,
-        key_content=None if key_file else key_content,
-        pass_phrase=section.get("pass_phrase"),
+        key_content=SecretStr(key_content_raw) if key_content_raw and not key_file else None,
+        pass_phrase=SecretStr(pass_phrase_raw) if pass_phrase_raw else None,
         region=section.get("region"),
         genai_compartment_id=section.get("genai_compartment_id"),
         genai_region=section.get("genai_region"),

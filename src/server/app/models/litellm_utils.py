@@ -17,6 +17,7 @@ from langchain.embeddings import init_embeddings
 from langchain_core.embeddings.embeddings import Embeddings
 from langchain_oci import OCIGenAIEmbeddings
 
+from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 from server.app.models.connectivity import _normalize_ollama_name as _strip_latest
 from server.app.models.schemas import ModelConfig, ModelIdentity
@@ -193,7 +194,7 @@ class LiteLlmModelSpec:
         model_id = model_cfg.id or model_id
         self.model_id = model_id
         self.model_type = model_cfg.type
-        self.api_key: Optional[str] = model_cfg.api_key
+        self.api_key: Optional[str] = reveal(model_cfg.api_key)
         self.api_base: Optional[str] = model_cfg.api_base
 
         # ── Provider normalization ──────────────────────────────────
@@ -327,6 +328,6 @@ def get_client_embed(
         }
 
     if model_cfg.api_key:
-        kwargs["api_key"] = model_cfg.api_key
+        kwargs["api_key"] = reveal(model_cfg.api_key)
 
     return init_embeddings(**kwargs)

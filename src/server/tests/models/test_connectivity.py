@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from server.app.core.settings import settings
 from server.app.models.connectivity import (
@@ -102,7 +103,12 @@ class TestRule1Unreachable:
         """Unreachable endpoint sets usable=False but leaves enabled unchanged."""
         settings.model_configs = [
             ModelConfig(
-                id="gpt-4o", type="ll", provider="openai", api_key="sk-123", api_base="http://dead:1234", enabled=True
+                id="gpt-4o",
+                type="ll",
+                provider="openai",
+                api_key=SecretStr("sk-123"),
+                api_base="http://dead:1234",
+                enabled=True,
             ),
         ]
         with patch("server.app.models.connectivity.httpx.AsyncClient") as mock_cls:
@@ -127,7 +133,7 @@ class TestRule2ReachableWithKey:
                 id="gpt-4o",
                 type="ll",
                 provider="openai",
-                api_key="sk-123",
+                api_key=SecretStr("sk-123"),
                 api_base="http://api.openai.com",
                 enabled=True,
             ),
@@ -240,7 +246,7 @@ class TestDeduplication:
                 id="gpt-4o",
                 type="ll",
                 provider="openai",
-                api_key="sk-1",
+                api_key=SecretStr("sk-1"),
                 api_base="http://api.openai.com",
                 enabled=True,
             ),
@@ -248,7 +254,7 @@ class TestDeduplication:
                 id="text-embed",
                 type="embed",
                 provider="openai",
-                api_key="sk-2",
+                api_key=SecretStr("sk-2"),
                 api_base="http://api.openai.com",
                 enabled=True,
             ),
@@ -277,7 +283,7 @@ class TestDisabledModelsSkipped:
                 id="gpt-4o",
                 type="ll",
                 provider="openai",
-                api_key="sk-1",
+                api_key=SecretStr("sk-1"),
                 api_base="http://api.openai.com",
                 enabled=False,
             ),
@@ -299,7 +305,7 @@ class TestNoApiBase:
     async def test_no_api_base_marked_unusable(self):
         """Model without api_base is marked unusable without probing."""
         settings.model_configs = [
-            ModelConfig(id="mystery", type="ll", provider="openai", api_key="sk-1", enabled=True),
+            ModelConfig(id="mystery", type="ll", provider="openai", api_key=SecretStr("sk-1"), enabled=True),
         ]
         with patch("server.app.models.connectivity.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()

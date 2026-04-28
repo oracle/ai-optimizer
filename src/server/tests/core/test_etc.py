@@ -248,23 +248,29 @@ def test_apply_overlay_returns_updated_protected():
 
 def test_apply_overlay_api_key_updates_generated_flag():
     """Overlaying api_key clears the auto-generated flag."""
+    from server.app.core.secrets import reveal
+
     object.__setattr__(settings, "_api_key_generated", True)
 
     source = SettingsBase.model_validate({"api_key": "from_config_file"})
     apply_overlay(source, protected=set())
 
-    assert settings.api_key == "from_config_file"
+    assert reveal(settings.api_key) == "from_config_file"
     assert settings.api_key_generated is False
 
 
 def test_apply_overlay_api_key_protected():
     """api_key is NOT overridden when protected."""
-    settings.api_key = "from_env"
+    from pydantic import SecretStr
+
+    from server.app.core.secrets import reveal
+
+    settings.api_key = SecretStr("from_env")
     source = SettingsBase.model_validate({"api_key": "from_config_file"})
 
     apply_overlay(source, protected={"api_key"})
 
-    assert settings.api_key == "from_env"
+    assert reveal(settings.api_key) == "from_env"
 
 
 # ---------------------------------------------------------------------------

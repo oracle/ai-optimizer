@@ -10,7 +10,8 @@ import json
 import logging
 from typing import Annotated, Callable
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from server.app.api.v1.schemas.common import ClientId
@@ -22,6 +23,7 @@ from server.app.api.v1.schemas.settings import (
 )
 from server.app.core.etc import ensure_core_alias, migrate_legacy_settings, upsert_list_field
 from server.app.core.schemas import ClientSettings, ClientSettingsUpdate, LLModelSettings
+from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
     _apply_default_ll_model,
@@ -102,13 +104,30 @@ SENSITIVE_FIELDS = {
 @auth.get("", response_model=SettingsResponse, response_model_exclude_unset=True)
 async def get_client_settings(
     client: Annotated[ClientId, Query()] = "CONFIGURED",
-    include_sensitive: bool = Query(default=False, include_in_schema=False),
 ):
     """Return application settings combined with client settings."""
-    exclude = None if include_sensitive else SENSITIVE_FIELDS
-    data = settings.model_dump(exclude=exclude)
+    data = settings.model_dump(exclude=SENSITIVE_FIELDS)
     data["client_settings"] = resolve_client(client).model_dump()
     return data
+
+
+@auth.post("/export", response_model=None)
+async def export_settings(
+    request: Request,
+    confirm: Annotated[str, Header(alias="X-Confirm-Export")] = "",
+    client: Annotated[ClientId, Query()] = "CONFIGURED",
+):
+    """Return an explicit settings export."""
+    if confirm.lower() != "true":
+        raise HTTPException(status_code=400, detail="Export requires header X-Confirm-Export: true")
+    LOGGER.warning(
+        "configuration export requested (client=%s, remote=%s)",
+        client,
+        request.client.host if request.client else "unknown",
+    )
+    data = settings.model_dump(mode="json", context={REVEAL_KEY: True})
+    data["client_settings"] = resolve_client(client).model_dump(mode="json", context={REVEAL_KEY: True})
+    return JSONResponse(content=data)
 
 
 def _reconcile_ll_model_tokens(current: LLModelSettings, incoming: LLModelSettings) -> None:

@@ -25,6 +25,7 @@ from server.app.api.v1.schemas.chat import (
     VsMetadata,
 )
 from server.app.api.v1.schemas.common import ClientId
+from server.app.core.secrets import reveal
 from server.app.core.settings import resolve_client, settings
 from server.app.runtime.common import LLMConfigurationError, clean_llm_error
 
@@ -39,7 +40,7 @@ auth = APIRouter(prefix="/chat")
 
 _orchestrator = ChatOrchestrator(
     server_url=f"http://127.0.0.1:{settings.server_port}{settings.server_url_prefix}/mcp/",
-    api_key=lambda: settings.api_key or "",
+    api_key=lambda: reveal(settings.api_key) or "",
     resolve_client=resolve_client,
 )
 

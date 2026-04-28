@@ -9,6 +9,7 @@ Tests for databases endpoint.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from server.app.core.settings import settings
 from server.app.database.schemas import DatabaseSensitive
@@ -98,25 +99,13 @@ async def test_list_databases(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_list_databases_sensitive(app_client, auth_headers):
-    """Response includes sensitive fields when include_sensitive=true."""
+async def test_list_databases_uses_standard_projection(app_client, auth_headers):
+    """The list endpoint uses the standard projection when extra params are present."""
     resp = await app_client.get("/v1/databases", params={"include_sensitive": "true"}, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 3
-    test_cfg = next(b for b in body if b["alias"] == "TEST")
-    assert test_cfg["password"] == "secret"
-    assert test_cfg["wallet_password"] == "wallet_secret"
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_list_databases_sensitive_case_insensitive(app_client, auth_headers):
-    """Query value casing should not affect include_sensitive behaviour."""
-    resp = await app_client.get("/v1/databases", params={"include_sensitive": "TRUE"}, headers=auth_headers)
-    assert resp.status_code == 200
-    test_cfg = next(b for b in resp.json() if b["alias"] == "TEST")
-    assert test_cfg["password"] == "secret"
+    assert_no_sensitive_keys(body, SENSITIVE_KEYS, "alias")
 
 
 @pytest.mark.unit
@@ -133,8 +122,8 @@ async def test_get_database(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_get_database_include_sensitive(app_client, auth_headers):
-    """include_sensitive=true returns secrets for that database."""
+async def test_get_database_alternate_projection(app_client, auth_headers):
+    """Fetch the alternate projection for a single database."""
     resp = await app_client.get(
         "/v1/databases/TEST",
         params={"include_sensitive": "true"},
@@ -728,7 +717,7 @@ async def test_update_database_refreshes_sqlcl(app_client, auth_headers, mock_re
     # Give TEST full creds so the updated config is SQLcl-relevant.
     cfg = settings.database_configs[0]
     cfg.username = "u"
-    cfg.password = "p"
+    cfg.password = SecretStr("p")
     cfg.dsn = "d"
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
@@ -751,7 +740,7 @@ async def test_update_database_rejection_skips_sqlcl(app_client, auth_headers, m
     cfg.usable = True
     cfg.pool = MagicMock()
     cfg.username = "u"
-    cfg.password = "p"
+    cfg.password = SecretStr("p")
     cfg.dsn = "d"
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
@@ -776,7 +765,7 @@ async def test_update_database_removing_creds_refreshes_sqlcl(app_client, auth_h
     """Clearing credentials must drop the alias from the SQLcl store."""
     cfg = settings.database_configs[0]
     cfg.username = "u"
-    cfg.password = "p"
+    cfg.password = SecretStr("p")
     cfg.dsn = "d"
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),

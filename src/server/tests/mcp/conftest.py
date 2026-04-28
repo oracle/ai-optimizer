@@ -16,6 +16,7 @@ from typing import AsyncIterator, Callable, Iterator
 
 import pytest
 from fastmcp import Client
+from pydantic import SecretStr
 
 from server.app.core.mcp import mcp
 from server.app.core.settings import settings
@@ -110,7 +111,7 @@ def model_config_factory_fixture() -> Iterator[Callable[..., ModelConfig]]:
             id=model_id,
             type=model_type,  # type: ignore[arg-type]
             enabled=enabled,
-            api_key=api_key,
+            api_key=SecretStr(api_key) if api_key is not None else None,
             usable=True,
         )
         settings.model_configs.append(config)

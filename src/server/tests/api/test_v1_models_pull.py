@@ -10,6 +10,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from server.app.core.settings import settings
 from server.app.models.schemas import ModelConfig
@@ -32,7 +33,7 @@ def _populate_configs():
             id="test-llm",
             type="ll",
             provider="openai",
-            api_key="sk-secret",
+            api_key=SecretStr("sk-secret"),
         ),
         ModelConfig(
             id="no-base",

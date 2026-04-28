@@ -7,7 +7,9 @@ Tests for server.app.models.registry.
 # spell-checker: disable
 
 import pytest
+from pydantic import SecretStr
 
+from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 from server.app.models.defaults import FACTORY_MODELS
 from server.app.models.registry import _model_key, apply_env_overrides, load_default_models, register_model
@@ -127,11 +129,11 @@ class TestApplyEnvOverrides:
 
     def test_patches_matching_provider(self, monkeypatch):
         """Env var value is written to the matching model field."""
-        cfg = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key="old")
+        cfg = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key=SecretStr("old"))
         settings.model_configs = [cfg]
         monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
         apply_env_overrides()
-        assert cfg.api_key == "sk-from-env"
+        assert reveal(cfg.api_key) == "sk-from-env"
 
     def test_enables_model_when_env_found(self, monkeypatch):
         """Model is enabled when its env var is present."""
@@ -143,20 +145,20 @@ class TestApplyEnvOverrides:
 
     def test_skips_when_env_absent(self, monkeypatch):
         """Model is unchanged when the env var is not set."""
-        cfg = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key="original", enabled=False)
+        cfg = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key=SecretStr("original"), enabled=False)
         settings.model_configs = [cfg]
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         apply_env_overrides()
-        assert cfg.api_key == "original"
+        assert reveal(cfg.api_key) == "original"
         assert cfg.enabled is False
 
     def test_case_insensitive_provider_match(self, monkeypatch):
         """Provider comparison is case-insensitive."""
-        cfg = ModelConfig(id="cmd-r", type="ll", provider="Cohere", api_key="old")
+        cfg = ModelConfig(id="cmd-r", type="ll", provider="Cohere", api_key=SecretStr("old"))
         settings.model_configs = [cfg]
         monkeypatch.setenv("COHERE_API_KEY", "new-key")
         apply_env_overrides()
-        assert cfg.api_key == "new-key"
+        assert reveal(cfg.api_key) == "new-key"
 
     def test_patches_api_base_field(self, monkeypatch):
         """api_base overrides work the same as api_key overrides."""
@@ -168,10 +170,10 @@ class TestApplyEnvOverrides:
 
     def test_patches_multiple_models_same_provider(self, monkeypatch):
         """All models sharing a provider are updated."""
-        cfg1 = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key="old1")
-        cfg2 = ModelConfig(id="text-embed", type="embed", provider="openai", api_key="old2")
+        cfg1 = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key=SecretStr("old1"))
+        cfg2 = ModelConfig(id="text-embed", type="embed", provider="openai", api_key=SecretStr("old2"))
         settings.model_configs = [cfg1, cfg2]
         monkeypatch.setenv("OPENAI_API_KEY", "sk-shared")
         apply_env_overrides()
-        assert cfg1.api_key == "sk-shared"
-        assert cfg2.api_key == "sk-shared"
+        assert reveal(cfg1.api_key) == "sk-shared"
+        assert reveal(cfg2.api_key) == "sk-shared"

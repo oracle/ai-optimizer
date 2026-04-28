@@ -25,6 +25,7 @@ from pyagentspec.adapters.langgraph.agentspecloader import AgentSpecLoader as La
 from pyagentspec.mcp.clienttransport import ClientTransport, RemoteTransport
 
 from server.app.agentspec.adapters.litellm import LiteLlmConfig, get_litellm_deserialization_plugin
+from server.app.core.secrets import reveal
 from server.app.mcp.tools.schemas import get_oci_profile
 from server.app.models.litellm_utils import (
     build_oci_litellm_params,
@@ -141,7 +142,7 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
             )
             return ChatLiteLLMBridge(
                 model=model_key,
-                api_key=llm_config.api_key,
+                api_key=reveal(llm_config.api_key),
                 api_base=llm_config.api_base,
                 max_tokens=llm_config.max_tokens,
                 frequency_penalty=freq,

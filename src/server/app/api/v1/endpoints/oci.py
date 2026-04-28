@@ -10,11 +10,14 @@ import logging
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
+from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.api.v1.schemas.common import ClientId
 from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory
+from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
 from server.app.models.connectivity import check_single_model
@@ -34,24 +37,36 @@ LOGGER = logging.getLogger(__name__)
 auth = APIRouter(prefix="/oci")
 
 SENSITIVE_FIELDS = set(OciSensitive.model_fields.keys())
+# Fields where a blank submission means "preserve existing".  Narrower than
+# ``SENSITIVE_FIELDS``: ``fingerprint`` (public identifier) and
+# ``security_token_file`` (path) are response-masked but are not credential
+# values and must remain clearable via PUT.
+SECRET_UPDATE_FIELDS = frozenset({"key_content", "pass_phrase"})
 
 _PERSIST_FAIL = "Failed to persist settings"
 
 
 @auth.get("", response_model=list[OciProfileConfig], response_model_exclude_unset=True)
-async def list_oci_profiles(include_sensitive: bool = Query(default=False)):
-    """Return all OCI profile configurations."""
-    exclude = None if include_sensitive else SENSITIVE_FIELDS
-    return [cfg.model_dump(exclude=exclude) for cfg in settings.oci_configs]
+async def list_oci_profiles():
+    """Return all OCI profile configurations.  Sensitive fields are always
+    omitted from list responses.
+    """
+    return [cfg.model_dump(exclude=SENSITIVE_FIELDS) for cfg in settings.oci_configs]
 
 
 @auth.get("/{auth_profile}", response_model=OciProfileConfig, response_model_exclude_unset=True)
-async def get_oci_profile(auth_profile: str, include_sensitive: bool = Query(default=False)):
+async def get_oci_profile(
+    auth_profile: str,
+    request: Request,
+    include_sensitive: bool = Query(default=False),
+):
     """Return a single OCI profile configuration by auth_profile (case-insensitive)."""
     for cfg in settings.oci_configs:
         if cfg.auth_profile.lower() == auth_profile.lower():
-            exclude = None if include_sensitive else SENSITIVE_FIELDS
-            return cfg.model_dump(exclude=exclude)
+            if include_sensitive:
+                _log_sensitive_read(LOGGER, "oci", cfg.auth_profile, request)
+                return JSONResponse(content=cfg.model_dump(mode="json", context={REVEAL_KEY: True}))
+            return cfg.model_dump(exclude=SENSITIVE_FIELDS)
     raise HTTPException(status_code=404, detail=f"OCI profile config not found: {auth_profile}")
 
 
@@ -84,7 +99,7 @@ async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
             raise HTTPException(status_code=404, detail=f"OCI profile config not found: {auth_profile}")
         was_usable = cfg.usable
         old_genai_region = cfg.genai_region
-        updates = body.model_dump(exclude_unset=True)
+        updates = _build_updates(body, SECRET_UPDATE_FIELDS)
         originals = {field: getattr(cfg, field) for field in updates}
         for field, value in updates.items():
             setattr(cfg, field, value)

@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 
 from server.app.api.v1.endpoints.databases import update_database
 from server.app.core.settings import settings
@@ -47,7 +48,7 @@ async def usable_config(configure_db_env):
 async def unusable_config(configure_db_env):
     """A non-CORE DatabaseConfig that has never been connected."""
     del configure_db_env
-    cfg = DatabaseConfig(alias="INTEG", username="BADUSER", password="badpw", dsn="//localhost:9999/NOPE")
+    cfg = DatabaseConfig(alias="INTEG", username="BADUSER", password=SecretStr("badpw"), dsn="//localhost:9999/NOPE")
     original = settings.database_configs[:]
     settings.database_configs.append(cfg)
     yield cfg

@@ -9,6 +9,7 @@ Endpoint returning MCP client configuration.
 from fastapi import APIRouter, Request
 
 from server.app.api.mcp.schemas.client_config import MCPClientConfigResponse
+from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 
 auth = APIRouter()
@@ -28,7 +29,7 @@ async def get_client_config(request: Request, client: str | None = None):
         "type": "streamableHttp",
         "transport": "streamable-http",
         "url": url,
-        "headers": {"X-API-Key": settings.api_key},
+        "headers": {"X-API-Key": reveal(settings.api_key)},
     }
 
     if client == "langgraph":

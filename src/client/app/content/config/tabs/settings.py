@@ -472,23 +472,38 @@ def _render_source_code_templates_section() -> None:
         """
         )
     else:
-        settings = get_server_settings(client=state.optimizer_client, include_sensitive=True) or state.settings
-        col_left, col_centre, _ = st.columns([3, 4, 3])
-        with col_left:
-            st.download_button(
-                label="Download LangchainMCP",
-                data=_langchain_mcp_zip(settings),
-                file_name="langchain_mcp.zip",
-                mime="application/zip",
+        # Session-cached so reruns don't re-fetch; invalidated on
+        # ``helpers.refresh_settings``.
+        if "_template_export" not in state:
+            state["_template_export"] = get_server_settings(
+                client=state.optimizer_client, include_sensitive=True
             )
-        with col_centre:
-            if spring_ai_conf != "hosted_vllm":
+        fresh = state.get("_template_export") or state.settings
+
+        # Swap for the duration of the render; restored in ``finally``.
+        masked_settings = state.settings
+        try:
+            state.settings = fresh
+            ll_config, embed_config, _ = _get_model_configs()
+
+            col_left, col_centre, _ = st.columns([3, 4, 3])
+            with col_left:
                 st.download_button(
-                    label="Download SpringAI",
-                    data=_spring_ai_zip(spring_ai_conf, ll_config, embed_config),
-                    file_name="spring_ai.zip",
+                    label="Download LangchainMCP",
+                    data=_langchain_mcp_zip(fresh),
+                    file_name="langchain_mcp.zip",
                     mime="application/zip",
                 )
+            with col_centre:
+                if spring_ai_conf != "hosted_vllm":
+                    st.download_button(
+                        label="Download SpringAI",
+                        data=_spring_ai_zip(spring_ai_conf, ll_config, embed_config),
+                        file_name="spring_ai.zip",
+                        mime="application/zip",
+                    )
+        finally:
+            state.settings = masked_settings
 
 
 #####################################################

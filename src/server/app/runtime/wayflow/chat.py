@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional, Union
 from server.app.agentspec.agent_llm_only import DEFAULT_INSTRUCTION as DEFAULT_LLM_ONLY_INSTRUCTION
 from server.app.agentspec.agent_nl2sql import DEFAULT_NL2SQL_INSTRUCTION
 from server.app.core.schemas import ClientSettings
+from server.app.core.secrets import reveal
 from server.app.models.litellm_utils import find_model
 from server.app.runtime.common import (
     ROUTE_PROMPTS,
@@ -141,7 +142,7 @@ class ChatOrchestrator(BaseChatOrchestrator):
             nl2sql_session,
             classifier_model,
             system_prompt,
-            api_key=model_cfg.api_key if model_cfg else None,
+            api_key=reveal(model_cfg.api_key) if model_cfg else None,
             api_base=model_cfg.api_base if model_cfg else None,
         )
 

@@ -7,12 +7,15 @@ Endpoints for retrieving model configurations.
 # spell-checker:ignore litellm ollama rerank
 
 import json
+import logging
 from typing import Optional
 
 import litellm
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
+from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
 from server.app.models.connectivity import check_single_model
@@ -20,10 +23,13 @@ from server.app.models.litellm_utils import find_model
 from server.app.models.ollama import pull_ollama_model
 from server.app.models.schemas import ModelConfig, ModelSensitive, ModelUpdate, SupportedProviderIds
 
+LOGGER = logging.getLogger(__name__)
 litellm.suppress_debug_info = True
 auth = APIRouter(prefix="/models")
 
 SENSITIVE_FIELDS = set(ModelSensitive.model_fields.keys())
+# Fields where a blank submission means "preserve existing".
+SECRET_UPDATE_FIELDS = frozenset({"api_key"})
 
 _PERSIST_FAIL = "Failed to persist settings"
 
@@ -36,10 +42,11 @@ def _find_model(provider: str | None, model_id: str | None) -> ModelConfig | Non
 
 
 @auth.get("", response_model=list[ModelConfig], response_model_exclude_unset=True)
-async def list_models(include_sensitive: bool = Query(default=False)):
-    """Return all model configurations."""
-    exclude = None if include_sensitive else SENSITIVE_FIELDS
-    return [cfg.model_dump(exclude=exclude) for cfg in settings.model_configs]
+async def list_models():
+    """Return all model configurations.  Sensitive fields are always omitted
+    from list responses.
+    """
+    return [cfg.model_dump(exclude=SENSITIVE_FIELDS) for cfg in settings.model_configs]
 
 
 # --- Supported models (must be before /{provider}/{model_id:path}) ---
@@ -136,13 +143,20 @@ async def pull_model(provider: str, model_id: str):
 
 
 @auth.get("/{provider}/{model_id:path}", response_model=ModelConfig, response_model_exclude_unset=True)
-async def get_model(provider: str, model_id: str, include_sensitive: bool = Query(default=False)):
+async def get_model(
+    provider: str,
+    model_id: str,
+    request: Request,
+    include_sensitive: bool = Query(default=False),
+):
     """Return a single model configuration by provider and id (case-insensitive)."""
     cfg = _find_model(provider, model_id)
     if cfg is None:
         raise HTTPException(status_code=404, detail=f"Model config not found: {provider}/{model_id}")
-    exclude = None if include_sensitive else SENSITIVE_FIELDS
-    return cfg.model_dump(exclude=exclude)
+    if include_sensitive:
+        _log_sensitive_read(LOGGER, "models", f"{cfg.provider}/{cfg.id}", request)
+        return JSONResponse(content=cfg.model_dump(mode="json", context={REVEAL_KEY: True}))
+    return cfg.model_dump(exclude=SENSITIVE_FIELDS)
 
 
 @auth.post("", response_model=ModelConfig, status_code=201, response_model_exclude_unset=True)
@@ -166,7 +180,7 @@ async def update_model(provider: str, model_id: str, body: ModelUpdate):
         cfg = _find_model(provider, model_id)
         if cfg is None:
             raise HTTPException(status_code=404, detail=f"Model config not found: {provider}/{model_id}")
-        updates = body.model_dump(exclude_unset=True)
+        updates = _build_updates(body, SECRET_UPDATE_FIELDS)
         # Check if provider/id change would create a duplicate composite key
         if "provider" in updates or "id" in updates:
             new_provider = updates.get("provider", cfg.provider)

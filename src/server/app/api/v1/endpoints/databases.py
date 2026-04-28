@@ -7,10 +7,12 @@ Endpoints for retrieving database configurations.
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.core.error_detail import response_error_detail
+from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.config import close_pool
 from server.app.database.registry import drop_vector_store, init_core_database, test_connection
@@ -23,6 +25,10 @@ LOGGER = logging.getLogger(__name__)
 auth = APIRouter(prefix="/databases")
 
 SENSITIVE_FIELDS = set(DatabaseSensitive.model_fields.keys())
+# Fields where a blank submission means "preserve existing"; narrower than
+# ``SENSITIVE_FIELDS`` because non-credential response-masked fields (none
+# in this schema today) should not be preserved-on-blank.
+SECRET_UPDATE_FIELDS = frozenset({"password", "wallet_password"})
 
 _PERSIST_FAIL = "Failed to persist settings"
 
@@ -67,19 +73,30 @@ def _check_username_dsn_conflict(username: str | None, dsn: str | None, exclude:
 
 
 @auth.get("", response_model=list[DatabaseConfig], response_model_exclude_unset=True)
-async def list_databases(include_sensitive: bool = Query(default=False)):
-    """Return all database configurations."""
-    exclude = None if include_sensitive else SENSITIVE_FIELDS
-    return [cfg.model_dump(exclude=exclude) for cfg in settings.database_configs]
+async def list_databases():
+    """Return all database configurations.  Sensitive fields are always
+    omitted from list responses.
+    """
+    return [cfg.model_dump(exclude=SENSITIVE_FIELDS) for cfg in settings.database_configs]
 
 
 @auth.get("/{alias}", response_model=DatabaseConfig, response_model_exclude_unset=True)
-async def get_database(alias: str, include_sensitive: bool = Query(default=False)):
+async def get_database(
+    alias: str,
+    request: Request,
+    include_sensitive: bool = Query(default=False),
+):
     """Return a single database configuration by alias (case-insensitive)."""
     for cfg in settings.database_configs:
         if cfg.alias.lower() == alias.lower():
-            exclude = None if include_sensitive else SENSITIVE_FIELDS
-            return cfg.model_dump(exclude=exclude)
+            if include_sensitive:
+                _log_sensitive_read(LOGGER, "databases", cfg.alias, request)
+                # Keep this path explicit so the configured serializer context
+                # is preserved.
+                return JSONResponse(
+                    content=cfg.model_dump(mode="json", context={REVEAL_KEY: True}),
+                )
+            return cfg.model_dump(exclude=SENSITIVE_FIELDS)
     raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
 
 
@@ -134,7 +151,7 @@ async def update_database(alias: str, body: DatabaseUpdate):
         if cfg is None:
             raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
 
-        updates = body.model_dump(exclude_unset=True)
+        updates = _build_updates(body, SECRET_UPDATE_FIELDS)
         new_username = (updates.get("username") if "username" in updates else cfg.username) or ""
         new_dsn = (updates.get("dsn") if "dsn" in updates else cfg.dsn) or ""
         _check_username_dsn_conflict(new_username.lower(), new_dsn.lower(), exclude=cfg)

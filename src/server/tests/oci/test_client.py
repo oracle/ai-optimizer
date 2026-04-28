@@ -8,6 +8,8 @@ Tests for server.app.oci.client.
 
 from unittest.mock import MagicMock, mock_open, patch
 
+from pydantic import SecretStr
+
 from server.app.oci.client import get_signer, init_client
 from server.app.oci.schemas import OciProfileConfig
 
@@ -165,7 +167,7 @@ class TestInitClient:
             fingerprint="f",
             tenancy="t",
             region="r",
-            key_content="raw-key-data",
+            key_content=SecretStr("raw-key-data"),
             key_file=None,
         )
         mock_client_type = MagicMock()
