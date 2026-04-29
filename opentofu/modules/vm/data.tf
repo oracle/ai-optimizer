@@ -10,7 +10,7 @@ data "oci_core_images" "images" {
   filter {
     name = "display_name"
     values = [
-      var.vm_is_gpu_shape ? "Oracle-Linux-${var.compute_os_ver}-.*(GPU|NVIDIA|A10).*" : "Oracle-Linux-${var.compute_os_ver}-.*"
+      var.vm_is_gpu_shape ? "Oracle-Linux-${replace(var.compute_os_ver, ".", "\\.")}.*-.*(GPU|NVIDIA|A10).*" : "Oracle-Linux-${replace(var.compute_os_ver, ".", "\\.")}.*-.*"
     ]
     regex = true
   }
