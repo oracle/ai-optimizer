@@ -9,8 +9,9 @@ Web scraping utilities for extracting structured content from HTML pages.
 import re
 import unicodedata
 
-import httpx
 from bs4 import BeautifulSoup, Comment
+
+from url_safety import SafeAsyncClient, validate_structural
 
 BAD_CHUNKS = [
     "nav",
@@ -111,10 +112,10 @@ def slugify(text: str, max_len: int = 80) -> str:
 async def fetch_and_extract_sections(url: str) -> list[dict]:
     """Fetch URL and extract sections by structure.
 
-    Uses httpx (async) instead of aiohttp for consistency with the rest
-    of the codebase.
+    The URL and redirect targets are validated before retrieval.
     """
-    async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
+    validate_structural(str(url))
+    async with SafeAsyncClient(timeout=60.0) as client:
         response = await client.get(str(url))
         response.raise_for_status()
         html = response.text

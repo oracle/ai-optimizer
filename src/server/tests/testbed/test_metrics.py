@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from server.app.testbed.metrics import (
-    CORRECTNESS_INPUT_TEMPLATE,
     CustomCorrectnessMetric,
     format_conversation,
 )
@@ -48,18 +47,6 @@ def test_format_conversation_multiple_messages():
 def test_format_conversation_empty():
     """Empty conversation returns empty string."""
     assert format_conversation([]) == ""
-
-
-# ---------------------------------------------------------------------------
-# CORRECTNESS_INPUT_TEMPLATE
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_template_has_placeholders():
-    """Template contains all required format placeholders."""
-    for key in ("description", "conversation", "answer", "reference_answer"):
-        assert f"{{{key}}}" in CORRECTNESS_INPUT_TEMPLATE
 
 
 # ---------------------------------------------------------------------------

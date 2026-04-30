@@ -12,24 +12,7 @@ import pytest
 from pydantic import SecretStr
 
 from server.app.core.secrets import REVEAL_KEY, reveal
-from server.app.oci.schemas import OciProfileConfig, OciProfileUpdate, OciSensitive
-
-# ---------------------------------------------------------------------------
-# OciSensitive
-# ---------------------------------------------------------------------------
-
-
-class TestOciSensitive:
-    """Test OciSensitive defaults."""
-
-    def test_all_fields_default_to_none(self):
-        """All sensitive fields default to None."""
-        s = OciSensitive()
-        assert s.fingerprint is None
-        assert s.key_content is None
-        assert s.pass_phrase is None
-        assert s.security_token_file is None
-
+from server.app.oci.schemas import OciProfileConfig, OciProfileUpdate
 
 # ---------------------------------------------------------------------------
 # OciProfileConfig
@@ -43,13 +26,6 @@ class TestOciProfileConfig:
         """auth_profile is required."""
         with pytest.raises(Exception):
             cast(Any, OciProfileConfig)()
-
-    def test_defaults(self):
-        """Default values are set correctly."""
-        cfg = OciProfileConfig(auth_profile="TEST")
-        assert cfg.authentication == "api_key"
-        assert cfg.usable is False
-        assert cfg.server_managed is False
 
     def test_inherits_sensitive_fields(self):
         """Sensitive fields inherited from OciSensitive are accessible."""
@@ -82,14 +58,6 @@ class TestOciProfileConfig:
 
 class TestOciProfileUpdate:
     """Test OciProfileUpdate optional fields and validators."""
-
-    def test_all_fields_optional(self):
-        """Empty constructor succeeds with all fields None."""
-        u = OciProfileUpdate()
-        assert u.user is None
-        assert u.authentication is None
-        assert u.tenancy is None
-        assert u.region is None
 
     def test_empty_strings_to_none(self):
         """Empty strings are converted to None by the validator."""

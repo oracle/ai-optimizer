@@ -249,22 +249,6 @@ class TestApiPost:
             result = api_post("items", json={"name": "test"})
         assert result == {"id": 1}
 
-    def test_toast_shown(self):
-        """Verify a toast notification is shown when toast parameter is set."""
-        resp = _resp(200, json_data={"ok": True})
-        ctx, _ = _mock_client_ctx(response=resp)
-        settings = _mock_settings()
-        mock_st = MagicMock()
-        with (
-            patch(f"{MODULE}.settings", settings),
-            patch(f"{MODULE}.httpx.Client", return_value=ctx),
-            patch(f"{MODULE}.st", mock_st),
-        ):
-            from client.app.core.api import api_post
-
-            api_post("items", toast="Created!")
-        mock_st.toast.assert_called_once_with("Created!", icon="✅")
-
     def test_no_toast_when_none(self):
         """Verify no toast is shown when toast parameter is omitted."""
         resp = _resp(200, json_data={"ok": True})
@@ -318,22 +302,6 @@ class TestApiPut:
 
             result = api_put("items/1", json={"name": "new"})
         assert result == {"updated": True}
-
-    def test_toast_shown(self):
-        """Verify a toast notification is shown when toast parameter is set."""
-        resp = _resp(200, json_data={})
-        ctx, _ = _mock_client_ctx(response=resp)
-        settings = _mock_settings()
-        mock_st = MagicMock()
-        with (
-            patch(f"{MODULE}.settings", settings),
-            patch(f"{MODULE}.httpx.Client", return_value=ctx),
-            patch(f"{MODULE}.st", mock_st),
-        ):
-            from client.app.core.api import api_put
-
-            api_put("items/1", toast="Updated!")
-        mock_st.toast.assert_called_once_with("Updated!", icon="✅")
 
     def test_params_forwarded(self):
         """Verify query params are forwarded to the underlying PUT call."""
@@ -402,22 +370,6 @@ class TestApiPatch:
             result = api_patch("items/1")
         assert result is None
 
-    def test_toast_shown(self):
-        """Verify a toast notification is shown when toast parameter is set."""
-        resp = _resp(200, json_data={})
-        ctx, _ = _mock_client_ctx(response=resp)
-        settings = _mock_settings()
-        mock_st = MagicMock()
-        with (
-            patch(f"{MODULE}.settings", settings),
-            patch(f"{MODULE}.httpx.Client", return_value=ctx),
-            patch(f"{MODULE}.st", mock_st),
-        ):
-            from client.app.core.api import api_patch
-
-            api_patch("items/1", toast="Updated!")
-        mock_st.toast.assert_called_once_with("Updated!", icon="✅")
-
     def test_http_error_raised(self):
         """Verify api_patch raises HTTPStatusError on a 500 response."""
         error_resp = _resp(500, json_data={"detail": "fail"})
@@ -455,22 +407,6 @@ class TestApiDelete:
 
             api_delete("items/1")
 
-    def test_toast_shown(self):
-        """Verify a toast notification is shown when toast parameter is set."""
-        resp = _resp(204, content=b"")
-        ctx, _ = _mock_client_ctx(response=resp)
-        settings = _mock_settings()
-        mock_st = MagicMock()
-        with (
-            patch(f"{MODULE}.settings", settings),
-            patch(f"{MODULE}.httpx.Client", return_value=ctx),
-            patch(f"{MODULE}.st", mock_st),
-        ):
-            from client.app.core.api import api_delete
-
-            api_delete("items/1", toast="Deleted!")
-        mock_st.toast.assert_called_once_with("Deleted!", icon="✅")
-
     def test_http_error_raised(self):
         """Verify api_delete raises HTTPStatusError on a 500 response."""
         error_resp = _resp(500, json_data={"detail": "fail"})
@@ -487,6 +423,35 @@ class TestApiDelete:
 
             with pytest.raises(httpx.HTTPStatusError):
                 api_delete("bad/path")
+
+
+# ---------------------------------------------------------------------------
+# Toast notification (shared across mutating verbs)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "verb,resp",
+    [
+        ("api_post", _resp(200, json_data={})),
+        ("api_put", _resp(200, json_data={})),
+        ("api_patch", _resp(200, json_data={})),
+        ("api_delete", _resp(204, content=b"")),
+    ],
+)
+def test_toast_shown(verb, resp):
+    """Each mutating verb fires st.toast with the supplied message and ✅ icon."""
+    ctx, _ = _mock_client_ctx(response=resp)
+    settings = _mock_settings()
+    mock_st = MagicMock()
+    with (
+        patch(f"{MODULE}.settings", settings),
+        patch(f"{MODULE}.httpx.Client", return_value=ctx),
+        patch(f"{MODULE}.st", mock_st),
+    ):
+        import importlib
+
+        func = getattr(importlib.import_module(MODULE), verb)
+        func("path", toast="Done!")
+    mock_st.toast.assert_called_once_with("Done!", icon="✅")
 
 
 # ---------------------------------------------------------------------------

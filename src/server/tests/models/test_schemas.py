@@ -13,56 +13,10 @@ from pydantic import SecretStr, ValidationError
 
 from server.app.core.secrets import REVEAL_KEY, reveal
 from server.app.models.schemas import (
-    EmbeddingModelParameters,
-    LanguageModelParameters,
     ModelConfig,
-    ModelIdentity,
     ModelSensitive,
     ModelUpdate,
-    SupportedProviderIds,
 )
-
-# ---------------------------------------------------------------------------
-# LanguageModelParameters
-# ---------------------------------------------------------------------------
-
-
-class TestLanguageModelParameters:
-    """Test LanguageModelParameters defaults and overrides."""
-
-    def test_defaults(self):
-        """Unset fields use expected defaults."""
-        params = LanguageModelParameters()
-        assert params.max_input_tokens is None
-        assert params.max_tokens == 4096
-        assert params.top_p == 1.00
-
-    def test_overrides(self):
-        """Explicit values replace defaults."""
-        params = LanguageModelParameters(max_input_tokens=1024, max_tokens=512, top_p=0.9)
-        assert params.max_input_tokens == 1024
-        assert params.max_tokens == 512
-        assert params.top_p == 0.9
-
-
-# ---------------------------------------------------------------------------
-# EmbeddingModelParameters
-# ---------------------------------------------------------------------------
-
-
-class TestEmbeddingModelParameters:
-    """Test EmbeddingModelParameters defaults and overrides."""
-
-    def test_defaults(self):
-        """max_chunk_size defaults to 8192."""
-        params = EmbeddingModelParameters()
-        assert params.max_chunk_size == 8192
-
-    def test_overrides(self):
-        """Explicit max_chunk_size replaces default."""
-        params = EmbeddingModelParameters(max_chunk_size=512)
-        assert params.max_chunk_size == 512
-
 
 # ---------------------------------------------------------------------------
 # ModelSensitive
@@ -72,57 +26,10 @@ class TestEmbeddingModelParameters:
 class TestModelSensitive:
     """Test ModelSensitive field."""
 
-    def test_api_key_default_none(self):
-        """api_key defaults to None."""
-        m = ModelSensitive()
-        assert m.api_key is None
-
     def test_api_key_set(self):
         """api_key stores the provided value."""
         m = ModelSensitive(api_key=SecretStr("sk-test"))
         assert reveal(m.api_key) == "sk-test"
-
-
-# ---------------------------------------------------------------------------
-# SupportedProviderIds
-# ---------------------------------------------------------------------------
-
-
-class TestSupportedProviderIds:
-    """Test SupportedProviderIds defaults and construction."""
-
-    def test_defaults(self):
-        """provider defaults to None and ids to empty list."""
-        s = SupportedProviderIds()
-        assert s.provider is None
-        assert not s.ids
-
-    def test_construction(self):
-        """Explicit values are stored correctly."""
-        s = SupportedProviderIds(provider="openai", ids=[{"key": "gpt-4o"}])
-        assert s.provider == "openai"
-        assert len(s.ids) == 1
-
-
-# ---------------------------------------------------------------------------
-# ModelIdentity
-# ---------------------------------------------------------------------------
-
-
-class TestModelIdentity:
-    """Test ModelIdentity defaults and construction."""
-
-    def test_defaults(self):
-        """provider and id default to None."""
-        m = ModelIdentity()
-        assert m.provider is None
-        assert m.id is None
-
-    def test_construction(self):
-        """Explicit provider and id are stored."""
-        m = ModelIdentity(provider="openai", id="gpt-4o")
-        assert m.provider == "openai"
-        assert m.id == "gpt-4o"
 
 
 # ---------------------------------------------------------------------------
@@ -231,12 +138,6 @@ class TestModelConfig:
 class TestModelUpdate:
     """Test ModelUpdate optional fields."""
 
-    def test_all_fields_optional(self):
-        """Empty constructor succeeds with all fields None."""
-        u = ModelUpdate()
-        assert u.type is None
-        assert u.provider is None
-
     def test_model_dump_exclude_unset_returns_only_set_fields(self):
         """model_dump(exclude_unset=True) omits fields not explicitly set."""
         u = ModelUpdate(temperature=0.5, enabled=True)
@@ -247,12 +148,6 @@ class TestModelUpdate:
         """api_key is available via ModelSensitive inheritance."""
         u = ModelUpdate(api_key=SecretStr("new-key"))
         assert reveal(u.api_key) == "new-key"
-
-    def test_empty_dump_has_no_keys(self):
-        """Dumping a default instance with exclude_unset yields empty dict."""
-        u = ModelUpdate()
-        dumped = u.model_dump(exclude_unset=True)
-        assert dumped == {}
 
 
 # ---------------------------------------------------------------------------

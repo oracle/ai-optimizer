@@ -10,7 +10,7 @@ import logging
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
@@ -227,7 +227,10 @@ async def oci_list_bucket_objects(bucket_name: str, auth_profile: str):
 async def oci_download_objects(
     bucket_name: str,
     auth_profile: str,
-    request: list[str],
+    request: list[str] = Body(
+        ...,
+        examples=[["product-catalog.pdf", "release-notes/2026-q2.md"]],
+    ),
     client: Annotated[ClientId, Header()] = "server",
 ):
     """Download objects from a bucket to the client's temp directory."""

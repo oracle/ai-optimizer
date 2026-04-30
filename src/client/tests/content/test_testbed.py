@@ -179,46 +179,25 @@ _ensure_testbed_loaded()
 
 
 # ---------------------------------------------------------------------------
-# TestModelIdentityToKey — pure function
+# _model_identity_to_key — pure function
 # ---------------------------------------------------------------------------
-class TestModelIdentityToKey:
-    """Tests for _model_identity_to_key."""
+@pytest.mark.parametrize(
+    "identity,expected",
+    [
+        ({"provider": "openai", "id": "gpt-4o"}, "openai/gpt-4o"),
+        (None, None),
+        ({}, None),
+        ({"id": "gpt-4o"}, None),
+        ({"provider": "openai"}, None),
+        ({"provider": "", "id": "gpt-4o"}, None),
+    ],
+    ids=["valid", "none", "empty", "missing_provider", "missing_id", "empty_provider"],
+)
+def test_model_identity_to_key(identity, expected):
+    """_model_identity_to_key returns 'provider/id' or None for falsy/missing inputs."""
+    from client.app.content.testbed import _model_identity_to_key
 
-    def test_valid_dict(self):
-        """Provider/id dict returns 'provider/id' string."""
-        from client.app.content.testbed import _model_identity_to_key
-
-        assert _model_identity_to_key({"provider": "openai", "id": "gpt-4o"}) == "openai/gpt-4o"
-
-    def test_none_input(self):
-        """None returns None."""
-        from client.app.content.testbed import _model_identity_to_key
-
-        assert _model_identity_to_key(None) is None
-
-    def test_empty_dict(self):
-        """Empty dict returns None."""
-        from client.app.content.testbed import _model_identity_to_key
-
-        assert _model_identity_to_key({}) is None
-
-    def test_missing_provider(self):
-        """Dict without provider returns None."""
-        from client.app.content.testbed import _model_identity_to_key
-
-        assert _model_identity_to_key({"id": "gpt-4o"}) is None
-
-    def test_missing_id(self):
-        """Dict without id returns None."""
-        from client.app.content.testbed import _model_identity_to_key
-
-        assert _model_identity_to_key({"provider": "openai"}) is None
-
-    def test_empty_provider(self):
-        """Empty-string provider is falsy, returns None."""
-        from client.app.content.testbed import _model_identity_to_key
-
-        assert _model_identity_to_key({"provider": "", "id": "gpt-4o"}) is None
+    assert _model_identity_to_key(identity) == expected
 
 
 # ---------------------------------------------------------------------------

@@ -307,25 +307,6 @@ class TestExtractErrorDetail:
 
 
 # ---------------------------------------------------------------------------
-# bool_to_emoji
-# ---------------------------------------------------------------------------
-class TestBoolToEmoji:
-    """Tests for bool_to_emoji."""
-
-    def test_true(self):
-        """Verify True returns the check-mark emoji."""
-        from client.app.core.helpers import bool_to_emoji
-
-        assert bool_to_emoji(True) == "✅"
-
-    def test_false(self):
-        """Verify False returns the cross-mark emoji."""
-        from client.app.core.helpers import bool_to_emoji
-
-        assert bool_to_emoji(False) == "❌"
-
-
-# ---------------------------------------------------------------------------
 # update_client_settings
 # ---------------------------------------------------------------------------
 class TestUpdateClientSettings:

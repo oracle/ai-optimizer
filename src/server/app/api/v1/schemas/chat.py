@@ -45,6 +45,18 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     """Request body for chat completions."""
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "model": "openai/gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "Summarize the latest sales report."},
+                ],
+            }
+        }
+    }
+
     model: Optional[str] = None
     messages: list[ChatMessage]
 

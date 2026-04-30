@@ -127,14 +127,14 @@ def configure_logging(log_level: str | None = None) -> None:
     for handler in logging.getLogger().handlers:
         handler.addFilter(_inject_version)
 
-    # Surface the redaction filter's keyset provenance once at startup.
-    # ``key_source == "static"`` means the schema-derived path failed and the
-    # filter is running on the conservative fallback set; this is diagnostic only.
+    # Surface the value-filter keyset provenance once at startup.
+    # ``key_source == "static"`` means the schema-derived path failed and
+    # the filter is running on the static fallback set; diagnostic only.
     for handler in logging.getLogger().handlers:
         for flt in handler.filters:
             if isinstance(flt, RedactingFilter):
                 logging.getLogger("logging_redaction").debug(
-                    "redaction filter initialized with %d sensitive keys (source=%s)",
+                    "log value filter initialized with %d field patterns (source=%s)",
                     flt.key_count,
                     flt.key_source,
                 )

@@ -23,8 +23,7 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
 
-import httpx
-from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 
@@ -65,6 +64,7 @@ from server.app.oci.bucket import (
     detect_changed_objects,
     get_bucket_objects_with_metadata,
 )
+from url_safety import SafeAsyncClient, validate_structural
 
 LOGGER = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ async def _client_lock(client: str):
             entry.users -= 1
 
 
-# ZIP extraction safety limits
+# ZIP extraction limits
 _ZIP_MAX_FILES = 500
 _ZIP_MAX_TOTAL_BYTES = 500 * 1024 * 1024  # 500 MB total decompressed
 _ZIP_MAX_FILE_BYTES = 100 * 1024 * 1024  # 100 MB per file
@@ -256,13 +256,13 @@ def _extract_zip(zip_path: Path, dest: Path) -> dict:
     (400) rather than :class:`zipfile.BadZipFile`, so the caller's
     generic error handling does not silently swallow them.
     """
-    # The constructor itself can raise for user-controlled archive
-    # problems that never reach `infolist`: BadZipFile for a missing /
-    # corrupt end-of-central-directory, NotImplementedError for an
-    # unsupported extract version or compression method advertised in
-    # the central directory, and RuntimeError / OSError for other
-    # header parse failures.  Translate the lot to 400 so bad uploads
-    # never become 500s.
+    # The constructor itself can raise before `infolist` is reached:
+    # BadZipFile for a missing / corrupt end-of-central-directory,
+    # NotImplementedError for an unsupported extract version or
+    # compression method advertised in the central directory, and
+    # RuntimeError / OSError for other header parse failures. Archive
+    # parse/read errors are returned as HTTP 400; filesystem write
+    # errors remain HTTP 500.
     try:
         zip_ref = zipfile.ZipFile(zip_path, "r")
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError) as ex:
@@ -587,61 +587,83 @@ async def store_sql_file(
     description="Store Web Files for Embedding.",
 )
 async def store_web_file(
-    request: list[HttpUrl],
+    request: list[HttpUrl] = Body(
+        ...,
+        examples=[
+            [
+                "https://docs.oracle.com/en/cloud/paas/autonomous-database/index.html",
+                "https://example.com/whitepaper.pdf",
+            ]
+        ],
+    ),
     client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store contents from web URLs for embedding."""
     LOGGER.debug("Received store_web_file - request: %s", request)
     temp_directory = get_temp_directory(client, "embedding")
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=_WEB_FETCH_TIMEOUT) as http_client:
+    # Pre-validate every input so a single bad entry rejects the whole
+    # batch before any network I/O happens. ``validate_structural``
+    # skips DNS resolution; full eligibility (including resolved
+    # addresses) is re-checked by ``SafeAsyncClient`` per hop, taking
+    # proxy mounts into account.
+    try:
+        for url in request:
+            validate_structural(str(url))
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail="URL not permitted.") from ex
+
+    async with SafeAsyncClient(timeout=_WEB_FETCH_TIMEOUT) as http_client:
         for url in request:
             filename = Path(urlparse(str(url)).path).name or slugify(str(url)) or "download"
             LOGGER.debug("Requesting: %s", url)
 
-            async with http_client.stream("GET", str(url)) as response:
-                response.raise_for_status()
-                content_type = response.headers.get("Content-Type", "").lower()
-                ext = Path(filename).suffix.lower()
+            try:
+                async with http_client.stream("GET", str(url)) as response:
+                    response.raise_for_status()
+                    content_type = response.headers.get("Content-Type", "").lower()
+                    ext = Path(filename).suffix.lower()
 
-                # For extensionless URLs, infer ext from content-type
-                if not ext or ext not in SUPPORTED_EXTENSIONS:
-                    for ct_prefix, ct_ext in _CONTENT_TYPE_TO_EXT.items():
-                        if ct_prefix in content_type:
+                    # For extensionless URLs, infer ext from content-type
+                    if not ext or ext not in SUPPORTED_EXTENSIONS:
+                        for ct_prefix, ct_ext in _CONTENT_TYPE_TO_EXT.items():
+                            if ct_prefix in content_type:
+                                ext = ct_ext
+                                filename = f"{Path(filename).stem}{ext}"
+                                break
+
+                    if any(ct in content_type for ct in _CONTENT_TYPE_TO_EXT):
+                        # Content-Type identifies a specific supported format —
+                        # trust it over the URL extension (e.g. a .html URL that
+                        # actually serves application/pdf).
+                        ct_ext = next(ct_ext for ct, ct_ext in _CONTENT_TYPE_TO_EXT.items() if ct in content_type)
+                        if ext != ct_ext:
                             ext = ct_ext
                             filename = f"{Path(filename).stem}{ext}"
-                            break
-
-                if any(ct in content_type for ct in _CONTENT_TYPE_TO_EXT):
-                    # Content-Type identifies a specific supported format —
-                    # trust it over the URL extension (e.g. a .html URL that
-                    # actually serves application/pdf).
-                    ct_ext = next(ct_ext for ct, ct_ext in _CONTENT_TYPE_TO_EXT.items() if ct in content_type)
-                    if ext != ct_ext:
-                        ext = ct_ext
-                        filename = f"{Path(filename).stem}{ext}"
-                    with open(temp_directory / filename, "wb") as file:
-                        async for chunk in response.aiter_bytes():
-                            file.write(chunk)
-                elif (
-                    "html" in content_type
-                    or "xhtml" in content_type
-                    or (ext in {".html", ".xhtml"} and "application/octet-stream" not in content_type)
-                ):
-                    # HTML/XHTML response — scrape sections
-                    await _save_web_sections(str(url), temp_directory)
-                elif ext in SUPPORTED_EXTENSIONS or "application/octet-stream" in content_type:
-                    # Supported document type or generic binary — save for the embed pipeline
-                    with open(temp_directory / filename, "wb") as file:
-                        async for chunk in response.aiter_bytes():
-                            file.write(chunk)
-                elif "text" in content_type:
-                    await _save_web_sections(str(url), temp_directory)
-                else:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"Unsupported file type: {ext or content_type}.",
-                    )
+                        with open(temp_directory / filename, "wb") as file:
+                            async for chunk in response.aiter_bytes():
+                                file.write(chunk)
+                    elif (
+                        "html" in content_type
+                        or "xhtml" in content_type
+                        or (ext in {".html", ".xhtml"} and "application/octet-stream" not in content_type)
+                    ):
+                        # HTML/XHTML response — scrape sections
+                        await _save_web_sections(str(url), temp_directory)
+                    elif ext in SUPPORTED_EXTENSIONS or "application/octet-stream" in content_type:
+                        # Supported document type or generic binary — save for the embed pipeline
+                        with open(temp_directory / filename, "wb") as file:
+                            async for chunk in response.aiter_bytes():
+                                file.write(chunk)
+                    elif "text" in content_type:
+                        await _save_web_sections(str(url), temp_directory)
+                    else:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Unsupported file type: {ext or content_type}.",
+                        )
+            except ValueError as ex:
+                raise HTTPException(status_code=400, detail="URL not permitted.") from ex
 
     stored_files = [f.name for f in temp_directory.iterdir() if f.is_file()]
     return JSONResponse(status_code=200, content=stored_files)

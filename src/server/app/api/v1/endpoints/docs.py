@@ -50,7 +50,7 @@ async def swagger_ui(request: Request) -> HTMLResponse:
     spec. `preauthorizeApiKey` is called so "Try it out" requests reuse the
     same key without a second entry in the built-in Authorize dialog.
     """
-    title = html.escape(f"{request.app.title} - Swagger UI")
+    title = html.escape(f"{request.app.title}")
     page = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -102,11 +102,40 @@ async def swagger_ui(request: Request) -> HTMLResponse:
           }}
           const spec = await resp.json();
           gate.style.display = 'none';
+          // Swagger UI 5's FileItem widget doesn't trigger on OpenAPI 3.1's
+          // `contentMediaType: application/octet-stream`, so list[UploadFile]
+          // params render as text inputs filled with binary sample bytes.
+          // Substitute a real multi-file picker when items match that shape.
+          const FileArrayPlugin = function () {{
+            return {{
+              wrapComponents: {{
+                JsonSchema_array: (Original, system) => function ArrayOfFiles(props) {{
+                  const items = props.schema && props.schema.get && props.schema.get('items');
+                  const isFileArray = items && items.get
+                    && items.get('type') === 'string'
+                    && items.get('contentMediaType') === 'application/octet-stream';
+                  if (!isFileArray) {{
+                    return system.React.createElement(Original, props);
+                  }}
+                  return system.React.createElement('input', {{
+                    type: 'file',
+                    multiple: true,
+                    className: 'form-control',
+                    onChange: (e) => {{
+                      const files = Array.from(e.target.files || []);
+                      props.onChange(system.Im.List(files));
+                    }},
+                  }});
+                }},
+              }},
+            }};
+          }};
           window.ui = SwaggerUIBundle({{
             spec: spec,
             dom_id: '#swagger-ui',
             deepLinking: true,
             presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+            plugins: [FileArrayPlugin],
             layout: 'BaseLayout'
           }});
           window.ui.preauthorizeApiKey('APIKeyHeader', key);

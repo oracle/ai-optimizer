@@ -20,6 +20,7 @@ from streamlit import session_state as state
 from client.app.core import helpers
 from client.app.core.api import api_get, api_patch, api_post
 from client.app.core.sidebar import vector_store_selection
+from url_safety import validate_structural
 
 LOGGER = logging.getLogger("client.content.tools.tabs.split_embed")
 
@@ -30,21 +31,65 @@ INDEX_TYPES = ["HNSW", "IVF", "HYB"]
 #####################################################
 # Inline Utilities
 #####################################################
+_REACHABLE_STATUSES = {200, 401, 403, 404, 421}
+_MAX_PROBE_REDIRECTS = 5
+
+
 @st.cache_data(ttl=30, show_spinner=False)
-def _is_url_accessible(url: str) -> tuple[bool, str]:
-    """Check if a URL is reachable."""
+def _is_url_accessible(url: str, restricted: bool = False) -> tuple[bool, str]:
+    """Check if a URL is reachable.
+
+    ``restricted=True`` enables the user-supplied URL eligibility
+    check: the URL (and every redirect target) must pass
+    ``validate_safe_url``. Default mode is unrestricted and is used to
+    probe admin-configured endpoints such as the embedding model
+    ``api_base`` value, which legitimately resolves to local addresses.
+    """
     if not url:
         return False, "No URL Provided"
+
+    if restricted:
+        # Structural-only — the application host may be behind a
+        # proxy that owns external DNS, and the server re-validates
+        # the URL with full DNS resolution before fetching.
+        try:
+            validate_structural(url)
+        except ValueError:
+            return False, "URL not permitted."
+
     try:
-        with httpx.Client(timeout=2, follow_redirects=True) as client:
-            response = client.get(url)
-        if response.status_code in {200, 401, 403, 404, 421}:
-            return True, ""
-        msg = f"{url} is not accessible. (Status: {response.status_code})"
-        return False, msg
+        with httpx.Client(timeout=2, follow_redirects=not restricted) as client:
+            response = _probe_with_revalidation(client, url) if restricted else client.get(url)
     except httpx.HTTPError as ex:
-        msg = f"{url} is not accessible. ({type(ex).__name__})"
-        return False, msg
+        return False, f"{url} is not accessible. ({type(ex).__name__})"
+    except ValueError:
+        return False, "URL not permitted."
+
+    if response is None or response.status_code not in _REACHABLE_STATUSES:
+        status = f" (Status: {response.status_code})" if response is not None else ""
+        return False, f"{url} is not accessible.{status}"
+    return True, ""
+
+
+def _probe_with_revalidation(client: httpx.Client, url: str) -> httpx.Response | None:
+    """Issue a GET, validating every redirect target before following it."""
+    current = url
+    for _ in range(_MAX_PROBE_REDIRECTS + 1):
+        response = client.get(current)
+        if not response.is_redirect:
+            return response
+        location = response.headers.get("location")
+        if not location:
+            return response
+        # ``httpx.URL.join`` raises ``InvalidURL`` for malformed Location
+        # values (e.g. ``http://[::1``). Treat those the same as a
+        # failed probe so the Streamlit render does not crash.
+        try:
+            current = str(httpx.URL(current).join(location))
+        except httpx.InvalidURL:
+            return None
+        validate_structural(current)
+    return None
 
 
 def _generate_vs_table_name(
@@ -115,7 +160,7 @@ class FileSourceData:
         if self.file_source == "Local":
             return bool(state.get("runtime_local_file_uploader"))
         if self.file_source == "Web":
-            return bool(self.web_url and _is_url_accessible(self.web_url)[0])
+            return bool(self.web_url and _is_url_accessible(self.web_url, restricted=True)[0])
         if self.file_source == "SQL":
             return bool(self.sql_query and self.sql_query.strip() and self.sql_db_alias)
         if self.file_source == "OCI":

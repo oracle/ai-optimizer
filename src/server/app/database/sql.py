@@ -40,12 +40,12 @@ class ResultSetTooLargeError(RuntimeError):
 
 
 def validate_vs_table_name(name: str) -> str:
-    """Validator for vector-store table names — defense in depth for DDL paths.
+    """Validator for vector-store table names used by DDL paths.
 
-    Restricts to Python's Unicode ``\\w+``, the same grammar
-    ``generate_vs_metadata`` produces. SQL metacharacters (quotes, whitespace,
-    ``;``, ``--``, parentheses) are outside ``\\w`` and therefore rejected
-    before reaching the DDL/DML layer that wraps the name in ``"..."``.
+    Accepts the grammar produced by ``generate_vs_metadata`` before SQL
+    is built: Python's Unicode ``\\w+``. Inputs outside that grammar are
+    rejected before reaching the DDL/DML layer that wraps the name in
+    ``"..."``.
     """
     if not name or not _VS_TABLE_NAME_PATTERN.fullmatch(name):
         raise ValueError(f"Invalid vector store table name: {name!r}")

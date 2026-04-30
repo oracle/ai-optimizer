@@ -19,4 +19,13 @@ class PromptResponse(BaseModel):
 class PromptUpdate(BaseModel):
     """Request body for updating a prompt's text."""
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "text": "You are an expert technical writer. Rewrite the user's text "
+                "to be clear, concise, and free of jargon.",
+            }
+        }
+    }
+
     text: str = Field(..., description="New prompt text")

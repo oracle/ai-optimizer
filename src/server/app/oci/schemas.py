@@ -37,6 +37,22 @@ class OciSensitive(BaseModel):
 class OciProfileConfig(OciSensitive):
     """OCI Profile configurations."""
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "auth_profile": "DEFAULT",
+                "user": "ocid1.user.oc1..exampleuserocid",
+                "authentication": "api_key",
+                "tenancy": "ocid1.tenancy.oc1..exampletenancyocid",
+                "region": "us-ashburn-1",
+                "fingerprint": "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99",
+                "key_file": "/home/opc/.oci/oci_api_key.pem",
+                "genai_compartment_id": "ocid1.compartment.oc1..examplecompartocid",
+                "genai_region": "us-chicago-1",
+            }
+        }
+    }
+
     auth_profile: str
     user: Optional[str] = None
     authentication: OciAuthType = "api_key"
@@ -56,6 +72,17 @@ class OciProfileConfig(OciSensitive):
 
 class OciProfileUpdate(OciSensitive):
     """Fields allowed in an OCI profile update (all optional)."""
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "user": "ocid1.user.oc1..exampleuserocid",
+                "region": "us-phoenix-1",
+                "genai_compartment_id": "ocid1.compartment.oc1..examplecompartocid",
+                "genai_region": "us-chicago-1",
+            }
+        }
+    }
 
     @model_validator(mode="before")
     @classmethod

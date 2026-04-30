@@ -20,6 +20,21 @@ ParsingMode = Literal["fast", "deep"]
 class VectorStoreConfig(BaseModel):
     """Vector store embedding configuration."""
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "alias": "PRODUCT_DOCS",
+                "description": "Product documentation embedded for RAG",
+                "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                "chunk_size": 1024,
+                "chunk_overlap": 128,
+                "distance_strategy": "COSINE",
+                "index_type": "HNSW",
+                "parsing_mode": "fast",
+            }
+        }
+    }
+
     vector_store: Optional[str] = Field(
         default=None,
         description="Vector Store Table Name (auto-generated, do not set)",
