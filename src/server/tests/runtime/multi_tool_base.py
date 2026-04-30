@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Shared base test classes for CombinedSession tests (used by both LangGraph and WayFlow).
+Shared base test classes for CombinedSession tests.
 
 Subclasses must define:
     PATCH_PATH  – dotted module path for ``litellm.acompletion`` (e.g.

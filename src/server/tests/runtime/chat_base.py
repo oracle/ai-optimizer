@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Shared base test classes for ChatOrchestrator tests (used by both LangGraph and WayFlow).
+Shared base test classes for ChatOrchestrator tests.
 
 Subclasses must define:
     make_orchestrator(**cs_kwargs):  factory returning a ChatOrchestrator.

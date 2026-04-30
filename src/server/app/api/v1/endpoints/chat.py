@@ -28,11 +28,7 @@ from server.app.api.v1.schemas.common import ClientId
 from server.app.core.secrets import reveal
 from server.app.core.settings import resolve_client, settings
 from server.app.runtime.common import LLMConfigurationError, clean_llm_error
-
-if settings.runtime == "langgraph":
-    from server.app.runtime.langgraph.chat import ChatOrchestrator
-else:
-    from server.app.runtime.wayflow.chat import ChatOrchestrator
+from server.app.runtime.langgraph.chat import ChatOrchestrator
 
 LOGGER = logging.getLogger(__name__)
 
