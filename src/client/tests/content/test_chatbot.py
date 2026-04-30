@@ -78,63 +78,47 @@ _ensure_chatbot_loaded()
 # ---------------------------------------------------------------------------
 # _extract_search_query
 # ---------------------------------------------------------------------------
-class TestExtractSearchQuery:
-    """Tests for _extract_search_query."""
+def _rephrase_payload(rephrased: str = "What is data redaction?") -> str:
+    import json
 
-    def test_plain_string_passthrough(self):
-        """A plain query string is returned as-is."""
-        from client.app.content.chatbot import _extract_search_query
+    return json.dumps(
+        {
+            "original_prompt": "data redaction?",
+            "rephrased_prompt": rephrased,
+            "was_rephrased": True,
+            "status": "success",
+        }
+    )
 
-        assert _extract_search_query("data redaction?") == "data redaction?"
 
-    def test_unwraps_content_blocks_with_rephrase(self):
-        """LangChain content blocks wrapping a RephrasePrompt are fully unwrapped."""
-        import json
+def _content_blocks(text: str) -> str:
+    import json
 
-        from client.app.content.chatbot import _extract_search_query
+    return json.dumps([{"type": "text", "text": text, "id": "lc_abc123"}])
 
-        inner = json.dumps(
-            {
-                "original_prompt": "data redaction?",
-                "rephrased_prompt": "What is data redaction?",
-                "was_rephrased": True,
-                "status": "success",
-                "error": None,
-            }
-        )
-        raw = json.dumps([{"type": "text", "text": inner, "id": "lc_abc123"}])
-        assert _extract_search_query(raw) == "What is data redaction?"
 
-    def test_unwraps_rephrase_without_content_blocks(self):
-        """A bare RephrasePrompt JSON string (WayFlow) extracts rephrased_prompt."""
-        import json
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("data redaction?", "data redaction?"),
+        (_content_blocks(_rephrase_payload()), "What is data redaction?"),
+        (_rephrase_payload(), "What is data redaction?"),
+        (_content_blocks("simple query"), "simple query"),
+        ("not json {", "not json {"),
+    ],
+    ids=[
+        "plain_string",
+        "content_blocks_with_rephrase",
+        "rephrase_without_content_blocks",
+        "content_blocks_plain",
+        "malformed_json",
+    ],
+)
+def test_extract_search_query(raw, expected):
+    """_extract_search_query unwraps LangChain content blocks and RephrasePrompt JSON."""
+    from client.app.content.chatbot import _extract_search_query
 
-        from client.app.content.chatbot import _extract_search_query
-
-        raw = json.dumps(
-            {
-                "original_prompt": "redaction",
-                "rephrased_prompt": "What is data redaction?",
-                "was_rephrased": True,
-                "status": "success",
-            }
-        )
-        assert _extract_search_query(raw) == "What is data redaction?"
-
-    def test_content_blocks_without_rephrase(self):
-        """Content blocks wrapping a plain string return that string."""
-        import json
-
-        from client.app.content.chatbot import _extract_search_query
-
-        raw = json.dumps([{"type": "text", "text": "simple query", "id": "lc_123"}])
-        assert _extract_search_query(raw) == "simple query"
-
-    def test_malformed_json_returns_raw(self):
-        """Malformed JSON falls back to returning the raw string."""
-        from client.app.content.chatbot import _extract_search_query
-
-        assert _extract_search_query("not json {") == "not json {"
+    assert _extract_search_query(raw) == expected
 
 
 # ---------------------------------------------------------------------------

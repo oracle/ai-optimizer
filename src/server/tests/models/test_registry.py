@@ -30,20 +30,18 @@ def _reset_model_configs():
 # ---------------------------------------------------------------------------
 
 
-class TestModelKey:
-    """Test _model_key helper."""
-
-    def test_returns_casefolded_tuple(self):
-        """Mixed-case inputs are lowered."""
-        assert _model_key("GPT-4o", "OpenAI") == ("gpt-4o", "openai")
-
-    def test_preserves_special_characters(self):
-        """Slashes and hyphens are kept intact."""
-        assert _model_key("meta-llama/Llama-3.2", "hosted_vllm") == ("meta-llama/llama-3.2", "hosted_vllm")
-
-    def test_already_lowercase(self):
-        """Already-lowercase strings pass through unchanged."""
-        assert _model_key("model", "provider") == ("model", "provider")
+@pytest.mark.parametrize(
+    "model_id,provider,expected",
+    [
+        ("GPT-4o", "OpenAI", ("gpt-4o", "openai")),
+        ("meta-llama/Llama-3.2", "hosted_vllm", ("meta-llama/llama-3.2", "hosted_vllm")),
+        ("model", "provider", ("model", "provider")),
+    ],
+    ids=["mixed_case", "preserves_special_chars", "already_lowercase"],
+)
+def test_model_key(model_id, provider, expected):
+    """_model_key casefolds both inputs while preserving special characters."""
+    assert _model_key(model_id, provider) == expected
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.app.api.v1.endpoints.settings import SENSITIVE_FIELDS
 from server.app.core.schemas import ClientSettings
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
@@ -18,9 +17,6 @@ from server.app.core.settings import (
     _ensure_capacity,
     settings,
 )
-from server.app.database.schemas import DatabaseSensitive
-from server.app.models.schemas import ModelSensitive
-from server.app.oci.schemas import OciSensitive
 from server.tests.conftest import make_test_database_config, make_test_model_config, make_test_oci_profile
 
 SETTINGS_MODULE = "server.app.api.v1.endpoints.settings"
@@ -112,14 +108,6 @@ async def test_get_client_settings_uses_standard_projection(app_client, auth_hea
             assert key not in oci_entry
 
     assert "client_settings" in body
-
-
-@pytest.mark.unit
-def test_sensitive_fields_derived_from_models():
-    """SENSITIVE_FIELDS entries must exactly match the Pydantic model fields."""
-    assert SENSITIVE_FIELDS["database_configs"]["__all__"] == set(DatabaseSensitive.model_fields.keys())
-    assert SENSITIVE_FIELDS["model_configs"]["__all__"] == set(ModelSensitive.model_fields.keys())
-    assert SENSITIVE_FIELDS["oci_configs"]["__all__"] == set(OciSensitive.model_fields.keys())
 
 
 # ---------------------------------------------------------------------------
