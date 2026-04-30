@@ -67,7 +67,7 @@ def build_llm_only_agentspec(
     Returns
     -------
     AgentSpecAgent
-        A pyagentspec Agent ready to be serialized or loaded into WayFlow.
+        A pyagentspec Agent ready to be serialized or loaded by a runtime adapter.
     """
     llm_config = build_llm_config(client_settings)
     return AgentSpecAgent(

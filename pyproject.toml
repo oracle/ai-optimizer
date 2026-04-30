@@ -25,8 +25,8 @@ dependencies = [
 
 [project.optional-dependencies]
 # Server component dependencies
-# - server-base: shared stack for both runtime variants
-server-base = [
+# - server: server side only
+server = [
     "bokeh==3.9.0",
     "docling==2.91.0",          # When bumping docling, also update Dockerfiles and opentofu cloudinit-compute.tpl
     "evaluate==0.4.6",
@@ -42,6 +42,7 @@ server-base = [
     "langchain-oci==0.2.5",
     "langchain-ollama==1.1.0",
     "langchain-oracledb==1.2.0",
+    "langgraph==1.1.10",
     "litellm==1.83.14",
     "llama-index==0.14.21",
     "matplotlib==3.10.9",
@@ -50,24 +51,6 @@ server-base = [
     "pyagentspec==26.1.0",
     "pypdf==6.10.2",
     "umap-learn==0.5.12"
-]
-
-# - server: default LangGraph runtime
-server = [
-    "ai-optimizer[server-base]",
-    "langgraph==1.1.10"
-]
-
-# - server-wayflow: alternate Wayflow runtime
-server-wayflow = [
-    "ai-optimizer[server-base]",
-    "wayflowcore==26.1.1"
-]
-
-# - server-all: convenience bundle (LangGraph + Wayflow)
-server-all = [
-    "ai-optimizer[server]",
-    "ai-optimizer[server-wayflow]"
 ]
 
 # - client: client side only
@@ -131,19 +114,13 @@ markers = [
     "integration: Integration tests (real components, may require external services)",
     "slow: Slow tests (deselect with '-m \"not slow\"')",
     "db: Tests requiring Oracle database container (deselect with '-m \"not db\"')",
-    "wayflowcore: Tests exercising wayflowcore runtime (opt-in only; enable with --wayflowcore or '-m wayflowcore')",
 ]
 
 [tool.pyright]
-# wayflowcore is an optional extra (`server-wayflow`) and is intentionally not
-# installed in the default dev env — it downgrades langgraph and related deps.
-# Exclude the wayflow runtime subtree so pyright doesn't report missing imports.
 exclude = [
     "**/.venv",
     "build",
     "src/client/source",
-    "src/server/app/runtime/wayflow",
-    "src/server/tests/runtime/wayflow",
 ]
 
 [tool.ruff]

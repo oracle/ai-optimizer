@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Shared mock factories and helpers used by both LangGraph and WayFlow runtime tests.
+Shared mock factories and helpers used by runtime tests.
 """
 # spell-checker: disable
 

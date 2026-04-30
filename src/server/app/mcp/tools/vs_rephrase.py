@@ -82,8 +82,9 @@ async def _vs_rephrase_impl(
 
         use_history = client_settings.ll_model.chat_history
 
-        # Normalize string history: try JSON first (MCP clients may send a list),
-        # otherwise keep the plain string (WayFlow sends newline-delimited turns).
+        # Some MCP clients send chat_history as a JSON-encoded list string;
+        # decode it so list-length counting applies. Otherwise, keep the
+        # plain string and count labeled turns ("User:" / "Assistant:").
         if isinstance(chat_history, str):
             try:
                 parsed = json.loads(chat_history)

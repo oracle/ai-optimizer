@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Tests for the VecSearch flow definition, WayFlow loading, and session.
+Tests for the VecSearch flow definition and runtime loading.
 """
 # spell-checker: disable
 
