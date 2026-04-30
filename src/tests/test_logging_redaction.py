@@ -314,5 +314,5 @@ class TestStartupObservability:
 
         logging_config.configure_logging(log_level="DEBUG")
         captured = capsys.readouterr()
-        assert "redaction filter initialized" in captured.err
+        assert "log value filter initialized" in captured.err
         assert ("source=schemas" in captured.err) or ("source=static" in captured.err)

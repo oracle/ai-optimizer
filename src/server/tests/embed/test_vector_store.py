@@ -435,7 +435,7 @@ def _assert_well_formed_literal(sql: str) -> str:
 
 
 @pytest.mark.unit
-async def test_update_vs_comment_rejects_identifier_injection():
+async def test_update_vs_comment_rejects_invalid_table_identifiers():
     """``X IS 'x'--`` table name is rejected before any SQL runs."""
     cfg = make_test_vs_config(vector_store="X IS 'x'--")
 

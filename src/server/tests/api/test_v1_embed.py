@@ -840,7 +840,14 @@ async def test_web_store_pdf_streaming(app_client, auth_headers):
                 "server.app.api.v1.endpoints.embed.get_temp_directory",
                 return_value=tmp_path,
             ),
-            patch("httpx.AsyncClient.stream", side_effect=_fake_stream),
+            patch(
+                "server.app.api.v1.endpoints.embed.validate_structural",
+                return_value="https://example.com/report.pdf",
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.SafeAsyncClient.stream",
+                side_effect=_fake_stream,
+            ),
         ):
             resp = await app_client.post(
                 "/v1/embed/web/store",

@@ -55,7 +55,7 @@ server-base = [
 # - server: default LangGraph runtime
 server = [
     "ai-optimizer[server-base]",
-    "langgraph==1.1.6"
+    "langgraph==1.1.10"
 ]
 
 # - server-wayflow: alternate Wayflow runtime
@@ -72,7 +72,7 @@ server-all = [
 
 # - client: client side only
 client = [
-    "streamlit==1.56.0",
+    "streamlit==1.57.0",
 ]
 
 # - test: for testing/development
@@ -106,7 +106,7 @@ all-dev = [
 # ``src/`` is the package root; the wheel ships its contents at the top
 # level (``server``, ``client``, plus the bare-name modules below) so
 # runtime imports like ``from server.app...`` resolve directly.
-py-modules = ["_version", "entrypoint", "launch_client", "logging_config", "logging_redaction"]
+py-modules = ["_version", "entrypoint", "launch_client", "logging_config", "logging_redaction", "url_safety"]
 
 [tool.setuptools.package-dir]
 "" = "src"
