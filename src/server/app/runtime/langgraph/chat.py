@@ -24,7 +24,6 @@ from server.app.runtime.common import (
     fetch_prompt_for_route,
     resolve_route,
 )
-from server.app.runtime.langgraph.adapters.streaming import streaming_context
 from server.app.runtime.langgraph.llm_only import (
     PROMPT_NAME as LLM_ONLY_PROMPT,
 )
@@ -199,7 +198,6 @@ class ChatOrchestrator(BaseChatOrchestrator):
         for key, (session, cs_dict) in list(self._session_cache.items()):
             _client, _ = key
             cs = ClientSettings.model_validate(cs_dict)
-            # Rebuild the session with fresh prompts, preserving history
             if isinstance(session, CombinedSession):
                 new_session = await self._build_combined_session(
                     cs,
@@ -222,7 +220,6 @@ class ChatOrchestrator(BaseChatOrchestrator):
                 if key in self._session_cache:
                     self._session_cache[key] = (new_session, cs_dict)
             elif isinstance(session, AgentGraphSession):
-                # For agent sessions, rebuild to pick up new prompt
                 old_msgs = session.conversation_messages
                 new_session = await self._build_agent_session(cs, checkpointer=session.checkpointer)
                 new_session.conversation_messages = old_msgs
@@ -282,12 +279,9 @@ class ChatOrchestrator(BaseChatOrchestrator):
         queue: asyncio.Queue,
         chat_history: bool = True,
     ) -> None:
-        """Run a flow session with real token-by-token streaming."""
+        """Run a flow session with token-by-token streaming via ``astream_events``."""
         LOGGER.debug("Token streaming against route: %s", route)
-        async with streaming_context(queue) as ctx:
-            result = await session.execute(question, thread_id=client, chat_history=chat_history)
-            if not ctx["streamed_text"] and result:
-                await queue.put({"type": "stream", "content": result})
+        await session.execute(question, thread_id=client, chat_history=chat_history, queue=queue)
         token_usage = session.last_metadata.token_usage
         if token_usage:
             await queue.put({"type": "_token_usage", **token_usage.model_dump()})
@@ -299,11 +293,8 @@ class ChatOrchestrator(BaseChatOrchestrator):
         question: str,
         queue: asyncio.Queue,
     ) -> None:
-        """Run an agent session with real token-by-token streaming."""
-        async with streaming_context(queue) as ctx:
-            result = await session.chat(question, chat_history=use_history)
-            if not ctx["streamed_text"] and result:
-                await queue.put({"type": "stream", "content": result})
+        """Run an agent session with token-by-token streaming via ``astream_events``."""
+        await session.chat(question, chat_history=use_history, queue=queue)
         token_usage = session.last_metadata.token_usage
         if token_usage:
             await queue.put({"type": "_token_usage", **token_usage.model_dump()})

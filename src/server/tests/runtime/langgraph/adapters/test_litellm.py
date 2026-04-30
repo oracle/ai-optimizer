@@ -445,6 +445,131 @@ class TestStream:
         call_kwargs = mock_completion.call_args[1]
         assert call_kwargs["stream"] is True
 
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
+    def test_stream_requests_usage_chunks(self, mock_completion):
+        """Sync _stream must also request stream_options.include_usage.
+
+        Flow graphs (AgentSpec LlmNodeExecutor) reach the bridge through sync
+        ``invoke`` even when the surrounding graph is driven by ``astream_events``;
+        without this option the provider never emits usage chunks and token
+        accounting silently disappears for streamed flow sessions.
+        """
+        mock_completion.return_value = iter([])
+        llm = ChatLiteLLMBridge(model="test/model")
+        list(llm._stream([HumanMessage(content="hi")]))
+
+        call_kwargs = mock_completion.call_args[1]
+        assert call_kwargs.get("stream") is True
+        assert call_kwargs.get("stream_options") == {"include_usage": True}
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
+    def test_stream_handles_empty_choice_usage_chunk(self, mock_completion):
+        """Sync _stream must skip the terminal ``choices=[]`` usage chunk."""
+        chunks = [
+            make_stream_chunk(content="hello"),
+            make_empty_choice_usage_chunk(prompt_tokens=8, completion_tokens=4, total_tokens=12),
+        ]
+        mock_completion.return_value = iter(chunks)
+        llm = ChatLiteLLMBridge(model="test/model")
+        emitted = list(llm._stream([HumanMessage(content="hi")]))
+
+        ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
+        usage = next((m.usage_metadata for m in ai_messages if m.usage_metadata), None)
+        assert usage == {"input_tokens": 8, "output_tokens": 4, "total_tokens": 12}
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
+    def test_stream_emits_model_name_for_usage_callback(self, mock_completion):
+        """Sync _stream's final chunk must include response_metadata['model_name']."""
+        chunks = [
+            make_stream_chunk(content="hi"),
+            make_empty_choice_usage_chunk(prompt_tokens=5, completion_tokens=2, total_tokens=7),
+        ]
+        mock_completion.return_value = iter(chunks)
+        llm = ChatLiteLLMBridge(model="ollama/qwen3:8b")
+        emitted = list(llm._stream([HumanMessage(content="hi")]))
+
+        ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
+        final = next((m for m in ai_messages if m.usage_metadata), None)
+        assert final is not None
+        assert final.response_metadata.get("model_name") == "ollama/qwen3:8b"
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
+    def test_stream_falls_back_to_non_streaming_when_provider_rejects_stream(self, mock_completion):
+        """If the provider rejects ``stream=True`` at setup, _stream must fall back to a single non-streaming call.
+
+        This recovery lives in the bridge (not in the graph caller) so a
+        single LLM call can downgrade without re-running upstream nodes that
+        already produced side effects (retrievers, tool calls).
+        """
+
+        def fake_completion(**kwargs):
+            if kwargs.get("stream"):
+                raise RuntimeError("provider does not support streaming")
+            return mock_litellm_response(
+                content="non-streamed answer",
+                usage=make_usage(prompt_tokens=4, completion_tokens=2, total_tokens=6),
+            )
+
+        mock_completion.side_effect = fake_completion
+        llm = ChatLiteLLMBridge(model="test/model")
+        emitted = list(llm._stream([HumanMessage(content="hi")]))
+
+        ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
+        contents = [m.content for m in ai_messages if isinstance(m.content, str) and m.content]
+        assert "non-streamed answer" in "".join(contents)
+        usage_chunks = [m for m in ai_messages if m.usage_metadata]
+        assert any(
+            m.usage_metadata == {"input_tokens": 4, "output_tokens": 2, "total_tokens": 6} for m in usage_chunks
+        )
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
+    def test_stream_falls_back_when_provider_rejects_lazily_on_first_iteration(self, mock_completion):
+        """LiteLLM streams open the provider request lazily — rejection raises during iteration.
+
+        When ``stream=True`` returns a wrapper successfully and the provider
+        only objects once iteration begins, the bridge must still fall back
+        to a single non-streaming call instead of letting the error escape.
+        """
+
+        def lazy_failing_stream():
+            raise RuntimeError("provider rejected stream on first read")
+            yield  # pragma: no cover
+
+        def fake_completion(**kwargs):
+            if kwargs.get("stream"):
+                return lazy_failing_stream()
+            return mock_litellm_response(
+                content="non-streamed answer",
+                usage=make_usage(prompt_tokens=4, completion_tokens=2, total_tokens=6),
+            )
+
+        mock_completion.side_effect = fake_completion
+        llm = ChatLiteLLMBridge(model="test/model")
+        emitted = list(llm._stream([HumanMessage(content="hi")]))
+
+        ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
+        assert "non-streamed answer" in "".join(
+            m.content for m in ai_messages if isinstance(m.content, str) and m.content
+        )
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
+    def test_stream_propagates_failure_after_content_yielded(self, mock_completion):
+        """Mid-stream failure after content has been yielded must propagate, not retry.
+
+        Once chunks are out the door, falling back to non-streaming would
+        deliver duplicate content. Locks in the contract paired with the
+        lazy-setup fallback above.
+        """
+
+        def stream_then_fail():
+            yield make_stream_chunk(content="partial")
+            raise RuntimeError("connection dropped mid-stream")
+
+        mock_completion.return_value = stream_then_fail()
+        llm = ChatLiteLLMBridge(model="test/model")
+        with pytest.raises(RuntimeError, match="connection dropped"):
+            list(llm._stream([HumanMessage(content="hi")]))
+
 
 # ---------------------------------------------------------------------------
 # TestAStream
@@ -542,6 +667,85 @@ class TestAStream:
 
         ai_messages = [chunk.message for chunk in emitted if isinstance(chunk.message, AIMessageChunk)]
         assert all(m.usage_metadata is None for m in ai_messages)
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
+    async def test_astream_falls_back_to_non_streaming_when_provider_rejects_stream(self, mock_acompletion):
+        """If the provider rejects ``stream=True`` at setup, _astream must fall back to a single non-streaming call.
+
+        Localizing the recovery in the bridge (rather than in the graph caller)
+        is what makes the fallback safe for flow graphs: only the LLM call is
+        re-issued, so upstream nodes (retrievers, tools) never re-execute and
+        their side effects are not duplicated.
+        """
+
+        async def fake_acompletion(**kwargs):
+            if kwargs.get("stream"):
+                raise RuntimeError("provider does not support streaming")
+            return mock_litellm_response(
+                content="non-streamed answer",
+                usage=make_usage(prompt_tokens=4, completion_tokens=2, total_tokens=6),
+            )
+
+        mock_acompletion.side_effect = fake_acompletion
+        llm = ChatLiteLLMBridge(model="test/model")
+        emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
+
+        ai_messages = [chunk.message for chunk in emitted if isinstance(chunk.message, AIMessageChunk)]
+        assert "non-streamed answer" in "".join(
+            m.content for m in ai_messages if isinstance(m.content, str) and m.content
+        )
+        assert any(m.usage_metadata == {"input_tokens": 4, "output_tokens": 2, "total_tokens": 6} for m in ai_messages)
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
+    async def test_astream_falls_back_when_provider_rejects_lazily_on_first_iteration(self, mock_acompletion):
+        """LiteLLM streams open the provider request lazily — rejection raises during iteration.
+
+        When ``stream=True`` returns a wrapper successfully and the provider
+        only objects once iteration begins, the bridge must still fall back
+        to a single non-streaming call instead of letting the error escape.
+        """
+
+        async def lazy_failing_stream():
+            raise RuntimeError("provider rejected stream on first read")
+            yield  # pragma: no cover
+
+        async def fake_acompletion(**kwargs):
+            if kwargs.get("stream"):
+                return lazy_failing_stream()
+            return mock_litellm_response(
+                content="non-streamed answer",
+                usage=make_usage(prompt_tokens=4, completion_tokens=2, total_tokens=6),
+            )
+
+        mock_acompletion.side_effect = fake_acompletion
+        llm = ChatLiteLLMBridge(model="test/model")
+        emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
+
+        ai_messages = [chunk.message for chunk in emitted if isinstance(chunk.message, AIMessageChunk)]
+        assert "non-streamed answer" in "".join(
+            m.content for m in ai_messages if isinstance(m.content, str) and m.content
+        )
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
+    async def test_astream_propagates_failure_after_content_yielded(self, mock_acompletion):
+        """Mid-stream failure after content has been yielded must propagate, not retry.
+
+        Once chunks are out the door, falling back to non-streaming would
+        deliver duplicate content. Locks in the contract paired with the
+        lazy-setup fallback above.
+        """
+
+        async def stream_then_fail():
+            yield make_stream_chunk(content="partial")
+            raise RuntimeError("connection dropped mid-stream")
+
+        mock_acompletion.return_value = stream_then_fail()
+        llm = ChatLiteLLMBridge(model="test/model")
+        with pytest.raises(RuntimeError, match="connection dropped"):
+            [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
 
 
 # ---------------------------------------------------------------------------

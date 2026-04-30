@@ -12,7 +12,6 @@ which handles provider-specific formatting (OCI, OpenAI, Ollama, etc.).
 import json
 import logging
 import uuid
-from contextvars import ContextVar
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence, Union, cast
 
 import litellm
@@ -44,10 +43,6 @@ from server.app.runtime.ollama_tools import (
 )
 
 LOGGER = logging.getLogger(__name__)
-
-# Context var for streaming: when set, _agenerate streams internally and pushes
-# chunks to the queue.  Shape: {"queue": asyncio.Queue, "streamed_text": bool}
-_streaming_ctx: ContextVar[Optional[dict]] = ContextVar("_streaming_ctx", default=None)
 
 
 def _to_usage_metadata(usage: Optional[Union[Dict[str, Any], TokenUsage]]) -> Optional[UsageMetadata]:
@@ -197,34 +192,24 @@ def _accumulate_chunk_usage(usage_accum: Dict[str, int], chunk: Any) -> None:
             usage_accum[key] += getattr(chunk_usage, key, 0) or 0
 
 
-def _build_streaming_result(
-    content_parts: List[str],
-    tool_calls: List[Dict[str, Any]],
+def _process_stream_chunk(
+    chunk: Any,
     usage_accum: Dict[str, int],
-    model: str,
-) -> ChatResult:
-    """Build a ChatResult from streaming accumulators.
+    tool_call_accum: Dict[int, Dict[str, str]],
+) -> Optional[str]:
+    """Accumulate usage and tool-call deltas from *chunk*; return its content or ``None`` to skip.
 
-    Token usage from chunk-level deltas is summed in *usage_accum* and
-    surfaced on the returned ``AIMessage.usage_metadata`` for callbacks
-    and observability layers. *model* is recorded in ``response_metadata``
-    so ``UsageMetadataCallbackHandler`` can key the usage record by model.
+    A return of ``None`` signals "no chunk to yield" — either the terminal
+    usage-only chunk (``choices=[]``, emitted when ``stream_options.include_usage``
+    is set) or any future delta with no choice payload.
     """
-    content = "".join(content_parts)
-
-    usage = usage_accum if any(v > 0 for v in usage_accum.values()) else None
-
-    ai_msg = AIMessage(
-        content=content,
-        tool_calls=tool_calls,
-        usage_metadata=_to_usage_metadata(usage),
-        response_metadata={"model_name": model},
-    )
-    generation = ChatGeneration(message=ai_msg)
-    return ChatResult(
-        generations=[generation],
-        llm_output={"token_usage": usage} if usage else {},
-    )
+    _accumulate_chunk_usage(usage_accum, chunk)
+    if not chunk.choices:
+        return None
+    delta = chunk.choices[0].delta
+    for tc_delta in getattr(delta, "tool_calls", None) or ():
+        _process_tool_call_delta(tool_call_accum, tc_delta)
+    return getattr(delta, "content", "") or ""
 
 
 class ChatLiteLLMBridge(BaseChatModel):
@@ -300,7 +285,6 @@ class ChatLiteLLMBridge(BaseChatModel):
         if "tool_choice" in kwargs:
             call_kwargs["tool_choice"] = kwargs["tool_choice"]
 
-        # Thread the Ollama name map through so callers can unsanitize
         call_kwargs["_ollama_name_map"] = kwargs.get("_ollama_name_map", {})
 
         # Provider-specific params (e.g. OCI auth)
@@ -337,209 +321,156 @@ class ChatLiteLLMBridge(BaseChatModel):
         self,
         messages: List[BaseMessage],
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,  # noqa: ARG002 — required by BaseChatModel
         **kwargs: Any,
     ) -> ChatResult:
-        """Sync generation via litellm.completion().
-
-        When _streaming_ctx is set, streams internally and pushes content
-        chunks to the context queue while still returning a full ChatResult.
-        """
-        ctx = _streaming_ctx.get(None)
-        if ctx is not None:
-            return self._generate_streaming(messages, stop, run_manager, ctx, **kwargs)
+        """Sync generation via litellm.completion()."""
         call_kwargs = self._build_kwargs(messages, stop, **kwargs)
         name_map = call_kwargs.pop("_ollama_name_map", None)
         response = litellm.completion(**call_kwargs)
         return self._response_to_chat_result(response, name_map=name_map)
 
-    def _generate_streaming(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]],
-        run_manager: Optional[CallbackManagerForLLMRun],
-        ctx: dict,
-        **kwargs: Any,
-    ) -> ChatResult:
-        """Stream internally (sync), pushing content chunks to context queue."""
-        call_kwargs = self._build_kwargs(messages, stop, **kwargs)
-        name_map = call_kwargs.pop("_ollama_name_map", None)
-        call_kwargs["stream"] = True
-        call_kwargs["stream_options"] = {"include_usage": True}
-
-        try:
-            response = cast(CustomStreamWrapper, litellm.completion(**call_kwargs))
-        except Exception:
-            LOGGER.debug("Streaming setup failed, falling back to non-streaming")
-            token = _streaming_ctx.set(None)
-            try:
-                return self._generate(messages, stop, run_manager, **kwargs)
-            finally:
-                _streaming_ctx.reset(token)
-
-        content_parts: List[str] = []
-        tool_call_accum: Dict[int, Dict[str, str]] = {}
-        usage_accum: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-
-        try:
-            for chunk in response:
-                _accumulate_chunk_usage(usage_accum, chunk)
-                if not chunk.choices:
-                    # Terminal usage-only chunk emitted when stream_options.include_usage is set.
-                    continue
-                delta = chunk.choices[0].delta
-                text = getattr(delta, "content", None) or ""
-                if text:
-                    content_parts.append(text)
-                    ctx["queue"].put_nowait({"type": "stream", "content": text})
-                    ctx["streamed_text"] = True
-                for tc_delta in getattr(delta, "tool_calls", None) or ():
-                    _process_tool_call_delta(tool_call_accum, tc_delta)
-        except Exception:
-            LOGGER.debug("Stream iteration failed, falling back to non-streaming")
-            token = _streaming_ctx.set(None)
-            try:
-                return self._generate(messages, stop, run_manager, **kwargs)
-            finally:
-                _streaming_ctx.reset(token)
-
-        return _build_streaming_result(
-            content_parts, _build_tool_calls_from_accum(tool_call_accum, name_map), usage_accum, self.model
-        )
-
     async def _agenerate(
         self,
         messages: List[BaseMessage],
         stop: Optional[List[str]] = None,
-        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,  # noqa: ARG002 — required by BaseChatModel
         **kwargs: Any,
     ) -> ChatResult:
-        """Async generation via litellm.acompletion().
-
-        When _streaming_ctx is set, streams internally and pushes content
-        chunks to the context queue while still returning a full ChatResult.
-        """
-        ctx = _streaming_ctx.get(None)
-        if ctx is not None:
-            return await self._agenerate_streaming(messages, stop, run_manager, ctx, **kwargs)
+        """Async generation via litellm.acompletion()."""
         call_kwargs = self._build_kwargs(messages, stop, **kwargs)
         name_map = call_kwargs.pop("_ollama_name_map", None)
         response = await litellm.acompletion(**call_kwargs)
         return self._response_to_chat_result(response, name_map=name_map)
 
-    async def _agenerate_streaming(
+    def _result_as_chunk(self, result: ChatResult) -> ChatGenerationChunk:
+        """Repackage a non-streaming ``ChatResult`` as a single ``ChatGenerationChunk``.
+
+        Used by the streaming methods to deliver the answer when the provider
+        rejected ``stream=True`` and the bridge fell back to a single
+        non-streaming call. Carries content, tool_calls, usage_metadata, and
+        response_metadata through unchanged so callbacks see the same shape
+        they would for a normal stream's terminal chunk.
+        """
+        msg = result.generations[0].message
+        content = msg.content if isinstance(msg.content, str) else str(msg.content)
+        tool_calls = list(getattr(msg, "tool_calls", []) or [])
+        usage_metadata = getattr(msg, "usage_metadata", None) if isinstance(msg, AIMessage) else None
+        response_metadata = getattr(msg, "response_metadata", {}) or {}
+        return ChatGenerationChunk(
+            message=AIMessageChunk(
+                content=content,
+                tool_calls=tool_calls,
+                usage_metadata=usage_metadata,
+                response_metadata=response_metadata,
+            ),
+        )
+
+    def _terminal_chunk(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]],
-        run_manager: Optional[AsyncCallbackManagerForLLMRun],
-        ctx: dict,
-        **kwargs: Any,
-    ) -> ChatResult:
-        """Stream internally, pushing content chunks to context queue."""
-        call_kwargs = self._build_kwargs(messages, stop, **kwargs)
-        name_map = call_kwargs.pop("_ollama_name_map", None)
-        call_kwargs["stream"] = True
-        call_kwargs["stream_options"] = {"include_usage": True}
-
-        try:
-            response = cast(CustomStreamWrapper, await litellm.acompletion(**call_kwargs))
-        except Exception:
-            LOGGER.debug("Streaming setup failed, falling back to non-streaming")
-            # Temporarily clear ctx to avoid recursion
-            token = _streaming_ctx.set(None)
-            try:
-                return await self._agenerate(messages, stop, run_manager, **kwargs)
-            finally:
-                _streaming_ctx.reset(token)
-
-        content_parts: List[str] = []
-        tool_call_accum: Dict[int, Dict[str, str]] = {}
-        usage_accum: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-
-        try:
-            async for chunk in response:
-                _accumulate_chunk_usage(usage_accum, chunk)
-                if not chunk.choices:
-                    # Terminal usage-only chunk emitted when stream_options.include_usage is set.
-                    continue
-                delta = chunk.choices[0].delta
-                text = getattr(delta, "content", None) or ""
-                if text:
-                    content_parts.append(text)
-                    await ctx["queue"].put({"type": "stream", "content": text})
-                    ctx["streamed_text"] = True
-                for tc_delta in getattr(delta, "tool_calls", None) or ():
-                    _process_tool_call_delta(tool_call_accum, tc_delta)
-        except Exception:
-            LOGGER.debug("Stream iteration failed, falling back to non-streaming")
-            token = _streaming_ctx.set(None)
-            try:
-                return await self._agenerate(messages, stop, run_manager, **kwargs)
-            finally:
-                _streaming_ctx.reset(token)
-
-        return _build_streaming_result(
-            content_parts, _build_tool_calls_from_accum(tool_call_accum, name_map), usage_accum, self.model
+        usage_accum: Dict[str, int],
+        tool_call_accum: Dict[int, Dict[str, str]],
+        name_map: Optional[Dict[str, str]],
+    ) -> Optional[ChatGenerationChunk]:
+        """Build the post-loop chunk carrying aggregated tool calls and usage, or ``None`` if neither."""
+        tool_calls = _build_tool_calls_from_accum(tool_call_accum, name_map)
+        usage_metadata = _to_usage_metadata(usage_accum) if any(v > 0 for v in usage_accum.values()) else None
+        if not (tool_calls or usage_metadata):
+            return None
+        return ChatGenerationChunk(
+            message=AIMessageChunk(
+                content="",
+                tool_calls=tool_calls,
+                usage_metadata=usage_metadata,
+                response_metadata={"model_name": self.model} if usage_metadata else {},
+            ),
         )
 
     def _stream(
         self,
         messages: List[BaseMessage],
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,  # noqa: ARG002 — required by BaseChatModel
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
-        """Sync streaming via litellm.completion(stream=True)."""
-        LOGGER.debug("Streaming using run_manager: %s", run_manager)
+        """Sync streaming via litellm.completion(stream=True).
+
+        Falls back to a single non-streaming call if the provider rejects
+        ``stream=True`` — covers both eager rejection (from the setup call)
+        and lazy rejection (raised on first iteration). The fallback window
+        closes once any chunk has been yielded; later errors propagate so the
+        caller cannot receive duplicate content. The fallback is local to
+        this LLM call, so upstream graph nodes (retrievers, tools) do not
+        re-execute.
+        """
         call_kwargs = self._build_kwargs(messages, stop, **kwargs)
-        call_kwargs.pop("_ollama_name_map", None)
+        name_map = call_kwargs.pop("_ollama_name_map", None)
+        nonstream_kwargs = dict(call_kwargs)
         call_kwargs["stream"] = True
-        response = cast(CustomStreamWrapper, litellm.completion(**call_kwargs))
-        for chunk in response:
-            delta = chunk.choices[0].delta
-            content = getattr(delta, "content", "") or ""
-            yield ChatGenerationChunk(message=AIMessageChunk(content=content))
+        # OpenAI-compatible providers only emit usage chunks when explicitly requested.
+        call_kwargs["stream_options"] = {"include_usage": True}
+        usage_accum: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        tool_call_accum: Dict[int, Dict[str, str]] = {}
+        yielded_any = False
+        try:
+            response = cast(CustomStreamWrapper, litellm.completion(**call_kwargs))
+            for chunk in response:
+                content = _process_stream_chunk(chunk, usage_accum, tool_call_accum)
+                if content is None:
+                    continue
+                yielded_any = True
+                yield ChatGenerationChunk(message=AIMessageChunk(content=content))
+        except Exception:
+            if yielded_any:
+                raise
+            LOGGER.warning(
+                "Provider rejected streaming for this LLM call; falling back to non-streaming",
+                exc_info=True,
+            )
+            yield self._result_as_chunk(
+                self._response_to_chat_result(litellm.completion(**nonstream_kwargs), name_map=name_map),
+            )
+            return
+        terminal = self._terminal_chunk(usage_accum, tool_call_accum, name_map)
+        if terminal is not None:
+            yield terminal
 
     async def _astream(
         self,
         messages: List[BaseMessage],
         stop: Optional[List[str]] = None,
-        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,  # noqa: ARG002 — required by BaseChatModel
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
-        """Async streaming via litellm.acompletion(stream=True)."""
-        LOGGER.debug("Streaming using run_manager: %s", run_manager)
-        ctx = _streaming_ctx.get(None)
+        """Async streaming via litellm.acompletion(stream=True). See ``_stream`` for fallback semantics."""
         call_kwargs = self._build_kwargs(messages, stop, **kwargs)
         name_map = call_kwargs.pop("_ollama_name_map", None)
+        nonstream_kwargs = dict(call_kwargs)
         call_kwargs["stream"] = True
         # OpenAI-compatible providers only emit usage chunks when explicitly requested.
         call_kwargs["stream_options"] = {"include_usage": True}
-        response = cast(CustomStreamWrapper, await litellm.acompletion(**call_kwargs))
         usage_accum: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         tool_call_accum: Dict[int, Dict[str, str]] = {}
-        async for chunk in response:
-            _accumulate_chunk_usage(usage_accum, chunk)
-            if not chunk.choices:
-                # Terminal usage-only chunk emitted when stream_options.include_usage is set.
-                continue
-            delta = chunk.choices[0].delta
-            content = getattr(delta, "content", "") or ""
-            # Push content to context queue when streaming context is active
-            if content and ctx is not None:
-                await ctx["queue"].put({"type": "stream", "content": content})
-                ctx["streamed_text"] = True
-            for tc_delta in getattr(delta, "tool_calls", None) or ():
-                _process_tool_call_delta(tool_call_accum, tc_delta)
-            yield ChatGenerationChunk(message=AIMessageChunk(content=content))
-        tool_calls = _build_tool_calls_from_accum(tool_call_accum, name_map)
-        usage_metadata = _to_usage_metadata(usage_accum) if any(v > 0 for v in usage_accum.values()) else None
-        if tool_calls or usage_metadata:
-            yield ChatGenerationChunk(
-                message=AIMessageChunk(
-                    content="",
-                    tool_calls=tool_calls,
-                    usage_metadata=usage_metadata,
-                    response_metadata={"model_name": self.model} if usage_metadata else {},
-                ),
+        yielded_any = False
+        try:
+            response = cast(CustomStreamWrapper, await litellm.acompletion(**call_kwargs))
+            async for chunk in response:
+                content = _process_stream_chunk(chunk, usage_accum, tool_call_accum)
+                if content is None:
+                    continue
+                yielded_any = True
+                yield ChatGenerationChunk(message=AIMessageChunk(content=content))
+        except Exception:
+            if yielded_any:
+                raise
+            LOGGER.warning(
+                "Provider rejected streaming for this LLM call; falling back to non-streaming",
+                exc_info=True,
             )
+            yield self._result_as_chunk(
+                self._response_to_chat_result(await litellm.acompletion(**nonstream_kwargs), name_map=name_map),
+            )
+            return
+        terminal = self._terminal_chunk(usage_accum, tool_call_accum, name_map)
+        if terminal is not None:
+            yield terminal

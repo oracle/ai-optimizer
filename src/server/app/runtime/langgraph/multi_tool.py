@@ -64,7 +64,7 @@ class CombinedSession(BaseCombinedSession):
             combined_tu = _sum_token_usage(self.nl2sql_session.last_metadata.token_usage, classifier_tu)
             if combined_tu:
                 self.last_metadata.token_usage = combined_tu
-        else:  # both
+        else:
             vs_answer, nl2sql_answer = await asyncio.gather(
                 self.vs_session.execute(query, thread_id, chat_history=chat_history),
                 self.nl2sql_session.chat(query, chat_history=chat_history),
@@ -102,10 +102,14 @@ class CombinedSession(BaseCombinedSession):
             self.last_metadata = self.vs_session.last_metadata.model_copy()
         elif route == "nl2sql":
             await stream_agent(self.nl2sql_session, chat_history, query, queue)
-        else:  # both
-            vs_answer = await self.vs_session.execute(query, thread_id, chat_history=chat_history)
-            nl2sql_answer = await self.nl2sql_session.chat(query, chat_history=chat_history)
-
+        else:
+            # Synthesis requires both branches' answers, so we can't stream tokens
+            # before the synthesis. Run the branches in parallel and emit the
+            # synthesized answer as a single stream event below.
+            vs_answer, nl2sql_answer = await asyncio.gather(
+                self.vs_session.execute(query, thread_id, chat_history=chat_history),
+                self.nl2sql_session.chat(query, chat_history=chat_history),
+            )
             answer, synth_tu = await self._handle_both_results(query, vs_answer, nl2sql_answer)
             await queue.put({"type": "stream", "content": answer})
 

@@ -6,6 +6,7 @@ Tests for the LangGraph session classes.
 """
 # spell-checker: disable
 
+import asyncio
 import json
 from unittest.mock import MagicMock
 
@@ -329,6 +330,124 @@ class TestGraphFlowSessionMetadata:
             prompt_tokens=20, completion_tokens=10, total_tokens=30
         )
 
+    @pytest.mark.anyio
+    async def test_streaming_forwards_chunks_to_queue(self):
+        """When a queue is supplied, execute drives ``astream_events`` and forwards chunks."""
+        graph = mock_compiled_graph(
+            result={"outputs": {"answer": "doc answer"}, "messages": []},
+            stream_chunks=["hello ", "world"],
+        )
+        session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
+        queue: asyncio.Queue = asyncio.Queue()
+        await session.execute("q", "t1", queue=queue)
+        events = []
+        while not queue.empty():
+            events.append(queue.get_nowait())
+        assert events == [
+            {"type": "stream", "content": "hello "},
+            {"type": "stream", "content": "world"},
+        ]
+
+    @pytest.mark.anyio
+    async def test_streaming_fallback_when_no_chunks_emitted(self):
+        """If astream_events emits no chat-model chunks but a final answer exists, deliver it once."""
+        graph = mock_compiled_graph(
+            result={"outputs": {"answer": "final"}, "messages": []},
+            stream_chunks=[],
+        )
+        session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
+        queue: asyncio.Queue = asyncio.Queue()
+        await session.execute("q", "t1", queue=queue)
+        events = []
+        while not queue.empty():
+            events.append(queue.get_nowait())
+        assert events == [{"type": "stream", "content": "final"}]
+
+    @pytest.mark.anyio
+    async def test_node_failure_propagates_without_retry(self):
+        """Application/tool errors raised by graph nodes must propagate, not trigger ``ainvoke``.
+
+        A retriever or MCP tool call failing before the answer LLM runs is *not*
+        a streaming-setup error. Retrying the whole graph via ``ainvoke`` would
+        re-execute the failed node (duplicate DB queries, duplicate MCP calls)
+        and almost certainly fail again with the same error. The session must
+        surface the original exception so the caller can handle it.
+        """
+        graph = mock_compiled_graph(result={"outputs": {"answer": "should-not-see"}, "messages": []})
+        original_ainvoke = graph.ainvoke
+
+        async def retriever_fails(*_args, **_kwargs):
+            raise RuntimeError("retriever MCP call failed")
+            yield  # pragma: no cover
+
+        graph.astream_events = retriever_fails
+        ainvoke_call_count = 0
+
+        async def counting_ainvoke(*args, **kwargs):
+            nonlocal ainvoke_call_count
+            ainvoke_call_count += 1
+            return await original_ainvoke(*args, **kwargs)
+
+        graph.ainvoke = counting_ainvoke
+        session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
+        queue: asyncio.Queue = asyncio.Queue()
+
+        with pytest.raises(RuntimeError, match="retriever MCP call failed"):
+            await session.execute("q", "t1", queue=queue)
+
+        # No retry — re-running the graph would duplicate the failed node's side effects.
+        assert ainvoke_call_count == 0
+
+    @pytest.mark.anyio
+    async def test_streaming_normalizes_v1_content_blocks_to_text(self):
+        """LangChain v1 output mode delivers chunk.content as typed blocks, not strings.
+
+        With ``LC_OUTPUT_VERSION=v1`` (or ``output_version="v1"``),
+        ``AIMessageChunk.content`` becomes a ``list[{"type": "text", "text": ...}, ...]``.
+        Enqueueing that list verbatim breaks the streaming finalizer's
+        ``"".join(collected)`` call and would also send non-string content
+        over SSE. The helper must extract plain text before queueing.
+        """
+        from langchain_core.messages import AIMessageChunk
+
+        graph = mock_compiled_graph(result={"outputs": {"answer": "answer"}, "messages": []})
+
+        async def v1_block_stream(*_args, **_kwargs):
+            yield {"event": "on_chain_start", "name": "MockGraph", "run_id": "r1", "data": {}}
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "MockChatModel",
+                "run_id": "rmodel",
+                "data": {"chunk": AIMessageChunk(content=[{"type": "text", "text": "hello "}])},
+            }
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "MockChatModel",
+                "run_id": "rmodel",
+                "data": {"chunk": AIMessageChunk(content=[{"type": "text", "text": "world"}])},
+            }
+            yield {
+                "event": "on_chain_end",
+                "name": "MockGraph",
+                "run_id": "r1",
+                "data": {"output": {"outputs": {"answer": "answer"}, "messages": []}},
+            }
+
+        graph.astream_events = v1_block_stream
+        session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
+        queue: asyncio.Queue = asyncio.Queue()
+        await session.execute("q", "t1", queue=queue)
+
+        events = []
+        while not queue.empty():
+            events.append(queue.get_nowait())
+        assert events == [
+            {"type": "stream", "content": "hello "},
+            {"type": "stream", "content": "world"},
+        ]
+        for event in events:
+            assert isinstance(event["content"], str), "queue must carry plain strings, not content blocks"
+
 
 # ---------------------------------------------------------------------------
 # TestParseGradeRelevant
@@ -520,6 +639,39 @@ class TestAgentGraphSession:
         assert session.last_metadata.token_usage == TokenUsage(
             prompt_tokens=15, completion_tokens=8, total_tokens=23
         )
+
+    @pytest.mark.anyio
+    async def test_chat_streaming_forwards_chunks_to_queue(self):
+        """When a queue is supplied, chat drives ``astream_events`` and forwards chunks."""
+        graph = mock_compiled_graph(
+            result={"messages": [AIMessage(content="response")]},
+            stream_chunks=["resp", "onse"],
+        )
+        session = AgentGraphSession(graph)
+        queue: asyncio.Queue = asyncio.Queue()
+        await session.chat("hello", queue=queue)
+        events = []
+        while not queue.empty():
+            events.append(queue.get_nowait())
+        assert events == [
+            {"type": "stream", "content": "resp"},
+            {"type": "stream", "content": "onse"},
+        ]
+
+    @pytest.mark.anyio
+    async def test_chat_streaming_fallback_when_no_chunks_emitted(self):
+        """If astream_events emits no chat-model chunks, deliver the final answer once."""
+        graph = mock_compiled_graph(
+            result={"messages": [AIMessage(content="response")]},
+            stream_chunks=[],
+        )
+        session = AgentGraphSession(graph)
+        queue: asyncio.Queue = asyncio.Queue()
+        await session.chat("hello", queue=queue)
+        events = []
+        while not queue.empty():
+            events.append(queue.get_nowait())
+        assert events == [{"type": "stream", "content": "response"}]
 
     @pytest.mark.anyio
     async def test_conversation_id_generated(self):

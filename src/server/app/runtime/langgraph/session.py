@@ -6,12 +6,15 @@ LangGraph session wrappers for flow and agent graphs.
 """
 # spell-checker: ignore vecsearch langgraph litellm
 
+import asyncio
 import logging
 import uuid
+from functools import reduce
 from typing import Any, Dict, List, Optional
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages.ai import add_usage
 
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.core.schemas import ClientSettings
@@ -20,22 +23,86 @@ from server.app.runtime.common import SessionMetadata, parse_grade_relevant, par
 LOGGER = logging.getLogger(__name__)
 
 
+def _chunk_text(chunk: Any) -> str:
+    """Extract plain text from an ``AIMessageChunk.content``.
+
+    LangChain's chunk content is a plain string under the legacy ``v0`` output
+    mode and a list of typed content blocks under ``v1`` (``LC_OUTPUT_VERSION=v1``
+    or ``output_version="v1"``), where text blocks have shape
+    ``{"type": "text", "text": "..."}``. SSE consumers expect strings, so
+    flatten lists to text and drop non-text blocks (image, audio, etc.).
+    """
+    if chunk is None:
+        return ""
+    content = getattr(chunk, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return ""
+
+
+async def _run_graph_with_streaming(
+    graph: Any,
+    inputs: Any,
+    config: Dict[str, Any],
+    queue: asyncio.Queue,
+) -> tuple[Optional[Dict[str, Any]], bool]:
+    """Drive *graph* via ``astream_events`` and forward chat-model chunks to *queue*.
+
+    Captures the top-level chain's final output from its ``on_chain_end``
+    event (matched by run_id, so any compiled graph works regardless of name)
+    and normalizes chunk content via ``_chunk_text`` so v1 typed-block content
+    does not leak through.
+
+    Returns ``(final_output, streamed)``; *streamed* indicates whether any
+    non-empty chat-model chunk was forwarded.
+
+    Node errors propagate unchanged — re-running the graph would duplicate
+    upstream side effects (retrievers, tool calls). Streaming-setup failures
+    for a single LLM call are recovered inside the bridge.
+    """
+    top_run_id: Optional[str] = None
+    final_output: Optional[Dict[str, Any]] = None
+    streamed = False
+    async for event in graph.astream_events(inputs, config=config, version="v2"):
+        kind = event.get("event")
+        if kind == "on_chain_start" and top_run_id is None:
+            top_run_id = event.get("run_id")
+        elif kind == "on_chain_end" and event.get("run_id") == top_run_id:
+            final_output = event.get("data", {}).get("output")
+        elif kind == "on_chat_model_stream":
+            text = _chunk_text(event.get("data", {}).get("chunk"))
+            if text:
+                await queue.put({"type": "stream", "content": text})
+                streamed = True
+    return final_output, streamed
+
+
 def _aggregate_usage_callback(callback: UsageMetadataCallbackHandler) -> Optional[TokenUsage]:
     """Sum per-model ``usage_metadata`` collected by *callback* into one ``TokenUsage``.
 
-    ``UsageMetadataCallbackHandler.usage_metadata`` is keyed by model name with
-    LangChain-canonical fields (``input_tokens`` / ``output_tokens`` /
-    ``total_tokens``). Translate back to the LiteLLM-shaped ``TokenUsage``
-    schema the rest of the runtime consumes.
+    ``UsageMetadataCallbackHandler`` keys usage by model name and only sums
+    within each model. ``add_usage`` from ``langchain_core.messages.ai`` does
+    the cross-model fold and preserves any ``input_token_details`` /
+    ``output_token_details`` shape, even though the rest of the runtime only
+    consumes the three top-level totals today.
     """
     by_model = getattr(callback, "usage_metadata", None) or {}
-    prompt = 0
-    completion = 0
-    total = 0
-    for usage in by_model.values():
-        prompt += int(usage.get("input_tokens", 0) or 0)
-        completion += int(usage.get("output_tokens", 0) or 0)
-        total += int(usage.get("total_tokens", 0) or 0)
+    if not by_model:
+        return None
+    totals = reduce(add_usage, by_model.values())
+    prompt = int(totals.get("input_tokens", 0) or 0)
+    completion = int(totals.get("output_tokens", 0) or 0)
+    total = int(totals.get("total_tokens", 0) or 0)
     if not (prompt or completion or total):
         return None
     return TokenUsage(
@@ -75,24 +142,41 @@ class GraphFlowSession:
             "chat_history": self._history if chat_history else "",
         }
 
-    async def execute(self, query: str, thread_id: str, chat_history: bool = True) -> str:
-        """Execute the flow graph and extract the answer."""
+    async def execute(
+        self,
+        query: str,
+        thread_id: str,
+        chat_history: bool = True,
+        queue: Optional[asyncio.Queue] = None,
+    ) -> str:
+        """Execute the flow graph and extract the answer.
+
+        When *queue* is provided, the graph is driven via ``astream_events`` and
+        chat-model chunks are forwarded to the queue. If no chunks are observed
+        but a final answer is produced, the full answer is delivered as a single
+        ``stream`` event so callers always see the response.
+        """
         inputs = self.build_inputs(query, thread_id, chat_history=chat_history)
         self.last_metadata = SessionMetadata()
         usage_cb = UsageMetadataCallbackHandler()
+        # LangGraph flow from AgentSpec uses FlowInputSchema:
+        # {"inputs": {start_node_id: {input_values}}, "messages": []}
+        flow_inputs = {"inputs": inputs, "messages": []}
+        config: Dict[str, Any] = {"callbacks": [usage_cb]}
+        streamed = False
 
         try:
-            # LangGraph flow from AgentSpec uses FlowInputSchema:
-            # {"inputs": {start_node_id: {input_values}}, "messages": []}
-            flow_inputs = {"inputs": inputs, "messages": []}
-            result = await self.graph.ainvoke(flow_inputs, config={"callbacks": [usage_cb]})
+            if queue is None:
+                result = await self.graph.ainvoke(flow_inputs, config=config)
+            else:
+                result, streamed = await _run_graph_with_streaming(self.graph, flow_inputs, config, queue)
         except Exception:
             LOGGER.exception("Flow execution failed for query: %s", query)
             raise
 
         # Extract outputs from the flow result
         answer = ""
-        outputs = result.get("outputs", {})
+        outputs = (result or {}).get("outputs", {})
         if outputs:
             answer_value = outputs.get("answer")
             answer = str(answer_value) if answer_value is not None else ""
@@ -111,11 +195,14 @@ class GraphFlowSession:
 
         if not answer:
             # Fall back to last AI message
-            messages = result.get("messages", [])
+            messages = (result or {}).get("messages", [])
             for msg in reversed(messages):
                 if isinstance(msg, AIMessage):
                     answer = str(msg.content) if msg.content else ""
                     break
+
+        if queue is not None and not streamed and answer:
+            await queue.put({"type": "stream", "content": answer})
 
         self._history += f"User: {query}\nAssistant: {answer}\n"
         return answer
@@ -156,8 +243,19 @@ class AgentGraphSession:
         """Return the checkpointer instance."""
         return self._checkpointer
 
-    async def chat(self, message: str, chat_history: bool = True) -> str:
-        """Send a message and get a response."""
+    async def chat(
+        self,
+        message: str,
+        chat_history: bool = True,
+        queue: Optional[asyncio.Queue] = None,
+    ) -> str:
+        """Send a message and get a response.
+
+        When *queue* is provided, the graph is driven via ``astream_events`` and
+        chat-model chunks are forwarded to the queue. If no chunks are observed
+        but a final answer is produced, the full answer is delivered as a single
+        ``stream`` event.
+        """
         self.last_metadata = SessionMetadata()
         usage_cb = UsageMetadataCallbackHandler()
 
@@ -166,12 +264,14 @@ class AgentGraphSession:
             "callbacks": [usage_cb],
             "recursion_limit": 25,
         }
+        graph_inputs = {"messages": [HumanMessage(content=message)]}
+        streamed = False
 
         try:
-            result = await self.graph.ainvoke(
-                {"messages": [HumanMessage(content=message)]},
-                config=config,
-            )
+            if queue is None:
+                result = await self.graph.ainvoke(graph_inputs, config=config)
+            else:
+                result, streamed = await _run_graph_with_streaming(self.graph, graph_inputs, config, queue)
         except Exception:
             LOGGER.exception("Agent chat failed for message: %s", message)
             # Clear corrupt checkpoint so retries don't inherit partial tool-call state
@@ -183,7 +283,7 @@ class AgentGraphSession:
                     LOGGER.debug("Could not clear checkpoint for thread %s", thread)
             raise
 
-        messages = result.get("messages", [])
+        messages = (result or {}).get("messages", [])
         answer = ""
         for msg in reversed(messages):
             if isinstance(msg, AIMessage) and not msg.tool_calls:
@@ -198,6 +298,9 @@ class AgentGraphSession:
         token_usage = _aggregate_usage_callback(usage_cb)
         if token_usage:
             self.last_metadata.token_usage = token_usage
+
+        if queue is not None and not streamed and answer:
+            await queue.put({"type": "stream", "content": answer})
 
         return answer
 
@@ -230,8 +333,13 @@ class NL2SQLGraphSession(AgentGraphSession):
         self._db_context = context
         self.conversation_id = thread_id or self._thread_id
 
-    async def chat(self, message: str, chat_history: bool = True) -> str:
+    async def chat(
+        self,
+        message: str,
+        chat_history: bool = True,
+        queue: Optional[asyncio.Queue] = None,
+    ) -> str:
         """Chat with DB context prepended to the first message."""
         # Prepend DB context to the message so the LLM has it
         augmented = self._db_context + "\n" + message
-        return await super().chat(augmented, chat_history=chat_history)
+        return await super().chat(augmented, chat_history=chat_history, queue=queue)
