@@ -7,24 +7,23 @@ Tests for the LangGraph session classes.
 # spell-checker: disable
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, LLMResult
 
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.runtime.common import SessionMetadata, _sum_token_usage, parse_grade_relevant
-from server.app.runtime.langgraph.adapters.litellm import ChatLiteLLMBridge
 from server.app.runtime.langgraph.session import (
     AgentGraphSession,
     GraphFlowSession,
     NL2SQLGraphSession,
-    _clear_graph_token_usage,
-    _extract_graph_token_usage,
-    _extract_llm_instances,
+    _aggregate_usage_callback,
 )
 from server.tests.conftest import SAMPLE_CLIENT_SETTINGS_OBJ as SAMPLE_CLIENT_SETTINGS
-from server.tests.runtime.langgraph.helpers import mock_compiled_graph, mock_graph_node, mock_graph_with_llm
+from server.tests.runtime.langgraph.helpers import mock_compiled_graph
 
 # ---------------------------------------------------------------------------
 # TestGraphFlowSessionInit
@@ -318,32 +317,17 @@ class TestGraphFlowSessionMetadata:
         assert dumped["context_input"] == "What is X?"
 
     @pytest.mark.anyio
-    async def test_extracts_token_usage_from_graph(self):
-        """Verify token_usage is extracted from ChatLiteLLMBridge instances."""
-        graph, llm = mock_graph_with_llm(
+    async def test_extracts_token_usage_from_callback(self):
+        """Verify token_usage is aggregated from the UsageMetadataCallbackHandler injected into ainvoke."""
+        graph = mock_compiled_graph(
             result={"outputs": {"answer": "answer"}, "messages": []},
-            token_usage={"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30},
+            usage_metadata={"input_tokens": 20, "output_tokens": 10, "total_tokens": 30},
         )
-        # Token usage is set after ainvoke via _extract_graph_token_usage
-        # Simulate: graph runs, LLM records usage
         session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
-
-        # Need to set token usage after _clear_graph_token_usage runs
-        original_ainvoke = graph.ainvoke
-
-        async def ainvoke_with_usage(*args, **kwargs):
-            result = await original_ainvoke(*args, **kwargs)
-            llm.last_token_usage = {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
-            return result
-
-        graph.ainvoke = AsyncMock(side_effect=ainvoke_with_usage)
         await session.execute("test", "t1")
-        assert session.last_metadata.token_usage is not None
-        assert session.last_metadata.token_usage.model_dump() == {
-            "prompt_tokens": 20,
-            "completion_tokens": 10,
-            "total_tokens": 30,
-        }
+        assert session.last_metadata.token_usage == TokenUsage(
+            prompt_tokens=20, completion_tokens=10, total_tokens=30
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -381,139 +365,8 @@ class TestParseGradeRelevant:
 
 
 # ---------------------------------------------------------------------------
-# TestExtractTokenUsage (module-level helpers)
+# TestSumTokenUsage / TestAggregateUsageCallback
 # ---------------------------------------------------------------------------
-
-
-class TestExtractLlmInstances:
-    """Tests for _extract_llm_instances."""
-
-    def test_finds_direct_instance(self):
-        """Verify direct ChatLiteLLMBridge node is found via runnable.bound."""
-        llm = ChatLiteLLMBridge(model="m")
-        graph = MagicMock()
-        graph.nodes = {"node": mock_graph_node(llm)}
-        assert _extract_llm_instances(graph) == [llm]
-
-    def test_finds_bound_runnable(self):
-        """Verify ChatLiteLLMBridge in bound runnable is found."""
-        llm = ChatLiteLLMBridge(model="m")
-        graph = MagicMock()
-        graph.nodes = {"node": mock_graph_node(llm)}
-        assert _extract_llm_instances(graph) == [llm]
-
-    def test_finds_nested_subgraph(self):
-        """Verify ChatLiteLLMBridge in nested subgraph is found."""
-        llm = ChatLiteLLMBridge(model="m")
-
-        subgraph = MagicMock()
-        subgraph.nodes = {"sub_node": mock_graph_node(llm)}
-
-        node = MagicMock()
-        node.bound = None
-        node.runnable = MagicMock()
-        node.runnable.bound = None
-        node.runnable.graph = subgraph
-
-        graph = MagicMock()
-        graph.nodes = {"node": node}
-        result = _extract_llm_instances(graph)
-        assert llm in result
-
-    def test_empty_graph(self):
-        """Verify empty graph returns empty list."""
-        graph = MagicMock()
-        graph.nodes = {}
-        assert not _extract_llm_instances(graph)
-
-
-class TestExtractLlmInstancesPregelNode:
-    """Tests for _extract_llm_instances with real PregelNode-like structures."""
-
-    def test_finds_llm_in_executor(self):
-        """Flow graph: PregelNode.bound.func.llm (LlmNodeExecutor pattern)."""
-        llm = ChatLiteLLMBridge(model="m")
-
-        # Simulate LlmNodeExecutor with .llm attribute
-        executor = MagicMock()
-        executor.llm = llm
-
-        # PregelNode: node.bound = RunnableCallable whose func is the executor
-        bound = MagicMock()
-        bound.func = executor
-        bound.afunc = None
-
-        node = MagicMock(spec=[])  # no .runnable attr
-        node.bound = bound
-        node.subgraphs = []
-
-        graph = MagicMock()
-        graph.nodes = {"flow_node": node}
-        result = _extract_llm_instances(graph)
-        assert result == [llm]
-
-    def test_finds_llm_in_closure(self):
-        """Agent graph: PregelNode.bound.func.__closure__ with 'model' var."""
-        llm = ChatLiteLLMBridge(model="m")
-
-        # Create a real closure that captures `model`
-        def make_closure(model):
-            def func():
-                return model
-
-            return func
-
-        fn = make_closure(llm)
-
-        bound = MagicMock()
-        bound.func = fn
-        bound.afunc = None
-
-        node = MagicMock(spec=[])
-        node.bound = bound
-        node.subgraphs = []
-
-        graph = MagicMock()
-        graph.nodes = {"agent_node": node}
-        result = _extract_llm_instances(graph)
-        assert result == [llm]
-
-    def test_closure_skips_non_llm_model(self):
-        """Closure with 'model' that isn't ChatLiteLLMBridge is ignored."""
-
-        def make_closure(model):
-            def func():
-                return model
-
-            return func
-
-        fn = make_closure("just-a-string")
-
-        bound = MagicMock()
-        bound.func = fn
-        bound.afunc = None
-
-        node = MagicMock(spec=[])
-        node.bound = bound
-        node.subgraphs = []
-
-        graph = MagicMock()
-        graph.nodes = {"node": node}
-        result = _extract_llm_instances(graph)
-        assert not result
-
-    def test_pregel_node_direct_llm_bound(self):
-        """PregelNode.bound is directly a ChatLiteLLMBridge."""
-        llm = ChatLiteLLMBridge(model="m")
-
-        node = MagicMock(spec=[])
-        node.bound = llm
-        node.subgraphs = []
-
-        graph = MagicMock()
-        graph.nodes = {"node": node}
-        result = _extract_llm_instances(graph)
-        assert result == [llm]
 
 
 class TestSumTokenUsage:
@@ -537,65 +390,42 @@ class TestSumTokenUsage:
         assert result == u1
 
 
-class TestExtractGraphTokenUsage:
-    """Tests for _extract_graph_token_usage and _clear_graph_token_usage."""
+def _fire_callback(callback: UsageMetadataCallbackHandler, *, model_name: str, **usage: int) -> None:
+    """Drive *callback* with a synthetic on_llm_end carrying *usage* metadata."""
+    msg = AIMessage(content="", usage_metadata=usage, response_metadata={"model_name": model_name})
+    callback.on_llm_end(LLMResult(generations=[[ChatGeneration(message=msg)]]))
 
-    def test_extracts_cumulative_usage(self):
-        """Verify cumulative usage from all LLM instances."""
-        llm1 = ChatLiteLLMBridge(model="m")
-        llm1.last_token_usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        llm2 = ChatLiteLLMBridge(model="m")
-        llm2.last_token_usage = {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
 
-        graph = MagicMock()
-        node1 = MagicMock()
-        node1.bound = None
-        node1.runnable = MagicMock()
-        node1.runnable.bound = llm1
-        node1.runnable.graph = None
-        node2 = MagicMock()
-        node2.bound = None
-        node2.runnable = MagicMock()
-        node2.runnable.bound = llm2
-        node2.runnable.graph = None
-        graph.nodes = {"n1": node1, "n2": node2}
+class TestAggregateUsageCallback:
+    """Tests for _aggregate_usage_callback."""
 
-        result = _extract_graph_token_usage(graph)
-        assert result == TokenUsage(prompt_tokens=30, completion_tokens=15, total_tokens=45)
+    def test_returns_none_for_empty_callback(self):
+        """A handler with no events returns None."""
+        assert _aggregate_usage_callback(UsageMetadataCallbackHandler()) is None
 
-    def test_returns_none_when_no_usage(self):
-        """Verify returns None when no LLM has usage."""
-        llm = ChatLiteLLMBridge(model="m")
-        llm.last_token_usage = None
+    def test_sums_single_model(self):
+        """Single model usage is mapped from input/output_tokens to prompt/completion_tokens."""
+        cb = UsageMetadataCallbackHandler()
+        _fire_callback(cb, model_name="m1", input_tokens=20, output_tokens=10, total_tokens=30)
+        assert _aggregate_usage_callback(cb) == TokenUsage(
+            prompt_tokens=20, completion_tokens=10, total_tokens=30
+        )
 
-        graph = MagicMock()
-        graph.nodes = {"n": mock_graph_node(llm)}
+    def test_sums_across_models(self):
+        """Per-model usage is summed into a single TokenUsage."""
+        cb = UsageMetadataCallbackHandler()
+        _fire_callback(cb, model_name="m1", input_tokens=10, output_tokens=5, total_tokens=15)
+        _fire_callback(cb, model_name="m2", input_tokens=20, output_tokens=10, total_tokens=30)
+        assert _aggregate_usage_callback(cb) == TokenUsage(
+            prompt_tokens=30, completion_tokens=15, total_tokens=45
+        )
 
-        assert _extract_graph_token_usage(graph) is None
-
-    def test_clear_resets_all_instances(self):
-        """Verify _clear_graph_token_usage resets all instances."""
-        llm1 = ChatLiteLLMBridge(model="m")
-        llm1.last_token_usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        llm2 = ChatLiteLLMBridge(model="m")
-        llm2.last_token_usage = {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
-
-        graph = MagicMock()
-        node1 = MagicMock()
-        node1.bound = None
-        node1.runnable = MagicMock()
-        node1.runnable.bound = llm1
-        node1.runnable.graph = None
-        node2 = MagicMock()
-        node2.bound = None
-        node2.runnable = MagicMock()
-        node2.runnable.bound = llm2
-        node2.runnable.graph = None
-        graph.nodes = {"n1": node1, "n2": node2}
-
-        _clear_graph_token_usage(graph)
-        assert llm1.last_token_usage is None
-        assert llm2.last_token_usage is None
+    def test_total_falls_back_to_sum(self):
+        """When total_tokens is missing, fall back to prompt+completion."""
+        cb = UsageMetadataCallbackHandler()
+        _fire_callback(cb, model_name="m", input_tokens=7, output_tokens=3, total_tokens=0)
+        result = _aggregate_usage_callback(cb)
+        assert result is not None and result.total_tokens == 10
 
 
 # ---------------------------------------------------------------------------
@@ -680,27 +510,16 @@ class TestAgentGraphSession:
 
     @pytest.mark.anyio
     async def test_token_usage_extracted_after_chat(self):
-        """Verify token usage is extracted from graph after chat."""
-        graph, llm = mock_graph_with_llm(
+        """Verify token usage from the callback handler is recorded on session metadata."""
+        graph = mock_compiled_graph(
             result={"messages": [AIMessage(content="reply")]},
+            usage_metadata={"input_tokens": 15, "output_tokens": 8, "total_tokens": 23},
         )
         session = AgentGraphSession(graph)
-
-        original_ainvoke = graph.ainvoke
-
-        async def ainvoke_with_usage(*args, **kwargs):
-            result = await original_ainvoke(*args, **kwargs)
-            llm.last_token_usage = {"prompt_tokens": 15, "completion_tokens": 8, "total_tokens": 23}
-            return result
-
-        graph.ainvoke = AsyncMock(side_effect=ainvoke_with_usage)
         await session.chat("hello")
-        assert session.last_metadata.token_usage is not None
-        assert session.last_metadata.token_usage.model_dump() == {
-            "prompt_tokens": 15,
-            "completion_tokens": 8,
-            "total_tokens": 23,
-        }
+        assert session.last_metadata.token_usage == TokenUsage(
+            prompt_tokens=15, completion_tokens=8, total_tokens=23
+        )
 
     @pytest.mark.anyio
     async def test_conversation_id_generated(self):

@@ -26,7 +26,6 @@ from server.app.runtime.common import (
 from server.app.runtime.langgraph.session import (
     GraphFlowSession,
     NL2SQLGraphSession,
-    _extract_graph_token_usage,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -62,7 +61,7 @@ class CombinedSession(BaseCombinedSession):
         elif route == "nl2sql":
             answer = await self.nl2sql_session.chat(query, chat_history=chat_history)
             self.last_metadata.grade_relevant = "yes"
-            combined_tu = _sum_token_usage(_extract_graph_token_usage(self.nl2sql_session.graph), classifier_tu)
+            combined_tu = _sum_token_usage(self.nl2sql_session.last_metadata.token_usage, classifier_tu)
             if combined_tu:
                 self.last_metadata.token_usage = combined_tu
         else:  # both
@@ -74,7 +73,7 @@ class CombinedSession(BaseCombinedSession):
             combined_tu = _sum_token_usage(
                 classifier_tu,
                 self.vs_session.last_metadata.token_usage,
-                _extract_graph_token_usage(self.nl2sql_session.graph),
+                self.nl2sql_session.last_metadata.token_usage,
                 synth_tu,
             )
             if combined_tu:
@@ -112,7 +111,7 @@ class CombinedSession(BaseCombinedSession):
 
             for tu in (
                 self.vs_session.last_metadata.token_usage,
-                _extract_graph_token_usage(self.nl2sql_session.graph),
+                self.nl2sql_session.last_metadata.token_usage,
                 synth_tu,
             ):
                 if tu:

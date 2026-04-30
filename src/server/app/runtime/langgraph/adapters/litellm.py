@@ -26,6 +26,7 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
@@ -47,6 +48,32 @@ LOGGER = logging.getLogger(__name__)
 # Context var for streaming: when set, _agenerate streams internally and pushes
 # chunks to the queue.  Shape: {"queue": asyncio.Queue, "streamed_text": bool}
 _streaming_ctx: ContextVar[Optional[dict]] = ContextVar("_streaming_ctx", default=None)
+
+
+def _to_usage_metadata(usage: Optional[Union[Dict[str, Any], TokenUsage]]) -> Optional[UsageMetadata]:
+    """Convert internal token-usage shapes to LangChain ``AIMessage.usage_metadata``.
+
+    LangChain consumers (callbacks, observability tools) read ``usage_metadata``
+    in the canonical ``input_tokens`` / ``output_tokens`` / ``total_tokens`` shape.
+    LiteLLM emits ``prompt_tokens`` / ``completion_tokens`` — translate here.
+    """
+    if usage is None:
+        return None
+    if isinstance(usage, TokenUsage):
+        prompt = usage.prompt_tokens
+        completion = usage.completion_tokens
+        total = usage.total_tokens
+    else:
+        prompt = int(usage.get("prompt_tokens", 0) or 0)
+        completion = int(usage.get("completion_tokens", 0) or 0)
+        total = int(usage.get("total_tokens", 0) or 0)
+    if not (prompt or completion or total):
+        return None
+    return UsageMetadata(
+        input_tokens=prompt,
+        output_tokens=completion,
+        total_tokens=total or (prompt + completion),
+    )
 
 
 def _flatten_tool_content(content):
@@ -174,33 +201,30 @@ def _build_streaming_result(
     content_parts: List[str],
     tool_calls: List[Dict[str, Any]],
     usage_accum: Dict[str, int],
-    last_token_usage: Optional[Union[Dict[str, Any], TokenUsage]],
-) -> tuple:
-    """Build ChatResult and updated token usage from streaming accumulators.
+    model: str,
+) -> ChatResult:
+    """Build a ChatResult from streaming accumulators.
 
-    Returns (ChatResult, updated_last_token_usage).
+    Token usage from chunk-level deltas is summed in *usage_accum* and
+    surfaced on the returned ``AIMessage.usage_metadata`` for callbacks
+    and observability layers. *model* is recorded in ``response_metadata``
+    so ``UsageMetadataCallbackHandler`` can key the usage record by model.
     """
     content = "".join(content_parts)
-    ai_msg = AIMessage(content=content, tool_calls=tool_calls)
 
-    usage = None
-    prev: Optional[Dict[str, Any]] = (
-        last_token_usage.model_dump() if isinstance(last_token_usage, TokenUsage) else last_token_usage
+    usage = usage_accum if any(v > 0 for v in usage_accum.values()) else None
+
+    ai_msg = AIMessage(
+        content=content,
+        tool_calls=tool_calls,
+        usage_metadata=_to_usage_metadata(usage),
+        response_metadata={"model_name": model},
     )
-    updated_usage: Optional[Dict[str, Any]] = prev
-    if any(v > 0 for v in usage_accum.values()):
-        usage = usage_accum
-        if prev:  # noqa: SIM108
-            updated_usage = {k: prev.get(k, 0) + usage_accum.get(k, 0) for k in usage_accum}
-        else:
-            updated_usage = dict(usage_accum)
-
     generation = ChatGeneration(message=ai_msg)
-    result = ChatResult(
+    return ChatResult(
         generations=[generation],
         llm_output={"token_usage": usage} if usage else {},
     )
-    return result, updated_usage
 
 
 class ChatLiteLLMBridge(BaseChatModel):
@@ -217,7 +241,6 @@ class ChatLiteLLMBridge(BaseChatModel):
     frequency_penalty: Optional[float] = None
     presence_penalty: Optional[float] = None
     extra_params: Dict[str, Any] = Field(default_factory=dict)
-    last_token_usage: Optional[Union[Dict[str, Any], TokenUsage]] = None
 
     @property
     def _llm_type(self) -> str:
@@ -296,9 +319,14 @@ class ChatLiteLLMBridge(BaseChatModel):
         message = choice.message
         content = message.content or ""
         tool_calls = _parse_tool_calls(getattr(message, "tool_calls", None), name_map=name_map)
-        ai_msg = AIMessage(content=content, tool_calls=tool_calls)
         usage = self._extract_usage(response)
-        self.last_token_usage = usage
+        ai_msg = AIMessage(
+            content=content,
+            tool_calls=tool_calls,
+            usage_metadata=_to_usage_metadata(usage),
+            # UsageMetadataCallbackHandler keys per-model usage on this name; without it, usage is dropped.
+            response_metadata={"model_name": self.model},
+        )
         generation = ChatGeneration(message=ai_msg)
         return ChatResult(
             generations=[generation],
@@ -355,14 +383,18 @@ class ChatLiteLLMBridge(BaseChatModel):
 
         try:
             for chunk in response:
-                text = getattr(chunk.choices[0].delta, "content", None) or ""
+                _accumulate_chunk_usage(usage_accum, chunk)
+                if not chunk.choices:
+                    # Terminal usage-only chunk emitted when stream_options.include_usage is set.
+                    continue
+                delta = chunk.choices[0].delta
+                text = getattr(delta, "content", None) or ""
                 if text:
                     content_parts.append(text)
                     ctx["queue"].put_nowait({"type": "stream", "content": text})
                     ctx["streamed_text"] = True
-                for tc_delta in getattr(chunk.choices[0].delta, "tool_calls", None) or ():
+                for tc_delta in getattr(delta, "tool_calls", None) or ():
                     _process_tool_call_delta(tool_call_accum, tc_delta)
-                _accumulate_chunk_usage(usage_accum, chunk)
         except Exception:
             LOGGER.debug("Stream iteration failed, falling back to non-streaming")
             token = _streaming_ctx.set(None)
@@ -371,10 +403,9 @@ class ChatLiteLLMBridge(BaseChatModel):
             finally:
                 _streaming_ctx.reset(token)
 
-        result, self.last_token_usage = _build_streaming_result(
-            content_parts, _build_tool_calls_from_accum(tool_call_accum, name_map), usage_accum, self.last_token_usage
+        return _build_streaming_result(
+            content_parts, _build_tool_calls_from_accum(tool_call_accum, name_map), usage_accum, self.model
         )
-        return result
 
     async def _agenerate(
         self,
@@ -427,14 +458,18 @@ class ChatLiteLLMBridge(BaseChatModel):
 
         try:
             async for chunk in response:
-                text = getattr(chunk.choices[0].delta, "content", None) or ""
+                _accumulate_chunk_usage(usage_accum, chunk)
+                if not chunk.choices:
+                    # Terminal usage-only chunk emitted when stream_options.include_usage is set.
+                    continue
+                delta = chunk.choices[0].delta
+                text = getattr(delta, "content", None) or ""
                 if text:
                     content_parts.append(text)
                     await ctx["queue"].put({"type": "stream", "content": text})
                     ctx["streamed_text"] = True
-                for tc_delta in getattr(chunk.choices[0].delta, "tool_calls", None) or ():
+                for tc_delta in getattr(delta, "tool_calls", None) or ():
                     _process_tool_call_delta(tool_call_accum, tc_delta)
-                _accumulate_chunk_usage(usage_accum, chunk)
         except Exception:
             LOGGER.debug("Stream iteration failed, falling back to non-streaming")
             token = _streaming_ctx.set(None)
@@ -443,10 +478,9 @@ class ChatLiteLLMBridge(BaseChatModel):
             finally:
                 _streaming_ctx.reset(token)
 
-        result, self.last_token_usage = _build_streaming_result(
-            content_parts, _build_tool_calls_from_accum(tool_call_accum, name_map), usage_accum, self.last_token_usage
+        return _build_streaming_result(
+            content_parts, _build_tool_calls_from_accum(tool_call_accum, name_map), usage_accum, self.model
         )
-        return result
 
     def _stream(
         self,
@@ -479,30 +513,33 @@ class ChatLiteLLMBridge(BaseChatModel):
         call_kwargs = self._build_kwargs(messages, stop, **kwargs)
         name_map = call_kwargs.pop("_ollama_name_map", None)
         call_kwargs["stream"] = True
+        # OpenAI-compatible providers only emit usage chunks when explicitly requested.
+        call_kwargs["stream_options"] = {"include_usage": True}
         response = cast(CustomStreamWrapper, await litellm.acompletion(**call_kwargs))
-        accumulated_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        content_parts: List[str] = []
+        usage_accum: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         tool_call_accum: Dict[int, Dict[str, str]] = {}
         async for chunk in response:
+            _accumulate_chunk_usage(usage_accum, chunk)
+            if not chunk.choices:
+                # Terminal usage-only chunk emitted when stream_options.include_usage is set.
+                continue
             delta = chunk.choices[0].delta
             content = getattr(delta, "content", "") or ""
             # Push content to context queue when streaming context is active
             if content and ctx is not None:
                 await ctx["queue"].put({"type": "stream", "content": content})
                 ctx["streamed_text"] = True
-            if content:
-                content_parts.append(content)
-            # Accumulate structured tool calls if present
             for tc_delta in getattr(delta, "tool_calls", None) or ():
                 _process_tool_call_delta(tool_call_accum, tc_delta)
-            # Accumulate token usage from stream chunks
-            usage = getattr(chunk, "usage", None)
-            if usage:
-                for key in accumulated_usage:
-                    accumulated_usage[key] += getattr(usage, key, 0) or 0
             yield ChatGenerationChunk(message=AIMessageChunk(content=content))
-        if any(v > 0 for v in accumulated_usage.values()):
-            self.last_token_usage = accumulated_usage
         tool_calls = _build_tool_calls_from_accum(tool_call_accum, name_map)
-        if tool_calls:
-            yield ChatGenerationChunk(message=AIMessageChunk(content="", tool_calls=tool_calls))
+        usage_metadata = _to_usage_metadata(usage_accum) if any(v > 0 for v in usage_accum.values()) else None
+        if tool_calls or usage_metadata:
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(
+                    content="",
+                    tool_calls=tool_calls,
+                    usage_metadata=usage_metadata,
+                    response_metadata={"model_name": self.model} if usage_metadata else {},
+                ),
+            )

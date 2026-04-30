@@ -10,6 +10,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage
 
 from server.app.runtime.langgraph.adapters.litellm import (
@@ -21,6 +22,7 @@ from server.tests.runtime.langgraph.helpers import make_usage
 from server.tests.runtime.shared_helpers import (
     async_iter,
     drain_queue,
+    make_empty_choice_usage_chunk,
     make_stream_chunk,
 )
 
@@ -167,8 +169,8 @@ class TestChatLiteLLMBridgeStreaming:
         assert len(stream_events) == 0
 
     @pytest.mark.anyio
-    async def test_accumulates_token_usage(self):
-        """Verify token usage is accumulated across multiple calls."""
+    async def test_per_call_usage_metadata(self):
+        """Each streamed call surfaces its own usage_metadata; cross-call summing is the callback's job."""
         bridge = _make_bridge()
         queue = asyncio.Queue()
 
@@ -189,16 +191,15 @@ class TestChatLiteLLMBridgeStreaming:
 
             async with streaming_context(queue):
                 mock_litellm.acompletion = AsyncMock(return_value=async_iter(chunks1))
-                await bridge._agenerate([HumanMessage(content="call1")])
+                result1 = await bridge._agenerate([HumanMessage(content="call1")])
 
                 mock_litellm.acompletion = AsyncMock(return_value=async_iter(chunks2))
-                await bridge._agenerate([HumanMessage(content="call2")])
+                result2 = await bridge._agenerate([HumanMessage(content="call2")])
 
-        assert bridge.last_token_usage == {
-            "prompt_tokens": 30,
-            "completion_tokens": 15,
-            "total_tokens": 45,
-        }
+        msg1, msg2 = result1.generations[0].message, result2.generations[0].message
+        assert isinstance(msg1, AIMessage) and isinstance(msg2, AIMessage)
+        assert msg1.usage_metadata == {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+        assert msg2.usage_metadata == {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30}
 
     @pytest.mark.anyio
     async def test_sets_streamed_text_flag(self):
@@ -215,6 +216,62 @@ class TestChatLiteLLMBridgeStreaming:
                 await bridge._agenerate([HumanMessage(content="hi")])
 
         assert ctx["streamed_text"] is True
+
+    @pytest.mark.anyio
+    async def test_streamed_invoke_records_usage_via_callback(self):
+        """Streaming path also keys usage by model_name; regression for missing response_metadata."""
+        bridge = _make_bridge()
+        queue = asyncio.Queue()
+        usage = make_usage(prompt_tokens=12, completion_tokens=4, total_tokens=16)
+        chunks = [
+            make_stream_chunk(content="hello"),
+            make_stream_chunk(content="", finish_reason="stop", usage=usage),
+        ]
+
+        callback = UsageMetadataCallbackHandler()
+        with patch("server.app.runtime.langgraph.adapters.litellm.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(return_value=async_iter(chunks))
+            from langchain_core.messages import HumanMessage
+
+            async with streaming_context(queue):
+                await bridge.ainvoke([HumanMessage(content="hi")], config={"callbacks": [callback]})
+
+        assert callback.usage_metadata, "streaming call dropped usage — model_name likely missing"
+        recorded = callback.usage_metadata.get("test/model")
+        assert recorded is not None
+        assert recorded["input_tokens"] == 12
+        assert recorded["output_tokens"] == 4
+        assert recorded["total_tokens"] == 16
+
+    @pytest.mark.anyio
+    async def test_agenerate_streaming_handles_empty_choice_usage_chunk(self):
+        """Verify the cross-cutting streaming path tolerates terminal ``choices=[]`` usage chunks.
+
+        Without empty-choices handling, ``chunk.choices[0]`` raises IndexError inside
+        the streaming loop. The broad ``except`` then triggers the non-streaming
+        fallback, issuing a *second* ``litellm.acompletion`` call after content was
+        already pushed to the queue — duplicate billing and visible duplication.
+        """
+        bridge = _make_bridge()
+        queue = asyncio.Queue()
+        chunks = [
+            make_stream_chunk(content="hello"),
+            make_empty_choice_usage_chunk(prompt_tokens=8, completion_tokens=4, total_tokens=12),
+        ]
+
+        with patch("server.app.runtime.langgraph.adapters.litellm.litellm") as mock_litellm:
+            mock_acompletion = AsyncMock(return_value=async_iter(chunks))
+            mock_litellm.acompletion = mock_acompletion
+            from langchain_core.messages import HumanMessage
+
+            async with streaming_context(queue):
+                result = await bridge._agenerate([HumanMessage(content="hi")])
+
+        # Exactly one provider call — no non-streaming fallback duplicate.
+        assert mock_acompletion.await_count == 1
+        msg = result.generations[0].message
+        assert isinstance(msg, AIMessage)
+        assert msg.usage_metadata == {"input_tokens": 8, "output_tokens": 4, "total_tokens": 12}
 
     @pytest.mark.anyio
     async def test_streamed_text_false_after_tool_only(self):
@@ -472,8 +529,8 @@ class TestChatLiteLLMBridgeSyncStreaming:
         assert "stream" not in (all_kwargs.kwargs if hasattr(all_kwargs, "kwargs") else {})
 
     @pytest.mark.anyio
-    async def test_accumulates_token_usage(self):
-        """Verify token usage is accumulated across multiple sync calls."""
+    async def test_per_call_usage_metadata(self):
+        """Each sync streamed call surfaces its own usage_metadata; cross-call summing is the callback's job."""
         bridge = _make_bridge()
         queue = asyncio.Queue()
 
@@ -494,16 +551,15 @@ class TestChatLiteLLMBridgeSyncStreaming:
 
             async with streaming_context(queue):
                 mock_litellm.completion = MagicMock(return_value=iter(chunks1))
-                bridge._generate([HumanMessage(content="call1")])
+                result1 = bridge._generate([HumanMessage(content="call1")])
 
                 mock_litellm.completion = MagicMock(return_value=iter(chunks2))
-                bridge._generate([HumanMessage(content="call2")])
+                result2 = bridge._generate([HumanMessage(content="call2")])
 
-        assert bridge.last_token_usage == {
-            "prompt_tokens": 30,
-            "completion_tokens": 15,
-            "total_tokens": 45,
-        }
+        msg1, msg2 = result1.generations[0].message, result2.generations[0].message
+        assert isinstance(msg1, AIMessage) and isinstance(msg2, AIMessage)
+        assert msg1.usage_metadata == {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+        assert msg2.usage_metadata == {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30}
 
 
 # ---------------------------------------------------------------------------

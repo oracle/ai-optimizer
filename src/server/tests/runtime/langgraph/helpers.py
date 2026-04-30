@@ -9,14 +9,22 @@ Shared mock factories for LangGraph runtime tests.
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
-from server.app.runtime.langgraph.adapters.litellm import ChatLiteLLMBridge
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, LLMResult
 
 
 def mock_compiled_graph(
     result: Optional[Dict[str, Any]] = None,
     side_effect: Optional[Exception] = None,
+    usage_metadata: Optional[Dict[str, int]] = None,
+    model_name: str = "test-model",
 ) -> MagicMock:
-    """Mock a compiled LangGraph (CompiledGraph) with ainvoke.
+    """Mock a compiled LangGraph (CompiledGraph) with ``ainvoke``.
+
+    When *usage_metadata* is provided, ``ainvoke`` also fires
+    ``on_llm_end`` on every callback present in ``config["callbacks"]`` so
+    ``UsageMetadataCallbackHandler``-based aggregation observes a usage
+    record without wiring up a real LLM.
 
     Parameters
     ----------
@@ -25,47 +33,40 @@ def mock_compiled_graph(
         flow-style result with an empty answer.
     side_effect:
         If provided, ``ainvoke`` raises this exception instead of returning.
+    usage_metadata:
+        Optional ``{"input_tokens", "output_tokens", "total_tokens"}`` dict
+        delivered to callbacks via a synthetic ``on_llm_end`` event.
+    model_name:
+        The model name used to key the callback's per-model usage dict.
     """
     if result is None:
         result = {"outputs": {"answer": "answer"}, "messages": []}
+
     graph = MagicMock()
-    graph.ainvoke = AsyncMock(return_value=result, side_effect=side_effect)
+
+    if side_effect is not None:
+        graph.ainvoke = AsyncMock(side_effect=side_effect)
+    elif usage_metadata is None:
+        graph.ainvoke = AsyncMock(return_value=result)
+    else:
+
+        async def fake_ainvoke(_inputs, config=None, **_kwargs):
+            for cb in (config or {}).get("callbacks", []) or []:
+                on_end = getattr(cb, "on_llm_end", None)
+                if on_end is None:
+                    continue
+                msg = AIMessage(
+                    content="",
+                    usage_metadata=usage_metadata,
+                    response_metadata={"model_name": model_name},
+                )
+                on_end(LLMResult(generations=[[ChatGeneration(message=msg)]]))
+            return result
+
+        graph.ainvoke = AsyncMock(side_effect=fake_ainvoke)
+
     graph.nodes = {}
     return graph
-
-
-def mock_graph_node(llm) -> MagicMock:
-    """Build a mock graph node with a bound runnable containing the given LLM.
-
-    Sets ``node.bound = None`` so ``_extract_llm_instances`` falls through
-    to the ``node.runnable`` path.
-    """
-    node = MagicMock()
-    node.bound = None
-    node.runnable = MagicMock()
-    node.runnable.bound = llm
-    node.runnable.graph = None
-    return node
-
-
-def mock_graph_with_llm(
-    result: Optional[Dict[str, Any]] = None,
-    token_usage: Optional[Dict[str, Any]] = None,
-) -> tuple:
-    """Mock graph with an extractable ChatLiteLLMBridge node.
-
-    Returns (graph, llm_instance) so tests can inspect token usage.
-    """
-    if result is None:
-        result = {"outputs": {"answer": "answer"}, "messages": []}
-    graph = mock_compiled_graph(result=result)
-
-    llm = ChatLiteLLMBridge(model="test/model")
-    llm.last_token_usage = token_usage
-
-    graph.nodes = {"llm_node": mock_graph_node(llm)}
-
-    return graph, llm
 
 
 def mock_litellm_response(

@@ -10,122 +10,39 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.core.schemas import ClientSettings
-from server.app.runtime.common import SessionMetadata, _sum_token_usage, parse_grade_relevant, parse_vs_metadata
-from server.app.runtime.langgraph.adapters.litellm import ChatLiteLLMBridge
+from server.app.runtime.common import SessionMetadata, parse_grade_relevant, parse_vs_metadata
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _extract_from_runnable(node: Any) -> tuple:
-    """Try to extract ChatLiteLLMBridge from node.runnable path.
+def _aggregate_usage_callback(callback: UsageMetadataCallbackHandler) -> Optional[TokenUsage]:
+    """Sum per-model ``usage_metadata`` collected by *callback* into one ``TokenUsage``.
 
-    Returns (instances, should_skip) where should_skip indicates the caller
-    should continue to the next node.
+    ``UsageMetadataCallbackHandler.usage_metadata`` is keyed by model name with
+    LangChain-canonical fields (``input_tokens`` / ``output_tokens`` /
+    ``total_tokens``). Translate back to the LiteLLM-shaped ``TokenUsage``
+    schema the rest of the runtime consumes.
     """
-    runnable = getattr(node, "runnable", None)
-    if runnable is None:
-        return [], False
-
-    bound = getattr(runnable, "bound", None)
-    if isinstance(bound, ChatLiteLLMBridge):
-        return [bound], True
-    if isinstance(runnable, ChatLiteLLMBridge):
-        return [runnable], True
-
-    nested = getattr(runnable, "graph", None)
-    if nested and hasattr(nested, "nodes"):
-        return _extract_llm_instances(nested), True
-    return [], True
-
-
-def _extract_from_closure(bound: Any) -> Optional[ChatLiteLLMBridge]:
-    """Inspect closure variables on bound.func/afunc to find a 'model' binding."""
-    for attr in ("func", "afunc"):
-        fn = getattr(bound, attr, None)
-        if fn and hasattr(fn, "__closure__") and fn.__closure__:
-            for i, name in enumerate(fn.__code__.co_freevars):
-                if name == "model":
-                    try:
-                        val = fn.__closure__[i].cell_contents
-                        if isinstance(val, ChatLiteLLMBridge):
-                            return val
-                    except ValueError:
-                        pass
-                    break
-    return None
-
-
-def _extract_llm_instances(graph: Any) -> List[ChatLiteLLMBridge]:
-    """Walk the graph to find all ChatLiteLLMBridge instances.
-
-    Handles multiple compiled graph structures:
-    - Mock/simple: node.runnable.bound or node.runnable is ChatLiteLLMBridge
-    - Flow graphs (PregelNode): bound.func.llm (LlmNodeExecutor)
-    - Agent graphs (PregelNode): closure variable 'model' on bound.func/afunc
-    """
-    instances = []
-    nodes = getattr(graph, "nodes", {})
-    for node in nodes.values():
-        bound = getattr(node, "bound", None)
-
-        if bound is None:
-            found, should_skip = _extract_from_runnable(node)
-            instances.extend(found)
-            if should_skip:
-                continue
-
-        if isinstance(bound, ChatLiteLLMBridge):
-            instances.append(bound)
-            continue
-
-        # Flow graphs: NodeExecutor with .llm (LlmNodeExecutor)
-        func = getattr(bound, "func", None)
-        if func is not None:
-            llm = getattr(func, "llm", None)
-            if isinstance(llm, ChatLiteLLMBridge):
-                instances.append(llm)
-                continue
-
-        # Agent graphs: closure inspection for 'model' variable
-        closure_result = _extract_from_closure(bound)
-        if closure_result is not None:
-            instances.append(closure_result)
-
-        # Nested subgraphs via PregelNode.subgraphs or bound.graph
-        for sub in getattr(node, "subgraphs", []):
-            if hasattr(sub, "nodes"):
-                instances.extend(_extract_llm_instances(sub))
-
-    return instances
-
-
-def _extract_graph_token_usage(graph: Any) -> Optional[TokenUsage]:
-    """Extract cumulative token usage from all ChatLiteLLMBridge instances in a graph."""
-    usages: list[TokenUsage] = []
-    for llm in _extract_llm_instances(graph):
-        tu = llm.last_token_usage
-        if tu:
-            if isinstance(tu, TokenUsage):
-                usages.append(tu)
-            else:
-                usages.append(
-                    TokenUsage(
-                        prompt_tokens=tu.get("prompt_tokens", 0),
-                        completion_tokens=tu.get("completion_tokens", 0),
-                        total_tokens=tu.get("total_tokens", 0),
-                    )
-                )
-    return _sum_token_usage(*usages) if usages else None
-
-
-def _clear_graph_token_usage(graph: Any) -> None:
-    """Reset token usage on all ChatLiteLLMBridge instances."""
-    for llm in _extract_llm_instances(graph):
-        llm.last_token_usage = None
+    by_model = getattr(callback, "usage_metadata", None) or {}
+    prompt = 0
+    completion = 0
+    total = 0
+    for usage in by_model.values():
+        prompt += int(usage.get("input_tokens", 0) or 0)
+        completion += int(usage.get("output_tokens", 0) or 0)
+        total += int(usage.get("total_tokens", 0) or 0)
+    if not (prompt or completion or total):
+        return None
+    return TokenUsage(
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        total_tokens=total or (prompt + completion),
+    )
 
 
 class GraphFlowSession:
@@ -161,14 +78,14 @@ class GraphFlowSession:
     async def execute(self, query: str, thread_id: str, chat_history: bool = True) -> str:
         """Execute the flow graph and extract the answer."""
         inputs = self.build_inputs(query, thread_id, chat_history=chat_history)
-        _clear_graph_token_usage(self.graph)
         self.last_metadata = SessionMetadata()
+        usage_cb = UsageMetadataCallbackHandler()
 
         try:
             # LangGraph flow from AgentSpec uses FlowInputSchema:
             # {"inputs": {start_node_id: {input_values}}, "messages": []}
             flow_inputs = {"inputs": inputs, "messages": []}
-            result = await self.graph.ainvoke(flow_inputs)
+            result = await self.graph.ainvoke(flow_inputs, config={"callbacks": [usage_cb]})
         except Exception:
             LOGGER.exception("Flow execution failed for query: %s", query)
             raise
@@ -188,7 +105,7 @@ class GraphFlowSession:
                 vs_meta.documents = []
             self.last_metadata.vs_metadata = vs_meta
 
-        token_usage = _extract_graph_token_usage(self.graph)
+        token_usage = _aggregate_usage_callback(usage_cb)
         if token_usage:
             self.last_metadata.token_usage = token_usage
 
@@ -241,11 +158,12 @@ class AgentGraphSession:
 
     async def chat(self, message: str, chat_history: bool = True) -> str:
         """Send a message and get a response."""
-        _clear_graph_token_usage(self.graph)
         self.last_metadata = SessionMetadata()
+        usage_cb = UsageMetadataCallbackHandler()
 
-        config = {
+        config: Dict[str, Any] = {
             "configurable": {"thread_id": self._thread_id if chat_history else str(uuid.uuid4())},
+            "callbacks": [usage_cb],
             "recursion_limit": 25,
         }
 
@@ -277,7 +195,7 @@ class AgentGraphSession:
             if answer:
                 self._conversation_messages.append(AIMessage(content=answer))
 
-        token_usage = _extract_graph_token_usage(self.graph)
+        token_usage = _aggregate_usage_callback(usage_cb)
         if token_usage:
             self.last_metadata.token_usage = token_usage
 

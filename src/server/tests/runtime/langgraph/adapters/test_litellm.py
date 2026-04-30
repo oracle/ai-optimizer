@@ -11,7 +11,8 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
 
 from server.app.runtime.langgraph.adapters.litellm import (
     ChatLiteLLMBridge,
@@ -24,6 +25,7 @@ from server.tests.runtime.langgraph.helpers import (
 )
 from server.tests.runtime.shared_helpers import (
     async_iter,
+    make_empty_choice_usage_chunk,
     make_stream_chunk,
     make_usage_chunk,
 )
@@ -49,7 +51,6 @@ class TestChatLiteLLMBridgeInit:
         assert llm.max_tokens is None
         assert llm.frequency_penalty is None
         assert llm.presence_penalty is None
-        assert llm.last_token_usage is None
 
     def test_all_field_combinations(self):
         """Verify all fields are settable."""
@@ -268,17 +269,58 @@ class TestGenerate:
         assert result.generations[0].message.content == "Hello world"
 
     @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
-    def test_generate_stores_token_usage(self, mock_completion):
-        """Verify token_usage is stored in last_token_usage."""
+    def test_generate_attaches_usage_metadata(self, mock_completion):
+        """Verify token_usage is exposed via AIMessage.usage_metadata for callbacks."""
         mock_completion.return_value = mock_litellm_response(
             content="hi", usage=make_usage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
         )
         llm = ChatLiteLLMBridge(model="test/model")
-        llm._generate([HumanMessage(content="hi")])
+        result = llm._generate([HumanMessage(content="hi")])
 
-        from server.app.api.v1.schemas.chat import TokenUsage
+        msg = result.generations[0].message
+        assert isinstance(msg, AIMessage)
+        assert msg.usage_metadata == {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30}
 
-        assert llm.last_token_usage == TokenUsage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
+    def test_generate_attaches_model_name_for_usage_callback(self, mock_completion):
+        """Verify model_name is in response_metadata so UsageMetadataCallbackHandler records usage.
+
+        The handler in langchain_core requires both ``usage_metadata`` and
+        ``response_metadata['model_name']`` to be present; if model_name is missing
+        the handler silently drops the usage record.
+        """
+        mock_completion.return_value = mock_litellm_response(
+            content="hi", usage=make_usage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
+        )
+        llm = ChatLiteLLMBridge(model="test/model")
+        result = llm._generate([HumanMessage(content="hi")])
+
+        msg = result.generations[0].message
+        assert isinstance(msg, AIMessage)
+        assert msg.response_metadata.get("model_name") == "test/model"
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
+    async def test_ainvoke_callback_records_usage_keyed_by_model(self, mock_acompletion):
+        """End-to-end: bridge.ainvoke with UsageMetadataCallbackHandler attached records usage.
+
+        Regression for a missing ``response_metadata['model_name']``: without it the
+        handler returns an empty ``usage_metadata`` dict and downstream session
+        aggregation reports no token usage.
+        """
+        mock_acompletion.return_value = mock_litellm_response(
+            content="hi", usage=make_usage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
+        )
+        callback = UsageMetadataCallbackHandler()
+        llm = ChatLiteLLMBridge(model="ollama/qwen3:8b")
+        await llm.ainvoke([HumanMessage(content="hi")], config={"callbacks": [callback]})
+
+        assert callback.usage_metadata, "callback recorded no usage — model_name likely missing"
+        assert "ollama/qwen3:8b" in callback.usage_metadata
+        recorded = callback.usage_metadata["ollama/qwen3:8b"]
+        assert recorded["input_tokens"] == 20
+        assert recorded["output_tokens"] == 10
+        assert recorded["total_tokens"] == 30
 
     @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
     def test_generate_with_tool_calls(self, mock_completion):
@@ -433,8 +475,48 @@ class TestAStream:
 
     @pytest.mark.anyio
     @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
-    async def test_astream_accumulates_usage(self, mock_acompletion):
-        """Verify token usage is accumulated from stream chunks."""
+    async def test_astream_handles_empty_choice_usage_chunk(self, mock_acompletion):
+        """Verify _astream tolerates the terminal ``choices=[]`` usage chunk providers send.
+
+        OpenAI-compatible streams end with a usage-only chunk that has an empty
+        choices list. Indexing ``chunk.choices[0]`` blindly raises IndexError;
+        the loop must accumulate usage and skip the chunk instead.
+        """
+        chunks = [
+            make_stream_chunk(content="hello"),
+            make_empty_choice_usage_chunk(prompt_tokens=8, completion_tokens=4, total_tokens=12),
+        ]
+        mock_acompletion.return_value = async_iter(chunks)
+
+        llm = ChatLiteLLMBridge(model="test/model")
+        emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
+
+        ai_messages = [chunk.message for chunk in emitted if isinstance(chunk.message, AIMessageChunk)]
+        usage = next((m.usage_metadata for m in ai_messages if m.usage_metadata), None)
+        assert usage == {"input_tokens": 8, "output_tokens": 4, "total_tokens": 12}
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
+    async def test_astream_requests_usage_chunks(self, mock_acompletion):
+        """Verify _astream sets stream_options.include_usage so providers emit usage chunks.
+
+        OpenAI-compatible providers (via LiteLLM) only emit token-usage chunks when
+        ``stream_options={"include_usage": True}`` is requested. Without it, the
+        accumulator stays zero and downstream callbacks record no usage.
+        """
+        mock_acompletion.return_value = async_iter([])
+        llm = ChatLiteLLMBridge(model="test/model")
+        async for _ in llm._astream([HumanMessage(content="hi")]):
+            pass
+
+        call_kwargs = mock_acompletion.call_args.kwargs
+        assert call_kwargs.get("stream") is True
+        assert call_kwargs.get("stream_options") == {"include_usage": True}
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
+    async def test_astream_emits_usage_metadata_on_final_chunk(self, mock_acompletion):
+        """Verify accumulated chunk usage is surfaced via the final chunk's usage_metadata."""
         chunks = [
             make_stream_chunk(content="hi"),
             make_usage_chunk(prompt_tokens=10, completion_tokens=5, total_tokens=15),
@@ -442,28 +524,24 @@ class TestAStream:
         mock_acompletion.return_value = async_iter(chunks)
 
         llm = ChatLiteLLMBridge(model="test/model")
-        async for _ in llm._astream([HumanMessage(content="hi")]):
-            pass
+        emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
 
-        assert llm.last_token_usage == {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15,
-        }
+        ai_messages = [chunk.message for chunk in emitted if isinstance(chunk.message, AIMessageChunk)]
+        usage = next((m.usage_metadata for m in ai_messages if m.usage_metadata), None)
+        assert usage == {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
 
     @pytest.mark.anyio
     @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
     async def test_astream_no_usage_when_zero(self, mock_acompletion):
-        """Verify last_token_usage stays None when no usage in chunks."""
+        """Verify no usage_metadata is emitted when stream chunks carry no usage."""
         chunks = [make_stream_chunk(content="hi")]
         mock_acompletion.return_value = async_iter(chunks)
 
         llm = ChatLiteLLMBridge(model="test/model")
-        llm.last_token_usage = None
-        async for _ in llm._astream([HumanMessage(content="hi")]):
-            pass
+        emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
 
-        assert llm.last_token_usage is None
+        ai_messages = [chunk.message for chunk in emitted if isinstance(chunk.message, AIMessageChunk)]
+        assert all(m.usage_metadata is None for m in ai_messages)
 
 
 # ---------------------------------------------------------------------------

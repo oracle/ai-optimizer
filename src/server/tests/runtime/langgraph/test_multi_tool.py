@@ -193,9 +193,8 @@ class TestCombinedSessionTokenUsage:
         mock_acompletion.return_value = mock_litellm_response("nl2sql")
         session = _make_combined_session()
         await session.execute("How many tables?", thread_id="t-1")
-        # Token usage comes from _extract_graph_token_usage which finds no real LLM instances
-        # in mock graphs, so it will be None unless we inject it
-        # This is expected behavior for mocked graphs
+        # Token usage is sourced from the UsageMetadataCallbackHandler attached to
+        # the sub-session's ainvoke. Mock graphs don't fire on_llm_end so usage is None.
         assert session.last_metadata.token_usage is None
 
     @pytest.mark.anyio
