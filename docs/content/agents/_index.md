@@ -5,6 +5,8 @@ weight = 30
 <!--
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+spell-checker: ignore agentspec pyagentspec vecsearch
 -->
 
 The {{< short_app_ref >}} uses [Oracle AgentSpec](https://oracle.github.io/agent-spec/development/) to define its AI agents and flows as portable, serializable configurations. These configurations are loaded into [LangGraph](https://langchain-ai.github.io/langgraph/) for execution.
@@ -94,7 +96,7 @@ component = AgentSpecDeserializer().from_json(spec_json)
 
 AgentSpec is runtime-agnostic — the same JSON can be loaded into LangGraph, WayFlow, CrewAI, AutoGen, or any other framework with an AgentSpec adapter.
 
-### Customising Before Loading
+### Customizing Before Loading
 
 Since specs are plain JSON/YAML, you can modify them before loading:
 

@@ -389,7 +389,7 @@ def register_retriever_tool():
         """Search documentation using vector similarity. Returns relevant documents."""
         if ctx:
             await ctx.info(f"VS Retriever (Thread ID: {thread_id})")
-        # WayFlow may pass the full RephrasePrompt JSON as the question string
+        # Clients may pass the full RephrasePrompt JSON as the question string
         try:
             parsed = json.loads(question)
             if isinstance(parsed, dict) and "rephrased_prompt" in parsed:
