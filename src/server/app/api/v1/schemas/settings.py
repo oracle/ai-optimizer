@@ -24,6 +24,38 @@ class SettingsResponse(SettingsBase):
 class SettingsImport(BaseModel):
     """Request body for POST /settings/import — all fields optional."""
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "log_level": "INFO",
+                "database_configs": [
+                    {
+                        "alias": "CORE",
+                        "username": "ADMIN",
+                        "password": "MyStrongPassword#1",
+                        "dsn": "adb.example.oraclecloud.com:1521/mydb_high",
+                    }
+                ],
+                "model_configs": [
+                    {
+                        "type": "ll",
+                        "provider": "openai",
+                        "id": "gpt-4o-mini",
+                        "api_key": "sk-...",
+                        "enabled": True,
+                    }
+                ],
+                "oci_configs": [
+                    {
+                        "auth_profile": "DEFAULT",
+                        "authentication": "api_key",
+                        "region": "us-ashburn-1",
+                    }
+                ],
+            }
+        }
+    }
+
     log_level: Optional[str] = None
     database_configs: Optional[list[DatabaseConfig]] = None
     model_configs: Optional[list[ModelConfig]] = None

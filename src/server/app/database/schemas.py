@@ -9,6 +9,7 @@ from typing import Annotated, Optional
 
 import oracledb
 from pydantic import BaseModel, Field, SecretStr, ValidationInfo, field_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from server.app.core.secrets import SecretField
 from server.app.embed.schemas import VectorStoreConfig
@@ -176,7 +177,24 @@ class DatabaseSensitive(BaseModel):
 class DatabaseConfig(DatabaseSensitive):
     """Database configurations."""
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "json_schema_extra": {
+            "example": {
+                "alias": "CORE",
+                "username": "ADMIN",
+                "password": "MyStrongPassword#1",
+                "dsn": "(description=(retry_count=20)(retry_delay=3)"
+                "(address=(protocol=tcps)(port=1521)(host=adb.example.oraclecloud.com))"
+                "(connect_data=(service_name=mydb_high.adb.oraclecloud.com))"
+                "(security=(ssl_server_dn_match=yes)))",
+                "wallet_location": "/opt/oracle/wallets/CORE",
+                "config_dir": "/opt/oracle/wallets/CORE",
+                "wallet_password": "MyWalletPassword",
+                "tcp_connect_timeout": 30,
+            }
+        },
+    }
 
     alias: str
     username: Optional[str] = None
@@ -188,7 +206,7 @@ class DatabaseConfig(DatabaseSensitive):
         default=[], description="Vector Storage (read-only)", json_schema_extra={"readOnly": True}
     )
     usable: bool = False
-    pool: Annotated[Optional[oracledb.AsyncConnectionPool], Field(exclude=True)] = None
+    pool: SkipJsonSchema[Annotated[Optional[oracledb.AsyncConnectionPool], Field(exclude=True)]] = None
 
     @field_validator("alias", "username", "wallet_location", "config_dir")
     @classmethod
@@ -203,6 +221,20 @@ class DatabaseConfig(DatabaseSensitive):
 
 class DatabaseUpdate(DatabaseSensitive):
     """Fields allowed in a database config update (all optional)."""
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "username": "ADMIN",
+                "password": "MyStrongPassword#1",
+                "dsn": "adb.example.oraclecloud.com:1521/mydb_high",
+                "wallet_location": "/opt/oracle/wallets/CORE",
+                "config_dir": "/opt/oracle/wallets/CORE",
+                "wallet_password": "MyWalletPassword",
+                "tcp_connect_timeout": 30,
+            }
+        }
+    }
 
     username: Optional[str] = None
     dsn: Optional[str] = None

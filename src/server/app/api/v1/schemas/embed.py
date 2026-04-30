@@ -13,12 +13,33 @@ from pydantic import BaseModel
 class SqlStoreRequest(BaseModel):
     """Request body for storing SQL query results for embedding."""
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "query": "SELECT product_id, description FROM products WHERE active = 1",
+                "db_alias": "CORE",
+            }
+        }
+    }
+
     query: str
     db_alias: Optional[str] = None
 
 
 class VectorStoreRefreshRequest(BaseModel):
     """Request body for refreshing a vector store from an OCI bucket."""
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "vector_store_alias": "PRODUCT_DOCS",
+                "bucket_name": "rag-source-docs",
+                "auth_profile": "DEFAULT",
+                "rate_limit": 0,
+                "parsing_mode": "fast",
+            }
+        }
+    }
 
     vector_store_alias: str
     bucket_name: str

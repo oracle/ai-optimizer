@@ -85,6 +85,30 @@ class HelpItem(BaseModel):
 class ClientSettingsUpdate(BaseModel):
     """Partial update payload for client settings."""
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "ll_model": {
+                    "provider": "openai",
+                    "id": "gpt-4o-mini",
+                    "temperature": 0.3,
+                    "max_tokens": 4096,
+                    "chat_history": True,
+                },
+                "database": {"alias": "CORE"},
+                "oci": {"auth_profile": "DEFAULT"},
+                "tools_enabled": [TOOL_VECSEARCH],
+                "vector_search": {
+                    "provider": "openai",
+                    "id": "text-embedding-3-small",
+                    "alias": "PRODUCT_DOCS",
+                    "top_k": 8,
+                    "score_threshold": 0.65,
+                },
+            }
+        }
+    }
+
     ll_model: Optional[LLModelSettings] = None
     oci: Optional[OciSettings] = None
     database: Optional[DatabaseSettings] = None

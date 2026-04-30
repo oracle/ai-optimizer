@@ -71,6 +71,24 @@ class ModelIdentity(BaseModel):
 class ModelConfig(LanguageModelParameters, EmbeddingModelParameters, ModelSensitive, ModelIdentity):
     """Model Object."""
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "type": "ll",
+                "provider": "openai",
+                "id": "gpt-4o-mini",
+                "api_base": "https://api.openai.com/v1",
+                "api_key": "sk-...",
+                "enabled": True,
+                "max_tokens": 4096,
+                "temperature": 0.5,
+                "frequency_penalty": 0.0,
+                "presence_penalty": 0.0,
+                "top_p": 1.0,
+            }
+        }
+    }
+
     object: Literal["model"] = "model"
     created: int = Field(default_factory=lambda: int(time.time()))
     owned_by: Literal["aioptimizer"] = "aioptimizer"
@@ -96,6 +114,18 @@ class ModelConfig(LanguageModelParameters, EmbeddingModelParameters, ModelSensit
 
 class ModelUpdate(ModelSensitive):
     """Fields allowed in a model config update (all optional)."""
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "enabled": True,
+                "api_base": "https://api.openai.com/v1",
+                "api_key": "sk-...",
+                "max_tokens": 8192,
+                "temperature": 0.2,
+            }
+        }
+    }
 
     type: Optional[Literal["ll", "embed", "rerank"]] = None
     provider: Optional[str] = None

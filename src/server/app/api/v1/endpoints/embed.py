@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 
@@ -587,7 +587,15 @@ async def store_sql_file(
     description="Store Web Files for Embedding.",
 )
 async def store_web_file(
-    request: list[HttpUrl],
+    request: list[HttpUrl] = Body(
+        ...,
+        examples=[
+            [
+                "https://docs.oracle.com/en/cloud/paas/autonomous-database/index.html",
+                "https://example.com/whitepaper.pdf",
+            ]
+        ],
+    ),
     client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store contents from web URLs for embedding."""
