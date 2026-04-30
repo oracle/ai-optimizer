@@ -46,7 +46,6 @@ server-base = [
     "llama-index==0.14.21",
     "matplotlib==3.10.9",
     "oci~=2.0",
-    "opentelemetry-exporter-otlp-proto-grpc==1.41.1",
     "pyagentspec==26.1.0",
     "pypdf==6.10.2",
     "umap-learn==0.5.12"
@@ -75,7 +74,13 @@ client = [
     "streamlit==1.57.0",
 ]
 
-# - test: for testing/development
+# - otel: opentelemetry collector
+otel = [
+    "opentelemetry-distro==0.62b1",
+    "opentelemetry-exporter-otlp==1.41.1"
+]
+
+# - dev: for testing/development
 dev = [
     "docker",
     "mypy",
@@ -93,12 +98,12 @@ dev = [
 all = [
     "ai-optimizer[server]",
     "ai-optimizer[client]",
+    "ai-optimizer[otel]",
 ]
 
 # - all: all-in-one for testing/development
 all-dev = [
-    "ai-optimizer[server]",
-    "ai-optimizer[client]",
+    "ai-optimizer[all]",
     "ai-optimizer[dev]",
 ]
 
