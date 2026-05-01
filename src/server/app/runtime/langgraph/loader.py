@@ -6,10 +6,10 @@ Custom AgentSpec → LangGraph loader with LiteLLM and MCP auth support.
 
 Provides:
 - LiteLlmAgentSpecLoader: combines the loader and converter roles, handling
-  LiteLlmConfig → ChatLiteLLMBridge and merging sensitive_headers for MCP auth.
+  LiteLlmConfig → OracleChatLiteLLM and merging sensitive_headers into MCP connection headers.
 """
-# spell-checker: ignore agentspec litellm pyagentspec langgraph checkpointer
-# spell-checker: ignore langgraphconverter clienttransport agentspecloader
+# spell-checker: ignore ollama agentspec agentspecloader checkpointer
+# spell-checker: ignore clienttransport langgraphconverter litellm pyagentspec serialises
 
 import logging
 import threading as _threading
@@ -31,7 +31,7 @@ from server.app.models.litellm_utils import (
     build_oci_litellm_params,
     strip_unsupported_penalties,
 )
-from server.app.runtime.langgraph.adapters.litellm import ChatLiteLLMBridge
+from server.app.runtime.langgraph.adapters.litellm import OracleChatLiteLLM
 from server.app.runtime.ollama_tools import normalize_ollama_provider
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ def _unwrap_tool_content_blocks(tool):
 class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConverter):
     """AgentSpec loader with LiteLlmConfig deserialization and custom converter.
 
-    Combines the loader and converter roles: handles LiteLlmConfig → ChatLiteLLMBridge
+    Combines the loader and converter roles: handles LiteLlmConfig → OracleChatLiteLLM
     and merges sensitive_headers into transport headers for MCP auth.
     """
 
@@ -128,11 +128,11 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
 
     def _llm_convert_to_langgraph(self, llm_config, config):
         if isinstance(llm_config, LiteLlmConfig):
-            extra_params = {}
+            model_kwargs: dict = {}
             if llm_config.provider == "oci":
                 oci_profile = get_oci_profile()
                 if oci_profile:
-                    extra_params = build_oci_litellm_params(oci_profile)
+                    model_kwargs.update(build_oci_litellm_params(oci_profile))
             provider = normalize_ollama_provider(llm_config.provider)
             model_key = f"{provider}/{llm_config.model_id}"
             freq, pres = strip_unsupported_penalties(
@@ -140,14 +140,16 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
                 llm_config.frequency_penalty,
                 llm_config.presence_penalty,
             )
-            return ChatLiteLLMBridge(
+            if freq is not None:
+                model_kwargs["frequency_penalty"] = freq
+            if pres is not None:
+                model_kwargs["presence_penalty"] = pres
+            return OracleChatLiteLLM(
                 model=model_key,
                 api_key=reveal(llm_config.api_key),
                 api_base=llm_config.api_base,
                 max_tokens=llm_config.max_tokens,
-                frequency_penalty=freq,
-                presence_penalty=pres,
-                extra_params=extra_params,
+                model_kwargs=model_kwargs,
             )
         return super()._llm_convert_to_langgraph(llm_config, config)
 

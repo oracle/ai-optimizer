@@ -4,24 +4,23 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 MCP tool: Vector Search Retriever.
 """
-# spell-checker:ignore mult oraclevs vectorstores litellm acompletion fastmcp
+# spell-checker:ignore mult oraclevs vectorstores litellm acompletion fastmcp ainvoke amax asimilarity coro
 
 import asyncio
 import json
 import logging
 import traceback
 from collections.abc import Coroutine
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from fastmcp import Context
 from langchain_oracledb import OracleVS
-from litellm import acompletion
-from litellm.types.utils import Choices, ModelResponse
 
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.mcp.prompts.registry import find_prompt
 from server.app.models.litellm_utils import LiteLlmModelSpec, get_client_embed
+from server.app.runtime.langgraph.adapters.litellm import ainvoke_text_from_spec
 
 from .schemas import VectorSearchResponse, VectorTable, get_database_pool, get_oci_profile
 from .vs_discovery import _vs_discovery_impl
@@ -49,7 +48,7 @@ async def _get_available_vector_stores(client: str = "CONFIGURED") -> list[Vecto
 async def _select_tables_with_llm(
     question: str,
     available_tables: list[VectorTable],
-    ll_config: dict,
+    spec: LiteLlmModelSpec,
     max_tables: int = DEFAULT_MAX_TABLES,
 ) -> list[str]:
     """Use LLM to select the most relevant vector stores for the question."""
@@ -85,19 +84,13 @@ async def _select_tables_with_llm(
         )
 
         try:
-            response = cast(
-                ModelResponse,
-                await acompletion(
-                    messages=[{"role": "user", "content": prompt}],
-                    **{
-                        **ll_config,
-                        "temperature": TABLE_SELECTION_TEMPERATURE,
-                        "max_tokens": TABLE_SELECTION_MAX_TOKENS,
-                    },
-                ),
+            text = await ainvoke_text_from_spec(
+                spec,
+                prompt,
+                temperature=TABLE_SELECTION_TEMPERATURE,
+                max_tokens=TABLE_SELECTION_MAX_TOKENS,
             )
-
-            selection_text = (cast(Choices, response.choices[0]).message.content or "[]").strip()
+            selection_text = (text or "[]").strip()
             LOGGER.info("LLM table selection response: %s", selection_text)
 
             selected_tables = json.loads(selection_text)
@@ -327,7 +320,7 @@ async def _vs_retrieve_impl(
         tables_to_search = await _select_tables_with_llm(
             question,
             available_tables,
-            LiteLlmModelSpec.from_ll_model_settings(cs.ll_model, oci_profile).to_litellm_kwargs(),
+            LiteLlmModelSpec.from_ll_model_settings(cs.ll_model, oci_profile),
         )
         LOGGER.info("Searching %d table(s): %s", len(tables_to_search), tables_to_search)
 

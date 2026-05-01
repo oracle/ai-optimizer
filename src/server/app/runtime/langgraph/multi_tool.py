@@ -8,20 +8,30 @@ for NL2SQL + VecSearch routing.
 Uses a lightweight LLM classification call to route queries to the
 appropriate sub-session, or runs both in parallel and synthesizes.
 """
-# spell-checker: ignore vecsearch langgraph litellm acompletion
+# spell-checker: ignore vecsearch langgraph litellm acompletion ainvoke
 
 import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
+from langchain_core.messages import AIMessage, HumanMessage
+
+from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.runtime.common import (
-    COMBINED_PROMPT_NAME as PROMPT_NAME,
-)
-from server.app.runtime.common import (
+    CLASSIFIER_PROMPT,
     DEFAULT_COMBINED_INSTRUCTION,
+    SYNTHESIS_TEMPLATE,
     BaseCombinedSession,
     SessionMetadata,
     _sum_token_usage,
+)
+from server.app.runtime.common import (
+    COMBINED_PROMPT_NAME as PROMPT_NAME,
+)
+from server.app.runtime.langgraph.adapters.litellm import (
+    OracleChatLiteLLM,
+    extract_response_text,
+    usage_metadata_to_token_usage,
 )
 from server.app.runtime.langgraph.session import (
     GraphFlowSession,
@@ -46,6 +56,59 @@ class CombinedSession(BaseCombinedSession):
         api_base: Optional[str] = None,
     ) -> None:
         super().__init__(vs_session, nl2sql_session, classifier_model, system_prompt, api_key, api_base)
+
+    async def _ainvoke_text(
+        self,
+        prompt: str,
+        *,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> tuple[str, Optional[TokenUsage]]:
+        """Single-prompt completion via ``OracleChatLiteLLM``; return (text, usage)."""
+        llm = OracleChatLiteLLM(
+            model=self._classifier_model,
+            api_key=self._api_key,
+            api_base=self._api_base,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        result = await llm.ainvoke([HumanMessage(content=prompt)])
+        text = extract_response_text(result.content)
+        usage_metadata = result.usage_metadata if isinstance(result, AIMessage) else None
+        return text, usage_metadata_to_token_usage(usage_metadata)
+
+    async def classify(self, query: str) -> tuple[str, Optional[TokenUsage]]:
+        """Classify a query as 'nl2sql', 'vecsearch', or 'both'."""
+        prompt = CLASSIFIER_PROMPT.replace("{{query}}", query)
+        try:
+            text, usage = await self._ainvoke_text(prompt, temperature=0.0, max_tokens=10)
+        except Exception:
+            LOGGER.exception("Classification failed, defaulting to 'both'")
+            return "both", None
+        decision = text.strip().lower().strip("'\".,!")
+        if decision in ("nl2sql", "vecsearch", "both"):
+            return decision, usage
+        LOGGER.warning("Classifier returned unexpected value %r, defaulting to 'both'", text)
+        return "both", usage
+
+    async def synthesize(
+        self,
+        query: str,
+        vs_answer: str,
+        nl2sql_answer: str,
+    ) -> tuple[str, Optional[TokenUsage]]:
+        """Synthesize answers from both sources into a single response."""
+        prompt = SYNTHESIS_TEMPLATE.format(
+            system_prompt=self._system_prompt,
+            query=query,
+            sql_answer=nl2sql_answer,
+            search_answer=vs_answer,
+        )
+        try:
+            return await self._ainvoke_text(prompt)
+        except Exception:
+            LOGGER.exception("Synthesis failed, returning concatenated answers")
+            return f"Database result:\n{nl2sql_answer}\n\nDocument result:\n{vs_answer}", None
 
     async def execute(self, query: str, thread_id: str, chat_history: bool = True) -> str:
         """Route and execute the query."""

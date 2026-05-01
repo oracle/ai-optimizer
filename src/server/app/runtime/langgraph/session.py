@@ -19,35 +19,16 @@ from langchain_core.messages.ai import add_usage
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.core.schemas import ClientSettings
 from server.app.runtime.common import SessionMetadata, parse_grade_relevant, parse_vs_metadata
+from server.app.runtime.langgraph.adapters.litellm import extract_response_text
 
 LOGGER = logging.getLogger(__name__)
 
 
 def _chunk_text(chunk: Any) -> str:
-    """Extract plain text from an ``AIMessageChunk.content``.
-
-    LangChain's chunk content is a plain string under the legacy ``v0`` output
-    mode and a list of typed content blocks under ``v1`` (``LC_OUTPUT_VERSION=v1``
-    or ``output_version="v1"``), where text blocks have shape
-    ``{"type": "text", "text": "..."}``. SSE consumers expect strings, so
-    flatten lists to text and drop non-text blocks (image, audio, etc.).
-    """
+    """Extract plain text from an ``AIMessageChunk.content`` for SSE forwarding."""
     if chunk is None:
         return ""
-    content = getattr(chunk, "content", None)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict):
-                text = block.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-        return "".join(parts)
-    return ""
+    return extract_response_text(getattr(chunk, "content", None))
 
 
 async def _run_graph_with_streaming(
@@ -73,7 +54,11 @@ async def _run_graph_with_streaming(
     top_run_id: Optional[str] = None
     final_output: Optional[Dict[str, Any]] = None
     streamed = False
-    async for event in graph.astream_events(inputs, config=config, version="v2"):
+    # ``include_types`` skips dispatch for tool/retriever/prompt event subtrees that
+    # this loop doesn't read — measurable on flow graphs with many non-LLM nodes.
+    async for event in graph.astream_events(
+        inputs, config=config, version="v2", include_types=["chat_model", "chain"],
+    ):
         kind = event.get("event")
         if kind == "on_chain_start" and top_run_id is None:
             top_run_id = event.get("run_id")
