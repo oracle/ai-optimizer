@@ -8,8 +8,8 @@ Tests for server.app.mcp.tools.vs_rephrase.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, List, Optional, cast
+from unittest.mock import MagicMock
 
 import pytest
 from fastmcp.tools.function_tool import FunctionTool
@@ -19,6 +19,22 @@ from server.app.core.mcp import mcp
 from server.app.core.settings import settings
 from server.app.mcp.tools import vs_rephrase
 from server.app.mcp.tools.schemas import RephrasePrompt
+
+_DUMMY_SPEC = MagicMock(name="LiteLlmModelSpec")  # opaque under ainvoke_text_from_spec patch
+
+
+def _patch_llm_with_response(monkeypatch: pytest.MonkeyPatch, content: str) -> None:
+    async def _fake(*_args, **_kwargs) -> str:
+        return content
+
+    monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.ainvoke_text_from_spec", _fake)
+
+
+def _patch_llm_with_error(monkeypatch: pytest.MonkeyPatch, exc: BaseException) -> None:
+    async def _fake(*_args, **_kwargs) -> str:
+        raise exc
+
+    monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.ainvoke_text_from_spec", _fake)
 
 
 async def test_vs_rephrase_disabled() -> None:
@@ -40,11 +56,7 @@ async def test_vs_rephrase_success(
     configure_ll_model(provider="openai", model_id="gpt-rephrase")
     prompt_config_factory("optimizer_vs-rephrase", "Prompt: {prompt}\nHistory: {history}\nQuestion: {question}")
     prompt_config_factory("optimizer_context-default", "Context prompt")
-
-    async def _fake_completion(*_args: Any, **_kwargs: Any):
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="New question"))])
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, "New question")
 
     response = await vs_rephrase._vs_rephrase_impl("Question?", ["one", "two"])
 
@@ -57,11 +69,7 @@ async def test_vs_rephrase_history_insufficient(configure_ll_model, prompt_confi
     configure_ll_model(provider="openai", model_id="gpt-rephrase")
     prompt_config_factory("optimizer_vs-rephrase", "Prompt {prompt}")
     prompt_config_factory("optimizer_context-default", "Context")
-
-    async def _fake_completion(*_args: Any, **_kwargs: Any):
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Ignored"))])
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, "Ignored")
 
     response = await vs_rephrase._vs_rephrase_impl("Question?", ["only one"])
 
@@ -74,11 +82,7 @@ async def test_vs_rephrase_api_error(configure_ll_model, prompt_config_factory, 
     configure_ll_model(provider="openai", model_id="gpt-rephrase")
     prompt_config_factory("optimizer_vs-rephrase", "Prompt {prompt}")
     prompt_config_factory("optimizer_context-default", "Context")
-
-    async def _raise(*_args: Any, **_kwargs: Any):
-        raise APIConnectionError("down", "openai", "gpt-rephrase")
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.acompletion", _raise)
+    _patch_llm_with_error(monkeypatch, APIConnectionError("down", "openai", "gpt-rephrase"))
 
     response = await vs_rephrase._vs_rephrase_impl("Question?", ["one", "two"])
 
@@ -107,13 +111,9 @@ async def test_perform_rephrase_missing_prompt(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.find_prompt", lambda _: None)
     settings.client_settings.ll_model.provider = "openai"
     settings.client_settings.ll_model.id = "gpt"
+    _patch_llm_with_response(monkeypatch, "never used")
 
-    async def _fake_completion(*_args: Any, **_kwargs: Any) -> Dict[str, Any]:
-        return {"choices": [{"message": {"content": "never used"}}]}
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.acompletion", _fake_completion)
-
-    result = await vs_rephrase._perform_rephrase("Question?", ["one", "two"], "ctx", {})
+    result = await vs_rephrase._perform_rephrase("Question?", ["one", "two"], "ctx", _DUMMY_SPEC)
 
     assert result == "Question?"
 

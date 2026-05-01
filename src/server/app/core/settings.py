@@ -29,16 +29,7 @@ class SettingsBase(BaseModel):
     """Fields shared between Settings and SettingsResponse."""
 
     env: str = "dev"
-    runtime: str = "langgraph"
     server_url_prefix: str = ""
-
-    @field_validator("runtime")
-    @classmethod
-    def _validate_runtime(cls, v: str) -> str:
-        v = v.strip().lower()
-        if v not in ("langgraph", "wayflow"):
-            raise ValueError(f"runtime must be 'langgraph' or 'wayflow', got '{v}'")
-        return v
 
     @field_validator("server_url_prefix")
     @classmethod

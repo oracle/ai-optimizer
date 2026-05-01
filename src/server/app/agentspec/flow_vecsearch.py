@@ -331,7 +331,7 @@ def build_vecsearch_flow(
     Returns
     -------
     Flow
-        A pyagentspec Flow ready to be serialized or loaded into WayFlow.
+        A pyagentspec Flow ready to be serialized or loaded by a runtime adapter.
     """
     llm_config = build_llm_config(client_settings)
     transport = build_mcp_transport(server_url, api_key)

@@ -2,9 +2,9 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Shared runtime utilities used by both WayFlow and LangGraph runtimes.
+Shared runtime utilities used by the LangGraph runtime.
 """
-# spell-checker: ignore vecsearch litellm acompletion
+# spell-checker: ignore vecsearch litellm acompletion agentspec
 
 import asyncio
 import json
@@ -372,7 +372,7 @@ class BaseCombinedSession:
 
 
 class BaseChatOrchestrator:
-    """Shared chat orchestration logic for both LangGraph and WayFlow runtimes.
+    """Shared chat orchestration logic for the LangGraph runtime.
 
     Subclasses must set the following type properties (used for isinstance
     dispatch) and implement the hook methods listed below.

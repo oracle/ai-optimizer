@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Shared mock factories and helpers used by both LangGraph and WayFlow runtime tests.
+Shared mock factories and helpers used by runtime tests.
 """
 # spell-checker: disable
 
@@ -56,6 +56,23 @@ def make_usage_chunk(prompt_tokens=10, completion_tokens=5, total_tokens=15):
     usage.completion_tokens = completion_tokens
     usage.total_tokens = total_tokens
     return make_stream_chunk(content="", finish_reason="stop", usage=usage)
+
+
+def make_empty_choice_usage_chunk(prompt_tokens=10, completion_tokens=5, total_tokens=15):
+    """Build a mock streaming chunk with ``choices=[]`` carrying only usage.
+
+    Mirrors the real terminal chunk OpenAI-compatible providers emit when
+    ``stream_options={"include_usage": True}`` is requested: usage is set
+    but there is no choice/delta to read.
+    """
+    usage = MagicMock()
+    usage.prompt_tokens = prompt_tokens
+    usage.completion_tokens = completion_tokens
+    usage.total_tokens = total_tokens
+    chunk = MagicMock()
+    chunk.choices = []
+    chunk.usage = usage
+    return chunk
 
 
 async def async_iter(items):

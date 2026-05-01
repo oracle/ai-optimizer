@@ -2,554 +2,600 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Tests for the ChatLiteLLMBridge LangGraph adapter.
+Tests for OracleChatLiteLLM — the thin ``ChatLiteLLM`` subclass that adds
+Ollama tool-name sanitization and a streaming-rejection fallback. Upstream
+behavior (usage_metadata, response_metadata, tool-call parsing, message
+conversion) is owned by ``langchain_litellm.ChatLiteLLM`` and tested there.
 """
 # spell-checker: disable
 
-import json
-from typing import cast
+from __future__ import annotations
+
+from typing import Any, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain_core.outputs import ChatGenerationChunk
+from langchain_core.runnables import RunnableBinding
 
 from server.app.runtime.langgraph.adapters.litellm import (
-    ChatLiteLLMBridge,
-    _messages_to_openai,
-    _parse_tool_calls,
-)
-from server.tests.runtime.langgraph.helpers import (
-    make_usage,
-    mock_litellm_response,
-)
-from server.tests.runtime.shared_helpers import (
-    async_iter,
-    make_stream_chunk,
-    make_usage_chunk,
+    OracleChatLiteLLM,
+    _flatten_to_text,
+    chat_model_from_spec,
+    usage_metadata_to_token_usage,
 )
 
-# ---------------------------------------------------------------------------
-# TestChatLiteLLMBridgeInit
-# ---------------------------------------------------------------------------
+
+def _stream_chunks(*contents: str) -> Iterator[dict]:
+    """Build litellm-style streaming chunks (dicts) with the given content slices."""
+    for content in contents:
+        yield {
+            "choices": [{"delta": {"role": "assistant", "content": content}, "finish_reason": None}],
+        }
 
 
-class TestChatLiteLLMBridgeInit:
-    """Tests for ChatLiteLLMBridge initialization and properties."""
+def _non_streaming_response(content: str, prompt: int = 1, completion: int = 1) -> dict:
+    return {
+        "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "total_tokens": prompt + completion,
+        },
+    }
 
-    def test_llm_type(self):
-        """Verify _llm_type returns 'litellm-bridge'."""
-        llm = ChatLiteLLMBridge(model="test/model")
-        assert llm._llm_type == "litellm-bridge"
 
-    def test_default_field_values(self):
-        """Verify default field values."""
-        llm = ChatLiteLLMBridge(model="test/model")
-        assert llm.api_key is None
-        assert llm.api_base is None
-        assert llm.max_tokens is None
-        assert llm.frequency_penalty is None
-        assert llm.presence_penalty is None
-        assert llm.last_token_usage is None
+class TestFlattenToText:
+    def test_string_passthrough(self):
+        assert _flatten_to_text("hello") == "hello"
 
-    def test_all_field_combinations(self):
-        """Verify all fields are settable."""
-        llm = ChatLiteLLMBridge(
-            model="openai/gpt-4o",
-            api_key="sk-test",
-            api_base="https://api.example.com",
-            max_tokens=100,
-            frequency_penalty=0.5,
-            presence_penalty=0.3,
-        )
+    def test_list_of_text_blocks_joined(self):
+        assert _flatten_to_text([{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]) == "a\nb"
+
+    def test_bare_strings_in_list_preserved(self):
+        assert _flatten_to_text(["x", "y"]) == "x\ny"
+
+    def test_unknown_block_serialized(self):
+        result = _flatten_to_text([{"type": "image", "url": "http://x"}])
+        assert "image" in result and "http://x" in result
+
+    def test_none_returns_empty(self):
+        assert _flatten_to_text(None) == ""
+
+
+class TestUsageMetadataToTokenUsage:
+    def test_none_returns_none(self):
+        assert usage_metadata_to_token_usage(None) is None
+
+    def test_empty_returns_none(self):
+        assert usage_metadata_to_token_usage({"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}) is None
+
+    def test_full(self):
+        result = usage_metadata_to_token_usage({"input_tokens": 5, "output_tokens": 3, "total_tokens": 8})
+        assert result is not None
+        assert result.prompt_tokens == 5
+        assert result.completion_tokens == 3
+        assert result.total_tokens == 8
+
+    def test_total_falls_back_to_sum(self):
+        result = usage_metadata_to_token_usage({"input_tokens": 4, "output_tokens": 2, "total_tokens": 0})
+        assert result is not None and result.total_tokens == 6
+
+
+class TestChatModelFromSpec:
+    @staticmethod
+    def _spec(**overrides: Any) -> Any:
+        spec = MagicMock(name="LiteLlmModelSpec")
+        spec.model_key = "openai/gpt-4o"
+        spec.api_key = "sk-test"
+        spec.api_base = "https://api.example.com"
+        spec.temperature = 0.7
+        spec.top_p = 0.95
+        spec.max_tokens = 100
+        spec.frequency_penalty = 0.5
+        spec.presence_penalty = 0.3
+        spec.oci_params = {}
+        for k, v in overrides.items():
+            setattr(spec, k, v)
+        return spec
+
+    def test_basic_construction(self):
+        llm = chat_model_from_spec(self._spec())
         assert llm.model == "openai/gpt-4o"
         assert llm.api_key == "sk-test"
         assert llm.api_base == "https://api.example.com"
+        assert llm.temperature == 0.7
+        assert llm.top_p == 0.95
         assert llm.max_tokens == 100
-        assert llm.frequency_penalty == 0.5
-        assert llm.presence_penalty == 0.3
+
+    def test_penalties_routed_through_model_kwargs(self):
+        llm = chat_model_from_spec(self._spec())
+        assert llm.model_kwargs.get("frequency_penalty") == 0.5
+        assert llm.model_kwargs.get("presence_penalty") == 0.3
+
+    def test_oci_params_routed_through_model_kwargs(self):
+        spec = self._spec(oci_params={"oci_region": "us-chicago-1", "oci_compartment_id": "ocid1.x"})
+        llm = chat_model_from_spec(spec)
+        assert llm.model_kwargs["oci_region"] == "us-chicago-1"
+        assert llm.model_kwargs["oci_compartment_id"] == "ocid1.x"
+
+    def test_per_call_overrides_take_precedence(self):
+        llm = chat_model_from_spec(self._spec(), temperature=0.0, max_tokens=10)
+        assert llm.temperature == 0.0
+        assert llm.max_tokens == 10
+        assert llm.top_p == 0.95  # spec value preserved when not overridden
+
+    def test_omits_none_penalties(self):
+        spec = self._spec(frequency_penalty=None, presence_penalty=None)
+        llm = chat_model_from_spec(spec)
+        assert "frequency_penalty" not in llm.model_kwargs
+        assert "presence_penalty" not in llm.model_kwargs
 
 
-# ---------------------------------------------------------------------------
-# TestMessagesToOpenai
-# ---------------------------------------------------------------------------
+class TestReasoningContentFlattening:
+    """Reasoning-capable providers force AIMessage.content to a list of blocks; we flatten it."""
 
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_stream_flattens_reasoning_blocks_in_chunk_content(self, mock_completion):
+        """Streamed chunks with reasoning_content arrive as list content from upstream.
 
-class TestMessagesToOpenai:
-    """Tests for _messages_to_openai conversion."""
+        LangGraph aggregates chunks into the final ``AIMessage`` and stores it in
+        chat history; without flattening, hidden reasoning persists across turns
+        and downstream graph nodes see it as message content.
+        """
 
-    def test_system_message(self):
-        """Verify SystemMessage maps to system role."""
-        result = _messages_to_openai([SystemMessage(content="Be helpful.")])
-        assert result == [{"role": "system", "content": "Be helpful."}]
+        # Upstream injects {"type":"thinking", ...} into chunk.content when a
+        # delta carries reasoning_content; emulate that with a delta that has
+        # both reasoning_content and text content.
+        def stream_with_reasoning():
+            yield {
+                "choices": [
+                    {
+                        "delta": {
+                            "role": "assistant",
+                            "content": "the answer",
+                            "reasoning_content": "let me think...",
+                        },
+                        "finish_reason": None,
+                    },
+                ],
+            }
 
-    def test_human_message(self):
-        """Verify HumanMessage maps to user role."""
-        result = _messages_to_openai([HumanMessage(content="Hello")])
-        assert result == [{"role": "user", "content": "Hello"}]
+        mock_completion.return_value = stream_with_reasoning()
+        llm = OracleChatLiteLLM(model="anthropic/claude-haiku")
+        emitted = list(llm._stream([HumanMessage(content="hi")]))
 
-    def test_ai_message(self):
-        """Verify AIMessage maps to assistant role."""
-        result = _messages_to_openai([AIMessage(content="Hi there")])
-        assert result == [{"role": "assistant", "content": "Hi there"}]
-
-    def test_ai_message_empty_content(self):
-        """Verify AIMessage with None content becomes empty string."""
-        result = _messages_to_openai([AIMessage(content="")])
-        assert result[0]["content"] == ""
-
-    def test_tool_message(self):
-        """Verify ToolMessage maps to tool role."""
-        result = _messages_to_openai([ToolMessage(content="Sunny", tool_call_id="call_1")])
-        assert result == [{"role": "tool", "tool_call_id": "call_1", "content": "Sunny"}]
-
-    def test_ai_with_tool_calls(self):
-        """Verify AIMessage with tool_calls includes serialized tool_calls."""
-        msg = AIMessage(
-            content="",
-            tool_calls=[{"id": "call_1", "name": "get_weather", "args": {"city": "Paris"}}],
-        )
-        result = _messages_to_openai([msg])
-        assert len(result) == 1
-        assert result[0]["role"] == "assistant"
-        assert len(result[0]["tool_calls"]) == 1
-        tc = result[0]["tool_calls"][0]
-        assert tc["id"] == "call_1"
-        assert tc["type"] == "function"
-        assert tc["function"]["name"] == "get_weather"
-        assert json.loads(tc["function"]["arguments"]) == {"city": "Paris"}
-
-    def test_ai_with_dict_args_serialized(self):
-        """Verify tool_calls with dict args are serialized to JSON string."""
-        msg = AIMessage(
-            content="",
-            tool_calls=[{"id": "call_1", "name": "f", "args": {"x": 1}}],
-        )
-        result = _messages_to_openai([msg])
-        assert json.loads(result[0]["tool_calls"][0]["function"]["arguments"]) == {"x": 1}
-
-    def test_full_tool_calling_conversation(self):
-        """Realistic multi-turn tool calling conversation."""
-        messages = [
-            HumanMessage(content="What's the weather?"),
-            AIMessage(
-                content="",
-                tool_calls=[{"id": "call_1", "name": "get_weather", "args": {"city": "Paris"}}],
-            ),
-            ToolMessage(content="Sunny, 22C", tool_call_id="call_1"),
-            AIMessage(content="It's sunny and 22C in Paris."),
-        ]
-        result = _messages_to_openai(messages)
-        assert len(result) == 4
-        assert result[0]["role"] == "user"
-        assert result[1]["role"] == "assistant"
-        assert result[1]["tool_calls"][0]["id"] == "call_1"
-        assert result[2]["role"] == "tool"
-        assert result[3]["role"] == "assistant"
-
-
-# ---------------------------------------------------------------------------
-# TestParseToolCalls
-# ---------------------------------------------------------------------------
-
-
-class TestParseToolCalls:
-    """Tests for _parse_tool_calls."""
-
-    def test_empty_input(self):
-        """Verify empty/None returns empty list."""
-        assert not _parse_tool_calls(None)
-        assert not _parse_tool_calls([])
-
-    def test_object_style(self):
-        """Verify object-style tool calls (with attributes)."""
-        tc = MagicMock()
-        tc.function.name = "get_weather"
-        tc.function.arguments = '{"city": "Paris"}'
-        tc.id = "call_1"
-
-        result = _parse_tool_calls([tc])
-        assert len(result) == 1
-        assert result[0]["name"] == "get_weather"
-        assert result[0]["args"] == {"city": "Paris"}
-        assert result[0]["id"] == "call_1"
-
-    def test_dict_style(self):
-        """Verify dict-style tool calls."""
-        tc = {"function": {"name": "search", "arguments": '{"q": "test"}'}, "id": "call_2"}
-        result = _parse_tool_calls([tc])
-        assert result[0]["name"] == "search"
-        assert result[0]["args"] == {"q": "test"}
-
-    def test_malformed_args(self):
-        """Verify malformed JSON args returns empty dict."""
-        tc = MagicMock()
-        tc.function.name = "f"
-        tc.function.arguments = "not json"
-        tc.id = "call_1"
-        result = _parse_tool_calls([tc])
-        assert result[0]["args"] == {}
-
-
-# ---------------------------------------------------------------------------
-# TestBuildKwargs
-# ---------------------------------------------------------------------------
-
-
-class TestBuildKwargs:
-    """Tests for _build_kwargs."""
-
-    def test_model_passthrough(self):
-        """Verify model is passed to kwargs."""
-        llm = ChatLiteLLMBridge(model="openai/gpt-4o")
-        kwargs = llm._build_kwargs([HumanMessage(content="hi")], None)
-        assert kwargs["model"] == "openai/gpt-4o"
-        assert kwargs["drop_params"] is True
-
-    def test_api_key_and_base_passthrough(self):
-        """Verify api_key and api_base are passed through."""
-        llm = ChatLiteLLMBridge(model="m", api_key="sk-test", api_base="https://api.example.com")
-        kwargs = llm._build_kwargs([HumanMessage(content="hi")], None)
-        assert kwargs["api_key"] == "sk-test"
-        assert kwargs.get("base_url") == "https://api.example.com"
-
-    def test_stop_passthrough(self):
-        """Verify stop sequences are passed through."""
-        llm = ChatLiteLLMBridge(model="m")
-        kwargs = llm._build_kwargs([HumanMessage(content="hi")], ["STOP"])
-        assert kwargs["stop"] == ["STOP"]
-
-    def test_tools_passthrough(self):
-        """Verify tools from kwargs are passed through."""
-        llm = ChatLiteLLMBridge(model="m")
-        tools = [{"type": "function", "function": {"name": "f"}}]
-        kwargs = llm._build_kwargs([HumanMessage(content="hi")], None, tools=tools)
-        assert kwargs["tools"] == tools
-
-    def test_tool_choice_passthrough(self):
-        """Verify tool_choice from kwargs is passed through."""
-        llm = ChatLiteLLMBridge(model="m")
-        kwargs = llm._build_kwargs([HumanMessage(content="hi")], None, tool_choice="auto")
-        assert kwargs["tool_choice"] == "auto"
-
-    def test_optional_params_omitted_when_none(self):
-        """Verify optional params are omitted when None."""
-        llm = ChatLiteLLMBridge(model="m")
-        kwargs = llm._build_kwargs([HumanMessage(content="hi")], None)
-        assert "api_key" not in kwargs
-        assert "api_base" not in kwargs
-        assert "max_tokens" not in kwargs
-        assert "stop" not in kwargs
-
-    def test_max_tokens_and_penalties(self):
-        """Verify max_tokens and penalty params are included."""
-        llm = ChatLiteLLMBridge(model="m", max_tokens=100, frequency_penalty=0.5, presence_penalty=0.3)
-        kwargs = llm._build_kwargs([HumanMessage(content="hi")], None)
-        assert kwargs["max_tokens"] == 100
-        assert kwargs["frequency_penalty"] == 0.5
-        assert kwargs["presence_penalty"] == 0.3
-
-
-# ---------------------------------------------------------------------------
-# TestGenerate
-# ---------------------------------------------------------------------------
-
-
-class TestGenerate:
-    """Tests for sync _generate."""
-
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
-    def test_generate_calls_completion(self, mock_completion):
-        """Verify _generate calls litellm.completion and parses response."""
-        mock_completion.return_value = mock_litellm_response(content="Hello world", usage=make_usage())
-        llm = ChatLiteLLMBridge(model="test/model")
-        result = llm._generate([HumanMessage(content="hi")])
-
-        mock_completion.assert_called_once()
-        assert result.generations[0].message.content == "Hello world"
-
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
-    def test_generate_stores_token_usage(self, mock_completion):
-        """Verify token_usage is stored in last_token_usage."""
-        mock_completion.return_value = mock_litellm_response(
-            content="hi", usage=make_usage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
-        )
-        llm = ChatLiteLLMBridge(model="test/model")
-        llm._generate([HumanMessage(content="hi")])
-
-        from server.app.api.v1.schemas.chat import TokenUsage
-
-        assert llm.last_token_usage == TokenUsage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
-
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
-    def test_generate_with_tool_calls(self, mock_completion):
-        """Verify tool calls in response are parsed into AIMessage."""
-        tc = MagicMock()
-        tc.function.name = "get_weather"
-        tc.function.arguments = '{"city": "Paris"}'
-        tc.id = "call_1"
-        mock_completion.return_value = mock_litellm_response(content="", tool_calls=[tc])
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        result = llm._generate([HumanMessage(content="hi")])
-
-        msg = result.generations[0].message
-        assert isinstance(msg, AIMessage)
-        assert len(msg.tool_calls) == 1
-        assert msg.tool_calls[0]["name"] == "get_weather"
-
-
-# ---------------------------------------------------------------------------
-# TestAGenerate
-# ---------------------------------------------------------------------------
-
-
-class TestAGenerate:
-    """Tests for async _agenerate."""
+        for chunk in emitted:
+            assert isinstance(chunk.message, AIMessageChunk)
+            assert isinstance(chunk.message.content, str), (
+                "chunk.content must be a flat string — list-shaped reasoning blocks "
+                "would persist into LangGraph's aggregated message + chat history"
+            )
 
     @pytest.mark.anyio
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
-    async def test_agenerate_calls_acompletion(self, mock_acompletion):
-        """Verify _agenerate calls litellm.acompletion."""
-        mock_acompletion.return_value = mock_litellm_response(content="async hello", usage=make_usage())
-        llm = ChatLiteLLMBridge(model="test/model")
-        result = await llm._agenerate([HumanMessage(content="hi")])
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.acompletion_with_retry", new_callable=AsyncMock)
+    async def test_astream_flattens_reasoning_blocks_in_chunk_content(self, mock_acompletion):
+        """Async counterpart of the chunk-flatten test."""
 
-        mock_acompletion.assert_awaited_once()
-        assert result.generations[0].message.content == "async hello"
+        async def stream_with_reasoning():
+            yield {
+                "choices": [
+                    {
+                        "delta": {
+                            "role": "assistant",
+                            "content": "the answer",
+                            "reasoning_content": "let me think...",
+                        },
+                        "finish_reason": None,
+                    },
+                ],
+            }
 
-    @pytest.mark.anyio
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
-    async def test_agenerate_with_tool_calls(self, mock_acompletion):
-        """Verify tool calls in async response."""
-        tc = MagicMock()
-        tc.function.name = "search"
-        tc.function.arguments = '{"q": "test"}'
-        tc.id = "call_2"
-        mock_acompletion.return_value = mock_litellm_response(content="", tool_calls=[tc])
+        mock_acompletion.return_value = stream_with_reasoning()
+        llm = OracleChatLiteLLM(model="anthropic/claude-haiku")
+        emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
 
-        llm = ChatLiteLLMBridge(model="test/model")
-        result = await llm._agenerate([HumanMessage(content="hi")])
+        for chunk in emitted:
+            assert isinstance(chunk.message, AIMessageChunk)
+            assert isinstance(chunk.message.content, str)
 
-        msg = result.generations[0].message
-        assert isinstance(msg, AIMessage)
-        assert len(msg.tool_calls) == 1
-        assert msg.tool_calls[0]["name"] == "search"
-
-
-# ---------------------------------------------------------------------------
-# TestExtractUsage
-# ---------------------------------------------------------------------------
-
-
-class TestExtractUsage:
-    """Tests for _extract_usage."""
-
-    def test_extract_usage(self):
-        """Verify usage extraction from response."""
-        from server.app.api.v1.schemas.chat import TokenUsage
-
-        llm = ChatLiteLLMBridge(model="m")
-        resp = mock_litellm_response(usage=make_usage(10, 5, 15))
-        usage = llm._extract_usage(resp)
-        assert usage == TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
-
-    def test_none_usage(self):
-        """Verify None usage returns None."""
-        llm = ChatLiteLLMBridge(model="m")
-        resp = mock_litellm_response()
-        resp.usage = None
-        assert llm._extract_usage(resp) is None
-
-    def test_zero_total_tokens_fallback(self):
-        """Verify total_tokens falls back to prompt+completion when 0."""
-        llm = ChatLiteLLMBridge(model="m")
-        resp = mock_litellm_response(usage=make_usage(10, 5, 0))
-        usage = llm._extract_usage(resp)
-        assert usage is not None
-        assert usage.total_tokens == 15
-
-
-# ---------------------------------------------------------------------------
-# TestStream
-# ---------------------------------------------------------------------------
-
-
-class TestStream:
-    """Tests for sync _stream."""
-
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
-    def test_stream_yields_chunks(self, mock_completion):
-        """Verify _stream yields ChatGenerationChunk."""
-        chunks = [
-            make_stream_chunk(content="Hello"),
-            make_stream_chunk(content=" world"),
-        ]
-        mock_completion.return_value = iter(chunks)
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        results = list(llm._stream([HumanMessage(content="hi")]))
-
-        assert len(results) == 2
-        assert results[0].message.content == "Hello"
-        assert results[1].message.content == " world"
-
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
-    def test_stream_sets_stream_flag(self, mock_completion):
-        """Verify stream=True is set in kwargs."""
-        mock_completion.return_value = iter([])
-        llm = ChatLiteLLMBridge(model="test/model")
-        list(llm._stream([HumanMessage(content="hi")]))
-
-        call_kwargs = mock_completion.call_args[1]
-        assert call_kwargs["stream"] is True
-
-
-# ---------------------------------------------------------------------------
-# TestAStream
-# ---------------------------------------------------------------------------
-
-
-class TestAStream:
-    """Tests for async _astream."""
-
-    @pytest.mark.anyio
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
-    async def test_astream_yields_chunks(self, mock_acompletion):
-        """Verify _astream yields ChatGenerationChunk."""
-        chunks = [
-            make_stream_chunk(content="async "),
-            make_stream_chunk(content="stream"),
-        ]
-        mock_acompletion.return_value = async_iter(chunks)
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        results = []
-        async for chunk in llm._astream([HumanMessage(content="hi")]):
-            results.append(chunk)
-
-        assert len(results) == 2
-        assert results[0].message.content == "async "
-        assert results[1].message.content == "stream"
-
-    @pytest.mark.anyio
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
-    async def test_astream_accumulates_usage(self, mock_acompletion):
-        """Verify token usage is accumulated from stream chunks."""
-        chunks = [
-            make_stream_chunk(content="hi"),
-            make_usage_chunk(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        ]
-        mock_acompletion.return_value = async_iter(chunks)
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        async for _ in llm._astream([HumanMessage(content="hi")]):
-            pass
-
-        assert llm.last_token_usage == {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15,
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_create_chat_result_flattens_reasoning_content_to_plain_text(self, mock_completion):
+        """
+        Sessions stringify ``msg.content`` for the answer;
+        list content renders the reasoning JSON in the user-visible answer.
+        """
+        mock_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "the answer",
+                        "reasoning_content": "let me think about this carefully",
+                    },
+                    "finish_reason": "stop",
+                },
+            ],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
         }
+        llm = OracleChatLiteLLM(model="anthropic/claude-haiku")
+        result = llm._generate([HumanMessage(content="hi")])
 
-    @pytest.mark.anyio
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
-    async def test_astream_no_usage_when_zero(self, mock_acompletion):
-        """Verify last_token_usage stays None when no usage in chunks."""
-        chunks = [make_stream_chunk(content="hi")]
-        mock_acompletion.return_value = async_iter(chunks)
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        llm.last_token_usage = None
-        async for _ in llm._astream([HumanMessage(content="hi")]):
-            pass
-
-        assert llm.last_token_usage is None
+        msg = result.generations[0].message
+        assert isinstance(msg, AIMessage)
+        assert isinstance(msg.content, str), "content must be flattened to plain text for session consumers"
+        assert msg.content == "the answer"
+        # Reasoning is still accessible to callers that want it (e.g. a future thinking-display UI).
+        assert msg.additional_kwargs.get("reasoning_content") == "let me think about this carefully"
 
 
-# ---------------------------------------------------------------------------
-# TestBindTools
-# ---------------------------------------------------------------------------
+class TestOracleChatLiteLLMNonOllama:
+    """For non-Ollama models, OracleChatLiteLLM defers entirely to upstream."""
 
-
-class TestBindTools:
-    """Tests for bind_tools."""
-
-    def test_bind_tools_returns_runnable_binding(self):
-        """Verify bind_tools returns a RunnableBinding with tools in kwargs."""
-        from langchain_core.runnables import RunnableBinding
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        tools = [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]
-        bound = llm.bind_tools(tools)
+    def test_bind_tools_skips_sanitization(self):
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        tool = {"type": "function", "function": {"name": "my-tool", "parameters": {}}}
+        bound = llm.bind_tools([tool])
         assert isinstance(bound, RunnableBinding)
-        assert "tools" in bound.kwargs
+        bound_tools = bound.kwargs["tools"]
+        assert bound_tools[0]["function"]["name"] == "my-tool"
 
-    def test_bind_tools_converts_pydantic_model(self):
-        """Verify Pydantic model is converted to OpenAI tool format."""
-        from langchain_core.runnables import RunnableBinding
-        from pydantic import BaseModel, Field
+    def test_bind_tools_maps_false_tool_choice_to_none(self):
+        """``tool_choice=False`` must not reach LiteLLM as a literal boolean.
 
-        class GetWeather(BaseModel):
-            """Get weather for a city."""
-
-            city: str = Field(description="City name")
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        bound = cast(RunnableBinding, llm.bind_tools([GetWeather]))
-        tool = bound.kwargs["tools"][0]
-        assert tool["type"] == "function"
-        assert tool["function"]["name"] == "GetWeather"
-
-    def test_bind_tools_true_tool_choice_becomes_required(self):
-        """Verify bool tool_choice=True becomes 'required'."""
-        from langchain_core.runnables import RunnableBinding
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        tools = [{"type": "function", "function": {"name": "f", "parameters": {}}}]
-        bound = cast(RunnableBinding, llm.bind_tools(tools, tool_choice=True))
-        assert bound.kwargs["tool_choice"] == "required"
-
-    def test_bind_tools_false_tool_choice_becomes_none(self):
-        """Verify bool tool_choice=False becomes 'none' (disables tools)."""
-        from langchain_core.runnables import RunnableBinding
-
-        llm = ChatLiteLLMBridge(model="test/model")
-        tools = [{"type": "function", "function": {"name": "f", "parameters": {}}}]
-        bound = cast(RunnableBinding, llm.bind_tools(tools, tool_choice=False))
+        OpenAI/LiteLLM tool APIs accept ``"none" | "auto" | "required"`` or a
+        function dict. Upstream ``ChatLiteLLM.bind_tools`` only normalizes
+        ``True`` / ``"any"`` → ``"required"`` and explicitly leaves ``False``
+        as-is — so the caller's intent ("disable tool use") would be sent as
+        ``tool_choice: false`` and rejected by the provider.
+        """
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        tool = {"type": "function", "function": {"name": "my-tool", "parameters": {}}}
+        bound = llm.bind_tools([tool], tool_choice=False)
+        assert isinstance(bound, RunnableBinding)
         assert bound.kwargs["tool_choice"] == "none"
 
-    def test_bind_tools_string_tool_choice_passthrough(self):
-        """Verify string tool_choice passes through unchanged."""
-        from langchain_core.runnables import RunnableBinding
 
-        llm = ChatLiteLLMBridge(model="test/model")
-        tools = [{"type": "function", "function": {"name": "f", "parameters": {}}}]
-        bound = cast(RunnableBinding, llm.bind_tools(tools, tool_choice="auto"))
-        assert bound.kwargs["tool_choice"] == "auto"
+class TestOracleChatLiteLLMFalseToolChoiceOllama:
+    """The Ollama branch must apply the same false-to-none normalization."""
 
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.completion")
-    def test_bound_tools_passed_to_litellm(self, mock_completion):
-        """Verify bound tools are passed through to litellm.completion."""
-        mock_completion.return_value = mock_litellm_response(content="ok", usage=make_usage())
-        llm = ChatLiteLLMBridge(model="test/model")
-        tools = [{"type": "function", "function": {"name": "f", "parameters": {}}}]
-        bound = llm.bind_tools(tools, tool_choice="auto")
-        bound.invoke([HumanMessage(content="hi")])
+    def test_bind_tools_maps_false_tool_choice_to_none(self):
+        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        tool = {"type": "function", "function": {"name": "sqlcl_list-connections", "parameters": {}}}
+        bound = llm.bind_tools([tool], tool_choice=False)
+        assert isinstance(bound, RunnableBinding)
+        assert bound.kwargs["tool_choice"] == "none"
 
-        call_kwargs = mock_completion.call_args[1]
-        assert "tools" in call_kwargs
-        assert call_kwargs["tool_choice"] == "auto"
+
+class TestOracleChatLiteLLMOllama:
+    """Ollama models get tool-name sanitization and tool-result contextualization."""
+
+    def test_bind_tools_sanitizes_hyphens(self):
+        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        tool = {"type": "function", "function": {"name": "sqlcl_list-connections", "parameters": {}}}
+        bound = llm.bind_tools([tool])
+        assert isinstance(bound, RunnableBinding)
+        bound_tools = bound.kwargs["tools"]
+        assert bound_tools[0]["function"]["name"] == "sqlcl_list_connections"
+
+    def test_bind_tools_threads_name_map_for_unsanitization(self):
+        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        tool = {"type": "function", "function": {"name": "sqlcl_list-connections", "parameters": {}}}
+        bound = llm.bind_tools([tool])
+        assert isinstance(bound, RunnableBinding)
+        name_map = bound.kwargs.get("_ollama_name_map")
+        assert name_map == {"sqlcl_list_connections": "sqlcl_list-connections"}
+
+    def test_tool_message_content_flattened_and_contextualized(self):
+        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        tool_msg = ToolMessage(content=[{"type": "text", "text": "42"}], tool_call_id="c1", name="get_count")
+        normalized = llm._normalize_tool_message(tool_msg)
+        assert isinstance(normalized, ToolMessage)
+        # Ollama small models hallucinate on terse tool results → prefix with tool name.
+        assert "get_count" in normalized.content
+        assert "42" in normalized.content
+
+    def test_tool_message_content_flattened_only_for_non_ollama(self):
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        tool_msg = ToolMessage(content=[{"type": "text", "text": "42"}], tool_call_id="c1", name="get_count")
+        normalized = llm._normalize_tool_message(tool_msg)
+        assert normalized.content == "42"
+
+
+class TestClientParamsOverrides:
+    """Per-request scoping + patches for upstream parameter omissions."""
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_api_key_scoped_per_request_not_via_global_mutation(self, mock_completion):
+        """Concurrent multi-client: api_key must be in kwargs, not on the litellm module.
+
+        Upstream ``ChatLiteLLM._client_params`` mutates ``self.client.api_key`` (the
+        litellm module). With concurrent requests for different clients this races —
+        one client's auth can overwrite another's mid-await.
+        """
+        import litellm
+
+        original_api_key = litellm.api_key
+        try:
+            mock_completion.return_value = _non_streaming_response("ok")
+            llm = OracleChatLiteLLM(model="openai/gpt-4o", api_key="sk-client-A")
+            llm._generate([HumanMessage(content="hi")])
+            kwargs = mock_completion.call_args.kwargs
+            assert kwargs.get("api_key") == "sk-client-A"
+            # Critical: the litellm module's api_key must NOT have been mutated.
+            assert litellm.api_key == original_api_key, (
+                "global litellm.api_key changed during per-request scoping check"
+            )
+        finally:
+            litellm.api_key = original_api_key
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_api_base_passed_as_base_url(self, mock_completion):
+        """Ollama tool-call parsing fails when ``api_base`` is a call kwarg; use ``base_url``."""
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="ollama/qwen3:8b", api_base="http://localhost:11434")
+        llm._generate([HumanMessage(content="hi")])
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs.get("base_url") == "http://localhost:11434"
+        assert "api_base" not in kwargs, "api_base must not be passed as a kwarg — breaks Ollama tool calls"
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_top_p_forwarded(self, mock_completion):
+        """Upstream's ``_default_params`` omits ``top_p`` even though it's a documented field."""
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="openai/gpt-4o", top_p=0.95)
+        llm._generate([HumanMessage(content="hi")])
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs.get("top_p") == 0.95
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_generate_with_explicit_stream_false_overrides_instance_streaming(self, mock_completion):
+        """Caller-supplied ``stream=False`` must reach litellm even when ``streaming=True`` on the model.
+
+        Upstream's ``_generate(stream=False)`` only flips its branch decision;
+        ``params["stream"]`` still inherits ``self.streaming`` and litellm
+        receives ``stream=True``, returning a stream object that
+        ``_create_chat_result`` cannot parse.
+        """
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="openai/gpt-4o", streaming=True)
+        llm._generate([HumanMessage(content="hi")], stream=False)
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs.get("stream") is False, "explicit stream=False must override self.streaming"
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_drop_params_true_for_provider_compatibility(self, mock_completion):
+        """``drop_params=True`` lets LiteLLM silently drop OpenAI params a provider rejects.
+
+        Without this, e.g. Mistral fails on the default ``presence_penalty=0.0`` /
+        ``frequency_penalty=0.0`` inherited from ``LanguageModelParameters`` — LiteLLM
+        raises ``UnsupportedParamsError`` before the call reaches the provider.
+        The previous bridge always set this; the migration must preserve it.
+        """
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="mistral/mistral-large")
+        llm._generate([HumanMessage(content="hi")])
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs.get("drop_params") is True
+
+
+class TestStreamingFallback:
+    """OracleChatLiteLLM falls back to non-streaming when the provider rejects stream=True."""
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_stream_falls_back_on_eager_setup_failure(self, mock_completion):
+        def fake_completion(**kwargs):
+            if kwargs.get("stream"):
+                raise RuntimeError("provider does not support streaming")
+            return _non_streaming_response("non-streamed answer", prompt=4, completion=2)
+
+        mock_completion.side_effect = fake_completion
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        emitted = list(llm._stream([HumanMessage(content="hi")]))
+
+        ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
+        contents = [m.content for m in ai_messages if isinstance(m.content, str) and m.content]
+        assert "non-streamed answer" in "".join(contents)
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_stream_falls_back_on_lazy_iteration_failure(self, mock_completion):
+        def lazy_failing_stream():
+            raise RuntimeError("provider rejected stream on first read")
+            yield  # pragma: no cover
+
+        def fake_completion(**kwargs):
+            if kwargs.get("stream"):
+                return lazy_failing_stream()
+            return _non_streaming_response("non-streamed answer", prompt=4, completion=2)
+
+        mock_completion.side_effect = fake_completion
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        emitted = list(llm._stream([HumanMessage(content="hi")]))
+
+        ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
+        assert "non-streamed answer" in "".join(m.content for m in ai_messages if isinstance(m.content, str))
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_stream_propagates_failure_after_content_yielded(self, mock_completion):
+        def stream_then_fail():
+            yield from _stream_chunks("partial")
+            raise RuntimeError("connection dropped mid-stream")
+
+        mock_completion.return_value = stream_then_fail()
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        with pytest.raises(RuntimeError, match="connection dropped"):
+            list(llm._stream([HumanMessage(content="hi")]))
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_stream_fallback_overrides_instance_streaming_flag(self, mock_completion):
+        """Fallback retry must force ``stream=False`` even when the model has ``streaming=True``.
+
+        Upstream's ``_generate(stream=False)`` only controls the branch
+        decision; the params dict it builds from ``_default_params`` still
+        carries ``stream=self.streaming``. So a model with instance-level
+        streaming would re-issue *another* streaming request inside the
+        "fallback" path — exactly the call that just failed.
+        """
+        call_count = 0
+
+        def fake_completion(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                assert kwargs.get("stream") is True, "first attempt must be streaming"
+                raise RuntimeError("provider does not support streaming")
+            assert kwargs.get("stream") is False, "fallback retry must force stream=False"
+            return _non_streaming_response("ok", prompt=2, completion=1)
+
+        mock_completion.side_effect = fake_completion
+        llm = OracleChatLiteLLM(model="openai/gpt-4o", streaming=True)
+        list(llm._stream([HumanMessage(content="hi")]))
+        assert call_count == 2
 
     @pytest.mark.anyio
-    @patch("server.app.runtime.langgraph.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
-    async def test_bound_tools_passed_to_litellm_async(self, mock_acompletion):
-        """Verify bound tools are passed through to litellm.acompletion."""
-        mock_acompletion.return_value = mock_litellm_response(content="ok", usage=make_usage())
-        llm = ChatLiteLLMBridge(model="test/model")
-        tools = [{"type": "function", "function": {"name": "f", "parameters": {}}}]
-        bound = llm.bind_tools(tools, tool_choice="auto")
-        await bound.ainvoke([HumanMessage(content="hi")])
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.acompletion_with_retry", new_callable=AsyncMock)
+    async def test_astream_falls_back_on_eager_setup_failure(self, mock_acompletion):
+        async def fake_acompletion(**kwargs):
+            if kwargs.get("stream"):
+                raise RuntimeError("provider does not support streaming")
+            return _non_streaming_response("non-streamed answer", prompt=4, completion=2)
 
-        call_kwargs = mock_acompletion.call_args[1]
-        assert "tools" in call_kwargs
-        assert call_kwargs["tool_choice"] == "auto"
+        mock_acompletion.side_effect = fake_acompletion
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
+
+        ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
+        assert "non-streamed answer" in "".join(m.content for m in ai_messages if isinstance(m.content, str))
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.acompletion_with_retry", new_callable=AsyncMock)
+    async def test_astream_falls_back_on_lazy_iteration_failure(self, mock_acompletion):
+        async def lazy_failing_stream():
+            raise RuntimeError("provider rejected stream on first read")
+            yield  # pragma: no cover
+
+        async def fake_acompletion(**kwargs):
+            if kwargs.get("stream"):
+                return lazy_failing_stream()
+            return _non_streaming_response("non-streamed answer", prompt=4, completion=2)
+
+        mock_acompletion.side_effect = fake_acompletion
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
+
+        ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
+        assert "non-streamed answer" in "".join(m.content for m in ai_messages if isinstance(m.content, str))
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.acompletion_with_retry", new_callable=AsyncMock)
+    async def test_astream_propagates_failure_after_content_yielded(self, mock_acompletion):
+        async def stream_then_fail():
+            for chunk in _stream_chunks("partial"):
+                yield chunk
+            raise RuntimeError("connection dropped mid-stream")
+
+        mock_acompletion.return_value = stream_then_fail()
+        llm = OracleChatLiteLLM(model="openai/gpt-4o")
+        with pytest.raises(RuntimeError, match="connection dropped"):
+            [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.acompletion_with_retry", new_callable=AsyncMock)
+    async def test_astream_fallback_overrides_instance_streaming_flag(self, mock_acompletion):
+        """Async counterpart of the sync fallback-stream-override test."""
+        call_count = 0
+
+        async def fake_acompletion(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                assert kwargs.get("stream") is True, "first attempt must be streaming"
+                raise RuntimeError("provider does not support streaming")
+            assert kwargs.get("stream") is False, "fallback retry must force stream=False"
+            return _non_streaming_response("ok", prompt=2, completion=1)
+
+        mock_acompletion.side_effect = fake_acompletion
+        llm = OracleChatLiteLLM(model="openai/gpt-4o", streaming=True)
+        [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
+        assert call_count == 2
+
+
+class TestOllamaToolCallUnsanitization:
+    """Tool calls returned from the LLM have their original (hyphenated) names restored."""
+
+    def test_unsanitize_chunk_restores_all_three_tool_call_fields(self):
+        """``AIMessageChunk`` derives ``tool_calls`` from ``tool_call_chunks`` at construction.
+
+        Mutating only ``tool_call_chunks`` after the fact leaves the parsed
+        ``tool_calls`` (and the raw OpenAI dict in ``additional_kwargs``) with
+        the sanitized name — consumers reading the standard ``.tool_calls``
+        field would dispatch to the wrong (unregistered) tool name.
+        """
+        from server.app.runtime.langgraph.adapters.litellm import _unsanitize_chunk_tool_calls
+
+        chunk = ChatGenerationChunk(
+            message=AIMessageChunk(
+                content="",
+                tool_call_chunks=[
+                    {
+                        "type": "tool_call_chunk",
+                        "id": "c1",
+                        "name": "sqlcl_list_connections",
+                        "args": "{}",
+                        "index": 0,
+                    },
+                ],
+                additional_kwargs={
+                    "tool_calls": [
+                        {
+                            "id": "c1",
+                            "type": "function",
+                            "function": {"name": "sqlcl_list_connections", "arguments": "{}"},
+                        },
+                    ],
+                },
+            ),
+        )
+
+        _unsanitize_chunk_tool_calls(chunk, {"sqlcl_list_connections": "sqlcl_list-connections"})
+
+        msg = chunk.message
+        assert isinstance(msg, AIMessageChunk)
+        assert msg.tool_call_chunks[0]["name"] == "sqlcl_list-connections"
+        assert msg.tool_calls and msg.tool_calls[0]["name"] == "sqlcl_list-connections"
+        assert msg.additional_kwargs["tool_calls"][0]["function"]["name"] == "sqlcl_list-connections"
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.acompletion_with_retry", new_callable=AsyncMock)
+    async def test_agenerate_unsanitizes_tool_call_names(self, mock_acompletion):
+        # Provider returns the *sanitized* name we sent; bridge restores original on the way back.
+        mock_acompletion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {"name": "sqlcl_list_connections", "arguments": "{}"},
+                            },
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                },
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+
+        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        bound = llm.bind_tools(
+            [{"type": "function", "function": {"name": "sqlcl_list-connections", "parameters": {}}}],
+        )
+        result = await bound.ainvoke([HumanMessage(content="list them")])
+
+        assert isinstance(result, AIMessage)
+        assert result.tool_calls
+        assert result.tool_calls[0]["name"] == "sqlcl_list-connections"

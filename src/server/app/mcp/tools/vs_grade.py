@@ -4,21 +4,20 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 MCP tool: Document Grading for vector search results.
 """
-# spell-checker:ignore acompletion litellm fastmcp
+# spell-checker:ignore acompletion litellm fastmcp ainvoke
 
 import json
 import logging
-from typing import Optional, Union, cast
+from typing import Optional, Union
 
 from fastmcp import Context
-from litellm import acompletion
 from litellm.exceptions import APIConnectionError
-from litellm.types.utils import ModelResponse
 
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.mcp.prompts.registry import find_prompt
 from server.app.models.litellm_utils import LiteLlmModelSpec
+from server.app.runtime.langgraph.adapters.litellm import ainvoke_text_from_spec
 
 from .schemas import VectorGradeResponse, get_oci_profile
 
@@ -30,7 +29,7 @@ def _format_documents(documents: list[dict]) -> str:
     return "\n\n".join(doc["page_content"] for doc in documents if "page_content" in doc)
 
 
-async def _grade_documents_with_llm(question: str, documents_str: str, ll_config: dict) -> str:
+async def _grade_documents_with_llm(question: str, documents_str: str, spec: LiteLlmModelSpec) -> str:
     """Grade documents using LLM."""
     prompt_cfg = find_prompt("optimizer_vs-grade")
     if not prompt_cfg:
@@ -40,15 +39,7 @@ async def _grade_documents_with_llm(question: str, documents_str: str, ll_config
     grade_template = prompt_cfg.text
     formatted_prompt = grade_template.format(question=question, documents=documents_str)
 
-    response = cast(
-        ModelResponse,
-        await acompletion(
-            messages=[{"role": "user", "content": formatted_prompt}],
-            stream=False,
-            **ll_config,
-        ),
-    )
-    relevant = response["choices"][0]["message"]["content"].lower()
+    relevant = (await ainvoke_text_from_spec(spec, formatted_prompt)).lower()
     LOGGER.info("Grading completed. Relevant: %s", relevant)
 
     if "yes" in relevant:
@@ -77,10 +68,10 @@ async def _vs_grade_impl(
         if vector_search.grade and documents:
             grading_performed = True
             oci_profile = get_oci_profile(client)
-            ll_config = LiteLlmModelSpec.from_ll_model_settings(cs.ll_model, oci_profile).to_litellm_kwargs()
+            spec = LiteLlmModelSpec.from_ll_model_settings(cs.ll_model, oci_profile)
 
             try:
-                relevant = await _grade_documents_with_llm(question, documents_str, ll_config)
+                relevant = await _grade_documents_with_llm(question, documents_str, spec)
             except APIConnectionError as ex:
                 LOGGER.error("Failed to grade; marking all results relevant: %s", ex)
                 relevant = "yes"
