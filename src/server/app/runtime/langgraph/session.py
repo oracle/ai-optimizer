@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 LangGraph session wrappers for flow and agent graphs.
 """
-# spell-checker: ignore vecsearch langgraph litellm
+# spell-checker: ignore litellm ainvoke astream checkpointer sqlcl
 
 import asyncio
 import logging
@@ -54,11 +54,7 @@ async def _run_graph_with_streaming(
     top_run_id: Optional[str] = None
     final_output: Optional[Dict[str, Any]] = None
     streamed = False
-    # ``include_types`` skips dispatch for tool/retriever/prompt event subtrees that
-    # this loop doesn't read — measurable on flow graphs with many non-LLM nodes.
-    async for event in graph.astream_events(
-        inputs, config=config, version="v2", include_types=["chat_model", "chain"],
-    ):
+    async for event in graph.astream_events(inputs, config=config, version="v2"):
         kind = event.get("event")
         if kind == "on_chain_start" and top_run_id is None:
             top_run_id = event.get("run_id")
@@ -82,6 +78,7 @@ def _aggregate_usage_callback(callback: UsageMetadataCallbackHandler) -> Optiona
     consumes the three top-level totals today.
     """
     by_model = getattr(callback, "usage_metadata", None) or {}
+    LOGGER.warning("DEBUG _aggregate_usage_callback: by_model=%r", by_model)
     if not by_model:
         return None
     totals = reduce(add_usage, by_model.values())

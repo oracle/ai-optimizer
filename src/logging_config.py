@@ -86,6 +86,11 @@ def configure_logging(log_level: str | None = None) -> None:
                     "level": "WARNING",
                     "propagate": False,
                 },
+                "transformers": {
+                    "handlers": ["console"],
+                    "level": "ERROR",
+                    "propagate": False,
+                },
                 "uvicorn": {
                     "handlers": ["console"],
                     "level": level,
@@ -123,6 +128,18 @@ def configure_logging(log_level: str | None = None) -> None:
     # Filter applied to the logger (not handler) so it runs before ALL handlers,
     # including any Streamlit adds after this configuration.
     logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").addFilter(_drop_script_run_context)
+
+    # ``transformers`` installs its own ``StreamHandler`` with a non-standard
+    # ``[transformers] ...`` format. Remove it so messages flow through the
+    # standard handler configured above (matching the project's log format).
+    try:
+        from transformers.utils import logging as _transformers_logging
+
+        _transformers_logging.disable_default_handler()
+        # Keep this in sync with the dictConfig threshold above; the helper mutates the logger level.
+        _transformers_logging.set_verbosity_error()
+    except ImportError:
+        pass
 
     for handler in logging.getLogger().handlers:
         handler.addFilter(_inject_version)

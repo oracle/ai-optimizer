@@ -8,7 +8,7 @@ Provides:
 - LiteLlmAgentSpecLoader: combines the loader and converter roles, handling
   LiteLlmConfig → OracleChatLiteLLM and merging sensitive_headers into MCP connection headers.
 """
-# spell-checker: ignore ollama agentspec agentspecloader checkpointer
+# spell-checker: ignore ollama agenerate agentspec agentspecloader ainvoke astream checkpointer
 # spell-checker: ignore clienttransport langgraphconverter litellm pyagentspec serialises
 
 import logging
@@ -150,6 +150,12 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
                 api_base=llm_config.api_base,
                 max_tokens=llm_config.max_tokens,
                 model_kwargs=model_kwargs,
+                # ``streaming=True`` makes ``_agenerate`` route through ``_astream`` when
+                # graph nodes call ``await llm.ainvoke(...)`` under ``astream_events``.
+                # Without it, ``should_stream = stream if stream is not None else self.streaming``
+                # falls to ``False`` and no ``on_chat_model_stream`` events fire — the
+                # ``session.execute`` no-stream fallback then emits the answer as a single chunk.
+                streaming=True,
             )
         return super()._llm_convert_to_langgraph(llm_config, config)
 

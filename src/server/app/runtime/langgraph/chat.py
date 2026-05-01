@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 LangGraph chat orchestration — routing, session management, memory, and streaming.
 """
-# spell-checker: ignore litellm vecsearch langgraph agentspec acompletion
+# spell-checker: ignore checkpointer vecsearch agentspec astream litellm
 
 import asyncio
 import logging
