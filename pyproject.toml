@@ -37,6 +37,7 @@ server = [
     "langchain-fireworks==1.2.0",
     "langchain-google-genai==4.2.2",
     "langchain-ibm==1.0.7",
+    "langchain-litellm==0.6.4",
     "langchain-mcp-adapters==0.2.2",
     "langchain-mistralai==1.1.2",
     "langchain-oci==0.2.5",
@@ -47,7 +48,6 @@ server = [
     "llama-index==0.14.21",
     "matplotlib==3.10.9",
     "oci~=2.0",
-    "opentelemetry-exporter-otlp-proto-grpc==1.41.1",
     "pyagentspec==26.1.0",
     "pypdf==6.10.2",
     "umap-learn==0.5.12"
@@ -76,13 +76,6 @@ dev = [
 all = [
     "ai-optimizer[server]",
     "ai-optimizer[client]",
-]
-
-# - all: all-in-one for testing/development
-all-dev = [
-    "ai-optimizer[server]",
-    "ai-optimizer[client]",
-    "ai-optimizer[dev]",
 ]
 
 [tool.setuptools]
