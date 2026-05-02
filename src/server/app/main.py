@@ -36,6 +36,9 @@ from server.app.models.connectivity import check_model_reachability
 from server.app.models.ollama import load_ollama_models
 from server.app.models.registry import apply_env_overrides, load_default_models
 from server.app.oci.registry import load_oci_profiles
+from server.app.otel import init_tracing, instrument_fastapi
+
+init_tracing()
 
 LOGGER = logging.getLogger(__name__)
 #############################################################################
@@ -141,6 +144,7 @@ app = FastAPI(
         "url": "http://oss.oracle.com/licenses/upl",
     },
 )
+instrument_fastapi(app)
 
 app.include_router(v1_router, prefix=API_PREFIX)
 app.include_router(mcp_router, prefix=MCP_PREFIX)

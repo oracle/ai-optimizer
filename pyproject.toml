@@ -58,10 +58,13 @@ client = [
     "streamlit==1.57.0",
 ]
 
-# - otel: opentelemetry collector
+# - otel: opentelemetry collector for server-side observability
 otel = [
     "opentelemetry-distro==0.62b1",
-    "opentelemetry-exporter-otlp==1.41.1"
+    "opentelemetry-exporter-otlp==1.41.1",
+    "opentelemetry-instrumentation-fastapi==0.62b1",
+    "opentelemetry-instrumentation-httpx==0.62b1",
+    "opentelemetry-instrumentation-requests==0.62b1"
 ]
 
 # - dev: for testing/development
