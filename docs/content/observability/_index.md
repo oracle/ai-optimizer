@@ -186,11 +186,8 @@ Within Kubernetes, `service.instance.id` is auto-populated from `HOSTNAME` (the 
 | `OTEL_TRACES_EXPORTER` set to a value other than `otlp`, `console`, or `none` | Unsupported values are silently dropped | Use a supported value or set both: `OTEL_TRACES_EXPORTER=otlp,console` |
 | Per-request overhead but no spans recorded | OTLP exporter package missing while `OTEL_TRACES_EXPORTER=otlp`; the SDK now bails before installing instrumentation in this case | Reinstall with `[otel]`; check startup logs for the `not installed; skipping` warning |
 
-## Verifying End-to-End with SigNoz
+## Backend-Specific Quickstarts
 
-The vendor walkthrough at <https://signoz.io/docs/langchain-observability/> remains a useful reference for standing up self-hosted SigNoz and confirming the data path. Once SigNoz is running and reachable:
+For step-by-step instructions on standing up a specific OTLP backend and pointing the server at it, see:
 
-1. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to the SigNoz OTel Collector URL.
-2. Restart the server.
-3. Issue any request (e.g. `GET /v1/healthz`).
-4. In SigNoz, the `ai-optimizer-server` service should appear in the Services list within a minute, and the request should be visible as a trace in the Traces view.
+- [SigNoz Quickstart]({{% relref "/observability/signoz" %}})
