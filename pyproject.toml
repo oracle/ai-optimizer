@@ -18,7 +18,7 @@ authors = [
 dependencies = [
     "langchain-core==1.3.2",
     "httpx==0.28.1",
-    "oracledb~=3.1",
+    "oracledb~=4.0",
     "plotly==6.7.0",
     "pydantic-settings==2.14.0"
 ]
@@ -34,15 +34,15 @@ server = [
     "fastmcp==3.2.4",
     "giskard==2.19.1",
     "langchain-cohere==0.5.1",
-    "langchain-fireworks==1.2.0",
+    "langchain-fireworks==1.3.0",
     "langchain-google-genai==4.2.2",
     "langchain-ibm==1.0.7",
     "langchain-litellm==0.6.4",
     "langchain-mcp-adapters==0.2.2",
-    "langchain-mistralai==1.1.2",
+    "langchain-mistralai==1.1.3",
     "langchain-oci==0.2.5",
     "langchain-ollama==1.1.0",
-    "langchain-oracledb==1.2.0",
+    "langchain-oracledb==1.3.0",
     "langgraph==1.1.10",
     "litellm==1.83.14",
     "llama-index==0.14.21",
