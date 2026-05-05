@@ -168,7 +168,7 @@ class RedactingFilter(logging.Filter):
         self.key_source = source
         self._kv = _build_kv_pattern(keys)
 
-    def _scrub(self, text: str) -> str:
+    def scrub(self, text: str) -> str:
         # Preserve the surrounding quote (empty for bare keys, ``"`` or ``'``
         # for quoted keys) so the redacted line keeps its original shape.
         text = self._kv.sub(lambda m: f"{m['q']}{m['k']}{m['q']}{m['sep']}{REDACTED}", text)
@@ -180,7 +180,7 @@ class RedactingFilter(logging.Filter):
             msg = record.getMessage()
         except Exception:
             return True
-        scrubbed = self._scrub(msg)
+        scrubbed = self.scrub(msg)
         if scrubbed != msg:
             record.msg = scrubbed
             record.args = ()

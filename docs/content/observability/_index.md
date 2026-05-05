@@ -7,25 +7,42 @@ weight = 50
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker: ignore signoz jaeger tempo otlp parentbased traceidratio
+spell-checker: ignore quickstarts streamlit fzmp httpx instrumentor langchain litellm parentbased relref signoz traceidratio uvicorn
 -->
 
-The {{< short_app_ref >}} **Server** can emit [OpenTelemetry](https://opentelemetry.io) traces to any OTLP-compatible backend (e.g. [SigNoz](https://signoz.io), [Jaeger](https://www.jaegertracing.io), [Grafana Tempo](https://grafana.com/oss/tempo)). Tracing is **opt-in** — disabled by default and activated entirely via environment variables.
+The {{< short_app_ref >}} **Server** can emit [OpenTelemetry](https://opentelemetry.io) traces and logs to any OTLP-compatible backend (e.g. [SigNoz](https://signoz.io), [Jaeger](https://www.jaegertracing.io), [Grafana Tempo](https://grafana.com/oss/tempo)). Telemetry is **opt-in** — disabled by default and activated entirely via environment variables.
 
 ## What Is Instrumented
 
-Tracing covers HTTP-level activity on the server:
+Telemetry covers HTTP traffic, LangChain/LangGraph orchestration, LLM invocations, and application logs on the server:
 
-| Source | Spans Emitted |
-|---|---|
-| FastAPI | One `SERVER` span per inbound HTTP request, with route, method, status code, peer info |
-| `httpx` | One `CLIENT` span per outbound call (LLM provider APIs, MCP, etc.) |
-| `requests` | One `CLIENT` span per outbound call (used by the OCI SDK) |
+| Source | Signal | What's Captured |
+|---|---|---|
+| FastAPI | Trace | One `SERVER` span per inbound HTTP request, with route, method, status code, peer info |
+| LangChain / LangGraph | Trace | One span per chain, agent, tool, retriever, or graph node invocation. LLM calls (including those routed via `langchain-litellm`) carry semantic attributes — model name, prompt, response, prompt/completion token counts |
+| `httpx` | Trace | One `CLIENT` span per outbound call (LLM provider APIs, MCP, etc.) |
+| `requests` | Trace | One `CLIENT` span per outbound call (used by the OCI SDK) |
+| Python `logging` | Log | All log records emitted by application code, uvicorn, and dependencies, automatically correlated to the active trace and span |
+
+A typical chat request produces a tree like:
+
+```
+POST /v1/chat                            SERVER
+└── LangGraph invocation                 INTERNAL
+    ├── retrieve node                    INTERNAL
+    └── generate node                    INTERNAL
+        └── ChatLiteLLM.invoke           INTERNAL  ← model, tokens, prompt/response
+            └── HTTP POST <provider>     CLIENT    ← transport timing
+```
+
+The LangChain LLM span carries semantic LLM information (model, tokens, content); the child `httpx` span carries transport-level information (URL, status, duration). They are complementary, not duplicates.
+
+Log records emitted during the lifetime of any span carry that span's `trace_id` and `span_id`, so a backend can show the logs from a specific span when its trace is opened.
 
 The Streamlit **Client** is not instrumented; it is a thin REST client whose work is reflected in the server-side traces it triggers.
 
 {{% notice style="code" title="Not yet covered" icon="circle-info" %}}
-Internal LangGraph node execution, LLM token counts / costs, and FastMCP tool invocations are not yet instrumented. Only the HTTP boundaries above are traced today.
+FastMCP tool invocations are not yet directly instrumented. Tool calls made by the agent appear in traces (via the LangChain instrumentor and outbound `httpx` spans), but the FastMCP server-side dispatch is not yet wrapped in dedicated spans.
 {{% /notice %}}
 
 ## Enabling
@@ -79,9 +96,19 @@ The console exporter flushes synchronously per span and can produce significant 
 curl http://localhost:8000/v1/healthz
 ```
 
-In **console mode**, span JSON is printed to stdout immediately. In **backend mode**, the server logs `OTel tracing initialized: service=ai-optimizer-server exporters=['otlp']` at startup, and traces appear in the backend UI within a few seconds.
+In **console mode**, span JSON is printed to stdout immediately. In **backend mode**, the server logs `OTel telemetry initialized: service=ai-optimizer-server exporters=['otlp']` at startup; traces and logs then appear in the backend UI within a few seconds.
 
-If you do not see this log line, tracing did not initialize — check the [Troubleshooting](#troubleshooting) section below.
+If you do not see this log line, telemetry did not initialize — check the [Troubleshooting](#troubleshooting) section below.
+
+{{% notice style="code" title="Console mode and logs" icon="circle-info" %}}
+Log export to OTLP only activates when the OTLP trace exporter is active. With `OTEL_TRACES_EXPORTER=console` (debug mode), application logs continue to stream to stdout via the existing logging configuration; they are not duplicated to OTLP.
+{{% /notice %}}
+
+{{% notice style="code" title="Log export is opt-in (privacy)" icon="triangle-exclamation" %}}
+Application log export to OTLP is **disabled by default**, even when tracing is configured. Enable it with `AIO_OTEL_LOGS_ENABLED=true` only for backends approved to store application payloads.
+
+Log records can include chat request text, so review backend access and retention settings before enabling log export. Span payload visibility is controlled separately through the OpenInference settings below.
+{{% /notice %}}
 
 ## Environment Variable Reference
 
@@ -93,8 +120,10 @@ The {{< short_app_ref >}} honors the standard [OpenTelemetry SDK environment var
 |---|---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP receiver URL (all signals) | _(unset = OTLP disabled)_ |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace-specific endpoint (overrides the generic one) | _(unset)_ |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Log-specific endpoint (overrides the generic one) | _(unset)_ |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` or `http/protobuf` (all signals) | `grpc` |
 | `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Trace-specific protocol (overrides the generic one) | _(unset)_ |
+| `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | Log-specific protocol (overrides the generic one) | _(unset)_ |
 | `OTEL_EXPORTER_OTLP_INSECURE` | If `true`, skips TLS for gRPC OTLP. Required for plaintext local SigNoz. | `false` |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `k=v` headers (e.g. for vendor auth tokens) | _(unset)_ |
 
@@ -103,6 +132,8 @@ The {{< short_app_ref >}} honors the standard [OpenTelemetry SDK environment var
 | Variable | Description | Default |
 |---|---|---|
 | `OTEL_TRACES_EXPORTER` | Comma-separated list. Supported values: `otlp`, `console`, `none`. Unsupported values are ignored. | `otlp` |
+| `AIO_OTEL_LOGS_ENABLED` | Application log export to OTLP — opt-in. See callout below before enabling. | `false` |
+| `OTEL_LOGS_EXPORTER` | Set to `none` to disable log export when `AIO_OTEL_LOGS_ENABLED=true` is in effect. | `otlp` |
 
 ### Resource attributes
 
@@ -179,7 +210,7 @@ Within Kubernetes, `service.instance.id` is auto-populated from `HOSTNAME` (the 
 
 | Symptom | Likely Cause | Remedy |
 |---|---|---|
-| No `OTel tracing initialized` log line at startup | The `[otel]` extra is not installed, OR no exporter is configured | Re-run `pip install -e ".[server,otel]"`; set `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_TRACES_EXPORTER=console` |
+| No `OTel telemetry initialized` log line at startup | The `[otel]` extra is not installed, OR no exporter is configured | Re-run `pip install -e ".[server,otel]"`; set `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_TRACES_EXPORTER=console` |
 | Log line appears, but no traces in backend | gRPC TLS handshake failing against a plaintext collector | Set `OTEL_EXPORTER_OTLP_INSECURE=true`, or switch to `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` with a `http://` URL |
 | `OTLP grpc exporter requested but not installed` warning | The `opentelemetry-exporter-otlp` package is missing or partially installed | Reinstall with the `[otel]` extra |
 | Operator-set `OTEL_RESOURCE_ATTRIBUTES` value not visible on spans | Confused with a comma-delimited list — use commas, not spaces or semicolons | `OTEL_RESOURCE_ATTRIBUTES=k1=v1,k2=v2` |

@@ -36,9 +36,9 @@ from server.app.models.connectivity import check_model_reachability
 from server.app.models.ollama import load_ollama_models
 from server.app.models.registry import apply_env_overrides, load_default_models
 from server.app.oci.registry import load_oci_profiles
-from server.app.otel import init_tracing, instrument_fastapi
+from server.app.otel import init_telemetry, instrument_fastapi
 
-init_tracing()
+init_telemetry()
 
 LOGGER = logging.getLogger(__name__)
 #############################################################################

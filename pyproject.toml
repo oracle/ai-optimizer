@@ -64,7 +64,9 @@ otel = [
     "opentelemetry-exporter-otlp==1.41.1",
     "opentelemetry-instrumentation-fastapi==0.62b1",
     "opentelemetry-instrumentation-httpx==0.62b1",
-    "opentelemetry-instrumentation-requests==0.62b1"
+    "opentelemetry-instrumentation-logging==0.62b1",
+    "opentelemetry-instrumentation-requests==0.62b1",
+    "openinference-instrumentation-langchain==0.1.63"
 ]
 
 # - dev: for testing/development
@@ -118,12 +120,14 @@ markers = [
     "slow: Slow tests (deselect with '-m \"not slow\"')",
     "db: Tests requiring Oracle database container (deselect with '-m \"not db\"')",
 ]
+norecursedirs = ["tmp"]
 
 [tool.pyright]
 exclude = [
     "**/.venv",
     "build",
     "src/client/source",
+    "tmp/"
 ]
 
 [tool.ruff]

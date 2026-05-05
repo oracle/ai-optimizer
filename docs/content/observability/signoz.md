@@ -61,6 +61,14 @@ If `OTEL_TRACES_EXPORTER=console` was previously set for local debugging, remove
 The default SigNoz Compose stack does not terminate TLS on the OTLP ports. Without this variable, the gRPC OTLP exporter attempts a TLS handshake, fails silently, and no spans are delivered. Once you put SigNoz behind a TLS-terminating proxy or load balancer, remove this variable.
 {{% /notice %}}
 
+To also ship application logs to SigNoz (correlated to traces by `trace_id`/`span_id`), explicitly enable log export:
+
+```bash
+AIO_OTEL_LOGS_ENABLED=true
+```
+
+This is opt-in because application logs can include request content. See [Log export is opt-in (privacy)]({{% relref "/observability/#log-export-is-opt-in-privacy" %}}) on the main Observability page before enabling it for a shared or vendor-managed backend.
+
 ## 3. Verify End-to-End
 
 Restart the server and confirm initialization succeeded:
@@ -72,7 +80,7 @@ Restart the server and confirm initialization succeeded:
 Look for the startup log line:
 
 ```
-OTel tracing initialized: service=ai-optimizer-server exporters=['otlp']
+OTel telemetry initialized: service=ai-optimizer-server exporters=['otlp']
 ```
 
 If the line is absent or `exporters=[]`, see [Troubleshooting]({{% relref "/observability/#troubleshooting" %}}) on the main Observability page.
