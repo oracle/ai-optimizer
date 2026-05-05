@@ -5,14 +5,12 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Shared base test classes for CombinedSession tests.
 
 Subclasses must define:
-    PATCH_PATH  – dotted module path for ``litellm.acompletion`` (e.g.
+    PATCH_PATH: dotted module path for ``litellm.acompletion`` (e.g.
                   ``"server.app.runtime.langgraph.multi_tool"``).
-    make_session(**kwargs) – factory returning a CombinedSession.
-    mock_response(content, usage) – factory returning a litellm-style response.
+    make_session(**kwargs): factory returning a CombinedSession.
+    mock_response(content, usage): factory returning a litellm-style response.
 """
 # spell-checker: disable
-
-from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable

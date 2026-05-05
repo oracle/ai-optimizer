@@ -11,8 +11,6 @@ avoided by using disabled code paths unless explicitly marked ``@pytest.mark.db`
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 import json
 
 import pytest

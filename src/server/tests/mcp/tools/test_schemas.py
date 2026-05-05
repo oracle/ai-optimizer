@@ -6,8 +6,6 @@ Tests for server.app.mcp.tools.schemas utilities.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 from server.app.core.settings import settings
 from server.app.database.schemas import DatabaseConfig
 from server.app.mcp.tools import schemas

@@ -6,8 +6,6 @@ Tests for the LangGraph CombinedSession (hybrid Python-level routing).
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

@@ -6,8 +6,6 @@ Tests for server.app.mcp.tools.registry.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 import types
 from unittest.mock import MagicMock, patch
 
@@ -45,9 +43,7 @@ def test_register_mcp_tools_discovers_all(monkeypatch: pytest.MonkeyPatch) -> No
 
     # Fake iter_modules to yield our test modules (skip list tested implicitly
     # because we never yield "registry" or "schemas").
-    fake_module_infos = [
-        types.SimpleNamespace(name=name) for name in fake_modules
-    ]
+    fake_module_infos = [types.SimpleNamespace(name=name) for name in fake_modules]
 
     package = _make_module(_PACKAGE)
     package.__path__ = ["/fake"]  # type: ignore[attr-defined]
@@ -59,9 +55,7 @@ def test_register_mcp_tools_discovers_all(monkeypatch: pytest.MonkeyPatch) -> No
         patch.object(registry.importlib, "import_module") as mock_import,
         patch.object(registry.pkgutil, "iter_modules", return_value=fake_module_infos),
     ):
-        mock_import.side_effect = lambda name: (
-            package if name == _PACKAGE else fake_modules[name.rsplit(".", 1)[-1]]
-        )
+        mock_import.side_effect = lambda name: (package if name == _PACKAGE else fake_modules[name.rsplit(".", 1)[-1]])
 
         registry.register_mcp_tools()
 
