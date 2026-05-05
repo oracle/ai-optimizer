@@ -8,7 +8,7 @@ Tests for the LangGraph CombinedSession (hybrid Python-level routing).
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
@@ -22,7 +22,6 @@ from server.tests.conftest import SAMPLE_CLIENT_SETTINGS_OBJ as SAMPLE_CLIENT_SE
 from server.tests.runtime.langgraph.helpers import mock_compiled_graph
 from server.tests.runtime.multi_tool_base import (
     ClassificationBase,
-    CredentialsBase,
     MetadataBase,
     RoutingBase,
     StreamingBase,
@@ -106,8 +105,112 @@ class TestCombinedSessionRouting(_LangGraphMixin, RoutingBase):
     """Tests for execute() routing to the correct sub-session."""
 
 
-class TestCombinedSessionCredentials(_LangGraphMixin, CredentialsBase):
-    """Tests for api_key/api_base forwarding to litellm calls."""
+class TestCombinedSessionCredentials:
+    """Verify api_key / api_base reach the OracleChatLiteLLM that classify/synthesize construct."""
+
+    @pytest.mark.anyio
+    async def test_classify_constructs_llm_with_credentials(self):
+        with patch(
+            "server.app.runtime.langgraph.multi_tool.OracleChatLiteLLM",
+        ) as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="vecsearch", usage_metadata=None))
+            mock_llm_cls.return_value = mock_llm
+            session = _make_combined_session(api_key="sk-test-123", api_base="https://my-llm.example.com")
+            await session.classify("test query")
+        assert mock_llm_cls.call_args.kwargs["api_key"] == "sk-test-123"
+        assert mock_llm_cls.call_args.kwargs["api_base"] == "https://my-llm.example.com"
+
+    @pytest.mark.anyio
+    async def test_synthesize_constructs_llm_with_credentials(self):
+        with patch(
+            "server.app.runtime.langgraph.multi_tool.OracleChatLiteLLM",
+        ) as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="synthesized", usage_metadata=None))
+            mock_llm_cls.return_value = mock_llm
+            session = _make_combined_session(api_key="sk-test-456", api_base="https://api.example.com")
+            await session.synthesize("query", "vs answer", "sql answer")
+        assert mock_llm_cls.call_args.kwargs["api_key"] == "sk-test-456"
+        assert mock_llm_cls.call_args.kwargs["api_base"] == "https://api.example.com"
+
+    @pytest.mark.anyio
+    async def test_no_credentials_when_none(self):
+        with patch(
+            "server.app.runtime.langgraph.multi_tool.OracleChatLiteLLM",
+        ) as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="vecsearch", usage_metadata=None))
+            mock_llm_cls.return_value = mock_llm
+            session = _make_combined_session()
+            await session.classify("test query")
+        assert mock_llm_cls.call_args.kwargs["api_key"] is None
+        assert mock_llm_cls.call_args.kwargs["api_base"] is None
+
+
+class TestCombinedSessionV1ContentBlocks:
+    """LangChain v1 mode delivers AIMessage.content as typed blocks; classify/synthesize must extract text."""
+
+    @pytest.mark.anyio
+    async def test_classify_handles_v1_content_blocks(self):
+        """Coercing list-content with ``str()`` produces a Python repr that won't match the route names."""
+        with patch(
+            "server.app.runtime.langgraph.multi_tool.OracleChatLiteLLM",
+        ) as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm.ainvoke = AsyncMock(
+                return_value=AIMessage(
+                    content=[{"type": "text", "text": "vecsearch"}],
+                    usage_metadata=None,
+                ),
+            )
+            mock_llm_cls.return_value = mock_llm
+            session = _make_combined_session()
+            decision, _ = await session.classify("test query")
+        assert decision == "vecsearch"
+
+    @pytest.mark.anyio
+    async def test_synthesize_handles_v1_content_blocks(self):
+        with patch(
+            "server.app.runtime.langgraph.multi_tool.OracleChatLiteLLM",
+        ) as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm.ainvoke = AsyncMock(
+                return_value=AIMessage(
+                    content=[{"type": "text", "text": "synthesized answer"}],
+                    usage_metadata=None,
+                ),
+            )
+            mock_llm_cls.return_value = mock_llm
+            session = _make_combined_session()
+            answer, _ = await session.synthesize("q", "vs", "sql")
+        assert answer == "synthesized answer"
+
+    @pytest.mark.anyio
+    async def test_classify_strips_thinking_block_prefix(self):
+        """Reasoning-capable providers prepend ``{"type": "thinking", ...}`` blocks.
+
+        Serializing those into the flattened reply pollutes the routing decision
+        with JSON that won't match ``vecsearch | nl2sql | both`` and defaults to
+        ``both``. Non-text blocks must be dropped when reading model output.
+        """
+        with patch(
+            "server.app.runtime.langgraph.multi_tool.OracleChatLiteLLM",
+        ) as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm.ainvoke = AsyncMock(
+                return_value=AIMessage(
+                    content=[
+                        {"type": "thinking", "thinking": "User wants knowledge — vecsearch."},
+                        {"type": "text", "text": "vecsearch"},
+                    ],
+                    usage_metadata=None,
+                ),
+            )
+            mock_llm_cls.return_value = mock_llm
+            session = _make_combined_session()
+            decision, _ = await session.classify("test query")
+        assert decision == "vecsearch"
 
 
 class TestCombinedSessionStreaming(_LangGraphMixin, StreamingBase):
@@ -193,9 +296,8 @@ class TestCombinedSessionTokenUsage:
         mock_acompletion.return_value = mock_litellm_response("nl2sql")
         session = _make_combined_session()
         await session.execute("How many tables?", thread_id="t-1")
-        # Token usage comes from _extract_graph_token_usage which finds no real LLM instances
-        # in mock graphs, so it will be None unless we inject it
-        # This is expected behavior for mocked graphs
+        # Token usage is sourced from the UsageMetadataCallbackHandler attached to
+        # the sub-session's ainvoke. Mock graphs don't fire on_llm_end so usage is None.
         assert session.last_metadata.token_usage is None
 
     @pytest.mark.anyio

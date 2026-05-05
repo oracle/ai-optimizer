@@ -26,6 +26,22 @@ from server.app.mcp.tools.schemas import VectorSearchResponse, VectorStoreListRe
 from server.app.mcp.tools.vs_retriever import _search_tables
 from server.app.models.schemas import ModelIdentity
 
+_DUMMY_SPEC = MagicMock(name="LiteLlmModelSpec")  # opaque under ainvoke_text_from_spec patch
+
+
+def _patch_llm_with_response(monkeypatch: pytest.MonkeyPatch, content: str) -> None:
+    async def _fake(*_args, **_kwargs) -> str:
+        return content
+
+    monkeypatch.setattr("server.app.mcp.tools.vs_retriever.ainvoke_text_from_spec", _fake)
+
+
+def _patch_llm_assertion_error(monkeypatch: pytest.MonkeyPatch, message: str) -> None:
+    async def _fake(*_args, **_kwargs) -> str:
+        raise AssertionError(message)
+
+    monkeypatch.setattr("server.app.mcp.tools.vs_retriever.ainvoke_text_from_spec", _fake)
+
 
 class _Doc:
     def __init__(self, content: str, metadata: Optional[dict] = None) -> None:
@@ -63,7 +79,7 @@ async def test_get_available_vector_stores_error(monkeypatch: pytest.MonkeyPatch
 
 
 async def test_select_tables_zero_tables():
-    assert await vs_retriever._select_tables_with_llm("q", [], {}, 3) == []
+    assert await vs_retriever._select_tables_with_llm("q", [], _DUMMY_SPEC, 3) == []
 
 
 async def test_get_available_vector_stores_exception(monkeypatch: pytest.MonkeyPatch):
@@ -77,26 +93,16 @@ async def test_get_available_vector_stores_exception(monkeypatch: pytest.MonkeyP
 
 async def test_select_tables_single_table(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
-
-    async def _fake_completion(*args: Any, **kwargs: Any):
-        raise AssertionError("Should not call LLM when single table")
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_retriever.acompletion", _fake_completion)
+    _patch_llm_assertion_error(monkeypatch, "Should not call LLM when single table")
 
     tables = [_make_vector_table("ONE", embedding_model=ModelIdentity(provider="openai", id="embed"))]
-    result = await vs_retriever._select_tables_with_llm("q", tables, {}, 3)
+    result = await vs_retriever._select_tables_with_llm("q", tables, _DUMMY_SPEC, 3)
     assert result == ["ONE"]
 
 
 async def test_select_tables_valid_json(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
-
-    async def _fake_completion(*args: Any, **kwargs: Any):
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(["B", "A", "UNKNOWN"])))]
-        )
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_retriever.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, json.dumps(["B", "A", "UNKNOWN"]))
 
     tables = [
         _make_vector_table(
@@ -112,55 +118,43 @@ async def test_select_tables_valid_json(prompt_config_factory, monkeypatch):
             description="Second table",
         ),
     ]
-    result = await vs_retriever._select_tables_with_llm("q", tables, {}, max_tables=2)
+    result = await vs_retriever._select_tables_with_llm("q", tables, _DUMMY_SPEC, max_tables=2)
     assert result == ["B", "A"]
 
 
 async def test_select_tables_invalid_response(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
-
-    async def _fake_completion(*args: Any, **kwargs: Any):
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="not json"))])
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_retriever.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, "not json")
 
     tables = [
         _make_vector_table("A", embedding_model=ModelIdentity(provider="openai", id="embed")),
         _make_vector_table("B", embedding_model=ModelIdentity(provider="openai", id="embed")),
     ]
-    result = await vs_retriever._select_tables_with_llm("q", tables, {}, max_tables=2)
+    result = await vs_retriever._select_tables_with_llm("q", tables, _DUMMY_SPEC, max_tables=2)
     assert result == ["A"]
 
 
 async def test_select_tables_non_list_json(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
-
-    async def _fake_completion(*args: Any, **kwargs: Any):
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({"table": "A"})))])
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_retriever.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, json.dumps({"table": "A"}))
 
     tables = [
         _make_vector_table("A", embedding_model=ModelIdentity(provider="openai", id="embed")),
         _make_vector_table("B", embedding_model=ModelIdentity(provider="openai", id="embed")),
     ]
-    result = await vs_retriever._select_tables_with_llm("q", tables, {}, max_tables=2)
+    result = await vs_retriever._select_tables_with_llm("q", tables, _DUMMY_SPEC, max_tables=2)
     assert result == ["A"]
 
 
 async def test_select_tables_no_valid_entries(prompt_config_factory, monkeypatch):
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
-
-    async def _fake_completion(*args: Any, **kwargs: Any):
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(["UNKNOWN"])))])
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_retriever.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, json.dumps(["UNKNOWN"]))
 
     tables = [
         _make_vector_table("A", embedding_model=ModelIdentity(provider="openai", id="embed")),
         _make_vector_table("B", embedding_model=ModelIdentity(provider="openai", id="embed")),
     ]
-    result = await vs_retriever._select_tables_with_llm("q", tables, {}, max_tables=2)
+    result = await vs_retriever._select_tables_with_llm("q", tables, _DUMMY_SPEC, max_tables=2)
     assert result == ["A"]
 
 
@@ -171,7 +165,7 @@ async def test_select_tables_missing_prompt(monkeypatch):
         _make_vector_table("A", embedding_model=ModelIdentity(provider="openai", id="embed")),
         _make_vector_table("B", embedding_model=ModelIdentity(provider="openai", id="embed")),
     ]
-    result = await vs_retriever._select_tables_with_llm("q", tables, {}, max_tables=2)
+    result = await vs_retriever._select_tables_with_llm("q", tables, _DUMMY_SPEC, max_tables=2)
     assert result == ["A"]
 
 
@@ -361,10 +355,7 @@ async def test_vs_retrieve_no_pool(model_config_factory, prompt_config_factory, 
     settings.client_settings.ll_model.id = "gpt-retrieve"
     model_config_factory(provider="openai", model_id="gpt-retrieve", model_type="ll")
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
-    monkeypatch.setattr(
-        "server.app.mcp.tools.vs_retriever.acompletion",
-        lambda *args, **kwargs: SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='["T"]'))]),
-    )
+    _patch_llm_with_response(monkeypatch, '["T"]')
     tables = [_make_vector_table("T", embedding_model=ModelIdentity(provider="openai", id="embed"))]
 
     async def _available(client="CONFIGURED"):
@@ -388,10 +379,7 @@ async def test_vs_retrieve_missing_embedding_model(
     settings.client_settings.ll_model.id = "gpt-retrieve"
     model_config_factory(provider="openai", model_id="gpt-retrieve", model_type="ll")
     prompt_config_factory("optimizer_vs-discovery", "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}")
-    monkeypatch.setattr(
-        "server.app.mcp.tools.vs_retriever.acompletion",
-        lambda *args, **kwargs: SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='["T"]'))]),
-    )
+    _patch_llm_with_response(monkeypatch, '["T"]')
     tables = [_make_vector_table("T")]
 
     async def _available(client="CONFIGURED"):
@@ -443,16 +431,12 @@ async def test_vs_retrieve_search_exception(
         raise RuntimeError("fail")
 
     monkeypatch.setattr(vs_retriever, "_search_table", _raise_search)
-    _mock_spec = SimpleNamespace(to_litellm_kwargs=lambda: {})
     monkeypatch.setattr(
         vs_retriever,
         "LiteLlmModelSpec",
-        SimpleNamespace(from_ll_model_settings=lambda *a, **kw: _mock_spec),
+        SimpleNamespace(from_ll_model_settings=lambda *a, **kw: _DUMMY_SPEC),
     )
-    monkeypatch.setattr(
-        "server.app.mcp.tools.vs_retriever.acompletion",
-        lambda *args, **kwargs: SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='["T"]'))]),
-    )
+    _patch_llm_with_response(monkeypatch, '["T"]')
 
     response = await vs_retriever._vs_retrieve_impl("Q")
 
@@ -492,10 +476,7 @@ async def test_vs_retrieve_success(
         "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}",
     )
 
-    async def _fake_completion(*args: Any, **kwargs: Any):
-        return {"choices": [{"message": {"content": json.dumps(["PYTEST_GENAI_TABLE"])}}]}
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_retriever.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, json.dumps(["PYTEST_GENAI_TABLE"]))
     monkeypatch.setattr("server.app.mcp.tools.vs_retriever.get_client_embed", lambda *args, **kwargs: object())
 
     async def _fake_acreate(*args: Any, **kwargs: Any):

@@ -4,22 +4,21 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 MCP tool: Question Rephrase for vector search retrieval.
 """
-# spell-checker:ignore acompletion litellm fastmcp
+# spell-checker:ignore acompletion litellm fastmcp ainvoke
 
 import json
 import logging
-from typing import Optional, Union, cast
+from typing import Optional, Union
 
 from fastmcp import Context
 from langchain_core.prompts import PromptTemplate
-from litellm import acompletion
 from litellm.exceptions import APIConnectionError
-from litellm.types.utils import Choices, ModelResponse
 
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.mcp.prompts.registry import find_prompt
 from server.app.models.litellm_utils import LiteLlmModelSpec
+from server.app.runtime.langgraph.adapters.litellm import ainvoke_text_from_spec
 
 from .schemas import RephrasePrompt, get_oci_profile
 
@@ -32,7 +31,7 @@ async def _perform_rephrase(
     question: str,
     chat_history: Union[list[str], str],
     ctx_prompt_content: str,
-    ll_config: dict,
+    spec: LiteLlmModelSpec,
 ) -> str:
     """Perform the actual rephrasing using LLM."""
     prompt_cfg = find_prompt("optimizer_vs-rephrase")
@@ -50,16 +49,8 @@ async def _perform_rephrase(
         question=question,
     )
 
-    response = cast(
-        ModelResponse,
-        await acompletion(
-            messages=[{"role": "user", "content": formatted_prompt}],
-            stream=False,
-            **ll_config,
-        ),
-    )
-    choice = cast(Choices, response.choices[0])
-    return choice.message.content or question
+    text = await ainvoke_text_from_spec(spec, formatted_prompt)
+    return text or question
 
 
 async def _vs_rephrase_impl(
@@ -104,12 +95,10 @@ async def _vs_rephrase_impl(
                 ctx_prompt_content = ctx_prompt_cfg.text if ctx_prompt_cfg else ""
 
                 oci_profile = get_oci_profile(client)
-                ll_config = LiteLlmModelSpec.from_ll_model_settings(
-                    client_settings.ll_model, oci_profile
-                ).to_litellm_kwargs()
+                spec = LiteLlmModelSpec.from_ll_model_settings(client_settings.ll_model, oci_profile)
 
                 try:
-                    rephrased = await _perform_rephrase(question, chat_history, ctx_prompt_content, ll_config)
+                    rephrased = await _perform_rephrase(question, chat_history, ctx_prompt_content, spec)
 
                     if rephrased != question:
                         LOGGER.info("Rephrased: '%s' -> '%s'", question, rephrased)

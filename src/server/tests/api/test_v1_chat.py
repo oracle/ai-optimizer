@@ -151,7 +151,20 @@ async def test_streams_exception_translated_to_error_event(app_client, auth_head
 @pytest.mark.anyio
 @pytest.mark.skipif(not ollama_available(), reason="ollama not running at 127.0.0.1:11434")
 async def test_streams_ollama_integration(app_client, auth_headers):
-    """Streams a short prompt end-to-end against a running Ollama instance."""
+    """Streams a short prompt end-to-end against a running Ollama instance.
+
+    Verifies real token-by-token streaming reaches the SSE consumer:
+
+    - More than one ``stream`` chunk arrives (the no-stream fallback in
+      ``session.execute`` would emit a single chunk of the whole answer; that
+      shape would have masked an ``include_types`` regression on
+      ``astream_events``).
+    - The ``completion`` event matches the assembled chunk content.
+    - The ``completion`` event carries non-zero ``token_usage``, exercising
+      the ``UsageMetadataCallbackHandler`` path end-to-end (the endpoint
+      folds the internal ``_token_usage`` event into ``completion``).
+    - No ``error`` events.
+    """
     original_settings = settings.client_settings
     original_store = dict(_client_store)
     original_models = list(settings.model_configs)
@@ -179,7 +192,7 @@ async def test_streams_ollama_integration(app_client, auth_headers):
 
         resp = await app_client.post(
             "/v1/chat/streams",
-            json={"messages": [{"role": "user", "content": "Say hi in one word."}]},
+            json={"messages": [{"role": "user", "content": "Count from 1 to 5, one number per line."}]},
             headers=auth_headers,
         )
         assert resp.status_code == 200
@@ -192,19 +205,24 @@ async def test_streams_ollama_integration(app_client, auth_headers):
         error_events = [p for p in parsed if p["type"] == "error"]
         completion = next((p for p in parsed if p["type"] == "completion"), None)
 
-        assert parsed, "Expected at least one SSE payload from streaming endpoint"
-
-        if stream_chunks and completion is not None:
-            assembled = "".join(chunk["content"] for chunk in stream_chunks)
-            assert assembled.strip()
-            assert completion["content"].strip() == assembled.strip()
-        else:
-            # LangGraph runtime currently surfaces an error instead of streaming when Ollama
-            # support is missing. Ensure the error is informative.
-            assert error_events, "Expected either stream chunks or an informative error event"
-            message = error_events[0]["content"]
-            assert message
-            assert "not yet supported" in message.lower() or "error" in message.lower()
+        assert not error_events, f"Unexpected error events: {error_events}"
+        assert stream_chunks, "Expected on_chat_model_stream chunks — streaming not engaged"
+        assert len(stream_chunks) > 1, (
+            f"Expected multiple incremental stream chunks (real token streaming); "
+            f"got {len(stream_chunks)} — the no-stream fallback in session.execute likely fired, "
+            f"which means astream_events delivered no on_chat_model_stream events"
+        )
+        assert completion is not None, "Expected a completion event"
+        assembled = "".join(chunk["content"] for chunk in stream_chunks)
+        assert assembled.strip()
+        assert completion["content"].strip() == assembled.strip()
+        token_usage = completion.get("token_usage")
+        assert token_usage, (
+            "Expected token_usage on the completion event — UsageMetadataCallbackHandler should observe usage"
+        )
+        assert token_usage.get("total_tokens", 0) > 0, (
+            f"Expected non-zero total_tokens, got {token_usage}"
+        )
     finally:
         settings.client_settings = original_settings
         _client_store.clear()

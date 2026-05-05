@@ -7,6 +7,7 @@ Shared test fixtures.
 # spell-checker: disable
 
 import contextlib
+import logging
 import shutil
 import sys
 import tempfile
@@ -23,6 +24,8 @@ from docker.errors import DockerException
 from httpx import ASGITransport, AsyncClient
 
 import server.app.core.environ  # noqa: F401  # side-effect: populates env defaults
+
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 
 # Stub giskard before app import to prevent pyarrow incompatibilities
 # during test collection (giskard -> datasets -> pyarrow).
@@ -219,6 +222,7 @@ async def app_client():
 def auth_headers():
     """Headers dict with a valid API key."""
     from server.app.core.secrets import reveal
+
     return {"X-API-Key": reveal(settings.api_key)}
 
 

@@ -8,7 +8,8 @@ Tests for server.app.mcp.tools.vs_grade.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, cast
+from typing import Any, List, cast
+from unittest.mock import MagicMock
 
 from fastmcp.tools.function_tool import FunctionTool
 from litellm.exceptions import APIConnectionError
@@ -17,6 +18,23 @@ from server.app.core.mcp import mcp
 from server.app.core.settings import settings
 from server.app.mcp.tools import vs_grade
 from server.app.mcp.tools.schemas import VectorGradeResponse
+
+_DUMMY_SPEC = MagicMock(name="LiteLlmModelSpec")  # opaque to tests that mock ainvoke_text_from_spec
+
+
+def _patch_llm_with_response(monkeypatch, content: str) -> None:
+    """Patch ainvoke_text_from_spec to return *content* directly."""
+    async def _fake(*_args, **_kwargs) -> str:
+        return content
+
+    monkeypatch.setattr("server.app.mcp.tools.vs_grade.ainvoke_text_from_spec", _fake)
+
+
+def _patch_llm_with_error(monkeypatch, exc: BaseException) -> None:
+    async def _fake(*_args, **_kwargs) -> str:
+        raise exc
+
+    monkeypatch.setattr("server.app.mcp.tools.vs_grade.ainvoke_text_from_spec", _fake)
 
 
 def test_format_documents() -> None:
@@ -46,11 +64,7 @@ async def test_vs_grade_llm_yes(configure_ll_model, prompt_config_factory, monke
     settings.client_settings.vector_search.grade = True
     configure_ll_model(provider="openai", model_id="gpt-grade")
     prompt_config_factory("optimizer_vs-grade", "Question: {question}\nDocs: {documents}")
-
-    async def _fake_completion(*_args: Any, **_kwargs: Any) -> Dict[str, Any]:
-        return {"choices": [{"message": {"content": "Yes"}}]}
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_grade.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, "Yes")
 
     response = await vs_grade._vs_grade_impl("What?", [{"page_content": "Doc"}])
 
@@ -64,11 +78,7 @@ async def test_vs_grade_llm_no(configure_ll_model, prompt_config_factory, monkey
     settings.client_settings.vector_search.grade = True
     configure_ll_model(provider="openai", model_id="gpt-grade")
     prompt_config_factory("optimizer_vs-grade", "Prompt {question} :: {documents}")
-
-    async def _fake_completion(*_args: Any, **_kwargs: Any) -> Dict[str, Any]:
-        return {"choices": [{"message": {"content": "No"}}]}
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_grade.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, "No")
 
     response = await vs_grade._vs_grade_impl("Q", [{"page_content": "Doc"}])
 
@@ -81,11 +91,7 @@ async def test_vs_grade_api_connection_error(configure_ll_model, prompt_config_f
     settings.client_settings.vector_search.grade = True
     configure_ll_model(provider="openai", model_id="gpt-grade")
     prompt_config_factory("optimizer_vs-grade", "Prompt {question} :: {documents}")
-
-    async def _raising_completion(*_args: Any, **_kwargs: Any):
-        raise APIConnectionError("network", "openai", "gpt-grade")
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_grade.acompletion", _raising_completion)
+    _patch_llm_with_error(monkeypatch, APIConnectionError("network", "openai", "gpt-grade"))
 
     response = await vs_grade._vs_grade_impl("Q", [{"page_content": "Doc"}])
 
@@ -111,14 +117,10 @@ async def test_vs_grade_generic_error(prompt_config_factory, monkeypatch):
 
 async def test_grade_documents_with_llm_missing_prompt(monkeypatch):
     """Missing prompt should default to 'yes'."""
-
-    async def _fake_completion(*_args: Any, **_kwargs: Any) -> Dict[str, Any]:
-        return {"choices": [{"message": {"content": "irrelevant"}}]}
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_grade.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, "irrelevant")
     monkeypatch.setattr("server.app.mcp.tools.vs_grade.find_prompt", lambda name: None)
 
-    result = await vs_grade._grade_documents_with_llm("Q", "Docs", {})
+    result = await vs_grade._grade_documents_with_llm("Q", "Docs", _DUMMY_SPEC)
 
     assert result == "yes"
 
@@ -126,14 +128,10 @@ async def test_grade_documents_with_llm_missing_prompt(monkeypatch):
 async def test_grade_documents_with_llm_invalid_response(prompt_config_factory, monkeypatch, caplog):
     """Invalid LLM response should log and return 'yes'."""
     prompt_config_factory("optimizer_vs-grade", "Prompt {question} :: {documents}")
-
-    async def _fake_completion(*_args: Any, **_kwargs: Any) -> Dict[str, Any]:
-        return {"choices": [{"message": {"content": "maybe"}}]}
-
-    monkeypatch.setattr("server.app.mcp.tools.vs_grade.acompletion", _fake_completion)
+    _patch_llm_with_response(monkeypatch, "maybe")
     caplog.set_level("ERROR")
 
-    result = await vs_grade._grade_documents_with_llm("Q", "Docs", {})
+    result = await vs_grade._grade_documents_with_llm("Q", "Docs", _DUMMY_SPEC)
 
     assert result == "yes"
     assert "LLM did not return binary relevant" in caplog.text

@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Tests for LiteLlmAgentSpecLoader — ensures load_component routes through
 our _llm_convert_to_langgraph override so LiteLlmConfig is handled.
 """
-# spell-checker: ignore agentspec litellm langgraph pyagentspec afunc genai ocid ollama
+# spell-checker: disable
 
 import contextlib
 from unittest.mock import MagicMock, patch
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 from pyagentspec.agent import Agent as AgentSpecAgent
 
 from server.app.agentspec.adapters.litellm import LiteLlmConfig
-from server.app.runtime.langgraph.adapters.litellm import ChatLiteLLMBridge
+from server.app.runtime.langgraph.adapters.litellm import OracleChatLiteLLM
 from server.app.runtime.langgraph.loader import LiteLlmAgentSpecLoader
 
 
@@ -39,13 +39,13 @@ class TestLiteLlmAgentSpecLoader:
         )
 
     def test_load_component_uses_litellm_bridge(self):
-        """load_component must produce a graph whose LLM is ChatLiteLLMBridge, not raise NotImplementedError."""
+        """load_component must produce a graph whose LLM is OracleChatLiteLLM, not raise NotImplementedError."""
         loader = LiteLlmAgentSpecLoader()
         agent = self._make_agent()
         graph = loader.load_component(agent)
         bridge = _find_litellm_bridge(graph)
         assert bridge is not None, (
-            "Expected ChatLiteLLMBridge in the compiled graph — "
+            "Expected OracleChatLiteLLM in the compiled graph — "
             "load_component may be using the base converter instead of the LiteLlm-aware one"
         )
         assert bridge.model == "ollama_chat/qwen3:8b"
@@ -65,8 +65,8 @@ class TestLiteLlmAgentSpecLoader:
         assert bridge is not None
         assert bridge.model == "openai/gpt-4o"
         assert bridge.max_tokens == 200
-        assert bridge.frequency_penalty == 0.5
-        assert bridge.presence_penalty == 0.3
+        assert bridge.model_kwargs.get("frequency_penalty") == 0.5
+        assert bridge.model_kwargs.get("presence_penalty") == 0.3
 
     def test_oci_provider_injects_extra_params(self):
         """OCI provider must resolve OCI profile and inject auth params."""
@@ -89,9 +89,9 @@ class TestLiteLlmAgentSpecLoader:
         bridge = _find_litellm_bridge(graph)
         assert bridge is not None
         assert bridge.model == "oci/cohere.command-a-03-2025"
-        assert bridge.extra_params["oci_region"] == "us-chicago-1"
-        assert bridge.extra_params["oci_compartment_id"] == "ocid1.compartment.oc1..test"
-        assert bridge.extra_params["oci_tenancy"] == "ocid1.tenancy.oc1..test"
+        assert bridge.model_kwargs["oci_region"] == "us-chicago-1"
+        assert bridge.model_kwargs["oci_compartment_id"] == "ocid1.compartment.oc1..test"
+        assert bridge.model_kwargs["oci_tenancy"] == "ocid1.tenancy.oc1..test"
 
     def test_oci_provider_with_signer(self):
         """OCI with signer-based auth passes oci_signer instead of API key fields."""
@@ -110,17 +110,18 @@ class TestLiteLlmAgentSpecLoader:
 
         bridge = _find_litellm_bridge(graph)
         assert bridge is not None
-        assert bridge.extra_params["oci_signer"] is fake_signer
-        assert "oci_tenancy" not in bridge.extra_params
+        assert bridge.model_kwargs["oci_signer"] is fake_signer
+        assert "oci_tenancy" not in bridge.model_kwargs
 
-    def test_non_oci_provider_has_empty_extra_params(self):
-        """Non-OCI providers should have empty extra_params."""
+    def test_non_oci_provider_has_no_oci_kwargs(self):
+        """Non-OCI providers should not have OCI auth keys in model_kwargs."""
         loader = LiteLlmAgentSpecLoader()
         agent = self._make_agent(provider="ollama", model_id="qwen3:8b")
         graph = loader.load_component(agent)
         bridge = _find_litellm_bridge(graph)
         assert bridge is not None
-        assert bridge.extra_params == {}
+        assert "oci_region" not in bridge.model_kwargs
+        assert "oci_signer" not in bridge.model_kwargs
 
 
 class TestUnwrapToolContentBlocks:
@@ -181,7 +182,7 @@ class TestUnwrapToolContentBlocks:
 
 
 def _find_litellm_bridge(graph):
-    """Walk a compiled LangGraph to find a ChatLiteLLMBridge instance.
+    """Walk a compiled LangGraph to find a OracleChatLiteLLM instance.
 
     The bridge lives inside closures of the ``call_model`` function that
     LangGraph's ``create_react_agent`` generates, so we need to inspect
@@ -195,7 +196,7 @@ def _find_litellm_bridge(graph):
         if obj_id in visited:
             continue
         visited.add(obj_id)
-        if isinstance(obj, ChatLiteLLMBridge):
+        if isinstance(obj, OracleChatLiteLLM):
             return obj
         # Walk common LangGraph/LangChain wrapper attributes
         for attr in ("bound", "first", "middle", "last", "default", "func", "afunc"):
