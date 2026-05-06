@@ -1,6 +1,6 @@
 +++
 title = 'Observability'
-weight = 50
+weight = 38
 +++
 
 <!--
@@ -40,10 +40,6 @@ The LangChain LLM span carries semantic LLM information (model, tokens, content)
 Log records emitted during the lifetime of any span carry that span's `trace_id` and `span_id`, so a backend can show the logs from a specific span when its trace is opened.
 
 The Streamlit **Client** is not instrumented; it is a thin REST client whose work is reflected in the server-side traces it triggers.
-
-{{% notice style="code" title="Not yet covered" icon="circle-info" %}}
-FastMCP tool invocations are not yet directly instrumented. Tool calls made by the agent appear in traces (via the LangChain instrumentor and outbound `httpx` spans), but the FastMCP server-side dispatch is not yet wrapped in dedicated spans.
-{{% /notice %}}
 
 ## Enabling
 

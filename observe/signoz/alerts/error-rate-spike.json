@@ -1,0 +1,96 @@
+{
+  "alert": "AI Optimizer \u2014 5xx error rate > 1% (5m)",
+  "alertType": "TRACES_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "version": "v5",
+  "disabled": false,
+  "evaluation": {
+    "kind": "rolling",
+    "spec": {
+      "evalWindow": "5m0s",
+      "frequency": "1m"
+    }
+  },
+  "condition": {
+    "compositeQuery": {
+      "panelType": "graph",
+      "queryType": "builder",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "stepInterval": 60,
+            "signal": "traces",
+            "source": "",
+            "aggregations": [
+              {
+                "expression": "count()"
+              }
+            ],
+            "filter": {
+              "expression": "service.name = 'ai-optimizer-server' AND kind = 2 AND response_status_code >= 500"
+            },
+            "having": {
+              "expression": ""
+            }
+          }
+        },
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "B",
+            "stepInterval": 60,
+            "signal": "traces",
+            "source": "",
+            "aggregations": [
+              {
+                "expression": "count()"
+              }
+            ],
+            "filter": {
+              "expression": "service.name = 'ai-optimizer-server' AND kind = 2"
+            },
+            "having": {
+              "expression": ""
+            }
+          }
+        },
+        {
+          "type": "builder_formula",
+          "spec": {
+            "name": "F1",
+            "expression": "A/B*100"
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "F1",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {
+          "name": "critical",
+          "target": 1,
+          "targetUnit": "",
+          "recoveryTarget": null,
+          "matchType": "at_least_once",
+          "op": "above",
+          "channels": []
+        }
+      ]
+    }
+  },
+  "annotations": {
+    "summary": "5xx error rate above 1%",
+    "description": "Server returning 5xx for more than 1% of requests. Open SigNoz Traces, filter service=ai-optimizer-server response_status_code>=500, inspect failed traces."
+  },
+  "notificationSettings": {
+    "renotify": {
+      "enabled": false,
+      "interval": "30m"
+    },
+    "usePolicy": true
+  }
+}

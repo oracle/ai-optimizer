@@ -1,0 +1,311 @@
+{
+  "description": "Service health (request rate, latency, errors) plus LLM usage (calls and tokens by model). Filters on service.name = ai-optimizer-server; relies on attributes documented in observe/signoz/README.md.",
+  "layout": [
+    {
+      "h": 4,
+      "i": "panel-request-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "panel-latency-p95",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "panel-error-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 4
+    },
+    {
+      "h": 4,
+      "i": "panel-llm-calls",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 4
+    },
+    {
+      "h": 4,
+      "i": "panel-llm-tokens",
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 8
+    }
+  ],
+  "tags": [
+    "ai-optimizer",
+    "starter"
+  ],
+  "title": "AI Optimizer \u2014 Overview",
+  "uploadedGrafana": false,
+  "variables": {},
+  "version": "v5",
+  "widgets": [
+    {
+      "description": "Server-side request rate, grouped by FastAPI route. Counts spans named 'http POST /...' produced by FastAPIInstrumentor.",
+      "fillSpans": false,
+      "id": "panel-request-rate",
+      "isStacked": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "rate(name)"
+                }
+              ],
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ai-optimizer-server' AND kind = 2 AND http.route EXISTS"
+              },
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "isColumn": false,
+                  "key": "http.route",
+                  "type": "tag"
+                }
+              ],
+              "having": {
+                "expression": ""
+              },
+              "legend": "{{http.route}}",
+              "orderBy": [],
+              "queryName": "A",
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [],
+        "promql": [],
+        "queryType": "builder"
+      },
+      "thresholds": [],
+      "title": "Request rate (by route)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "95th-percentile server-side latency per route. Aggregates p95 of duration_nano (column rename in SigNoz 0.121).",
+      "fillSpans": false,
+      "id": "panel-latency-p95",
+      "isStacked": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "p95(duration_nano)"
+                }
+              ],
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ai-optimizer-server' AND kind = 2 AND http.route EXISTS"
+              },
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "isColumn": false,
+                  "key": "http.route",
+                  "type": "tag"
+                }
+              ],
+              "having": {
+                "expression": ""
+              },
+              "legend": "{{http.route}}",
+              "orderBy": [],
+              "queryName": "A",
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [],
+        "promql": [],
+        "queryType": "builder"
+      },
+      "thresholds": [],
+      "title": "Latency p95 (by route)",
+      "yAxisUnit": "ns"
+    },
+    {
+      "description": "Count of server spans with response_status_code >= 500, grouped by route. Pair with the request-rate panel to compute percentage.",
+      "fillSpans": false,
+      "id": "panel-error-rate",
+      "isStacked": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ai-optimizer-server' AND kind = 2 AND response_status_code >= 500 AND http.route EXISTS"
+              },
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "isColumn": false,
+                  "key": "http.route",
+                  "type": "tag"
+                }
+              ],
+              "having": {
+                "expression": ""
+              },
+              "legend": "{{http.route}}",
+              "orderBy": [],
+              "queryName": "A",
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [],
+        "promql": [],
+        "queryType": "builder"
+      },
+      "thresholds": [],
+      "title": "Error rate (5xx, by route)",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Rate of spans that carry llm.model_name (i.e., LLM invocations), grouped by model. Filters by 'llm.model_name exists' rather than openinference.span.kind = LLM, because llm.model_name is indexed faster after first traffic.",
+      "fillSpans": false,
+      "id": "panel-llm-calls",
+      "isStacked": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "rate(name)"
+                }
+              ],
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ai-optimizer-server' AND llm.model_name EXISTS"
+              },
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "isColumn": false,
+                  "key": "llm.model_name",
+                  "type": "tag"
+                }
+              ],
+              "having": {
+                "expression": ""
+              },
+              "legend": "{{llm.model_name}}",
+              "orderBy": [],
+              "queryName": "A",
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [],
+        "promql": [],
+        "queryType": "builder"
+      },
+      "thresholds": [],
+      "title": "LLM call rate (by model)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "Sum of llm.token_count.total per step interval, grouped by model. Use 'sum' rather than 'sum_rate' because SigNoz's sum_rate operator generates malformed SQL on dynamic (non-column) numeric attributes. Convert to a cost externally by multiplying by your provider's per-1k-token rate.",
+      "fillSpans": false,
+      "id": "panel-llm-tokens",
+      "isStacked": true,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "sum(llm.token_count.total)"
+                }
+              ],
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'ai-optimizer-server' AND llm.model_name EXISTS"
+              },
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "isColumn": false,
+                  "key": "llm.model_name",
+                  "type": "tag"
+                }
+              ],
+              "having": {
+                "expression": ""
+              },
+              "legend": "{{llm.model_name}}",
+              "orderBy": [],
+              "queryName": "A",
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [],
+        "promql": [],
+        "queryType": "builder"
+      },
+      "thresholds": [],
+      "title": "LLM tokens (sum, by model)",
+      "yAxisUnit": "short"
+    }
+  ],
+  "uuid": "019df749-754f-75db-8d8e-0e4649d9d030"
+}
