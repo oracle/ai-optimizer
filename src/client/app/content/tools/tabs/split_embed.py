@@ -9,6 +9,7 @@ Split and Embed tab — document splitting, chunking, embedding, and vector stor
 import logging
 import math
 import re
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -660,16 +661,164 @@ def _process_populate_request(embed_config: dict, source_data: FileSourceData, r
             extra_headers=client_header,
         )
 
-    # Step 2: Split and embed
+    # Step 2: Split and embed — schedule the job and poll for terminal state.
+    # 300s acceptance timeout outlasts pre-202 latency (``_settings_lock``
+    # contention with a slow connection test, slow CORE INSERT). A
+    # ``ReadTimeout`` here while the server still completes
+    # ``manager.submit`` would lose the job_id and leave a running
+    # job the user cannot poll.
     payload = _build_embed_payload(embed_config)
-    response = api_post(
+    accepted = api_post(
         "embed/",
         json=payload,
         params={"rate_limit": rate_limit or 0},
         extra_headers=client_header,
-        timeout=7200,
+        timeout=300,
     )
-    return response
+    return _poll_embed_job(accepted["job_id"], client_header)
+
+
+# Stage labels rendered in the Streamlit progress message. Falls through
+# to the raw stage value for forward-compatibility — adding a stage on
+# the server should not crash the UI.
+_STAGE_LABELS: dict[str, str] = {
+    "queued": "Queued",
+    "preparing": "Preparing files",
+    "splitting": "Parsing & chunking documents",
+    "embedding": "Embedding chunks",
+    "indexing": "Building vector index",
+    "finalizing": "Updating metadata",
+}
+
+_POLL_INTERVAL_SECONDS = 2.0
+# 503 tolerance window. The status endpoint returns 503 when the
+# CORE database is briefly unavailable for cross-replica state
+# tracking; the pipeline itself is still running on the server side,
+# so a transient blip should not abort the UI. Cap the consecutive
+# count so a permanent CORE outage eventually surfaces instead of
+# spinning forever — at the default 2s poll interval this is a few
+# minutes of patience before giving up.
+_MAX_CONSECUTIVE_503S = 60
+
+
+def _poll_embed_job(job_id: str, client_header: dict) -> dict:
+    """Block until the embed job reaches terminal status, updating spinner text.
+
+    Each request is short, so neither the load balancer nor nginx can
+    time us out — the only ceiling is that the job itself eventually
+    succeeds or fails. A failure raises ``httpx.HTTPStatusError`` shaped
+    like the old synchronous error path so the calling render code can
+    keep using ``helpers.extract_error_detail``.
+
+    Transient failures are absorbed up to ``_MAX_CONSECUTIVE_503S``
+    consecutive blips; the pipeline is server-side and continues to
+    make progress while we back off and retry. The retry budget
+    covers two distinct shapes:
+
+    * **HTTP 503** — the status endpoint returned, but CORE is
+      momentarily unavailable for cross-replica state tracking.
+    * **Transport error** — ``httpx.TimeoutException`` /
+      ``httpx.TransportError`` (no response received). The CORE
+      read can stall longer than this client's 15s timeout, and
+      a brief network blip surfaces the same way; treating these
+      as terminal would abort polling for a job that is still
+      running. ``TransportError`` is the parent of all
+      non-status httpx failures so this single ``except`` covers
+      timeouts, connection resets, and proxy errors.
+
+    Other HTTP errors (401 / 404 / 500-non-503) propagate
+    immediately — those mean something structural is wrong and
+    retrying would just spin.
+    """
+    last_message: str | None = None
+    consecutive_transient_failures = 0
+    while True:
+        try:
+            info = api_get(
+                f"embed/jobs/{job_id}",
+                extra_headers=client_header,
+                timeout=15,
+            )
+        except httpx.HTTPStatusError as ex:
+            if ex.response.status_code == 503:
+                consecutive_transient_failures += 1
+                if consecutive_transient_failures > _MAX_CONSECUTIVE_503S:
+                    raise
+                LOGGER.warning(
+                    "Embed job %s polling: CORE unavailable (503), retry %d/%d",
+                    job_id,
+                    consecutive_transient_failures,
+                    _MAX_CONSECUTIVE_503S,
+                )
+                time.sleep(_POLL_INTERVAL_SECONDS)
+                continue
+            raise
+        except httpx.TransportError as ex:
+            # No HTTP response received (timeout, connection reset,
+            # proxy error). Same retry contract as 503: the server-
+            # side job is still running, back off and retry rather
+            # than aborting the poll loop.
+            consecutive_transient_failures += 1
+            if consecutive_transient_failures > _MAX_CONSECUTIVE_503S:
+                # Convert the exhausted-budget transport failure into
+                # an ``HTTPStatusError`` so the populate-request UI's
+                # ``except httpx.HTTPStatusError`` handler picks it up.
+                # Re-raising ``TransportError`` directly would bypass
+                # that catch and surface as an uncaught Streamlit
+                # exception. 503 mirrors the "CORE unavailable"
+                # status — the user sees a normal error message and
+                # can retry once connectivity is back. The original
+                # transport error chains through ``__cause__`` so
+                # diagnostic logs still see what actually happened.
+                detail = (
+                    f"Lost contact with the embed-job status endpoint "
+                    f"after {consecutive_transient_failures - 1} retries "
+                    f"({type(ex).__name__}: {ex}); the job may still be "
+                    f"running server-side."
+                )
+                request = httpx.Request("GET", f"embed/jobs/{job_id}")
+                response = httpx.Response(
+                    503, json={"detail": detail}, request=request
+                )
+                raise httpx.HTTPStatusError(
+                    detail, request=request, response=response
+                ) from ex
+            LOGGER.warning(
+                "Embed job %s polling: transport failure (%s: %s), retry %d/%d",
+                job_id,
+                type(ex).__name__,
+                ex,
+                consecutive_transient_failures,
+                _MAX_CONSECUTIVE_503S,
+            )
+            time.sleep(_POLL_INTERVAL_SECONDS)
+            continue
+        consecutive_transient_failures = 0
+
+        status = info.get("status")
+        progress = info.get("progress") or {}
+        stage = progress.get("stage", status)
+        label = _STAGE_LABELS.get(stage, stage or "Working")
+        message = progress.get("message") or ""
+        rendered = f"{label}{(' — ' + message) if message else ''}"
+        if rendered != last_message:
+            last_message = rendered
+            # st.spinner is one-shot, so emit progress as a toast that
+            # appends below the spinner without re-rendering it. The
+            # log line stays for diagnostics; the toast is what the
+            # user actually sees during a long-running job.
+            LOGGER.debug("embed job %s: %s", job_id, rendered)
+            st.toast(rendered)
+        if status == "succeeded":
+            return info["result"] or {}
+        if status == "failed":
+            error = info.get("error") or "Embedding job failed."
+            # Synthesise an httpx error so callers can keep extracting
+            # the detail with the existing helper used by the inline path.
+            request = httpx.Request("GET", f"embed/jobs/{job_id}")
+            response = httpx.Response(500, json={"detail": error}, request=request)
+            raise httpx.HTTPStatusError(error, request=request, response=response)
+        time.sleep(_POLL_INTERVAL_SECONDS)
 
 
 def _process_refresh_request(embed_config: dict, src_bucket: str, rate_limit: int | None) -> dict:

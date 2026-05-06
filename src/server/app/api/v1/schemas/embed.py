@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Pydantic models for embed API request/response schemas.
 """
 
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
@@ -82,3 +83,51 @@ class EmbedProcessingResult(BaseModel):
     total_chunks: int
     processed_files: list[ProcessedFileInfo]
     skipped_files: list[SkippedFileInfo]
+
+
+class EmbedJobStatus(str, Enum):
+    """Lifecycle states for a background embed job."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class EmbedJobStage(str, Enum):
+    """Granular stage within a running embed job."""
+
+    QUEUED = "queued"
+    PREPARING = "preparing"
+    SPLITTING = "splitting"
+    EMBEDDING = "embedding"
+    INDEXING = "indexing"
+    FINALIZING = "finalizing"
+
+
+class EmbedJobProgress(BaseModel):
+    """Progress snapshot for a running embed job."""
+
+    stage: EmbedJobStage
+    message: Optional[str] = None
+    total_chunks: Optional[int] = None
+
+
+class EmbedJobAccepted(BaseModel):
+    """202 response body returned when a split-and-embed job is scheduled."""
+
+    job_id: str
+    status: EmbedJobStatus
+    location: str
+
+
+class EmbedJobInfo(BaseModel):
+    """Full status record for an embed job — returned by GET /v1/embed/jobs/{job_id}."""
+
+    job_id: str
+    status: EmbedJobStatus
+    created_at: str
+    updated_at: str
+    progress: Optional[EmbedJobProgress] = None
+    result: Optional[EmbedProcessingResult] = None
+    error: Optional[str] = None
