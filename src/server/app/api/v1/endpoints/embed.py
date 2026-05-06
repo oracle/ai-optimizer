@@ -966,8 +966,8 @@ async def _run_split_embed_pipeline(
     """Background body of the split-and-embed pipeline.
 
     Files are claimed *before* the job is submitted (see the POST handler),
-    so this body operates on a stable work_dir / files snapshot — a
-    later upload to the shared client directory cannot leak into this
+    so this body operates on a stable work_dir / files snapshot — later
+    uploads to the shared client directory remain separate from this
     job's corpus. The body is responsible for parse → chunk → embed →
     MERGE → HNSW build → vector-store cache refresh, plus cleaning up
     the work_dir on every exit path — including failures of the
@@ -976,10 +976,8 @@ async def _run_split_embed_pipeline(
     *db_config* is the snapshot captured at submission time. The
     pipeline must NOT re-resolve from settings: a concurrent edit to
     the client's database settings between POST 202 and pipeline
-    execution would otherwise let an in-flight job land its corpus
-    in a different DB than the one validated for the request.
-    That would bypass the database selected and validated for this
-    submission.
+    execution could otherwise use a different database than the one
+    associated with this submission.
     OCI profile is still re-resolved (it has no equivalent
     submission-time guarantee on this code path).
     """
@@ -1289,8 +1287,7 @@ async def split_embed(
 
 
 _CORE_UNAVAILABLE_DETAIL = (
-    "Embed jobs require the CORE database for cross-replica status "
-    "tracking; please retry once CORE is available."
+    "Embed job status is temporarily unavailable; please retry shortly."
 )
 
 

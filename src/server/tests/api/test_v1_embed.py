@@ -4002,7 +4002,7 @@ async def test_split_embed_translates_core_submit_failure_to_503(app_client, aut
             )
 
     assert resp.status_code == 503
-    assert "core" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
     # Cleanup still happens before the 503 is raised.
     assert created_work_dirs, "expected a work_dir to be created"
     for wd in created_work_dirs:
@@ -4849,7 +4849,7 @@ async def test_get_job_returns_503_when_core_read_fails(app_client, auth_headers
             headers=auth_headers,
         )
     assert resp.status_code == 503
-    assert "core" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
 
 
 @pytest.mark.unit
@@ -4866,7 +4866,7 @@ async def test_list_jobs_returns_503_when_core_read_fails(app_client, auth_heade
     with patch.object(jobs_mod.EmbedJobManager, "list_for_client", _failing_list):
         resp = await app_client.get("/v1/embed/jobs", headers=auth_headers)
     assert resp.status_code == 503
-    assert "core" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
 
 
 @pytest.mark.unit
@@ -5027,7 +5027,7 @@ async def test_split_embed_translates_core_timeout_to_503(app_client, auth_heade
             )
 
         assert resp.status_code == 503
-        assert "core" in resp.json()["detail"].lower()
+        assert "unavailable" in resp.json()["detail"].lower()
         # Restoration must run on the timeout path the same way it does
         # on the oracledb.Error path — otherwise the retry hits 404.
         restored = sorted(p.name for p in shared.iterdir() if p.is_file())
@@ -5057,7 +5057,7 @@ async def test_get_job_returns_503_when_core_read_times_out(app_client, auth_hea
             headers=auth_headers,
         )
     assert resp.status_code == 503
-    assert "core" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
 
 
 @pytest.mark.unit
@@ -5072,7 +5072,7 @@ async def test_list_jobs_returns_503_when_core_read_times_out(app_client, auth_h
     with patch.object(jobs_mod.EmbedJobManager, "list_for_client", _timing_out_list):
         resp = await app_client.get("/v1/embed/jobs", headers=auth_headers)
     assert resp.status_code == 503
-    assert "core" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
 
 
 @pytest.mark.unit
@@ -5096,7 +5096,7 @@ async def test_get_job_returns_503_when_core_unavailable(app_client, auth_header
             headers=auth_headers,
         )
     assert resp.status_code == 503
-    assert "core" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
 
 
 @pytest.mark.unit
@@ -5114,7 +5114,7 @@ async def test_list_jobs_returns_503_when_core_unavailable(app_client, auth_head
     ):
         resp = await app_client.get("/v1/embed/jobs", headers=auth_headers)
     assert resp.status_code == 503
-    assert "core" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
 
 
 @pytest.mark.unit
@@ -5144,7 +5144,7 @@ async def test_split_embed_requires_core_database(app_client, auth_headers):
             headers=auth_headers,
         )
     assert resp.status_code == 503
-    assert "core" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
 
 
 @pytest.mark.unit

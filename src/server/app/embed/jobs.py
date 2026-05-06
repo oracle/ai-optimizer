@@ -376,8 +376,7 @@ async def _store_create(row: _JobRow) -> None:
             # contract honest — the endpoint converts this to 503 so
             # the client retries.
             raise EmbedJobStoreUnavailable(
-                "CORE pool unavailable while persisting embed job; "
-                "refusing to fall back to per-process local storage."
+                "Job state store is unavailable for this operation."
             )
         async with _LOCAL_LOCK:
             _LOCAL_STORE[row.job_id] = row
