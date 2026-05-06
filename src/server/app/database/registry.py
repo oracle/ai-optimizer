@@ -4,8 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Database initialization utilities for the FastAPI server.
 """
-# spell-checker: ignore genai vectorstores oraclevs
-
+# spell-checker: ignore genai enquote oraclevs vectorstores
 import json
 import logging
 from typing import Optional
@@ -83,7 +82,7 @@ async def drop_vector_store(conn: oracledb.AsyncConnection, table_name: str) -> 
     """
     safe_name = validate_vs_table_name(table_name)
     LOGGER.info("Dropping vector store: %s", table_name)
-    await execute_sql(conn, f'DROP TABLE "{safe_name}" PURGE')
+    await execute_sql(conn, f"DROP TABLE {oracledb.enquote_name(safe_name, capitalize=False)} PURGE")
 
 
 async def test_connection(db_config: DatabaseConfig) -> None:
