@@ -186,6 +186,34 @@ def _embed_documents_in_batches(
             time.sleep(interval)
 
 
+def _normalize_metadata_oson(db_conn: oracledb.Connection, table_name: str) -> None:
+    """Re-encode the ``metadata`` JSON column server-side so ORDS can render it.
+
+    Why this exists: ``langchain_oracledb.vectorstores.oraclevs.add_texts``
+    binds the metadata Python dict via ``DB_TYPE_JSON``
+    (oraclevs.py:1289-1299). python-oracledb encodes the dict to OSON
+    client-side and ships the bytes wholesale. That OSON dialect is
+    not what ORDS / Database Actions expects in its REST envelope —
+    `SELECT metadata` returns ``items: []`` silently.
+    ``UPDATE ... SET metadata = JSON_SERIALIZE(metadata)`` round-trips
+    through the server's JSON parser, producing canonical OSON that
+    ORDS reads. A bare ``SET metadata = metadata`` is COW-skipped and
+    does NOT re-encode — the ``JSON_SERIALIZE`` is what forces it.
+
+    This is a workaround for a driver/ORDS dialect mismatch and should
+    be revisited when either side is upgraded to bridge it. The older
+    ``langchain_community`` package (oraclevs.py:646) bound
+    ``json.dumps(metadata)`` as a string, so the server parsed it
+    natively and produced canonical OSON without this step — the
+    migration to ``langchain_oracledb`` is what introduced the
+    regression.
+    """
+    LOGGER.info("Re-encoding metadata OSON server-side on %s", table_name)
+    with db_conn.cursor() as cur:
+        cur.execute(f'UPDATE "{table_name}" SET metadata = JSON_SERIALIZE(metadata)')
+    db_conn.commit()
+
+
 def _merge_and_index_vector_store(
     db_conn: oracledb.Connection,
     vector_store: VectorStoreConfig,
@@ -221,6 +249,11 @@ def _merge_and_index_vector_store(
         with db_conn.cursor() as cur:
             cur.executemany(delete_sql, [{"fname": fn} for fn in modified_filenames])
         db_conn.commit()
+
+    # Re-encode the staging table's metadata column to canonical OSON
+    # before the merge copies bytes into the real table. See
+    # ``_normalize_metadata_oson`` for the full rationale.
+    _normalize_metadata_oson(db_conn, safe_tmp_name)
 
     merge_sql = f"""
         INSERT INTO "{safe_name}" SELECT * FROM "{safe_tmp_name}" src

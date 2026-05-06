@@ -6,6 +6,7 @@ Tests for embed vector store utilities.
 """
 # spell-checker: disable
 
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -161,6 +162,203 @@ def test_prepare_documents_preserves_order():
     result = _prepare_documents(chunks)
     assert len(result) == 2
     assert result[0].metadata["id"] == "first"
+
+
+# ---------------------------------------------------------------------------
+# _normalize_metadata_oson — server-side OSON re-encoding workaround
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_merge_calls_normalize_before_merge_sql():
+    """[P2] ``_merge_and_index_vector_store`` must invoke
+    ``_normalize_metadata_oson`` against the temp table BEFORE the
+    INSERT-from-temp merge runs.
+
+    Order matters: the merge does ``INSERT INTO real SELECT * FROM
+    tmp``, which preserves OSON bytes wholesale. Re-encoding after
+    the merge would skip the just-merged rows; before, it captures
+    them.
+
+    Why server-side re-encoding is needed at all: ``langchain_oracledb``
+    binds metadata via ``DB_TYPE_JSON`` (oraclevs.py:1289-1299), so
+    the python-oracledb driver encodes the dict to OSON client-side.
+    The driver's OSON dialect is not what ORDS / Database Actions
+    expects in its REST envelope — ``SELECT metadata`` returns
+    ``items: []`` silently. Re-encoding via ``UPDATE ... SET
+    metadata = JSON_SERIALIZE(metadata)`` forces Oracle's server-side
+    JSON parser to produce canonical OSON, which ORDS reads. The
+    older ``langchain_community.vectorstores.OracleVS`` did not have
+    this problem because its ``add_texts`` (oraclevs.py:646) bound
+    metadata as ``json.dumps(metadata)`` — a string the server
+    parsed itself.
+    """
+    from server.app.embed.schemas import VectorStoreConfig
+    from server.app.embed.vector_store import _merge_and_index_vector_store
+
+    db_conn = MagicMock()
+    cursor = MagicMock()
+    db_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+    db_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+    vs_config = VectorStoreConfig(
+        vector_store="REAL_TBL",
+        distance_strategy=DistanceStrategy.COSINE,
+        index_type="HNSW",
+    )
+    vs_tmp_config = VectorStoreConfig(
+        vector_store="REAL_TBL_TMP",
+        distance_strategy=DistanceStrategy.COSINE,
+        index_type="HNSW",
+    )
+
+    order: list[str] = []
+
+    def _record_normalize(_conn, _name):
+        order.append(f"normalize:{_name}")
+
+    def _record_execute(sql, *_a, **_k):
+        if "INSERT INTO" in sql and "SELECT * FROM" in sql:
+            order.append("merge")
+        elif "DROP TABLE" in sql:
+            order.append("drop_tmp")
+
+    cursor.execute.side_effect = _record_execute
+
+    with (
+        patch(
+            "server.app.embed.vector_store._normalize_metadata_oson",
+            side_effect=_record_normalize,
+        ),
+        patch("server.app.embed.vector_store.create_index"),
+        patch("server.app.embed.vector_store.drop_index_if_exists"),
+        patch("server.app.embed.vector_store.OracleVS"),
+    ):
+        _merge_and_index_vector_store(
+            db_conn=db_conn,
+            vector_store=vs_config,
+            vector_store_tmp=vs_tmp_config,
+            embed_client=MagicMock(),
+        )
+
+    assert "normalize:REAL_TBL_TMP" in order, (
+        f"_normalize_metadata_oson must be called against the TEMP table; got {order}"
+    )
+    assert "merge" in order, "the merge SQL must still execute"
+    assert order.index("normalize:REAL_TBL_TMP") < order.index("merge"), (
+        f"normalize must run BEFORE the merge so the merged rows inherit "
+        f"the server-canonical OSON; got {order}"
+    )
+
+
+@pytest.mark.db
+def test_normalize_metadata_oson_real_db_round_trip_preserves_data(oracle_db_container):
+    """[P2] Real-DB integration: insert metadata via DB_TYPE_JSON
+    (the langchain_oracledb path), run ``_normalize_metadata_oson``,
+    and prove:
+
+    1. Logical content is preserved — same JSON_SERIALIZE output
+       before and after.
+    2. The OSON bytes on disk actually changed — proving the round-
+       trip really did re-encode rather than no-op (which is what
+       happens with bare ``SET metadata = metadata``).
+
+    This is the empirical bedrock for the workaround. Without
+    asserting the byte change, the test could pass while the SQL
+    secretly does nothing (Oracle COW-skips ``metadata = metadata``).
+    """
+    import oracledb as _oracledb
+
+    from server.app.embed.vector_store import _normalize_metadata_oson
+    from server.tests.conftest import TEST_DB_CONFIG
+
+    del oracle_db_container
+
+    table = "PYTEST_OSON_NORMALIZE"
+    conn = _oracledb.connect(
+        user=TEST_DB_CONFIG["db_username"],
+        password=TEST_DB_CONFIG["db_password"],
+        dsn=TEST_DB_CONFIG["db_dsn"],
+    )
+    try:
+        with conn.cursor() as cur:
+            # Clean slate — ignore "table or view does not exist"
+            try:
+                cur.execute(f'DROP TABLE "{table}" PURGE')
+            except _oracledb.DatabaseError as ex:
+                if not (ex.args and getattr(ex.args[0], "code", None) == 942):
+                    raise
+            cur.execute(f'CREATE TABLE "{table}" (id RAW(16), metadata JSON)')
+
+            # Mirror langchain_oracledb's binding: dict + DB_TYPE_JSON,
+            # so the driver encodes the OSON bytes and writes them.
+            metadata = {
+                "source": "/tmp/sample.pdf",
+                "start_index": 0,
+                "id": "sample.pdf_1",
+                "filename": "sample.pdf",
+                "size": 1234,
+                "time_modified": "2026-05-06T07:50:26.142186+00:00",
+                "etag": None,  # JSON null — also part of the live data shape
+                "__orcl_internal_doc_id": "sample.pdf_1",
+            }
+            cur.setinputsizes(meta=_oracledb.DB_TYPE_JSON)
+            cur.execute(
+                f'INSERT INTO "{table}" (id, metadata) VALUES (SYS_GUID(), :meta)',
+                {"meta": metadata},
+            )
+        conn.commit()
+
+        # Snapshot pre-normalize state.
+        with conn.cursor() as cur:
+            cur.execute(
+                f'SELECT JSON_SERIALIZE(metadata RETURNING VARCHAR2), LENGTH(metadata) FROM "{table}"'
+            )
+            pre_serialized, pre_oson_len = cur.fetchone()
+
+        # Sanity: inserted exactly what we asked for.
+        import json as _json
+        assert _json.loads(pre_serialized) == metadata, (
+            "INSERT round-trip already corrupted the data — this test "
+            "cannot diagnose the OSON re-encoding"
+        )
+
+        # The fix under test.
+        _normalize_metadata_oson(conn, table)
+        conn.commit()
+
+        # Post-normalize.
+        with conn.cursor() as cur:
+            cur.execute(
+                f'SELECT JSON_SERIALIZE(metadata RETURNING VARCHAR2), LENGTH(metadata) FROM "{table}"'
+            )
+            post_serialized, post_oson_len = cur.fetchone()
+
+        # Logical content unchanged — re-encoding must be lossless.
+        assert _json.loads(post_serialized) == metadata, (
+            f"_normalize_metadata_oson lost or mutated metadata content. "
+            f"pre={pre_serialized!r} post={post_serialized!r}"
+        )
+
+        # Byte-level proof that re-encoding actually happened. If the
+        # OSON length is identical, the bare ``metadata = metadata``
+        # COW-skip happened and the workaround is silently a no-op —
+        # which would defeat the entire purpose. The exact lengths
+        # depend on Oracle/driver version, so we only assert ≠.
+        assert pre_oson_len != post_oson_len, (
+            f"OSON byte length unchanged ({pre_oson_len} bytes). The "
+            f"UPDATE may have been COW-skipped server-side — the "
+            f"JSON_SERIALIZE round-trip is meant to force a re-encode. "
+            f"If lengths legitimately match in some Oracle version, "
+            f"this assertion needs replacing with a stricter byte-level "
+            f"comparison via DBMS_LOB or RAWTOHEX(metadata)."
+        )
+    finally:
+        with contextlib.suppress(_oracledb.DatabaseError):
+            with conn.cursor() as cur:
+                cur.execute(f'DROP TABLE "{table}" PURGE')
+            conn.commit()
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
