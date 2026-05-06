@@ -26,8 +26,8 @@ class LiteLlmConfig(LlmConfig):
     """AgentSpec LLM configuration for LiteLLM-backed models.
 
     When serialized to YAML/JSON, produces a portable config with
-    component_type "LiteLlmConfig".  At load time, the WayFlow plugin
-    converts this into a `LiteLlmModel` runtime instance.
+    component_type "LiteLlmConfig".  At load time, a runtime-specific
+    plugin converts this into the engine's native LLM instance.
 
     Parameters
     ----------

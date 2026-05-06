@@ -4,128 +4,94 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 LangGraph session wrappers for flow and agent graphs.
 """
-# spell-checker: ignore vecsearch langgraph litellm
+# spell-checker: ignore litellm ainvoke astream checkpointer sqlcl
 
+import asyncio
 import logging
 import uuid
+from functools import reduce
 from typing import Any, Dict, List, Optional
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages.ai import add_usage
 
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.core.schemas import ClientSettings
-from server.app.runtime.common import SessionMetadata, _sum_token_usage, parse_grade_relevant, parse_vs_metadata
-from server.app.runtime.langgraph.adapters.litellm import ChatLiteLLMBridge
+from server.app.runtime.common import SessionMetadata, parse_grade_relevant, parse_vs_metadata
+from server.app.runtime.langgraph.adapters.litellm import extract_response_text
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _extract_from_runnable(node: Any) -> tuple:
-    """Try to extract ChatLiteLLMBridge from node.runnable path.
+def _chunk_text(chunk: Any) -> str:
+    """Extract plain text from an ``AIMessageChunk.content`` for SSE forwarding."""
+    if chunk is None:
+        return ""
+    return extract_response_text(getattr(chunk, "content", None))
 
-    Returns (instances, should_skip) where should_skip indicates the caller
-    should continue to the next node.
+
+async def _run_graph_with_streaming(
+    graph: Any,
+    inputs: Any,
+    config: Dict[str, Any],
+    queue: asyncio.Queue,
+) -> tuple[Optional[Dict[str, Any]], bool]:
+    """Drive *graph* via ``astream_events`` and forward chat-model chunks to *queue*.
+
+    Captures the top-level chain's final output from its ``on_chain_end``
+    event (matched by run_id, so any compiled graph works regardless of name)
+    and normalizes chunk content via ``_chunk_text`` so v1 typed-block content
+    does not leak through.
+
+    Returns ``(final_output, streamed)``; *streamed* indicates whether any
+    non-empty chat-model chunk was forwarded.
+
+    Node errors propagate unchanged — re-running the graph would duplicate
+    upstream side effects (retrievers, tool calls). Streaming-setup failures
+    for a single LLM call are recovered inside the bridge.
     """
-    runnable = getattr(node, "runnable", None)
-    if runnable is None:
-        return [], False
-
-    bound = getattr(runnable, "bound", None)
-    if isinstance(bound, ChatLiteLLMBridge):
-        return [bound], True
-    if isinstance(runnable, ChatLiteLLMBridge):
-        return [runnable], True
-
-    nested = getattr(runnable, "graph", None)
-    if nested and hasattr(nested, "nodes"):
-        return _extract_llm_instances(nested), True
-    return [], True
-
-
-def _extract_from_closure(bound: Any) -> Optional[ChatLiteLLMBridge]:
-    """Inspect closure variables on bound.func/afunc to find a 'model' binding."""
-    for attr in ("func", "afunc"):
-        fn = getattr(bound, attr, None)
-        if fn and hasattr(fn, "__closure__") and fn.__closure__:
-            for i, name in enumerate(fn.__code__.co_freevars):
-                if name == "model":
-                    try:
-                        val = fn.__closure__[i].cell_contents
-                        if isinstance(val, ChatLiteLLMBridge):
-                            return val
-                    except ValueError:
-                        pass
-                    break
-    return None
+    top_run_id: Optional[str] = None
+    final_output: Optional[Dict[str, Any]] = None
+    streamed = False
+    async for event in graph.astream_events(inputs, config=config, version="v2"):
+        kind = event.get("event")
+        if kind == "on_chain_start" and top_run_id is None:
+            top_run_id = event.get("run_id")
+        elif kind == "on_chain_end" and event.get("run_id") == top_run_id:
+            final_output = event.get("data", {}).get("output")
+        elif kind == "on_chat_model_stream":
+            text = _chunk_text(event.get("data", {}).get("chunk"))
+            if text:
+                await queue.put({"type": "stream", "content": text})
+                streamed = True
+    return final_output, streamed
 
 
-def _extract_llm_instances(graph: Any) -> List[ChatLiteLLMBridge]:
-    """Walk the graph to find all ChatLiteLLMBridge instances.
+def _aggregate_usage_callback(callback: UsageMetadataCallbackHandler) -> Optional[TokenUsage]:
+    """Sum per-model ``usage_metadata`` collected by *callback* into one ``TokenUsage``.
 
-    Handles multiple compiled graph structures:
-    - Mock/simple: node.runnable.bound or node.runnable is ChatLiteLLMBridge
-    - Flow graphs (PregelNode): bound.func.llm (LlmNodeExecutor)
-    - Agent graphs (PregelNode): closure variable 'model' on bound.func/afunc
+    ``UsageMetadataCallbackHandler`` keys usage by model name and only sums
+    within each model. ``add_usage`` from ``langchain_core.messages.ai`` does
+    the cross-model fold and preserves any ``input_token_details`` /
+    ``output_token_details`` shape, even though the rest of the runtime only
+    consumes the three top-level totals today.
     """
-    instances = []
-    nodes = getattr(graph, "nodes", {})
-    for node in nodes.values():
-        bound = getattr(node, "bound", None)
-
-        if bound is None:
-            found, should_skip = _extract_from_runnable(node)
-            instances.extend(found)
-            if should_skip:
-                continue
-
-        if isinstance(bound, ChatLiteLLMBridge):
-            instances.append(bound)
-            continue
-
-        # Flow graphs: NodeExecutor with .llm (LlmNodeExecutor)
-        func = getattr(bound, "func", None)
-        if func is not None:
-            llm = getattr(func, "llm", None)
-            if isinstance(llm, ChatLiteLLMBridge):
-                instances.append(llm)
-                continue
-
-        # Agent graphs: closure inspection for 'model' variable
-        closure_result = _extract_from_closure(bound)
-        if closure_result is not None:
-            instances.append(closure_result)
-
-        # Nested subgraphs via PregelNode.subgraphs or bound.graph
-        for sub in getattr(node, "subgraphs", []):
-            if hasattr(sub, "nodes"):
-                instances.extend(_extract_llm_instances(sub))
-
-    return instances
-
-
-def _extract_graph_token_usage(graph: Any) -> Optional[TokenUsage]:
-    """Extract cumulative token usage from all ChatLiteLLMBridge instances in a graph."""
-    usages: list[TokenUsage] = []
-    for llm in _extract_llm_instances(graph):
-        tu = llm.last_token_usage
-        if tu:
-            if isinstance(tu, TokenUsage):
-                usages.append(tu)
-            else:
-                usages.append(
-                    TokenUsage(
-                        prompt_tokens=tu.get("prompt_tokens", 0),
-                        completion_tokens=tu.get("completion_tokens", 0),
-                        total_tokens=tu.get("total_tokens", 0),
-                    )
-                )
-    return _sum_token_usage(*usages) if usages else None
-
-
-def _clear_graph_token_usage(graph: Any) -> None:
-    """Reset token usage on all ChatLiteLLMBridge instances."""
-    for llm in _extract_llm_instances(graph):
-        llm.last_token_usage = None
+    by_model = getattr(callback, "usage_metadata", None) or {}
+    LOGGER.warning("DEBUG _aggregate_usage_callback: by_model=%r", by_model)
+    if not by_model:
+        return None
+    totals = reduce(add_usage, by_model.values())
+    prompt = int(totals.get("input_tokens", 0) or 0)
+    completion = int(totals.get("output_tokens", 0) or 0)
+    total = int(totals.get("total_tokens", 0) or 0)
+    if not (prompt or completion or total):
+        return None
+    return TokenUsage(
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        total_tokens=total or (prompt + completion),
+    )
 
 
 class GraphFlowSession:
@@ -158,24 +124,41 @@ class GraphFlowSession:
             "chat_history": self._history if chat_history else "",
         }
 
-    async def execute(self, query: str, thread_id: str, chat_history: bool = True) -> str:
-        """Execute the flow graph and extract the answer."""
+    async def execute(
+        self,
+        query: str,
+        thread_id: str,
+        chat_history: bool = True,
+        queue: Optional[asyncio.Queue] = None,
+    ) -> str:
+        """Execute the flow graph and extract the answer.
+
+        When *queue* is provided, the graph is driven via ``astream_events`` and
+        chat-model chunks are forwarded to the queue. If no chunks are observed
+        but a final answer is produced, the full answer is delivered as a single
+        ``stream`` event so callers always see the response.
+        """
         inputs = self.build_inputs(query, thread_id, chat_history=chat_history)
-        _clear_graph_token_usage(self.graph)
         self.last_metadata = SessionMetadata()
+        usage_cb = UsageMetadataCallbackHandler()
+        # LangGraph flow from AgentSpec uses FlowInputSchema:
+        # {"inputs": {start_node_id: {input_values}}, "messages": []}
+        flow_inputs = {"inputs": inputs, "messages": []}
+        config: Dict[str, Any] = {"callbacks": [usage_cb]}
+        streamed = False
 
         try:
-            # LangGraph flow from AgentSpec uses FlowInputSchema:
-            # {"inputs": {start_node_id: {input_values}}, "messages": []}
-            flow_inputs = {"inputs": inputs, "messages": []}
-            result = await self.graph.ainvoke(flow_inputs)
+            if queue is None:
+                result = await self.graph.ainvoke(flow_inputs, config=config)
+            else:
+                result, streamed = await _run_graph_with_streaming(self.graph, flow_inputs, config, queue)
         except Exception:
             LOGGER.exception("Flow execution failed for query: %s", query)
             raise
 
         # Extract outputs from the flow result
         answer = ""
-        outputs = result.get("outputs", {})
+        outputs = (result or {}).get("outputs", {})
         if outputs:
             answer_value = outputs.get("answer")
             answer = str(answer_value) if answer_value is not None else ""
@@ -188,17 +171,20 @@ class GraphFlowSession:
                 vs_meta.documents = []
             self.last_metadata.vs_metadata = vs_meta
 
-        token_usage = _extract_graph_token_usage(self.graph)
+        token_usage = _aggregate_usage_callback(usage_cb)
         if token_usage:
             self.last_metadata.token_usage = token_usage
 
         if not answer:
             # Fall back to last AI message
-            messages = result.get("messages", [])
+            messages = (result or {}).get("messages", [])
             for msg in reversed(messages):
                 if isinstance(msg, AIMessage):
                     answer = str(msg.content) if msg.content else ""
                     break
+
+        if queue is not None and not streamed and answer:
+            await queue.put({"type": "stream", "content": answer})
 
         self._history += f"User: {query}\nAssistant: {answer}\n"
         return answer
@@ -239,21 +225,35 @@ class AgentGraphSession:
         """Return the checkpointer instance."""
         return self._checkpointer
 
-    async def chat(self, message: str, chat_history: bool = True) -> str:
-        """Send a message and get a response."""
-        _clear_graph_token_usage(self.graph)
-        self.last_metadata = SessionMetadata()
+    async def chat(
+        self,
+        message: str,
+        chat_history: bool = True,
+        queue: Optional[asyncio.Queue] = None,
+    ) -> str:
+        """Send a message and get a response.
 
-        config = {
+        When *queue* is provided, the graph is driven via ``astream_events`` and
+        chat-model chunks are forwarded to the queue. If no chunks are observed
+        but a final answer is produced, the full answer is delivered as a single
+        ``stream`` event.
+        """
+        self.last_metadata = SessionMetadata()
+        usage_cb = UsageMetadataCallbackHandler()
+
+        config: Dict[str, Any] = {
             "configurable": {"thread_id": self._thread_id if chat_history else str(uuid.uuid4())},
+            "callbacks": [usage_cb],
             "recursion_limit": 25,
         }
+        graph_inputs = {"messages": [HumanMessage(content=message)]}
+        streamed = False
 
         try:
-            result = await self.graph.ainvoke(
-                {"messages": [HumanMessage(content=message)]},
-                config=config,
-            )
+            if queue is None:
+                result = await self.graph.ainvoke(graph_inputs, config=config)
+            else:
+                result, streamed = await _run_graph_with_streaming(self.graph, graph_inputs, config, queue)
         except Exception:
             LOGGER.exception("Agent chat failed for message: %s", message)
             # Clear corrupt checkpoint so retries don't inherit partial tool-call state
@@ -265,7 +265,7 @@ class AgentGraphSession:
                     LOGGER.debug("Could not clear checkpoint for thread %s", thread)
             raise
 
-        messages = result.get("messages", [])
+        messages = (result or {}).get("messages", [])
         answer = ""
         for msg in reversed(messages):
             if isinstance(msg, AIMessage) and not msg.tool_calls:
@@ -277,9 +277,12 @@ class AgentGraphSession:
             if answer:
                 self._conversation_messages.append(AIMessage(content=answer))
 
-        token_usage = _extract_graph_token_usage(self.graph)
+        token_usage = _aggregate_usage_callback(usage_cb)
         if token_usage:
             self.last_metadata.token_usage = token_usage
+
+        if queue is not None and not streamed and answer:
+            await queue.put({"type": "stream", "content": answer})
 
         return answer
 
@@ -312,8 +315,13 @@ class NL2SQLGraphSession(AgentGraphSession):
         self._db_context = context
         self.conversation_id = thread_id or self._thread_id
 
-    async def chat(self, message: str, chat_history: bool = True) -> str:
+    async def chat(
+        self,
+        message: str,
+        chat_history: bool = True,
+        queue: Optional[asyncio.Queue] = None,
+    ) -> str:
         """Chat with DB context prepended to the first message."""
         # Prepend DB context to the message so the LLM has it
         augmented = self._db_context + "\n" + message
-        return await super().chat(augmented, chat_history=chat_history)
+        return await super().chat(augmented, chat_history=chat_history, queue=queue)

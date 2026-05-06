@@ -6,6 +6,8 @@ Unit tests for logging_config.py
 """
 
 import logging
+import sys
+import types
 
 import logging_config
 from _version import __version__
@@ -107,6 +109,41 @@ class TestConfigureLogging:
 
         LOGGER = logging.getLogger("streamlit")
         assert LOGGER.propagate is False
+
+    def test_transformers_helper_keeps_error_threshold(self, monkeypatch):
+        """Transformers helper should not lower configured verbosity."""
+        calls = []
+
+        fake_logging = types.SimpleNamespace()
+
+        def disable_default_handler():
+            calls.append("disable_default_handler")
+
+        def set_verbosity_error():
+            calls.append("set_verbosity_error")
+            logging.getLogger("transformers").setLevel(logging.ERROR)
+
+        def set_verbosity_warning():
+            calls.append("set_verbosity_warning")
+            logging.getLogger("transformers").setLevel(logging.WARNING)
+
+        fake_logging.disable_default_handler = disable_default_handler
+        fake_logging.set_verbosity_error = set_verbosity_error
+        fake_logging.set_verbosity_warning = set_verbosity_warning
+
+        fake_transformers = types.ModuleType("transformers")
+        fake_utils = types.ModuleType("transformers.utils")
+        setattr(fake_utils, "logging", fake_logging)
+        setattr(fake_transformers, "utils", fake_utils)
+
+        monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+        monkeypatch.setitem(sys.modules, "transformers.utils", fake_utils)
+
+        logging_config.configure_logging()
+
+        LOGGER = logging.getLogger("transformers")
+        assert LOGGER.level == logging.ERROR
+        assert calls == ["disable_default_handler", "set_verbosity_error"]
 
 
 class TestFormatterConfig:

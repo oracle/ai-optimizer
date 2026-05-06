@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Ollama tool-calling helpers shared by the LangGraph and WayFlow adapters.
+Ollama tool-calling helpers used by the LangGraph adapter.
 
 Ollama's /api/chat native tool calling fails on hyphenated function names
 (e.g. ``sqlcl_list-connections``).  These helpers sanitize names to
@@ -12,6 +12,7 @@ Small Ollama models (e.g. llama3.1 8B) also hallucinate when tool results
 are terse single-word values.  ``contextualize_tool_result`` prefixes
 the result so the model understands what it represents.
 """
+# spell-checker: ignore ollama sqlcl unsanitize
 
 import copy
 from typing import Any, Dict, List, Optional, Tuple
