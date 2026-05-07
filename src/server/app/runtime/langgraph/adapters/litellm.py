@@ -19,7 +19,7 @@ Oracle-specific behavior upstream does not provide:
   plus normalization of list-content tool messages to a string
   (LiteLLM/OpenAI tool messages must carry string content).
 """
-# spell-checker: ignore unsanitize ollama acompletion afallback agenerate astream litellm
+# spell-checker: ignore unsanitize ollama acompletion afallback agenerate astream litellm ainvoke qwen
 
 import json
 import logging
@@ -27,7 +27,8 @@ from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Mapping, 
 
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
 from langchain_core.language_models import LanguageModelInput
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
+from langchain_core.language_models.chat_models import agenerate_from_stream, generate_from_stream
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
@@ -55,7 +56,7 @@ def _flatten_to_text(content: Any) -> str:
 
     Used for **inbound** content (e.g. LangGraph tool-message payloads being
     forwarded to LiteLLM, which requires string content for ``role: "tool"``).
-    Non-text blocks are JSON-serialised so information the caller sent is not
+    Non-text blocks are JSON-serialized so information the caller sent is not
     silently dropped on the wire. Use :func:`extract_response_text` instead
     when reading content *out of* an LLM reply.
     """
@@ -239,8 +240,6 @@ class OracleChatLiteLLM(ChatLiteLLM):
         name_map = kwargs.pop(_OLLAMA_NAME_MAP_KEY, None)
         should_stream = stream if stream is not None else self.streaming
         if should_stream:
-            from langchain_core.language_models.chat_models import generate_from_stream
-
             stream_iter = self._stream(
                 messages,
                 stop=stop,
@@ -266,8 +265,6 @@ class OracleChatLiteLLM(ChatLiteLLM):
         name_map = kwargs.pop(_OLLAMA_NAME_MAP_KEY, None)
         should_stream = stream if stream is not None else self.streaming
         if should_stream:
-            from langchain_core.language_models.chat_models import agenerate_from_stream
-
             stream_iter = self._astream(
                 messages,
                 stop=stop,
@@ -384,7 +381,9 @@ class OracleChatLiteLLM(ChatLiteLLM):
     ) -> ChatResult:
         message_dicts, params = self._build_non_streaming_params(messages, stop, kwargs)
         response = self.completion_with_retry(
-            messages=message_dicts, run_manager=run_manager, **params,
+            messages=message_dicts,
+            run_manager=run_manager,
+            **params,
         )
         return self._create_chat_result(response)
 
@@ -397,7 +396,9 @@ class OracleChatLiteLLM(ChatLiteLLM):
     ) -> ChatResult:
         message_dicts, params = self._build_non_streaming_params(messages, stop, kwargs)
         response = await self.acompletion_with_retry(
-            messages=message_dicts, run_manager=run_manager, **params,
+            messages=message_dicts,
+            run_manager=run_manager,
+            **params,
         )
         return self._create_chat_result(response)
 
@@ -481,8 +482,6 @@ async def ainvoke_text_from_spec(
     Used by the MCP tools (rephrase, grade, retriever) to consolidate the
     ``chat_model_from_spec → ainvoke → extract_response_text`` pattern.
     """
-    from langchain_core.messages import HumanMessage
-
     llm = chat_model_from_spec(spec, temperature=temperature, max_tokens=max_tokens)
     result = await llm.ainvoke([HumanMessage(content=prompt)])
     return extract_response_text(result.content)

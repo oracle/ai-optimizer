@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.api.v1.schemas.common import ClientId
+from server.app.core.client_locks import _client_lock
 from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory
 from server.app.core.secrets import REVEAL_KEY
@@ -236,12 +237,6 @@ async def oci_download_objects(
     client: Annotated[ClientId, Header()] = "server",
 ):
     """Download objects from a bucket to the client's temp directory."""
-    # Import locally to avoid the circular import:
-    # ``server.app.api.v1.endpoints.embed`` imports ``_find_oci_profile``
-    # from this module at module load. Pulling ``_client_lock`` at
-    # function-call time defers the lookup past the import phase.
-    from server.app.api.v1.endpoints.embed import _client_lock
-
     profile = _find_oci_profile(auth_profile)
     temp_directory = get_temp_directory(client, "embedding")
 

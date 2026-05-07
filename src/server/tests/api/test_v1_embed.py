@@ -657,11 +657,10 @@ async def test_oci_download_objects_acquires_client_lock(app_client, auth_header
     (see ``test_sql_store_acquires_client_lock`` for the full
     reasoning).
     """
-    from server.app.api.v1.endpoints import embed as embed_module
     from server.app.api.v1.endpoints import oci as oci_module
 
     acquisitions: list[str] = []
-    real_client_lock = embed_module._client_lock
+    real_client_lock = oci_module._client_lock
 
     @asynccontextmanager
     async def _spy_client_lock(client: str):
@@ -669,14 +668,10 @@ async def test_oci_download_objects_acquires_client_lock(app_client, auth_header
         async with real_client_lock(client):
             yield
 
-    # The OCI endpoint imports ``_client_lock`` locally (function-
-    # scoped) to break a circular import; that means the local
-    # binding is resolved at call time from ``embed_module``, so
-    # patching ``embed_module._client_lock`` is what the spy hooks
-    # into. Patching ``oci_module._client_lock`` would not be picked
-    # up because no such name exists at module scope there.
+    # ``oci`` imports ``_client_lock`` from ``server.app.core.client_locks``
+    # at module scope, so patch the binding the endpoint actually uses.
     with (
-        patch.object(embed_module, "_client_lock", _spy_client_lock),
+        patch.object(oci_module, "_client_lock", _spy_client_lock),
         patch.object(
             oci_module, "_find_oci_profile", return_value=MagicMock()
         ),
@@ -1878,9 +1873,10 @@ async def test_client_lock_evicts_lru_when_full(monkeypatch):
     cannot accumulate process state until restart.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
+    from server.app.core import client_locks
     from server.app.core.settings import settings as core_settings
 
-    embed_mod._client_promotion_locks.clear()
+    client_locks._client_promotion_locks.clear()
     monkeypatch.setattr(core_settings, "max_clients", 3)
 
     async with embed_mod._client_lock("a"):
@@ -1896,9 +1892,9 @@ async def test_client_lock_evicts_lru_when_full(monkeypatch):
     async with embed_mod._client_lock("d"):
         pass
 
-    keys = list(embed_mod._client_promotion_locks)
+    keys = list(client_locks._client_promotion_locks)
     assert keys == ["c", "a", "d"], f"expected LRU order [c, a, d]; got {keys}"
-    assert len(embed_mod._client_promotion_locks) == 3
+    assert len(client_locks._client_promotion_locks) == 3
 
 
 @pytest.mark.unit
@@ -1906,9 +1902,10 @@ async def test_client_lock_evicts_lru_when_full(monkeypatch):
 async def test_client_lock_skips_in_use_entry_during_eviction(monkeypatch):
     """In-use entries (holder or queued waiter) are not evicted."""
     from server.app.api.v1.endpoints import embed as embed_mod
+    from server.app.core import client_locks
     from server.app.core.settings import settings as core_settings
 
-    embed_mod._client_promotion_locks.clear()
+    client_locks._client_promotion_locks.clear()
     monkeypatch.setattr(core_settings, "max_clients", 2)
 
     # Pre-populate "held" and "spare" entries (users == 0 after exit).
@@ -1923,9 +1920,9 @@ async def test_client_lock_skips_in_use_entry_during_eviction(monkeypatch):
     async with embed_mod._client_lock("held"), embed_mod._client_lock("new"):
         pass
 
-    assert "held" in embed_mod._client_promotion_locks
-    assert "spare" not in embed_mod._client_promotion_locks
-    assert "new" in embed_mod._client_promotion_locks
+    assert "held" in client_locks._client_promotion_locks
+    assert "spare" not in client_locks._client_promotion_locks
+    assert "new" in client_locks._client_promotion_locks
 
 
 @pytest.mark.unit
@@ -1944,9 +1941,10 @@ async def test_client_lock_skips_entry_with_queued_waiter(monkeypatch):
     ``_client_locks_guard`` closes that window.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
+    from server.app.core import client_locks
     from server.app.core.settings import settings as core_settings
 
-    embed_mod._client_promotion_locks.clear()
+    client_locks._client_promotion_locks.clear()
     monkeypatch.setattr(core_settings, "max_clients", 1)
 
     # Holder enters first and stays inside the context until we release
@@ -1977,14 +1975,14 @@ async def test_client_lock_skips_entry_with_queued_waiter(monkeypatch):
     await asyncio.sleep(0)
     await asyncio.sleep(0)
 
-    entry = embed_mod._client_promotion_locks["client_a"]
+    entry = client_locks._client_promotion_locks["client_a"]
     assert entry.users >= 2, f"holder + waiter must both count toward users; got {entry.users}"
 
     # Trigger the eviction path: cap is 1, "client_a" is in use.
     # Request a new client — eviction must not cull "client_a"; it
     # should instead allow temporary growth past the cap.
     async with embed_mod._client_lock("client_b"):
-        registry_keys = set(embed_mod._client_promotion_locks)
+        registry_keys = set(client_locks._client_promotion_locks)
         assert "client_a" in registry_keys, f"in-use entry was evicted despite queued waiter; got {registry_keys}"
 
     let_holder_finish.set()
@@ -2005,15 +2003,16 @@ async def test_client_lock_normalizes_key():
     canonicalisation the filesystem does.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
+    from server.app.core import client_locks
 
-    embed_mod._client_promotion_locks.clear()
+    client_locks._client_promotion_locks.clear()
 
     async with embed_mod._client_lock("a"):
-        entry_a = embed_mod._client_promotion_locks["a"]
+        entry_a = client_locks._client_promotion_locks["a"]
     async with embed_mod._client_lock("team/a"):
-        entry_team_a = embed_mod._client_promotion_locks["a"]
+        entry_team_a = client_locks._client_promotion_locks["a"]
     async with embed_mod._client_lock("foo/bar/a"):
-        entry_subdir_a = embed_mod._client_promotion_locks["a"]
+        entry_subdir_a = client_locks._client_promotion_locks["a"]
     assert entry_a is entry_team_a
     assert entry_a is entry_subdir_a
 

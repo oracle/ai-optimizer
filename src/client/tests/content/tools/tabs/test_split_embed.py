@@ -618,7 +618,7 @@ class TestPollEmbedJob:
             patch.object(
                 mod,
                 "mark_embed_job_started",
-                side_effect=lambda job_id: mark_calls.append(job_id),
+                side_effect=mark_calls.append,
             ),
             patch.object(
                 mod,
