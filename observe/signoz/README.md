@@ -33,7 +33,7 @@ observe/signoz/bootstrap-signoz.py \
 # SigNoz password for admin@example.com: ********
 ```
 
-The script POSTs the credentials to `/api/v2/sessions/email_password`, captures the returned `data.accessToken`, and uses it for the dashboard / alert API calls — no separate token-fetch step needed. The password is **only** accepted via interactive prompt or the `SIGNOZ_PASSWORD` env var; there is no `--password` flag, since CLI args leak to `ps` and shell history.
+The script POSTs the credentials to `/api/v2/sessions/email_password`, captures the returned `data.accessToken`, and uses it for the dashboard / alert API calls — no separate token-fetch step needed. Password input is supported via the interactive prompt or the `SIGNOZ_PASSWORD` env var; the script intentionally does not provide a `--password` flag.
 
 For CI or SSO setups that don't fit the email/password flow, pass a pre-fetched JWT:
 

@@ -100,10 +100,10 @@ If you do not see this log line, telemetry did not initialize — check the [Tro
 Log export to OTLP only activates when the OTLP trace exporter is active. With `OTEL_TRACES_EXPORTER=console` (debug mode), application logs continue to stream to stdout via the existing logging configuration; they are not duplicated to OTLP.
 {{% /notice %}}
 
-{{% notice style="code" title="Log export is opt-in (privacy)" icon="triangle-exclamation" %}}
-Application log export to OTLP is **disabled by default**, even when tracing is configured. Enable it with `AIO_OTEL_LOGS_ENABLED=true` only for backends approved to store application payloads.
+{{% notice style="code" title="Log export is opt-in" icon="triangle-exclamation" %}}
+Application log export to OTLP is **disabled by default**, even when tracing is configured. Enable it with `AIO_OTEL_LOGS_ENABLED=true` only for backends intended to retain application logs; review access and retention settings first.
 
-Log records can include chat request text, so review backend access and retention settings before enabling log export. Span payload visibility is controlled separately through the OpenInference settings below.
+Span attribute visibility is controlled separately through the OpenInference settings below.
 {{% /notice %}}
 
 ## Environment Variable Reference
@@ -190,17 +190,23 @@ If running SigNoz on the same Docker host (e.g. via the SigNoz docker-compose), 
 
 ### Kubernetes / Helm
 
-The bundled Helm chart does not yet expose OpenTelemetry settings as first-class values. Until first-class support lands, set the variables via the chart's existing env-injection mechanism (e.g. `envSecret` or the chart's pod env list), pointing at a SigNoz / OTel Collector service running in-cluster:
+The bundled Helm chart exposes OpenTelemetry settings under `server.otel`. Point `endpoint` at any in-cluster OTLP collector — a separately-deployed SigNoz, Jaeger, Tempo, or vendor agent. The chart does NOT install one:
 
 ```yaml
 # values overlay
 server:
-  env:
-    OTEL_EXPORTER_OTLP_ENDPOINT: http://signoz-otel-collector.monitoring:4317
-    OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=prd,service.namespace=ai-optimizer"
+  otel:
+    enabled: true
+    endpoint: http://signoz-otel-collector.observability.svc.cluster.local:4317
+    insecure: true   # plaintext gRPC inside the cluster
+    resourceAttributes:
+      service.namespace: ai-optimizer
+    # logsEnabled: true   # opt-in; review backend retention first
 ```
 
-Within Kubernetes, `service.instance.id` is auto-populated from `HOSTNAME` (the pod name), giving stable per-pod identity in the backend.
+The published image already includes the `[otel]` extra, so `enabled: true` works against the default image. Within Kubernetes, `service.instance.id` is auto-populated from `HOSTNAME` (the pod name), giving stable per-pod identity in the backend. `deployment.environment` is set automatically from the chart's `global.env` value.
+
+If `enabled: true` is set without an endpoint (and without `tracesExporter: console` for local debugging), `helm template` / `helm install` fails fast rather than silently producing zero telemetry.
 
 ## Troubleshooting
 

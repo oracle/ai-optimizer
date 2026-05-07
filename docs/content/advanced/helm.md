@@ -240,6 +240,76 @@ Configure 3rd-Party AI Models used by the {{< short_app_ref >}} API Server.  Cre
 | server.models.openAI | object | `{"secretKey":"apiKey","secretName":""}` | OpenAI API Key |
 | server.models.perplexity | object | `{"secretKey":"apiKey","secretName":""}` | Perplexity API Key |
 
+##### Server OpenTelemetry Configuration
+
+Wires the running pod to a separately-deployed OTLP collector (e.g. SigNoz, Jaeger, Tempo). The chart does **not** install the collector — deploy it independently and point `endpoint` at it. See [Observability]({{% relref "/observability" %}}) for the broader workflow and [SigNoz]({{% relref "/observability/signoz" %}}) for a backend-specific quickstart.
+
+The published image already includes the OTel SDK; setting `enabled: true` is sufficient to start exporting.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| server.otel.enabled | bool | `false` | Master switch. When false, no `OTEL_*` env vars are rendered and the server's telemetry init is a no-op. |
+| server.otel.endpoint | string | `""` | OTLP receiver URL applied to all signals. Required when `enabled=true` unless `tracesEndpoint` is set, or `tracesExporter` is `"console"` or `"none"`. `logsEndpoint` alone does **not** satisfy this — log export piggybacks on the traces path. Example: `http://signoz-otel-collector.observability.svc.cluster.local:4317` |
+| server.otel.tracesEndpoint | string | `""` | Per-signal endpoint override for traces. Empty inherits `endpoint`. |
+| server.otel.logsEndpoint | string | `""` | Per-signal endpoint override for logs. Empty inherits `endpoint`. |
+| server.otel.protocol | string | `""` | Wire protocol for all signals. One of `grpc` (port 4317) or `http/protobuf` (port 4318). Empty falls back to the SDK default of `grpc`. |
+| server.otel.tracesProtocol | string | `""` | Per-signal protocol override for traces. Empty inherits `protocol`. |
+| server.otel.logsProtocol | string | `""` | Per-signal protocol override for logs. Empty inherits `protocol`. |
+| server.otel.insecure | bool | `false` | Skip TLS verification for OTLP gRPC. Required for plaintext in-cluster collectors (typical for SigNoz with no TLS sidecar). |
+| server.otel.headers | string | `""` | Comma-separated `k=v` headers for vendor auth (e.g. SigNoz cloud API key). Mutually exclusive with `headersSecret`. Prefer `headersSecret` for any value containing a credential. |
+| server.otel.headersSecret.name | string | `""` | Name of a pre-existing Secret containing OTLP auth headers. Mutually exclusive with the plaintext `headers` field. |
+| server.otel.headersSecret.key | string | `"headers"` | Key within the Secret that holds the headers value. |
+| server.otel.serviceName | string | `""` | Override the service name shown in the backend. Empty uses the application default (`ai-optimizer-server`). |
+| server.otel.resourceAttributes | object | `{}` | Map of string→string resource attributes attached to every span. Values are percent-encoded before joining, so commas/spaces/equals signs round-trip correctly. `deployment.environment` is already populated from `global.env`; only override here if you need a different value. |
+| server.otel.tracesExporter | string | `""` | Comma-separated exporter list. Supported tokens: `otlp`, `console`, `none`. `none` is the explicit opt-out and must stand alone. Empty uses the application default (`otlp`). |
+| server.otel.logsEnabled | bool | `false` | Application log export to OTLP. Disabled by default for privacy: log records can include chat content. Enable only against backends whose retention/access policy is approved for application payloads. |
+| server.otel.logsExporter | string | `""` | Comma-separated log exporter list. Supported: `otlp` (ship logs) or `none` (explicit suppression). `console` is not implemented for logs. Use `none` to keep tracing while suppressing logs even when `logsEnabled=true`. |
+| server.otel.sampler | string | `""` | Trace sampler name (e.g. `parentbased_traceidratio`). Empty uses the SDK default (`parentbased_always_on`). |
+| server.otel.samplerArg | string | `""` | Sampler argument (e.g. ratio for `parentbased_traceidratio`). Numeric values are preserved. |
+| server.otel.extraEnv | list | `[]` | Free-form additional env vars passed through to the pod (e.g. `OTEL_BSP_*`, `OTEL_PROPAGATORS`). Each entry is `{name, value}` or `{name, valueFrom}`. Scalar values are stringified for the Kubernetes API. |
+
+###### Examples
+
+**SigNoz, in-cluster, plaintext gRPC**
+
+```yaml
+server:
+  otel:
+    enabled: true
+    endpoint: http://signoz-otel-collector.observability.svc.cluster.local:4317
+    insecure: true
+    resourceAttributes:
+      service.namespace: ai-optimizer
+```
+
+**Vendor backend with API-key header from a Secret**
+
+```bash
+kubectl create secret generic otel-headers \
+  --from-literal=headers="signoz-access-token=<token>" \
+  -n ai-optimizer
+```
+
+```yaml
+server:
+  otel:
+    enabled: true
+    endpoint: https://ingest.example.com:4317
+    headersSecret:
+      name: otel-headers
+```
+
+**Local debug — console traces, no collector**
+
+```yaml
+server:
+  otel:
+    enabled: true
+    tracesExporter: console
+```
+
+---
+
 ##### Server Environment Configuration
 
 Application settings can be provided via a `.env.{env}` file (where `{env}` is set by `global.env`, default `prd`) stored as a Kubernetes Secret. The application uses [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) to read the file directly. Pod environment variables always take precedence over values in the `.env` file. See [Configuration](/env_config/) for available variables.

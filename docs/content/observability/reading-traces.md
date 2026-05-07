@@ -100,7 +100,7 @@ OPENINFERENCE_HIDE_INPUT_TEXT=false
 OPENINFERENCE_HIDE_OUTPUT_TEXT=false
 ```
 
-Set only the variants you need; e.g., `OPENINFERENCE_HIDE_OUTPUTS=false` exposes responses while keeping prompts hidden. This is a per-deployment decision; enable it only after the target environment has been approved for full payloads.
+Set only the variants you need; e.g., `OPENINFERENCE_HIDE_OUTPUTS=false` makes response attributes visible while keeping prompts hidden. This is a per-deployment decision; review the target environment's logging and retention settings before changing the default.
 
 ## Reading Logs in the Context of a Trace
 

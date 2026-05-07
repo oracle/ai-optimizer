@@ -210,6 +210,85 @@ server:
       secretName: ""
       secretKey: "apiKey"
 
+  # -- OpenTelemetry export configuration (server only).
+  # Wires the running pod up to a separately-deployed OTLP collector
+  # (e.g. SigNoz, Jaeger, Tempo). The collector is NOT installed by
+  # this chart; deploy it independently and point `endpoint` at it.
+  otel:
+    # -- Master switch. When false, no OTEL_* env vars are rendered and
+    # the server's init_telemetry() is a no-op.
+    enabled: false
+
+    # -- OTLP receiver URL applied to all signals. In-cluster example:
+    #   http://signoz-otel-collector.observability.svc.cluster.local:4317
+    # Required when enabled=true unless tracesEndpoint is set, or
+    # tracesExporter is set to "console" or "none". logsEndpoint alone
+    # does NOT satisfy this requirement: the application activates
+    # tracing first, and log export piggybacks on the traces path.
+    endpoint: ""
+
+    # -- Per-signal endpoint overrides. Empty inherits `endpoint`.
+    tracesEndpoint: ""
+    logsEndpoint: ""
+
+    # -- Wire protocol. One of: grpc (port 4317) or http/protobuf (port 4318).
+    # Empty = SDK default (grpc).
+    protocol: ""
+    tracesProtocol: ""
+    logsProtocol: ""
+
+    # -- Skip TLS verification for OTLP gRPC. Required for plaintext
+    # in-cluster collectors (typical for SigNoz with no TLS sidecar).
+    insecure: false
+
+    # -- Comma-separated `k=v` headers for vendor auth (e.g. SigNoz cloud
+    # API key). Prefer `headersSecret` for any value containing a credential.
+    headers: ""
+
+    # -- Pull headers from a Secret instead of plaintext values. Mutually
+    # exclusive with `headers` above.
+    headersSecret:
+      name: ""
+      key: "headers"
+
+    # -- Override the service name shown in the backend.
+    # Empty = application default ("ai-optimizer-server").
+    serviceName: ""
+
+    # -- Resource attributes attached to every span. Map of string→string;
+    # the chart joins them into a comma-separated OTEL_RESOURCE_ATTRIBUTES
+    # value. `deployment.environment` is already populated by the app
+    # from AIO_ENV; only override here if you need a different value.
+    resourceAttributes: {}
+      # service.namespace: ai-optimizer
+      # team: platform
+
+    # -- Exporter selection. Comma-separated list per OTel spec.
+    # Supported by the application: otlp, console, none.
+    # Empty = application default (otlp).
+    tracesExporter: ""
+
+    # -- Application log export to OTLP. Opt-in. Enable only for backends
+    # intended to retain application logs; review access and retention
+    # settings first. Maps to AIO_OTEL_LOGS_ENABLED.
+    logsEnabled: false
+
+    # -- Override the log exporter list. Set to "none" to keep tracing
+    # while suppressing logs even when logsEnabled=true.
+    logsExporter: ""
+
+    # -- Trace sampler (e.g. parentbased_traceidratio for probabilistic).
+    # Empty = SDK default (parentbased_always_on).
+    sampler: ""
+    samplerArg: ""
+
+    # -- Free-form additional env vars passed through to the pod. Use
+    # only for OTel SDK knobs not surfaced above (e.g. OTEL_BSP_*,
+    # OTEL_PROPAGATORS). Each entry rendered as a literal env var.
+    extraEnv: []
+      # - name: OTEL_BSP_MAX_QUEUE_SIZE
+      #   value: "4096"
+
   # -- Environment configuration (.env.prd) mounted as a Secret.
   # Provides AIO_* settings to the server (pydantic-settings reads the file directly).
   # Pod env vars (DB_*, OCI_CLI_*, model API keys) always take precedence.

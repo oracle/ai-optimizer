@@ -514,3 +514,194 @@ Password Generator for Databases
   {{- $password := printf "%s%s%s%s%s%s" $start $special $upper $lower $digit $rest -}}
   {{- $password -}}
 {{- end }}
+
+
+{{/* ******************************************
+Format server.otel.resourceAttributes (map) into the comma-separated
+k=v form required by OTEL_RESOURCE_ATTRIBUTES. Caller has rebound `.`
+to the map. Sorted for deterministic rendering across overlay merges.
+
+Values are RFC 3986 percent-encoded before joining: the Python OTel
+detector splits on "," before URL-decoding, so a literal comma (or
+"=", whitespace, etc.) inside a raw value would be parsed as an
+attribute boundary and silently truncate the value. urlquery uses
+HTML-form escaping ("+" for space); the Python SDK's unquote() does
+NOT decode "+" back to space, so convert "+" to "%20" to keep the
+round trip lossless.
+
+Keys are intentionally NOT encoded — OTel resource attribute keys
+forbid commas, equals, and whitespace by spec, and encoding them
+would mask user error rather than surface it.
+*********************************************** */}}
+{{- define "server.otel.resourceAttributes" -}}
+  {{- $pairs := list -}}
+  {{- range $k, $v := . -}}
+    {{- $encoded := $v | toString | urlquery | replace "+" "%20" -}}
+    {{- $pairs = append $pairs (printf "%s=%s" $k $encoded) -}}
+  {{- end -}}
+  {{- join "," (sortAlpha $pairs) -}}
+{{- end -}}
+
+
+{{/* ******************************************
+Validate server.otel.* — fail fast on every config shape the application
+would accept and silently produce zero telemetry from. An observability
+feature that quietly does nothing is the worst kind of failure.
+
+The rules below mirror the application's own exporter-selection and
+log-export gating; comments next to each check spell out which silent
+failure mode that check defends against.
+*********************************************** */}}
+{{- define "server.otel.validate" -}}
+  {{- $otel := .Values.server.otel | default dict -}}
+  {{- if $otel.enabled -}}
+
+    {{- $supportedTracesExporters := list "otlp" "console" "none" -}}
+    {{- $supportedLogsExporters := list "otlp" "none" -}}
+    {{- $allowedProtocols := list "grpc" "http/protobuf" -}}
+
+    {{- /* Parse tracesExporter strictly: every non-empty token must be one
+           of the supported sentinels. Failing per-token (rather than only
+           when the whole list reduces to empty) catches typos that mix
+           with valid tokens, e.g. "otlp,consol" — the application's
+           supported-set intersection silently drops "consol" and the
+           operator would never learn about it. "none" is the OTel opt-out
+           sentinel and is accepted here.
+           Trim before defaulting: a whitespace-only override (e.g. from a
+           templated overlay that produced spaces) should collapse to the
+           same "otlp" default the empty case yields, matching what the
+           deployment renderer does. */ -}}
+    {{- $rawExporter := $otel.tracesExporter | default "" | trim | default "otlp" -}}
+    {{- $supported := list -}}
+    {{- range (splitList "," $rawExporter) -}}
+      {{- $tok := . | trim -}}
+      {{- if eq $tok "" -}}
+        {{- /* skip empty / whitespace-only tokens */ -}}
+      {{- else if has $tok $supportedTracesExporters -}}
+        {{- $supported = append $supported $tok -}}
+      {{- else -}}
+        {{- fail (printf "server.otel.tracesExporter contains unsupported token %q. Supported tokens: \"otlp\", \"console\", \"none\". The application would silently drop this token at runtime." $tok) -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* Edge case: input was entirely empty / whitespace-only tokens
+           (e.g. ",,, "). Per-token loop above accepts each as a skip,
+           leaving $supported empty. */ -}}
+    {{- if eq (len $supported) 0 -}}
+      {{- fail (printf "server.otel.tracesExporter=%q has no supported entries (use \"otlp\", \"console\", \"none\", or a comma-separated mix). The application would silently produce no telemetry." (trim $rawExporter)) -}}
+    {{- end -}}
+
+    {{- /* "none" is the documented opt-out sentinel and must be the ONLY
+           token. The application's exporter-set intersection silently
+           drops "none" when mixed with "otlp" or "console", so a list
+           like "none,otlp" still ships traces — defeating the operator's
+           intent. Reject mixed lists rather than silently honoring (or
+           silently ignoring) half of the user's input. */ -}}
+    {{- if and (has "none" $supported) (gt (len ($supported | uniq)) 1) -}}
+      {{- fail "server.otel.tracesExporter: \"none\" is the opt-out sentinel and must be the only token. The application's exporter intersection silently drops \"none\" when mixed with other tokens; use \"none\" alone to disable, or list only \"otlp\"/\"console\"." -}}
+    {{- end -}}
+
+    {{- /* OTLP traces require a generic or traces-specific endpoint;
+           logsEndpoint does NOT activate traces in the app. */ -}}
+    {{- $endpoint := $otel.endpoint | default "" | trim -}}
+    {{- $tracesEp := $otel.tracesEndpoint | default "" | trim -}}
+    {{- $haveTracesEndpoint := or (ne $endpoint "") (ne $tracesEp "") -}}
+    {{- if and (has "otlp" $supported) (not $haveTracesEndpoint) -}}
+      {{- fail "server.otel: tracesExporter includes \"otlp\" but no endpoint is configured. Set server.otel.endpoint or server.otel.tracesEndpoint, or set tracesExporter=\"console\" for local-only debugging." -}}
+    {{- end -}}
+
+    {{- /* Validate OTLP protocol fields. The app lowercases but does NOT
+           trim the protocol env vars, then treats any value other than
+           the literal "grpc" as the HTTP exporter — so "grpc " (trailing
+           whitespace) silently routes a gRPC collector via HTTP/protobuf
+           and telemetry disappears. Validate strictly against the two
+           values the Python OTel SDK actually supports; comparison is
+           trim+case-insensitive (matches the app's lower()), rendered
+           value is trimmed only — case is preserved for the operator
+           and the app's own .lower() handles it from there. */ -}}
+    {{- range $field, $val := dict "protocol" $otel.protocol "tracesProtocol" $otel.tracesProtocol "logsProtocol" $otel.logsProtocol -}}
+      {{- $v := $val | default "" | toString | trim | lower -}}
+      {{- if and (ne $v "") (not (has $v $allowedProtocols)) -}}
+        {{- fail (printf "server.otel.%s=%q is not a supported OTLP protocol. Use \"grpc\" (port 4317) or \"http/protobuf\" (port 4318); empty falls back to the SDK default of grpc." $field (toString $val)) -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* Parse logsExporter once up-front so the explicit "none" opt-out
+           can short-circuit every downstream logs check. The values.yaml
+           comment promises that logsExporter=none suppresses log export
+           while leaving tracing intact; the validator must defer to the
+           application's opt-out branch rather than insisting on a log path. */ -}}
+    {{- $logsEp := $otel.logsEndpoint | default "" | trim -}}
+    {{- /* Parse logsExporter strictly. Mirrors the tracesExporter strict
+           parser above so a typo like "otlp,consol" surfaces here instead
+           of being silently dropped at runtime. The application's log
+           exporter supports only "otlp" and "none" — "console" is a valid
+           OTel spec value but not implemented for logs by this app, so
+           accepting it would mislead operators expecting console output. */ -}}
+    {{- $rawLogsExporter := $otel.logsExporter | default "" | trim -}}
+    {{- $hasOtlpLogs := false -}}
+    {{- $hasNoneLogs := false -}}
+    {{- range (splitList "," $rawLogsExporter) -}}
+      {{- $tok := lower (trim .) -}}
+      {{- if eq $tok "" -}}
+        {{- /* skip empty / whitespace-only tokens */ -}}
+      {{- else if eq $tok "otlp" -}}
+        {{- $hasOtlpLogs = true -}}
+      {{- else if eq $tok "none" -}}
+        {{- $hasNoneLogs = true -}}
+      {{- else -}}
+        {{- fail (printf "server.otel.logsExporter contains unsupported token %q. This application's log exporter supports only \"otlp\" or \"none\"." $tok) -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* Same opt-out rule as tracesExporter: "none" must be alone. For
+           logs the app DOES honor mixed-"none" at runtime, but a chart
+           that accepts "otlp,none" while the sibling tracesExporter
+           rejects it is more confusing than one consistent rule.
+           Operators learn one thing: "none" stands alone, on either field. */ -}}
+    {{- if and $hasNoneLogs $hasOtlpLogs -}}
+      {{- fail "server.otel.logsExporter: \"none\" is the opt-out sentinel and must be the only token. Use \"none\" alone to suppress log export, or \"otlp\" alone to ship logs." -}}
+    {{- end -}}
+
+    {{- /* logsEndpoint without OTLP in traces is wasted configuration: the
+           application activates log export only when OTLP traces attach.
+           Skipped when the user has explicitly opted out via "none" — the
+           wasted-config concern is moot because the app ignores the endpoint. */ -}}
+    {{- if and (ne $logsEp "") (not (has "otlp" $supported)) (not $hasNoneLogs) -}}
+      {{- fail "server.otel.logsEndpoint is set but tracesExporter does not include \"otlp\"; the application activates log export only when OTLP traces are also active. Add \"otlp\" to tracesExporter, set logsExporter=\"none\" to acknowledge the opt-out, or remove logsEndpoint." -}}
+    {{- end -}}
+
+    {{- /* logsEnabled gates the application's log-export path. Three
+           independent preconditions must hold or log export silently skips
+           at runtime:
+             a) OTLP traces must attach (log export piggybacks on it).
+             b) The log exporter reads OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+                falling back to the generic OTEL_EXPORTER_OTLP_ENDPOINT;
+                tracesEndpoint alone is invisible to it.
+             c) OTEL_LOGS_EXPORTER (if set) must contain "otlp" — the app
+                returns early on "none" or any list lacking otlp.
+           When logsExporter=none the user has explicitly opted out and
+           none of (a)–(c) apply: AIO_OTEL_LOGS_ENABLED still renders, but
+           the app returns from the log-init path without needing any of them. */ -}}
+    {{- if and $otel.logsEnabled (not $hasNoneLogs) -}}
+      {{- if not (has "otlp" $supported) -}}
+        {{- fail "server.otel.logsEnabled is true but tracesExporter does not include \"otlp\"; the application gates log export on OTLP traces being active. Either include \"otlp\" in tracesExporter (and set an endpoint), set logsExporter=\"none\" to opt out of log export, or disable logsEnabled." -}}
+      {{- end -}}
+      {{- if and (eq $endpoint "") (eq $logsEp "") -}}
+        {{- fail "server.otel.logsEnabled is true but no log endpoint is reachable. Set server.otel.endpoint (generic, used by both signals) or server.otel.logsEndpoint, set logsExporter=\"none\" to opt out, or disable logsEnabled. server.otel.tracesEndpoint alone activates only traces; the application's log exporter does not read it." -}}
+      {{- end -}}
+      {{- if and (ne $rawLogsExporter "") (not $hasOtlpLogs) -}}
+        {{- fail (printf "server.otel.logsEnabled is true but logsExporter=%q would silently drop logs at runtime. Use \"otlp\" to ship logs, \"none\" to explicitly suppress them, drop the value to take the default, or disable logsEnabled." $rawLogsExporter) -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* Plaintext headers vs Secret-sourced headers are mutually exclusive. */ -}}
+    {{- $headers := $otel.headers | default "" | trim -}}
+    {{- $headersSecret := $otel.headersSecret | default dict -}}
+    {{- $headersSecretName := $headersSecret.name | default "" | trim -}}
+    {{- if and (ne $headers "") (ne $headersSecretName "") -}}
+      {{- fail "server.otel: cannot set both `headers` (plaintext) and `headersSecret.name`. Choose one." -}}
+    {{- end -}}
+
+  {{- end -}}
+{{- end -}}

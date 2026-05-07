@@ -535,7 +535,7 @@ class TestInstrumentLangchain:
         assert config.hide_input_messages is True
         assert config.hide_output_messages is True
 
-    def test_malformed_env_preserves_privacy_default(self, monkeypatch):
+    def test_malformed_env_preserves_configured_default(self, monkeypatch):
         # Typo'd value must not flip the configured default.
         self._clear_hide_vars(monkeypatch)
         monkeypatch.setenv("OPENINFERENCE_HIDE_INPUTS", "tre")
@@ -569,9 +569,8 @@ class TestInstrumentLangchain:
         assert masked != "user-supplied content", f"{key} must follow default payload visibility"
 
     def test_default_masks_message_tool_calls(self, monkeypatch):
-        # Tool-call arguments emitted on output messages can echo user data
-        # (e.g. a search query the LLM forwards to a tool). hide_outputs must
-        # cover these.
+        # Output-message tool-call arguments should follow the output
+        # visibility setting.
         self._clear_hide_vars(monkeypatch)
         instrument = self._patch_instrumentor(monkeypatch)
         setup._instrument_langchain()
@@ -627,9 +626,9 @@ class TestInstrumentLangchain:
 
         assert masked == (0.1, 0.2, 0.3)
 
-    def test_hide_inputs_false_exposes_extra_attributes(self, monkeypatch):
-        # When the operator explicitly opts in to inputs, the extra masking
-        # must also stand down so they can see their RAG context / prompt vars.
+    def test_hide_inputs_false_unmasks_extra_attributes(self, monkeypatch):
+        # When hide_inputs is false, the extra input-payload patterns
+        # follow the same setting and are returned unmasked.
         self._clear_hide_vars(monkeypatch)
         monkeypatch.setenv("OPENINFERENCE_HIDE_INPUTS", "false")
 

@@ -193,7 +193,7 @@ jobs:
         run: helm lint helm/
 
       - name: Run Helm Lint (with required values)
-        run: helm lint helm/ --set global.api.apiKey=test-api-key
+        run: helm lint helm/ --set global.api.apiKey=test-api-key --set client.cookieSecret=test-cookie
 
       - name: Run Helm Package (validate chart builds)
         run: helm package helm/ --destination "$RUNNER_TEMP/helm-package"

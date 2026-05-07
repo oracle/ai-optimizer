@@ -273,9 +273,9 @@ def _instrument_logging() -> None:
 def _instrument_langchain() -> None:
     """Instrument LangChain with conservative payload defaults.
 
-    Prompts, responses, retrieved context, and message content are omitted by
-    default. Operators who need full payloads opt in via the standard
-    OPENINFERENCE_HIDE_* env vars set to "false".
+    Detailed LangChain content attributes use conservative defaults;
+    operators can change visibility through the standard
+    OPENINFERENCE_HIDE_* env vars.
     """
     # openinference-instrumentation-langchain ships in the optional [otel]
     # extra and is absent under .[server,dev]. The try/except ImportError

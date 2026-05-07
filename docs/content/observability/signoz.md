@@ -63,7 +63,7 @@ To also ship application logs to SigNoz (correlated to traces by `trace_id`/`spa
 AIO_OTEL_LOGS_ENABLED=true
 ```
 
-This is opt-in because application logs can include request content. See [Log export is opt-in (privacy)]({{% relref "/observability/#log-export-is-opt-in-privacy" %}}) on the main Observability page before enabling it for a shared or vendor-managed backend.
+Log export is opt-in. See [Log export is opt-in]({{% relref "/observability/#log-export-is-opt-in" %}}) on the main Observability page before enabling it for a shared or vendor-managed backend.
 
 ## 3. Verify End-to-End
 
@@ -123,7 +123,7 @@ The endpoint URL depends on where the {{< short_app_ref >}} server runs relative
 | Podman container on macOS or Windows | Local `podman compose` | `http://host.containers.internal:4317` |
 | Podman container on Linux | Local `podman compose` | Put both on the same compose network and use the SigNoz collector's service name (e.g. `http://otel-collector:4317`); otherwise use the Podman bridge gateway IP |
 | Different host or VM | Remote SigNoz | `http://<signoz-host>:4317` (open the firewall on `4317` / `4318`) |
-| Kubernetes cluster | SigNoz running in-cluster | The cluster-internal DNS, e.g. `http://signoz-otel-collector.monitoring:4317` |
+| Kubernetes cluster | SigNoz running in-cluster | The cluster-internal DNS, e.g. `http://signoz-otel-collector.monitoring:4317`. Set via the chart's [`server.otel.*` values]({{% relref "/advanced/helm#server-opentelemetry-configuration" %}}), not the raw env var. |
 
 When the server is itself running in a container, set the variable at container launch (e.g. `podman run -e OTEL_EXPORTER_OTLP_ENDPOINT=...`) rather than in `.env.{AIO_ENV}` — environment variables on the host do not propagate into a child container.
 

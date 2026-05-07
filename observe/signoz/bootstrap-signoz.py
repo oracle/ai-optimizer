@@ -226,8 +226,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def resolve_password(email: str) -> str:
     """Read password from $SIGNOZ_PASSWORD or prompt interactively.
 
-    Deliberately not exposed as a CLI flag: passing passwords on the command
-    line leaks them to ``ps``, shell history, and any process snapshot.
+    Password input is supported via the interactive prompt or
+    ``SIGNOZ_PASSWORD``; the script intentionally does not provide a
+    ``--password`` flag.
     """
     pw = os.environ.get("SIGNOZ_PASSWORD")
     if pw:
