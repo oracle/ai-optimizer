@@ -7,12 +7,16 @@ Tests for embed API endpoints.
 # spell-checker:disable
 
 import asyncio
+import contextlib
 import io
 from contextlib import asynccontextmanager
+from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
+from pydantic import SecretStr
 
 from server.app.embed.schemas import VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
@@ -25,22 +29,121 @@ from server.tests.api.conftest import _create_mock_pool
 
 @pytest.fixture(autouse=True)
 def mock_client_db():
-    """Mock the database config resolution for all embed tests."""
+    """Mock the database config resolution for all embed tests.
+
+    Also stubs ``get_core_pool`` so the endpoint's CORE-availability
+    guard sees a pool — embed tests want to cover the happy path,
+    not the "CORE missing" 503 path (which has its own dedicated
+    test). Tests that explicitly want CORE-missing behaviour patch
+    over this fixture.
+    """
     conn = AsyncMock()
     pool = _create_mock_pool(conn)
     mock_cfg = MagicMock()
     mock_cfg.pool = pool
     mock_cfg.usable = True
+    mock_cfg.alias = "TEST"
     mock_cfg.username = "testuser"
     mock_cfg.password = "testpass"
     mock_cfg.dsn = "//localhost:1521/TEST"
     mock_cfg.wallet_location = None
     mock_cfg.config_dir = None
-    with patch(
-        "server.app.api.v1.endpoints.embed._get_client_db_config",
-        return_value=(mock_cfg, pool),
+    # The handler now snapshots via ``live_cfg.model_copy()`` and
+    # reads ``.alias`` off the snapshot to record ``target_db`` on the
+    # job row. By default ``MagicMock.model_copy()`` returns a fresh
+    # mock whose ``.alias`` is a child mock — not a string — and the
+    # ``_JobRow`` Pydantic validator rejects it. Returning the same
+    # mock from ``model_copy`` keeps the snapshot's attributes the
+    # ones the test set above.
+    mock_cfg.model_copy.return_value = mock_cfg
+    with (
+        patch(
+            "server.app.api.v1.endpoints.embed._get_client_db_config",
+            return_value=(mock_cfg, pool),
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.get_core_pool",
+            return_value=pool,
+        ),
     ):
         yield conn, pool, mock_cfg
+
+
+@pytest.fixture(autouse=True)
+def reset_embed_jobs():
+    """Reset the in-process embed-job registry between tests.
+
+    The manager is a module-level singleton AND ``jobs_store`` keeps an
+    in-memory fallback (``_LOCAL_STORE``) that the API tests
+    inadvertently rely on: this file mocks ``embed.get_core_pool`` for
+    the endpoint guard, but ``jobs.py`` imports ``get_core_pool``
+    locally and still sees the real (None) value, so writes go to
+    ``_LOCAL_STORE``. Without an explicit ``reset_local_jobs_store``
+    here, rows from one test leak into the next test's ``/jobs`` list
+    response and assertions become order-dependent.
+    """
+    from server.app.embed import jobs as jobs_mod
+
+    jobs_mod.reset_embed_job_manager()
+    jobs_mod.reset_local_jobs_store()
+    yield
+    jobs_mod.reset_embed_job_manager()
+    jobs_mod.reset_local_jobs_store()
+
+
+@pytest.fixture(autouse=True)
+def _assert_local_jobs_store_clean(reset_embed_jobs):
+    """Pin the leak guarantee: every test starts with an empty fallback store.
+
+    If a future fixture refactor drops the ``reset_local_jobs_store``
+    call, this guard fails the next test that runs after one which
+    submitted a job — making the regression visible immediately
+    instead of as a flaky list-length assertion downstream.
+    """
+    del reset_embed_jobs
+    from server.app.embed import jobs as jobs_mod
+
+    assert not jobs_mod._LOCAL_STORE, (
+        f"_LOCAL_STORE leaked across tests: {list(jobs_mod._LOCAL_STORE.keys())}"
+    )
+    yield
+
+
+# ---------------------------------------------------------------------------
+# Job-status polling helper
+# ---------------------------------------------------------------------------
+
+
+async def _poll_until_terminal(
+    app_client,
+    job_id: str,
+    headers: dict,
+    *,
+    timeout_seconds: float = 5.0,
+    interval_seconds: float = 0.02,
+) -> dict:
+    """Poll GET /v1/embed/jobs/{job_id} until the job reaches terminal state.
+
+    Mirrors how a real client would consume the job-oriented endpoint —
+    the inline split-and-embed flow used to return the result on the
+    POST itself, so tests now read the same fields off the polled
+    status response. The interval is short so background tasks driven
+    by mocked stages finish quickly; the deadline guards against tests
+    that forget to mock something heavy and hang the suite.
+    """
+    import asyncio
+    import time
+
+    deadline = time.monotonic() + timeout_seconds
+    last: dict = {}
+    while time.monotonic() < deadline:
+        resp = await app_client.get(f"/v1/embed/jobs/{job_id}", headers=headers)
+        assert resp.status_code == 200, resp.text
+        last = resp.json()
+        if last["status"] in ("succeeded", "failed"):
+            return last
+        await asyncio.sleep(interval_seconds)
+    raise AssertionError(f"Job {job_id} did not reach terminal status; last={last}")
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +212,22 @@ async def test_split_embed_no_auth(app_client):
 async def test_refresh_no_auth(app_client):
     """POST /refresh rejects requests without API key."""
     resp = await app_client.post("/v1/embed/refresh", json={})
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_jobs_no_auth(app_client):
+    """GET /jobs rejects requests without API key."""
+    resp = await app_client.get("/v1/embed/jobs")
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_job_no_auth(app_client):
+    """GET /jobs/{job_id} rejects requests without API key."""
+    resp = await app_client.get("/v1/embed/jobs/abc123")
     assert resp.status_code == 403
 
 
@@ -259,6 +378,329 @@ async def test_sql_store_with_db_alias(app_client, auth_headers, mock_client_db)
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_sql_store_acquires_client_lock(app_client, auth_headers):
+    """[P2] /embed/sql/store must serialise on _client_lock so a
+    concurrent /embed/ retry-restore sees a stable shared dir.
+
+    Reviewer concern: the 503 restore path moves the prior corpus
+    back to the shared embedding directory while holding
+    ``_client_lock(client)``. If a same-client store endpoint does
+    not also take that lock, it can land a different-named file in
+    shared mid-restore — the restore loop only skips same-name
+    conflicts, so the next embed claims a mix of stale and newly
+    stored files. Closing the race requires every shared-dir writer
+    to acquire the lock too.
+
+    The test spies on ``_client_lock`` and asserts that the endpoint
+    enters it for the request's client. ``where in the endpoint`` it
+    enters is a code-quality concern; the contract that closes the
+    race is simply that the lock is acquired at all (any cover of
+    the file-write path is sufficient — concurrent writers will then
+    serialise behind it).
+    """
+    from server.app.api.v1.endpoints import embed as embed_module
+
+    acquisitions: list[str] = []
+    real_client_lock = embed_module._client_lock
+
+    @asynccontextmanager
+    async def _spy_client_lock(client: str):
+        acquisitions.append(client)
+        async with real_client_lock(client):
+            yield
+
+    with (
+        patch.object(embed_module, "_client_lock", _spy_client_lock),
+        patch(
+            "server.app.api.v1.endpoints.embed.run_sql_query",
+            new_callable=AsyncMock,
+            return_value="/tmp/test/result.csv",
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.get_temp_directory",
+            return_value=MagicMock(),
+        ),
+    ):
+        resp = await app_client.post(
+            "/v1/embed/sql/store",
+            json={"query": "SELECT col FROM my_table"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    assert "server" in acquisitions, (
+        "/embed/sql/store did not acquire _client_lock; a concurrent "
+        "/embed/ retry restore could observe a new file appearing in "
+        "shared mid-restore"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_web_store_acquires_client_lock(app_client, auth_headers):
+    """[P2] /embed/web/store must serialise on _client_lock — same race
+    as /embed/sql/store (see that test for the full reasoning).
+    """
+    from server.app.api.v1.endpoints import embed as embed_module
+
+    acquisitions: list[str] = []
+    real_client_lock = embed_module._client_lock
+
+    @asynccontextmanager
+    async def _spy_client_lock(client: str):
+        acquisitions.append(client)
+        async with real_client_lock(client):
+            yield
+
+    # Stub the network fetch so the endpoint completes quickly
+    # without hitting example.com.
+    @asynccontextmanager
+    async def _stub_safe_client(*_args, **_kwargs):
+        stub = MagicMock()
+        stub.stream = MagicMock()
+        # Make .stream() return a context manager whose body is a
+        # mock response that 422s — the endpoint then short-circuits
+        # without trying to parse a real fetch. The point of the
+        # test is only to verify the lock was taken on entry.
+        stream_cm = MagicMock()
+
+        async def _aenter(*_a, **_kw):
+            response = MagicMock()
+            response.raise_for_status = MagicMock(
+                side_effect=HTTPException(status_code=422, detail="stub")
+            )
+            response.headers = {"Content-Type": "application/octet-stream"}
+
+            async def _aiter():
+                # The unreachable ``yield`` is what makes this function
+                # an async generator (so ``async for`` over it is a
+                # zero-iteration loop). Suppressed: the ruff/F-series
+                # check has no specific code for "unreachable, but
+                # required by the protocol".
+                return
+                yield  # type: ignore[unreachable]
+
+            response.aiter_bytes = _aiter
+            return response
+
+        stream_cm.__aenter__ = AsyncMock(side_effect=_aenter)
+        stream_cm.__aexit__ = AsyncMock(return_value=False)
+        stub.stream.return_value = stream_cm
+        yield stub
+
+    with (
+        patch.object(embed_module, "_client_lock", _spy_client_lock),
+        patch(
+            "server.app.api.v1.endpoints.embed.SafeAsyncClient",
+            _stub_safe_client,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.embed.get_temp_directory",
+            return_value=MagicMock(),
+        ),
+        # The stub is wired to short-circuit the fetch so the
+        # endpoint returns quickly; we don't care about the response
+        # shape, only that the lock was acquired on entry.
+        contextlib.suppress(BaseException),
+    ):
+        await app_client.post(
+            "/v1/embed/web/store",
+            json=["https://example.com"],
+            headers=auth_headers,
+        )
+
+    assert "server" in acquisitions, (
+        "/embed/web/store did not acquire _client_lock; a concurrent "
+        "/embed/ retry restore could observe a new file appearing in "
+        "shared mid-restore"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_oci_download_serializes_colliding_destinations(app_client, auth_headers):
+    """[P2] Bucket keys that flatten to the same local filename must
+    not download concurrently.
+
+    Reviewer concern: ``flatten_bucket_key`` collapses ``/`` to ``_``,
+    so ``a/b.txt`` and ``a_b.txt`` both target ``a_b.txt`` on disk.
+    A naive ``asyncio.gather`` opens the same path twice with
+    ``"wb"`` — writes interleave or truncate, leaving a corrupt
+    file for the embed pipeline to claim.
+    """
+    import threading
+    import time
+
+    from server.app.api.v1.endpoints import embed as embed_module
+    from server.app.api.v1.endpoints import oci as oci_module
+
+    in_flight: dict[str, int] = {}
+    max_in_flight: dict[str, int] = {}
+    in_flight_lock = threading.Lock()
+
+    def _instrumented_download(directory, name, bucket, profile):
+        flat = name.replace("/", "_").lstrip("_")
+        with in_flight_lock:
+            in_flight[flat] = in_flight.get(flat, 0) + 1
+            max_in_flight[flat] = max(max_in_flight.get(flat, 0), in_flight[flat])
+        # Sleep so a concurrent call would observably overlap.
+        time.sleep(0.05)
+        with in_flight_lock:
+            in_flight[flat] -= 1
+        return f"{directory}/{flat}"
+
+    @asynccontextmanager
+    async def _passthrough_client_lock(_client: str):
+        yield
+
+    with (
+        patch.object(embed_module, "_client_lock", _passthrough_client_lock),
+        patch.object(
+            oci_module, "_find_oci_profile", return_value=MagicMock()
+        ),
+        patch.object(
+            oci_module,
+            "download_object",
+            side_effect=_instrumented_download,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.oci.get_temp_directory",
+            return_value=MagicMock(),
+        ),
+    ):
+        resp = await app_client.post(
+            "/v1/oci/objects/download/test-bucket/TESTPROFILE",
+            json=["a/b.txt", "a_b.txt", "other.txt"],
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    # The colliding pair must not have overlapped on the same path.
+    assert max_in_flight.get("a_b.txt", 0) == 1, (
+        f"Two downloads for the same destination 'a_b.txt' ran "
+        f"concurrently (max in-flight: {max_in_flight.get('a_b.txt')}); "
+        f"they would have raced on ``open(..., 'wb')`` and produced "
+        f"a corrupt file"
+    )
+    # Non-colliding downloads still got at least one in-flight call.
+    assert max_in_flight.get("other.txt", 0) >= 1
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_oci_download_offloads_blocking_sdk_to_thread(app_client, auth_headers):
+    """[P2] OCI download must run the blocking SDK call in a worker thread.
+
+    Reviewer concern: ``download_object`` is a synchronous OCI SDK
+    call that streams the entire object before returning. Running
+    it on the FastAPI event loop blocks every other coroutine on
+    the same pod — including the embed-job heartbeat. In a multi-
+    replica deployment, a download longer than the stale threshold
+    can let other replicas' reapers mark this pod's still-running
+    jobs failed; the later terminal write cannot flip them back
+    (the reaper write already moved them to a terminal state).
+    The refresh path already offloads via ``asyncio.to_thread``
+    (see ``server.app.embed.refresh``); this endpoint must too.
+    """
+    import threading
+
+    from server.app.api.v1.endpoints import embed as embed_module
+    from server.app.api.v1.endpoints import oci as oci_module
+
+    main_thread_id = threading.get_ident()
+    download_thread_ids: list[int] = []
+
+    def _capturing_download(temp_dir, name, bucket, profile):
+        download_thread_ids.append(threading.get_ident())
+        return f"{temp_dir}/{name}"
+
+    @asynccontextmanager
+    async def _passthrough_client_lock(_client: str):
+        yield
+
+    with (
+        patch.object(embed_module, "_client_lock", _passthrough_client_lock),
+        patch.object(
+            oci_module, "_find_oci_profile", return_value=MagicMock()
+        ),
+        patch.object(
+            oci_module,
+            "download_object",
+            side_effect=_capturing_download,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.oci.get_temp_directory",
+            return_value=MagicMock(),
+        ),
+    ):
+        resp = await app_client.post(
+            "/v1/oci/objects/download/test-bucket/TESTPROFILE",
+            json=["object-name.pdf"],
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    assert download_thread_ids, "download_object was not invoked"
+    assert all(tid != main_thread_id for tid in download_thread_ids), (
+        "download_object ran on the event loop thread; a long "
+        "synchronous SDK download would block the embed-job "
+        "heartbeat and let sibling reapers mark this pod's "
+        "running jobs failed"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_oci_download_objects_acquires_client_lock(app_client, auth_headers):
+    """[P2] OCI's /objects/download endpoint must serialise on
+    _client_lock — same race as the embed store endpoints
+    (see ``test_sql_store_acquires_client_lock`` for the full
+    reasoning).
+    """
+    from server.app.api.v1.endpoints import oci as oci_module
+
+    acquisitions: list[str] = []
+    real_client_lock = oci_module._client_lock
+
+    @asynccontextmanager
+    async def _spy_client_lock(client: str):
+        acquisitions.append(client)
+        async with real_client_lock(client):
+            yield
+
+    # ``oci`` imports ``_client_lock`` from ``server.app.core.client_locks``
+    # at module scope, so patch the binding the endpoint actually uses.
+    with (
+        patch.object(oci_module, "_client_lock", _spy_client_lock),
+        patch.object(
+            oci_module, "_find_oci_profile", return_value=MagicMock()
+        ),
+        patch.object(
+            oci_module,
+            "download_object",
+            return_value="/tmp/test/object.pdf",
+        ),
+        patch(
+            "server.app.api.v1.endpoints.oci.get_temp_directory",
+            return_value=MagicMock(),
+        ),
+    ):
+        resp = await app_client.post(
+            "/v1/oci/objects/download/test-bucket/TESTPROFILE",
+            json=["object-name.pdf"],
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    assert "server" in acquisitions, (
+        "/oci/objects/download did not acquire _client_lock; a "
+        "concurrent /embed/ retry restore could observe a new file "
+        "appearing in shared mid-restore"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_sql_store_invalid_db_alias(app_client, auth_headers):
     """Returns 503 when db_alias refers to an unavailable database."""
     with patch(
@@ -379,7 +821,14 @@ async def test_local_store_uses_upload_basename(app_client, auth_headers, path_l
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_split_embed_no_files(app_client, auth_headers):
-    """Returns 404 when no files are found."""
+    """Empty corpus is a synchronous 404 — file claiming runs in the handler.
+
+    The reviewer's P2 concern: claiming files in the background lets a
+    follow-up upload leak into this job. Fix: claim files under the
+    per-client lock *before* the response. Side-effect: an empty
+    shared dir surfaces as 404 on the POST itself, not as a 'failed'
+    job — which matches the original inline-flow semantics.
+    """
     import tempfile
     from pathlib import Path
 
@@ -414,12 +863,13 @@ async def test_split_embed_no_files(app_client, auth_headers):
                 headers=auth_headers,
             )
     assert resp.status_code == 404
+    assert "no files found" in resp.json()["detail"].lower()
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_split_embed_success(app_client, auth_headers):
-    """Successfully splits and embeds documents."""
+    """POST schedules a job; polling returns the populated EmbedProcessingResult."""
     import tempfile
     from pathlib import Path
 
@@ -427,8 +877,10 @@ async def test_split_embed_success(app_client, auth_headers):
         tmp_path = Path(tmp)
         shared_dir = tmp_path / "shared"
         shared_dir.mkdir()
-        work_dir = tmp_path / "work"
-        work_dir.mkdir()
+        # Each unique=True call lands a fresh subdirectory, so let the
+        # real `get_temp_directory` create the work_dir under tmp_path.
+        work_parent = tmp_path / "work_parent"
+        work_parent.mkdir()
         # Create a test file in the shared dir (store endpoints put files here)
         test_file = shared_dir / "test.txt"
         test_file.write_text("Hello world content for embedding")
@@ -439,8 +891,10 @@ async def test_split_embed_success(app_client, auth_headers):
             "total_chunks": 1,
         }
 
+        import tempfile as _tf
+
         def _fake_get_temp(_client, _function, *, unique=False):
-            return work_dir if unique else shared_dir
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared_dir
 
         with (
             patch(
@@ -478,9 +932,15 @@ async def test_split_embed_success(app_client, auth_headers):
                 },
                 headers=auth_headers,
             )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["total_chunks"] == 1
+            assert resp.status_code == 202
+            accepted = resp.json()
+            assert accepted["status"] in ("queued", "running")
+            assert accepted["location"].endswith(accepted["job_id"])
+            terminal = await _poll_until_terminal(app_client, accepted["job_id"], auth_headers)
+
+    assert terminal["status"] == "succeeded"
+    assert terminal["result"]["total_chunks"] == 1
+    assert terminal["result"]["processed_files"] == [{"filename": "test.txt", "chunks": 1}]
 
 
 # ---------------------------------------------------------------------------
@@ -649,7 +1109,15 @@ async def test_refresh_not_found(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_split_embed_concurrent_no_interference(app_client, auth_headers):
-    """Two concurrent split_embed calls must not cause ENOENT from shared cleanup."""
+    """Concurrent POSTs: one claims files (202), the other gets a sync 404.
+
+    File claiming now runs synchronously under the per-client lock so
+    only the first POST through the lock can hand its corpus to the
+    background pipeline. The second POST finds the shared dir empty
+    and returns 404 on the POST itself — a 202 with a doomed job
+    would be misleading because the failure is a precondition issue,
+    not a pipeline error.
+    """
     import asyncio
     import tempfile
     from pathlib import Path
@@ -714,12 +1182,14 @@ async def test_split_embed_concurrent_no_interference(app_client, auth_headers):
                 app_client.post("/v1/embed/", json=req_json, headers=auth_headers),
                 app_client.post("/v1/embed/", json=req_json, headers=auth_headers),
             )
-
-    statuses = sorted([r1.status_code, r2.status_code])
-    # One succeeds (200), the other finds no files (404). Neither should 500.
-    assert 500 not in statuses
-    # First call claims the file; second finds shared dir empty
-    assert statuses == [200, 404]
+            statuses = sorted([r1.status_code, r2.status_code])
+            assert statuses == [202, 404]
+            # Drain the accepted job so we don't leak a background task.
+            accepted = next(r for r in (r1, r2) if r.status_code == 202)
+            terminal = await _poll_until_terminal(
+                app_client, accepted.json()["job_id"], auth_headers
+            )
+            assert terminal["status"] == "succeeded"
 
 
 @pytest.mark.unit
@@ -785,6 +1255,8 @@ async def test_split_embed_race_restores_files(app_client, auth_headers):
                 headers=auth_headers,
             )
 
+        # File claiming runs synchronously now, so the restore happens
+        # on the request thread and surfaces as a sync 404.
         assert resp.status_code == 404
         # The file that was successfully moved must be restored to shared_dir
         restored_files = sorted(f.name for f in shared_dir.iterdir() if f.is_file())
@@ -1401,9 +1873,10 @@ async def test_client_lock_evicts_lru_when_full(monkeypatch):
     cannot accumulate process state until restart.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
+    from server.app.core import client_locks
     from server.app.core.settings import settings as core_settings
 
-    embed_mod._client_promotion_locks.clear()
+    client_locks._client_promotion_locks.clear()
     monkeypatch.setattr(core_settings, "max_clients", 3)
 
     async with embed_mod._client_lock("a"):
@@ -1419,9 +1892,9 @@ async def test_client_lock_evicts_lru_when_full(monkeypatch):
     async with embed_mod._client_lock("d"):
         pass
 
-    keys = list(embed_mod._client_promotion_locks)
+    keys = list(client_locks._client_promotion_locks)
     assert keys == ["c", "a", "d"], f"expected LRU order [c, a, d]; got {keys}"
-    assert len(embed_mod._client_promotion_locks) == 3
+    assert len(client_locks._client_promotion_locks) == 3
 
 
 @pytest.mark.unit
@@ -1429,9 +1902,10 @@ async def test_client_lock_evicts_lru_when_full(monkeypatch):
 async def test_client_lock_skips_in_use_entry_during_eviction(monkeypatch):
     """In-use entries (holder or queued waiter) are not evicted."""
     from server.app.api.v1.endpoints import embed as embed_mod
+    from server.app.core import client_locks
     from server.app.core.settings import settings as core_settings
 
-    embed_mod._client_promotion_locks.clear()
+    client_locks._client_promotion_locks.clear()
     monkeypatch.setattr(core_settings, "max_clients", 2)
 
     # Pre-populate "held" and "spare" entries (users == 0 after exit).
@@ -1446,9 +1920,9 @@ async def test_client_lock_skips_in_use_entry_during_eviction(monkeypatch):
     async with embed_mod._client_lock("held"), embed_mod._client_lock("new"):
         pass
 
-    assert "held" in embed_mod._client_promotion_locks
-    assert "spare" not in embed_mod._client_promotion_locks
-    assert "new" in embed_mod._client_promotion_locks
+    assert "held" in client_locks._client_promotion_locks
+    assert "spare" not in client_locks._client_promotion_locks
+    assert "new" in client_locks._client_promotion_locks
 
 
 @pytest.mark.unit
@@ -1467,9 +1941,10 @@ async def test_client_lock_skips_entry_with_queued_waiter(monkeypatch):
     ``_client_locks_guard`` closes that window.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
+    from server.app.core import client_locks
     from server.app.core.settings import settings as core_settings
 
-    embed_mod._client_promotion_locks.clear()
+    client_locks._client_promotion_locks.clear()
     monkeypatch.setattr(core_settings, "max_clients", 1)
 
     # Holder enters first and stays inside the context until we release
@@ -1500,14 +1975,14 @@ async def test_client_lock_skips_entry_with_queued_waiter(monkeypatch):
     await asyncio.sleep(0)
     await asyncio.sleep(0)
 
-    entry = embed_mod._client_promotion_locks["client_a"]
+    entry = client_locks._client_promotion_locks["client_a"]
     assert entry.users >= 2, f"holder + waiter must both count toward users; got {entry.users}"
 
     # Trigger the eviction path: cap is 1, "client_a" is in use.
     # Request a new client — eviction must not cull "client_a"; it
     # should instead allow temporary growth past the cap.
     async with embed_mod._client_lock("client_b"):
-        registry_keys = set(embed_mod._client_promotion_locks)
+        registry_keys = set(client_locks._client_promotion_locks)
         assert "client_a" in registry_keys, f"in-use entry was evicted despite queued waiter; got {registry_keys}"
 
     let_holder_finish.set()
@@ -1528,15 +2003,16 @@ async def test_client_lock_normalizes_key():
     canonicalisation the filesystem does.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
+    from server.app.core import client_locks
 
-    embed_mod._client_promotion_locks.clear()
+    client_locks._client_promotion_locks.clear()
 
     async with embed_mod._client_lock("a"):
-        entry_a = embed_mod._client_promotion_locks["a"]
+        entry_a = client_locks._client_promotion_locks["a"]
     async with embed_mod._client_lock("team/a"):
-        entry_team_a = embed_mod._client_promotion_locks["a"]
+        entry_team_a = client_locks._client_promotion_locks["a"]
     async with embed_mod._client_lock("foo/bar/a"):
-        entry_subdir_a = embed_mod._client_promotion_locks["a"]
+        entry_subdir_a = client_locks._client_promotion_locks["a"]
     assert entry_a is entry_team_a
     assert entry_a is entry_subdir_a
 
@@ -1614,6 +2090,11 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
         def _fake_get_temp(_client, _function, *, unique=False):
             return tmp_path / "work_unique" if unique else tmp_path
 
+        # The lock now wraps the synchronous claim phase in the request
+        # handler, so the test no longer needs to mock the heavy pipeline
+        # stages — it can simply observe that the lock fired before the
+        # POST returned (status doesn't matter for this assertion; we
+        # arrange a 404 by leaving the work pipeline stages unmocked).
         with (
             patch(
                 "server.app.api.v1.endpoints.embed.get_temp_directory",
@@ -1633,11 +2114,7 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
                 },
                 headers={**auth_headers, "Client": "lock-client-b"},
             )
-    # We don't care about the response code — we just need to verify the
-    # lock was acquired before the work-dir prep ran. Status will be
-    # something other than 200 because we haven't mocked the embedding
-    # path; what matters is that the lock helper was called.
-    del resp
+    del resp  # status irrelevant — this test only pins the lock acquisition
     assert "lock-client-b" in locks_acquired
 
 
@@ -2133,11 +2610,21 @@ async def test_split_embed_runtime_error_returns_fallback_detail(app_client, aut
                 },
                 headers=auth_headers,
             )
-    assert resp.status_code == 500
-    detail = resp.json()["detail"]
-    assert detail
+            assert resp.status_code == 202
+            terminal = await _poll_until_terminal(
+                app_client,
+                resp.json()["job_id"],
+                auth_headers,
+            )
+
+    assert terminal["status"] == "failed"
+    error = terminal["error"]
+    assert error
+    # Source detail markers should not appear in the user-visible job error;
+    # the same normalization that covered the inline 500 detail still
+    # applies on the failed-job path.
     for token in _SOURCE_DETAIL_TOKENS:
-        assert token not in detail
+        assert token not in error
 
 
 @pytest.mark.unit
@@ -2212,3 +2699,2788 @@ async def test_refresh_bucket_value_error_returns_fallback_detail(app_client, au
     assert detail
     for token in _SOURCE_DETAIL_TOKENS:
         assert token not in detail
+
+
+# ---------------------------------------------------------------------------
+# GET /jobs and GET /jobs/{job_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_job_unknown_id_returns_404(app_client, auth_headers):
+    """Polling an unknown id returns 404, not a fabricated 'queued' record."""
+    resp = await app_client.get("/v1/embed/jobs/not-a-real-job", headers=auth_headers)
+    assert resp.status_code == 404
+    assert "not-a-real-job" in resp.json()["detail"]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_jobs_scoped_per_client(app_client, auth_headers):
+    """A job created under one Client header is invisible to another."""
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "test.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        mock_results = {
+            "processed_files": [{"filename": "test.txt", "chunks": 1}],
+            "skipped_files": [],
+            "total_chunks": 1,
+        }
+
+        with (
+            patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], mock_results),
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.get_client_embed",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.update_vs_comment",
+                new_callable=AsyncMock,
+            ),
+        ):
+            client_a = {**auth_headers, "Client": "client-a"}
+            client_b = {**auth_headers, "Client": "client-b"}
+            post_a = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=client_a,
+            )
+            assert post_a.status_code == 202
+            job_id = post_a.json()["job_id"]
+
+            # Client B cannot see client A's job — the client header
+            # check is applied on every read so a leaked job id can't
+            # be polled across client boundaries.
+            cross = await app_client.get(f"/v1/embed/jobs/{job_id}", headers=client_b)
+            assert cross.status_code == 404
+            list_b = await app_client.get("/v1/embed/jobs", headers=client_b)
+            assert list_b.status_code == 200
+            assert list_b.json() == []
+
+            # Client A sees the job in both the detail and the list view.
+            detail = await app_client.get(f"/v1/embed/jobs/{job_id}", headers=client_a)
+            assert detail.status_code == 200
+            assert detail.json()["job_id"] == job_id
+            list_a = await app_client.get("/v1/embed/jobs", headers=client_a)
+            assert list_a.status_code == 200
+            assert any(j["job_id"] == job_id for j in list_a.json())
+
+            await _poll_until_terminal(app_client, job_id, client_a)
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_jobs_active_only_excludes_terminal_rows(app_client, auth_headers):
+    """``GET /v1/embed/jobs?active_only=true`` returns only non-terminal jobs.
+
+    The status panel polls every 2 seconds; without this filter every
+    poll pulls every still-tracked terminal row's full ``result``
+    payload (``processed_files`` / ``skipped_files``). After a large
+    embedding run that's hundreds of kB of JSON repeatedly decoded
+    just to be discarded.
+
+    Filtering on the server keeps the polling path lean: a steady
+    state of "no jobs running" returns an empty array regardless of
+    how many large completed jobs the client has in CORE.
+    """
+    import datetime as _dt
+
+    from server.app.api.v1.schemas.embed import EmbedJobStatus
+    from server.app.embed import jobs as jobs_mod
+
+    client_header = {**auth_headers, "Client": "filter-client"}
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    def _row(job_id: str, status: EmbedJobStatus) -> jobs_mod._JobRow:
+        return jobs_mod._JobRow(
+            job_id=job_id,
+            client="filter-client",
+            owner_pod="pod-1",
+            status=status,
+            progress=None,
+            result=None,
+            error=None,
+            created=now,
+            updated=now,
+        )
+
+    # Seed directly through the store so we don't have to drive the
+    # full pipeline just to land rows in different statuses.
+    await jobs_mod._store_create(_row("active-1", EmbedJobStatus.RUNNING))
+    await jobs_mod._store_create(_row("active-2", EmbedJobStatus.QUEUED))
+    await jobs_mod._store_create(_row("done-1", EmbedJobStatus.SUCCEEDED))
+    await jobs_mod._store_create(_row("done-2", EmbedJobStatus.FAILED))
+
+    # Default: every still-tracked row, terminal blobs included.
+    full = await app_client.get("/v1/embed/jobs", headers=client_header)
+    assert full.status_code == 200
+    assert {j["job_id"] for j in full.json()} == {
+        "active-1", "active-2", "done-1", "done-2",
+    }
+
+    # active_only=true: only queued/running.
+    lean = await app_client.get(
+        "/v1/embed/jobs?active_only=true", headers=client_header
+    )
+    assert lean.status_code == 200
+    assert {j["job_id"] for j in lean.json()} == {"active-1", "active-2"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_returns_immediately_with_slow_pipeline(app_client, auth_headers):
+    """POST returns 202 even when the pipeline body would block for a long time.
+
+    This is the failure mode the refactor exists to fix: the LB times
+    out a synchronous request long before the embedding model warms up.
+    Substituting a slow ``populate_vs`` and asserting the POST still
+    returns sub-second pins that property in regression tests.
+    """
+    import asyncio
+    import tempfile
+    import tempfile as _tf
+    import time
+    from pathlib import Path
+
+    async def _slow_populate(*_args, **_kwargs):
+        await asyncio.sleep(5)  # simulate cold model / slow embedder
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "test.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        mock_results = {
+            "processed_files": [{"filename": "test.txt", "chunks": 1}],
+            "skipped_files": [],
+            "total_chunks": 1,
+        }
+
+        with (
+            patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], mock_results),
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.get_client_embed",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                new_callable=AsyncMock,
+                side_effect=_slow_populate,
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.update_vs_comment",
+                new_callable=AsyncMock,
+            ),
+        ):
+            t0 = time.monotonic()
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+            elapsed = time.monotonic() - t0
+            assert resp.status_code == 202
+            # Sub-second is the contractual requirement; allow a generous
+            # ceiling for slow CI runners but well below the 5s slow pipeline.
+            assert elapsed < 2.0, f"POST blocked for {elapsed:.2f}s; pipeline must run off-request"
+
+            status = await app_client.get(
+                f"/v1/embed/jobs/{resp.json()['job_id']}",
+                headers=auth_headers,
+            )
+            assert status.status_code == 200
+            assert status.json()["status"] in ("queued", "running")
+
+            # Cancel the lingering background task so we don't burn 5s
+            # of test time waiting for the simulated cold embedder.
+            from server.app.embed import jobs as jobs_mod
+
+            mgr = jobs_mod.get_embed_job_manager()
+            cancelled = await mgr.cancel_local(resp.json()["job_id"])
+            assert cancelled, "background task should still be running locally"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_claims_files_before_returning_202(app_client, auth_headers):
+    """Files added after the POST returns must NOT land in this job's corpus.
+
+    The shared client embedding directory is mutated by ``store_local_file``
+    and friends. If ``_prepare_work_dir`` runs *after* the response, an
+    upload that completes in the gap before the background task acquires
+    the per-client lock would silently get embedded into this job — the
+    user thinks they're submitting one corpus but the server processes
+    a superset. Files must be claimed under the lock before the 202.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+
+    captured_filenames: list[list[str]] = []
+
+    def _capture_files(files, *_args, **_kwargs):
+        captured_filenames.append(sorted(f.name for f in files))
+        return ([], [], {"processed_files": [], "skipped_files": [], "total_chunks": 0})
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "intended.txt").write_text("part of this job")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        with (
+            patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                side_effect=_capture_files,
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.get_client_embed",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "server.app.api.v1.endpoints.embed.update_vs_comment",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 202
+            # Synchronously simulate a follow-up upload landing in the
+            # shared client dir before the background task could possibly
+            # have run `_prepare_work_dir`. With proper synchronous
+            # claiming this file arrives too late for the current job.
+            (shared / "intruder.txt").write_text("uploaded after submit; must NOT be embedded")
+
+            terminal = await _poll_until_terminal(
+                app_client,
+                resp.json()["job_id"],
+                auth_headers,
+            )
+
+    assert terminal["status"] == "succeeded", terminal
+    assert captured_filenames, "load_and_split_documents was not invoked"
+    assert "intruder.txt" not in captured_filenames[0], (
+        f"Background job claimed a post-202 upload: {captured_filenames[0]}"
+    )
+    assert "intended.txt" in captured_filenames[0]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_503_restores_uploaded_files_to_shared_dir(app_client, auth_headers):
+    """A 503 from CORE-side submission must NOT discard the uploaded corpus.
+
+    P2: the previous fix translates ``oracledb.Error`` from
+    ``manager.submit`` into a 503 and the client is expected to
+    retry. But ``_prepare_work_dir`` already moved the files out
+    of the shared client temp directory, and the failure-cleanup
+    rmtree's the work_dir. A retry then hits "no files found".
+    Restoration on the 503 path means a retry can succeed without
+    re-uploading the corpus.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    import oracledb as _oracledb
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        # Two files to confirm restoration is per-file, not just a marker.
+        (shared / "alpha.txt").write_text("first chunk")
+        (shared / "beta.txt").write_text("second chunk")
+        original_names = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert original_names == ["alpha.txt", "beta.txt"]
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        from server.app.embed import jobs as jobs_mod
+
+        async def _failing_submit(*_args, **_kwargs):
+            raise _oracledb.DatabaseError("CORE blip mid-INSERT")
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _failing_submit,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 503
+        # Files are back in the shared directory, ready for the client's
+        # retry to pick them up.
+        restored = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert restored == original_names, (
+            f"Expected uploaded files restored to shared dir; got {restored}"
+        )
+        assert (shared / "alpha.txt").read_text() == "first chunk"
+        assert (shared / "beta.txt").read_text() == "second chunk"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_503_restores_user_uploaded_uuid_named_csv(app_client, auth_headers):
+    """[P3] A user-uploaded CSV with a UUID-shaped basename must NOT be
+    dropped by the SQL-detection branch.
+
+    Reviewer concern: the previous fix detected SQL-generated CSVs by
+    UUID4 filename pattern alone. A user can legitimately upload a
+    CSV whose basename happens to be a UUID (e.g. exported from a
+    pipeline that names by run id); under the regex-only check the
+    503 restore would silently drop that file, and a retry would
+    404 ("no files found") or be missing a document. The source of
+    a file cannot be inferred from its name — SQL temp files need
+    an explicit marker so user uploads with the same shape are not
+    collateral damage.
+    """
+    import tempfile
+    import tempfile as _tf
+    import uuid as _uuid
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    import oracledb as _oracledb
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        # User-uploaded CSV whose basename happens to look like a UUID
+        # (e.g. exported from another pipeline that names by run id).
+        # Real path: ``store_local_file`` would have placed it here;
+        # we drop it directly because the test is about the restore
+        # contract, not the upload path.
+        user_uuid_csv_name = f"{_uuid.uuid4()}.csv"
+        (shared / user_uuid_csv_name).write_text("col1,col2\nx,y\n")
+        original_user_files = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert user_uuid_csv_name in original_user_files
+
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        from server.app.embed import jobs as jobs_mod
+
+        async def _failing_submit(*_args, **_kwargs):
+            raise _oracledb.DatabaseError("CORE blip mid-INSERT")
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _failing_submit,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 503
+        restored = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert user_uuid_csv_name in restored, (
+            f"User-uploaded CSV {user_uuid_csv_name!r} was dropped by the "
+            f"SQL detection — the source of a file cannot be inferred "
+            f"from a UUID-shaped basename alone, so SQL temp files need "
+            f"an explicit marker"
+        )
+        assert (shared / user_uuid_csv_name).read_text() == "col1,col2\nx,y\n"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_tear_down_post_submit_request_does_not_yank_workdir_during_task(tmp_path):
+    """[P2] ``_tear_down_post_submit_request`` must not rmtree
+    ``work_dir`` while the background task may still be reading or
+    writing it.
+
+    Reviewer concern: ``Task.cancel()`` only requests cancellation;
+    work already running inside ``asyncio.to_thread`` keeps executing
+    in a worker thread until either the synchronous body returns or
+    the cancel propagates at the next coroutine ``await``. Removing
+    ``work_dir`` before the task has actually finished can yank
+    files out from under an in-flight read or partially-written
+    vector store, turning a started job into corrupted output.
+
+    Contract: rmtree happens *after* ``submission.task`` is done.
+    """
+    from server.app.api.v1.endpoints.embed import _tear_down_post_submit_request
+    from server.app.embed import jobs as jobs_mod
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    (work_dir / "in-use.bin").write_bytes(b"data")
+
+    blocker: asyncio.Future = asyncio.Future()
+
+    async def _hangs(_handle: jobs_mod.JobHandle):
+        try:
+            await blocker
+        finally:
+            # Pipeline-body finally would normally rmtree work_dir
+            # here, but we deliberately do NOT — to test that the
+            # request handler's deferred rmtree is what does it
+            # (covering the production scenario where the body's
+            # finally hasn't run yet).
+            pass
+        return jobs_mod.EmbedProcessingResult(
+            message="ok", total_chunks=0, processed_files=[], skipped_files=[],
+        )
+
+    pod = jobs_mod.EmbedJobManager(pod_id="pod-1")
+    sub = await pod.submit(client="x", coro_factory=_hangs)
+    # Let the task reach its first await so it's truly "running"
+    # (not just registered).
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    _tear_down_post_submit_request(sub, work_dir)
+
+    # Immediately after teardown: cancel is in flight but the task
+    # hasn't yet processed it. ``work_dir`` MUST still exist —
+    # rmtree'ing now would race the running task.
+    assert work_dir.exists(), (
+        "work_dir was removed immediately after task.cancel() — a "
+        "concurrently running task could observe missing files mid-"
+        "read or mid-write"
+    )
+
+    # Drain the cancellation.
+    with contextlib.suppress(BaseException):
+        await sub.task
+
+    # Allow the deferred rmtree to fire.
+    for _ in range(50):
+        await asyncio.sleep(0)
+
+    assert not work_dir.exists(), (
+        "deferred rmtree did not fire after task completion — "
+        "work_dir leaked on disk"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_post_submit_cancellation_cleans_up_when_task_never_starts(
+    app_client, auth_headers
+):
+    """[P2] If the inner task is cancelled before its first event-loop
+    step, ``_run``'s ``try/finally`` never runs — the request
+    handler must clean up ``_tasks`` and ``work_dir`` explicitly,
+    not rely on the background coroutine.
+
+    Reviewer concern: ``asyncio.Task.cancel()`` on a task that has
+    not yet been stepped causes the runtime to send the
+    ``CancelledError`` BEFORE any user code in the coroutine body
+    runs (verified: a fresh ``coro.throw(...)`` raises at the
+    function entry point with no statements executed). That means:
+
+    * ``_run``'s outer ``finally`` never pops ``_tasks`` — the
+      heartbeat keeps refreshing the QUEUED row indefinitely and
+      the reaper, seeing fresh ``updated`` timestamps, never marks
+      it failed.
+    * The pipeline body's ``finally`` never rmtree's ``work_dir``,
+      so the claimed corpus stays on disk.
+
+    The fix is to mirror what the task's finallys would have done,
+    in the request handler's ``except BaseException`` branch.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    from server.app.api.v1.schemas.embed import EmbedJobStatus
+    from server.app.embed import jobs as jobs_mod
+
+    captured: dict[str, Any] = {"submission": None}
+
+    async def _fake_submit(self, *_args, target_db: str = "", **_kwargs):
+        # Simulate ``manager.submit`` returning successfully with a
+        # task that has been cancelled before any event-loop step —
+        # in production this is what happens when ``Task.cancel()``
+        # arrives before the loop has run the new task's coroutine
+        # at all (``CancelledError`` fires at function entry,
+        # neither ``_run``'s outer finally nor the pipeline body's
+        # finally execute). The contract this pins is: the request
+        # handler must do the cleanup itself.
+        job_id = "test-pre-step-cancel-job"
+
+        async def _never_runs():
+            return None
+
+        real_task = asyncio.create_task(_never_runs())
+        real_task.cancel()
+        # Mirror real submit: register in ``_tasks`` so a missing
+        # explicit pop here is visible at the end of the test.
+        self._tasks[job_id] = real_task
+        sub = jobs_mod.JobSubmission(
+            job_id=job_id,
+            status=EmbedJobStatus.QUEUED,
+            task=real_task,
+        )
+        captured["submission"] = sub
+        return sub
+
+    class _CancellingExitLock:
+        async def __aenter__(self):
+            from server.app.core.settings import _settings_lock as real
+            await real.__aenter__()
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            from server.app.core.settings import _settings_lock as real
+            await real.__aexit__(exc_type, exc, tb)
+            if exc is None:
+                raise asyncio.CancelledError("simulated post-submit cancellation")
+
+    work_dirs_created: list[Path] = []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            if unique:
+                wd = Path(_tf.mkdtemp(dir=work_parent))
+                work_dirs_created.append(wd)
+                return wd
+            return shared
+
+        manager = jobs_mod.get_embed_job_manager()
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed._settings_lock",
+                _CancellingExitLock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _fake_submit,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], {
+                    "processed_files": [{"filename": "doc.txt", "chunks": 1}],
+                    "skipped_files": [],
+                    "total_chunks": 1,
+                }),
+            ),
+            contextlib.suppress(BaseException),
+        ):
+            await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+        sub = captured["submission"]
+        assert sub is not None, "fake submit was not invoked"
+        # ``_tasks`` was popped eagerly so the heartbeat stops
+        # refreshing immediately (the queued row would otherwise
+        # be refreshed forever and the reaper would never sweep it).
+        assert sub.job_id not in manager._tasks, (
+            f"_tasks still contains {sub.job_id!r}; the request "
+            f"handler did not pop it eagerly, so the heartbeat "
+            f"would refresh the queued row indefinitely"
+        )
+        # Drain the cancellation, then yield enough turns for the
+        # deferred rmtree to fire after the task is done.
+        with contextlib.suppress(BaseException):
+            await sub.task
+        for _ in range(50):
+            await asyncio.sleep(0)
+        assert sub.task.done(), "task did not reach a terminal state"
+        assert work_dirs_created, "no work_dir was created"
+        for wd in work_dirs_created:
+            assert not wd.exists(), (
+                f"work_dir {wd} survived the post-submit cancellation; "
+                f"the deferred rmtree did not fire"
+            )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_post_submit_cancellation_cancels_task(app_client, auth_headers):
+    """[P2] If the request is cancelled after manager.submit returns,
+    the BaseException handler must cancel the background task — not
+    rmtree work_dir under it.
+
+    Reviewer concern: once submission succeeds the background task is
+    registered and reads from work_dir. If a cancellation arrives at
+    a subsequent await (e.g. ``_settings_lock.__aexit__`` between
+    submit returning and the response being sent) the catch-all
+    BaseException handler would otherwise rmtree work_dir while the
+    task is still running, and the accepted job starts with missing
+    files and fails. Either skip the cleanup once submission
+    succeeds, or cancel the task explicitly so its own ``finally``
+    handles teardown.
+
+    This test models the cancellation-during-lock-release window by
+    wrapping ``_settings_lock`` with an exit hook that raises
+    ``CancelledError`` after the body completes — i.e. after
+    ``manager.submit`` has already returned a JobSubmission.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    from server.app.api.v1.schemas.embed import EmbedProcessingResult
+    from server.app.core.settings import _settings_lock as real_settings_lock
+    from server.app.embed import jobs as jobs_mod
+
+    captured: dict[str, Any] = {"submission": None}
+
+    real_submit = jobs_mod.EmbedJobManager.submit
+
+    async def _capturing_submit(self, *args, **kwargs):
+        sub = await real_submit(self, *args, **kwargs)
+        captured["submission"] = sub
+        return sub
+
+    class _CancellingExitLock:
+        """Releases the underlying lock cleanly, then raises CancelledError.
+
+        Models cancellation arriving at the lock's ``__aexit__`` await
+        — a real-world client-disconnect / shutdown propagation point
+        between submit returning and the response being sent.
+        """
+
+        async def __aenter__(self):
+            await real_settings_lock.__aenter__()
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await real_settings_lock.__aexit__(exc_type, exc, tb)
+            if exc is None:
+                raise asyncio.CancelledError("simulated post-submit cancellation")
+
+    pipeline_started = asyncio.Event()
+
+    async def _slow_pipeline(*_args, **_kwargs) -> EmbedProcessingResult:
+        # If this body runs the bug is present: the request handler
+        # rmtree'd work_dir but the task got far enough to start
+        # populating. With the fix the task is cancelled before
+        # populate_vs is reached.
+        pipeline_started.set()
+        await asyncio.sleep(2.0)
+        return EmbedProcessingResult(
+            message="should-not-complete",
+            total_chunks=0,
+            processed_files=[],
+            skipped_files=[],
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed._settings_lock",
+                _CancellingExitLock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _capturing_submit,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                side_effect=_slow_pipeline,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], {
+                    "processed_files": [{"filename": "doc.txt", "chunks": 1}],
+                    "skipped_files": [],
+                    "total_chunks": 1,
+                }),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_client_embed",
+                return_value=MagicMock(),
+            ),
+            # The request will fail with a 500 because the cancellation
+            # propagates out of the handler. We don't care about the
+            # response shape here — only that the task got cancelled
+            # rather than have its work_dir yanked.
+            contextlib.suppress(BaseException),
+        ):
+            await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+        sub = captured["submission"]
+        assert sub is not None, (
+            "manager.submit did not return — the test cannot exercise "
+            "the post-submit cancellation window without a JobSubmission"
+        )
+
+        # Drain the cancelled task — wait for it to reach a terminal
+        # state. With the fix the task is cancelled cleanly; without
+        # it the task keeps running against a yanked work_dir.
+        with contextlib.suppress(BaseException):
+            await asyncio.wait_for(sub.task, timeout=2.0)
+
+        assert sub.task.done(), "task did not reach terminal state"
+        # The pipeline body must NOT have run to completion: the task
+        # was cancelled before populate_vs got past its sleep.
+        # ``pipeline_started`` may be set if cancellation arrived
+        # mid-sleep, but the sleep never completes — populate_vs
+        # would only return after 2s of sleep.
+        # Strict assertion: the task is cancelled (clean teardown
+        # via ``Task.cancel()``) rather than crashed against a
+        # missing work_dir.
+        assert sub.task.cancelled(), (
+            "task did not end in a cancelled state; the request "
+            "handler must cancel the task (clean teardown) instead "
+            "of rmtree'ing work_dir under it"
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_pre_claim_503_drops_sql_scratch_files(app_client, auth_headers):
+    """[P2] A pre-claim 503 must sweep ``_sqlsrc_*.csv`` from shared.
+
+    Reviewer concern: ``/embed/sql/store`` writes a unique
+    ``_sqlsrc_<uuid>.csv`` to the shared embedding directory before
+    the user submits. If a precondition guard inside ``POST /embed/``
+    (e.g. ``_require_core_pool`` during a CORE outage) raises 503
+    BEFORE ``_prepare_work_dir`` claims those files, the existing
+    claim/restore path doesn't run — the SQL scratch CSV stays in
+    shared. The Streamlit retry path always re-runs
+    ``/embed/sql/store`` before retrying, generating a *new*
+    ``_sqlsrc_<uuid>.csv`` (fresh UUID every call). The next
+    successful embed then claims both, embedding the query results
+    twice.
+
+    The pre-claim error paths must drop the prior SQL scratch
+    files for the same reason the restore path does — these
+    are ephemeral, regenerated on every retry, and the marker
+    prefix exists precisely so the embed handler can identify
+    them safely.
+    """
+    import tempfile
+    import tempfile as _tf
+    import uuid as _uuid
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        # Pre-existing SQL scratch CSV (modelling what
+        # /embed/sql/store left behind on the user's last attempt).
+        sql_csv_name = f"_sqlsrc_{_uuid.uuid4()}.csv"
+        (shared / sql_csv_name).write_text("col1\nvalue\n")
+        # And a user-uploaded file that must NOT be swept — only the
+        # marker-prefixed SQL scratch files are ephemeral.
+        (shared / "user-doc.pdf").write_bytes(b"%PDF-1.4 stub")
+        original = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert sql_csv_name in original
+        assert "user-doc.pdf" in original
+
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            # Force the early CORE-availability guard to 503.
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_core_pool",
+                return_value=None,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 503
+        remaining = sorted(p.name for p in shared.iterdir() if p.is_file())
+        # The SQL scratch file is gone — the retry's /embed/sql/store
+        # will regenerate it under a fresh UUID, no accumulation.
+        assert sql_csv_name not in remaining, (
+            f"SQL scratch CSV {sql_csv_name!r} survived the pre-claim "
+            f"503; the retry would land a new _sqlsrc_*.csv alongside, "
+            f"and the next embed would claim both"
+        )
+        # The user's actual upload is preserved — only marker-prefixed
+        # SQL scratch files are dropped.
+        assert "user-doc.pdf" in remaining, (
+            "user upload was swept by the SQL scratch sweeper; only "
+            "_sqlsrc_*.csv files are ephemeral"
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_503_does_not_restore_sql_generated_csv(app_client, auth_headers):
+    """[P2] Retryable 503 must NOT restore SQL-generated UUID CSVs.
+
+    Reviewer concern: ``/embed/sql/store`` writes the query result as
+    ``<uuid>.csv`` in the shared embedding directory. When the
+    Streamlit retry path (``_process_populate_request``) hits a 503
+    on POST ``/embed/`` it always re-runs ``/embed/sql/store`` first
+    before retrying — and ``run_sql_query`` allocates a *fresh* UUID
+    each call. If the failure path moved the previous UUID CSV back
+    to shared, the next embed would claim *both* the restored CSV
+    and the new one, embedding the query results twice.
+
+    The fix: SQL-generated CSVs are ephemeral and identified by a
+    UUID4 filename pattern; the restore helper must drop them
+    instead of moving them back. User-uploaded files (which use
+    deterministic, source-derived names) are still restored so a
+    retry doesn't have to re-upload.
+    """
+    import tempfile
+    import tempfile as _tf
+    import uuid as _uuid
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    import oracledb as _oracledb
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        # One user-uploaded file (deterministic name) — must be
+        # restored on 503 so the client's retry doesn't re-upload.
+        (shared / "user.txt").write_text("user content")
+        # One SQL-generated CSV — modelling what ``run_sql_query``
+        # writes (``_sqlsrc_<uuid>.csv``). Must NOT be restored: the
+        # client's retry path will re-run ``/embed/sql/store`` and
+        # generate a new SQL CSV; restoring this one would let the
+        # next embed claim both.
+        sql_csv_name = f"_sqlsrc_{_uuid.uuid4()}.csv"
+        (shared / sql_csv_name).write_text("col1\nvalue\n")
+        original_user_files = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert "user.txt" in original_user_files
+        assert sql_csv_name in original_user_files
+
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        from server.app.embed import jobs as jobs_mod
+
+        async def _failing_submit(*_args, **_kwargs):
+            raise _oracledb.DatabaseError("CORE blip mid-INSERT")
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _failing_submit,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 503
+        restored = sorted(p.name for p in shared.iterdir() if p.is_file())
+        # The user upload is back so the retry doesn't have to re-upload.
+        assert "user.txt" in restored
+        assert (shared / "user.txt").read_text() == "user content"
+        # The SQL-generated CSV is NOT back — the retry's /embed/sql/store
+        # will generate a fresh one and we don't want both claimed.
+        assert sql_csv_name not in restored, (
+            f"SQL-generated CSV {sql_csv_name!r} was restored to "
+            f"shared; the retry's /embed/sql/store will produce a new "
+            f"UUID, and embedding both would duplicate the query results"
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_restores_files_when_locked_db_snapshot_raises_503(
+    app_client, auth_headers
+):
+    """[P2] A 503 from the under-lock DB re-snapshot must NOT discard the corpus.
+
+    Reviewer concern: the rotation-race fix re-resolves the DB config
+    inside ``_settings_lock`` before ``manager.submit``. If the
+    client's database is removed or becomes unusable between the
+    early availability probe and the locked snapshot,
+    ``_get_client_db_config`` raises ``HTTPException(503)`` *after*
+    ``_prepare_work_dir`` has moved the corpus out of the shared
+    directory. Falling through to ``except BaseException`` rmtree's
+    the work_dir, so the user has to re-upload everything before
+    they can retry.
+
+    The 503 from the locked snapshot is the same retry contract as
+    the CORE submission failures — restore the corpus to shared so
+    the client's retry succeeds without a re-upload.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "alpha.txt").write_text("first chunk")
+        (shared / "beta.txt").write_text("second chunk")
+        original_names = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert original_names == ["alpha.txt", "beta.txt"]
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        # First call is the early probe (succeeds). Second call is
+        # the under-lock re-snapshot — this is where the DB has gone
+        # away mid-request and the helper raises 503. The endpoint
+        # must catch that and restore the files.
+        cfg = MagicMock()
+        cfg.alias = "TEST"
+        cfg.pool = MagicMock()
+        cfg.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+        cfg.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        cfg.usable = True
+        cfg.vector_stores = []
+        cfg.model_copy.return_value = cfg
+
+        call_count = {"n": 0}
+
+        def _evolving_db_config(_client):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return cfg, cfg.pool
+            raise HTTPException(
+                status_code=503, detail="Database is not available: TEST"
+            )
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed._get_client_db_config",
+                side_effect=_evolving_db_config,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 503
+        # Files must be back in the shared directory so the client's
+        # retry (after the admin restores the DB) can pick them up.
+        restored = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert restored == original_names, (
+            f"Expected uploaded files restored to shared dir; got {restored}"
+        )
+        assert (shared / "alpha.txt").read_text() == "first chunk"
+        assert (shared / "beta.txt").read_text() == "second chunk"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_holds_client_lock_through_submission(app_client, auth_headers):
+    """[P2] ``manager.submit`` must run inside the per-client lock.
+
+    Reviewer concern: if the lock is released after ``_prepare_work_dir``
+    and re-acquired only inside ``_restore_claimed_files_to_shared``, a
+    same-client upload landing in shared during the unlocked window
+    leaves shared non-empty when restoration runs. The current restore
+    only skips *same-name* conflicts, so files with different names
+    get merged into the new corpus and the next embed request claims a
+    mix of stale and newly-uploaded files. Holding the lock from claim
+    through submit eliminates the race window: a concurrent
+    ``store_local_file`` for the same client cannot land in shared
+    until restoration (or the success path) has fully completed.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    import oracledb as _oracledb
+
+    from server.app.api.v1.endpoints import embed as embed_endpoints
+    from server.app.embed import jobs as jobs_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "old.txt").write_text("first batch")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        # Side coroutine racing for the same client lock — if the
+        # endpoint releases it during ``submit`` this acquires
+        # immediately; if the endpoint holds it through ``submit``
+        # this blocks until the handler returns.
+        side_started = asyncio.Event()
+        side_acquired = asyncio.Event()
+        side_can_release = asyncio.Event()
+
+        async def _side_acquirer():
+            side_started.set()
+            async with embed_endpoints._client_lock("server"):
+                side_acquired.set()
+                await side_can_release.wait()
+
+        async def _failing_submit(*_args, **_kwargs):
+            asyncio.create_task(_side_acquirer())
+            await side_started.wait()
+            # Yield repeatedly so the side task has every chance to
+            # acquire if the lock has been released. ``asyncio.Lock``
+            # is FIFO, so a freed lock would be granted on the next
+            # loop iteration; ten iterations is comfortably enough.
+            for _ in range(10):
+                await asyncio.sleep(0)
+            assert not side_acquired.is_set(), (
+                "client lock was released during submit — concurrent "
+                "same-client upload could land in shared and the "
+                "restore path would merge it with the failed corpus"
+            )
+            raise _oracledb.DatabaseError("CORE blip mid-INSERT")
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _failing_submit,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+            # Once the handler returned, the lock is released and the
+            # side acquirer should be able to acquire.
+            try:
+                await asyncio.wait_for(side_acquired.wait(), timeout=2.0)
+            finally:
+                side_can_release.set()
+
+        assert resp.status_code == 503
+        contents = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert contents == ["old.txt"], (
+            f"expected restored corpus to be ['old.txt']; got {contents}"
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_translates_core_submit_failure_to_503(app_client, auth_headers):
+    """A CORE blip on the INSERT during ``manager.submit`` must yield 503.
+
+    Symmetric to ``GET /v1/embed/jobs[/{id}]``: those endpoints already
+    wrap ``oracledb.Error`` from CORE reads as 503. The POST handler
+    must do the same so polling clients (which only retry 503) don't
+    abandon the request on a transient submission error. Cleanup of
+    the claimed work_dir must still run before the translated 503 is
+    returned, otherwise the corpus is stranded on disk.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    import oracledb as _oracledb
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        created_work_dirs: list[Path] = []
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            if unique:
+                wd = Path(_tf.mkdtemp(dir=work_parent))
+                created_work_dirs.append(wd)
+                return wd
+            return shared
+
+        from server.app.embed import jobs as jobs_mod
+
+        async def _failing_submit(*_args, **_kwargs):
+            raise _oracledb.DatabaseError("ORA-12541: CORE listener refused mid-INSERT")
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _failing_submit,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+    # Cleanup still happens before the 503 is raised.
+    assert created_work_dirs, "expected a work_dir to be created"
+    for wd in created_work_dirs:
+        assert not wd.exists(), f"submission failure leaked {wd}"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_cleans_work_dir_when_submit_fails(app_client, auth_headers):
+    """A submission failure must remove the populated work_dir.
+
+    P2: ``_prepare_work_dir`` moves the uploaded corpus out of the
+    shared client directory before ``manager.submit`` is called. If
+    submission then raises (e.g. CORE write failure), no background
+    task is started and the task's ``finally`` cleanup never runs.
+    Without the request-side cleanup the corpus is stranded on disk.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        created_work_dirs: list[Path] = []
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            if unique:
+                wd = Path(_tf.mkdtemp(dir=work_parent))
+                created_work_dirs.append(wd)
+                return wd
+            return shared
+
+        from server.app.embed import jobs as jobs_mod
+
+        async def _failing_submit(*_args, **_kwargs):
+            raise RuntimeError("synthetic CORE write failure")
+
+        # The TestClient propagates unhandled server exceptions out of
+        # the call by default, so we observe the failure via
+        # ``pytest.raises`` rather than via a 500 response.
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _failing_submit,
+            ),
+            pytest.raises(RuntimeError, match="synthetic CORE write failure"),
+        ):
+            await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+    # Work dir was created during _prepare_work_dir but must be cleaned
+    # up by the request handler when submission fails.
+    assert created_work_dirs, "expected a work_dir to be created"
+    for wd in created_work_dirs:
+        assert not wd.exists(), f"submission failure leaked {wd}"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_pipeline_uses_submission_time_db_config(app_client, auth_headers):
+    """[P2] The pipeline must use the db_config captured at POST time.
+
+    Reviewer concern: if a client's database settings are edited after
+    POST 202 but before the background task runs, re-resolving
+    ``client`` mid-pipeline could redirect the in-flight job to a
+    *different* usable database than the one validated at submission.
+    The corpus would land in a DB the user never authorised this
+    submission against. Capture once during ``split_embed`` and pass
+    the snapshot into the task; the pipeline must not re-resolve.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    db_config_calls: list[str] = []
+    populate_vs_db_configs: list[Any] = []
+    update_vs_pools: list[Any] = []
+
+    def _make_cfg(label: str):
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        cfg = MagicMock()
+        cfg.alias = label
+        cfg.pool = pool
+        cfg.usable = True
+        cfg.vector_stores = []
+        # The handler now snapshots via ``live_cfg.model_copy()``.
+        # For these reference-identity assertions, returning the
+        # same mock from ``model_copy()`` is enough — see the
+        # separate ``test_split_embed_snapshots_db_config_against_in_place_mutation``
+        # test for the model_copy semantics, which uses a real
+        # ``DatabaseConfig`` instance instead of a MagicMock.
+        cfg.model_copy.return_value = cfg
+        return cfg, pool
+
+    cfg_at_submit, pool_at_submit = _make_cfg("submission-time")
+    cfg_after_rotation, pool_after_rotation = _make_cfg("post-rotation")
+
+    def _evolving_db_config(client):
+        # First two calls happen synchronously inside ``split_embed``:
+        # an early DB-availability probe, then a re-snapshot under
+        # ``_settings_lock`` (the latter closes the rotation race).
+        # Any *third* call would be the pipeline body re-resolving —
+        # exactly what this test forbids: the pipeline must use the
+        # snapshot it received as a parameter.
+        db_config_calls.append(client)
+        if len(db_config_calls) <= 2:
+            return cfg_at_submit, pool_at_submit
+        return cfg_after_rotation, pool_after_rotation
+
+    async def _capture_populate_vs(*, db_config, **_kwargs):
+        populate_vs_db_configs.append(db_config)
+
+    async def _capture_update_vs_comment(conn, *_args, **_kwargs):
+        # ``conn`` itself isn't easily mapped back to a pool; record
+        # the call so we can sanity-check the comment was written via
+        # the captured pool's ``acquire()`` (the pipeline opens the
+        # connection from ``db_config.pool``).
+        update_vs_pools.append(conn)
+
+    mock_results = {
+        "processed_files": [{"filename": "doc.txt", "chunks": 1}],
+        "skipped_files": [],
+        "total_chunks": 1,
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed._get_client_db_config",
+                side_effect=_evolving_db_config,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], mock_results),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_client_embed",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                side_effect=_capture_populate_vs,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.update_vs_comment",
+                side_effect=_capture_update_vs_comment,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.discover_vector_stores",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 202
+            terminal = await _poll_until_terminal(
+                app_client,
+                resp.json()["job_id"],
+                auth_headers,
+            )
+
+    assert terminal["status"] == "succeeded", terminal
+    assert populate_vs_db_configs, "populate_vs was not invoked by pipeline"
+    assert populate_vs_db_configs[0] is cfg_at_submit, (
+        f"pipeline used a re-resolved db_config (alias="
+        f"{populate_vs_db_configs[0].alias}); expected submission-time snapshot"
+    )
+    assert len(db_config_calls) <= 2, (
+        f"_get_client_db_config called {len(db_config_calls)} times; "
+        "pipeline body must use the captured snapshot, not re-resolve "
+        "(two synchronous calls during split_embed are allowed: the "
+        "early probe and the under-_settings_lock re-snapshot)"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_client, auth_headers):
+    """[P2] In-place mutation of the live DatabaseConfig must not retarget an in-flight job.
+
+    Reviewer follow-up: the previous fix captured the *reference*
+    returned by ``_get_client_db_config`` — but ``settings.database_configs``
+    holds Pydantic models that the database-update endpoint mutates
+    in place via ``setattr`` (and the registry rebinds ``.pool`` on
+    pool rotation). Closing over the mutable live object means an
+    admin editing the same client's DB after POST 202 can re-credential
+    or redirect the running pipeline. The fix is to ``model_copy`` so
+    the snapshot has its own attribute storage, and to capture the
+    pool reference at submission time so a post-submit ``.pool =
+    new_pool`` cannot retarget the job either.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    from server.app.database.schemas import DatabaseConfig
+
+    pool_at_submit = MagicMock()
+    pool_at_submit.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool_at_submit.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    pool_after_rotation = MagicMock()
+    pool_after_rotation.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool_after_rotation.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    # Build a real DatabaseConfig so model_copy semantics are exercised
+    # (a MagicMock's attribute access doesn't reflect Pydantic copy
+    # behaviour). The autouse ``mock_client_db`` fixture patches
+    # _get_client_db_config to return a MagicMock; we override that
+    # with the live Pydantic instance below.
+    live_cfg = DatabaseConfig(
+        alias="test-db",
+        username="user_at_submit",
+        password=SecretStr("password_at_submit"),
+        dsn="//submit.example.com:1521/SUBMIT",
+        usable=True,
+    )
+    live_cfg.pool = pool_at_submit
+
+    submit_started = asyncio.Event()
+    pipeline_can_finish = asyncio.Event()
+    captured_credentials: list[dict] = []
+
+    def _reveal(secret):
+        # Handle both ``SecretStr`` (snapshot path) and plain ``str``
+        # (the buggy path where ``live_cfg.password = "..."`` rebound
+        # the attribute to an unwrapped string). The test wants to
+        # assert on the *value* either way, not crash on type.
+        if secret is None:
+            return None
+        if hasattr(secret, "get_secret_value"):
+            return secret.get_secret_value()
+        return secret
+
+    async def _slow_populate_vs(*, db_config, **_kwargs):
+        # Signal the test that the pipeline reached populate_vs, then
+        # block. The test mutates live_cfg during that wait — so when
+        # we then read ``db_config.username`` etc. below, the buggy
+        # "captured live reference" code would observe the mutated
+        # values, while the correct ``model_copy`` snapshot would
+        # still report the submission-time values.
+        submit_started.set()
+        await pipeline_can_finish.wait()
+        captured_credentials.append({
+            "username": db_config.username,
+            "password_value": _reveal(db_config.password),
+            "dsn": db_config.dsn,
+            "pool_is_submit": db_config.pool is pool_at_submit,
+            "pool_is_rotated": db_config.pool is pool_after_rotation,
+        })
+
+    mock_results = {
+        "processed_files": [{"filename": "doc.txt", "chunks": 1}],
+        "skipped_files": [],
+        "total_chunks": 1,
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        def _resolve_real_cfg(_client):
+            return live_cfg, live_cfg.pool
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed._get_client_db_config",
+                side_effect=_resolve_real_cfg,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], mock_results),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_client_embed",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                side_effect=_slow_populate_vs,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.update_vs_comment",
+                new_callable=AsyncMock,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.discover_vector_stores",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 202
+
+            # Wait for the pipeline to reach populate_vs, then mutate
+            # the live config in place — the same shape the database-
+            # update endpoint produces via ``setattr(cfg, field, val)``.
+            # populate_vs has already sampled credentials before this,
+            # so the captured snapshot must reflect submission-time
+            # values regardless of what we do here.
+            await asyncio.wait_for(submit_started.wait(), timeout=5.0)
+            live_cfg.username = "user_after_rotation"
+            live_cfg.password = SecretStr("password_after_rotation")
+            live_cfg.dsn = "//rotated.example.com:1521/ROTATED"
+            live_cfg.pool = pool_after_rotation
+
+            pipeline_can_finish.set()
+            terminal = await _poll_until_terminal(
+                app_client,
+                resp.json()["job_id"],
+                auth_headers,
+            )
+
+    assert terminal["status"] == "succeeded", terminal
+    assert captured_credentials, "populate_vs was not invoked"
+    seen = captured_credentials[0]
+    assert seen["username"] == "user_at_submit", (
+        f"pipeline observed post-rotation username {seen['username']!r}; "
+        "live mutation leaked into the supposedly captured snapshot"
+    )
+    assert seen["password_value"] == "password_at_submit", (
+        "pipeline observed post-rotation password; credentials must be "
+        "snapshotted at submission time"
+    )
+    assert seen["dsn"] == "//submit.example.com:1521/SUBMIT", (
+        "pipeline observed post-rotation DSN"
+    )
+    # Now verify the post-submit mutation went somewhere: the live
+    # config must reflect the rotation (proves the mutation actually
+    # happened — i.e. the test isn't passing trivially).
+    assert live_cfg.username == "user_after_rotation"
+    assert live_cfg.pool is pool_after_rotation
+    # And the pipeline must have used the submission-time pool, not
+    # whatever ``.pool`` got rebound to mid-flight. ``populate_vs``
+    # is mocked so this only asserts on the snapshot it received.
+    assert seen["pool_is_submit"], (
+        "pipeline saw the rotated pool reference; submission-time pool "
+        "must travel with the snapshot"
+    )
+    assert not seen["pool_is_rotated"]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_pipeline_refreshes_live_vector_store_cache_on_success(app_client, auth_headers):
+    """[P1] After successful populate, the live ``settings.database_configs``
+    cache must reflect the newly created vector store.
+
+    Reviewer concern: the submission-time snapshot fix copied ``db_config`` via
+    ``model_copy()``, so ``db_config.vector_stores = list(live_stores)``
+    inside the pipeline now writes to the throwaway snapshot.
+    ``/v1/settings`` and the Streamlit selectors read
+    ``settings.database_configs`` directly — they would otherwise
+    show no newly created store until an unrelated rediscovery /
+    restart updates the live cache.
+
+    The pipeline must look up the live config by alias and update
+    *that* one's ``vector_stores`` list (when it still exists), so
+    refresh-after-create stays a no-op for the user.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    from server.app.core.settings import settings as live_settings
+    from server.app.database.schemas import DatabaseConfig
+
+    # Build a real DatabaseConfig and register it on the live settings
+    # object so the cache update has a real target to write to. The
+    # autouse ``mock_client_db`` fixture only patches
+    # ``_get_client_db_config``; the live registry is otherwise
+    # untouched, so we have to put the alias there explicitly.
+    pool_at_submit = MagicMock()
+    pool_at_submit.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool_at_submit.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    target_alias = "live-cache-target"
+    live_cfg = DatabaseConfig(
+        alias=target_alias,
+        username="user",
+        password=SecretStr("pw"),
+        dsn="//host:1521/SERVICE",
+        usable=True,
+    )
+    live_cfg.pool = pool_at_submit
+    live_cfg.vector_stores = []  # cache empty before this run
+
+    saved_db_configs = list(live_settings.database_configs)
+    live_settings.database_configs = [*saved_db_configs, live_cfg]
+
+    # The freshly populated set discovered after the run.
+    new_store = VectorStoreConfig(
+        vector_store="VS_NEW_TABLE",
+        alias="vs-new",
+        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        chunk_size=1000,
+        chunk_overlap=100,
+        distance_strategy=DistanceStrategy.COSINE,
+        index_type="HNSW",
+    )
+
+    mock_results = {
+        "processed_files": [{"filename": "doc.txt", "chunks": 1}],
+        "skipped_files": [],
+        "total_chunks": 1,
+    }
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            shared = tmp_path / "shared"
+            shared.mkdir()
+            (shared / "doc.txt").write_text("payload")
+            work_parent = tmp_path / "work"
+            work_parent.mkdir()
+
+            def _fake_get_temp(_client, _function, *, unique=False):
+                return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+            def _resolve_real_cfg(_client):
+                return live_cfg, live_cfg.pool
+
+            with (
+                _patch(
+                    "server.app.api.v1.endpoints.embed._get_client_db_config",
+                    side_effect=_resolve_real_cfg,
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.get_temp_directory",
+                    side_effect=_fake_get_temp,
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.get_oci_profile",
+                    return_value=MagicMock(),
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                    return_value=([], [], mock_results),
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.get_client_embed",
+                    return_value=MagicMock(),
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.populate_vs",
+                    new_callable=AsyncMock,
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.update_vs_comment",
+                    new_callable=AsyncMock,
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.discover_vector_stores",
+                    new_callable=AsyncMock,
+                    return_value=[new_store],
+                ),
+            ):
+                resp = await app_client.post(
+                    "/v1/embed/",
+                    json={
+                        "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                        "chunk_size": 1000,
+                        "chunk_overlap": 100,
+                        "distance_strategy": "COSINE",
+                    },
+                    headers=auth_headers,
+                )
+                assert resp.status_code == 202
+                terminal = await _poll_until_terminal(
+                    app_client,
+                    resp.json()["job_id"],
+                    auth_headers,
+                )
+
+        assert terminal["status"] == "succeeded", terminal
+        # The live config — the same object ``/v1/settings`` and the
+        # Streamlit selectors read — must now reflect the newly
+        # created vector store. Writing to the snapshot only is the
+        # bug we're fixing; the assertion below pins the contract.
+        live_aliases = [vs.alias for vs in live_cfg.vector_stores]
+        assert "vs-new" in live_aliases, (
+            f"live cache not refreshed; expected 'vs-new' in "
+            f"live_cfg.vector_stores aliases, got {live_aliases}"
+        )
+    finally:
+        live_settings.database_configs = saved_db_configs
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_pipeline_skips_live_cache_refresh_after_pool_rotation(app_client, auth_headers):
+    """[P2] If the live config is rotated mid-job, do not publish stale stores into it.
+
+    Reviewer concern: my previous P1 fix looks up the live config by
+    alias and writes the discovered ``vector_stores`` to it. But the
+    discovery ran against the captured pool; if an admin updated /
+    re-created the same alias mid-pipeline (a fresh ``DatabaseConfig``
+    with a different pool / different DB), publishing the captured-
+    pool discovery results into that rotated config would put stale
+    table names into ``settings.database_configs``. The live cache
+    update must verify the live config still represents the same
+    pool we discovered against; on mismatch, leave the live cache
+    alone so the next discovery against the new pool catches up.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    from server.app.core.settings import settings as live_settings
+    from server.app.database.schemas import DatabaseConfig
+
+    captured_pool = MagicMock()
+    captured_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    captured_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    rotated_pool = MagicMock()
+    rotated_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    rotated_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    target_alias = "rotated-cache-target"
+    live_cfg = DatabaseConfig(
+        alias=target_alias,
+        username="user",
+        password=SecretStr("pw"),
+        dsn="//host:1521/SERVICE",
+        usable=True,
+    )
+    live_cfg.pool = captured_pool
+    live_cfg.vector_stores = []
+
+    saved_db_configs = list(live_settings.database_configs)
+    live_settings.database_configs = [*saved_db_configs, live_cfg]
+
+    discovered_store = VectorStoreConfig(
+        vector_store="VS_FROM_OLD_POOL",
+        alias="vs-from-old-pool",
+        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        chunk_size=1000,
+        chunk_overlap=100,
+        distance_strategy=DistanceStrategy.COSINE,
+        index_type="HNSW",
+    )
+
+    discovery_started = asyncio.Event()
+    rotation_done = asyncio.Event()
+
+    async def _slow_discover(_conn):
+        # Signal the test we've reached discovery; block until the
+        # test rotates the live pool. After we return, the pipeline
+        # will fall through to the cache update — *that* is the
+        # window the fix must guard.
+        discovery_started.set()
+        await rotation_done.wait()
+        return [discovered_store]
+
+    mock_results = {
+        "processed_files": [{"filename": "doc.txt", "chunks": 1}],
+        "skipped_files": [],
+        "total_chunks": 1,
+    }
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            shared = tmp_path / "shared"
+            shared.mkdir()
+            (shared / "doc.txt").write_text("payload")
+            work_parent = tmp_path / "work"
+            work_parent.mkdir()
+
+            def _fake_get_temp(_client, _function, *, unique=False):
+                return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+            def _resolve_real_cfg(_client):
+                return live_cfg, live_cfg.pool
+
+            with (
+                _patch(
+                    "server.app.api.v1.endpoints.embed._get_client_db_config",
+                    side_effect=_resolve_real_cfg,
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.get_temp_directory",
+                    side_effect=_fake_get_temp,
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.get_oci_profile",
+                    return_value=MagicMock(),
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                    return_value=([], [], mock_results),
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.get_client_embed",
+                    return_value=MagicMock(),
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.populate_vs",
+                    new_callable=AsyncMock,
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.update_vs_comment",
+                    new_callable=AsyncMock,
+                ),
+                _patch(
+                    "server.app.api.v1.endpoints.embed.discover_vector_stores",
+                    side_effect=_slow_discover,
+                ),
+            ):
+                resp = await app_client.post(
+                    "/v1/embed/",
+                    json={
+                        "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                        "chunk_size": 1000,
+                        "chunk_overlap": 100,
+                        "distance_strategy": "COSINE",
+                    },
+                    headers=auth_headers,
+                )
+                assert resp.status_code == 202
+
+                # Wait until the pipeline reaches discovery, then rotate
+                # the live config's pool — the same shape the registry
+                # produces during a pool rebuild on a config update.
+                await asyncio.wait_for(discovery_started.wait(), timeout=5.0)
+                live_cfg.pool = rotated_pool
+                rotation_done.set()
+
+                terminal = await _poll_until_terminal(
+                    app_client,
+                    resp.json()["job_id"],
+                    auth_headers,
+                )
+
+        assert terminal["status"] == "succeeded", terminal
+        # The live config has been rotated to a different pool; the
+        # discovery results came from the *previous* pool's database,
+        # so publishing them into the rotated config would corrupt
+        # ``settings.database_configs`` with stale table names. The
+        # cache update must skip when the pool identity has changed.
+        assert live_cfg.vector_stores == [], (
+            f"stale discovery results published into rotated config; "
+            f"live_cfg.vector_stores={[vs.alias for vs in live_cfg.vector_stores]}"
+        )
+        # And the rotation must have actually happened (proves the
+        # test isn't passing trivially because the pipeline failed
+        # to discover anything).
+        assert live_cfg.pool is rotated_pool
+    finally:
+        live_settings.database_configs = saved_db_configs
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_pipeline_cleans_work_dir_when_oci_lookup_fails(app_client, auth_headers):
+    """Precondition lookups inside the pipeline body must clean up too.
+
+    P2: the pipeline still re-resolves the OCI profile after accepting
+    the submission — the request was already 202'd, so a later OCI
+    profile removal turns into a job failure rather than an HTTP
+    error. The ``try/finally`` around the body must wrap that
+    re-resolution so a failure there still rmtree's work_dir.
+
+    (Database config is captured at submission time and passed into
+    the task — see ``test_split_embed_pipeline_uses_submission_time_db_config``
+    — so DB lookup no longer happens in the pipeline body. OCI is
+    the remaining re-resolution path; this test pins the cleanup
+    contract for it.)
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        created_work_dirs: list[Path] = []
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            if unique:
+                wd = Path(_tf.mkdtemp(dir=work_parent))
+                created_work_dirs.append(wd)
+                return wd
+            return shared
+
+        # Toggle: the FIRST ``get_oci_profile`` call (precondition in
+        # the request handler) must succeed; the SECOND (inside the
+        # pipeline body, after 202) raises.
+        call_count = {"n": 0}
+
+        def _flaky_oci(_client):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return MagicMock()
+            raise HTTPException(status_code=503, detail="OCI profile rotated mid-pipeline")
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                side_effect=_flaky_oci,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 202
+            terminal = await _poll_until_terminal(
+                app_client,
+                resp.json()["job_id"],
+                auth_headers,
+            )
+
+    assert terminal["status"] == "failed"
+    assert created_work_dirs, "expected a work_dir to be created"
+    for wd in created_work_dirs:
+        assert not wd.exists(), (
+            f"pipeline precondition failure leaked {wd}; "
+            f"the body's try/finally must wrap re-resolution lookups too"
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_job_returns_503_when_core_read_fails(app_client, auth_headers):
+    """A transient CORE read error must surface as 503, not 500.
+
+    P2: ``manager.get`` ultimately calls ``pool.acquire`` + SELECT.
+    When CORE is up but momentarily unreachable (network blip, brief
+    pool starvation) the resulting ``oracledb`` error used to
+    propagate as a generic 500. The Streamlit poll loop only retries
+    503s, so a 500 here aborted the UI even though the background
+    task was still running. The status read path must wrap these
+    failures as the documented 503.
+    """
+    import oracledb as _oracledb
+
+    from server.app.embed import jobs as jobs_mod
+
+    async def _failing_get(*_args, **_kwargs):
+        raise _oracledb.DatabaseError("ORA-12541: connection refused")
+
+    with patch.object(jobs_mod.EmbedJobManager, "get", _failing_get):
+        resp = await app_client.get(
+            "/v1/embed/jobs/some-id",
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_jobs_returns_503_when_core_read_fails(app_client, auth_headers):
+    """Same 503 conversion applies to the list endpoint."""
+    import oracledb as _oracledb
+
+    from server.app.embed import jobs as jobs_mod
+
+    async def _failing_list(*_args, **_kwargs):
+        raise _oracledb.DatabaseError("ORA-12541: connection refused")
+
+    with patch.object(jobs_mod.EmbedJobManager, "list_for_client", _failing_list):
+        resp = await app_client.get("/v1/embed/jobs", headers=auth_headers)
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_submits_under_settings_lock(app_client, auth_headers):
+    """[P2] Submission must serialise with CORE rotation via ``_settings_lock``.
+
+    Reviewer concern: ``count_active_embed_jobs`` is a point-in-time
+    snapshot. If a POST /v1/embed/ runs concurrently with a CORE
+    rotation handler, the snapshot can return 0 *just before* the
+    POST inserts and pins a row in the old CORE pool. The rotation
+    then closes the old pool and the freshly-pinned row becomes
+    unreachable — its terminal writes target a closed pool and
+    pollers see CORE errors. Submissions must therefore hold
+    ``_settings_lock`` across the manager.submit() call so the
+    rotation handler's check + close happens atomically with respect
+    to any in-flight INSERT/pin.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    from server.app.core.settings import _settings_lock
+    from server.app.embed import jobs as jobs_mod
+
+    # Records whether ``_settings_lock`` was held when manager.submit
+    # was invoked. ``asyncio.Lock.locked()`` is True iff held by
+    # *some* task in this event loop — since tests run in a single
+    # loop, this is exactly the contract we need.
+    submit_lock_state: dict[str, Optional[bool]] = {"held": None}
+
+    async def _capturing_submit(self, *, client, coro_factory, target_db=""):
+        submit_lock_state["held"] = _settings_lock.locked()
+        # Synthesise a minimal submission so the endpoint can build
+        # its 202 response. The factory's coroutine is created and
+        # cancelled inline — we don't run the real pipeline.
+        async def _noop():
+            return None
+
+        task = asyncio.create_task(_noop())
+        return jobs_mod.JobSubmission(
+            job_id="lock-test-job",
+            status=jobs_mod.EmbedJobStatus.QUEUED,
+            task=task,
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _capturing_submit,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+    assert resp.status_code == 202, resp.json()
+    assert submit_lock_state["held"] is True, (
+        "manager.submit was called outside _settings_lock — a "
+        "concurrent CORE rotation could close the old pool between "
+        "the rotation guard's count check and the INSERT/pin, "
+        "stranding the accepted job"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_translates_core_timeout_to_503(app_client, auth_headers):
+    """A CORE pool acquire/INSERT ``TimeoutError`` must yield 503 + restore.
+
+    P2: ``oracledb`` async pools raise the *built-in* ``TimeoutError``
+    on ``pool.acquire`` deadlines and SELECT/INSERT timeouts — not
+    ``oracledb.DatabaseError``. The submission path must treat that as
+    a transient CORE-availability failure (same as ``oracledb.Error``):
+    return 503 so polling clients retry, and restore the claimed
+    corpus to the shared dir so the retry doesn't hit "no files
+    found". Without this branch the next ``except BaseException``
+    deletes the corpus and surfaces 500.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "alpha.txt").write_text("payload")
+        original_names = sorted(p.name for p in shared.iterdir() if p.is_file())
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        from server.app.embed import jobs as jobs_mod
+
+        async def _timing_out_submit(*_args, **_kwargs):
+            # Built-in TimeoutError — what oracledb.AsyncConnectionPool
+            # raises when ``pool.acquire`` exceeds the wait_timeout, and
+            # what asyncio raises if the surrounding code wraps the
+            # call in ``asyncio.wait_for``.
+            raise TimeoutError("CORE pool.acquire timed out")
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch.object(
+                jobs_mod.EmbedJobManager,
+                "submit",
+                _timing_out_submit,
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 503
+        assert "unavailable" in resp.json()["detail"].lower()
+        # Restoration must run on the timeout path the same way it does
+        # on the oracledb.Error path — otherwise the retry hits 404.
+        restored = sorted(p.name for p in shared.iterdir() if p.is_file())
+        assert restored == original_names, (
+            f"Expected uploaded files restored to shared dir; got {restored}"
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_job_returns_503_when_core_read_times_out(app_client, auth_headers):
+    """A transient CORE read ``TimeoutError`` must surface as 503.
+
+    P2: same root cause as the submission path — ``pool.acquire`` on
+    a saturated pool raises the built-in ``TimeoutError`` rather than
+    ``oracledb.Error``. The Streamlit poller only retries on 503, so
+    if this 500'd it would abandon a job that may still be running.
+    """
+    from server.app.embed import jobs as jobs_mod
+
+    async def _timing_out_get(*_args, **_kwargs):
+        raise TimeoutError("CORE acquire timed out")
+
+    with patch.object(jobs_mod.EmbedJobManager, "get", _timing_out_get):
+        resp = await app_client.get(
+            "/v1/embed/jobs/some-id",
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_jobs_returns_503_when_core_read_times_out(app_client, auth_headers):
+    """Same 503 conversion for the list endpoint on ``TimeoutError``."""
+    from server.app.embed import jobs as jobs_mod
+
+    async def _timing_out_list(*_args, **_kwargs):
+        raise TimeoutError("CORE acquire timed out")
+
+    with patch.object(jobs_mod.EmbedJobManager, "list_for_client", _timing_out_list):
+        resp = await app_client.get("/v1/embed/jobs", headers=auth_headers)
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_job_returns_503_when_core_unavailable(app_client, auth_headers):
+    """GET /v1/embed/jobs/{id} surfaces a 503 when CORE is unavailable.
+
+    P2: without CORE, the manager would fall back to the per-process
+    in-memory store, which after a restart or on a sibling replica is
+    empty. A None return would be reported as 404 'job not found',
+    misleading the polling client into thinking a real job that lives
+    in ``aio_embed_jobs`` has vanished. Surface 503 so the client
+    retries instead.
+    """
+    with patch(
+        "server.app.api.v1.endpoints.embed.get_core_pool",
+        return_value=None,
+    ):
+        resp = await app_client.get(
+            "/v1/embed/jobs/some-job-id",
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_jobs_returns_503_when_core_unavailable(app_client, auth_headers):
+    """GET /v1/embed/jobs surfaces a 503 when CORE is unavailable.
+
+    Same rationale as the detail endpoint: returning an empty list
+    from local memory would imply 'this client has no jobs', which
+    is wrong if jobs already exist in the shared store.
+    """
+    with patch(
+        "server.app.api.v1.endpoints.embed.get_core_pool",
+        return_value=None,
+    ):
+        resp = await app_client.get("/v1/embed/jobs", headers=auth_headers)
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_requires_core_database(app_client, auth_headers):
+    """POST /v1/embed/ must refuse submissions when CORE is unavailable.
+
+    P2: job state lives in CORE so any replica can serve the status
+    endpoint. Without CORE, the in-memory fallback would let the POST
+    return 202 with a job tracked only in this pod's process memory —
+    polls routed to another replica would 404, and once CORE comes
+    back the local row would never reach DB. Refuse the submission
+    with a synchronous 503 instead.
+    """
+    with patch(
+        "server.app.api.v1.endpoints.embed.get_core_pool",
+        return_value=None,
+    ):
+        resp = await app_client.post(
+            "/v1/embed/",
+            json={
+                "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                "chunk_size": 1000,
+                "chunk_overlap": 100,
+                "distance_strategy": "COSINE",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"].lower()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_records_target_db_alias_on_job_row(app_client, auth_headers):
+    """[P2] The submitted job row must record the target DB alias.
+
+    Reviewer concern: blocking non-CORE rotations while jobs target
+    the alias requires the rotation guard to know each job's target
+    database. We persist that alias on the job row so the guard can
+    filter ``aio_embed_jobs`` by ``target_db`` from any replica.
+
+    Test contract: post a split-embed job with a known captured
+    config, then read the persisted row and assert ``target_db``
+    matches the captured alias. The autouse ``mock_client_db``
+    fixture's mock has ``alias`` (default MagicMock alias); we patch
+    in a real alias so the assertion is meaningful.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    from server.app.embed import jobs as jobs_mod
+
+    target_alias = "TARGET-ALIAS"
+
+    cfg = MagicMock()
+    cfg.alias = target_alias
+    cfg.pool = MagicMock()
+    cfg.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    cfg.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    cfg.usable = True
+    cfg.vector_stores = []
+    cfg.model_copy.return_value = cfg
+
+    mock_results = {
+        "processed_files": [{"filename": "doc.txt", "chunks": 1}],
+        "skipped_files": [],
+        "total_chunks": 1,
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed._get_client_db_config",
+                return_value=(cfg, cfg.pool),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], mock_results),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_client_embed",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                new_callable=AsyncMock,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.update_vs_comment",
+                new_callable=AsyncMock,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.discover_vector_stores",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            terminal = await _poll_until_terminal(app_client, job_id, auth_headers)
+
+    assert terminal["status"] == "succeeded", terminal
+    # Job rows in tests live in _LOCAL_STORE. The rotation guard
+    # contract: ``target_db`` on the row equals the captured alias.
+    row = jobs_mod._LOCAL_STORE.get(job_id)
+    assert row is not None, f"job row {job_id} missing from store"
+    assert getattr(row, "target_db", None) == target_alias, (
+        f"row.target_db={getattr(row, 'target_db', None)!r}; expected "
+        f"{target_alias!r} so the per-alias rotation guard can filter "
+        "rows by target database"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_db_unavailable_returns_503_synchronously(app_client, auth_headers):
+    """Database precondition failures still surface synchronously, not as a job."""
+    with patch(
+        "server.app.api.v1.endpoints.embed._get_client_db_config",
+        side_effect=HTTPException(status_code=503, detail="Database is not available"),
+    ):
+        resp = await app_client.post(
+            "/v1/embed/",
+            json={
+                "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                "chunk_size": 1000,
+                "chunk_overlap": 100,
+                "distance_strategy": "COSINE",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_split_embed_resnapshots_db_config_under_settings_lock(app_client, auth_headers):
+    """[P2] DB snapshot must be captured under ``_settings_lock`` to close
+    the CORE-rotation race.
+
+    Reviewer concern: the early ``_get_client_db_config`` snapshot at
+    the top of ``split_embed`` is taken *outside* any lock. If a CORE
+    rotation runs between that snapshot and the ``_settings_lock``
+    that gates ``manager.submit``, the rotation handler observes zero
+    active job rows (no INSERT yet) and closes the captured pool. The
+    202 then returns a job pinned to a closed pool.
+
+    The fix re-resolves the DB config under ``_settings_lock`` so the
+    snapshot the pipeline runs against is whatever was live at submit
+    time — which the rotation handler held the same lock across, so
+    the two paths are mutually exclusive.
+
+    Test: serve ``_get_client_db_config`` with two distinct values for
+    the first vs second call. The first is the early probe (taken
+    pre-lock); the second is the under-lock snapshot. Assert the
+    pipeline received the second-call value — that's the under-lock
+    one. Without the fix only one call happens and the pipeline sees
+    the pre-lock value.
+    """
+    import tempfile
+    import tempfile as _tf
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+
+    pool_pre_rotation = MagicMock()
+    pool_pre_rotation.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool_pre_rotation.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    pool_post_rotation = MagicMock()
+    pool_post_rotation.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool_post_rotation.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    def _make_cfg(label: str, pool):
+        cfg = MagicMock()
+        cfg.alias = label
+        cfg.pool = pool
+        cfg.usable = True
+        cfg.vector_stores = []
+        cfg.model_copy.return_value = cfg
+        return cfg
+
+    cfg_pre = _make_cfg("pre-rotation", pool_pre_rotation)
+    cfg_post = _make_cfg("post-rotation", pool_post_rotation)
+
+    db_config_calls: list[str] = []
+    populate_db_configs: list[Any] = []
+
+    def _evolving(_client):
+        db_config_calls.append(_client)
+        # Call 1: early probe (pre-lock).
+        # Call 2: under-_settings_lock snapshot — modelling a rotation
+        # that landed between the probe and the lock acquire.
+        if len(db_config_calls) == 1:
+            return cfg_pre, pool_pre_rotation
+        return cfg_post, pool_post_rotation
+
+    async def _capture_populate_vs(*, db_config, **_kwargs):
+        populate_db_configs.append(db_config)
+
+    mock_results = {
+        "processed_files": [{"filename": "doc.txt", "chunks": 1}],
+        "skipped_files": [],
+        "total_chunks": 1,
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "doc.txt").write_text("payload")
+        work_parent = tmp_path / "work"
+        work_parent.mkdir()
+
+        def _fake_get_temp(_client, _function, *, unique=False):
+            return Path(_tf.mkdtemp(dir=work_parent)) if unique else shared
+
+        with (
+            _patch(
+                "server.app.api.v1.endpoints.embed._get_client_db_config",
+                side_effect=_evolving,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_temp_directory",
+                side_effect=_fake_get_temp,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_oci_profile",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.load_and_split_documents",
+                return_value=([], [], mock_results),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.get_client_embed",
+                return_value=MagicMock(),
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.populate_vs",
+                side_effect=_capture_populate_vs,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.update_vs_comment",
+                new_callable=AsyncMock,
+            ),
+            _patch(
+                "server.app.api.v1.endpoints.embed.discover_vector_stores",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            resp = await app_client.post(
+                "/v1/embed/",
+                json={
+                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                    "distance_strategy": "COSINE",
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 202
+            terminal = await _poll_until_terminal(
+                app_client,
+                resp.json()["job_id"],
+                auth_headers,
+            )
+
+    assert terminal["status"] == "succeeded", terminal
+    assert len(db_config_calls) >= 2, (
+        f"_get_client_db_config called only {len(db_config_calls)} time(s); "
+        "the handler must re-resolve under _settings_lock so a rotation "
+        "between the early probe and submit cannot leak a stale pool"
+    )
+    assert populate_db_configs, "populate_vs was not invoked"
+    assert populate_db_configs[0] is cfg_post, (
+        f"pipeline used pre-lock snapshot (alias="
+        f"{populate_db_configs[0].alias}); the snapshot must be taken "
+        "under _settings_lock so a rotation observed between the probe "
+        "and the lock acquire is captured"
+    )

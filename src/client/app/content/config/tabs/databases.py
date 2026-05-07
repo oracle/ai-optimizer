@@ -12,6 +12,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_delete, api_get, api_post, api_put
+from client.app.core.embed_status import render_active_embed_jobs
 
 LOGGER = logging.getLogger("client.content.config.tabs.databases")
 
@@ -301,3 +302,7 @@ def display_databases() -> None:
 
     if not is_new:
         _render_vector_stores(database_lookup, selected)
+
+    # Refresh on completion so a newly-created vector store appears
+    # in the table above without a manual page refresh.
+    render_active_embed_jobs(refresh_on_idle=True)

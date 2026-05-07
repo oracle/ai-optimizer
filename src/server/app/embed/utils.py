@@ -80,8 +80,18 @@ def _run_sql_query_sync(
     Returns the full file path of the generated CSV, or empty string on error.
     """
     batch_size = 100
+    # Prefix with ``_sqlsrc_`` so the embed retry path can identify
+    # files this endpoint generated and drop them on the 503 restore.
+    # The Streamlit retry always re-runs ``/embed/sql/store`` before
+    # the next ``POST /embed/`` and ``run_sql_query`` allocates a
+    # fresh UUID each call; restoring an old UUID CSV would let the
+    # next embed claim both the restored file and the new one,
+    # embedding the query results twice. The marker is structural
+    # (a literal prefix) rather than just the UUID shape so a
+    # user-uploaded CSV that happens to be UUID-named is not
+    # collateral damage of the SQL-detection branch.
     random_filename = str(uuid.uuid4())
-    filename_with_extension = f"{random_filename}.csv"
+    filename_with_extension = f"_sqlsrc_{random_filename}.csv"
     full_file_path = os.path.join(base_path, filename_with_extension)
 
     if not _is_select_only(query):

@@ -84,4 +84,41 @@ SCHEMA_DDL = [
         CONSTRAINT aio_evaluations_uq UNIQUE (eid, evaluated)
     )
     """,
+    # Background split-and-embed job state. Lives in CORE so that any
+    # server replica can serve GET /v1/embed/jobs/{job_id} regardless
+    # of which pod accepted the POST. The pipeline body still runs on
+    # the owning pod (the work directory is per-pod emptyDir), but its
+    # observable state is shared. See server/app/embed/jobs.py for the
+    # store / heartbeat / reaper protocol.
+    """
+    CREATE TABLE IF NOT EXISTS aio_embed_jobs (
+        job_id      VARCHAR2(64) NOT NULL,
+        client      VARCHAR2(255) NOT NULL,
+        owner_pod   VARCHAR2(64) NOT NULL,
+        status      VARCHAR2(16) NOT NULL,
+        target_db   VARCHAR2(255) NOT NULL,
+        progress    JSON,
+        result      JSON,
+        error       VARCHAR2(4000),
+        created     TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        updated     TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_embed_jobs_pk PRIMARY KEY (job_id)
+    )
+    """,
+    # Lookups are predominantly per-client (list view), per-status
+    # (reaper sweep), and per-target-db (database-update guard). All
+    # three indexes guard against full-table scans as the row count
+    # grows with workload.
+    """
+    CREATE INDEX IF NOT EXISTS aio_embed_jobs_client_ix
+        ON aio_embed_jobs (client)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_embed_jobs_status_ix
+        ON aio_embed_jobs (status)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_embed_jobs_target_db_ix
+        ON aio_embed_jobs (target_db)
+    """,
 ]

@@ -6,6 +6,7 @@ Endpoints for retrieving OCI profile configurations.
 """
 # spell-checker: ignore genai
 
+import asyncio
 import logging
 import os
 from typing import Annotated
@@ -15,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.api.v1.schemas.common import ClientId
+from server.app.core.client_locks import _client_lock
 from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory
 from server.app.core.secrets import REVEAL_KEY
@@ -23,6 +25,7 @@ from server.app.database.settings import persist_settings
 from server.app.models.connectivity import check_single_model
 from server.app.oci.bucket import (
     download_object,
+    flatten_bucket_key,
     get_bucket_object_names,
     get_buckets,
     get_compartments,
@@ -236,11 +239,47 @@ async def oci_download_objects(
     """Download objects from a bucket to the client's temp directory."""
     profile = _find_oci_profile(auth_profile)
     temp_directory = get_temp_directory(client, "embedding")
-    downloaded = []
+
+    # ``download_object`` is a synchronous OCI SDK call (streams the
+    # whole object before returning); offload via ``asyncio.to_thread``
+    # so the FastAPI event loop stays responsive and the embed-job
+    # heartbeat doesn't starve under long downloads.
+    #
+    # Group by ``flatten_bucket_key`` destination: two object keys
+    # like ``a/b.txt`` and ``a_b.txt`` both target the same local
+    # path, and concurrent ``open(..., "wb")`` would interleave or
+    # truncate writes, corrupting the file. Within a destination
+    # group we run sequentially (last writer wins, matching the
+    # pre-parallel loop's behavior); across groups we run
+    # concurrently for the common no-collision case.
+    groups: dict[str, list[str]] = {}
     for object_name in request:
-        try:
-            file_path = download_object(str(temp_directory), object_name, bucket_name, profile)
-            downloaded.append(os.path.basename(file_path))
-        except Exception as exc:
-            LOGGER.warning("Failed to download %s: %s", object_name, exc)
+        groups.setdefault(flatten_bucket_key(object_name), []).append(object_name)
+
+    async def _download_destination(names: list[str]) -> list[tuple[str, str | BaseException]]:
+        results: list[tuple[str, str | BaseException]] = []
+        for name in names:
+            try:
+                path = await asyncio.to_thread(
+                    download_object, str(temp_directory), name, bucket_name, profile,
+                )
+                results.append((name, path))
+            except Exception as ex:  # noqa: BLE001 — caller logs the failure
+                results.append((name, ex))
+        return results
+
+    # Serialise shared-dir writes against a concurrent /embed/ retry
+    # restore — see ``_restore_claimed_files_to_shared_under_lock``.
+    async with _client_lock(client):
+        group_results = await asyncio.gather(
+            *(_download_destination(names) for names in groups.values()),
+        )
+
+    downloaded: list[str] = []
+    for results in group_results:
+        for object_name, result in results:
+            if isinstance(result, BaseException):
+                LOGGER.warning("Failed to download %s: %s", object_name, result)
+            else:
+                downloaded.append(os.path.basename(result))
     return downloaded

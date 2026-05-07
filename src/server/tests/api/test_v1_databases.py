@@ -360,6 +360,11 @@ async def test_update_core_database_reinitializes(app_client, auth_headers, mock
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
         patch("server.app.api.v1.endpoints.databases.init_core_database", new_callable=AsyncMock) as mock_init,
+        patch(
+            "server.app.api.v1.endpoints.databases.count_active_embed_jobs",
+            new_callable=AsyncMock,
+            return_value=0,
+        ),
     ):
         resp = await app_client.put(
             "/v1/databases/CORE",
@@ -371,6 +376,290 @@ async def test_update_core_database_reinitializes(app_client, auth_headers, mock
         mock_init.assert_called_once()
         mock_persist_settings.assert_called_once()
         # CORE path does not call test_connection
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_core_database_blocked_by_active_embed_jobs(
+    app_client, auth_headers, mock_persist_settings
+):
+    """[P2] CORE rotation must be refused while non-terminal embed jobs exist.
+
+    Reviewer concern: rotating CORE closes the previous pool, but
+    the embed-job machinery has pinned that pool to in-flight jobs.
+    Once close runs, ``_store_get`` and the terminal-write retry
+    helper route to a closed pool — pollers get CORE errors and a
+    successful pipeline can be left non-terminal forever. Refuse
+    the rotation while there are queued / running jobs so the
+    existing pin keeps working; the admin must let jobs finish (or
+    cancel them) before changing CORE.
+    """
+    # The guard skips when CORE has no pool (no jobs to protect).
+    # In production CORE has a live pool; simulate that here so the
+    # guard actually runs.
+    core_cfg = next(c for c in settings.database_configs if c.alias == "CORE")
+    saved_pool = core_cfg.pool
+    core_cfg.pool = MagicMock()
+    try:
+        with (
+            patch(
+                "server.app.api.v1.endpoints.databases.count_active_embed_jobs",
+                new_callable=AsyncMock,
+                return_value=2,
+            ) as mock_count,
+            patch(
+                "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
+            ) as mock_close,
+            patch(
+                "server.app.api.v1.endpoints.databases.init_core_database",
+                new_callable=AsyncMock,
+            ) as mock_init,
+        ):
+            resp = await app_client.put(
+                "/v1/databases/CORE",
+                json={"username": "rotated_core_user"},
+                headers=auth_headers,
+            )
+    finally:
+        core_cfg.pool = saved_pool
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"].lower()
+    assert "embed" in detail
+    assert "2" in detail or "running" in detail or "queued" in detail
+    # Crucially, NOTHING was rotated. The old pool is still alive
+    # so existing pinned references keep working.
+    mock_init.assert_not_called()
+    mock_close.assert_not_called()
+    mock_persist_settings.assert_not_called()
+    mock_count.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_core_database_proceeds_when_active_jobs_check_times_out(
+    app_client, auth_headers, mock_persist_settings
+):
+    """[P2] A pool ``TimeoutError`` from the count check must not 500 the rotation.
+
+    Reviewer concern: ``oracledb`` async pools raise the *built-in*
+    ``TimeoutError`` (not ``oracledb.Error``) when ``acquire`` /
+    SELECT exceeds the wait timeout. A hung CORE pool is exactly
+    when an admin needs to rotate, but the previous guard only
+    handled ``oracledb.Error`` — letting ``TimeoutError`` escape
+    as a 500 and making CORE unrepairable through this endpoint.
+    """
+    core_cfg = next(c for c in settings.database_configs if c.alias == "CORE")
+    saved_pool = core_cfg.pool
+    core_cfg.pool = MagicMock()
+    try:
+        with (
+            patch(
+                "server.app.api.v1.endpoints.databases.count_active_embed_jobs",
+                new_callable=AsyncMock,
+                side_effect=TimeoutError("pool acquire timed out"),
+            ) as mock_count,
+            patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+            patch(
+                "server.app.api.v1.endpoints.databases.init_core_database",
+                new_callable=AsyncMock,
+            ) as mock_init,
+        ):
+            resp = await app_client.put(
+                "/v1/databases/CORE",
+                json={"username": "rotated_core_user"},
+                headers=auth_headers,
+            )
+    finally:
+        core_cfg.pool = saved_pool
+
+    assert resp.status_code == 200
+    mock_count.assert_called_once()
+    mock_init.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_core_database_proceeds_when_active_jobs_check_fails(
+    app_client, auth_headers, mock_persist_settings
+):
+    """A flaky count check must not permanently block CORE rotation.
+
+    The active-jobs guard queries the OLD CORE pool. If that pool
+    is itself unhealthy (which is often *why* the admin is rotating
+    in the first place), the count query fails. Failing closed
+    would make CORE unrepairable; failing open with a warning lets
+    the operator fix a broken CORE. The pin-validity invariant is
+    the optimistic-case guarantee, not an absolute one.
+    """
+    import oracledb as _oracledb
+
+    core_cfg = next(c for c in settings.database_configs if c.alias == "CORE")
+    saved_pool = core_cfg.pool
+    core_cfg.pool = MagicMock()
+    try:
+        with (
+            patch(
+                "server.app.api.v1.endpoints.databases.count_active_embed_jobs",
+                new_callable=AsyncMock,
+                side_effect=_oracledb.DatabaseError("ORA-12541: TNS no listener"),
+            ) as mock_count,
+            patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+            patch(
+                "server.app.api.v1.endpoints.databases.init_core_database",
+                new_callable=AsyncMock,
+            ) as mock_init,
+        ):
+            resp = await app_client.put(
+                "/v1/databases/CORE",
+                json={"username": "rotated_core_user"},
+                headers=auth_headers,
+            )
+    finally:
+        core_cfg.pool = saved_pool
+
+    assert resp.status_code == 200
+    mock_count.assert_called_once()
+    mock_init.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_non_core_database_blocked_by_active_jobs_targeting_alias(
+    app_client, auth_headers, mock_persist_settings
+):
+    """[P2] Non-CORE rotations must refuse while jobs target the alias.
+
+    Reviewer concern: rotating a non-CORE alias closes the old pool,
+    but the embed pipeline still holds that pool in its captured
+    ``db_config`` for the post-populate ``update_vs_comment`` /
+    ``discover_vector_stores`` calls. A successful rotation in that
+    window leaves the table populated and then marks the job failed
+    when ``pool.acquire()`` next raises against the closed pool.
+    Refuse the rotation when active jobs target this alias so the
+    captured pool stays valid until the pipeline finishes.
+    """
+    core_pool = MagicMock()
+    with (
+        patch(
+            "server.app.api.v1.endpoints.databases.get_core_pool",
+            return_value=core_pool,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.databases.count_active_embed_jobs_for_alias",
+            new_callable=AsyncMock,
+            return_value=2,
+        ) as mock_count_alias,
+        patch(
+            "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
+        ) as mock_close,
+        patch(
+            "server.app.api.v1.endpoints.databases.test_connection",
+            new_callable=AsyncMock,
+        ) as mock_test,
+    ):
+        resp = await app_client.put(
+            "/v1/databases/TEST",
+            json={"username": "rotated_user"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"].lower()
+    assert "embed" in detail
+    assert "test" in detail
+    assert "2" in detail or "running" in detail or "queued" in detail
+    # Crucially, the rotation did not run — the captured pool remains
+    # valid for any in-flight pipeline that targets TEST.
+    mock_test.assert_not_called()
+    mock_close.assert_not_called()
+    mock_persist_settings.assert_not_called()
+    # The query must be filtered by the alias being rotated.
+    mock_count_alias.assert_called_once()
+    args, _kwargs = mock_count_alias.call_args
+    assert args[1] == "TEST" or _kwargs.get("alias") == "TEST", (
+        f"per-alias guard must pass the target alias; got args={args}, kwargs={_kwargs}"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_non_core_database_allowed_when_jobs_target_other_alias(
+    app_client, auth_headers, mock_persist_settings
+):
+    """[P2] The per-alias guard must NOT block rotations of unrelated DBs.
+
+    A naive "any active embed job blocks any rotation" extension
+    would make ordinary maintenance impossible: an admin updating
+    DB ``A`` would be blocked just because a job is running against
+    DB ``B``. The query is filtered by ``target_db`` so jobs
+    targeting ``B`` only block rotations of ``B``.
+    """
+    core_pool = MagicMock()
+    with (
+        patch(
+            "server.app.api.v1.endpoints.databases.get_core_pool",
+            return_value=core_pool,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.databases.count_active_embed_jobs_for_alias",
+            new_callable=AsyncMock,
+            return_value=0,
+        ) as mock_count_alias,
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+        patch(
+            "server.app.api.v1.endpoints.databases.test_connection",
+            new_callable=AsyncMock,
+        ),
+    ):
+        resp = await app_client.put(
+            "/v1/databases/TEST",
+            json={"username": "rotated_user"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    mock_count_alias.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_non_core_database_proceeds_when_count_check_fails(
+    app_client, auth_headers, mock_persist_settings
+):
+    """[P2] A flaky count check must not permanently block a non-CORE rotation.
+
+    Same fail-open posture as the CORE-side guard: a wedged CORE
+    pool would otherwise make every database in the registry
+    unrepairable through this endpoint.
+    """
+    import oracledb as _oracledb
+
+    core_pool = MagicMock()
+    with (
+        patch(
+            "server.app.api.v1.endpoints.databases.get_core_pool",
+            return_value=core_pool,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.databases.count_active_embed_jobs_for_alias",
+            new_callable=AsyncMock,
+            side_effect=_oracledb.DatabaseError("ORA-12541: TNS no listener"),
+        ) as mock_count_alias,
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+        patch(
+            "server.app.api.v1.endpoints.databases.test_connection",
+            new_callable=AsyncMock,
+        ),
+    ):
+        resp = await app_client.put(
+            "/v1/databases/TEST",
+            json={"username": "rotated_user"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    mock_count_alias.assert_called_once()
 
 
 @pytest.mark.unit
@@ -555,6 +844,89 @@ async def test_delete_database_not_found(app_client, auth_headers):
     """DELETE unknown alias returns 404."""
     resp = await app_client.delete("/v1/databases/MISSING", headers=auth_headers)
     assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_database_blocked_by_active_jobs_targeting_alias(
+    app_client, auth_headers, mock_persist_settings
+):
+    """[P2] Removal must refuse while embed jobs still target the alias.
+
+    Reviewer concern: the per-alias guard added on PUT only protects
+    rotations. After POST /v1/embed/ returns 202, an admin can still
+    DELETE the same non-CORE alias — the handler removes the config
+    and closes ``cfg.pool``, leaving the in-flight job's captured pool
+    closed. The pipeline can already have written vectors via
+    ``populate_vs`` before the next ``pool.acquire()`` raises, so the
+    job is marked failed even though data was committed. Apply the
+    same ``count_active_embed_jobs_for_alias`` guard before removal
+    so the captured pool stays valid until the pipeline finishes.
+    """
+    core_pool = MagicMock()
+    with (
+        patch(
+            "server.app.api.v1.endpoints.databases.get_core_pool",
+            return_value=core_pool,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.databases.count_active_embed_jobs_for_alias",
+            new_callable=AsyncMock,
+            return_value=3,
+        ) as mock_count_alias,
+        patch(
+            "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
+        ) as mock_close,
+    ):
+        resp = await app_client.delete("/v1/databases/TEST", headers=auth_headers)
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"].lower()
+    assert "embed" in detail
+    assert "test" in detail
+    assert "3" in detail or "running" in detail or "queued" in detail
+    # Crucially, removal did not run — the captured pool is still
+    # alive for the in-flight pipeline targeting TEST.
+    mock_close.assert_not_called()
+    mock_persist_settings.assert_not_called()
+    mock_count_alias.assert_called_once()
+    args, _kwargs = mock_count_alias.call_args
+    assert args[1] == "TEST" or _kwargs.get("alias") == "TEST", (
+        f"per-alias guard must pass the alias being deleted; "
+        f"got args={args}, kwargs={_kwargs}"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_database_proceeds_when_count_check_fails(
+    app_client, auth_headers, mock_persist_settings
+):
+    """[P2] A flaky count check must not permanently block removal.
+
+    Same fail-open posture as the PUT-side guard: a wedged CORE pool
+    would otherwise make every non-CORE database in the registry
+    impossible to remove through this endpoint.
+    """
+    import oracledb as _oracledb
+
+    core_pool = MagicMock()
+    with (
+        patch(
+            "server.app.api.v1.endpoints.databases.get_core_pool",
+            return_value=core_pool,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.databases.count_active_embed_jobs_for_alias",
+            new_callable=AsyncMock,
+            side_effect=_oracledb.DatabaseError("ORA-12541: TNS no listener"),
+        ) as mock_count_alias,
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+    ):
+        resp = await app_client.delete("/v1/databases/TEST", headers=auth_headers)
+
+    assert resp.status_code == 204
+    mock_count_alias.assert_called_once()
 
 
 @pytest.mark.unit

@@ -186,6 +186,26 @@ def _embed_documents_in_batches(
             time.sleep(interval)
 
 
+def _normalize_metadata_oson(db_conn: oracledb.Connection, table_name: str) -> None:
+    """Re-encode the ``metadata`` JSON column server-side so ORDS can render it.
+
+    ``langchain_oracledb.add_texts`` binds metadata via ``DB_TYPE_JSON``
+    so python-oracledb encodes the OSON client-side; that dialect
+    isn't what ORDS / Database Actions decodes in its REST envelope,
+    and ``SELECT metadata`` silently returns ``items: []``. Round-
+    tripping through ``JSON_SERIALIZE`` forces the server's JSON
+    parser to re-emit canonical OSON. Bare ``SET metadata = metadata``
+    is COW-skipped and does NOT re-encode.
+
+    Workaround for the driver/ORDS dialect mismatch; remove when
+    either side is upgraded to bridge it.
+    """
+    LOGGER.info("Re-encoding metadata OSON server-side on %s", table_name)
+    with db_conn.cursor() as cur:
+        cur.execute(f'UPDATE "{table_name}" SET metadata = JSON_SERIALIZE(metadata)')
+    db_conn.commit()
+
+
 def _merge_and_index_vector_store(
     db_conn: oracledb.Connection,
     vector_store: VectorStoreConfig,
@@ -221,6 +241,9 @@ def _merge_and_index_vector_store(
         with db_conn.cursor() as cur:
             cur.executemany(delete_sql, [{"fname": fn} for fn in modified_filenames])
         db_conn.commit()
+
+    # Re-encode before the merge copies bytes into the real table.
+    _normalize_metadata_oson(db_conn, safe_tmp_name)
 
     merge_sql = f"""
         INSERT INTO "{safe_name}" SELECT * FROM "{safe_tmp_name}" src

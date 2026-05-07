@@ -14,6 +14,11 @@ from logging.config import dictConfig
 from _version import __version__
 from logging_redaction import RedactingFilter
 
+try:
+    from transformers.utils import logging as _transformers_logging
+except ImportError:
+    _transformers_logging = None
+
 _FORMATTER_FORMAT = "%(asctime)s (v%(__version__)s) - %(levelname)-8s - (%(name)s): %(message)s"
 _FORMATTER_DATEFMT = "%Y-%b-%d %H:%M:%S"
 
@@ -132,14 +137,10 @@ def configure_logging(log_level: str | None = None) -> None:
     # ``transformers`` installs its own ``StreamHandler`` with a non-standard
     # ``[transformers] ...`` format. Remove it so messages flow through the
     # standard handler configured above (matching the project's log format).
-    try:
-        from transformers.utils import logging as _transformers_logging
-
+    if _transformers_logging is not None:
         _transformers_logging.disable_default_handler()
         # Keep this in sync with the dictConfig threshold above; the helper mutates the logger level.
         _transformers_logging.set_verbosity_error()
-    except ImportError:
-        pass
 
     for handler in logging.getLogger().handlers:
         handler.addFilter(_inject_version)

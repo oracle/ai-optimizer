@@ -64,7 +64,7 @@ class TestInlineUtilities:
         with patch.object(
             split_embed,
             "validate_structural",
-            side_effect=ValueError("URL not permitted."),
+            side_effect=ValueError("URL cannot be used for this import."),
         ):
             split_embed._is_url_accessible.clear()
             ok, msg = split_embed._is_url_accessible(
@@ -72,7 +72,7 @@ class TestInlineUtilities:
             )
 
         assert ok is False
-        assert msg == "URL not permitted."
+        assert msg == "URL cannot be used for this import."
 
     def test_is_url_accessible_restricted_follows_safe_redirect(self):
         """Restricted mode follows redirects after revalidating the target."""
@@ -121,7 +121,7 @@ class TestInlineUtilities:
 
         # First call (initial URL) succeeds; second call (redirect target)
         # raises through validate_safe_url.
-        validate_results: list[Exception | None] = [None, ValueError("URL not permitted.")]
+        validate_results: list[Exception | None] = [None, ValueError("URL cannot be used for this import.")]
 
         def fake_validate(url: str) -> None:
             del url
@@ -139,7 +139,7 @@ class TestInlineUtilities:
             )
 
         assert ok is False
-        assert msg == "URL not permitted."
+        assert msg == "URL cannot be used for this import."
 
     def test_is_url_accessible_restricted_does_not_resolve_dns(self, monkeypatch):
         """In a proxy-only deployment, restricted mode must not call getaddrinfo.
@@ -204,7 +204,7 @@ class TestInlineUtilities:
             )
 
         assert ok is False
-        assert "not accessible" in msg.lower() or msg == "URL not permitted."
+        assert "not accessible" in msg.lower() or msg == "URL cannot be used for this import."
 
     def test_is_url_accessible_unrestricted_treats_http_error_as_inaccessible(self):
         """Unrestricted callers still surface httpx errors with the URL."""
@@ -377,3 +377,650 @@ class TestFileSourceData:
         assert data.is_valid() is False
         is_refresh_ready = bool(data.oci_bucket) and bool("some_vector_store")
         assert is_refresh_ready is True
+
+
+class TestPollEmbedJob:
+    """Tests for ``_poll_embed_job`` — the Streamlit polling loop."""
+
+    @staticmethod
+    def _http_status_error(status_code: int, detail: str = "") -> httpx.HTTPStatusError:
+        """Build an ``HTTPStatusError`` shaped the way ``api_get`` raises one."""
+        request = httpx.Request("GET", "https://example.com/embed/jobs/x")
+        response = httpx.Response(
+            status_code,
+            json={"detail": detail or f"HTTP {status_code}"},
+            request=request,
+        )
+        return httpx.HTTPStatusError(detail or f"HTTP {status_code}", request=request, response=response)
+
+    def test_poll_returns_result_on_success(self):
+        """Happy path: terminal succeeded → result returned."""
+        from client.app.content.tools.tabs import split_embed as mod
+
+        responses = [
+            {"status": "running", "progress": {"stage": "embedding"}},
+            {"status": "succeeded", "result": {"total_chunks": 7}},
+        ]
+        with (
+            patch.object(mod, "api_get", side_effect=responses),
+            patch.object(mod.time, "sleep"),
+        ):
+            result = mod._poll_embed_job("job-1", {"client": "x"})
+        assert result == {"total_chunks": 7}
+
+    def test_poll_raises_on_failed_status(self):
+        """Terminal failed → raise an httpx.HTTPStatusError with the detail."""
+        from client.app.content.tools.tabs import split_embed as mod
+
+        responses = [{"status": "failed", "error": "embedding model offline"}]
+        with (
+            patch.object(mod, "api_get", side_effect=responses),
+            patch.object(mod.time, "sleep"),
+            pytest.raises(httpx.HTTPStatusError) as excinfo,
+        ):
+            mod._poll_embed_job("job-1", {"client": "x"})
+        assert "embedding model offline" in str(excinfo.value)
+
+    def test_poll_tolerates_transient_503(self):
+        """A transient 503 must not abort the loop.
+
+        The status endpoint returns 503 when CORE is briefly unavailable
+        for cross-replica state tracking. The pipeline itself is still
+        running — clients should back off and keep polling instead of
+        treating 503 as a terminal error.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        # Sequence: running, 503 blip, running, succeeded
+        scripted = [
+            {"status": "running", "progress": {"stage": "embedding"}},
+            self._http_status_error(503, "CORE unavailable"),
+            {"status": "running", "progress": {"stage": "embedding"}},
+            {"status": "succeeded", "result": {"total_chunks": 3}},
+        ]
+
+        def _mocked_api_get(*_args, **_kwargs):
+            value = scripted.pop(0)
+            if isinstance(value, BaseException):
+                raise value
+            return value
+
+        with (
+            patch.object(mod, "api_get", side_effect=_mocked_api_get),
+            patch.object(mod.time, "sleep"),
+        ):
+            result = mod._poll_embed_job("job-1", {"client": "x"})
+
+        assert result == {"total_chunks": 3}
+        # All scripted responses were consumed — the loop kept polling
+        # past the 503 instead of bailing out.
+        assert scripted == []
+
+    def test_poll_other_http_errors_propagate(self):
+        """Non-503 HTTP errors are not retried — they surface immediately.
+
+        A 401 / 404 means something structural is wrong (auth, bad job
+        id) and retrying would just spin. Only 503 ("retry once CORE
+        recovers") is special-cased.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        with (
+            patch.object(mod, "api_get", side_effect=self._http_status_error(404, "no such job")),
+            patch.object(mod.time, "sleep"),
+            pytest.raises(httpx.HTTPStatusError) as excinfo,
+        ):
+            mod._poll_embed_job("job-1", {"client": "x"})
+        assert excinfo.value.response.status_code == 404
+
+    def test_poll_gives_up_on_persistent_503_outage(self):
+        """A long-running 503 outage eventually surfaces an error.
+
+        We don't want the UI to spin forever if CORE never comes back.
+        After enough consecutive 503s the loop bails with a clear
+        error so the user can see something is wrong.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        outage = self._http_status_error(503, "CORE down")
+
+        def _always_503(*_args, **_kwargs):
+            raise outage
+
+        with (
+            patch.object(mod, "api_get", side_effect=_always_503),
+            patch.object(mod.time, "sleep"),
+            pytest.raises(httpx.HTTPStatusError) as excinfo,
+        ):
+            mod._poll_embed_job("job-1", {"client": "x"})
+        assert excinfo.value.response.status_code == 503
+
+    def test_poll_tolerates_transient_transport_errors(self):
+        """[P2] httpx transport-level failures must be retried, not propagated.
+
+        ``api_get`` raises ``httpx.TimeoutException`` /
+        ``httpx.TransportError`` (no HTTP response received) when the
+        request itself times out or hits a network blip. These are
+        not ``HTTPStatusError`` instances, so the existing 503 catch
+        does not apply — without an explicit retry path the poll
+        loop would exit and the outer UI handler wouldn't catch it.
+        The server-side job is still running, so treat these like
+        503s and back off.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        request = httpx.Request("GET", "https://example.com/embed/jobs/x")
+        scripted = [
+            {"status": "running", "progress": {"stage": "embedding"}},
+            httpx.ReadTimeout("read timed out", request=request),
+            httpx.ConnectError("connection refused", request=request),
+            {"status": "running", "progress": {"stage": "embedding"}},
+            {"status": "succeeded", "result": {"total_chunks": 4}},
+        ]
+
+        def _mocked_api_get(*_args, **_kwargs):
+            value = scripted.pop(0)
+            if isinstance(value, BaseException):
+                raise value
+            return value
+
+        with (
+            patch.object(mod, "api_get", side_effect=_mocked_api_get),
+            patch.object(mod.time, "sleep"),
+        ):
+            result = mod._poll_embed_job("job-1", {"client": "x"})
+
+        assert result == {"total_chunks": 4}
+        assert scripted == [], "loop did not consume all scripted responses"
+
+    def test_poll_gives_up_on_persistent_transport_outage(self):
+        """[P2] A long-running transport outage surfaces as ``HTTPStatusError``.
+
+        Mirrors ``test_poll_gives_up_on_persistent_503_outage``: we
+        cap the consecutive transient-failure budget so the UI does
+        not spin forever when the server is genuinely unreachable.
+
+        Crucially the *exhausted* path must surface as
+        ``httpx.HTTPStatusError`` rather than a raw
+        ``TransportError`` — the populate-request UI only catches
+        ``HTTPStatusError`` (it then runs ``helpers.extract_error_detail``
+        for the message), so a sustained transport outage would
+        otherwise bypass the normal error display and bubble up as
+        an uncaught Streamlit exception. The original transport
+        error is preserved as ``__cause__`` for diagnostics.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        request = httpx.Request("GET", "https://example.com/embed/jobs/x")
+        outage = httpx.ReadTimeout("read timed out", request=request)
+
+        def _always_timeout(*_args, **_kwargs):
+            raise outage
+
+        with (
+            patch.object(mod, "api_get", side_effect=_always_timeout),
+            patch.object(mod.time, "sleep"),
+            pytest.raises(httpx.HTTPStatusError) as excinfo,
+        ):
+            mod._poll_embed_job("job-1", {"client": "x"})
+        # Synthesised as a 503 — same family as a CORE-unavailable
+        # response, so existing UI paths treat it the same way.
+        assert excinfo.value.response.status_code == 503
+        # The detail must mention the transport failure so the user
+        # gets actionable context, not a generic 503.
+        detail = excinfo.value.response.json().get("detail", "")
+        assert "ReadTimeout" in detail or "transport" in detail.lower(), (
+            f"transport-exhaust 503 detail should mention the underlying "
+            f"failure; got {detail!r}"
+        )
+        # Original transport error preserved for diagnostic logging.
+        assert isinstance(excinfo.value.__cause__, httpx.TransportError)
+
+    def test_process_populate_request_marks_seen_active_on_202(self):
+        """[P2] The submit-time mark must fire when the POST returns 202,
+        passing the accepted job_id so the panel's seen set tracks
+        this specific submission.
+
+        If the user navigates to a panel-less page after submitting
+        but before the fragment ever ticks, the seen set is the only
+        thing that lets the panel detect the off-page completion on
+        return. Tracking by job_id (not just a boolean) lets the
+        panel distinguish concurrent submissions and refresh on each
+        independent completion.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        mark_calls: list[str] = []
+
+        def _capturing_api_post(path, **kwargs):  # noqa: ARG001
+            if path == "embed/":
+                return {"job_id": "j1", "status": "queued"}
+            return {}
+
+        source_data = mod.FileSourceData(
+            file_source="SQL",
+            sql_query="SELECT 1 FROM dual",
+            sql_db_alias="TESTDB",
+        )
+        embed_config = {
+            "alias": "vs",
+            "model_key": "openai/text-embedding-3-small",
+            "chunk_size": 1000,
+            "chunk_overlap": 100,
+            "distance_strategy": "COSINE",
+            "index_type": "HNSW",
+            "parsing_mode": "fast",
+        }
+
+        with (
+            patch.object(mod, "api_post", side_effect=_capturing_api_post),
+            patch.object(mod, "_poll_embed_job", return_value={"total_chunks": 0}),
+            patch.object(
+                mod,
+                "mark_embed_job_started",
+                side_effect=mark_calls.append,
+            ),
+            patch.object(
+                mod,
+                "state",
+                MagicMock(
+                    optimizer_client="x",
+                    __getitem__=lambda *_a, **_k: {
+                        "client_settings": {"oci": {"auth_profile": "p"}},
+                    },
+                ),
+            ),
+        ):
+            result = mod._process_populate_request(embed_config, source_data, rate_limit=0)
+
+        assert mark_calls == ["j1"], (
+            f"mark_embed_job_started must be called exactly once with the "
+            f"accepted job_id; got {mark_calls!r}"
+        )
+        # Returned tuple lets the caller pass the id to the success
+        # handler without round-tripping through session state.
+        assert result == ("j1", {"total_chunks": 0})
+
+    def test_handle_refresh_success_does_not_clear_seen_set(self, mock_st):
+        """[P2] The OCI refresh path is synchronous and does NOT add
+        anything to the seen set. ``_handle_refresh_success`` must
+        therefore not call ``clear_embed_job_flag`` — doing so would
+        wipe tracking for unrelated populate jobs that are concurrently
+        in flight, breaking the auto-refresh guarantee for them.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        clear_calls: list = []
+        with (
+            patch.object(mod.helpers, "refresh_settings", return_value=True),
+            patch.object(
+                mod,
+                "clear_embed_job_flag",
+                side_effect=lambda *a: clear_calls.append(a),
+            ),
+            patch.object(mod, "st", mock_st),
+        ):
+            mod._handle_refresh_success(
+                {"new_files": 1, "updated_files": 0, "total_chunks_in_store": 5}
+            )
+        assert clear_calls == [], (
+            "_handle_refresh_success must not touch the seen set — the "
+            "refresh path doesn't add anything to it, so clearing only "
+            "harms unrelated tracked jobs"
+        )
+
+    def test_populate_failure_clears_specific_job_id_before_st_error(self, mock_st):
+        """[P2] On a definitively terminal failure (non-503), only the
+        failing job's id must be removed from the seen set, and the
+        clear must precede ``st.error`` so the next fragment tick
+        does not refresh-and-rerun, erasing the error message.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        order: list[str] = []
+        clear_calls: list = []
+
+        def _failing_populate(*_a, **_kw):
+            order.append("populate_raises")
+            ex = self._http_status_error(500, "boom")
+            ex.job_id = "j-failing"  # type: ignore[attr-defined]
+            raise ex
+
+        with (
+            patch.object(mod, "st", mock_st),
+            patch.object(
+                mod, "_render_population_button", return_value=(True, False),
+            ),
+            patch.object(mod, "_process_populate_request", side_effect=_failing_populate),
+            patch.object(
+                mod,
+                "clear_embed_job_flag",
+                side_effect=lambda *args: (
+                    clear_calls.append(args),
+                    order.append("clear"),
+                ),
+            ),
+        ):
+            mock_st.error.side_effect = lambda *a, **k: order.append("st_error")  # noqa: ARG005
+            mod._handle_vector_store_population(
+                embed_config={},
+                source_data=mod.FileSourceData(file_source="SQL"),
+                rate_limit=0,
+                create_new_vs=True,
+            )
+        assert clear_calls == [("j-failing",)]
+        assert order.index("clear") < order.index("st_error")
+
+    def test_populate_503_preserves_seen_set_entry(self, mock_st):
+        """[P2] 503 = "retry budget exhausted; the job may still be
+        running server-side". The seen-set entry must be preserved so
+        the eventual active->idle disappearance still triggers a refresh.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        clear_calls: list = []
+
+        def _failing_populate(*_a, **_kw):
+            ex = self._http_status_error(503, "Lost contact")
+            ex.job_id = "j-pending"  # type: ignore[attr-defined]
+            raise ex
+
+        with (
+            patch.object(mod, "st", mock_st),
+            patch.object(
+                mod, "_render_population_button", return_value=(True, False),
+            ),
+            patch.object(mod, "_process_populate_request", side_effect=_failing_populate),
+            patch.object(
+                mod,
+                "clear_embed_job_flag",
+                side_effect=lambda *a: clear_calls.append(a),
+            ),
+        ):
+            mod._handle_vector_store_population(
+                embed_config={},
+                source_data=mod.FileSourceData(file_source="SQL"),
+                rate_limit=0,
+                create_new_vs=True,
+            )
+        assert clear_calls == []
+        mock_st.error.assert_called_once()
+
+    def test_pre_202_failure_does_not_clear_unrelated_jobs(self, mock_st):
+        """[P2] A pre-POST failure (e.g. file-upload step raises) has no
+        attached ``job_id`` — nothing was added to the seen set, so
+        ``clear_embed_job_flag`` must not be called. Otherwise it
+        would drop tracking for unrelated concurrent submissions.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        clear_calls: list = []
+
+        def _early_failing_populate(*_a, **_kw):
+            # No job_id attached — failure happened before submission.
+            raise self._http_status_error(500, "upload fail")
+
+        with (
+            patch.object(mod, "st", mock_st),
+            patch.object(
+                mod, "_render_population_button", return_value=(True, False),
+            ),
+            patch.object(mod, "_process_populate_request", side_effect=_early_failing_populate),
+            patch.object(
+                mod,
+                "clear_embed_job_flag",
+                side_effect=lambda *a: clear_calls.append(a),
+            ),
+        ):
+            mod._handle_vector_store_population(
+                embed_config={},
+                source_data=mod.FileSourceData(file_source="SQL"),
+                rate_limit=0,
+                create_new_vs=True,
+            )
+        assert clear_calls == []
+        mock_st.error.assert_called_once()
+
+    def test_handle_populate_success_clears_only_completed_job_id(self, mock_st):
+        """[P2] On success, ``clear_embed_job_flag`` is called with the
+        specific completed job_id (never a no-arg whole-set clear) AFTER
+        a confirmed-successful refresh. A refresh failure must leave
+        the seen-set entry intact for retry.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        order: list[str] = []
+        clear_calls: list = []
+
+        with (
+            patch.object(
+                mod.helpers,
+                "refresh_settings",
+                side_effect=lambda *a, **k: (order.append("refresh") or True),  # noqa: ARG005
+            ),
+            patch.object(
+                mod,
+                "clear_embed_job_flag",
+                side_effect=lambda *args: (
+                    clear_calls.append(args),
+                    order.append("clear"),
+                ),
+            ),
+            patch.object(mod, "st", mock_st),
+        ):
+            mod._handle_populate_success("j-completed", {"message": "ok", "total_chunks": 0})
+
+        assert order == ["refresh", "clear"]
+        assert clear_calls == [("j-completed",)]
+
+    def test_handle_populate_success_keeps_flag_when_refresh_fails(self, mock_st):
+        """[P2] When ``refresh_settings`` returns False (server briefly
+        down), the seen-set entry must NOT be cleared — the panel needs
+        it to retry on the next 2-second tick.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        clear_calls: list = []
+        with (
+            patch.object(mod.helpers, "refresh_settings", return_value=False),
+            patch.object(
+                mod,
+                "clear_embed_job_flag",
+                side_effect=lambda *a: clear_calls.append(a),
+            ),
+            patch.object(mod, "st", mock_st),
+        ):
+            mod._handle_populate_success("j-completed", {"message": "ok", "total_chunks": 0})
+
+        assert clear_calls == []
+
+    def test_process_populate_request_uses_long_acceptance_timeout(self):
+        """[P2] The 202 acceptance request must tolerate slow-server cases.
+
+        Reviewer concern: the server's POST /v1/embed/ can sit on
+        ``_settings_lock`` waiting on a slow ``update_database``, or
+        on a slow CORE INSERT, before returning the 202 with the
+        job id. If ``api_post`` here times out at 30s while the
+        request handler still completes ``manager.submit`` and
+        starts the background task, the user has no job_id to poll
+        — the job runs invisibly and the UI cannot recover. The
+        acceptance timeout has to outlast the realistic worst-case
+        pre-202 latency (lock contention with a slow connection
+        test, or a CORE blip during INSERT). 30s is too short.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        captured_calls: list[tuple[str, dict]] = []
+
+        def _capturing_api_post(path, **kwargs):
+            captured_calls.append((path, kwargs))
+            if path == "embed/":
+                return {"job_id": "synthetic", "status": "queued"}
+            return {}
+
+        # Drive ``_process_populate_request`` through the SQL branch
+        # because it's the simplest path that exercises the embed
+        # acceptance request — Local would require a fake uploader.
+        source_data = mod.FileSourceData(
+            file_source="SQL",
+            sql_query="SELECT 1 FROM dual",
+            sql_db_alias="TESTDB",
+        )
+        embed_config = {
+            "alias": "vs",
+            "model_key": "openai/text-embedding-3-small",
+            "chunk_size": 1000,
+            "chunk_overlap": 100,
+            "distance_strategy": "COSINE",
+            "index_type": "HNSW",
+            "parsing_mode": "fast",
+        }
+
+        with (
+            patch.object(mod, "api_post", side_effect=_capturing_api_post),
+            patch.object(
+                mod,
+                "_poll_embed_job",
+                return_value={"total_chunks": 0},
+            ),
+            patch.object(
+                mod,
+                "state",
+                MagicMock(
+                    optimizer_client="x",
+                    __getitem__=lambda *_a, **_k: {
+                        "client_settings": {"oci": {"auth_profile": "p"}},
+                    },
+                ),
+            ),
+        ):
+            mod._process_populate_request(embed_config, source_data, rate_limit=0)
+
+        # Find the embed/ acceptance call and inspect its timeout.
+        embed_calls = [
+            kwargs for path, kwargs in captured_calls if path == "embed/"
+        ]
+        assert embed_calls, "_process_populate_request did not POST embed/"
+        accepted_timeout = embed_calls[0].get("timeout")
+        assert accepted_timeout is not None and accepted_timeout >= 120, (
+            f"acceptance request timeout was {accepted_timeout}s; that is "
+            f"too short to outlast realistic pre-202 latency (slow "
+            f"connection test under _settings_lock, slow CORE insert), "
+            f"and the user can lose the job_id to ReadTimeout while the "
+            f"server still completes the submission"
+        )
+
+    def test_poll_emits_progress_toast_on_stage_change(self):
+        """[P3] Each new (stage, message) progress reading must reach Streamlit.
+
+        Pre-fix the loop only logged stage changes to LOGGER.debug, so
+        users saw the static spinner with no indication of pipeline
+        progress despite the new polling/progress plumbing on the
+        server. Surface progress to Streamlit so each stage is
+        actually visible.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        responses = [
+            {"status": "running", "progress": {"stage": "splitting", "message": "Parsing"}},
+            {"status": "running", "progress": {"stage": "embedding", "message": "Embedding chunks"}},
+            {"status": "running", "progress": {"stage": "finalizing"}},
+            {"status": "succeeded", "result": {"total_chunks": 5}},
+        ]
+
+        with (
+            patch.object(mod, "api_get", side_effect=responses),
+            patch.object(mod.time, "sleep"),
+            patch.object(mod.st, "toast") as mock_toast,
+        ):
+            result = mod._poll_embed_job("job-1", {"client": "x"})
+
+        assert result == {"total_chunks": 5}
+        # At least one call per distinct progress message — duplicates
+        # would still fail the contract because each new stage must
+        # be visible to the user.
+        assert mock_toast.call_count >= 3, (
+            f"expected progress toast for each stage change; "
+            f"st.toast was called {mock_toast.call_count} time(s)"
+        )
+        # Sanity-check the rendered text includes the user-facing
+        # stage labels rather than raw stage codes.
+        rendered_calls = [str(c.args[0]) for c in mock_toast.call_args_list]
+        assert any("Parsing" in r or "Parsing & chunking" in r for r in rendered_calls), (
+            f"splitting-stage toast missing or unrendered: {rendered_calls}"
+        )
+        assert any("Embedding" in r for r in rendered_calls), (
+            f"embedding-stage toast missing: {rendered_calls}"
+        )
+
+
+class TestActiveEmbedJobsPanelWiring:
+    """The embedding tab must show the active-embed-jobs panel so a
+    user who navigates away mid-job and returns still sees progress.
+
+    Placement contract: rendered AFTER the Populate Vector Store
+    section so the panel appears below it.
+
+    Idle contract: hidden entirely when no jobs are running
+    (``hide_when_idle=True``) so users in the workflow context don't
+    see an empty banner.
+
+    Refresh contract: ``refresh_on_idle=True``. The synchronous
+    populate path already calls ``helpers.refresh_settings`` on
+    success, but a user who starts a job and then navigates away
+    mid-flight (which kills the synchronous polling loop) and
+    returns relies on the fragment as the only completion observer.
+    Without ``refresh_on_idle``, the fragment would hide the panel
+    on completion and ``state.settings`` would stay stale until the
+    user manually refreshed or visited another tab.
+    """
+
+    def test_display_split_embed_renders_panel_after_populate_section(self):
+        """display_split_embed calls render_active_embed_jobs after the
+        populate section, with hide_when_idle=True AND refresh_on_idle=True
+        so a navigate-away-and-back completion still refreshes state.
+        """
+        MODULE = "client.app.content.tools.tabs.split_embed"
+        call_order: list[str] = []
+
+        def _record(name):
+            def _inner(*args, **kwargs):  # noqa: ARG001
+                call_order.append(name)
+
+            return _inner
+
+        with (
+            patch(
+                f"{MODULE}.render_active_embed_jobs",
+                side_effect=_record("panel"),
+            ) as mock_render,
+            patch(
+                f"{MODULE}._initialize_and_validate_config",
+                return_value=({}, [], None),
+            ),
+            patch(
+                f"{MODULE}._configure_vector_store_mode",
+                return_value=(True, {}),  # empty embed_config skips populate handler
+            ),
+            patch(
+                f"{MODULE}._render_load_kb_section",
+                side_effect=_record("load_kb"),
+            ),
+            patch(
+                f"{MODULE}._render_populate_vs_section",
+                side_effect=_record("populate"),
+            ),
+            patch(
+                f"{MODULE}._handle_vector_store_population",
+                side_effect=_record("populate_button"),
+            ),
+        ):
+            from client.app.content.tools.tabs.split_embed import display_split_embed
+
+            display_split_embed()
+        # Panel renders AFTER the populate section so users see it
+        # below "Populate Vector Store".
+        assert call_order == ["load_kb", "populate", "panel"], (
+            f"panel must follow populate section; got {call_order}"
+        )
+        mock_render.assert_called_once_with(refresh_on_idle=True, hide_when_idle=True)

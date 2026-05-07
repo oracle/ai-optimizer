@@ -1133,3 +1133,123 @@ class TestVectorStoresDisplay:
         vs_row = created_cols[2]
         model_call = next(c for c in vs_row[2].text_input.call_args_list if c.kwargs.get("key", "").endswith("_model"))
         assert model_call.kwargs["value"] == "cohere/embed-v3"
+
+
+class TestActiveEmbedJobsPanelWiring:
+    """The database tab must show the active-embed-jobs panel with
+    refresh_on_idle=True so a freshly-completed vector store appears
+    without forcing a manual page refresh.
+
+    Placement contract: rendered AFTER ``_render_vector_stores`` so
+    the panel appears below the Vector Storage section.
+    """
+
+    def test_render_active_embed_jobs_invoked_with_refresh_on_idle(self, make_state, mock_st):
+        """display_databases delegates to render_active_embed_jobs(refresh_on_idle=True)."""
+        state = make_state(["CORE"], "CORE")
+        mock_st.selectbox.return_value = "CORE"
+        mock_st.text_input.return_value = ""
+        mock_st.button.return_value = False
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers") as hlp,
+            patch(f"{MODULE}.api_get", return_value={"alias": "CORE"}),
+            patch(f"{MODULE}.render_active_embed_jobs") as mock_render,
+        ):
+            hlp.state_configs_lookup.return_value = {"CORE": {"alias": "CORE"}}
+            hlp.selectbox_index.return_value = 0
+
+            from client.app.content.config.tabs.databases import display_databases
+
+            display_databases()
+        mock_render.assert_called_once_with(refresh_on_idle=True)
+
+    def test_panel_renders_after_vector_storage_section(self, make_state, mock_st):
+        """The panel must follow ``_render_vector_stores`` so users see
+        it below the Vector Storage table.
+        """
+        state = make_state(["CORE"], "CORE")
+        mock_st.selectbox.return_value = "CORE"
+        mock_st.text_input.return_value = ""
+        mock_st.button.return_value = False
+
+        call_order: list[str] = []
+
+        def _record(name):
+            def _inner(*args, **kwargs):  # noqa: ARG001
+                call_order.append(name)
+
+            return _inner
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers") as hlp,
+            patch(f"{MODULE}.api_get", return_value={"alias": "CORE"}),
+            patch(
+                f"{MODULE}._render_databases",
+                side_effect=lambda *a, **k: (call_order.append("databases") or ("CORE", False)),
+            ),
+            patch(
+                f"{MODULE}._render_vector_stores",
+                side_effect=_record("vector_stores"),
+            ),
+            patch(
+                f"{MODULE}.render_active_embed_jobs",
+                side_effect=_record("panel"),
+            ),
+        ):
+            hlp.state_configs_lookup.return_value = {"CORE": {"alias": "CORE"}}
+            hlp.selectbox_index.return_value = 0
+
+            from client.app.content.config.tabs.databases import display_databases
+
+            display_databases()
+        assert call_order == ["databases", "vector_stores", "panel"], (
+            f"panel must follow Vector Storage section; got {call_order}"
+        )
+
+    def test_panel_renders_when_adding_new_database(self, make_state, mock_st):
+        """When the user is on Add New (no Vector Storage section),
+        the panel still renders so an in-flight job stays visible.
+        """
+        state = make_state(["CORE"], "CORE")
+        mock_st.selectbox.return_value = "Add New..."
+        mock_st.text_input.return_value = ""
+        mock_st.button.return_value = False
+
+        call_order: list[str] = []
+
+        def _record(name):
+            def _inner(*args, **kwargs):  # noqa: ARG001
+                call_order.append(name)
+
+            return _inner
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers") as hlp,
+            patch(
+                f"{MODULE}._render_databases",
+                side_effect=lambda *a, **k: (call_order.append("databases") or ("Add New...", True)),
+            ),
+            patch(
+                f"{MODULE}._render_vector_stores",
+                side_effect=_record("vector_stores"),
+            ),
+            patch(
+                f"{MODULE}.render_active_embed_jobs",
+                side_effect=_record("panel"),
+            ),
+        ):
+            hlp.state_configs_lookup.return_value = {"CORE": {"alias": "CORE"}}
+            hlp.selectbox_index.return_value = 0
+
+            from client.app.content.config.tabs.databases import display_databases
+
+            display_databases()
+        # On Add New, vector_stores is skipped but the panel still renders.
+        assert "vector_stores" not in call_order
+        assert call_order == ["databases", "panel"]

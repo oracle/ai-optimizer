@@ -43,7 +43,7 @@ _ALLOWED_SCHEMES = frozenset({"http", "https"})
 _ALLOWED_PORTS = frozenset({80, 443, 8080, 8443})
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _MAX_REDIRECTS = 5
-_REJECT_MESSAGE = "URL not permitted."
+_REJECT_MESSAGE = "URL cannot be used for this import."
 # Floor on the per-IP connect deadline so a busy host with many DNS
 # answers still has a usable budget for each individual attempt.
 _MIN_PER_ATTEMPT_TIMEOUT = 1.0
