@@ -160,6 +160,7 @@ class FileSourceData:
     web_url: Optional[str] = None
     oci_bucket: Optional[str] = None
     oci_files_selected: Optional[pd.DataFrame] = None
+    oci_all_files: bool = False
     sql_query: Optional[str] = None
     sql_db_alias: Optional[str] = None
 
@@ -172,11 +173,18 @@ class FileSourceData:
         if self.file_source == "SQL":
             return bool(self.sql_query and self.sql_query.strip() and self.sql_db_alias)
         if self.file_source == "OCI":
-            return bool(self.oci_files_selected is not None and self.oci_files_selected["Process"].sum() > 0)
+            if not self.oci_bucket:
+                return False
+            return bool(
+                self.oci_all_files
+                or (self.oci_files_selected is not None and self.oci_files_selected["Process"].sum() > 0)
+            )
         return False
 
     def get_button_help(self) -> str:
         """Get help text for the populate button based on file source."""
+        if self.file_source == "OCI" and self.oci_all_files:
+            return "This button is disabled if no source bucket is selected."
         help_map = {
             "Local": "This button is disabled if no local files have been provided.",
             "Web": "This button is disabled if the URL was unable to be validated. Please check the URL.",
@@ -206,6 +214,7 @@ def _get_buckets(compartment_ocid: str, auth_profile: str) -> list:
         return ["No Access to Buckets in this Compartment"]
 
 
+@st.cache_data(ttl=60, show_spinner="Listing bucket objects")
 def _get_bucket_objects(bucket_name: str, auth_profile: str) -> list:
     """Get object names from an OCI bucket."""
     return api_get(f"oci/objects/{bucket_name}/{auth_profile}")
@@ -456,9 +465,25 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict | None) -> FileS
                 disabled=not bucket_compartment,
             )
 
-        src_objects = _get_bucket_objects(data.oci_bucket, auth_profile) if data.oci_bucket else []
-        src_files = _files_data_frame(src_objects)
-        data.oci_files_selected = _files_data_editor(src_files, "source")
+        data.oci_all_files = st.toggle(
+            "Embed all supported files in bucket",
+            value=True,
+            key="runtime_oci_all_files",
+            disabled=not data.oci_bucket,
+            help=(
+                "When enabled, every supported file in the selected bucket is embedded "
+                "without per-file selection. Disable to pick individual files."
+            ),
+        )
+
+        if data.oci_bucket:
+            st.caption(state.optimizer_help.get("embed_supported_file_types", ""))
+            if data.oci_all_files:
+                st.caption(f"All supported files in `{data.oci_bucket}` will be embedded.")
+            else:
+                src_objects = _get_bucket_objects(data.oci_bucket, auth_profile)
+                src_files = _files_data_frame(src_objects)
+                data.oci_files_selected = _files_data_editor(src_files, "source")
 
     return data
 
@@ -652,6 +677,41 @@ def _process_populate_request(
     client_header = {"client": state.optimizer_client}
     auth_profile = state["settings"]["client_settings"].get("oci", {}).get("auth_profile", "")
 
+    if source_data.file_source == "OCI":
+        payload = _build_embed_payload(embed_config)
+        payload["bucket_name"] = source_data.oci_bucket or ""
+        payload["auth_profile"] = auth_profile or "DEFAULT"
+        if not source_data.oci_all_files:
+            oci_selected = source_data.oci_files_selected
+            if oci_selected is None:
+                return None, {}
+            process_list = oci_selected[oci_selected["Process"]].reset_index(drop=True)
+            object_names = process_list["File"].tolist()
+            # An empty ``objects`` list is server-equivalent to omitting
+            # it — i.e. "embed every supported file in the bucket".
+            # Reject zero-selection here so a TOCTOU race past the
+            # disabled-button gate cannot silently embed the whole bucket.
+            if not object_names:
+                return None, {}
+            payload["objects"] = object_names
+        # 7200s mirrors ``/embed/refresh`` (same synchronous-download
+        # shape); /embed/oci/store downloads bucket objects before the
+        # 202, so a ReadTimeout would lose the job_id mid-flight.
+        accepted = api_post(
+            "embed/oci/store",
+            json=payload,
+            params={"rate_limit": rate_limit or 0},
+            extra_headers=client_header,
+            timeout=7200,
+        )
+        job_id = accepted["job_id"]
+        mark_embed_job_started(job_id)
+        try:
+            return job_id, _poll_embed_job(job_id, client_header)
+        except httpx.HTTPStatusError as ex:
+            ex.job_id = job_id  # type: ignore[attr-defined]
+            raise
+
     # Step 1: Store source files on server
     if source_data.file_source == "Local":
         files = helpers.unique_file_payload(state.runtime_local_file_uploader)
@@ -662,17 +722,6 @@ def _process_populate_request(
         api_post(
             "embed/sql/store",
             json={"query": source_data.sql_query, "db_alias": source_data.sql_db_alias},
-            extra_headers=client_header,
-        )
-    else:  # OCI
-        oci_selected = source_data.oci_files_selected
-        if oci_selected is None:
-            return None, {}
-        process_list = oci_selected[oci_selected["Process"]].reset_index(drop=True)
-        file_names = process_list["File"].tolist()
-        api_post(
-            f"oci/objects/download/{source_data.oci_bucket or ''}/{auth_profile}",
-            json=file_names,
             extra_headers=client_header,
         )
 

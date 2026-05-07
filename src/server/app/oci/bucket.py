@@ -8,17 +8,24 @@ OCI Object Storage bucket operations for vector store refresh workflows.
 import asyncio
 import logging
 import os
+from pathlib import Path
+from typing import Iterable
 
 import oci.identity
 import oci.object_storage
 import oci.pagination
+
+from server.app.core.constants import SUPPORTED_EXTENSIONS
 
 from .client import init_client
 from .schemas import OciProfileConfig
 
 LOGGER = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {".pdf", ".html", ".md", ".txt", ".csv", ".png", ".jpg", ".jpeg", ".docx", ".pptx", ".xlsx"}
+
+def filter_supported_object_names(names: Iterable[str]) -> list[str]:
+    """Keep only object names whose extension is in ``SUPPORTED_EXTENSIONS``."""
+    return [name for name in names if Path(name).suffix.lower() in SUPPORTED_EXTENSIONS]
 
 
 def get_compartments(profile: OciProfileConfig) -> dict[str, str]:

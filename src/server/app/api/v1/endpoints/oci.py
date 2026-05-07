@@ -23,6 +23,7 @@ from server.app.database.settings import persist_settings
 from server.app.models.connectivity import check_single_model
 from server.app.oci.bucket import (
     download_bucket_objects_to_dir,
+    filter_supported_object_names,
     get_bucket_object_names,
     get_buckets,
     get_compartments,
@@ -212,15 +213,16 @@ async def oci_list_buckets(compartment_ocid: str, auth_profile: str):
 
 @auth.get("/objects/{bucket_name}/{auth_profile}", response_model=list[str])
 async def oci_list_bucket_objects(bucket_name: str, auth_profile: str):
-    """List object names in a bucket."""
+    """List object names in a bucket, filtered to embed-supported types."""
     profile = _find_oci_profile(auth_profile)
     try:
-        return get_bucket_object_names(bucket_name, profile)
+        names = get_bucket_object_names(bucket_name, profile)
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=response_error_detail(exc, "OCI object listing failed."),
         ) from exc
+    return filter_supported_object_names(names)
 
 
 @auth.post("/objects/download/{bucket_name}/{auth_profile}", response_model=list[str])

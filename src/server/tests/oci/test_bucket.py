@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from server.app.core.constants import SUPPORTED_EXTENSIONS
 from server.app.oci.bucket import (
-    SUPPORTED_EXTENSIONS,
     detect_changed_objects,
     download_object,
     flatten_bucket_key,

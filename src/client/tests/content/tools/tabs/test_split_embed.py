@@ -378,6 +378,29 @@ class TestFileSourceData:
         is_refresh_ready = bool(data.oci_bucket) and bool("some_vector_store")
         assert is_refresh_ready is True
 
+    def test_is_valid_oci_all_files_with_bucket(self):
+        """Bucket-wide mode: a selected bucket is sufficient — no per-file selection needed."""
+        from client.app.content.tools.tabs.split_embed import FileSourceData
+
+        data = FileSourceData(file_source="OCI", oci_bucket="my-bucket", oci_all_files=True)
+        assert data.is_valid() is True
+
+    def test_is_valid_oci_all_files_without_bucket(self):
+        """Bucket-wide mode is invalid when no bucket is selected."""
+        from client.app.content.tools.tabs.split_embed import FileSourceData
+
+        data = FileSourceData(file_source="OCI", oci_bucket=None, oci_all_files=True)
+        assert data.is_valid() is False
+
+    def test_get_button_help_oci_all_files(self):
+        """Bucket-wide help text mentions the bucket requirement, not file selection."""
+        from client.app.content.tools.tabs.split_embed import FileSourceData
+
+        data = FileSourceData(file_source="OCI", oci_all_files=True)
+        help_text = data.get_button_help().lower()
+        assert "bucket" in help_text
+        assert "documents" not in help_text
+
 
 class TestPollEmbedJob:
     """Tests for ``_poll_embed_job`` — the Streamlit polling loop."""
@@ -909,6 +932,161 @@ class TestPollEmbedJob:
             f"and the user can lose the job_id to ReadTimeout while the "
             f"server still completes the submission"
         )
+
+    @pytest.fixture
+    def oci_populate_env(self):
+        """Standard mock setup for ``_process_populate_request`` OCI tests.
+
+        Yields ``(mod, captured_calls, embed_config)``. ``captured_calls``
+        is a list of ``(path, kwargs)`` tuples populated by the mocked
+        ``api_post``; ``embed_config`` is the canonical request payload
+        the four OCI tests share.
+        """
+        from client.app.content.tools.tabs import split_embed as mod
+
+        captured_calls: list[tuple[str, dict]] = []
+
+        def _capturing_api_post(path, **kwargs):
+            captured_calls.append((path, kwargs))
+            return {"job_id": "j-oci", "status": "queued"}
+
+        embed_config = {
+            "alias": "vs",
+            "model_key": "openai/text-embedding-3-small",
+            "chunk_size": 1000,
+            "chunk_overlap": 100,
+            "distance_strategy": "COSINE",
+            "index_type": "HNSW",
+            "parsing_mode": "fast",
+        }
+
+        with (
+            patch.object(mod, "api_post", side_effect=_capturing_api_post),
+            patch.object(mod, "_poll_embed_job", return_value={"total_chunks": 0}),
+            patch.object(mod, "mark_embed_job_started"),
+            patch.object(
+                mod,
+                "state",
+                MagicMock(
+                    optimizer_client="x",
+                    __getitem__=lambda *_a, **_k: {
+                        "client_settings": {"oci": {"auth_profile": "DEFAULT"}},
+                    },
+                ),
+            ),
+        ):
+            yield mod, captured_calls, embed_config
+
+    def test_oci_all_files_routes_to_single_endpoint_without_objects(self, oci_populate_env):
+        """[P2] OCI bucket-wide mode must POST to ``embed/oci/store`` with no
+        ``objects`` key — the server treats absent/empty as "embed every
+        supported file in the bucket". It must NOT call the legacy
+        two-step ``oci/objects/download`` + ``embed/`` endpoints, and the
+        bucket name and auth_profile must travel in the JSON body.
+        """
+        mod, captured_calls, embed_config = oci_populate_env
+        source_data = mod.FileSourceData(
+            file_source="OCI", oci_bucket="docs", oci_all_files=True,
+        )
+        mod._process_populate_request(embed_config, source_data, rate_limit=0)
+
+        paths = [path for path, _ in captured_calls]
+        assert paths == ["embed/oci/store"], (
+            f"OCI bucket-wide mode must POST only to embed/oci/store, "
+            f"not the legacy two-step path; got {paths!r}"
+        )
+        body = captured_calls[0][1]["json"]
+        assert body["bucket_name"] == "docs"
+        assert body["auth_profile"] == "DEFAULT"
+        assert "objects" not in body, (
+            "Bucket-wide mode must omit ``objects`` so the server embeds "
+            "every supported file; got: " + repr(body)
+        )
+
+    def test_oci_single_endpoint_uses_long_acceptance_timeout(self, oci_populate_env):
+        """[P2] /embed/oci/store downloads bucket objects on the request
+        thread *before* returning the 202/job_id. Reusing /embed/'s 300s
+        timeout would let httpx ReadTimeout expire during the download
+        phase for large or all-files OCI embeds, costing the user the
+        job_id while the server keeps running. The acceptance timeout
+        for this path must be sized for OCI download + acceptance —
+        the same shape ``/embed/refresh`` already uses (7200s).
+        """
+        mod, captured_calls, embed_config = oci_populate_env
+        source_data = mod.FileSourceData(
+            file_source="OCI", oci_bucket="docs", oci_all_files=True,
+        )
+        mod._process_populate_request(embed_config, source_data, rate_limit=0)
+
+        oci_calls = [
+            kwargs for path, kwargs in captured_calls if path == "embed/oci/store"
+        ]
+        assert oci_calls, "_process_populate_request did not POST embed/oci/store"
+        accepted_timeout = oci_calls[0].get("timeout")
+        # Floor chosen to outlast a realistic large-bucket download
+        # (many hundreds of MB to a few GB). 1800s is conservative; the
+        # actual value should match the ``/embed/refresh`` precedent
+        # (7200s) which has the same synchronous-download shape.
+        assert accepted_timeout is not None and accepted_timeout >= 1800, (
+            f"OCI acceptance timeout was {accepted_timeout}s; that is "
+            f"too short to outlast bucket-download + acceptance. The "
+            f"server downloads every requested object on the request "
+            f"thread before returning the 202, so the client must "
+            f"allow at least as much time as ``/embed/refresh`` (7200s)"
+        )
+
+    def test_oci_per_file_mode_with_zero_selections_does_not_post(self, oci_populate_env):
+        """[P2] Per-file OCI mode with zero checked rows must not POST.
+
+        The server treats omitted OR empty ``objects`` as "embed every
+        supported file in the bucket". Without a client-side guard, a
+        race that lets the button click through with zero rows checked
+        would silently turn into a bucket-wide embed — the user thinks
+        they submitted nothing but the server embeds the entire bucket.
+
+        Match the existing ``oci_files_selected is None`` early-return
+        contract: return ``(None, {})`` and skip the POST entirely.
+        """
+        mod, captured_calls, embed_config = oci_populate_env
+        df = pd.DataFrame({"File": ["a.pdf", "b.pdf"], "Process": [False, False]})
+        source_data = mod.FileSourceData(
+            file_source="OCI",
+            oci_bucket="docs",
+            oci_files_selected=df,
+            oci_all_files=False,
+        )
+        result = mod._process_populate_request(embed_config, source_data, rate_limit=0)
+
+        assert captured_calls == [], (
+            "Per-file mode with zero selections must NOT POST — the server "
+            "would interpret an empty ``objects`` list as a bucket-wide "
+            f"embed; got POST(s): {captured_calls!r}"
+        )
+        assert result == (None, {}), (
+            f"Expected the same (None, {{}}) early-return contract used "
+            f"for the None DataFrame case; got {result!r}"
+        )
+
+    def test_oci_selected_files_routes_to_single_endpoint_with_objects(self, oci_populate_env):
+        """[P2] OCI per-file mode must POST to ``embed/oci/store`` with
+        only the checked files in ``objects``. Unchecked rows must be
+        excluded so the server does not embed unwanted bucket contents.
+        """
+        mod, captured_calls, embed_config = oci_populate_env
+        df = pd.DataFrame(
+            {"File": ["keep.pdf", "skip.pdf", "also-keep.txt"], "Process": [True, False, True]}
+        )
+        source_data = mod.FileSourceData(
+            file_source="OCI",
+            oci_bucket="docs",
+            oci_files_selected=df,
+            oci_all_files=False,
+        )
+        mod._process_populate_request(embed_config, source_data, rate_limit=0)
+
+        assert [path for path, _ in captured_calls] == ["embed/oci/store"]
+        body = captured_calls[0][1]["json"]
+        assert body["objects"] == ["keep.pdf", "also-keep.txt"]
 
     def test_poll_emits_progress_toast_on_stage_change(self):
         """[P3] Each new (stage, message) progress reading must reach Streamlit.

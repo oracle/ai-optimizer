@@ -43,6 +43,7 @@ from server.app.api.v1.schemas.embed import (
     VectorStoreRefreshStatus,
 )
 from server.app.core.client_locks import _client_lock
+from server.app.core.constants import SUPPORTED_EXTENSIONS
 from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory
 from server.app.core.settings import _settings_lock, resolve_client, settings
@@ -75,9 +76,9 @@ from server.app.embed.webscrape import save_web_sections, slugify
 from server.app.mcp.tools.schemas import get_oci_profile
 from server.app.models.litellm_utils import get_client_embed
 from server.app.oci.bucket import (
-    SUPPORTED_EXTENSIONS,
     detect_changed_objects,
     download_bucket_objects_to_dir,
+    filter_supported_object_names,
     get_bucket_object_names,
     get_bucket_objects_with_metadata,
 )
@@ -891,10 +892,7 @@ async def embed_oci_store(
         bucket_objects = await asyncio.to_thread(
             get_bucket_object_names, request.bucket_name, profile,
         )
-        object_names = [
-            name for name in bucket_objects
-            if Path(name).suffix.lower() in SUPPORTED_EXTENSIONS
-        ]
+        object_names = filter_supported_object_names(bucket_objects)
 
     if not object_names:
         raise HTTPException(
