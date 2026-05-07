@@ -8,6 +8,7 @@ Web scraping utilities for extracting structured content from HTML pages.
 
 import re
 import unicodedata
+from pathlib import Path
 
 from bs4 import BeautifulSoup, Comment
 
@@ -127,3 +128,15 @@ async def fetch_and_extract_sections(url: str) -> list[dict]:
     if not chunks:
         chunks = group_by_headings(soup)
     return chunks
+
+
+async def save_web_sections(url: str, temp_directory: Path) -> None:
+    """Fetch HTML from *url* and write each section as a text file."""
+    sections = await fetch_and_extract_sections(url)
+    base = slugify(url.rsplit("/", maxsplit=1)[-1]) or "page"
+    for idx, sec in enumerate(sections, 1):
+        stub = slugify(sec.get("title", "")) if sec.get("title") else base
+        with open(temp_directory / f"{stub}-section{idx}.txt", "w", encoding="utf-8", errors="replace") as f:
+            if sec.get("title"):
+                f.write(sec["title"].strip() + "\n\n")
+            f.write(str(sec["content"]).strip())

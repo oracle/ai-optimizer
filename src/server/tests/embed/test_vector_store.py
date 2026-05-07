@@ -13,7 +13,7 @@ import pytest
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
 from server.app.database.sql import validate_vs_table_name
-from server.app.embed.document import DoclingDocumentChunk
+from server.app.embed.schemas import DoclingDocumentChunk
 from server.app.embed.vector_store import (
     _prepare_documents,
     generate_vs_metadata,

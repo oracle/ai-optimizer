@@ -42,7 +42,6 @@ from collections import OrderedDict
 from typing import Awaitable, Callable, Optional
 
 import oracledb
-from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.app.api.v1.schemas.embed import (
@@ -544,6 +543,19 @@ class EmbedJobStoreUnavailable(RuntimeError):
     """
 
 
+class JobFailure(Exception):
+    """Controlled pipeline failure with a user-meaningful detail.
+
+    Recorded verbatim on the job row; surfaced via the GET status
+    endpoint. Caught separately from generic ``Exception`` so that
+    expected failures don't emit a traceback log.
+    """
+
+    def __init__(self, detail: str):
+        super().__init__(detail)
+        self.detail = detail
+
+
 async def _store_set_status(job_id: str, status: EmbedJobStatus, error: Optional[str]) -> None:
     # Route through the per-job pin so terminal writes target the
     # CORE that holds the row. Without this, a status write after
@@ -984,12 +996,12 @@ class EmbedJobManager:
                     ),
                 )
                 raise
-            except HTTPException as ex:
+            except JobFailure as ex:
                 # Pipeline-authored detail (already passed through
                 # ``response_error_detail`` for source-detail normalization).
                 # Capture the detail into a local before the lambda —
                 # ``ex`` goes out of scope after the ``except`` block.
-                detail = str(ex.detail)
+                detail = ex.detail
                 await _terminal_write_with_retry(
                     "fail",
                     handle.job_id,

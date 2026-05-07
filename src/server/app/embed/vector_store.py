@@ -32,8 +32,8 @@ from server.app.database.config import create_sync_connection
 from server.app.database.registry import discover_vector_stores
 from server.app.database.schemas import DatabaseConfig
 from server.app.database.sql import ResultSetTooLargeError, execute_sql, validate_vs_table_name
-from server.app.embed.document import DoclingDocumentChunk, json_to_doc
-from server.app.embed.schemas import VectorStoreConfig
+from server.app.embed.document import json_to_doc
+from server.app.embed.schemas import DoclingDocumentChunk, VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
 
 LOGGER = logging.getLogger(__name__)

@@ -28,7 +28,8 @@ from fastapi import APIRouter, Body, File, Header, HTTPException, Query, UploadF
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 
-from server.app.api.v1.endpoints.oci import _download_bucket_objects_to_dir, _find_oci_profile
+from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
+from server.app.api.v1.endpoints.oci import _find_oci_profile
 from server.app.api.v1.schemas.chat import MessageResponse
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.embed import (
@@ -43,7 +44,7 @@ from server.app.api.v1.schemas.embed import (
 )
 from server.app.core.client_locks import _client_lock
 from server.app.core.error_detail import response_error_detail
-from server.app.core.file_utils import get_temp_directory, safe_filename
+from server.app.core.file_utils import get_temp_directory
 from server.app.core.settings import _settings_lock, resolve_client, settings
 from server.app.database.config import get_client_db_config as _resolve_db_config
 from server.app.database.config import get_core_pool, get_database_settings
@@ -52,12 +53,14 @@ from server.app.database.sql import execute_sql
 from server.app.embed.document import load_and_split_documents
 from server.app.embed.jobs import (
     EmbedJobStoreUnavailable,
+    JobFailure,
     JobHandle,
     JobSubmission,
     get_embed_job_manager,
 )
 from server.app.embed.refresh import refresh_vector_store_from_bucket
 from server.app.embed.schemas import VectorStoreConfig
+from server.app.embed.staging import METADATA_FILENAME, load_file_metadata
 from server.app.embed.utils import run_sql_query
 from server.app.embed.vector_store import (
     generate_vs_metadata,
@@ -68,12 +71,13 @@ from server.app.embed.vector_store import (
     populate_vs,
     update_vs_comment,
 )
-from server.app.embed.webscrape import fetch_and_extract_sections, slugify
+from server.app.embed.webscrape import save_web_sections, slugify
 from server.app.mcp.tools.schemas import get_oci_profile
 from server.app.models.litellm_utils import get_client_embed
 from server.app.oci.bucket import (
     SUPPORTED_EXTENSIONS,
     detect_changed_objects,
+    download_bucket_objects_to_dir,
     get_bucket_object_names,
     get_bucket_objects_with_metadata,
 )
@@ -88,8 +92,6 @@ _ZIP_MAX_TOTAL_BYTES = 500 * 1024 * 1024  # 500 MB total decompressed
 _ZIP_MAX_FILE_BYTES = 100 * 1024 * 1024  # 100 MB per file
 _ZIP_STREAM_CHUNK = 64 * 1024  # copy buffer for streaming zip extraction
 _ZIP_BLOCKED_EXTENSIONS = frozenset({".zip", ".gz", ".tar", ".bz2", ".xz", ".7z", ".rar"})
-
-_METADATA_FILENAME = ".file_metadata.json"
 
 _WEB_FETCH_TIMEOUT = 60.0  # seconds
 
@@ -303,18 +305,6 @@ def _extract_zip(zip_path: Path, dest: Path) -> dict:
     return metadata
 
 
-async def _save_web_sections(url: str, temp_directory: Path) -> None:
-    """Fetch HTML from *url* and write each section as a text file."""
-    sections = await fetch_and_extract_sections(url)
-    base = slugify(url.rsplit("/", maxsplit=1)[-1]) or "page"
-    for idx, sec in enumerate(sections, 1):
-        stub = slugify(sec.get("title", "")) if sec.get("title") else base
-        with open(temp_directory / f"{stub}-section{idx}.txt", "w", encoding="utf-8", errors="replace") as f:
-            if sec.get("title"):
-                f.write(sec["title"].strip() + "\n\n")
-            f.write(str(sec["content"]).strip())
-
-
 # ``run_sql_query`` writes its output as ``_sqlsrc_<uuid4>.csv`` in
 # the shared embedding directory (see
 # :func:`server.app.embed.utils._run_sql_query_sync`). The literal
@@ -519,7 +509,7 @@ def _prepare_work_dir(temp_directory: Path, work_dir: Path, client: str) -> list
             detail=f"Embed: Client {client} documents folder not found.",
         ) from exc
 
-    files = [f for f in work_dir.iterdir() if f.is_file() and f.name != _METADATA_FILENAME]
+    files = [f for f in work_dir.iterdir() if f.is_file() and f.name != METADATA_FILENAME]
     if not files:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(
@@ -527,21 +517,6 @@ def _prepare_work_dir(temp_directory: Path, work_dir: Path, client: str) -> list
             detail=f"Embed: Client {client} no files found in folder.",
         )
     return files
-
-
-def _load_file_metadata(work_dir: Path):
-    """Load .file_metadata.json from *work_dir* if it exists, else return None."""
-    metadata_path = work_dir / _METADATA_FILENAME
-    if not metadata_path.exists():
-        return None
-    try:
-        with metadata_path.open("r") as f:
-            metadata = json.load(f)
-        LOGGER.info("Loaded metadata for %d files", len(metadata))
-        return metadata
-    except Exception as ex:
-        LOGGER.warning("Could not load file metadata: %s", ex)
-        return None
 
 
 def _get_client_db_config(client: str):
@@ -775,14 +750,14 @@ async def store_web_file(
                             or (ext in {".html", ".xhtml"} and "application/octet-stream" not in content_type)
                         ):
                             # HTML/XHTML response — scrape sections
-                            await _save_web_sections(str(url), temp_directory)
+                            await save_web_sections(str(url), temp_directory)
                         elif ext in SUPPORTED_EXTENSIONS or "application/octet-stream" in content_type:
                             # Supported document type or generic binary — save for the embed pipeline
                             with open(temp_directory / filename, "wb") as file:
                                 async for chunk in response.aiter_bytes():
                                     file.write(chunk)
                         elif "text" in content_type:
-                            await _save_web_sections(str(url), temp_directory)
+                            await save_web_sections(str(url), temp_directory)
                         else:
                             raise HTTPException(
                                 status_code=422,
@@ -832,7 +807,7 @@ async def store_local_file(
             for upload_file in files:
                 if not upload_file.filename:
                     continue
-                staged_name = request_staging / safe_filename(upload_file.filename)
+                staged_name = request_staging / _safe_filename_or_400(upload_file.filename)
                 file_content = await upload_file.read()
                 with staged_name.open("wb") as f:
                     f.write(file_content)
@@ -849,16 +824,16 @@ async def store_local_file(
                     }
 
             # Write metadata into staging so it promotes atomically with the files.
-            with (request_staging / _METADATA_FILENAME).open("w") as f:
+            with (request_staging / METADATA_FILENAME).open("w") as f:
                 json.dump(file_metadata, f)
 
             # Metadata is promoted *last* so a concurrent
             # `_prepare_work_dir` on the shared temp directory never
             # sees metadata without the documents it describes.
             staged_names = sorted(item.name for item in request_staging.iterdir() if item.is_file())
-            ordered_names = [n for n in staged_names if n != _METADATA_FILENAME]
-            if _METADATA_FILENAME in staged_names:
-                ordered_names.append(_METADATA_FILENAME)
+            ordered_names = [n for n in staged_names if n != METADATA_FILENAME]
+            if METADATA_FILENAME in staged_names:
+                ordered_names.append(METADATA_FILENAME)
             _promote_atomically(
                 ordered_names,
                 request_staging,
@@ -868,7 +843,7 @@ async def store_local_file(
         finally:
             shutil.rmtree(request_staging, ignore_errors=True)
 
-    stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != _METADATA_FILENAME]
+    stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != METADATA_FILENAME]
     return JSONResponse(status_code=200, content=stored_files)
 
 
@@ -931,7 +906,7 @@ async def embed_oci_store(
 
     async with _client_lock(client):
         try:
-            downloaded, failures = await _download_bucket_objects_to_dir(
+            downloaded, failures = await download_bucket_objects_to_dir(
                 work_dir, profile, request.bucket_name, object_names,
             )
             # Reject partial corpora: the response is 202 + job_id, so
@@ -1102,18 +1077,13 @@ async def _run_split_embed_pipeline(
             processed_files=processing_results["processed_files"],
             skipped_files=processing_results["skipped_files"],
         )
-    except HTTPException:
-        # Pipeline-authored 4xx/5xx — manager records the detail.
-        raise
     except (ValueError, RuntimeError) as ex:
-        raise HTTPException(
-            status_code=500,
+        raise JobFailure(
             detail=response_error_detail(ex, "Vector store operation failed."),
         ) from ex
     except Exception as ex:
         LOGGER.error("An exception occurred: %s", ex)
-        raise HTTPException(
-            status_code=500,
+        raise JobFailure(
             detail="An unexpected error occurred during embedding.",
         ) from ex
     finally:
@@ -1210,7 +1180,7 @@ async def _submit_split_embed_under_lock(
     # (task owns work_dir).
     submission: Optional[JobSubmission] = None
     try:
-        file_metadata = await asyncio.to_thread(_load_file_metadata, work_dir)
+        file_metadata = await asyncio.to_thread(load_file_metadata, work_dir)
 
         manager = get_embed_job_manager()
         # Hold ``_settings_lock`` across both the DB snapshot and the

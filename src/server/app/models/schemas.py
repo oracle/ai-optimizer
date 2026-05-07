@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Pydantic models for AI model configuration.
 """
-# spell-checker: ignore aioptimizer ollama rerank
+# spell-checker: ignore aioptimizer ollama qwen rerank
 
 import re
 import time

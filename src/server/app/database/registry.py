@@ -2,9 +2,9 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Database initialization utilities for the FastAPI server.
+Database initialization utilities for the server.
 """
-# spell-checker: ignore genai vectorstores oraclevs
+# spell-checker: ignore genai oraclevs vectorstores
 
 import json
 import logging

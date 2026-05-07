@@ -9,7 +9,6 @@ Tests for server.app.core.file_utils shared utilities.
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
 
 from server.app.core.file_utils import get_temp_directory, safe_filename
 
@@ -29,10 +28,13 @@ def test_safe_filename_strips_traversal():
 @pytest.mark.unit
 @pytest.mark.parametrize("value", ["", ".", ".."])
 def test_safe_filename_rejects_invalid(value):
-    """safe_filename raises 400 for empty, '.', and '..' names."""
-    with pytest.raises(HTTPException) as exc_info:
+    """safe_filename raises ValueError for empty, '.', and '..' names.
+
+    Endpoints translate the ValueError to ``HTTPException(400)``; this
+    keeps the helper framework-agnostic.
+    """
+    with pytest.raises(ValueError):
         safe_filename(value)
-    assert exc_info.value.status_code == 400
 
 
 # ---------------------------------------------------------------------------
