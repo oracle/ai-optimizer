@@ -38,17 +38,28 @@ def selectbox_index(options: list, value: Any, default: int = 0) -> int:
 #############################################################################
 # Common Helpers
 #############################################################################
-def refresh_settings(clear_runtime: bool = True) -> None:
-    """Re-fetch settings from server and update session state."""
+def refresh_settings(clear_runtime: bool = True) -> bool:
+    """Re-fetch settings from server and update session state.
+
+    Returns ``True`` when the server responded and ``state.settings``
+    was updated, ``False`` when the request failed and state was
+    left untouched. Callers that gate behaviour on whether the
+    refresh actually landed (for example, the active-jobs panel
+    deferring a flag-clear until the new settings are visible) read
+    this return value; existing call sites that do not care simply
+    discard it.
+    """
     settings = get_server_settings(client=state.optimizer_client)
-    if settings is not None:
-        state.settings = settings
-        state.pop("mcp_configs", None)
-        # Invalidate per-profile sensitive-field caches on refresh.
-        state.pop("_oci_sensitive_loaded", None)
-        state.pop("_template_export", None)
-        if clear_runtime:
-            clear_runtime_state()
+    if settings is None:
+        return False
+    state.settings = settings
+    state.pop("mcp_configs", None)
+    # Invalidate per-profile cached field state on refresh.
+    state.pop("_oci_sensitive_loaded", None)
+    state.pop("_template_export", None)
+    if clear_runtime:
+        clear_runtime_state()
+    return True
 
 
 def sync_client_setting(key: str, field: str, value: str) -> None:

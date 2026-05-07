@@ -11,6 +11,7 @@ import math
 import re
 import time
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Optional
 
 import httpx
@@ -20,6 +21,12 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_get, api_patch, api_post
+from client.app.core.embed_status import (
+    _STAGE_LABELS,
+    clear_embed_job_flag,
+    mark_embed_job_started,
+    render_active_embed_jobs,
+)
 from client.app.core.sidebar import vector_store_selection
 from url_safety import validate_structural
 
@@ -56,7 +63,7 @@ def _is_url_accessible(url: str, restricted: bool = False) -> tuple[bool, str]:
         try:
             validate_structural(url)
         except ValueError:
-            return False, "URL not permitted."
+            return False, "URL cannot be used for this import."
 
     try:
         with httpx.Client(timeout=2, follow_redirects=not restricted) as client:
@@ -64,7 +71,7 @@ def _is_url_accessible(url: str, restricted: bool = False) -> tuple[bool, str]:
     except httpx.HTTPError as ex:
         return False, f"{url} is not accessible. ({type(ex).__name__})"
     except ValueError:
-        return False, "URL not permitted."
+        return False, "URL cannot be used for this import."
 
     if response is None or response.status_code not in _REACHABLE_STATUSES:
         status = f" (Status: {response.status_code})" if response is not None else ""
@@ -632,8 +639,16 @@ def _render_populate_vs_section(embed_config: dict, create_new_vs: bool) -> int 
 #############################################################################
 # Processing
 #############################################################################
-def _process_populate_request(embed_config: dict, source_data: FileSourceData, rate_limit: int | None) -> dict:
-    """Store source files then run split-and-embed."""
+def _process_populate_request(
+    embed_config: dict, source_data: FileSourceData, rate_limit: int | None
+) -> tuple[str | None, dict]:
+    """Store source files then run split-and-embed.
+
+    Returns ``(job_id, response)``. ``job_id`` is ``None`` for the
+    OCI no-files-selected fast path; otherwise it's the accepted
+    submission id, also attached to any exception raised by the poll
+    so the caller can clear that specific seen-set entry.
+    """
     client_header = {"client": state.optimizer_client}
     auth_profile = state["settings"]["client_settings"].get("oci", {}).get("auth_profile", "")
 
@@ -652,7 +667,7 @@ def _process_populate_request(embed_config: dict, source_data: FileSourceData, r
     else:  # OCI
         oci_selected = source_data.oci_files_selected
         if oci_selected is None:
-            return {}
+            return None, {}
         process_list = oci_selected[oci_selected["Process"]].reset_index(drop=True)
         file_names = process_list["File"].tolist()
         api_post(
@@ -675,20 +690,21 @@ def _process_populate_request(embed_config: dict, source_data: FileSourceData, r
         extra_headers=client_header,
         timeout=300,
     )
-    return _poll_embed_job(accepted["job_id"], client_header)
+    # Add the job_id to the panel's seen set the moment the server
+    # accepts the submission, so off-page completions still trigger
+    # ``refresh_on_idle`` even when no fragment tick observed the
+    # running state.
+    job_id = accepted["job_id"]
+    mark_embed_job_started(job_id)
+    try:
+        return job_id, _poll_embed_job(job_id, client_header)
+    except httpx.HTTPStatusError as ex:
+        # Attach so the caller's except branch can clear this
+        # specific seen-set entry without disturbing any concurrent
+        # sibling jobs the panel is also tracking.
+        ex.job_id = job_id  # type: ignore[attr-defined]
+        raise
 
-
-# Stage labels rendered in the Streamlit progress message. Falls through
-# to the raw stage value for forward-compatibility — adding a stage on
-# the server should not crash the UI.
-_STAGE_LABELS: dict[str, str] = {
-    "queued": "Queued",
-    "preparing": "Preparing files",
-    "splitting": "Parsing & chunking documents",
-    "embedding": "Embedding chunks",
-    "indexing": "Building vector index",
-    "finalizing": "Updating metadata",
-}
 
 _POLL_INTERVAL_SECONDS = 2.0
 # 503 tolerance window. The status endpoint returns 503 when the
@@ -892,7 +908,7 @@ def _render_population_button(
     return populate_clicked, refresh_clicked
 
 
-def _handle_populate_success(response: dict) -> None:
+def _handle_populate_success(job_id: str | None, response: dict) -> None:
     """Handle successful population response display."""
     st.success(f"{response.get('message', 'Vector store populated successfully')}", icon="✅")
 
@@ -917,7 +933,10 @@ def _handle_populate_success(response: dict) -> None:
             st.subheader("Skipped Files")
             st.dataframe(pd.DataFrame(skipped_files), width="stretch", hide_index=True)
 
-    helpers.refresh_settings()
+    # Only clear on confirmed-successful refresh; on failure the panel
+    # retries on its next 2-second tick.
+    if helpers.refresh_settings() and job_id is not None:
+        clear_embed_job_flag(job_id)
 
 
 def _handle_refresh_success(response: dict) -> None:
@@ -937,6 +956,9 @@ def _handle_refresh_success(response: dict) -> None:
             f"Total chunks in store: {response.get('total_chunks_in_store', 0)}",
             icon="ℹ️",
         )
+    # The /embed/refresh endpoint is synchronous and adds nothing to
+    # the panel's seen set, so this path must not call
+    # clear_embed_job_flag — it would only harm unrelated tracked jobs.
     helpers.refresh_settings()
 
 
@@ -949,9 +971,18 @@ def _handle_vector_store_population(
     if populate_clicked:
         try:
             with st.spinner("Populating Vector Store... please be patient.", show_time=True):
-                response = _process_populate_request(embed_config, source_data, rate_limit)
-            _handle_populate_success(response)
+                job_id, response = _process_populate_request(embed_config, source_data, rate_limit)
+            _handle_populate_success(job_id, response)
         except httpx.HTTPStatusError as ex:
+            # 503 = synthesised "retry budget exhausted; the job may
+            # still be running" — keep the seen-set entry. Anything
+            # else is a definite terminal failure for this id.
+            # ``ex.job_id`` is attached by _process_populate_request
+            # only after the POST 202 succeeded; pre-202 errors have
+            # no attached id and no seen-set entry to clear.
+            attached_id = getattr(ex, "job_id", None)
+            if ex.response.status_code != HTTPStatus.SERVICE_UNAVAILABLE and attached_id is not None:
+                clear_embed_job_flag(attached_id)
             st.error(helpers.extract_error_detail(ex), icon="🚨")
     elif refresh_clicked:
         state.running = True
@@ -1067,3 +1098,9 @@ def display_split_embed() -> None:
 
     if embed_config:
         _handle_vector_store_population(embed_config, source_data, rate_limit, create_new_vs)
+
+    # ``refresh_on_idle`` is needed even though the synchronous flow
+    # already refreshes on success: a user who navigates away mid-poll
+    # kills the synchronous loop, leaving the fragment as the only
+    # completion observer when they return.
+    render_active_embed_jobs(refresh_on_idle=True, hide_when_idle=True)

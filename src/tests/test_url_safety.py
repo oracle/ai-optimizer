@@ -651,7 +651,7 @@ def test_rejects_hostname_with_overlong_dns_label(monkeypatch):
 
     UnicodeError happens to subclass ValueError, but its message
     ("label too long" / "label empty or too long") leaks the reason.
-    The translation must produce the same generic "URL not permitted."
+    The translation must produce the same generic "URL cannot be used for this import."
     text that every other rejection emits.
     """
 
@@ -661,7 +661,7 @@ def test_rejects_hostname_with_overlong_dns_label(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", _raise)
     with pytest.raises(ValueError) as excinfo:
         validate_safe_url("http://" + ("a" * 70) + ".example.com/")
-    assert str(excinfo.value) == "URL not permitted."
+    assert str(excinfo.value) == "URL cannot be used for this import."
 
 
 # ---------------------------------------------------------------------------

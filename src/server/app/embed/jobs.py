@@ -260,6 +260,19 @@ SELECT job_id, client, owner_pod, status, target_db, progress, result, error, cr
  ORDER BY created DESC
 """
 
+# Lean variant for the polling status panel: skips terminal rows so
+# the panel does not pull every still-tracked job's ``result`` blob
+# (``processed_files`` / ``skipped_files``) on every 2-second tick.
+# After a large embedding run those payloads can be hundreds of kB;
+# filtering at the SQL level keeps the polling path inexpensive.
+_SELECT_ACTIVE_BY_CLIENT_SQL = """
+SELECT job_id, client, owner_pod, status, target_db, progress, result, error, created, updated
+  FROM aio_embed_jobs
+ WHERE client = :client
+   AND status IN ('queued', 'running')
+ ORDER BY created DESC
+"""
+
 # Each update path is a small targeted statement rather than a single
 # generic UPDATE — Oracle's bind variable handling for nullable JSON
 # columns is touchy, and small statements make intent obvious in logs.
@@ -451,8 +464,7 @@ async def _store_get(job_id: str) -> Optional[_JobRow]:
             # stop polling for a job that may still be running. Raise
             # so the endpoint surfaces the documented retry-able 503.
             raise EmbedJobStoreUnavailable(
-                f"CORE pool unavailable while reading embed job {job_id}; "
-                "refusing to fall back to per-process local storage."
+                f"Job state store is unavailable for this operation (job {job_id})."
             )
         async with _LOCAL_LOCK:
             return _LOCAL_STORE.get(job_id)
@@ -468,7 +480,10 @@ async def _store_get(job_id: str) -> Optional[_JobRow]:
     return _row_from_db(rows[0])
 
 
-async def _store_list_for_client(client: str) -> list[_JobRow]:
+_ACTIVE_STATUSES_FOR_FILTER = frozenset({EmbedJobStatus.QUEUED, EmbedJobStatus.RUNNING})
+
+
+async def _store_list_for_client(client: str, active_only: bool = False) -> list[_JobRow]:
     pool = get_core_pool()
     if pool is None:
         if not _LocalFallback.allowed:
@@ -478,16 +493,19 @@ async def _store_list_for_client(client: str) -> list[_JobRow]:
             # we just can't reach. Surface ``EmbedJobStoreUnavailable``
             # so the endpoint returns 503 instead of an empty list.
             raise EmbedJobStoreUnavailable(
-                f"CORE pool unavailable while listing embed jobs for client {client}; "
-                "refusing to fall back to per-process local storage."
+                f"Job state store is unavailable for this operation (client {client})."
             )
         async with _LOCAL_LOCK:
-            return [r for r in _LOCAL_STORE.values() if r.client == client]
-    # Same rationale as ``_store_get``: a missing / unprivileged
+            rows = [r for r in _LOCAL_STORE.values() if r.client == client]
+            if active_only:
+                rows = [r for r in rows if r.status in _ACTIVE_STATUSES_FOR_FILTER]
+            return rows
+    # Same rationale as ``_store_get``: a missing or inaccessible
     # table must surface so the endpoint returns 503 rather than an
     # empty list that implies "this client has no jobs".
+    sql = _SELECT_ACTIVE_BY_CLIENT_SQL if active_only else _SELECT_BY_CLIENT_SQL
     async with pool.acquire() as conn, conn.cursor() as cursor:
-        await cursor.execute(_SELECT_BY_CLIENT_SQL, {"client": client})
+        await cursor.execute(sql, {"client": client})
         rows = await _read_lob_safe_rows(cursor)
     return [_row_from_db(r) for r in rows]
 
@@ -1032,8 +1050,8 @@ class EmbedJobManager:
             return None
         return row
 
-    async def list_for_client(self, client: str) -> list[_JobRow]:
-        return await _store_list_for_client(client)
+    async def list_for_client(self, client: str, active_only: bool = False) -> list[_JobRow]:
+        return await _store_list_for_client(client, active_only=active_only)
 
     # -- crash-recovery primitives -----------------------------------------
 

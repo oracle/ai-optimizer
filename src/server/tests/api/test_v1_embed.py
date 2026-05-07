@@ -2804,6 +2804,64 @@ async def test_jobs_scoped_per_client(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_list_jobs_active_only_excludes_terminal_rows(app_client, auth_headers):
+    """``GET /v1/embed/jobs?active_only=true`` returns only non-terminal jobs.
+
+    The status panel polls every 2 seconds; without this filter every
+    poll pulls every still-tracked terminal row's full ``result``
+    payload (``processed_files`` / ``skipped_files``). After a large
+    embedding run that's hundreds of kB of JSON repeatedly decoded
+    just to be discarded.
+
+    Filtering on the server keeps the polling path lean: a steady
+    state of "no jobs running" returns an empty array regardless of
+    how many large completed jobs the client has in CORE.
+    """
+    import datetime as _dt
+
+    from server.app.api.v1.schemas.embed import EmbedJobStatus
+    from server.app.embed import jobs as jobs_mod
+
+    client_header = {**auth_headers, "Client": "filter-client"}
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    def _row(job_id: str, status: EmbedJobStatus) -> jobs_mod._JobRow:
+        return jobs_mod._JobRow(
+            job_id=job_id,
+            client="filter-client",
+            owner_pod="pod-1",
+            status=status,
+            progress=None,
+            result=None,
+            error=None,
+            created=now,
+            updated=now,
+        )
+
+    # Seed directly through the store so we don't have to drive the
+    # full pipeline just to land rows in different statuses.
+    await jobs_mod._store_create(_row("active-1", EmbedJobStatus.RUNNING))
+    await jobs_mod._store_create(_row("active-2", EmbedJobStatus.QUEUED))
+    await jobs_mod._store_create(_row("done-1", EmbedJobStatus.SUCCEEDED))
+    await jobs_mod._store_create(_row("done-2", EmbedJobStatus.FAILED))
+
+    # Default: every still-tracked row, terminal blobs included.
+    full = await app_client.get("/v1/embed/jobs", headers=client_header)
+    assert full.status_code == 200
+    assert {j["job_id"] for j in full.json()} == {
+        "active-1", "active-2", "done-1", "done-2",
+    }
+
+    # active_only=true: only queued/running.
+    lean = await app_client.get(
+        "/v1/embed/jobs?active_only=true", headers=client_header
+    )
+    assert lean.status_code == 200
+    assert {j["job_id"] for j in lean.json()} == {"active-1", "active-2"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_split_embed_returns_immediately_with_slow_pipeline(app_client, auth_headers):
     """POST returns 202 even when the pipeline body would block for a long time.
 

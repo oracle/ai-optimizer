@@ -189,24 +189,16 @@ def _embed_documents_in_batches(
 def _normalize_metadata_oson(db_conn: oracledb.Connection, table_name: str) -> None:
     """Re-encode the ``metadata`` JSON column server-side so ORDS can render it.
 
-    Why this exists: ``langchain_oracledb.vectorstores.oraclevs.add_texts``
-    binds the metadata Python dict via ``DB_TYPE_JSON``
-    (oraclevs.py:1289-1299). python-oracledb encodes the dict to OSON
-    client-side and ships the bytes wholesale. That OSON dialect is
-    not what ORDS / Database Actions expects in its REST envelope —
-    `SELECT metadata` returns ``items: []`` silently.
-    ``UPDATE ... SET metadata = JSON_SERIALIZE(metadata)`` round-trips
-    through the server's JSON parser, producing canonical OSON that
-    ORDS reads. A bare ``SET metadata = metadata`` is COW-skipped and
-    does NOT re-encode — the ``JSON_SERIALIZE`` is what forces it.
+    ``langchain_oracledb.add_texts`` binds metadata via ``DB_TYPE_JSON``
+    so python-oracledb encodes the OSON client-side; that dialect
+    isn't what ORDS / Database Actions decodes in its REST envelope,
+    and ``SELECT metadata`` silently returns ``items: []``. Round-
+    tripping through ``JSON_SERIALIZE`` forces the server's JSON
+    parser to re-emit canonical OSON. Bare ``SET metadata = metadata``
+    is COW-skipped and does NOT re-encode.
 
-    This is a workaround for a driver/ORDS dialect mismatch and should
-    be revisited when either side is upgraded to bridge it. The older
-    ``langchain_community`` package (oraclevs.py:646) bound
-    ``json.dumps(metadata)`` as a string, so the server parsed it
-    natively and produced canonical OSON without this step — the
-    migration to ``langchain_oracledb`` is what introduced the
-    regression.
+    Workaround for the driver/ORDS dialect mismatch; remove when
+    either side is upgraded to bridge it.
     """
     LOGGER.info("Re-encoding metadata OSON server-side on %s", table_name)
     with db_conn.cursor() as cur:
@@ -250,9 +242,7 @@ def _merge_and_index_vector_store(
             cur.executemany(delete_sql, [{"fname": fn} for fn in modified_filenames])
         db_conn.commit()
 
-    # Re-encode the staging table's metadata column to canonical OSON
-    # before the merge copies bytes into the real table. See
-    # ``_normalize_metadata_oson`` for the full rationale.
+    # Re-encode before the merge copies bytes into the real table.
     _normalize_metadata_oson(db_conn, safe_tmp_name)
 
     merge_sql = f"""

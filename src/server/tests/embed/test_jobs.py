@@ -781,6 +781,95 @@ async def test_store_list_for_client_raises_on_missing_table() -> None:
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_store_list_for_client_active_only_filters_terminal_rows() -> None:
+    """P2: the polling status panel needs to skip terminal-job blobs.
+
+    Without ``active_only``, the panel pulls every still-tracked
+    job for the client every 2s — including the ``result`` /
+    ``processed_files`` / ``skipped_files`` payload of the most
+    recent terminal job. After a large embedding run that response
+    can be hundreds of kB; multiplied by the 2s poll cadence on
+    every open Tools/Configuration page, it's a real regression.
+
+    Filtering at the SQL level keeps the polling path lean — only
+    queued/running rows come back and the heavy result blobs stay
+    out of the response.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    def _row(job_id: str, status: EmbedJobStatus) -> jobs_mod._JobRow:
+        return jobs_mod._JobRow(
+            job_id=job_id,
+            client="x",
+            owner_pod="pod-1",
+            status=status,
+            progress=None,
+            result=None,
+            error=None,
+            created=now,
+            updated=now,
+        )
+
+    # Seed one row per lifecycle state so the filter is exercised
+    # against the full vocabulary, not just the common cases.
+    await jobs_mod._store_create(_row("job-queued", EmbedJobStatus.QUEUED))
+    await jobs_mod._store_create(_row("job-running", EmbedJobStatus.RUNNING))
+    await jobs_mod._store_create(_row("job-succeeded", EmbedJobStatus.SUCCEEDED))
+    await jobs_mod._store_create(_row("job-failed", EmbedJobStatus.FAILED))
+
+    full = await jobs_mod._store_list_for_client("x")
+    assert {r.job_id for r in full} == {
+        "job-queued", "job-running", "job-succeeded", "job-failed",
+    }, "default list must return every still-tracked row (TTL contract preserved)"
+
+    active = await jobs_mod._store_list_for_client("x", active_only=True)
+    assert {r.job_id for r in active} == {"job-queued", "job-running"}, (
+        "active_only must drop terminal rows so the polling client "
+        "stops pulling fat result blobs every poll"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_manager_list_for_client_forwards_active_only() -> None:
+    """The endpoint passes ``active_only`` through the manager — verify the
+    manager does not silently drop the flag."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    pod = jobs_mod.EmbedJobManager(pod_id="pod-1")
+
+    await jobs_mod._store_create(
+        jobs_mod._JobRow(
+            job_id="active",
+            client="x",
+            owner_pod="pod-1",
+            status=EmbedJobStatus.RUNNING,
+            progress=None,
+            result=None,
+            error=None,
+            created=now,
+            updated=now,
+        )
+    )
+    await jobs_mod._store_create(
+        jobs_mod._JobRow(
+            job_id="done",
+            client="x",
+            owner_pod="pod-1",
+            status=EmbedJobStatus.SUCCEEDED,
+            progress=None,
+            result=None,
+            error=None,
+            created=now,
+            updated=now,
+        )
+    )
+
+    assert {r.job_id for r in await pod.list_for_client("x")} == {"active", "done"}
+    assert {r.job_id for r in await pod.list_for_client("x", active_only=True)} == {"active"}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_store_set_result_raises_on_missing_table() -> None:
     """P2: a terminal SUCCESS write must propagate a missing-table error.
 

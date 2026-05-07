@@ -25,7 +25,7 @@ from typing import Annotated, Optional
 from urllib.parse import urlparse
 
 import oracledb
-from fastapi import APIRouter, Body, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 
@@ -810,7 +810,7 @@ async def store_web_file(
         for url in request:
             validate_structural(str(url))
     except ValueError as ex:
-        raise HTTPException(status_code=400, detail="URL not permitted.") from ex
+        raise HTTPException(status_code=400, detail="URL cannot be used for this import.") from ex
 
     # Serialise shared-dir writes against a concurrent /embed/ retry
     # restore — see ``_restore_claimed_files_to_shared_under_lock``.
@@ -865,7 +865,7 @@ async def store_web_file(
                                 detail=f"Unsupported file type: {ext or content_type}.",
                             )
                 except ValueError as ex:
-                    raise HTTPException(status_code=400, detail="URL not permitted.") from ex
+                    raise HTTPException(status_code=400, detail="URL cannot be used for this import.") from ex
 
         stored_files = [f.name for f in temp_directory.iterdir() if f.is_file()]
     return JSONResponse(status_code=200, content=stored_files)
@@ -1310,12 +1310,22 @@ def _require_core_pool() -> None:
 )
 async def list_embed_jobs(
     client: Annotated[ClientId, Header()] = "server",
+    active_only: bool = Query(
+        default=False,
+        description=(
+            "When true, return only queued/running jobs. The status panel "
+            "polls this endpoint every 2 seconds; without the filter every "
+            "poll pulls every still-tracked terminal row's full result "
+            "payload (processed_files / skipped_files), which can be "
+            "hundreds of kB after a large embedding run."
+        ),
+    ),
 ) -> list[EmbedJobInfo]:
     """Return every (still-tracked) embed job belonging to *client*."""
     _require_core_pool()
     manager = get_embed_job_manager()
     try:
-        jobs = await manager.list_for_client(client)
+        jobs = await manager.list_for_client(client, active_only=active_only)
     except (oracledb.Error, EmbedJobStoreUnavailable, TimeoutError) as ex:
         # Either the DB is momentarily unreachable (``oracledb.Error``,
         # built-in ``TimeoutError`` from a pool acquire / SELECT
