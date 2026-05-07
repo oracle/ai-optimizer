@@ -4,7 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Embed endpoints — file storage, document splitting, vector store population, and refresh.
 """
-# spell-checker:ignore docos slugified webscrape
+# spell-checker:ignore docos slugified webscrape spreadsheetml ENOSPC EROFS GENAI HNSW TOCTOU coro extensionless litellm
+# spell-checker:ignore officedocument openxmlformats presentationml retarget rmtrees sqlsrc wordprocessingml zipextract
 
 import asyncio
 import contextlib
@@ -27,6 +28,7 @@ from fastapi import APIRouter, Body, File, Header, HTTPException, Query, UploadF
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 
+from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
 from server.app.api.v1.endpoints.oci import _find_oci_profile
 from server.app.api.v1.schemas.chat import MessageResponse
 from server.app.api.v1.schemas.common import ClientId
@@ -35,13 +37,15 @@ from server.app.api.v1.schemas.embed import (
     EmbedJobInfo,
     EmbedJobStage,
     EmbedProcessingResult,
+    OciEmbedRequest,
     SqlStoreRequest,
     VectorStoreRefreshRequest,
     VectorStoreRefreshStatus,
 )
 from server.app.core.client_locks import _client_lock
+from server.app.core.constants import SUPPORTED_EXTENSIONS
 from server.app.core.error_detail import response_error_detail
-from server.app.core.file_utils import get_temp_directory, safe_filename
+from server.app.core.file_utils import get_temp_directory
 from server.app.core.settings import _settings_lock, resolve_client, settings
 from server.app.database.config import get_client_db_config as _resolve_db_config
 from server.app.database.config import get_core_pool, get_database_settings
@@ -50,12 +54,14 @@ from server.app.database.sql import execute_sql
 from server.app.embed.document import load_and_split_documents
 from server.app.embed.jobs import (
     EmbedJobStoreUnavailable,
+    JobFailure,
     JobHandle,
     JobSubmission,
     get_embed_job_manager,
 )
 from server.app.embed.refresh import refresh_vector_store_from_bucket
 from server.app.embed.schemas import VectorStoreConfig
+from server.app.embed.staging import METADATA_FILENAME, load_file_metadata
 from server.app.embed.utils import run_sql_query
 from server.app.embed.vector_store import (
     generate_vs_metadata,
@@ -66,12 +72,14 @@ from server.app.embed.vector_store import (
     populate_vs,
     update_vs_comment,
 )
-from server.app.embed.webscrape import fetch_and_extract_sections, slugify
+from server.app.embed.webscrape import save_web_sections, slugify
 from server.app.mcp.tools.schemas import get_oci_profile
 from server.app.models.litellm_utils import get_client_embed
 from server.app.oci.bucket import (
-    SUPPORTED_EXTENSIONS,
     detect_changed_objects,
+    download_bucket_objects_to_dir,
+    filter_supported_object_names,
+    get_bucket_object_names,
     get_bucket_objects_with_metadata,
 )
 from url_safety import SafeAsyncClient, validate_structural
@@ -85,8 +93,6 @@ _ZIP_MAX_TOTAL_BYTES = 500 * 1024 * 1024  # 500 MB total decompressed
 _ZIP_MAX_FILE_BYTES = 100 * 1024 * 1024  # 100 MB per file
 _ZIP_STREAM_CHUNK = 64 * 1024  # copy buffer for streaming zip extraction
 _ZIP_BLOCKED_EXTENSIONS = frozenset({".zip", ".gz", ".tar", ".bz2", ".xz", ".7z", ".rar"})
-
-_METADATA_FILENAME = ".file_metadata.json"
 
 _WEB_FETCH_TIMEOUT = 60.0  # seconds
 
@@ -289,7 +295,7 @@ def _extract_zip(zip_path: Path, dest: Path) -> dict:
                 # Colliding pre-existing files are backed up first and
                 # restored on any mid-promotion OSError, so dest is
                 # left either fully updated or untouched.
-                _promote_atomically(metadata, staging, dest, detail="Failed to finalise archive extraction.")
+                _promote_atomically(metadata, staging, dest, detail="Failed to finalize archive extraction.")
             finally:
                 shutil.rmtree(staging, ignore_errors=True)
         except (zipfile.BadZipFile, zlib.error) as ex:
@@ -298,18 +304,6 @@ def _extract_zip(zip_path: Path, dest: Path) -> dict:
                 detail="ZIP archive is corrupt or unreadable.",
             ) from ex
     return metadata
-
-
-async def _save_web_sections(url: str, temp_directory: Path) -> None:
-    """Fetch HTML from *url* and write each section as a text file."""
-    sections = await fetch_and_extract_sections(url)
-    base = slugify(url.rsplit("/", maxsplit=1)[-1]) or "page"
-    for idx, sec in enumerate(sections, 1):
-        stub = slugify(sec.get("title", "")) if sec.get("title") else base
-        with open(temp_directory / f"{stub}-section{idx}.txt", "w", encoding="utf-8", errors="replace") as f:
-            if sec.get("title"):
-                f.write(sec["title"].strip() + "\n\n")
-            f.write(str(sec["content"]).strip())
 
 
 # ``run_sql_query`` writes its output as ``_sqlsrc_<uuid4>.csv`` in
@@ -516,7 +510,7 @@ def _prepare_work_dir(temp_directory: Path, work_dir: Path, client: str) -> list
             detail=f"Embed: Client {client} documents folder not found.",
         ) from exc
 
-    files = [f for f in work_dir.iterdir() if f.is_file() and f.name != _METADATA_FILENAME]
+    files = [f for f in work_dir.iterdir() if f.is_file() and f.name != METADATA_FILENAME]
     if not files:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(
@@ -524,21 +518,6 @@ def _prepare_work_dir(temp_directory: Path, work_dir: Path, client: str) -> list
             detail=f"Embed: Client {client} no files found in folder.",
         )
     return files
-
-
-def _load_file_metadata(work_dir: Path):
-    """Load .file_metadata.json from *work_dir* if it exists, else return None."""
-    metadata_path = work_dir / _METADATA_FILENAME
-    if not metadata_path.exists():
-        return None
-    try:
-        with metadata_path.open("r") as f:
-            metadata = json.load(f)
-        LOGGER.info("Loaded metadata for %d files", len(metadata))
-        return metadata
-    except Exception as ex:
-        LOGGER.warning("Could not load file metadata: %s", ex)
-        return None
 
 
 def _get_client_db_config(client: str):
@@ -682,7 +661,7 @@ async def store_sql_file(
         db_config, _ = _get_client_db_config(client)
     temp_directory = get_temp_directory(client, "embedding")
 
-    # Serialise shared-dir writes against a concurrent /embed/ retry
+    # Serialize shared-dir writes against a concurrent /embed/ retry
     # restore — see ``_restore_claimed_files_to_shared_under_lock``.
     async with _client_lock(client):
         try:
@@ -733,7 +712,7 @@ async def store_web_file(
     except ValueError as ex:
         raise HTTPException(status_code=400, detail="URL cannot be used for this import.") from ex
 
-    # Serialise shared-dir writes against a concurrent /embed/ retry
+    # Serialize shared-dir writes against a concurrent /embed/ retry
     # restore — see ``_restore_claimed_files_to_shared_under_lock``.
     async with _client_lock(client):
         async with SafeAsyncClient(timeout=_WEB_FETCH_TIMEOUT) as http_client:
@@ -772,14 +751,14 @@ async def store_web_file(
                             or (ext in {".html", ".xhtml"} and "application/octet-stream" not in content_type)
                         ):
                             # HTML/XHTML response — scrape sections
-                            await _save_web_sections(str(url), temp_directory)
+                            await save_web_sections(str(url), temp_directory)
                         elif ext in SUPPORTED_EXTENSIONS or "application/octet-stream" in content_type:
                             # Supported document type or generic binary — save for the embed pipeline
                             with open(temp_directory / filename, "wb") as file:
                                 async for chunk in response.aiter_bytes():
                                     file.write(chunk)
                         elif "text" in content_type:
-                            await _save_web_sections(str(url), temp_directory)
+                            await save_web_sections(str(url), temp_directory)
                         else:
                             raise HTTPException(
                                 status_code=422,
@@ -829,7 +808,7 @@ async def store_local_file(
             for upload_file in files:
                 if not upload_file.filename:
                     continue
-                staged_name = request_staging / safe_filename(upload_file.filename)
+                staged_name = request_staging / _safe_filename_or_400(upload_file.filename)
                 file_content = await upload_file.read()
                 with staged_name.open("wb") as f:
                     f.write(file_content)
@@ -846,27 +825,117 @@ async def store_local_file(
                     }
 
             # Write metadata into staging so it promotes atomically with the files.
-            with (request_staging / _METADATA_FILENAME).open("w") as f:
+            with (request_staging / METADATA_FILENAME).open("w") as f:
                 json.dump(file_metadata, f)
 
             # Metadata is promoted *last* so a concurrent
             # `_prepare_work_dir` on the shared temp directory never
             # sees metadata without the documents it describes.
             staged_names = sorted(item.name for item in request_staging.iterdir() if item.is_file())
-            ordered_names = [n for n in staged_names if n != _METADATA_FILENAME]
-            if _METADATA_FILENAME in staged_names:
-                ordered_names.append(_METADATA_FILENAME)
+            ordered_names = [n for n in staged_names if n != METADATA_FILENAME]
+            if METADATA_FILENAME in staged_names:
+                ordered_names.append(METADATA_FILENAME)
             _promote_atomically(
                 ordered_names,
                 request_staging,
                 temp_directory,
-                detail="Failed to finalise upload to temporary directory.",
+                detail="Failed to finalize upload to temporary directory.",
             )
         finally:
             shutil.rmtree(request_staging, ignore_errors=True)
 
-    stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != _METADATA_FILENAME]
+    stored_files = [f.name for f in temp_directory.iterdir() if f.is_file() and f.name != METADATA_FILENAME]
     return JSONResponse(status_code=200, content=stored_files)
+
+
+# ---------------------------------------------------------------------------
+# POST /oci/store (single-call OCI download + embed)
+# ---------------------------------------------------------------------------
+
+
+@auth.post(
+    "/oci/store",
+    description=(
+        "Download objects from an OCI bucket and schedule the "
+        "split-and-embed pipeline in a single call. Returns 202 with "
+        "a job ID — poll GET /v1/embed/jobs/{job_id} for terminal "
+        "state. When ``objects`` is omitted or empty, every supported "
+        "object in the bucket is embedded; otherwise only the listed "
+        "keys are downloaded."
+    ),
+    status_code=202,
+    response_model=EmbedJobAccepted,
+)
+async def embed_oci_store(
+    request: OciEmbedRequest,
+    rate_limit: int = 0,
+    client: Annotated[ClientId, Header()] = "server",
+) -> EmbedJobAccepted:
+    """Download bucket objects and schedule the embed pipeline in one call.
+
+    The endpoint is self-contained: downloads land directly in this
+    request's per-request ``work_dir`` rather than the shared client
+    embedding directory, so a single call only embeds the objects
+    from the named bucket — files staged from prior /local/store,
+    /web/store or /sql/store calls are not pulled into this job.
+
+    The per-client lock is held across download + submit so a
+    concurrent upload to the shared dir cannot interleave.
+    """
+    LOGGER.debug("Received embed_oci_store - rate_limit: %i; request: %s", rate_limit, request)
+    profile = _find_oci_profile(request.auth_profile)
+    await _run_split_embed_preflight(request, client, sweep_on_failure=False)
+
+    if request.objects:
+        object_names = list(request.objects)
+    else:
+        bucket_objects = await asyncio.to_thread(
+            get_bucket_object_names, request.bucket_name, profile,
+        )
+        object_names = filter_supported_object_names(bucket_objects)
+
+    if not object_names:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No supported objects found in bucket {request.bucket_name}",
+        )
+
+    work_dir = get_temp_directory(client, "embedding", unique=True)
+
+    async with _client_lock(client):
+        try:
+            downloaded, failures = await download_bucket_objects_to_dir(
+                work_dir, profile, request.bucket_name, object_names,
+            )
+            # Reject partial corpora: the response is 202 + job_id, so
+            # a caller can't otherwise notice that some requested
+            # objects never made it to the vector store. The two-step
+            # download endpoint stays lenient — its caller can diff
+            # the request against the response.
+            if failures:
+                failed_keys = ", ".join(name for name, _err in failures)
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        f"Failed to download {len(failures)} object(s) from bucket "
+                        f"{request.bucket_name}: {failed_keys}"
+                    ),
+                )
+        except BaseException:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise
+
+        # ``set()`` dedupes the flatten-collision case where two keys
+        # (e.g. ``a/b.txt`` and ``a_b.txt``) target the same local
+        # basename — the helper honors each input key with a
+        # sequential last-writer-wins write, so passing the basename
+        # list directly would feed the same on-disk path to
+        # ``load_and_split_documents`` twice.
+        files = sorted({work_dir / name for name in downloaded})
+        return await _submit_split_embed_under_lock(
+            request, rate_limit, client, work_dir, files,
+            restore_on_retry=False,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1006,22 +1075,175 @@ async def _run_split_embed_pipeline(
             processed_files=processing_results["processed_files"],
             skipped_files=processing_results["skipped_files"],
         )
-    except HTTPException:
-        # Pipeline-authored 4xx/5xx — manager records the detail.
-        raise
     except (ValueError, RuntimeError) as ex:
-        raise HTTPException(
-            status_code=500,
+        raise JobFailure(
             detail=response_error_detail(ex, "Vector store operation failed."),
         ) from ex
     except Exception as ex:
         LOGGER.error("An exception occurred: %s", ex)
-        raise HTTPException(
-            status_code=500,
+        raise JobFailure(
             detail="An unexpected error occurred during embedding.",
         ) from ex
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
+
+
+async def _run_split_embed_preflight(
+    request: VectorStoreConfig,
+    client: str,
+    *,
+    sweep_on_failure: bool = True,
+) -> None:
+    """Run the synchronous pre-claim guards shared by every embed POST.
+
+    All four guards must succeed before ``_prepare_work_dir`` runs, so
+    the post-claim restore path never executes for these failures.
+    With SQL sources, ``/embed/sql/store`` has already left a unique
+    ``_sqlsrc_<uuid>.csv`` in the shared directory; the Streamlit retry
+    re-runs ``/embed/sql/store`` before the next ``POST /embed/`` and
+    allocates a fresh UUID. Without sweeping, the next embed would
+    claim both the old and the new ``_sqlsrc_*.csv`` and embed the
+    query results twice. ``_sweep_sql_scratch_files`` runs under
+    ``_client_lock`` so a concurrent ``/embed/sql/store`` cannot land
+    a new scratch file mid-sweep.
+
+    *sweep_on_failure* must be False for callers that do not consume
+    shared staged files (notably ``/v1/embed/oci/store``, which uses a
+    per-request ``work_dir`` for its bucket downloads). Sweeping on
+    those paths would remove user-staged SQL CSVs for a request that
+    does not consume shared staged files.
+    """
+    try:
+        # Validate DB availability up front so an unusable client gets
+        # the synchronous 503 they expect rather than a job that
+        # immediately fails. The result is intentionally discarded: the
+        # actual snapshot the pipeline runs against is taken later under
+        # ``_settings_lock`` to close the rotation race.
+        _get_client_db_config(client)
+
+        # Job state (status / progress / result) lives in the CORE
+        # database so any replica can serve GET /v1/embed/jobs/{job_id}.
+        _require_core_pool()
+
+        if not request.embedding_model or request.distance_strategy is None:
+            raise HTTPException(status_code=400, detail="embedding_model and distance_strategy are required")
+
+        # Surface OCI-profile lookup errors synchronously rather than
+        # silently failing the job; the pipeline body re-resolves later.
+        get_oci_profile(client)
+    except HTTPException:
+        if sweep_on_failure:
+            await _sweep_sql_scratch_files(client)
+        raise
+
+
+async def _submit_split_embed_under_lock(
+    request: VectorStoreConfig,
+    rate_limit: int,
+    client: str,
+    work_dir: Path,
+    files: list[Path],
+    *,
+    restore_on_retry: bool = True,
+) -> EmbedJobAccepted:
+    """Submit the embed job for *files* already populated in *work_dir*.
+
+    Caller MUST already hold ``_client_lock(client)`` — this helper has
+    no lock semantics so the same body can run from ``split_embed``
+    (lock around _prepare_work_dir + this call) and from
+    ``embed_oci_store`` (lock around download + this call).
+
+    The lock must be held all the way through ``manager.submit``: if
+    it were released between ``_prepare_work_dir`` and the submit, and
+    re-acquired only for the 503-path restoration, a concurrent
+    same-client upload could land different-named files in the shared
+    dir during the unlocked window. The restore loop only skips
+    same-name conflicts, so the merged shared dir would let the
+    *next* embed request claim a mix of stale and newly uploaded
+    files.
+
+    *restore_on_retry* must be False for callers whose ``work_dir``
+    holds files that did NOT come from the shared client embedding
+    directory — notably ``/v1/embed/oci/store``, which downloads
+    bucket objects directly into a per-request work_dir. Restoring
+    those per-request downloads to the shared dir on a transient
+    submission failure would make them available to the next two-step
+    ``/v1/embed/`` request, breaking the single-call contract.
+    """
+    LOGGER.info("Processing Files: %s", files)
+
+    # ``submission`` flips from None to a JobSubmission only after
+    # ``manager.submit`` returns. The except branches use it to
+    # decide between corpus-restore (no task yet) and task-teardown
+    # (task owns work_dir).
+    submission: Optional[JobSubmission] = None
+    try:
+        file_metadata = await asyncio.to_thread(load_file_metadata, work_dir)
+
+        manager = get_embed_job_manager()
+        # Hold ``_settings_lock`` across both the DB snapshot and the
+        # submit so a concurrent CORE rotation cannot close
+        # ``captured_pool`` between snapshot and INSERT. ``model_copy``
+        # gives the snapshot its own attribute storage so post-submit
+        # edits to the live ``DatabaseConfig`` cannot retarget the
+        # in-flight job.
+        async with _settings_lock:
+            _live_db_config, captured_pool = _get_client_db_config(client)
+            db_config = _live_db_config.model_copy()
+            db_config.pool = captured_pool
+
+            async def _factory(handle: JobHandle) -> EmbedProcessingResult:
+                return await _run_split_embed_pipeline(
+                    handle,
+                    request,
+                    rate_limit,
+                    client,
+                    work_dir,
+                    files,
+                    file_metadata,
+                    db_config,
+                )
+
+            submission = await manager.submit(
+                client=client,
+                target_db=db_config.alias,
+                coro_factory=_factory,
+            )
+    except (oracledb.Error, EmbedJobStoreUnavailable, TimeoutError) as ex:
+        # CORE-side blip during the INSERT. submission is None by
+        # construction here (the error came from inside
+        # ``manager.submit`` before it returned), so the cleanup
+        # restores the corpus for the documented retry — except when
+        # the caller's work_dir is per-request (single-call OCI), in
+        # which case we discard the corpus rather than restoring it
+        # to shared staging.
+        await _cleanup_failed_submission(
+            submission, work_dir, client, can_restore=restore_on_retry,
+        )
+        LOGGER.warning("CORE submission failed for embed job: %s", ex)
+        raise HTTPException(status_code=503, detail=_CORE_UNAVAILABLE_DETAIL) from ex
+    except HTTPException as ex:
+        # 503 from the under-lock DB re-snapshot is retryable (admin
+        # restores the DB, client retries with the same corpus); 4xx
+        # are not. Same private-work_dir caveat as above.
+        await _cleanup_failed_submission(
+            submission, work_dir, client,
+            can_restore=restore_on_retry and ex.status_code == 503,
+        )
+        raise
+    except BaseException:
+        # Cancellation / programmer error. Always non-retryable.
+        await _cleanup_failed_submission(submission, work_dir, client, can_restore=False)
+        raise
+
+    # All ``except`` clauses re-raise, so reaching here means
+    # ``submission`` was assigned. ``assert`` is for the type checker.
+    assert submission is not None
+    return EmbedJobAccepted(
+        job_id=submission.job_id,
+        status=submission.status,
+        location=f"/v1/embed/jobs/{submission.job_id}",
+    )
 
 
 @auth.post(
@@ -1061,44 +1283,7 @@ async def split_embed(
        submitting one corpus but the server processes a superset.
     """
     LOGGER.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
-    # All four pre-claim guards below can raise before
-    # ``_prepare_work_dir`` runs, so the post-claim restore path
-    # never executes. With SQL sources, ``/embed/sql/store`` has
-    # already left a unique ``_sqlsrc_<uuid>.csv`` in the shared
-    # directory; the Streamlit retry re-runs ``/embed/sql/store``
-    # before the next ``POST /embed/`` and allocates a fresh UUID.
-    # Without sweeping, the next embed would claim both the old
-    # and the new ``_sqlsrc_*.csv`` and embed the query results
-    # twice. ``_sweep_sql_scratch_files`` runs under
-    # ``_client_lock`` so a concurrent ``/embed/sql/store`` cannot
-    # land a new scratch file mid-sweep.
-    try:
-        # Validate DB availability up front so an unusable client
-        # gets the synchronous 503 they expect rather than a job
-        # that immediately fails — same precondition the inline
-        # flow enforced. The result is intentionally discarded: the
-        # actual snapshot the pipeline runs against is taken
-        # further down under ``_settings_lock`` to close the
-        # rotation race (see comment at the snapshot site).
-        _get_client_db_config(client)
-
-        # Job state (status / progress / result) lives in the CORE
-        # database so any replica can serve
-        # GET /v1/embed/jobs/{job_id}. Without CORE, the in-memory
-        # fallback in the jobs module would still accept the
-        # submission, but a poll routed to another pod (or to this
-        # same pod after CORE recovers) would 404.
-        _require_core_pool()
-
-        if not request.embedding_model or request.distance_strategy is None:
-            raise HTTPException(status_code=400, detail="embedding_model and distance_strategy are required")
-
-        # Surface OCI-profile lookup errors synchronously rather than
-        # silently failing the job; the pipeline body re-resolves later.
-        get_oci_profile(client)
-    except HTTPException:
-        await _sweep_sql_scratch_files(client)
-        raise
+    await _run_split_embed_preflight(request, client)
 
     work_dir = get_temp_directory(client, "embedding", unique=True)
 
@@ -1106,17 +1291,6 @@ async def split_embed(
     # the shared client embedding directory cannot land in this job's
     # corpus. Empty corpus → synchronous 404 (matches the inline-flow
     # contract that "no files" is a client error, not a job error).
-    #
-    # The lock is held all the way through ``manager.submit``: if it
-    # were released after ``_prepare_work_dir`` and re-acquired only
-    # for the 503-path restoration, a concurrent same-client upload
-    # could land different-named files in shared during the unlocked
-    # window. The restore loop only skips same-name conflicts, so the
-    # merged shared dir would let the *next* embed request claim a
-    # mix of stale and newly uploaded files. Holding the lock through
-    # submit closes that race; once submit returns successfully the
-    # corpus is owned by the background task's work_dir and concurrent
-    # uploads can resume immediately.
     async with _client_lock(client):
         files = await asyncio.to_thread(
             _prepare_work_dir,
@@ -1124,77 +1298,9 @@ async def split_embed(
             work_dir,
             client,
         )
-        LOGGER.info("Processing Files: %s", files)
-
-        # ``submission`` flips from None to a JobSubmission only after
-        # ``manager.submit`` returns. The except branches use it to
-        # decide between corpus-restore (no task yet) and task-teardown
-        # (task owns work_dir).
-        submission: Optional[JobSubmission] = None
-        try:
-            file_metadata = await asyncio.to_thread(_load_file_metadata, work_dir)
-
-            manager = get_embed_job_manager()
-            # Hold ``_settings_lock`` across both the DB snapshot and
-            # the submit so a concurrent CORE rotation cannot close
-            # ``captured_pool`` between snapshot and INSERT. The
-            # rotation handler holds the same lock across its active-
-            # job check + ``close_pool``, so the two paths are mutually
-            # exclusive. ``model_copy`` gives the snapshot its own
-            # attribute storage so post-submit edits to the live
-            # ``DatabaseConfig`` cannot retarget the in-flight job.
-            async with _settings_lock:
-                _live_db_config, captured_pool = _get_client_db_config(client)
-                db_config = _live_db_config.model_copy()
-                db_config.pool = captured_pool
-
-                async def _factory(handle: JobHandle) -> EmbedProcessingResult:
-                    return await _run_split_embed_pipeline(
-                        handle,
-                        request,
-                        rate_limit,
-                        client,
-                        work_dir,
-                        files,
-                        file_metadata,
-                        db_config,
-                    )
-
-                submission = await manager.submit(
-                    client=client,
-                    target_db=db_config.alias,
-                    coro_factory=_factory,
-                )
-        except (oracledb.Error, EmbedJobStoreUnavailable, TimeoutError) as ex:
-            # CORE-side blip during the INSERT. submission is None
-            # by construction here (the error came from inside
-            # ``manager.submit`` before it returned), so the cleanup
-            # restores the corpus for the documented retry.
-            await _cleanup_failed_submission(submission, work_dir, client, can_restore=True)
-            LOGGER.warning("CORE submission failed for embed job: %s", ex)
-            raise HTTPException(status_code=503, detail=_CORE_UNAVAILABLE_DETAIL) from ex
-        except HTTPException as ex:
-            # 503 from the under-lock DB re-snapshot is retryable
-            # (admin restores the DB, client retries with the same
-            # corpus); 4xx are not.
-            await _cleanup_failed_submission(
-                submission, work_dir, client,
-                can_restore=ex.status_code == 503,
-            )
-            raise
-        except BaseException:
-            # Cancellation / programmer error. Always non-retryable.
-            await _cleanup_failed_submission(submission, work_dir, client, can_restore=False)
-            raise
-
-    # All ``except`` clauses re-raise, so reaching here means
-    # ``submission`` was assigned. ``assert`` is for the type checker.
-    assert submission is not None
-    return EmbedJobAccepted(
-        job_id=submission.job_id,
-        status=submission.status,
-        location=f"/v1/embed/jobs/{submission.job_id}",
-    )
+        return await _submit_split_embed_under_lock(
+            request, rate_limit, client, work_dir, files,
+        )
 
 
 # ---------------------------------------------------------------------------

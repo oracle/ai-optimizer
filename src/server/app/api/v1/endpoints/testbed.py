@@ -21,6 +21,7 @@ from giskard.rag import QATestset, evaluate
 from giskard.rag.base import AgentAnswer
 from litellm.exceptions import APIConnectionError
 
+from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
 from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.chat import MessageResponse
 from server.app.api.v1.schemas.common import ClientId
@@ -336,7 +337,7 @@ async def _load_file_chunks(
     # Stage each upload in its own sub-directory so two files sharing a basename
     # don't overwrite each other on disk before generation runs.
     file_dir = Path(tempfile.mkdtemp(dir=temp_directory))
-    disk_path = file_dir / safe_filename(original_name)
+    disk_path = file_dir / _safe_filename_or_400(original_name)
     with open(disk_path, "wb") as fh:
         fh.write(file_content)
 

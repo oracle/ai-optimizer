@@ -5,19 +5,27 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 OCI Object Storage bucket operations for vector store refresh workflows.
 """
 
+import asyncio
 import logging
 import os
+from pathlib import Path
+from typing import Iterable
 
 import oci.identity
 import oci.object_storage
 import oci.pagination
+
+from server.app.core.constants import SUPPORTED_EXTENSIONS
 
 from .client import init_client
 from .schemas import OciProfileConfig
 
 LOGGER = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {".pdf", ".html", ".md", ".txt", ".csv", ".png", ".jpg", ".jpeg", ".docx", ".pptx", ".xlsx"}
+
+def filter_supported_object_names(names: Iterable[str]) -> list[str]:
+    """Keep only object names whose extension is in ``SUPPORTED_EXTENSIONS``."""
+    return [name for name in names if Path(name).suffix.lower() in SUPPORTED_EXTENSIONS]
 
 
 def get_compartments(profile: OciProfileConfig) -> dict[str, str]:
@@ -79,11 +87,19 @@ def get_buckets(compartment_id: str, profile: OciProfileConfig) -> list[str]:
 
 
 def get_bucket_object_names(bucket_name: str, profile: OciProfileConfig) -> list[str]:
-    """Retrieve object names from a bucket."""
+    """Retrieve every object name from a bucket, aggregated across pages.
+
+    ``list_objects`` returns one OCI page per call and the default page
+    size truncates large buckets — the single-call
+    ``/v1/embed/oci/store`` endpoint with ``objects`` omitted promises
+    to embed every supported object in the bucket, so the listing must
+    walk all pages.
+    """
     client = init_client(oci.object_storage.ObjectStorageClient, profile)
 
     try:
-        response = client.list_objects(
+        response = oci.pagination.list_call_get_all_results(
+            client.list_objects,
             namespace_name=profile.namespace,
             bucket_name=bucket_name,
         )
@@ -101,7 +117,13 @@ def flatten_bucket_key(key: str) -> str:
 
 
 def get_bucket_objects_with_metadata(bucket_name: str, profile: OciProfileConfig) -> list[dict]:
-    """Retrieve bucket objects with metadata for change detection.
+    """Retrieve every bucket object with metadata, aggregated across pages.
+
+    ``list_objects`` returns one OCI page per call and the default page
+    size truncates large buckets. ``/v1/embed/refresh`` relies on this
+    listing to detect new and modified objects, so dropping later
+    pages would treat them as if they had never existed for
+    change-detection purposes.
 
     Returns a list of dicts with keys: name, size, etag, time_modified, md5, extension.
     Only objects with supported file extensions are included.
@@ -110,7 +132,8 @@ def get_bucket_objects_with_metadata(bucket_name: str, profile: OciProfileConfig
 
     objects_metadata: list[dict] = []
     try:
-        response = client.list_objects(
+        response = oci.pagination.list_call_get_all_results(
+            client.list_objects,
             namespace_name=profile.namespace,
             bucket_name=bucket_name,
             fields="name,size,etag,timeModified,md5",
@@ -169,6 +192,76 @@ def detect_changed_objects(
 
     LOGGER.info("Found %d new objects and %d modified objects", len(new_objects), len(modified_objects))
     return new_objects, modified_objects
+
+
+async def download_bucket_objects_to_dir(
+    temp_directory,
+    profile: OciProfileConfig,
+    bucket_name: str,
+    object_names: list[str],
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Download *object_names* from *bucket_name* into *temp_directory*.
+
+    Caller MUST already hold ``_client_lock`` for the relevant client —
+    this helper has no lock semantics so it can be reused from
+    ``oci_download_objects`` (which acquires the lock itself) and from
+    the single-call ``/v1/embed/oci/store`` endpoint (which holds the
+    lock across download + claim + submit).
+
+    Returns ``(downloaded_basenames, failures)``. ``downloaded_basenames``
+    is the list of local basenames that were written (one entry per
+    successful key — colliding flattened keys produce duplicate
+    basenames, since each input key was honored by a sequential
+    last-writer-wins write). ``failures`` is a list of
+    ``(object_name, error_message)`` tuples for keys that raised
+    during download. Two-step callers can ignore the failures and
+    return only the basenames; callers that need all-or-nothing
+    semantics (single-call OCI embed) must check ``failures`` and
+    abort before downstream consumers see a partial corpus.
+
+    ``download_object`` is a synchronous OCI SDK call (streams the
+    whole object before returning); offload via ``asyncio.to_thread``
+    so the server event loop stays responsive and the embed-job
+    heartbeat doesn't starve under long downloads.
+
+    Group by ``flatten_bucket_key`` destination: two object keys like
+    ``a/b.txt`` and ``a_b.txt`` both target the same local path, and
+    concurrent ``open(..., "wb")`` would interleave or truncate
+    writes, corrupting the file. Within a destination group we run
+    sequentially (last writer wins, matching the pre-parallel loop's
+    behavior); across groups we run concurrently for the common
+    no-collision case.
+    """
+    groups: dict[str, list[str]] = {}
+    for object_name in object_names:
+        groups.setdefault(flatten_bucket_key(object_name), []).append(object_name)
+
+    async def _download_destination(names: list[str]) -> list[tuple[str, str | BaseException]]:
+        results: list[tuple[str, str | BaseException]] = []
+        for name in names:
+            try:
+                path = await asyncio.to_thread(
+                    download_object, str(temp_directory), name, bucket_name, profile,
+                )
+                results.append((name, path))
+            except Exception as ex:  # noqa: BLE001 — caller decides what to do with the failure
+                results.append((name, ex))
+        return results
+
+    group_results = await asyncio.gather(
+        *(_download_destination(names) for names in groups.values()),
+    )
+
+    downloaded: list[str] = []
+    failures: list[tuple[str, str]] = []
+    for results in group_results:
+        for object_name, result in results:
+            if isinstance(result, BaseException):
+                LOGGER.warning("Failed to download %s: %s", object_name, result)
+                failures.append((object_name, f"{type(result).__name__}: {result}"))
+            else:
+                downloaded.append(os.path.basename(result))
+    return downloaded, failures
 
 
 def download_object(

@@ -12,7 +12,6 @@ import json
 import logging
 import math
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 
@@ -24,6 +23,8 @@ from docx import Document as DocxDocument
 from openpyxl import load_workbook
 from pptx import Presentation
 from pypdf import PdfReader
+
+from server.app.embed.schemas import DoclingDocumentChunk
 
 if TYPE_CHECKING:
     from pptx.shapes.autoshape import Shape
@@ -48,33 +49,6 @@ def _get_docling_converter(deep: bool = False) -> DocumentConverter:
         "Initialized Docling DocumentConverter (deep=%s, %s)", deep, pdf_pipeline_options.model_dump(mode="json")
     )
     return converter
-
-
-@dataclass(init=False)
-class DoclingDocumentChunk:
-    """Lightweight document chunk compatible with the rest of this module.
-
-    This replaces LangChain's Document. Only the fields and behaviors that this module
-    relies on are implemented (page_content, metadata, and to_json()).
-    """
-
-    page_content: str
-    metadata: dict
-    id: str | None
-
-    def __init__(self, page_content: str, metadata: dict, doc_id: str | None = None):
-        self.page_content = page_content
-        self.metadata = metadata
-        self.id = doc_id if doc_id is not None else (metadata.get("id") if isinstance(metadata, dict) else None)
-
-    def to_json(self) -> dict:
-        """Match the (stable) shape previously produced by LangChain's Document.to_json()."""
-        return {
-            "lc": 1,
-            "type": "constructor",
-            "id": ["langchain", "schema", "document"],
-            "kwargs": {"page_content": self.page_content, "metadata": self.metadata},
-        }
 
 
 def _make_json_safe(value: Any) -> Any:

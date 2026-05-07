@@ -8,8 +8,10 @@ Internal helpers shared across v1 endpoint modules.
 from logging import Logger
 from typing import Any
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from pydantic import BaseModel, SecretStr
+
+from server.app.core.file_utils import safe_filename
 
 
 def _is_blank_secret(v: Any) -> bool:
@@ -35,6 +37,14 @@ def _build_updates(body: BaseModel, secret_fields: frozenset[str]) -> dict[str, 
         for field in body.model_fields_set
         if not (field in secret_fields and _is_blank_secret(getattr(body, field)))
     }
+
+
+def _safe_filename_or_400(raw: str) -> str:
+    """Normalize *raw* via :func:`safe_filename`; translate failures to ``HTTPException(400)``."""
+    try:
+        return safe_filename(raw)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
 
 
 def _log_sensitive_read(logger: Logger, resource: str, resource_id: str, request: Request) -> None:

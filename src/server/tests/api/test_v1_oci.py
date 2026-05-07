@@ -602,3 +602,32 @@ async def test_list_bucket_objects_error_returns_fallback_detail(app_client, aut
     assert detail
     for token in _OCI_SOURCE_DETAIL_TOKENS:
         assert token not in detail
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_bucket_objects_filters_unsupported_extensions(app_client, auth_headers):
+    """The listing endpoint must drop objects the embed pipeline can't
+    parse (``.parquet``, ``.zip``, ``.json``, extensionless). Filtering
+    on the server is the single source of truth — the client should
+    not need to mirror ``SUPPORTED_EXTENSIONS``.
+    """
+    raw_listing = [
+        "report.pdf",
+        "data.parquet",
+        "archive.zip",
+        "PRESENTATION.PPTX",
+        "notes.MD",
+        "config.json",
+        "no-extension",
+    ]
+    with patch(
+        "server.app.api.v1.endpoints.oci.get_bucket_object_names",
+        return_value=raw_listing,
+    ):
+        resp = await app_client.get("/v1/oci/objects/my-bucket/TEST", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json() == ["report.pdf", "PRESENTATION.PPTX", "notes.MD"], (
+        f"GET /v1/oci/objects must filter via SUPPORTED_EXTENSIONS "
+        f"(case-insensitive); got {resp.json()!r}"
+    )

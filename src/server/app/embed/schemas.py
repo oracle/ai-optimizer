@@ -2,10 +2,11 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Pydantic models for vector store and embedding configuration.
+Data shapes for vector store configuration and document chunks.
 """
 # spell-checker: ignore vectorstores hnsw
 
+from dataclasses import dataclass
 from typing import Literal, Optional
 
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
@@ -15,6 +16,33 @@ from server.app.models.schemas import ModelIdentity
 
 IndexTypes = Literal["HNSW", "IVF", "HYB"]
 ParsingMode = Literal["fast", "deep"]
+
+
+@dataclass(init=False)
+class DoclingDocumentChunk:
+    """Lightweight document chunk compatible with the rest of this module.
+
+    This replaces LangChain's Document. Only the fields and behaviors that this module
+    relies on are implemented (page_content, metadata, and to_json()).
+    """
+
+    page_content: str
+    metadata: dict
+    id: str | None
+
+    def __init__(self, page_content: str, metadata: dict, doc_id: str | None = None):
+        self.page_content = page_content
+        self.metadata = metadata
+        self.id = doc_id if doc_id is not None else (metadata.get("id") if isinstance(metadata, dict) else None)
+
+    def to_json(self) -> dict:
+        """Match the (stable) shape previously produced by LangChain's Document.to_json()."""
+        return {
+            "lc": 1,
+            "type": "constructor",
+            "id": ["langchain", "schema", "document"],
+            "kwargs": {"page_content": self.page_content, "metadata": self.metadata},
+        }
 
 
 class VectorStoreConfig(BaseModel):
