@@ -10,6 +10,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from server.app.embed.schemas import VectorStoreConfig
+
 
 class SqlStoreRequest(BaseModel):
     """Request body for storing SQL query results for embedding."""
@@ -25,6 +27,37 @@ class SqlStoreRequest(BaseModel):
 
     query: str
     db_alias: Optional[str] = None
+
+
+class OciEmbedRequest(VectorStoreConfig):
+    """Request body for the single-call OCI download + embed endpoint.
+
+    ``objects`` is optional — when omitted (or empty) every supported
+    object in *bucket_name* is embedded. When provided, only the listed
+    keys are downloaded.
+    """
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "bucket_name": "rag-source-docs",
+                "auth_profile": "DEFAULT",
+                "objects": ["product-catalog.pdf", "release-notes/2026-q2.md"],
+                "alias": "PRODUCT_DOCS",
+                "description": "Product documentation embedded for RAG",
+                "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                "chunk_size": 1024,
+                "chunk_overlap": 128,
+                "distance_strategy": "COSINE",
+                "index_type": "HNSW",
+                "parsing_mode": "fast",
+            }
+        }
+    }
+
+    bucket_name: str
+    auth_profile: str = "DEFAULT"
+    objects: Optional[list[str]] = None
 
 
 class VectorStoreRefreshRequest(BaseModel):

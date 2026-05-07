@@ -79,11 +79,19 @@ def get_buckets(compartment_id: str, profile: OciProfileConfig) -> list[str]:
 
 
 def get_bucket_object_names(bucket_name: str, profile: OciProfileConfig) -> list[str]:
-    """Retrieve object names from a bucket."""
+    """Retrieve every object name from a bucket, aggregated across pages.
+
+    ``list_objects`` returns one OCI page per call and the default page
+    size truncates large buckets — the single-call
+    ``/v1/embed/oci/store`` endpoint with ``objects`` omitted promises
+    to embed every supported object in the bucket, so the listing must
+    walk all pages.
+    """
     client = init_client(oci.object_storage.ObjectStorageClient, profile)
 
     try:
-        response = client.list_objects(
+        response = oci.pagination.list_call_get_all_results(
+            client.list_objects,
             namespace_name=profile.namespace,
             bucket_name=bucket_name,
         )
@@ -101,7 +109,13 @@ def flatten_bucket_key(key: str) -> str:
 
 
 def get_bucket_objects_with_metadata(bucket_name: str, profile: OciProfileConfig) -> list[dict]:
-    """Retrieve bucket objects with metadata for change detection.
+    """Retrieve every bucket object with metadata, aggregated across pages.
+
+    ``list_objects`` returns one OCI page per call and the default page
+    size truncates large buckets. ``/v1/embed/refresh`` relies on this
+    listing to detect new and modified objects, so dropping later
+    pages would treat them as if they had never existed for
+    change-detection purposes.
 
     Returns a list of dicts with keys: name, size, etag, time_modified, md5, extension.
     Only objects with supported file extensions are included.
@@ -110,7 +124,8 @@ def get_bucket_objects_with_metadata(bucket_name: str, profile: OciProfileConfig
 
     objects_metadata: list[dict] = []
     try:
-        response = client.list_objects(
+        response = oci.pagination.list_call_get_all_results(
+            client.list_objects,
             namespace_name=profile.namespace,
             bucket_name=bucket_name,
             fields="name,size,etag,timeModified,md5",
