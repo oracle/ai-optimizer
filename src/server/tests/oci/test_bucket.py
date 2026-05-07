@@ -18,6 +18,8 @@ from server.app.oci.bucket import (
     download_object,
     flatten_bucket_key,
     get_bucket_objects_with_metadata,
+    get_buckets,
+    get_compartments,
 )
 from server.app.oci.schemas import OciProfileConfig
 
@@ -75,6 +77,83 @@ class TestFlattenBucketKey:
     def test_no_extension(self):
         """Files without extensions still flatten."""
         assert flatten_bucket_key("folder/README") == "folder_README"
+
+
+# ---------------------------------------------------------------------------
+# get_compartments / get_buckets pagination
+# ---------------------------------------------------------------------------
+
+
+def _make_compartment(compartment_id, name, parent_id):
+    """Build a mock OCI compartment."""
+    c = MagicMock()
+    c.id = compartment_id
+    c.name = name
+    c.compartment_id = parent_id
+    return c
+
+
+class TestGetCompartmentsPagination:
+    """Compartment listing must aggregate across all pages."""
+
+    def test_aggregates_compartments_across_pages(self):
+        """Compartments returned across multiple OCI pages all appear in the result."""
+        tenancy = "ocid1.tenancy.oc1..test"
+        page1 = [_make_compartment(f"ocid1.compartment.oc1..p1c{i}", f"p1c{i}", tenancy) for i in range(100)]
+        page2 = [_make_compartment(f"ocid1.compartment.oc1..p2c{i}", f"p2c{i}", tenancy) for i in range(50)]
+        aggregated_response = MagicMock(data=page1 + page2)
+        mock_client = MagicMock()
+
+        with (
+            patch(f"{MODULE}.init_client", return_value=mock_client),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=aggregated_response,
+            ) as mock_paginate,
+        ):
+            result = get_compartments(_make_profile(tenancy=tenancy))
+
+        mock_paginate.assert_called_once()
+        # paginator must be called with the SDK list method, not pre-fetched data
+        assert mock_paginate.call_args.args[0] is mock_client.list_compartments
+        assert len(result) == 151
+        assert result["(root)"] == tenancy
+        assert "p1c0" in result
+        assert "p2c49" in result
+
+
+class TestGetBucketsPagination:
+    """Bucket listing must aggregate across all pages."""
+
+    def test_aggregates_buckets_across_pages(self):
+        """Buckets returned across multiple OCI pages all appear in the result."""
+        def _bucket(name, genai_chunk=False):
+            b = MagicMock()
+            b.name = name
+            b.freeform_tags = {"genai_chunk": "true"} if genai_chunk else {}
+            return b
+
+        page1 = [_bucket(f"bucket-p1-{i}") for i in range(100)]
+        page2 = [_bucket(f"bucket-p2-{i}") for i in range(25)]
+        page2.append(_bucket("hidden-chunks", genai_chunk=True))
+        aggregated_response = MagicMock(data=page1 + page2)
+        mock_client = MagicMock()
+
+        with (
+            patch(f"{MODULE}.init_client", return_value=mock_client),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=aggregated_response,
+            ) as mock_paginate,
+        ):
+            result = get_buckets("ocid1.compartment.oc1..test", _make_profile())
+
+        mock_paginate.assert_called_once()
+        assert mock_paginate.call_args.args[0] is mock_client.list_buckets
+        assert len(result) == 125
+        assert "bucket-p1-0" in result
+        assert "bucket-p2-24" in result
+        assert "hidden-chunks" not in result
 
 
 # ---------------------------------------------------------------------------

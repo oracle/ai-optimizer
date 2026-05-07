@@ -10,6 +10,7 @@ import os
 
 import oci.identity
 import oci.object_storage
+import oci.pagination
 
 from .client import init_client
 from .schemas import OciProfileConfig
@@ -26,7 +27,8 @@ def get_compartments(profile: OciProfileConfig) -> dict[str, str]:
     """
     client = init_client(oci.identity.IdentityClient, profile)
 
-    response = client.list_compartments(
+    response = oci.pagination.list_call_get_all_results(
+        client.list_compartments,
         compartment_id=profile.tenancy,
         compartment_id_in_subtree=True,
         access_level="ACCESSIBLE",
@@ -60,7 +62,8 @@ def get_buckets(compartment_id: str, profile: OciProfileConfig) -> list[str]:
     client = init_client(oci.object_storage.ObjectStorageClient, profile)
 
     LOGGER.info("Getting buckets in compartment %s", compartment_id)
-    response = client.list_buckets(
+    response = oci.pagination.list_call_get_all_results(
+        client.list_buckets,
         namespace_name=profile.namespace,
         compartment_id=compartment_id,
         fields=["tags"],
