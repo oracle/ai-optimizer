@@ -14,6 +14,10 @@ This page walks through standing up a self-hosted [SigNoz](https://signoz.io) in
 
 The same data path works against any other OTLP backend (Jaeger, Grafana Tempo, vendor-managed receivers) — only the install steps and endpoint URL differ.
 
+{{% notice style="code" title="Running on Kubernetes?" icon="circle-info" %}}
+The bundled Helm chart can deploy SigNoz alongside the application as a subchart. Set both `signoz.enabled=true` (deploys the collector + UI) and `server.otel.enabled=true` (turns on the application-side exporter); the OTLP endpoint is then wired automatically. See [SigNoz subchart]({{% relref "/advanced/helm#signoz-subchart" %}}). The Compose-based steps below are for bare-metal / single-host setups.
+{{% /notice %}}
+
 ## Prerequisites
 
 - [Podman](https://podman.io) with the `compose` plugin on the host that will run SigNoz. Docker is also supported — substitute `docker` for `podman` in the commands below.

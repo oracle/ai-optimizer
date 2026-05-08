@@ -242,7 +242,12 @@ Configure 3rd-Party AI Models used by the {{< short_app_ref >}} API Server.  Cre
 
 ##### Server OpenTelemetry Configuration
 
-Wires the running pod to a separately-deployed OTLP collector (e.g. SigNoz, Jaeger, Tempo). The chart does **not** install the collector — deploy it independently and point `endpoint` at it. See [Observability]({{% relref "/observability" %}}) for the broader workflow and [SigNoz]({{% relref "/observability/signoz" %}}) for a backend-specific quickstart.
+Wires the running pod to an OTLP collector. Two deployment shapes:
+
+1. **Bring-your-own collector** — point `endpoint` at a separately-deployed SigNoz, Jaeger, Tempo, or vendor agent.
+2. **In-chart SigNoz** — set `signoz.enabled=true` (see [SigNoz subchart](#signoz-subchart) below). The chart then deploys SigNoz as a subchart and `server.otel.endpoint` defaults to the in-cluster collector URL automatically; explicit values still win.
+
+See [Observability]({{% relref "/observability" %}}) for the broader workflow and [SigNoz Quickstart]({{% relref "/observability/signoz" %}}) for the standalone-Compose path.
 
 The published image already includes the OTel SDK; setting `enabled: true` is sufficient to start exporting.
 
@@ -307,6 +312,72 @@ server:
     enabled: true
     tracesExporter: console
 ```
+
+##### SigNoz Subchart
+
+Deploys [SigNoz](https://signoz.io) alongside the application as a Helm subchart (from the official `https://charts.signoz.io` repository). Two switches must both be on for the server to actually export telemetry — `signoz.enabled=true` (deploys the collector and UI) and `server.otel.enabled=true` (turns on the application-side exporter). When both are set and `server.otel.endpoint` is empty, the server's OTLP endpoint auto-defaults to the in-cluster collector URL, so the operator only needs the two boolean flags. See [Wiring `server.otel`](#wiring-serverotel) for the full minimal values overlay.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| signoz.enabled | bool | `false` | Master switch. When `true`, the SigNoz subchart's resources render alongside the application. The chart pins SigNoz **0.122.0** in `Chart.yaml`. |
+
+The `signoz` block passes through to the upstream chart; any key valid in [`SigNoz/charts`](https://github.com/SigNoz/charts/blob/main/charts/signoz/values.yaml) can be overridden here, e.g.:
+
+```yaml
+signoz:
+  enabled: true
+  otelCollector:
+    service:
+      type: ClusterIP   # default; LoadBalancer/NodePort also work
+    replicaCount: 1
+```
+
+###### Prerequisite
+
+Run the following two commands against the chart directory once before `helm install` / `helm package`:
+
+```bash
+helm repo add --force-update signoz https://charts.signoz.io
+helm dependency build
+```
+
+The dependency tarball is **not** committed; `build` pulls it from `charts.signoz.io` using the digest in `Chart.lock`. The `helm repo add` is required because `build` resolves by repository URL against `helm repo list`, not by fetching the URL directly. Without these, `helm install` fails with either `no repository definition for https://charts.signoz.io` or `found in Chart.yaml, but missing in charts/ directory`.
+
+###### Resource expectations
+
+The default SigNoz deploy runs ClickHouse, the query service, the frontend, and the OTel collector. Plan for **~3-5 GiB RAM minimum**. The Kind example below does not enable SigNoz for this reason; enable it only on a cluster sized to host it.
+
+###### After install
+
+The bundled `NOTES.txt` prints the port-forward and bootstrap commands. To summarize:
+
+```bash
+# UI
+kubectl port-forward -n <namespace> svc/<release>-signoz 8080:8080
+# Browse to http://localhost:8080 — first visit prompts for admin account
+
+# Load curated dashboards/alerts (after at least one chat completion has been ingested):
+observe/signoz/bootstrap-signoz.py \
+  --host http://localhost:8080 \
+  --email <admin-email>
+```
+
+See [`observe/signoz/README.md`](https://github.com/oracle/ai-optimizer/blob/main/observe/signoz/README.md) for why a real chat request is required before bootstrap, and how to round-trip dashboard changes back to the repository.
+
+###### Wiring `server.otel`
+
+`signoz.enabled=true` does **not** turn on the server's exporter — `server.otel.enabled` remains the master switch for the application side. Both must be set:
+
+```yaml
+signoz:
+  enabled: true
+server:
+  otel:
+    enabled: true
+    insecure: true   # the in-chart collector serves plaintext gRPC
+```
+
+When `signoz.enabled=true` but `server.otel.enabled=false`, the install proceeds (SigNoz can host telemetry from other workloads in the cluster) and `NOTES.txt` prints a warning.
 
 ---
 

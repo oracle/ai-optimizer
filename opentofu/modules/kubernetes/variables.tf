@@ -130,6 +130,10 @@ variable "byo_ocir_url" {
   type = string
 }
 
+variable "is_observability_enabled" {
+  type = bool
+}
+
 variable "use_cluster_addons" {
   type    = bool
   default = true

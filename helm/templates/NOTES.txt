@@ -86,6 +86,83 @@ Check Ollama status:
   kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=ollama -f
 {{- end }}
 
+{{- if .Values.signoz.enabled }}
+
+================================================================================
+SIGNOZ (OBSERVABILITY)
+================================================================================
+
+{{- /* Read the configured frontend service port from the subchart values
+       (defaults to 8080). Hardcoding the remote port would break operators
+       who legitimately pass through `signoz.signoz.service.port`. */ -}}
+{{- $signozPort := dig "signoz" "service" "port" 8080 (.Values.signoz | default dict) -}}
+SigNoz is deployed in this release. Port-forward to reach the UI:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "signoz.releaseFullname" . }} 8080:{{ $signozPort }}
+
+Then open in your browser:
+  http://localhost:8080
+
+The first visit prompts you to create an admin account.
+
+{{- /* Show the auto-wired endpoint URLs only when they're actually used.
+       The deployment's per-signal precedence is: an explicit per-signal
+       endpoint wins over the generic; the generic wins over the SigNoz
+       auto-default. Also gate on the active exporter for each signal —
+       tracesExporter=console/none means the app does not OTLP-export
+       traces, and logsEnabled=false (the default) means the app never
+       activates log export. Surfacing the auto-URL in those cases reads
+       as "wired" but nothing actually flows to it. */ -}}
+{{- $otelEnabled := .Values.server.otel.enabled -}}
+{{- $endpointEmpty := eq (.Values.server.otel.endpoint | default "" | trim) "" -}}
+{{- $tracesEpEmpty := eq (.Values.server.otel.tracesEndpoint | default "" | trim) "" -}}
+{{- $logsEpEmpty := eq (.Values.server.otel.logsEndpoint | default "" | trim) "" -}}
+{{- /* Mirror the validator's per-token parse: empty/whitespace defaults
+       to "otlp"; otherwise OTLP is active only when "otlp" appears as a
+       token. Trim each token so "otlp, console" still resolves cleanly.
+       Traces stays case-sensitive — the app drops non-lowercase traces
+       tokens via set-intersection. Logs is case-insensitive because the
+       app and validator both lowercase log tokens before checking. */ -}}
+{{- $tracesRaw := .Values.server.otel.tracesExporter | default "" | trim -}}
+{{- $tracesUsesOtlp := eq $tracesRaw "" -}}
+{{- range (splitList "," $tracesRaw) -}}{{- if eq (trim .) "otlp" -}}{{- $tracesUsesOtlp = true -}}{{- end -}}{{- end -}}
+{{- $logsRaw := .Values.server.otel.logsExporter | default "" | trim -}}
+{{- $logsUsesOtlp := eq $logsRaw "" -}}
+{{- range (splitList "," $logsRaw) -}}{{- if eq (lower (trim .)) "otlp" -}}{{- $logsUsesOtlp = true -}}{{- end -}}{{- end -}}
+{{- $autoTracesEp := "" -}}
+{{- $autoLogsEp := "" -}}
+{{- if and $otelEnabled $tracesUsesOtlp $endpointEmpty $tracesEpEmpty -}}
+{{- $autoTracesEp = include "server.otel.defaultTracesEndpoint" . -}}
+{{- end -}}
+{{- if and $otelEnabled .Values.server.otel.logsEnabled $logsUsesOtlp $endpointEmpty $logsEpEmpty -}}
+{{- $autoLogsEp = include "server.otel.defaultLogsEndpoint" . -}}
+{{- end -}}
+{{- if or (ne $autoTracesEp "") (ne $autoLogsEp "") }}
+
+In-cluster OTLP collector endpoints wired into the server:
+{{- if ne $autoTracesEp "" }}
+  traces: {{ $autoTracesEp }}
+{{- end }}
+{{- if ne $autoLogsEp "" }}
+  logs:   {{ $autoLogsEp }}
+{{- end }}
+{{- end }}
+
+{{- if not $otelEnabled }}
+
+Note: server.otel.enabled is false, so the AI Optimizer server itself
+will not export telemetry to SigNoz. Set server.otel.enabled=true (and
+server.otel.insecure=true for the default plaintext gRPC collector) to
+complete that wiring. SigNoz can still receive telemetry from other
+workloads in the cluster.
+{{- end }}
+
+After the server has handled at least one chat completion, load the
+starter dashboards/alerts:
+  observe/signoz/bootstrap-signoz.py \
+    --host http://localhost:8080 \
+    --email <your-admin-email>
+{{- end }}
+
 ================================================================================
 CONFIGURATION
 ================================================================================

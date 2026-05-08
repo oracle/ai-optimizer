@@ -559,6 +559,16 @@ failure mode that check defends against.
     {{- $supportedTracesExporters := list "otlp" "console" "none" -}}
     {{- $supportedLogsExporters := list "otlp" "none" -}}
     {{- $allowedProtocols := list "grpc" "http/protobuf" -}}
+    {{- /* SigNoz subchart, when enabled, contributes per-signal endpoint
+           defaults via OTEL_EXPORTER_OTLP_{TRACES,LOGS}_ENDPOINT — accept
+           those as satisfying the corresponding endpoint requirements so
+           operators don't have to hand-type the in-cluster collector URL.
+           Each helper returns "" when the subchart is disabled OR when
+           the collector port for the resolved protocol is disabled
+           (`signoz.otelCollector.ports.<proto>.enabled=false`). */ -}}
+    {{- $signozEnabled := ne (include "signoz.baseUrl" .) "" -}}
+    {{- $signozTracesEp := include "server.otel.defaultTracesEndpoint" . -}}
+    {{- $signozLogsEp := include "server.otel.defaultLogsEndpoint" . -}}
 
     {{- /* Parse tracesExporter strictly: every non-empty token must be one
            of the supported sentinels. Failing per-token (rather than only
@@ -605,9 +615,15 @@ failure mode that check defends against.
            logsEndpoint does NOT activate traces in the app. */ -}}
     {{- $endpoint := $otel.endpoint | default "" | trim -}}
     {{- $tracesEp := $otel.tracesEndpoint | default "" | trim -}}
-    {{- $haveTracesEndpoint := or (ne $endpoint "") (ne $tracesEp "") -}}
+    {{- $haveTracesEndpoint := or (ne $endpoint "") (ne $tracesEp "") (ne $signozTracesEp "") -}}
     {{- if and (has "otlp" $supported) (not $haveTracesEndpoint) -}}
-      {{- fail "server.otel: tracesExporter includes \"otlp\" but no endpoint is configured. Set server.otel.endpoint or server.otel.tracesEndpoint, or set tracesExporter=\"console\" for local-only debugging." -}}
+      {{- /* Distinguish the disabled-port case so the operator gets an
+             actionable message rather than the generic "no endpoint". */ -}}
+      {{- if and $signozEnabled (eq $endpoint "") (eq $tracesEp "") -}}
+        {{- fail "server.otel: tracesExporter includes \"otlp\" and signoz.enabled=true, but the SigNoz collector port for the resolved traces protocol is disabled. Re-enable signoz.otelCollector.ports.otlp.enabled (or otlp-http.enabled if using http/protobuf), switch protocols, or set server.otel.endpoint / tracesEndpoint explicitly." -}}
+      {{- else -}}
+        {{- fail "server.otel: tracesExporter includes \"otlp\" but no endpoint is configured. Set server.otel.endpoint or server.otel.tracesEndpoint, enable signoz.enabled to use the in-chart collector, or set tracesExporter=\"console\" for local-only debugging." -}}
+      {{- end -}}
     {{- end -}}
 
     {{- /* Validate OTLP protocol fields. The app lowercases but does NOT
@@ -687,8 +703,12 @@ failure mode that check defends against.
       {{- if not (has "otlp" $supported) -}}
         {{- fail "server.otel.logsEnabled is true but tracesExporter does not include \"otlp\"; the application gates log export on OTLP traces being active. Either include \"otlp\" in tracesExporter (and set an endpoint), set logsExporter=\"none\" to opt out of log export, or disable logsEnabled." -}}
       {{- end -}}
-      {{- if and (eq $endpoint "") (eq $logsEp "") -}}
-        {{- fail "server.otel.logsEnabled is true but no log endpoint is reachable. Set server.otel.endpoint (generic, used by both signals) or server.otel.logsEndpoint, set logsExporter=\"none\" to opt out, or disable logsEnabled. server.otel.tracesEndpoint alone activates only traces; the application's log exporter does not read it." -}}
+      {{- if and (eq $endpoint "") (eq $logsEp "") (eq $signozLogsEp "") -}}
+        {{- if and $signozEnabled -}}
+          {{- fail "server.otel.logsEnabled is true and signoz.enabled=true, but the SigNoz collector port for the resolved logs protocol is disabled. Re-enable signoz.otelCollector.ports.otlp.enabled (or otlp-http.enabled if using http/protobuf), switch protocols, set server.otel.endpoint / logsEndpoint explicitly, set logsExporter=\"none\" to opt out, or disable logsEnabled." -}}
+        {{- else -}}
+          {{- fail "server.otel.logsEnabled is true but no log endpoint is reachable. Set server.otel.endpoint (generic, used by both signals) or server.otel.logsEndpoint, enable signoz.enabled to use the in-chart collector, set logsExporter=\"none\" to opt out, or disable logsEnabled. server.otel.tracesEndpoint alone activates only traces; the application's log exporter does not read it." -}}
+        {{- end -}}
       {{- end -}}
       {{- if and (ne $rawLogsExporter "") (not $hasOtlpLogs) -}}
         {{- fail (printf "server.otel.logsEnabled is true but logsExporter=%q would silently drop logs at runtime. Use \"otlp\" to ship logs, \"none\" to explicitly suppress them, drop the value to take the default, or disable logsEnabled." $rawLogsExporter) -}}
@@ -704,4 +724,162 @@ failure mode that check defends against.
     {{- end -}}
 
   {{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
+SigNoz subchart name helpers. Returns empty when signoz.enabled is false;
+callers must gate on that.
+
+`signoz.releaseFullname` mirrors the upstream SigNoz chart's `signoz.fullname`
+helper, but is deliberately renamed to avoid colliding with that subchart
+template — Helm's named-template namespace is global, and a parent-defined
+`signoz.fullname` shadows the subchart's, leading to empty resource names
+in subchart-rendered manifests when called from subchart context.
+
+Coupling note: the rendered names also mirror the upstream
+`otelCollector.fullname` shape (`<signoz.fullname>-<otelCollector.name>`).
+Helm has no cross-chart helper imports, so a future SigNoz rename of
+`otelCollector` would break the auto-default URL. Chart.yaml pins the
+SigNoz subchart version exactly.
+*********************************************** */}}
+{{- define "signoz.releaseFullname" -}}
+{{- $signoz := .Values.signoz | default dict -}}
+{{- if $signoz.enabled -}}
+{{- $override := $signoz.fullnameOverride | default "" | trim -}}
+{{- $name := default "signoz" ($signoz.nameOverride | default "" | trim) -}}
+{{- if ne $override "" -}}
+{{- $override | trunc 63 | trimSuffix "-" -}}
+{{- else if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- /* Schemeful base URL of the in-cluster collector, no port. Returns "" when
+       signoz.enabled is false. Used both as a "is the auto-default available?"
+       sentinel in validation and as the building block for the per-signal
+       endpoint helpers below.
+
+       Form is `<svc>.<ns>.svc` rather than `<svc>.<ns>.svc.cluster.local`
+       — pods receive a search domain that expands `.svc` to the cluster's
+       configured DNS suffix automatically, so this works on any cluster
+       (including those with non-default cluster domains) without a
+       chart-side `clusterDomain` knob. */ -}}
+{{- define "signoz.baseUrl" -}}
+{{- $base := include "signoz.releaseFullname" . -}}
+{{- if ne $base "" -}}
+{{- $collectorName := default "otel-collector" (dig "otelCollector" "name" "" (.Values.signoz | default dict)) -}}
+{{- $svc := printf "%s-%s" $base $collectorName | trunc 63 | trimSuffix "-" -}}
+{{- printf "http://%s.%s.svc" $svc .Release.Namespace -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
+SigNoz collector port resolvers. Default to the upstream chart's defaults
+(4317 gRPC / 4318 HTTP). Return "" when the port is disabled in subchart
+values (`...ports.<key>.enabled=false`) so callers can detect-and-fail
+rather than silently wiring an endpoint pointing at an absent port.
+*********************************************** */}}
+{{- /* The truthy check on the resolved port block mirrors the SigNoz
+       subchart's own portsConfig: `{{- if $port.enabled }}…`. That treats
+       false, null, and a missing key all as "skip the port". An operator
+       can therefore disable the port via `--set …enabled=false`,
+       `--set …enabled=null`, or by nulling the whole port block; in all
+       three cases the Service omits the port and our helper must return
+       "" so the validator catches the mismatch instead of silently
+       wiring to a non-existent port. */ -}}
+{{- define "signoz.collectorGrpcPort" -}}
+{{- $otlp := dig "otelCollector" "ports" "otlp" (dict) (.Values.signoz | default dict) -}}
+{{- if and $otlp $otlp.enabled -}}
+{{- default 4317 $otlp.servicePort -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "signoz.collectorHttpPort" -}}
+{{- $otlp := dig "otelCollector" "ports" "otlp-http" (dict) (.Values.signoz | default dict) -}}
+{{- if and $otlp $otlp.enabled -}}
+{{- default 4318 $otlp.servicePort -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
+Per-signal OTLP endpoint defaults when SigNoz is enabled and the operator
+did not set the corresponding endpoint explicitly. Per-signal (rather
+than a generic `OTEL_EXPORTER_OTLP_ENDPOINT`) is required: the application
+falls back to the generic endpoint with each signal's own protocol
+default, so a generic endpoint pinned to one protocol's port silently
+breaks the other signal when the two protocols differ — e.g.
+tracesProtocol=http/protobuf and logsProtocol unset routes logs to the
+HTTP port over gRPC.
+
+Plaintext gRPC vs HTTP/protobuf is intentional — the SigNoz subchart
+doesn't terminate TLS on its OTLP ports, matching the Compose stack.
+Operators putting SigNoz behind a TLS-terminating proxy must override
+server.otel.endpoint (or the per-signal endpoints) explicitly.
+
+The signal protocol is resolved with explicit trim-then-fallback rather
+than chained `default`. Helm's `default` only fires on its empty-set
+(empty string, nil, 0, empty list/map); a whitespace string like "   "
+is truthy for `default` but is treated as unset by the env renderer
+(which trims). Without trim-before-fallback, a whitespace tracesProtocol
++ generic protocol=http/protobuf would silently render a gRPC auto
+endpoint while the app sends HTTP.
+*********************************************** */}}
+{{- define "server.otel.resolvedSignalProtocol" -}}
+{{- /* Caller passes {signalProto, genericProto}. Returns the trimmed
+       lowercased protocol the SDK will use for that signal. */ -}}
+{{- $signal := trim (default "" .signalProto | toString) -}}
+{{- $generic := trim (default "" .genericProto | toString) -}}
+{{- if ne $signal "" -}}{{ lower $signal }}{{- else -}}{{ lower $generic }}{{- end -}}
+{{- end -}}
+
+{{- define "server.otel.signalSuffix" -}}
+{{- /* Caller passes {proto, signal, grpcPort, httpPort}; returns the port
+       (and signal path for HTTP) to append to the schemeful base URL,
+       or "" when the port for the resolved protocol is unavailable
+       (subchart's port .enabled=false → port helper returns "").
+
+       gRPC OTLP addresses services by name (no URL path) → ":<grpcPort>".
+       HTTP/protobuf signal-specific endpoints are used AS-IS by the SDK
+       (no per-signal path auto-append, unlike the generic OTLP endpoint),
+       so the suffix MUST include /v1/<signal> or POSTs land on `/` and
+       the collector 404s. */ -}}
+{{- if eq (.proto | toString) "http/protobuf" -}}
+{{- if ne (.httpPort | toString) "" -}}{{- printf ":%v/v1/%s" .httpPort .signal -}}{{- end -}}
+{{- else -}}
+{{- if ne (.grpcPort | toString) "" -}}{{- printf ":%v" .grpcPort -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- /* Per-signal default endpoints. Return "" when:
+       - signoz.enabled is false (no auto-default available), OR
+       - the SigNoz collector port for the resolved protocol is disabled.
+       NEVER fail: callers (validator/deployment/NOTES) decide whether an
+       empty result is an error based on whether OTLP is actually used
+       for that signal. Failing here would abort renders that don't
+       depend on the auto-default at all (e.g., tracesExporter=console,
+       or explicit server.otel.endpoint). */ -}}
+{{- define "server.otel.defaultTracesEndpoint" -}}
+{{- $base := include "signoz.baseUrl" . -}}
+{{- if ne $base "" -}}
+{{- $otel := .Values.server.otel | default dict -}}
+{{- $proto := include "server.otel.resolvedSignalProtocol" (dict "signalProto" $otel.tracesProtocol "genericProto" $otel.protocol) -}}
+{{- $suffix := include "server.otel.signalSuffix" (dict "proto" $proto "signal" "traces" "grpcPort" (include "signoz.collectorGrpcPort" .) "httpPort" (include "signoz.collectorHttpPort" .)) -}}
+{{- if ne $suffix "" -}}{{- printf "%s%s" $base $suffix -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "server.otel.defaultLogsEndpoint" -}}
+{{- $base := include "signoz.baseUrl" . -}}
+{{- if ne $base "" -}}
+{{- $otel := .Values.server.otel | default dict -}}
+{{- $proto := include "server.otel.resolvedSignalProtocol" (dict "signalProto" $otel.logsProtocol "genericProto" $otel.protocol) -}}
+{{- $suffix := include "server.otel.signalSuffix" (dict "proto" $proto "signal" "logs" "grpcPort" (include "signoz.collectorGrpcPort" .) "httpPort" (include "signoz.collectorHttpPort" .)) -}}
+{{- if ne $suffix "" -}}{{- printf "%s%s" $base $suffix -}}{{- end -}}
+{{- end -}}
 {{- end -}}

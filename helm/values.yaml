@@ -659,3 +659,31 @@ ollama:
     # - key: "key1"
     #   operator: "Exists"
     #   effect: "NoSchedule"
+
+# -----------------------
+# SigNoz Configuration
+# Optional in-cluster OTLP backend deployed as a subchart
+# (https://github.com/SigNoz/charts).
+#
+# When enabled, the SigNoz OTel collector becomes the default destination
+# for `server.otel`: if `server.otel.enabled=true` and `server.otel.endpoint`
+# is empty, the chart fills in the in-cluster collector URL automatically.
+# Operator-supplied `server.otel.endpoint` always wins.
+#
+# SigNoz is heavy: the default deploy runs ClickHouse, the query service,
+# the frontend, and an OTel collector. Plan for ~3-5 GiB RAM minimum.
+# For everything below the `enabled` switch, see the upstream chart's
+# values.yaml for the full surface area; the keys here pass through
+# verbatim under the `signoz:` namespace.
+signoz:
+  # -- Master switch. When false, the subchart's resources are not rendered
+  # (gated by Chart.yaml's `condition: signoz.enabled`).
+  enabled: false
+
+  # -- Override the upstream collector image, namespace placement, etc.
+  # Anything valid in https://github.com/SigNoz/charts goes here.
+  # Example surface for the collector's service:
+  #   otelCollector:
+  #     service:
+  #       type: ClusterIP   # default; LoadBalancer/NodePort also work
+  #     replicaCount: 1

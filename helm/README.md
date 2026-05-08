@@ -24,6 +24,17 @@ The Oracle AI Optimizer enables developers and data scientists to explore Large 
 - (Optional) Oracle Database Operator for ADB-S integration
 - (Optional) Storage class for persistent volumes (if using containerized databases)
 
+When installing from a working copy of the repository (rather than from the published Helm repo), register the SigNoz repository and fetch chart dependencies once:
+
+```bash
+helm repo add --force-update signoz https://charts.signoz.io
+helm dependency build
+```
+
+`helm dependency build` resolves tarballs by repository URL against `helm repo list`; without the `helm repo add` step it fails with `no repository definition for https://charts.signoz.io` even when `Chart.lock` is committed. `--force-update` makes the add idempotent.
+
+This downloads the SigNoz subchart referenced in `Chart.yaml` into `helm/charts/`, using the digest pinned in `Chart.lock`. The tarball is gitignored; rerun both commands after pulling upstream changes that bump dependency versions. Use `helm dependency update` instead of `build` if `Chart.lock` is missing or you intentionally want to re-resolve. Skip these steps entirely when installing from the published `ai-optimizer/ai-optimizer` repo — the released chart is packaged with dependencies already embedded.
+
 ## Quick Start
 
 ### 1. Generate API Key

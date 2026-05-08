@@ -13,3 +13,9 @@ maintainers:
   - name: Oracle
     email: obaas_ww@oracle.com
     url: https://github.com/oracle/ai-optimizer
+# SubCharts
+dependencies:
+  - name: signoz
+    version: "0.122.0"
+    repository: https://charts.signoz.io
+    condition: signoz.enabled

@@ -17,6 +17,13 @@ concurrency:
   group: pytest-${{ github.ref }}
   cancel-in-progress: true
 
+# Helm install script pin — referenced by every job that needs the helm
+# binary (check-helm, check-opentofu). Update both values together when
+# bumping helm.
+env:
+  HELM_INSTALL_SCRIPT_VERSION: v4.1.4
+  HELM_INSTALL_SCRIPT_SHA256: 38b65f882d9cae3891755bdb03becc6a01ae6f9cb24826c191f219ddfee70a5d
+
 jobs:
   detect-changes:
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
@@ -79,8 +86,8 @@ jobs:
             echo "helm=false" >> $GITHUB_OUTPUT
           fi
 
-          # OpenTofu
-          if echo "$CHANGED" | grep -qE '^opentofu/'; then
+          # OpenTofu — module sources or the pytest suite under tests/opentofu/
+          if echo "$CHANGED" | grep -qE '^opentofu/|^tests/opentofu/'; then
             echo "opentofu=true" >> $GITHUB_OUTPUT
           else
             echo "opentofu=false" >> $GITHUB_OUTPUT
@@ -175,12 +182,11 @@ jobs:
         run: |
           pip install yamllint pytest pyyaml
           HELM_INSTALL_SCRIPT=$(mktemp)
-          curl -fsSL -o "$HELM_INSTALL_SCRIPT" https://raw.githubusercontent.com/helm/helm/v4.1.4/scripts/get-helm-3
-          EXPECTED_HASH="38b65f882d9cae3891755bdb03becc6a01ae6f9cb24826c191f219ddfee70a5d"
+          curl -fsSL -o "$HELM_INSTALL_SCRIPT" "https://raw.githubusercontent.com/helm/helm/${HELM_INSTALL_SCRIPT_VERSION}/scripts/get-helm-3"
           ACTUAL_HASH=$(sha256sum "$HELM_INSTALL_SCRIPT" | cut -d' ' -f1)
-          if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+          if [ "$ACTUAL_HASH" != "$HELM_INSTALL_SCRIPT_SHA256" ]; then
             echo "Helm install script hash mismatch!"
-            echo "Expected: $EXPECTED_HASH"
+            echo "Expected: $HELM_INSTALL_SCRIPT_SHA256"
             echo "Actual:   $ACTUAL_HASH"
             exit 1
           fi
@@ -188,6 +194,14 @@ jobs:
 
       - name: Run yamllint
         run: yamllint helm/
+
+      - name: Build chart dependencies
+        # Pulls subchart tarballs into helm/charts/. The repo-add is
+        # required because `helm dependency build` resolves by repository
+        # URL via `helm repo list`, not by fetching the URL directly.
+        run: |
+          helm repo add --force-update signoz https://charts.signoz.io
+          helm dependency build helm/
 
       - name: Run Helm Lint (basic structure)
         run: helm lint helm/
@@ -219,10 +233,30 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install ruff
+        run: |
+          pip install ruff pytest
+          HELM_INSTALL_SCRIPT=$(mktemp)
+          curl -fsSL -o "$HELM_INSTALL_SCRIPT" "https://raw.githubusercontent.com/helm/helm/${HELM_INSTALL_SCRIPT_VERSION}/scripts/get-helm-3"
+          ACTUAL_HASH=$(sha256sum "$HELM_INSTALL_SCRIPT" | cut -d' ' -f1)
+          if [ "$ACTUAL_HASH" != "$HELM_INSTALL_SCRIPT_SHA256" ]; then
+            echo "Helm install script hash mismatch!"
+            echo "Expected: $HELM_INSTALL_SCRIPT_SHA256"
+            echo "Actual:   $ACTUAL_HASH"
+            exit 1
+          fi
+          bash "$HELM_INSTALL_SCRIPT"
 
       - name: Run Ruff
         run: ruff check opentofu
+
+      - name: Run cfgmgt pytest
+        # Exercises opentofu/cfgmgt/apply.py helpers (dep resolution, repo
+        # registration). Needs the helm binary because the helpers shell
+        # out to `helm dependency list/build/update`. pytest discovers only
+        # `test_*.py` so the non-test `validate_omr_schema.py` script in the
+        # same directory is not collected. Tests requiring tofu skip here
+        # and run in opentofu.yml's verify-iac-static instead.
+        run: pytest tests/opentofu/ -v
 
   check:
     needs:

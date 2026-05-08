@@ -118,16 +118,23 @@ spec:
                    YAML block scalars (`endpoint: |`) also leave a trailing
                    newline that this catches. */ -}}
             {{- $ep := .endpoint | default "" | trim }}
+            {{- $tep := .tracesEndpoint | default "" | trim }}
+            {{- $lep := .logsEndpoint | default "" | trim }}
+            {{- /* Per-signal (not generic) auto-default: a generic endpoint
+                   pinned to one protocol's port silently misroutes the other
+                   signal when their protocols differ. */ -}}
+            {{- if eq $ep "" }}
+            {{- if eq $tep "" }}{{- $tep = include "server.otel.defaultTracesEndpoint" $ }}{{- end }}
+            {{- if eq $lep "" }}{{- $lep = include "server.otel.defaultLogsEndpoint" $ }}{{- end }}
+            {{- end }}
             {{- if ne $ep "" }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ $ep | quote }}
             {{- end }}
-            {{- $tep := .tracesEndpoint | default "" | trim }}
             {{- if ne $tep "" }}
             - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
               value: {{ $tep | quote }}
             {{- end }}
-            {{- $lep := .logsEndpoint | default "" | trim }}
             {{- if ne $lep "" }}
             - name: OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
               value: {{ $lep | quote }}

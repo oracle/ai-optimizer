@@ -190,7 +190,9 @@ If running SigNoz on the same Docker host (e.g. via the SigNoz docker-compose), 
 
 ### Kubernetes / Helm
 
-The bundled Helm chart exposes OpenTelemetry settings under `server.otel`. Point `endpoint` at any in-cluster OTLP collector — a separately-deployed SigNoz, Jaeger, Tempo, or vendor agent. The chart does NOT install one:
+The bundled Helm chart exposes OpenTelemetry settings under `server.otel`. Two paths:
+
+**1. Bring your own OTLP collector** — point `endpoint` at a separately-deployed SigNoz, Jaeger, Tempo, or vendor agent:
 
 ```yaml
 # values overlay
@@ -204,9 +206,20 @@ server:
     # logsEnabled: true   # opt-in; review backend retention first
 ```
 
+**2. Install SigNoz alongside the application** — flip `signoz.enabled=true` and the chart deploys SigNoz as a subchart. The server's OTLP endpoint is then auto-defaulted to the in-cluster collector service URL; you only configure the OTel-side switches:
+
+```yaml
+signoz:
+  enabled: true
+server:
+  otel:
+    enabled: true
+    insecure: true   # the in-chart collector serves plaintext gRPC
+```
+
 The published image already includes the `[otel]` extra, so `enabled: true` works against the default image. Within Kubernetes, `service.instance.id` is auto-populated from `HOSTNAME` (the pod name), giving stable per-pod identity in the backend. `deployment.environment` is set automatically from the chart's `global.env` value.
 
-If `enabled: true` is set without an endpoint (and without `tracesExporter: console` for local debugging), `helm template` / `helm install` fails fast rather than silently producing zero telemetry.
+If `enabled: true` is set without an endpoint (and without `tracesExporter: console` for local debugging or `signoz.enabled=true` to use the in-chart collector), `helm template` / `helm install` fails fast rather than silently producing zero telemetry.
 
 ## Troubleshooting
 

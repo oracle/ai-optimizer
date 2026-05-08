@@ -311,6 +311,16 @@ jobs:
           done
           echo "Rebuilt $REBUILT historical tag(s); remainder served from cache"
 
+      - name: Register Helm subchart repositories
+        # `helm dependency build` resolves tarballs by repository URL; the URL
+        # in Chart.lock is matched against `helm repo list`, not fetched
+        # directly. On a fresh runner the SigNoz repo isn't registered, so
+        # `dependency build` fails with `no repository definition for
+        # https://charts.signoz.io`. Register before any packaging step that
+        # relies on it. `--force-update` is idempotent across re-runs.
+        run: |
+          helm repo add --force-update signoz https://charts.signoz.io
+
       - name: Package Tagged Helm Charts
         run: |
           mkdir -p docs/public/helm
@@ -327,8 +337,17 @@ jobs:
               echo "Packaging helm chart for $TAG (version: $VERSION)"
               WORKDIR=$(mktemp -d)
               git worktree add "$WORKDIR" "$TAG"
+              if grep -q "^dependencies:" "$WORKDIR/helm/Chart.yaml"; then
+                helm dependency build "$WORKDIR/helm"
+              fi
               helm package "$WORKDIR/helm" -d docs/public/helm --version "$VERSION" --app-version "$VERSION" --debug
-              git worktree remove "$WORKDIR"
+              # --force: the worktree is a mktemp scratch dir, and even if a
+              # future helm version starts emitting files that aren't matched
+              # by the chart's .gitignore (currently `helm/**/*.tgz` covers
+              # the dep tarball), `git worktree remove` would refuse to clean
+              # up an apparently dirty tree and abort the rest of Pages
+              # publication. There's nothing of value in this worktree.
+              git worktree remove --force "$WORKDIR"
               PACKAGED=$((PACKAGED + 1))
             else
               echo "Tag $TAG does not match vMAJOR.MINOR.PATCH — skipping"
@@ -337,7 +356,9 @@ jobs:
           echo "Packaged $PACKAGED new chart(s); remainder served from cache"
 
       - name: Package Main Helm chart
-        run: helm package helm -d docs/public/helm --debug
+        run: |
+          helm dependency build helm
+          helm package helm -d docs/public/helm --debug
 
       - name: Index Helm charts
         run: helm repo index docs/public/helm --url "${{ steps.pages.outputs.base_url }}/helm"

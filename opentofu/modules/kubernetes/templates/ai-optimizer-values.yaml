@@ -29,6 +29,14 @@ server:
     oke: true
     region: "${oci_region}"
 
+  # -- OpenTelemetry export to the in-cluster SigNoz collector.
+  # Endpoint auto-populates from signoz.enabled below; otel must follow
+  # signoz_enabled because BYO OCIR forces signoz off and the chart
+  # validator rejects otel-on with no endpoint.
+  otel:
+    enabled: ${signoz_enabled}
+    insecure: true
+
   # -- Oracle Database Configuration
   database:
 %{ if db_type == "OTHER" ~}
@@ -71,6 +79,15 @@ client:
     disableModelCfg: false
     disableOciCfg: false
     disableSettings: false
+
+# -- Self-hosted SigNoz observability backend. Server telemetry is wired
+# automatically because server.otel.enabled tracks is_observability_enabled.
+# Forced off in BYO OCIR installs (see signoz_enabled in cfgmgt_optimizer.tf):
+# the subchart's images would bypass the BYO contract. The UI is not exposed
+# via ingress; reach it with:
+#   kubectl port-forward -n <ns> svc/<release>-signoz 8080:8080
+signoz:
+  enabled: ${signoz_enabled}
 
 ollama:
   enabled: ${node_pool_gpu_deploy}
