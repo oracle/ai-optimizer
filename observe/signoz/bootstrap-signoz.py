@@ -3,9 +3,9 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Bootstrap a SigNoz install with this directory's curated dashboards and
-alert rules. Targets a fresh install or one that has just been wiped via
-``compose down -v``.
+Bootstrap a SigNoz install with the curated dashboards and alert rules
+under ``helm/observe/signoz/``. Targets a fresh install or one that has
+just been wiped via ``compose down -v``.
 
 Re-running creates duplicates because SigNoz assigns a new id per POST.
 The intended workflow is: bootstrap once into a fresh install; further
@@ -171,7 +171,7 @@ def load_directory(host: str, token: str, label: str, directory: Path, endpoint:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Bootstrap a SigNoz install with this directory's dashboards and alerts.",
+        description="Bootstrap a SigNoz install with the dashboards and alerts under helm/observe/signoz/.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -265,16 +265,17 @@ def main(argv: list[str] | None = None) -> int:
         print(token)
         return 0
 
-    here = Path(__file__).resolve().parent
+    repo_root = Path(__file__).resolve().parents[2]
+    assets_root = repo_root / "helm" / "observe" / "signoz"
     print(f"Bootstrapping SigNoz at {args.host}")
 
     failures = 0
     if not args.alerts_only:
         print("\nDashboards:")
-        failures += load_directory(args.host, token, "dashboard", here / "dashboards", DASHBOARDS_PATH)
+        failures += load_directory(args.host, token, "dashboard", assets_root / "dashboards", DASHBOARDS_PATH)
     if not args.dashboards_only:
         print("\nAlerts:")
-        failures += load_directory(args.host, token, "alert", here / "alerts", RULES_PATH)
+        failures += load_directory(args.host, token, "alert", assets_root / "alerts", RULES_PATH)
 
     print()
     if failures > 0:
