@@ -1,0 +1,28 @@
+# Driver 85 Briefing Pack
+
+Document type: Driver briefing and coaching notes
+Driver label: Driver 85
+Driver code: Driver085
+Team: Nova Circuit
+Team engineering focus: Brake Stability
+Driver group: Cohort E
+Simulator rig: Rig 10
+Vehicle setup: Traction Focus
+Driving style: Tyre Saver
+Primary skill focus: Strategy Awareness
+
+## Driver Briefing
+
+Driver 85 is running with a Traction Focus baseline on Rig 10. The profile remains Tyre Saver, which fits the current Nova Circuit programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
+
+## Coaching Notes
+
+Main priority: Strategy Awareness. The coach is most concerned about lap-time consistency after overtaking attempts. Next session should include two jobs: try a shorter first stint to protect track position; then review the final-sector trace before the next session. Out-lap calls need to be brief and made before the lap time falls away.
+
+## Race Engineer Debrief
+
+Pit wall liked the tyre-feel calls but wants brake temp reports earlier. The sim trace supports a lower-risk braking profile, although the driver feedback asked for more rotation on entry. Use the trace to separate setup limitation from execution: compare out-lap, ERS, Vmin, and tyre phase before changing the car.
+
+## Simulator Preparation Note
+
+Before the next run, prepare a two-line plan for the opening stint and one fallback plan for the box window. Feedback should name the corner phase, describe the car behaviour, and connect it to lap time, tyre wear, top speed, mistakes, or overtaking opportunities.
