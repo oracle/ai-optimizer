@@ -646,3 +646,112 @@ class TestSigNozAutoEndpointHttpProtocol:
                 f"{var} hard-codes cluster.local; use <svc>.<ns>.svc instead. "
                 f"got {ep['value']!r}"
             )
+
+
+def _signoz_setup_job(docs: list[dict]) -> dict | None:
+    """Return the SigNoz setup Job document, or None if not rendered."""
+    for d in docs:
+        if (
+            d.get("kind") == "Job"
+            and "signoz-setup" in d.get("metadata", {}).get("name", "")
+        ):
+            return d
+    return None
+
+
+class TestSigNozSetupJobGating:
+    """The setup Job logs in with credentials from the authn Secret. SigNoz
+    only provisions an admin from those credentials when
+    SIGNOZ_USER_ROOT_ENABLED=true. With root provisioning off, no admin
+    exists at first install and the Job's login fails repeatedly until it
+    exhausts backoffLimit, which makes `helm install --wait` fail."""
+
+    def test_setup_job_renders_with_default_root_enabled(self):
+        """Positive gate: with the chart-default values the Job must render."""
+        result = _render(*_SIGNOZ_OTEL_BASE)
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        job = _signoz_setup_job(_docs(result.stdout))
+        assert job is not None, (
+            "signoz-setup Job should render under default values "
+            "(SIGNOZ_USER_ROOT_ENABLED=true)"
+        )
+
+    def test_setup_job_omitted_when_root_provisioning_disabled(self):
+        """When the operator opts out of root provisioning, the Job must not
+        render — there is no auto-provisioned admin for it to authenticate
+        as, so it would loop until backoffLimit and fail `helm --wait`."""
+        result = _render_raw(
+            *_set_args(*_SIGNOZ_OTEL_BASE),
+            "--set-string", "signoz.signoz.env.SIGNOZ_USER_ROOT_ENABLED=false",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        job = _signoz_setup_job(_docs(result.stdout))
+        assert job is None, (
+            "signoz-setup Job rendered with SIGNOZ_USER_ROOT_ENABLED=false; "
+            "no admin user is auto-provisioned in this mode, so the Job's "
+            "login will fail until backoffLimit and break helm --wait. "
+            "Job:\n" + (yaml.safe_dump(job) if job else "")
+        )
+
+    def test_setup_job_omitted_when_signoz_disabled(self):
+        """Pre-existing gate: Job is tied to signoz.enabled."""
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "signoz.enabled=false",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        job = _signoz_setup_job(_docs(result.stdout))
+        assert job is None, (
+            "signoz-setup Job should not render when signoz.enabled=false"
+        )
+
+    def test_setup_job_renders_with_object_form_root_enabled(self, tmp_path):
+        """SigNoz's renderEnv accepts env-map entries in scalar form
+        (`KEY: "v"`) AND object form (`KEY: {value: "v"}`). The chart
+        renders root-provisioning identically in both cases (the subchart
+        emits `value: "true"` regardless), so the gate must accept both —
+        otherwise an operator using the object form gets root provisioning
+        but no setup Job, and the bundled dashboards/alerts never load."""
+        values_file = tmp_path / "object-form.yaml"
+        values_file.write_text(
+            "signoz:\n"
+            "  signoz:\n"
+            "    env:\n"
+            "      SIGNOZ_USER_ROOT_ENABLED:\n"
+            "        value: \"true\"\n"
+        )
+        result = _render_raw(
+            *_set_args(*_SIGNOZ_OTEL_BASE),
+            "-f", str(values_file),
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        job = _signoz_setup_job(_docs(result.stdout))
+        assert job is not None, (
+            "signoz-setup Job should render when SIGNOZ_USER_ROOT_ENABLED is "
+            "supplied as the object form {value: 'true'} — the subchart "
+            "still provisions the admin user, so the dashboards/alerts "
+            "reconciliation Job must run."
+        )
+
+    def test_setup_job_omitted_with_object_form_root_disabled(self, tmp_path):
+        """Symmetric negative: object form with value:'false' must keep the
+        Job suppressed (operator did opt out, just via the alternate shape)."""
+        values_file = tmp_path / "object-form-off.yaml"
+        values_file.write_text(
+            "signoz:\n"
+            "  signoz:\n"
+            "    env:\n"
+            "      SIGNOZ_USER_ROOT_ENABLED:\n"
+            "        value: \"false\"\n"
+        )
+        result = _render_raw(
+            *_set_args(*_SIGNOZ_OTEL_BASE),
+            "-f", str(values_file),
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        job = _signoz_setup_job(_docs(result.stdout))
+        assert job is None, (
+            "signoz-setup Job rendered with object-form "
+            "SIGNOZ_USER_ROOT_ENABLED={value: 'false'}; the gate must read "
+            "the unwrapped value from object form, not just from scalar form."
+        )

@@ -1,0 +1,227 @@
+## Copyright (c) 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore signoz authn nindent orgId accessToken urlencode
+{{- /* The Job authenticates with credentials from the authn Secret. SigNoz
+       only provisions an admin from those credentials when
+       SIGNOZ_USER_ROOT_ENABLED=true; with root provisioning off no admin
+       exists at first install and the Job loops until backoffLimit, which
+       breaks helm install --wait. */ -}}
+{{- if and .Values.signoz.enabled (include "signoz.rootProvisioningEnabled" .) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "global.fullname" . }}-signoz-setup-{{ .Release.Revision }}
+  labels:
+    app.kubernetes.io/component: observability
+    {{- include "global.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 3
+  completions: 1
+  parallelism: 1
+  suspend: false
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: observability
+        {{- include "global.labels" . | nindent 8 }}
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - signoz
+            topologyKey: "kubernetes.io/hostname"
+      {{- include "global.imagePullSecrets" (dict "local" (list) "global" .Values.global.imagePullSecrets) | nindent 6 }}
+      initContainers:
+      - name: wait-for-signoz-service
+        image: {{ include "global.image" (dict "image" .Values.images.curl "global" .Values.global) | quote }}
+        imagePullPolicy: {{ .Values.images.curl.pullPolicy | default "IfNotPresent" }}
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          {{- include "global.shellWaitFunc" . | nindent 10 }}
+          wait_until "signoz-service" 120 5 curl -sf -o /dev/null {{ include "signoz.frontendUrl" . }}/api/v1/health?live=1
+          echo "signoz-service ready"
+      containers:
+      - name: signoz-setup
+        image: {{ include "global.image" (dict "image" .Values.images.curl "global" .Values.global) | quote }}
+        imagePullPolicy: {{ .Values.images.curl.pullPolicy | default "IfNotPresent" }}
+        command:
+        - /bin/sh
+        - -c
+        args:
+        - |
+          set -eu
+          SIGNOZ_URL={{ include "signoz.frontendUrl" . | quote }}
+          email=$(cat /signoz-authn/email)
+          password=$(cat /signoz-authn/password)
+          orgName=$(cat /signoz-authn/orgName)
+
+          # Safe only for printable-ASCII inputs (no newlines, tabs, control
+          # chars). The chart's auto-generated password uses alnum and the
+          # email/orgId are operator-supplied ASCII strings, so this is enough.
+          json_escape() {
+            sed 's/\\/\\\\/g; s/"/\\"/g'
+          }
+
+          # Decode the Unicode escapes that appear in bundled dashboard/alert
+          # titles. Add new entries here when introducing new Unicode in source
+          # files; arbitrary \uXXXX decoding is out of scope for POSIX shell.
+          normalize_json_string() {
+            sed 's/\\u2013/–/g; s/\\u2014/—/g; s/\\u2026/…/g'
+          }
+
+          # Returns the FIRST `"key":"value"` match in the input. Assumes
+          # the value contains no escaped quotes (`\"`); bundled JSON titles
+          # are plain ASCII so this holds. Also relies on the queried key
+          # being unique at the level we care about (e.g., the login
+          # response's `accessToken` is the only such key — shallow extraction
+          # is fine).
+          json_string_value() {
+            key="$1"
+            sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" \
+              | head -n 1 \
+              | normalize_json_string
+          }
+
+          # Emit "<name>\t<id>" lines for each object containing both `id`
+          # and `<name_key>`. Handles both string ids ("id":"abc") and
+          # numeric ids ("id":42).
+          # NOTE: walks pairs at any nesting depth, so responses with nested
+          # objects (e.g., dashboards with panels) may emit nested-object
+          # pairs alongside the intended top-level ones. lookup() still
+          # returns the correct id as long as no nested-object name collides
+          # with a queried top-level name.
+          json_pairs() {
+            name_key="$1"
+            tr -d '\n\r' \
+              | tr ',{' '\n\n' \
+              | awk -F'"' -v name_key="$name_key" '
+                  # Two id shapes: "id":"abc" puts the value in $4 between
+                  # the third and fourth quote; "id":42 has no surrounding
+                  # quotes, so the value sits in $3 as ":42" or ":42}" and
+                  # we strip the leading `:` and trailing non-digits.
+                  $2 == "id" {
+                    if ($4 != "") {
+                      id = $4
+                    } else {
+                      s = $3
+                      sub(/^:[ \t]*/, "", s)
+                      sub(/[^0-9].*$/, "", s)
+                      if (s != "") id = s
+                    }
+                  }
+                  $2 == name_key { name = $4 }
+                  id != "" && name != "" {
+                    print name "\t" id
+                    id = ""
+                    name = ""
+                  }
+                ' \
+              | normalize_json_string
+          }
+
+          lookup() {
+            printf '%s\n' "$2" | awk -F'\t' -v k="$1" '$1 == k { print $2; exit }'
+          }
+
+          # v2 login requires orgId; resolve it from the org name via session-context
+          # (matches the API surface used by observability/signoz/bootstrap-signoz.py).
+          ctx=$(curl -sf -G \
+            --data-urlencode "email=${email}" \
+            --data-urlencode "ref=${SIGNOZ_URL}" \
+            "${SIGNOZ_URL}/api/v2/sessions/context")
+          org_index=$(printf '%s' "$ctx" | json_pairs name)
+          orgId=$(lookup "$orgName" "$org_index")
+          if [ -z "$orgId" ]; then
+            echo "ERROR: could not resolve orgId for org name '${orgName}'"
+            echo "Response: $ctx"
+            exit 1
+          fi
+
+          email_json=$(printf '%s' "$email" | json_escape)
+          password_json=$(printf '%s' "$password" | json_escape)
+          orgId_json=$(printf '%s' "$orgId" | json_escape)
+          login=$(curl -sf -H 'Content-Type: application/json' \
+            -d "{\"email\":\"${email_json}\",\"password\":\"${password_json}\",\"orgId\":\"${orgId_json}\"}" \
+            "${SIGNOZ_URL}/api/v2/sessions/email_password")
+          TOKEN=$(printf '%s' "$login" | json_string_value accessToken)
+          if [ -z "$TOKEN" ]; then
+            echo "ERROR: login response missing data.accessToken"
+            echo "Response: $login"
+            exit 1
+          fi
+          echo "Login successful"
+          AUTH_HEADER="Authorization: Bearer ${TOKEN}"
+
+          reconcile() {
+            dir="$1"; api="$2"; name_key="$3"; label="$4"
+            [ -d "$dir" ] || return 0
+            echo "Fetching existing ${label}s..."
+            existing=$(curl -sf -H "${AUTH_HEADER}" "${SIGNOZ_URL}${api}")
+            index=$(printf '%s' "$existing" | json_pairs "$name_key")
+            rc=0
+            for f in "$dir"/*; do
+              [ -f "$f" ] || continue
+              title=$(json_string_value "$name_key" < "$f")
+              [ -z "$title" ] && continue
+              echo "Reconciling ${label}: $title"
+              id=$(lookup "$title" "$index")
+              if [ -n "$id" ]; then
+                echo "  Updating in place: $id"
+                verb=PUT; url="${SIGNOZ_URL}${api}/$id"
+              else
+                echo "  Creating..."
+                verb=POST; url="${SIGNOZ_URL}${api}"
+              fi
+              if curl -sf -H "${AUTH_HEADER}" -H 'Content-Type: application/json' \
+                  -X "$verb" -d @"${f}" "$url"; then
+                echo "  Done"
+              else
+                echo "  Failed"
+                rc=1
+              fi
+            done
+            return $rc
+          }
+
+          setup_rc=0
+          reconcile /signoz-dashboards /api/v1/dashboards title dashboard || setup_rc=1
+          reconcile /signoz-alerts /api/v2/rules alert "alert rule" || setup_rc=1
+
+          if [ "$setup_rc" -ne 0 ]; then
+            echo "SigNoz setup completed with failures"
+            exit 1
+          fi
+          echo "SigNoz setup complete"
+        volumeMounts:
+        - mountPath: /signoz-dashboards
+          name: signoz-dashboards
+          readOnly: true
+        - mountPath: /signoz-alerts
+          name: signoz-alerts
+          readOnly: true
+        - mountPath: /signoz-authn
+          name: signoz-authn
+          readOnly: true
+      restartPolicy: OnFailure
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: {{ include "global.fullname" . }}-signoz-dashboards
+        name: signoz-dashboards
+      - configMap:
+          defaultMode: 420
+          name: {{ include "global.fullname" . }}-signoz-alerts
+        name: signoz-alerts
+      - name: signoz-authn
+        secret:
+          secretName: {{ include "signoz.authnSecretName" . }}
+{{- end }}

@@ -62,6 +62,107 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 
 {{/* ******************************************
+Resolved image string for any component.
+
+Pass: dict "image" .Values.<component>.image "global" .Values.global
+
+Returns "<registry>/<repository>:<tag>". When .global.imageRegistry is
+non-empty it wins over .image.registry — this is the chart-wide registry
+override (set --set global.imageRegistry=mirror.acme.local once and every
+component pulls from the mirror).
+
+If `.image.repository` is already host-qualified (its first slash-segment
+contains a `.` or `:`, or is exactly `localhost`, e.g.
+`iad.ocir.io/tenant/proj/ai-optimizer-server`, `localhost:5000/foo`, or
+`localhost/ai-optimizer-server`), it's used verbatim and both
+`.image.registry` and `.global.imageRegistry` are ignored — preventing
+nonsensical refs like `localhost/iad.ocir.io/...` or
+`localhost/localhost/...` when an operator passes a fully-qualified
+repository alongside the chart's default registry. Operators who want
+the global mirror to override must use unqualified repositories.
+*********************************************** */}}
+{{- define "global.image" -}}
+{{- $repo := .image.repository -}}
+{{/* Tag fallback: use the explicit `image.tag` when set; otherwise the
+     caller-supplied `appVersion` (typically `.Chart.AppVersion`). Restores
+     the pre-helper behavior of `image.tag | default .Chart.AppVersion`
+     so existing values overrides that set tag="" don't render as
+     `repo:` (trailing colon). */}}
+{{- $tag := .image.tag -}}
+{{- if not $tag -}}
+{{- $tag = .appVersion | default "" -}}
+{{- end -}}
+{{- $tag = $tag | toString -}}
+{{- $first := index (splitList "/" $repo) 0 -}}
+{{- $repoHasHost := or (contains "." $first) (contains ":" $first) (eq $first "localhost") -}}
+{{- if $repoHasHost -}}
+{{- printf "%s:%s" $repo $tag -}}
+{{- else -}}
+{{- $reg := default .image.registry .global.imageRegistry | default "" -}}
+{{- if $reg -}}
+{{- printf "%s/%s:%s" $reg $repo $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repo $tag -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+
+{{/* ******************************************
+Render an `imagePullSecrets:` block when the merged list of
+component-level + global pull secrets is non-empty. Renders nothing
+when both lists are empty.
+
+Pass: dict "local" .Values.<component>.imagePullSecrets "global" .Values.global.imagePullSecrets
+
+Entries may be plain strings ("mirror-creds") or maps ({name: mirror-creds});
+both are normalized to the pod-spec map form.
+*********************************************** */}}
+{{- define "global.imagePullSecrets" -}}
+{{- $merged := concat (default (list) .global) (default (list) .local) | uniq -}}
+{{- with $merged }}
+imagePullSecrets:
+{{- range . }}
+{{- if kindIs "map" . }}
+- {{ toYaml . | nindent 2 | trim }}
+{{- else }}
+- name: {{ . }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+
+{{/* ******************************************
+Shell library for chart-managed Job containers.
+
+Emits a POSIX `wait_until` function: runs the given command repeatedly
+until it exits 0 or `max` attempts elapse. On exhaustion it returns
+non-zero (so callers using `set -e` abort, and the Job's backoffLimit
+takes over). Stdout/stderr from the probed command are not redirected,
+so callers control verbosity via the command itself (e.g., `curl -s`).
+
+Usage in a script:
+  {{`{{ include "global.shellWaitFunc" . | nindent 10 }}`}}
+  wait_until "<label>" <max> <sleep_s> <cmd> [args...]
+*********************************************** */}}
+{{- define "global.shellWaitFunc" -}}
+wait_until() {
+  label="$1"; max="$2"; s="$3"; shift 3
+  i=1
+  while [ "$i" -le "$max" ]; do
+    if "$@"; then return 0; fi
+    echo "Waiting for $label ($i/$max)"
+    sleep "$s"
+    i=$((i + 1))
+  done
+  echo "ERROR: $label not ready after $max attempts" >&2
+  return 1
+}
+{{- end }}
+
+
+{{/* ******************************************
 Validate that either global.api.apiKey or global.api.secretName is provided.
 *********************************************** */}}
 {{- define "global.apiKeyOrSecretName.required" -}}
@@ -494,9 +595,13 @@ Password Generator for Databases
   {{- $randOffset := int (randInt 0 $range) -}}
   {{- $length := add $minLen $randOffset -}}
 
-  {{- /* Required characters */ -}}
-  {{- $upper := randAlphaNum $one | upper -}}
-  {{- $lower := randAlphaNum $one | lower -}}
+  {{- /* Required characters. randAlpha (NOT randAlphaNum) is required
+         for the upper/lower slots: randAlphaNum can return a digit, and
+         `| upper` / `| lower` are no-ops on digits, so the random remainder
+         might leave the password with no uppercase letter at all — failing
+         downstream validators (e.g., SigNoz root-user provisioning). */ -}}
+  {{- $upper := randAlpha $one | upper -}}
+  {{- $lower := randAlpha $one | lower -}}
   {{- $digit := randNumeric $one -}}
   {{- $start := randAlpha $one | lower -}}
 
@@ -773,6 +878,48 @@ SigNoz subchart version exactly.
 {{- $collectorName := default "otel-collector" (dig "otelCollector" "name" "" (.Values.signoz | default dict)) -}}
 {{- $svc := printf "%s-%s" $base $collectorName | trunc 63 | trimSuffix "-" -}}
 {{- printf "http://%s.%s.svc" $svc .Release.Namespace -}}
+{{- end -}}
+{{- end -}}
+
+
+{{- /* Resolved name of the Secret holding the SigNoz admin credentials.
+       Mirrors `global.apiSecretName` / `client.cookieSecretName`: callers
+       use this rather than re-applying `default "signoz-authn"` everywhere
+       (chart's authn-secret.yaml + the setup Job's volume mount). */ -}}
+{{- define "signoz.authnSecretName" -}}
+{{- .Values.signoz.auth.secretName | default "signoz-authn" -}}
+{{- end -}}
+
+
+{{- /* Whether SigNoz auto-provisions an admin from SIGNOZ_USER_ROOT_*.
+       The subchart's renderEnv accepts env-map entries in scalar form
+       (`KEY: "v"`) AND object form (`KEY: {value: "v"}`), and emits the
+       same `value: "v"` envVar for both. Callers must accept both shapes
+       — a `dig | toString` on the object form yields `map[value:true]`
+       and false-negatives the predicate. valueFrom-resolved entries are
+       treated as unset (a runtime-resolved boolean toggle is unsupported;
+       operators set this knob directly). Returns "true" or "". */ -}}
+{{- define "signoz.rootProvisioningEnabled" -}}
+{{- $raw := dig "signoz" "env" "SIGNOZ_USER_ROOT_ENABLED" "" (.Values.signoz | default dict) -}}
+{{- $value := "" -}}
+{{- if kindIs "map" $raw -}}
+{{- $value = dig "value" "" $raw -}}
+{{- else -}}
+{{- $value = $raw -}}
+{{- end -}}
+{{- if eq ($value | toString) "true" -}}true{{- end -}}
+{{- end -}}
+
+
+{{- /* Schemeful URL of the in-cluster SigNoz frontend (the dashboards/rules
+       API the setup Job talks to), with port. Mirrors `signoz.baseUrl` but
+       targets the frontend service rather than the otel-collector service.
+       Returns "" when signoz.enabled is false so callers can gate. */ -}}
+{{- define "signoz.frontendUrl" -}}
+{{- $base := include "signoz.releaseFullname" . -}}
+{{- if ne $base "" -}}
+{{- $port := dig "signoz" "service" "port" 8080 (.Values.signoz | default dict) -}}
+{{- printf "http://%s.%s.svc:%v" $base .Release.Namespace $port -}}
 {{- end -}}
 {{- end -}}
 

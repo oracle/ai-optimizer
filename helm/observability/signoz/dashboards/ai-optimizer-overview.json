@@ -306,6 +306,5 @@
       "title": "LLM tokens (sum, by model)",
       "yAxisUnit": "short"
     }
-  ],
-  "uuid": "019df749-754f-75db-8d8e-0e4649d9d030"
+  ]
 }

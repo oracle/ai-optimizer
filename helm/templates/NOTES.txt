@@ -96,8 +96,8 @@ SIGNOZ (OBSERVABILITY)
        (defaults to 8080). Hardcoding the remote port would break operators
        who legitimately pass through `signoz.signoz.service.port`. */ -}}
 {{- $signozPort := dig "signoz" "service" "port" 8080 (.Values.signoz | default dict) -}}
-{{- $rootEnabled := eq (dig "signoz" "env" "SIGNOZ_USER_ROOT_ENABLED" "" (.Values.signoz | default dict) | toString) "true" -}}
-{{- $rootEmail := dig "signoz" "env" "SIGNOZ_USER_ROOT_EMAIL" "" (.Values.signoz | default dict) -}}
+{{- $rootEnabled := include "signoz.rootProvisioningEnabled" . -}}
+{{- $authnSecret := include "signoz.authnSecretName" . -}}
 SigNoz is deployed in this release. Port-forward to reach the UI:
   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "signoz.releaseFullname" . }} 8080:{{ $signozPort }}
 
@@ -106,8 +106,22 @@ Then open in your browser:
 
 {{ if $rootEnabled -}}
 The admin account is auto-provisioned at first start. Log in with:
-  email:    {{ $rootEmail }}
-  password: from the secret referenced by SIGNOZ_USER_ROOT_PASSWORD in signoz.signoz.env
+{{- if .Values.signoz.auth.existingSecret }}
+  email:    from the `email` key in Secret {{ $authnSecret | quote }}
+  password: from the `password` key in Secret {{ $authnSecret | quote }}
+{{- else }}
+  {{- /* Mirror authn-secret.yaml's preserve-on-upgrade behavior:
+         once the Secret exists, the email it stores is what SigNoz
+         actually provisioned, regardless of any later edit to
+         signoz.auth.email. Show that, not the (ignored) values default. */ -}}
+  {{- $existingAuthn := lookup "v1" "Secret" .Release.Namespace $authnSecret -}}
+  {{- $email := .Values.signoz.auth.email -}}
+  {{- if and $existingAuthn (hasKey $existingAuthn.data "email") }}
+    {{- $email = index $existingAuthn.data "email" | b64dec -}}
+  {{- end }}
+  email:    {{ $email }}
+  password: from the `password` key in Secret {{ $authnSecret | quote }}
+{{- end }}
 {{- else -}}
 The first visit prompts you to create an admin account.
 {{- end }}

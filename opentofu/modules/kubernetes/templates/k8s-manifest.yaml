@@ -37,10 +37,12 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${label}-signoz-authn
+  name: signoz-authn
   namespace: ${label}
 type: Opaque
 stringData:
+  orgName: "AIOptimizer"
+  email: "admin@${label}.local"
   password: "${signoz_authn}"
 %{ endif }
 ---

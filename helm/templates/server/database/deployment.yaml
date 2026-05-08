@@ -35,9 +35,10 @@ spec:
         fsGroup: 54321
         runAsGroup: 54321
         runAsUser: 54321
+      {{- include "global.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: db-container
-          image: {{ .Values.server.database.image.repository }}:{{ .Values.server.database.image.tag }}
+          image: {{ include "global.image" (dict "image" .Values.server.database.image "global" .Values.global) | quote }}
           imagePullPolicy: {{ .Values.server.database.image.pullPolicy | default "IfNotPresent" }}
           ports:
             - containerPort: 1521

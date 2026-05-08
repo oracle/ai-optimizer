@@ -37,6 +37,45 @@ global:
   # and which file path the envSecret is mounted as (/app/.env.{env}).
   env: "prd"
 
+  # -- Mirror registry for private-registry deployments. When non-empty, replaces
+  # the `registry` portion of every component image in this chart (server,
+  # client, ollama, database, sqlcl) and propagates into the SigNoz subchart
+  # via Helm's global injection. Component-level `image.registry` values
+  # are ignored while this is set.
+  # Example: "mirror.acme.local"
+  imageRegistry: ""
+
+  # -- Image pull secrets applied to every pod spec in this chart, and
+  # propagated into the SigNoz subchart. Component-level `imagePullSecrets`
+  # are merged with this list. Each entry is a Secret of type
+  # kubernetes.io/dockerconfigjson that must already exist in the namespace.
+  # Use the bare-string form here: the SigNoz subchart's pull-secret helper
+  # renders `- name: {{ . }}` and would emit `name: map[name:...]` for the
+  # `{name: ...}` map form. Component-level `<component>.imagePullSecrets`
+  # below accept either form, since they're consumed only by this chart.
+  # Example: [mirror-creds]
+  imagePullSecrets: []
+
+# -----------------------
+# -- Shared utility images used by chart-managed jobs (not tied to a
+# single component). Each entry is consumed via the `global.image`
+# helper, so `global.imageRegistry` overrides the per-image `registry`.
+images:
+  # sqlcl: runs the database init Job (creates the AIO user, runs setup SQL).
+  sqlcl:
+    registry: container-registry.oracle.com
+    repository: database/sqlcl
+    tag: "25.3.0"
+    pullPolicy: IfNotPresent
+
+  # curl: used by chart-managed Jobs that only need HTTP calls and POSIX
+  # shell helpers (for example, the SigNoz setup Job).
+  curl:
+    registry: docker.io
+    repository: curlimages/curl
+    tag: "8.20.0"
+    pullPolicy: IfNotPresent
+
 # -----------------------
 # Server Configuration
 server:
@@ -70,8 +109,10 @@ server:
 
   # image: Image and Tag to pull including pull policy
   image:
-    # -- Image Repository
-    repository: localhost/ai-optimizer-server
+    # -- Registry host. Overridden by global.imageRegistry when that is set.
+    registry: localhost
+    # -- Image repository (path part, no host)
+    repository: ai-optimizer-server
     pullPolicy: IfNotPresent
     # -- Image Tag
     tag: latest
@@ -114,6 +155,10 @@ server:
     type: ""
     # -- For SIDB-FREE/ADB-FREE, location of the image and its tag; Exclude for ADB-S
     image:
+      # -- Registry host. Overridden by global.imageRegistry when that is set.
+      # When empty, `repository` is used verbatim (e.g. when the host is baked
+      # into the repository string).
+      registry: ""
       # -- For SIDB-FREE/ADB-FREE, repository location of the image
       repository: ""
       pullPolicy: IfNotPresent
@@ -413,8 +458,10 @@ client:
 
   # image: Image and Tag to pull including pull policy
   image:
-    # -- Image Repository
-    repository: localhost/ai-optimizer-client
+    # -- Registry host. Overridden by global.imageRegistry when that is set.
+    registry: localhost
+    # -- Image repository (path part, no host)
+    repository: ai-optimizer-client
     # -- Image Tag
     tag: latest
     pullPolicy: IfNotPresent
@@ -589,8 +636,10 @@ ollama:
 
   # image: Image and Tag to pull including pull policy
   image:
-    # -- Image Repository
-    repository: docker.io/ollama/ollama
+    # -- Registry host. Overridden by global.imageRegistry when that is set.
+    registry: docker.io
+    # -- Image repository (path part, no host)
+    repository: ollama/ollama
     # -- Image Tag
     tag: latest
     pullPolicy: IfNotPresent
@@ -689,16 +738,45 @@ signoz:
   # -- Master switch. When false, the subchart's resources are not rendered
   # (gated by Chart.yaml's `condition: signoz.enabled`).
   enabled: false
-
-  # -- Overrides the registry portion of every subchart image. Mirror the
-  # upstream `<owner>/<image>:<tag>` paths under it; leave unset to pull
-  # from the public registries.
-  global:
-    imageRegistry: ""
-
-  # -- Airgapped clusters must also set clickhouse.initContainers.udf.enabled=false
-  # — the udf initContainer wgets a binary from github.com at pod start and
-  # fails with no egress. Trade-off: the histogramQuantile UDF is unavailable.
+  # -- Authentication configuration for the SigNoz admin user.
+  auth:
+    # -- When false (default), this chart creates the Secret named below
+    # with an auto-generated password. When true, the operator must
+    # pre-create the Secret. Required keys: email, password, orgName.
+    existingSecret: false
+    # -- Name of the Secret that holds the SigNoz admin credentials.
+    # Read by both the chart's authn-secret template and the setup Job's
+    # volume mount. To use a name other than `signoz-authn`, ALSO override
+    # the three `signoz.signoz.env.SIGNOZ_USER_ROOT_*.valueFrom.secretKeyRef.name`
+    # entries below — the subchart env block is static YAML and cannot
+    # follow this value.
+    secretName: "signoz-authn"
+    # -- Org display name for the admin user (ignored when existingSecret: true).
+    orgName: "AIOptimizer"
+    # -- Email for the admin user (ignored when existingSecret: true).
+    # The matching password is auto-generated and stored in the Secret.
+    email: "admin@aioptimizer.local"
+  signoz:
+    env:
+      SIGNOZ_USER_ROOT_ENABLED: "true"
+      SIGNOZ_USER_ROOT_ORG_NAME:
+        valueFrom:
+          secretKeyRef:
+            name: "signoz-authn"
+            key: orgName
+      SIGNOZ_USER_ROOT_EMAIL:
+        valueFrom:
+          secretKeyRef:
+            name: "signoz-authn"
+            key: email
+      SIGNOZ_USER_ROOT_PASSWORD:
+        valueFrom:
+          secretKeyRef:
+            name: "signoz-authn"
+            key: password
+  # -- Private-registry deployments should also set clickhouse.initContainers.udf.enabled=false
+  # because the udf initContainer downloads a binary from github.com at pod start.
+  # Trade-off: the histogramQuantile UDF is unavailable.
 
   # -- Override the upstream collector image, namespace placement, etc.
   # Anything valid in https://github.com/SigNoz/charts goes here.

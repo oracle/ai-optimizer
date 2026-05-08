@@ -17,9 +17,11 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      {{- include "global.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
       - name: oracle-sqlcl-runner
-        image: container-registry.oracle.com/database/sqlcl:latest
+        image: {{ include "global.image" (dict "image" .Values.images.sqlcl "global" .Values.global) | quote }}
+        imagePullPolicy: {{ .Values.images.sqlcl.pullPolicy | default "IfNotPresent" }}
         env:
         - name: TNS_ADMIN
           value: /app/tns_admin
@@ -44,16 +46,9 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
           - |
-            attempt=1
-            while [ "$attempt" -lt 360 ]; do
-                sh /opt/oracle/scripts/startup/init.sh
-                if [ $? -eq 0 ]; then
-                exit 0
-                fi
-                echo "Waiting for connectivity to ${DB_DSN} ($attempt/360)"
-                sleep 10
-                attempt=$((attempt + 1))
-            done
+            set -e
+            {{- include "global.shellWaitFunc" . | nindent 12 }}
+            wait_until "database (${DB_DSN})" 360 10 sh /opt/oracle/scripts/startup/init.sh
         volumeMounts:
         - name: db-init-scripts
           mountPath: /opt/oracle/scripts/startup

@@ -6,6 +6,9 @@ global:
   env: "prd"
   api:
     secretName: "${label}-optimizer-api-key"
+%{ if ocir_url != "" ~}
+  imageRegistry: "${ocir_url}"
+%{ endif ~}
 
 # -- API Server configuration
 server:
@@ -89,24 +92,14 @@ client:
 %{ if is_observability_enabled ~}
 signoz:
   enabled: true
+  auth:
+    existingSecret: true
 %{ if ocir_url != "" ~}
-  global:
-    imageRegistry: "${ocir_url}"
   clickhouse:
     initContainers:
       udf:
         enabled: false
 %{ endif ~}
-  signoz:
-    env:
-      SIGNOZ_USER_ROOT_ENABLED: "true"
-      SIGNOZ_USER_ROOT_ORG_NAME: "AIOptimizer"
-      SIGNOZ_USER_ROOT_EMAIL: "admin@${label}.local"
-      SIGNOZ_USER_ROOT_PASSWORD:
-        valueFrom:
-          secretKeyRef:
-            name: "${label}-signoz-authn"
-            key: password
 %{ endif ~}
 
 ollama:

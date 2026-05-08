@@ -31,13 +31,10 @@ spec:
     spec:
       securityContext:
         fsGroup: 10001
-      {{- with .Values.ollama.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "global.imagePullSecrets" (dict "local" .Values.ollama.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: {{ .Chart.Name }}-ollama
-          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "global.image" (dict "image" .Values.ollama.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.ollama.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             capabilities:

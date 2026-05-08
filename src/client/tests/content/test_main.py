@@ -102,3 +102,30 @@ class TestMainConnectionLogic:
 
         # state.settings should be None after both attempts fail
         assert state.get("settings") is None
+
+    def test_split_pod_retries_on_subsequent_rerun(self):
+        """In split client images `_server_module_available()` is False, so
+        the inner spawn-and-retry block is skipped. A transient first
+        /settings failure must not be cached as a permanent None — the next
+        Streamlit rerun has to retry once the remote server pod becomes
+        ready. Otherwise the UI is stuck on the connection error until the
+        session is reset."""
+        state = AttrDict({"optimizer_client": "test-split"})
+        valid_settings = {"database_configs": [], "model_configs": [], "client_settings": {}}
+
+        # First rerun: remote server still booting.
+        with patch(f"{API_MODULE}._server_module_available", return_value=False):
+            _, mock_start = _import_main(state, get_settings_side_effect=[None])
+        mock_start.assert_not_called()
+        assert state.get("settings") is None
+
+        # Second rerun (simulated by re-importing main against the same
+        # session state): the remote server is now answering /settings.
+        with patch(f"{API_MODULE}._server_module_available", return_value=False):
+            mock_get2, mock_start2 = _import_main(state, get_settings_side_effect=[valid_settings])
+        mock_start2.assert_not_called()
+        assert state.get("settings") == valid_settings, (
+            "second rerun must retry the connection; the previous failed "
+            "attempt was cached and the UI would stay stuck on the error."
+        )
+        assert mock_get2.call_count == 1

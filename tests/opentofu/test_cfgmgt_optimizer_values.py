@@ -3,9 +3,10 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 Contract tests for opentofu/modules/kubernetes/templates/ai-optimizer-values.yaml:
-under k8s_byo_ocir_url every SigNoz subchart image must resolve through
-signoz.global.imageRegistry, and the rendered chart must not require
-external network downloads in BYO registry mode.
+under k8s_byo_ocir_url every chart-managed AND SigNoz subchart image must
+resolve through global.imageRegistry (Helm propagates the parent
+`global.*` namespace into subcharts), and the rendered chart must not
+require external network downloads in BYO registry mode.
 """
 # spell-checker: disable
 
@@ -34,7 +35,7 @@ TOFU_BIN: str = shutil.which("tofu") or ""
 HELM_BIN: str = shutil.which("helm") or ""
 pytestmark = pytest.mark.skipif(not TOFU_BIN, reason="tofu binary not available")
 
-# Compiled once: airgap fetch detector splits a `wget`/`curl <url>` line
+# Compiled once: external-download detector splits a `wget`/`curl <url>` line
 # into the scheme-stripped host and lets internal_host_re decide whether
 # it's cluster-local. ${VAR} is treated as internal because in-cluster
 # probes resolve those at runtime from Service env, never public DNS.
@@ -141,15 +142,21 @@ def byo_helm_render(tmp_path_factory) -> tuple[str, str]:
 
 
 def test_ocir_url_set_when_byo_ocir_set(tmp_path):
-    """BYO routes every signoz image via signoz.global.imageRegistry."""
+    """BYO sets the chart-wide global.imageRegistry; Helm propagates this
+    into the SigNoz subchart's global block, so every subchart image
+    resolves through the BYO registry alongside the chart's own images."""
     rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
-    assert re.search(
-        rf'^signoz:\n  enabled: true\n  global:\n    imageRegistry: "{re.escape(BYO_URL)}"',
-        rendered,
-        re.MULTILINE,
-    ), (
-        "signoz.global.imageRegistry must be set to byo_ocir_url so every "
-        "subchart image resolves under the BYO registry. Rendered:\n" + rendered
+    # Extract the top-level `global:` block (its child lines are indented;
+    # the block ends at the first non-indented line).
+    block_match = re.search(
+        r"^global:\n((?:[ \t][^\n]*\n)+)", rendered, re.MULTILINE
+    )
+    assert block_match, "no top-level `global:` block found:\n" + rendered
+    global_block = block_match.group(1)
+    assert f'imageRegistry: "{BYO_URL}"' in global_block, (
+        "global.imageRegistry must be set to byo_ocir_url so every image "
+        "(chart-managed and SigNoz subchart) resolves under the BYO "
+        "registry. Rendered:\n" + rendered
     )
 
 
@@ -167,9 +174,8 @@ def test_ocir_url_omitted_when_no_byo(tmp_path):
         line for line in rendered.splitlines() if not line.lstrip().startswith("#")
     )
     assert "imageRegistry" not in payload, (
-        "signoz.global.imageRegistry must be omitted when byo_ocir_url is "
-        "empty so the subchart's per-image registry defaults apply. "
-        "Rendered:\n" + rendered
+        "global.imageRegistry must be omitted when byo_ocir_url is empty so "
+        "the chart's per-image registry defaults apply. Rendered:\n" + rendered
     )
 
 
@@ -232,9 +238,10 @@ def test_byo_render_routes_signoz_images_through_registry(byo_helm_render):
 
 
 def test_byo_render_makes_no_outbound_internet_calls(byo_helm_render):
-    """Airgap contract: no `wget`/`curl` to public hosts in container
-    commands. The clickhouse `udf` initContainer wgets histogram-quantile
-    from github.com at pod start; the BYO branch must keep it disabled.
+    """Private-registry contract: no `wget`/`curl` to public hosts in
+    container commands. The clickhouse `udf` initContainer downloads
+    histogram-quantile from github.com at pod start; the BYO branch must
+    keep it disabled.
     Comment lines (XML <!--, YAML #, // ) are skipped because rendered
     ConfigMap data legitimately contains inert source-doc URLs (e.g.
     github.com/pocoproject/poco)."""
