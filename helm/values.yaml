@@ -690,6 +690,16 @@ signoz:
   # (gated by Chart.yaml's `condition: signoz.enabled`).
   enabled: false
 
+  # -- Overrides the registry portion of every subchart image. Mirror the
+  # upstream `<owner>/<image>:<tag>` paths under it; leave unset to pull
+  # from the public registries.
+  global:
+    imageRegistry: ""
+
+  # -- Airgapped clusters must also set clickhouse.initContainers.udf.enabled=false
+  # — the udf initContainer wgets a binary from github.com at pod start and
+  # fails with no egress. Trade-off: the histogramQuantile UDF is unavailable.
+
   # -- Override the upstream collector image, namespace placement, etc.
   # Anything valid in https://github.com/SigNoz/charts goes here.
   # Example surface for the collector's service:

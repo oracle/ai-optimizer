@@ -222,8 +222,8 @@ variables:
   k8s_byo_ocir:
     title: "Bring Your Own Oracle Container Image Registry (OCIR)?"
     description: |
-      All container images should pre-exist in and will be pulled from the BYO OCIR.
-      For more information:
+      All container images should pre-exist in and will be pulled from the BYO OCIR. 
+      Mirror upstream images preserving their `<owner>/<image>:<tag>` paths under the BYO URL.
     type: boolean
     default: false
     required: true

@@ -2,10 +2,10 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Contract test for opentofu/modules/kubernetes/templates/ai-optimizer-values.yaml:
-when k8s_byo_ocir_url is set, the rendered values must NOT enable the SigNoz
-subchart — the BYO contract states all images come from the BYO OCIR, but
-the SigNoz subchart pulls its multi-image stack from upstream registries.
+Contract tests for opentofu/modules/kubernetes/templates/ai-optimizer-values.yaml:
+under k8s_byo_ocir_url every SigNoz subchart image must resolve through
+signoz.global.imageRegistry, and the rendered chart must make no outbound
+internet fetches (airgap contract).
 """
 # spell-checker: disable
 
@@ -27,19 +27,32 @@ TEMPLATE_PATH = (
     / "ai-optimizer-values.yaml"
 )
 CHART_DIR = REPO_ROOT / "helm"
+BYO_URL = "iad.ocir.io/byo-namespace"
+COOKIE_SECRET = "cccccccccccccccccccccccccccccccc"
 
 TOFU_BIN: str = shutil.which("tofu") or ""
 HELM_BIN: str = shutil.which("helm") or ""
 pytestmark = pytest.mark.skipif(not TOFU_BIN, reason="tofu binary not available")
 
+# Compiled once: airgap fetch detector splits a `wget`/`curl <url>` line
+# into the scheme-stripped host and lets internal_host_re decide whether
+# it's cluster-local. ${VAR} is treated as internal because in-cluster
+# probes resolve those at runtime from Service env, never public DNS.
+_FETCH_RE = re.compile(
+    r"(?:^|[\s'\"`])(?:wget|curl)\b[^\n;&|]*?\bhttps?://([^\s'\"`>]+)",
+    re.IGNORECASE,
+)
+_INTERNAL_HOST_RE = re.compile(
+    r"^(?:127\.|localhost|signoz-|\$\{?\w+\}?|"
+    r"[\w.-]+\.svc(?:\.cluster\.local)?)(?:[:/]|$)",
+    re.IGNORECASE,
+)
+
 
 def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
-    """Render ai-optimizer-values.yaml the same way cfgmgt_optimizer.tf
-    does — including the signoz_enabled local that gates SigNoz on BYO.
-
-    The locals block here mirrors the production .tf so the test breaks
-    if either side drifts (e.g. someone reverts the AND in the .tf or
-    drops the signoz_enabled key from the templatefile call)."""
+    """Render ai-optimizer-values.yaml the way cfgmgt_optimizer.tf does:
+    is_observability_enabled drives signoz_enabled, byo_ocir_url is
+    forwarded as signoz_image_registry."""
     is_obs_hcl = "true" if is_obs else "false"
     main_tf = tmp_path / "main.tf"
     main_tf.write_text(
@@ -48,9 +61,6 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
             locals {{
               is_observability_enabled = {is_obs_hcl}
               byo_ocir_url             = "{byo_url}"
-              # Mirrors cfgmgt_optimizer.tf: BYO must keep SigNoz off because
-              # the subchart's images would bypass the BYO OCIR.
-              signoz_enabled           = local.is_observability_enabled && local.byo_ocir_url == ""
               rendered = templatefile("{TEMPLATE_PATH}", {{
                 label                    = "test"
                 repository_base          = local.byo_ocir_url == "" ? "iad.ocir.io/managed/test" : local.byo_ocir_url
@@ -63,7 +73,8 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 ssl_enabled              = false
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 is_observability_enabled = local.is_observability_enabled
-                signoz_enabled           = local.signoz_enabled
+                signoz_enabled           = local.is_observability_enabled
+                signoz_image_registry    = local.byo_ocir_url
               }})
             }}
             output "rendered" {{
@@ -94,30 +105,76 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
     return out.stdout
 
 
-def test_signoz_disabled_when_byo_ocir_set(tmp_path):
-    """BYO contract: 'all images pre-exist in BYO'. The SigNoz subchart's
-    images would bypass that, so observability must be off in BYO mode
-    even when the operator asked for it."""
-    rendered = _render(tmp_path, is_obs=True, byo_url="iad.ocir.io/byo-namespace")
-    assert "signoz:\n  enabled: false" in rendered, (
-        "signoz.enabled must be false when BYO OCIR is set. Rendered:\n"
-        + rendered
+def _helm_template(values_path: Path) -> str:
+    """helm template against the chart with the BYO values file."""
+    return subprocess.run(
+        [
+            HELM_BIN,
+            "template",
+            "test",
+            str(CHART_DIR),
+            "-f",
+            str(values_path),
+            "--set",
+            f"client.cookieSecret={COOKIE_SECRET}",
+            # _render's db_type=ADB-S needs serviceName separately.
+            "--set",
+            "server.database.adb.serviceName=test_low",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+@pytest.fixture(scope="module")
+def byo_helm_render(tmp_path_factory) -> tuple[str, str]:
+    """Render the BYO values once per module and run helm template once.
+    The three end-to-end BYO tests assert different invariants on the
+    same output, so sharing the render avoids 3× tofu/helm work."""
+    if not HELM_BIN:
+        pytest.skip("helm binary not available")
+    tmp_path = tmp_path_factory.mktemp("byo_helm_render")
+    rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
+    values_file = tmp_path / "values.yaml"
+    values_file.write_text(rendered)
+    return rendered, _helm_template(values_file)
+
+
+def test_signoz_image_registry_set_when_byo_ocir_set(tmp_path):
+    """BYO routes every signoz image via signoz.global.imageRegistry."""
+    rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
+    assert re.search(
+        rf'^signoz:\n  enabled: true\n  global:\n    imageRegistry: "{re.escape(BYO_URL)}"',
+        rendered,
+        re.MULTILINE,
+    ), (
+        "signoz.global.imageRegistry must be set to byo_ocir_url so every "
+        "subchart image resolves under the BYO registry. Rendered:\n" + rendered
     )
 
 
-def test_signoz_enabled_when_no_byo_and_observability_on(tmp_path):
-    """Positive regression gate: with no BYO and observability requested,
-    SigNoz must be enabled — verifies the gating doesn't over-fire."""
+def test_signoz_image_registry_omitted_when_no_byo(tmp_path):
+    """Without BYO the key must be absent (an empty string would force
+    `/<owner>/<image>` paths instead of using upstream defaults)."""
     rendered = _render(tmp_path, is_obs=True, byo_url="")
     assert "signoz:\n  enabled: true" in rendered, (
         "signoz.enabled should be true when observability is on and no "
         "BYO OCIR is configured. Rendered:\n" + rendered
     )
+    # Strip comment lines so an explanatory comment that mentions
+    # imageRegistry doesn't accidentally pass for a real value.
+    payload = "\n".join(
+        line for line in rendered.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "imageRegistry" not in payload, (
+        "signoz.global.imageRegistry must be omitted when byo_ocir_url is "
+        "empty so the subchart's per-image registry defaults apply. "
+        "Rendered:\n" + rendered
+    )
 
 
 def test_signoz_disabled_when_observability_off(tmp_path):
-    """When the operator opts out of observability, SigNoz is off
-    regardless of BYO."""
     rendered = _render(tmp_path, is_obs=False, byo_url="")
     assert "signoz:\n  enabled: false" in rendered, (
         "signoz.enabled should be false when observability is off. "
@@ -125,56 +182,74 @@ def test_signoz_disabled_when_observability_off(tmp_path):
     )
 
 
-def test_otel_disabled_when_byo_ocir_set(tmp_path):
-    """server.otel.enabled must track signoz_enabled, not the raw operator
-    input. If BYO forces signoz off but otel stays on, the chart validator
-    rejects the values with `tracesExporter includes "otlp" but no endpoint
-    is configured` and the install is blocked."""
-    rendered = _render(tmp_path, is_obs=True, byo_url="iad.ocir.io/byo-namespace")
-    # Pin the assertion to the server.otel block specifically — `enabled:`
-    # appears in many places in the rendered values.
-    assert re.search(r"^\s+otel:\n\s+enabled:\s+false\b", rendered, re.MULTILINE), (
-        "server.otel.enabled must be false in BYO mode (signoz is forced off "
-        "and no endpoint is configured, so leaving otel enabled triggers the "
-        "chart validator). Rendered:\n" + rendered
+def test_otel_enabled_when_byo_ocir_set(tmp_path):
+    """server.otel.enabled tracks signoz_enabled."""
+    rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
+    # Pin to the server.otel block specifically — `enabled:` appears in
+    # many places in the rendered values.
+    assert re.search(r"^\s+otel:\n\s+enabled:\s+true\b", rendered, re.MULTILINE), (
+        "server.otel.enabled must be true when observability is on. "
+        "Rendered:\n" + rendered
     )
 
 
-@pytest.mark.skipif(not HELM_BIN, reason="helm binary not available")
-def test_byo_render_passes_helm_validation(tmp_path):
-    """End-to-end: rendered values for a default BYO install with
-    is_observability_enabled=true must pass helm template — otel must
-    follow signoz_enabled, not the raw operator input, otherwise the
-    chart validator rejects the values with `tracesExporter includes
-    "otlp" but no endpoint is configured`."""
-    rendered = _render(tmp_path, is_obs=True, byo_url="iad.ocir.io/byo-namespace")
-    values_file = tmp_path / "values.yaml"
-    values_file.write_text(rendered)
-    result = subprocess.run(
-        [
-            HELM_BIN,
-            "template",
-            "test",
-            str(CHART_DIR),
-            "-f",
-            str(values_file),
-            "--set",
-            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
-            # _render's db_type=ADB-S needs serviceName separately.
-            "--set",
-            "server.database.adb.serviceName=test_low",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
+def test_byo_render_passes_helm_validation(byo_helm_render):
+    """A BYO render must pass helm template — catches the otel/signoz
+    coupling regression where the chart validator rejects otel-on with
+    no endpoint configured."""
+    _, helm_stdout = byo_helm_render
+    # If we got here, helm template succeeded (fixture used check=True).
+    # The signoz collector services prove the otel endpoint is reachable.
+    assert "kind: Service" in helm_stdout and "otel-collector" in helm_stdout
+
+
+def test_byo_render_routes_signoz_images_through_registry(byo_helm_render):
+    """Every signoz subchart image must resolve under the BYO registry."""
+    _, helm_stdout = byo_helm_render
+    image_lines = [
+        line.strip()
+        for line in helm_stdout.splitlines()
+        if re.match(r"^\s*image:\s*['\"]?\S", line)
+    ]
+    assert image_lines, "helm template produced no image lines: " + helm_stdout[:600]
+    # The sqlcl image used by the database init job is intentionally pulled
+    # from the Oracle Container Registry and is outside the BYO surface.
+    out_of_scope = ("container-registry.oracle.com/database/sqlcl",)
+    offenders = [
+        line for line in image_lines
+        if not any(skip in line for skip in out_of_scope)
+        and ("docker.io" in line or (BYO_URL not in line and "localhost/" not in line))
+    ]
+    assert not offenders, (
+        "Some images are not routed through the BYO registry:\n  "
+        + "\n  ".join(offenders)
     )
-    assert result.returncode == 0, (
-        "BYO + observability=on must render values that pass helm validation; "
-        f"got rc={result.returncode}\nstderr={result.stderr[:600]}"
+
+
+def test_byo_render_makes_no_outbound_internet_calls(byo_helm_render):
+    """Airgap contract: no `wget`/`curl` to public hosts in container
+    commands. The clickhouse `udf` initContainer wgets histogram-quantile
+    from github.com at pod start; the BYO branch must keep it disabled.
+    Comment lines (XML <!--, YAML #, // ) are skipped because rendered
+    ConfigMap data legitimately contains inert source-doc URLs (e.g.
+    github.com/pocoproject/poco)."""
+    _, helm_stdout = byo_helm_render
+    offenders: list[str] = []
+    for i, line in enumerate(helm_stdout.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith(("<!--", "#", "//")):
+            continue
+        if any(
+            not _INTERNAL_HOST_RE.match(host) for host in _FETCH_RE.findall(line)
+        ):
+            offenders.append(f"line {i}: {stripped}")
+    assert not offenders, (
+        "BYO render still issues outbound internet fetches (airgap "
+        "violation). Disable or override the responsible subchart values:\n  "
+        + "\n  ".join(offenders[:10])
     )
-    # Pin the otel-gate failure mode independently of the db validator
-    # so a db-validator change can't silently mask it.
-    assert "tracesExporter includes" not in result.stderr, (
-        "otel validator fired — server.otel.enabled is wired to the "
-        "operator input instead of signoz_enabled."
+    assert "histogram-quantile" not in helm_stdout, (
+        "clickhouse.initContainers.udf is still rendering under BYO; the "
+        "optimizer template should set signoz.clickhouse.initContainers.udf"
+        ".enabled=false to keep the install airgap-safe."
     )
