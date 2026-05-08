@@ -9,19 +9,14 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import HTTPException
-
 LOGGER = logging.getLogger(__name__)
 
 
 def safe_filename(raw: str) -> str:
-    """Return only the final filename component from path-like input.
-
-    Raises :class:`~fastapi.HTTPException` (400) for empty, ``'.'``, or ``'..'`` names.
-    """
+    """Return the final filename component, or raise ``ValueError`` for empty / ``.`` / ``..``."""
     safe = Path(raw).name
     if not safe or safe in (".", ".."):
-        raise HTTPException(status_code=400, detail="Invalid filename.")
+        raise ValueError("Invalid filename.")
     return safe
 
 

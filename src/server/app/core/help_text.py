@@ -4,6 +4,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore rerank mult hnsw
 
+from server.app.core.constants import SUPPORTED_EXTENSIONS
+
+_SUPPORTED_TYPES_DISPLAY = ", ".join(sorted(ext.lstrip(".") for ext in SUPPORTED_EXTENSIONS))
+
 help_dict = {
     "max_input_tokens": """
         Maximum number of tokens (words, sub-words, or characters) the model can consider
@@ -118,4 +122,5 @@ help_dict = {
         API Key for accessing the model.
         Often left blank for on-premises models.
         """,
+    "embed_supported_file_types": f"Supported file types: {_SUPPORTED_TYPES_DISPLAY}.",
 }

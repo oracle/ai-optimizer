@@ -41,6 +41,16 @@ global:
 # Server Configuration
 server:
   # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
+  # NOTE on multi-replica + the embed pipeline:
+  #   * Embed JOB STATUS is shared via the CORE database (aio_embed_jobs),
+  #     so a `GET /v1/embed/jobs/{job_id}` poll routed to any pod returns
+  #     the correct state.
+  #   * Embed PIPELINE EXECUTION (and the uploaded source files it
+  #     consumes) is per-pod — file storage lives on a per-pod emptyDir
+  #     volume. A client's `POST /v1/embed/local/store` followed by
+  #     `POST /v1/embed/` must therefore land on the same pod, which
+  #     requires sticky / session-affinity routing at the LB or ingress
+  #     when replicaCount > 1.
   replicaCount: 1
 
   # -- Max number of distinct client sessions cached in memory (LRU eviction beyond this)

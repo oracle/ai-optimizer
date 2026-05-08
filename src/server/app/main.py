@@ -6,6 +6,8 @@ FastAPI application entrypoint.
 """
 # spell-checker:ignore fastmcp sqlcl
 
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -28,6 +30,11 @@ from server.app.database.settings import (
     persist_client_settings,
     persist_settings,
     row_exists,
+)
+from server.app.embed.jobs import (
+    get_embed_job_manager,
+    run_heartbeat_loop,
+    run_reaper_loop,
 )
 from server.app.mcp.prompts.registry import load_factory_prompts, reconcile_prompt_customizations, register_mcp_prompts
 from server.app.mcp.proxies.sqlcl import close_sqlcl_proxy, register_sqlcl_proxy
@@ -111,9 +118,28 @@ async def lifespan(_app: FastAPI):
     # --- Phase 6: Model reachability ---
     await check_model_reachability()
 
+    # --- Phase 7: Embed-job heartbeat + reaper ---
+    # Each replica heartbeats its own owned rows in aio_embed_jobs and
+    # also participates in the cross-pod reaper sweep. This is what
+    # turns a pod crash mid-pipeline into a terminal "failed" record
+    # for polling clients instead of an indefinite "running" row.
+    embed_job_manager = get_embed_job_manager()
+    heartbeat_task = asyncio.create_task(
+        run_heartbeat_loop(embed_job_manager),
+        name="embed-jobs-heartbeat",
+    )
+    reaper_task = asyncio.create_task(
+        run_reaper_loop(embed_job_manager),
+        name="embed-jobs-reaper",
+    )
+
     try:
         yield
     finally:
+        for task in (heartbeat_task, reaper_task):
+            task.cancel()
+            with contextlib.suppress(BaseException):
+                await task
         await close_sqlcl_proxy()
         for db in settings.database_configs:
             await close_pool(db.pool)

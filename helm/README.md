@@ -140,6 +140,20 @@ helm install ai-optimizer . \
   --set client.autoscaling.maxReplicas=5
 ```
 
+> **Embed pipeline + multi-replica.** `GET /v1/embed/jobs/{job_id}`
+> works across replicas because job state is persisted in the CORE
+> database (`aio_embed_jobs`). The pipeline body, however, runs on
+> the pod that accepted the `POST /v1/embed/` and reads the corpus
+> from a per-pod `emptyDir` volume — so a client's
+> `POST /v1/embed/local/store` and the subsequent `POST /v1/embed/`
+> must land on the same pod. Configure your LB or ingress for
+> sticky / session-affinity routing (e.g. Nginx ingress
+> `nginx.ingress.kubernetes.io/affinity: cookie`) when running
+> `server.replicaCount > 1`. If a pod crashes mid-pipeline, the
+> per-pod heartbeat stops and the cross-pod reaper marks the
+> orphaned row `failed` within ~3 minutes so polling clients
+> observe a terminal state instead of polling indefinitely.
+
 ### Example 6: Ingress with TLS
 
 ```bash

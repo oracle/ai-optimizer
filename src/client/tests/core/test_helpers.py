@@ -206,6 +206,36 @@ class TestRefreshSettings:
         assert not state.get("_oci_sensitive_loaded")
         assert "_template_export" not in state
 
+    def test_returns_true_on_success(self):
+        """A successful refresh returns ``True``.
+
+        Callers (e.g. embed_status._maybe_refresh_on_idle) gate
+        flag-clearing on whether the refresh actually updated
+        ``state.settings``: prematurely clearing on a failed refresh
+        means later ticks have no signal to retry.
+        """
+        state = _make_state()
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.get_server_settings", return_value={"client_settings": {}}),
+        ):
+            from client.app.core.helpers import refresh_settings
+
+            assert refresh_settings() is True
+
+    def test_returns_false_on_failure(self):
+        """A failed refresh (server returned ``None``) returns ``False`` so
+        callers can leave any pending-refresh flags in place for retry.
+        """
+        state = _make_state()
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.get_server_settings", return_value=None),
+        ):
+            from client.app.core.helpers import refresh_settings
+
+            assert refresh_settings() is False
+
 
 # ---------------------------------------------------------------------------
 # sync_client_setting

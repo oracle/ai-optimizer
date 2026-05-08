@@ -61,11 +61,18 @@ def _sensitive_keys() -> tuple[frozenset[str], str]:
     to the static set keeps client-only deployments importable even if the
     server modules aren't on the path (test envs, packaging splits).
     """
+    # Imports must remain function-local: ``server/__init__.py`` runs
+    # ``configure_logging`` at package-load time, which imports
+    # ``RedactingFilter`` from this module. Hoisting the schema imports
+    # to module top would close the cycle (logging_redaction →
+    # server.app.* → server/__init__.py → logging_config →
+    # logging_redaction) and leave ``RedactingFilter`` undefined when
+    # the inner import resolves.
     try:
-        from server.app.database.schemas import DatabaseSensitive
-        from server.app.models.defaults import ENV_OVERRIDES
-        from server.app.models.schemas import ModelSensitive
-        from server.app.oci.schemas import OciSensitive
+        from server.app.database.schemas import DatabaseSensitive  # noqa: PLC0415
+        from server.app.models.defaults import ENV_OVERRIDES  # noqa: PLC0415
+        from server.app.models.schemas import ModelSensitive  # noqa: PLC0415
+        from server.app.oci.schemas import OciSensitive  # noqa: PLC0415
     except ImportError:
         return _STATIC_SENSITIVE_KEYS, "static"
 

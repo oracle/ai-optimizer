@@ -6,7 +6,6 @@ Unit tests for logging_config.py
 """
 
 import logging
-import sys
 import types
 
 import logging_config
@@ -131,13 +130,9 @@ class TestConfigureLogging:
         fake_logging.set_verbosity_error = set_verbosity_error
         fake_logging.set_verbosity_warning = set_verbosity_warning
 
-        fake_transformers = types.ModuleType("transformers")
-        fake_utils = types.ModuleType("transformers.utils")
-        setattr(fake_utils, "logging", fake_logging)
-        setattr(fake_transformers, "utils", fake_utils)
-
-        monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
-        monkeypatch.setitem(sys.modules, "transformers.utils", fake_utils)
+        # ``_transformers_logging`` is resolved at module import; patch the
+        # module-level reference so ``configure_logging`` picks up the fake.
+        monkeypatch.setattr(logging_config, "_transformers_logging", fake_logging)
 
         logging_config.configure_logging()
 

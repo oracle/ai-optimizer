@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from server.app.embed.document import (
-    DoclingDocumentChunk,
     _load_docling_document,
     _load_docx_fast,
     _load_pdf_fast,
@@ -22,6 +21,7 @@ from server.app.embed.document import (
     process_metadata,
     split_document,
 )
+from server.app.embed.schemas import DoclingDocumentChunk
 
 MODULE = "server.app.embed.document"
 

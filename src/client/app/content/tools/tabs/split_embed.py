@@ -9,7 +9,9 @@ Split and Embed tab — document splitting, chunking, embedding, and vector stor
 import logging
 import math
 import re
+import time
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Optional
 
 import httpx
@@ -19,6 +21,12 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_get, api_patch, api_post
+from client.app.core.embed_status import (
+    _STAGE_LABELS,
+    clear_embed_job_flag,
+    mark_embed_job_started,
+    render_active_embed_jobs,
+)
 from client.app.core.sidebar import vector_store_selection
 from url_safety import validate_structural
 
@@ -55,7 +63,7 @@ def _is_url_accessible(url: str, restricted: bool = False) -> tuple[bool, str]:
         try:
             validate_structural(url)
         except ValueError:
-            return False, "URL not permitted."
+            return False, "URL cannot be used for this import."
 
     try:
         with httpx.Client(timeout=2, follow_redirects=not restricted) as client:
@@ -63,7 +71,7 @@ def _is_url_accessible(url: str, restricted: bool = False) -> tuple[bool, str]:
     except httpx.HTTPError as ex:
         return False, f"{url} is not accessible. ({type(ex).__name__})"
     except ValueError:
-        return False, "URL not permitted."
+        return False, "URL cannot be used for this import."
 
     if response is None or response.status_code not in _REACHABLE_STATUSES:
         status = f" (Status: {response.status_code})" if response is not None else ""
@@ -152,6 +160,7 @@ class FileSourceData:
     web_url: Optional[str] = None
     oci_bucket: Optional[str] = None
     oci_files_selected: Optional[pd.DataFrame] = None
+    oci_all_files: bool = False
     sql_query: Optional[str] = None
     sql_db_alias: Optional[str] = None
 
@@ -164,11 +173,18 @@ class FileSourceData:
         if self.file_source == "SQL":
             return bool(self.sql_query and self.sql_query.strip() and self.sql_db_alias)
         if self.file_source == "OCI":
-            return bool(self.oci_files_selected is not None and self.oci_files_selected["Process"].sum() > 0)
+            if not self.oci_bucket:
+                return False
+            return bool(
+                self.oci_all_files
+                or (self.oci_files_selected is not None and self.oci_files_selected["Process"].sum() > 0)
+            )
         return False
 
     def get_button_help(self) -> str:
         """Get help text for the populate button based on file source."""
+        if self.file_source == "OCI" and self.oci_all_files:
+            return "This button is disabled if no source bucket is selected."
         help_map = {
             "Local": "This button is disabled if no local files have been provided.",
             "Web": "This button is disabled if the URL was unable to be validated. Please check the URL.",
@@ -198,6 +214,7 @@ def _get_buckets(compartment_ocid: str, auth_profile: str) -> list:
         return ["No Access to Buckets in this Compartment"]
 
 
+@st.cache_data(ttl=60, show_spinner="Listing bucket objects")
 def _get_bucket_objects(bucket_name: str, auth_profile: str) -> list:
     """Get object names from an OCI bucket."""
     return api_get(f"oci/objects/{bucket_name}/{auth_profile}")
@@ -448,9 +465,25 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict | None) -> FileS
                 disabled=not bucket_compartment,
             )
 
-        src_objects = _get_bucket_objects(data.oci_bucket, auth_profile) if data.oci_bucket else []
-        src_files = _files_data_frame(src_objects)
-        data.oci_files_selected = _files_data_editor(src_files, "source")
+        data.oci_all_files = st.toggle(
+            "Embed all supported files in bucket",
+            value=True,
+            key="runtime_oci_all_files",
+            disabled=not data.oci_bucket,
+            help=(
+                "When enabled, every supported file in the selected bucket is embedded "
+                "without per-file selection. Disable to pick individual files."
+            ),
+        )
+
+        if data.oci_bucket:
+            st.caption(state.optimizer_help.get("embed_supported_file_types", ""))
+            if data.oci_all_files:
+                st.caption(f"All supported files in `{data.oci_bucket}` will be embedded.")
+            else:
+                src_objects = _get_bucket_objects(data.oci_bucket, auth_profile)
+                src_files = _files_data_frame(src_objects)
+                data.oci_files_selected = _files_data_editor(src_files, "source")
 
     return data
 
@@ -631,10 +664,53 @@ def _render_populate_vs_section(embed_config: dict, create_new_vs: bool) -> int 
 #############################################################################
 # Processing
 #############################################################################
-def _process_populate_request(embed_config: dict, source_data: FileSourceData, rate_limit: int | None) -> dict:
-    """Store source files then run split-and-embed."""
+def _process_populate_request(
+    embed_config: dict, source_data: FileSourceData, rate_limit: int | None
+) -> tuple[str | None, dict]:
+    """Store source files then run split-and-embed.
+
+    Returns ``(job_id, response)``. ``job_id`` is ``None`` for the
+    OCI no-files-selected fast path; otherwise it's the accepted
+    submission id, also attached to any exception raised by the poll
+    so the caller can clear that specific seen-set entry.
+    """
     client_header = {"client": state.optimizer_client}
     auth_profile = state["settings"]["client_settings"].get("oci", {}).get("auth_profile", "")
+
+    if source_data.file_source == "OCI":
+        payload = _build_embed_payload(embed_config)
+        payload["bucket_name"] = source_data.oci_bucket or ""
+        payload["auth_profile"] = auth_profile or "DEFAULT"
+        if not source_data.oci_all_files:
+            oci_selected = source_data.oci_files_selected
+            if oci_selected is None:
+                return None, {}
+            process_list = oci_selected[oci_selected["Process"]].reset_index(drop=True)
+            object_names = process_list["File"].tolist()
+            # An empty ``objects`` list is server-equivalent to omitting
+            # it — i.e. "embed every supported file in the bucket".
+            # Reject zero-selection here so a TOCTOU race past the
+            # disabled-button gate cannot silently embed the whole bucket.
+            if not object_names:
+                return None, {}
+            payload["objects"] = object_names
+        # 7200s mirrors ``/embed/refresh`` (same synchronous-download
+        # shape); /embed/oci/store downloads bucket objects before the
+        # 202, so a ReadTimeout would lose the job_id mid-flight.
+        accepted = api_post(
+            "embed/oci/store",
+            json=payload,
+            params={"rate_limit": rate_limit or 0},
+            extra_headers=client_header,
+            timeout=7200,
+        )
+        job_id = accepted["job_id"]
+        mark_embed_job_started(job_id)
+        try:
+            return job_id, _poll_embed_job(job_id, client_header)
+        except httpx.HTTPStatusError as ex:
+            ex.job_id = job_id  # type: ignore[attr-defined]
+            raise
 
     # Step 1: Store source files on server
     if source_data.file_source == "Local":
@@ -648,28 +724,166 @@ def _process_populate_request(embed_config: dict, source_data: FileSourceData, r
             json={"query": source_data.sql_query, "db_alias": source_data.sql_db_alias},
             extra_headers=client_header,
         )
-    else:  # OCI
-        oci_selected = source_data.oci_files_selected
-        if oci_selected is None:
-            return {}
-        process_list = oci_selected[oci_selected["Process"]].reset_index(drop=True)
-        file_names = process_list["File"].tolist()
-        api_post(
-            f"oci/objects/download/{source_data.oci_bucket or ''}/{auth_profile}",
-            json=file_names,
-            extra_headers=client_header,
-        )
 
-    # Step 2: Split and embed
+    # Step 2: Split and embed — schedule the job and poll for terminal state.
+    # 300s acceptance timeout outlasts pre-202 latency (``_settings_lock``
+    # contention with a slow connection test, slow CORE INSERT). A
+    # ``ReadTimeout`` here while the server still completes
+    # ``manager.submit`` would lose the job_id and leave a running
+    # job the user cannot poll.
     payload = _build_embed_payload(embed_config)
-    response = api_post(
+    accepted = api_post(
         "embed/",
         json=payload,
         params={"rate_limit": rate_limit or 0},
         extra_headers=client_header,
-        timeout=7200,
+        timeout=300,
     )
-    return response
+    # Add the job_id to the panel's seen set the moment the server
+    # accepts the submission, so off-page completions still trigger
+    # ``refresh_on_idle`` even when no fragment tick observed the
+    # running state.
+    job_id = accepted["job_id"]
+    mark_embed_job_started(job_id)
+    try:
+        return job_id, _poll_embed_job(job_id, client_header)
+    except httpx.HTTPStatusError as ex:
+        # Attach so the caller's except branch can clear this
+        # specific seen-set entry without disturbing any concurrent
+        # sibling jobs the panel is also tracking.
+        ex.job_id = job_id  # type: ignore[attr-defined]
+        raise
+
+
+_POLL_INTERVAL_SECONDS = 2.0
+# 503 tolerance window. The status endpoint returns 503 when the
+# CORE database is briefly unavailable for cross-replica state
+# tracking; the pipeline itself is still running on the server side,
+# so a transient blip should not abort the UI. Cap the consecutive
+# count so a permanent CORE outage eventually surfaces instead of
+# spinning forever — at the default 2s poll interval this is a few
+# minutes of patience before giving up.
+_MAX_CONSECUTIVE_503S = 60
+
+
+def _poll_embed_job(job_id: str, client_header: dict) -> dict:
+    """Block until the embed job reaches terminal status, updating spinner text.
+
+    Each request is short, so neither the load balancer nor nginx can
+    time us out — the only ceiling is that the job itself eventually
+    succeeds or fails. A failure raises ``httpx.HTTPStatusError`` shaped
+    like the old synchronous error path so the calling render code can
+    keep using ``helpers.extract_error_detail``.
+
+    Transient failures are absorbed up to ``_MAX_CONSECUTIVE_503S``
+    consecutive blips; the pipeline is server-side and continues to
+    make progress while we back off and retry. The retry budget
+    covers two distinct shapes:
+
+    * **HTTP 503** — the status endpoint returned, but CORE is
+      momentarily unavailable for cross-replica state tracking.
+    * **Transport error** — ``httpx.TimeoutException`` /
+      ``httpx.TransportError`` (no response received). The CORE
+      read can stall longer than this client's 15s timeout, and
+      a brief network blip surfaces the same way; treating these
+      as terminal would abort polling for a job that is still
+      running. ``TransportError`` is the parent of all
+      non-status httpx failures so this single ``except`` covers
+      timeouts, connection resets, and proxy errors.
+
+    Other HTTP errors (401 / 404 / 500-non-503) propagate
+    immediately — those mean something structural is wrong and
+    retrying would just spin.
+    """
+    last_message: str | None = None
+    consecutive_transient_failures = 0
+    while True:
+        try:
+            info = api_get(
+                f"embed/jobs/{job_id}",
+                extra_headers=client_header,
+                timeout=15,
+            )
+        except httpx.HTTPStatusError as ex:
+            if ex.response.status_code == 503:
+                consecutive_transient_failures += 1
+                if consecutive_transient_failures > _MAX_CONSECUTIVE_503S:
+                    raise
+                LOGGER.warning(
+                    "Embed job %s polling: CORE unavailable (503), retry %d/%d",
+                    job_id,
+                    consecutive_transient_failures,
+                    _MAX_CONSECUTIVE_503S,
+                )
+                time.sleep(_POLL_INTERVAL_SECONDS)
+                continue
+            raise
+        except httpx.TransportError as ex:
+            # No HTTP response received (timeout, connection reset,
+            # proxy error). Same retry contract as 503: the server-
+            # side job is still running, back off and retry rather
+            # than aborting the poll loop.
+            consecutive_transient_failures += 1
+            if consecutive_transient_failures > _MAX_CONSECUTIVE_503S:
+                # Convert the exhausted-budget transport failure into
+                # an ``HTTPStatusError`` so the populate-request UI's
+                # ``except httpx.HTTPStatusError`` handler picks it up.
+                # Re-raising ``TransportError`` directly would bypass
+                # that catch and surface as an uncaught Streamlit
+                # exception. 503 mirrors the "CORE unavailable"
+                # status — the user sees a normal error message and
+                # can retry once connectivity is back. The original
+                # transport error chains through ``__cause__`` so
+                # diagnostic logs still see what actually happened.
+                detail = (
+                    f"Lost contact with the embed-job status endpoint "
+                    f"after {consecutive_transient_failures - 1} retries "
+                    f"({type(ex).__name__}: {ex}); the job may still be "
+                    f"running server-side."
+                )
+                request = httpx.Request("GET", f"embed/jobs/{job_id}")
+                response = httpx.Response(
+                    503, json={"detail": detail}, request=request
+                )
+                raise httpx.HTTPStatusError(
+                    detail, request=request, response=response
+                ) from ex
+            LOGGER.warning(
+                "Embed job %s polling: transport failure (%s: %s), retry %d/%d",
+                job_id,
+                type(ex).__name__,
+                ex,
+                consecutive_transient_failures,
+                _MAX_CONSECUTIVE_503S,
+            )
+            time.sleep(_POLL_INTERVAL_SECONDS)
+            continue
+        consecutive_transient_failures = 0
+
+        status = info.get("status")
+        progress = info.get("progress") or {}
+        stage = progress.get("stage", status)
+        label = _STAGE_LABELS.get(stage, stage or "Working")
+        message = progress.get("message") or ""
+        rendered = f"{label}{(' — ' + message) if message else ''}"
+        if rendered != last_message:
+            last_message = rendered
+            # st.spinner is one-shot, so emit progress as a toast that
+            # appends below the spinner without re-rendering it. The
+            # log line stays for diagnostics; the toast is what the
+            # user actually sees during a long-running job.
+            LOGGER.debug("embed job %s: %s", job_id, rendered)
+            st.toast(rendered)
+        if status == "succeeded":
+            return info["result"] or {}
+        if status == "failed":
+            error = info.get("error") or "Embedding job failed."
+            # Synthesise an httpx error so callers can keep extracting
+            # the detail with the existing helper used by the inline path.
+            request = httpx.Request("GET", f"embed/jobs/{job_id}")
+            response = httpx.Response(500, json={"detail": error}, request=request)
+            raise httpx.HTTPStatusError(error, request=request, response=response)
+        time.sleep(_POLL_INTERVAL_SECONDS)
 
 
 def _process_refresh_request(embed_config: dict, src_bucket: str, rate_limit: int | None) -> dict:
@@ -743,7 +957,7 @@ def _render_population_button(
     return populate_clicked, refresh_clicked
 
 
-def _handle_populate_success(response: dict) -> None:
+def _handle_populate_success(job_id: str | None, response: dict) -> None:
     """Handle successful population response display."""
     st.success(f"{response.get('message', 'Vector store populated successfully')}", icon="✅")
 
@@ -768,7 +982,10 @@ def _handle_populate_success(response: dict) -> None:
             st.subheader("Skipped Files")
             st.dataframe(pd.DataFrame(skipped_files), width="stretch", hide_index=True)
 
-    helpers.refresh_settings()
+    # Only clear on confirmed-successful refresh; on failure the panel
+    # retries on its next 2-second tick.
+    if helpers.refresh_settings() and job_id is not None:
+        clear_embed_job_flag(job_id)
 
 
 def _handle_refresh_success(response: dict) -> None:
@@ -788,6 +1005,9 @@ def _handle_refresh_success(response: dict) -> None:
             f"Total chunks in store: {response.get('total_chunks_in_store', 0)}",
             icon="ℹ️",
         )
+    # The /embed/refresh endpoint is synchronous and adds nothing to
+    # the panel's seen set, so this path must not call
+    # clear_embed_job_flag — it would only harm unrelated tracked jobs.
     helpers.refresh_settings()
 
 
@@ -800,9 +1020,18 @@ def _handle_vector_store_population(
     if populate_clicked:
         try:
             with st.spinner("Populating Vector Store... please be patient.", show_time=True):
-                response = _process_populate_request(embed_config, source_data, rate_limit)
-            _handle_populate_success(response)
+                job_id, response = _process_populate_request(embed_config, source_data, rate_limit)
+            _handle_populate_success(job_id, response)
         except httpx.HTTPStatusError as ex:
+            # 503 = synthesised "retry budget exhausted; the job may
+            # still be running" — keep the seen-set entry. Anything
+            # else is a definite terminal failure for this id.
+            # ``ex.job_id`` is attached by _process_populate_request
+            # only after the POST 202 succeeded; pre-202 errors have
+            # no attached id and no seen-set entry to clear.
+            attached_id = getattr(ex, "job_id", None)
+            if ex.response.status_code != HTTPStatus.SERVICE_UNAVAILABLE and attached_id is not None:
+                clear_embed_job_flag(attached_id)
             st.error(helpers.extract_error_detail(ex), icon="🚨")
     elif refresh_clicked:
         state.running = True
@@ -918,3 +1147,9 @@ def display_split_embed() -> None:
 
     if embed_config:
         _handle_vector_store_population(embed_config, source_data, rate_limit, create_new_vs)
+
+    # ``refresh_on_idle`` is needed even though the synchronous flow
+    # already refreshes on success: a user who navigates away mid-poll
+    # kills the synchronous loop, leaving the fragment as the only
+    # completion observer when they return.
+    render_active_embed_jobs(refresh_on_idle=True, hide_when_idle=True)

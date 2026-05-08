@@ -6,7 +6,9 @@ Endpoints for retrieving database configurations.
 """
 
 import logging
+from typing import Awaitable, Callable
 
+import oracledb
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
@@ -14,10 +16,11 @@ from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_
 from server.app.core.error_detail import response_error_detail
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
-from server.app.database.config import close_pool
+from server.app.database.config import close_pool, get_core_pool
 from server.app.database.registry import drop_vector_store, init_core_database, test_connection
 from server.app.database.schemas import DatabaseConfig, DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import persist_settings
+from server.app.embed.jobs import count_active_embed_jobs, count_active_embed_jobs_for_alias
 from server.app.mcp.proxies.sqlcl import refresh_sqlcl_proxy
 
 LOGGER = logging.getLogger(__name__)
@@ -36,6 +39,81 @@ _PERSIST_FAIL = "Failed to persist settings"
 def _sqlcl_relevant(cfg: DatabaseConfig) -> bool:
     """Whether *cfg* has the credentials SQLcl needs to store a connection."""
     return bool(cfg.username and cfg.password and cfg.dsn)
+
+
+async def _refuse_if_active_embed_jobs(
+    *,
+    counter: Callable[[], Awaitable[int]],
+    log_context: str,
+    refuse_detail: Callable[[int], str],
+) -> None:
+    """Shared shape for both rotation guards: count, fail-open on a
+    flaky check, raise 409 if any job is still live.
+
+    Fail-open posture is intentional — the rotation may itself be
+    the fix for a broken CORE, so failing closed would make a busted
+    pool unrepairable through this endpoint. ``TimeoutError`` is the
+    built-in raised by ``oracledb`` async pools on acquire / SELECT
+    deadlines and doesn't inherit from ``oracledb.Error``, so the
+    catch tuple lists both shapes.
+    """
+    try:
+        active = await counter()
+    except (oracledb.Error, TimeoutError) as ex:
+        LOGGER.warning(
+            "Could not count active embed jobs before %s; proceeding: %s",
+            log_context,
+            ex,
+        )
+        return
+    if active > 0:
+        raise HTTPException(status_code=409, detail=refuse_detail(active))
+
+
+async def _refuse_core_rotation_if_active_embed_jobs(cfg: DatabaseConfig) -> None:
+    """Refuse a CORE rotation while embed jobs are still in flight.
+
+    The pipeline pins the current CORE pool to each active job;
+    rotating closes that pool and strands the pin. Block until all
+    unexpired rows drain.
+    """
+    if cfg.pool is None:
+        return
+    pool = cfg.pool
+    await _refuse_if_active_embed_jobs(
+        counter=lambda: count_active_embed_jobs(pool),
+        log_context="CORE rotation",
+        refuse_detail=lambda n: (
+            f"Cannot update CORE while {n} embed job(s) "
+            f"are still queued / running. Wait for them to "
+            f"finish or cancel them, then retry."
+        ),
+    )
+
+
+async def _refuse_alias_change_if_targeted_by_active_embed_jobs(
+    alias: str, action: str
+) -> None:
+    """Refuse PUT / DELETE on *alias* while embed jobs target it.
+
+    Pipeline holds the alias's pool through the post-``populate_vs``
+    discovery step; rotating or removing closes that pool mid-flight.
+    *action* is the verb (``"update"``/``"remove"``) interpolated
+    into the 409 detail.
+    """
+    core_pool = get_core_pool()
+    if core_pool is None:
+        return
+    await _refuse_if_active_embed_jobs(
+        counter=lambda: count_active_embed_jobs_for_alias(core_pool, alias),
+        log_context=f"{action} of database '{alias}'",
+        refuse_detail=lambda n: (
+            f"Cannot {action} database '{alias}' while "
+            f"{n} embed job(s) targeting it are still "
+            f"queued / running. Wait for them to finish or "
+            f"cancel them, then retry."
+        ),
+    )
 
 
 async def _maybe_refresh_sqlcl(cfg: DatabaseConfig, originals: dict | None = None) -> None:
@@ -151,6 +229,11 @@ async def update_database(alias: str, body: DatabaseUpdate):
         if cfg is None:
             raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
 
+        if cfg.alias.upper() == "CORE":
+            await _refuse_core_rotation_if_active_embed_jobs(cfg)
+        else:
+            await _refuse_alias_change_if_targeted_by_active_embed_jobs(cfg.alias, "update")
+
         updates = _build_updates(body, SECRET_UPDATE_FIELDS)
         new_username = (updates.get("username") if "username" in updates else cfg.username) or ""
         new_dsn = (updates.get("dsn") if "dsn" in updates else cfg.dsn) or ""
@@ -206,6 +289,9 @@ async def remove_database(alias: str):
         cfg = next((c for c in settings.database_configs if c.alias.lower() == alias.lower()), None)
         if cfg is None:
             raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
+
+        await _refuse_alias_change_if_targeted_by_active_embed_jobs(cfg.alias, "remove")
+
         idx = settings.database_configs.index(cfg)
         settings.database_configs.remove(cfg)
         if not await persist_settings():

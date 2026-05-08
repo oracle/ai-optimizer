@@ -7,7 +7,6 @@ Endpoints for retrieving OCI profile configurations.
 # spell-checker: ignore genai
 
 import logging
-import os
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
@@ -15,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.api.v1.schemas.common import ClientId
+from server.app.core.client_locks import _client_lock
 from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory
 from server.app.core.secrets import REVEAL_KEY
@@ -22,7 +22,8 @@ from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
 from server.app.models.connectivity import check_single_model
 from server.app.oci.bucket import (
-    download_object,
+    download_bucket_objects_to_dir,
+    filter_supported_object_names,
     get_bucket_object_names,
     get_buckets,
     get_compartments,
@@ -212,15 +213,16 @@ async def oci_list_buckets(compartment_ocid: str, auth_profile: str):
 
 @auth.get("/objects/{bucket_name}/{auth_profile}", response_model=list[str])
 async def oci_list_bucket_objects(bucket_name: str, auth_profile: str):
-    """List object names in a bucket."""
+    """List object names in a bucket, filtered to embed-supported types."""
     profile = _find_oci_profile(auth_profile)
     try:
-        return get_bucket_object_names(bucket_name, profile)
+        names = get_bucket_object_names(bucket_name, profile)
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=response_error_detail(exc, "OCI object listing failed."),
         ) from exc
+    return filter_supported_object_names(names)
 
 
 @auth.post("/objects/download/{bucket_name}/{auth_profile}", response_model=list[str])
@@ -233,14 +235,19 @@ async def oci_download_objects(
     ),
     client: Annotated[ClientId, Header()] = "server",
 ):
-    """Download objects from a bucket to the client's temp directory."""
+    """Download objects from a bucket to the client's temp directory.
+
+    Failures are logged but not surfaced in the response — the caller
+    can diff the request list against the returned basenames to spot
+    them. For all-or-nothing semantics use ``/v1/embed/oci/store``.
+    """
     profile = _find_oci_profile(auth_profile)
     temp_directory = get_temp_directory(client, "embedding")
-    downloaded = []
-    for object_name in request:
-        try:
-            file_path = download_object(str(temp_directory), object_name, bucket_name, profile)
-            downloaded.append(os.path.basename(file_path))
-        except Exception as exc:
-            LOGGER.warning("Failed to download %s: %s", object_name, exc)
-    return downloaded
+
+    # Serialize shared-dir writes against a concurrent /embed/ retry
+    # restore — see ``_restore_claimed_files_to_shared_under_lock``.
+    async with _client_lock(client):
+        downloaded, _failures = await download_bucket_objects_to_dir(
+            temp_directory, profile, bucket_name, request,
+        )
+        return downloaded

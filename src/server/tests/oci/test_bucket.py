@@ -12,12 +12,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from server.app.core.constants import SUPPORTED_EXTENSIONS
 from server.app.oci.bucket import (
-    SUPPORTED_EXTENSIONS,
     detect_changed_objects,
     download_object,
     flatten_bucket_key,
+    get_bucket_object_names,
     get_bucket_objects_with_metadata,
+    get_buckets,
+    get_compartments,
 )
 from server.app.oci.schemas import OciProfileConfig
 
@@ -78,6 +81,154 @@ class TestFlattenBucketKey:
 
 
 # ---------------------------------------------------------------------------
+# get_compartments / get_buckets pagination
+# ---------------------------------------------------------------------------
+
+
+def _make_compartment(compartment_id, name, parent_id):
+    """Build a mock OCI compartment."""
+    c = MagicMock()
+    c.id = compartment_id
+    c.name = name
+    c.compartment_id = parent_id
+    return c
+
+
+class TestGetCompartmentsPagination:
+    """Compartment listing must aggregate across all pages."""
+
+    def test_aggregates_compartments_across_pages(self):
+        """Compartments returned across multiple OCI pages all appear in the result."""
+        tenancy = "ocid1.tenancy.oc1..test"
+        page1 = [_make_compartment(f"ocid1.compartment.oc1..p1c{i}", f"p1c{i}", tenancy) for i in range(100)]
+        page2 = [_make_compartment(f"ocid1.compartment.oc1..p2c{i}", f"p2c{i}", tenancy) for i in range(50)]
+        aggregated_response = MagicMock(data=page1 + page2)
+        mock_client = MagicMock()
+
+        with (
+            patch(f"{MODULE}.init_client", return_value=mock_client),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=aggregated_response,
+            ) as mock_paginate,
+        ):
+            result = get_compartments(_make_profile(tenancy=tenancy))
+
+        mock_paginate.assert_called_once()
+        assert mock_paginate.call_args.args[0] is mock_client.list_compartments
+        assert len(result) == 151
+        assert result["(root)"] == tenancy
+        assert "p1c0" in result
+        assert "p2c49" in result
+
+
+class TestGetBucketsPagination:
+    """Bucket listing must aggregate across all pages."""
+
+    def test_aggregates_buckets_across_pages(self):
+        """Buckets returned across multiple OCI pages all appear in the result."""
+        def _bucket(name, genai_chunk=False):
+            b = MagicMock()
+            b.name = name
+            b.freeform_tags = {"genai_chunk": "true"} if genai_chunk else {}
+            return b
+
+        page1 = [_bucket(f"bucket-p1-{i}") for i in range(100)]
+        page2 = [_bucket(f"bucket-p2-{i}") for i in range(25)]
+        page2.append(_bucket("hidden-chunks", genai_chunk=True))
+        aggregated_response = MagicMock(data=page1 + page2)
+        mock_client = MagicMock()
+
+        with (
+            patch(f"{MODULE}.init_client", return_value=mock_client),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=aggregated_response,
+            ) as mock_paginate,
+        ):
+            result = get_buckets("ocid1.compartment.oc1..test", _make_profile())
+
+        mock_paginate.assert_called_once()
+        assert mock_paginate.call_args.args[0] is mock_client.list_buckets
+        assert len(result) == 125
+        assert "bucket-p1-0" in result
+        assert "bucket-p2-24" in result
+        assert "hidden-chunks" not in result
+
+
+# ---------------------------------------------------------------------------
+# get_bucket_object_names pagination
+# ---------------------------------------------------------------------------
+
+
+class TestGetBucketObjectNamesPagination:
+    """Object-name listing must aggregate across all pages.
+
+    The single-call ``/v1/embed/oci/store`` endpoint embeds every
+    supported object in the bucket when ``objects`` is omitted; a
+    single ``list_objects`` page would leave later objects out of
+    the resulting vector store.
+    """
+
+    def test_aggregates_object_names_across_pages(self):
+        """Object names returned across multiple OCI pages all appear in the result."""
+        page1 = [_make_bucket_object(f"page1-{i}.pdf") for i in range(100)]
+        page2 = [_make_bucket_object(f"page2-{i}.pdf") for i in range(25)]
+        aggregated_response = MagicMock()
+        aggregated_response.data.objects = page1 + page2
+        mock_client = MagicMock()
+
+        with (
+            patch(f"{MODULE}.init_client", return_value=mock_client),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=aggregated_response,
+            ) as mock_paginate,
+        ):
+            result = get_bucket_object_names("test-bucket", _make_profile())
+
+        mock_paginate.assert_called_once()
+        assert mock_paginate.call_args.args[0] is mock_client.list_objects
+        assert len(result) == 125
+        assert "page1-0.pdf" in result
+        assert "page2-24.pdf" in result
+
+
+class TestGetBucketObjectsWithMetadataPagination:
+    """Metadata listing must aggregate across all pages.
+
+    ``/v1/embed/refresh`` enumerates the bucket via this helper to
+    detect new and modified objects; a single ``list_objects`` page
+    would treat objects beyond the first page as if they had been
+    deleted (or never existed) for change-detection purposes.
+    """
+
+    def test_aggregates_metadata_across_pages(self):
+        """Objects returned across multiple OCI pages all appear in the result."""
+        page1 = [_make_bucket_object(f"page1-{i}.pdf") for i in range(100)]
+        page2 = [_make_bucket_object(f"page2-{i}.pdf") for i in range(25)]
+        aggregated_response = MagicMock()
+        aggregated_response.data.objects = page1 + page2
+        mock_client = MagicMock()
+
+        with (
+            patch(f"{MODULE}.init_client", return_value=mock_client),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=aggregated_response,
+            ) as mock_paginate,
+        ):
+            result = get_bucket_objects_with_metadata("test-bucket", _make_profile())
+
+        mock_paginate.assert_called_once()
+        assert mock_paginate.call_args.args[0] is mock_client.list_objects
+        assert len(result) == 125
+        names = {r["name"] for r in result}
+        assert "page1-0.pdf" in names
+        assert "page2-24.pdf" in names
+
+
+# ---------------------------------------------------------------------------
 # get_bucket_objects_with_metadata
 # ---------------------------------------------------------------------------
 
@@ -97,10 +248,14 @@ class TestGetBucketObjectsWithMetadata:
         ]
         mock_response = MagicMock()
         mock_response.data.objects = objects
-        mock_client = MagicMock()
-        mock_client.list_objects.return_value = mock_response
 
-        with patch(f"{MODULE}.init_client", return_value=mock_client):
+        with (
+            patch(f"{MODULE}.init_client", return_value=MagicMock()),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=mock_response,
+            ),
+        ):
             result = get_bucket_objects_with_metadata("test-bucket", _make_profile())
 
         names = {r["name"] for r in result}
@@ -117,10 +272,14 @@ class TestGetBucketObjectsWithMetadata:
         objects = [_make_bucket_object("report.pdf", size=2048, etag="etag1", time_modified=ts, md5="abc")]
         mock_response = MagicMock()
         mock_response.data.objects = objects
-        mock_client = MagicMock()
-        mock_client.list_objects.return_value = mock_response
 
-        with patch(f"{MODULE}.init_client", return_value=mock_client):
+        with (
+            patch(f"{MODULE}.init_client", return_value=MagicMock()),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=mock_response,
+            ),
+        ):
             result = get_bucket_objects_with_metadata("test-bucket", _make_profile())
 
         assert len(result) == 1
@@ -137,10 +296,14 @@ class TestGetBucketObjectsWithMetadata:
         objects = [_make_bucket_object("data.csv", time_modified=None)]
         mock_response = MagicMock()
         mock_response.data.objects = objects
-        mock_client = MagicMock()
-        mock_client.list_objects.return_value = mock_response
 
-        with patch(f"{MODULE}.init_client", return_value=mock_client):
+        with (
+            patch(f"{MODULE}.init_client", return_value=MagicMock()),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=mock_response,
+            ),
+        ):
             result = get_bucket_objects_with_metadata("test-bucket", _make_profile())
 
         assert result[0]["time_modified"] is None
@@ -149,10 +312,14 @@ class TestGetBucketObjectsWithMetadata:
         """Empty bucket returns empty list."""
         mock_response = MagicMock()
         mock_response.data.objects = []
-        mock_client = MagicMock()
-        mock_client.list_objects.return_value = mock_response
 
-        with patch(f"{MODULE}.init_client", return_value=mock_client):
+        with (
+            patch(f"{MODULE}.init_client", return_value=MagicMock()),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=mock_response,
+            ),
+        ):
             result = get_bucket_objects_with_metadata("test-bucket", _make_profile())
 
         assert not result
@@ -161,12 +328,15 @@ class TestGetBucketObjectsWithMetadata:
         """OCI ServiceError is caught and returns empty list."""
         import oci.exceptions
 
-        mock_client = MagicMock()
-        mock_client.list_objects.side_effect = oci.exceptions.ServiceError(
-            status=404, code="BucketNotFound", headers={}, message="not found"
-        )
-
-        with patch(f"{MODULE}.init_client", return_value=mock_client):
+        with (
+            patch(f"{MODULE}.init_client", return_value=MagicMock()),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                side_effect=oci.exceptions.ServiceError(
+                    status=404, code="BucketNotFound", headers={}, message="not found",
+                ),
+            ),
+        ):
             result = get_bucket_objects_with_metadata("test-bucket", _make_profile())
 
         assert not result
@@ -176,10 +346,14 @@ class TestGetBucketObjectsWithMetadata:
         objects = [_make_bucket_object(f"file{ext}") for ext in SUPPORTED_EXTENSIONS]
         mock_response = MagicMock()
         mock_response.data.objects = objects
-        mock_client = MagicMock()
-        mock_client.list_objects.return_value = mock_response
 
-        with patch(f"{MODULE}.init_client", return_value=mock_client):
+        with (
+            patch(f"{MODULE}.init_client", return_value=MagicMock()),
+            patch(
+                f"{MODULE}.oci.pagination.list_call_get_all_results",
+                return_value=mock_response,
+            ),
+        ):
             result = get_bucket_objects_with_metadata("test-bucket", _make_profile())
 
         assert len(result) == len(SUPPORTED_EXTENSIONS)
