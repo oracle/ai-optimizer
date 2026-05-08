@@ -92,14 +92,10 @@ Check Ollama status:
 SIGNOZ (OBSERVABILITY)
 ================================================================================
 
-{{- /* Read the configured frontend service port from the subchart values
-       (defaults to 8080). Hardcoding the remote port would break operators
-       who legitimately pass through `signoz.signoz.service.port`. */ -}}
-{{- $signozPort := dig "signoz" "service" "port" 8080 (.Values.signoz | default dict) -}}
 {{- $rootEnabled := include "signoz.rootProvisioningEnabled" . -}}
 {{- $authnSecret := include "signoz.authnSecretName" . -}}
 SigNoz is deployed in this release. Port-forward to reach the UI:
-  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "signoz.releaseFullname" . }} 8080:{{ $signozPort }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "signoz.releaseFullname" . }} 8080:{{ include "signoz.frontendPort" . }}
 
 Then open in your browser:
   http://localhost:8080

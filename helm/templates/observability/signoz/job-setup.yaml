@@ -20,6 +20,12 @@ spec:
   parallelism: 1
   suspend: false
   ttlSecondsAfterFinished: 300
+  # Wall-clock from Job creation. Must comfortably exceed the initContainer
+  # readiness wait (`wait_until 120 5` => ~1440s worst case with per-curl
+  # timeouts) plus the reconcile loop (~350s worst case for ~10 calls at
+  # --max-time 30). 1800s leaves a real margin so SigNoz coming up near the
+  # end of the readiness window doesn't get killed mid-login.
+  activeDeadlineSeconds: 1800
   template:
     metadata:
       labels:
@@ -47,7 +53,7 @@ spec:
         - |
           set -e
           {{- include "global.shellWaitFunc" . | nindent 10 }}
-          wait_until "signoz-service" 120 5 curl -sf -o /dev/null {{ include "signoz.frontendUrl" . }}/api/v1/health?live=1
+          wait_until "signoz-service" 120 5 curl -sf --max-time 5 --connect-timeout 2 -o /dev/null {{ include "signoz.frontendUrl" . }}/api/v1/health?live=1
           echo "signoz-service ready"
       containers:
       - name: signoz-setup
@@ -60,6 +66,9 @@ spec:
         - |
           set -eu
           SIGNOZ_URL={{ include "signoz.frontendUrl" . | quote }}
+          # Cap each call so a stuck SigNoz frontend (post-healthcheck hang)
+          # cannot freeze the Job past activeDeadlineSeconds.
+          CURL_OPTS="-sf --connect-timeout 5 --max-time 30"
           email=$(cat /signoz-authn/email)
           password=$(cat /signoz-authn/password)
           orgName=$(cat /signoz-authn/orgName)
@@ -134,7 +143,7 @@ spec:
 
           # v2 login requires orgId; resolve it from the org name via session-context
           # (matches the API surface used by observability/signoz/bootstrap-signoz.py).
-          ctx=$(curl -sf -G \
+          ctx=$(curl $CURL_OPTS -G \
             --data-urlencode "email=${email}" \
             --data-urlencode "ref=${SIGNOZ_URL}" \
             "${SIGNOZ_URL}/api/v2/sessions/context")
@@ -149,7 +158,7 @@ spec:
           email_json=$(printf '%s' "$email" | json_escape)
           password_json=$(printf '%s' "$password" | json_escape)
           orgId_json=$(printf '%s' "$orgId" | json_escape)
-          login=$(curl -sf -H 'Content-Type: application/json' \
+          login=$(curl $CURL_OPTS -H 'Content-Type: application/json' \
             -d "{\"email\":\"${email_json}\",\"password\":\"${password_json}\",\"orgId\":\"${orgId_json}\"}" \
             "${SIGNOZ_URL}/api/v2/sessions/email_password")
           TOKEN=$(printf '%s' "$login" | json_string_value accessToken)
@@ -165,7 +174,7 @@ spec:
             dir="$1"; api="$2"; name_key="$3"; label="$4"
             [ -d "$dir" ] || return 0
             echo "Fetching existing ${label}s..."
-            existing=$(curl -sf -H "${AUTH_HEADER}" "${SIGNOZ_URL}${api}")
+            existing=$(curl $CURL_OPTS -H "${AUTH_HEADER}" "${SIGNOZ_URL}${api}")
             index=$(printf '%s' "$existing" | json_pairs "$name_key")
             rc=0
             for f in "$dir"/*; do
@@ -181,7 +190,7 @@ spec:
                 echo "  Creating..."
                 verb=POST; url="${SIGNOZ_URL}${api}"
               fi
-              if curl -sf -H "${AUTH_HEADER}" -H 'Content-Type: application/json' \
+              if curl $CURL_OPTS -H "${AUTH_HEADER}" -H 'Content-Type: application/json' \
                   -X "$verb" -d @"${f}" "$url"; then
                 echo "  Done"
               else

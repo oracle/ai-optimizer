@@ -911,6 +911,13 @@ SigNoz subchart version exactly.
 {{- end -}}
 
 
+{{- /* Configured SigNoz frontend service port (default 8080). Hardcoding
+       would break operators who pass through `signoz.signoz.service.port`. */ -}}
+{{- define "signoz.frontendPort" -}}
+{{- dig "signoz" "service" "port" 8080 (.Values.signoz | default dict) -}}
+{{- end -}}
+
+
 {{- /* Schemeful URL of the in-cluster SigNoz frontend (the dashboards/rules
        API the setup Job talks to), with port. Mirrors `signoz.baseUrl` but
        targets the frontend service rather than the otel-collector service.
@@ -918,8 +925,7 @@ SigNoz subchart version exactly.
 {{- define "signoz.frontendUrl" -}}
 {{- $base := include "signoz.releaseFullname" . -}}
 {{- if ne $base "" -}}
-{{- $port := dig "signoz" "service" "port" 8080 (.Values.signoz | default dict) -}}
-{{- printf "http://%s.%s.svc:%v" $base .Release.Namespace $port -}}
+{{- printf "http://%s.%s.svc:%v" $base .Release.Namespace (include "signoz.frontendPort" .) -}}
 {{- end -}}
 {{- end -}}
 
