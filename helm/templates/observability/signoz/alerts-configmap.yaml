@@ -1,0 +1,13 @@
+## Copyright (c) 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+{{- if .Values.signoz.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "global.fullname" . }}-signoz-alerts
+  labels:
+    app.kubernetes.io/component: observability
+    {{- include "global.labels" . | nindent 4 }}
+data:
+{{ (.Files.Glob "observability/signoz/alerts/*.json").AsConfig | indent 2 }}
+{{- end }}

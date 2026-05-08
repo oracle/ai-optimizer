@@ -19,8 +19,7 @@ locals {
     ssl_enabled              = var.ssl_enabled
     client_cookie_secret     = var.client_cookie_secret
     is_observability_enabled = var.is_observability_enabled
-    signoz_enabled           = var.is_observability_enabled
-    signoz_image_registry    = var.byo_ocir_url
+    ocir_url                 = var.byo_ocir_url
   })
 }
 

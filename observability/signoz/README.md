@@ -9,10 +9,10 @@ spell-checker: ignore signoz openinference clickhouse promql
 
 Curated dashboards and alert rules for the AI Optimizer server, suitable for a fresh [SigNoz](https://signoz.io) install. The committed JSON files are the **source of truth**: SigNoz stores its own state in ClickHouse / Postgres volumes that are wiped on a re-install, so anything not committed here is lost.
 
-The dashboards and alerts live under `helm/observe/signoz/` so they ship alongside the Helm chart that deploys SigNoz; the loader script lives here in `observe/signoz/`:
+The dashboards and alerts live under `helm/observability/signoz/` so they ship alongside the Helm chart that deploys SigNoz; the loader script lives here in `observability/signoz/`:
 
 ```
-helm/observe/signoz/
+helm/observability/signoz/
 ├── dashboards/
 │   └── ai-optimizer-overview.json     # Service health + LLM usage at a glance
 └── alerts/
@@ -20,7 +20,7 @@ helm/observe/signoz/
     ├── latency-p95-breach.json        # /v1/chat/completions p95 > 10s sustained
     └── telemetry-silence.json         # No traces from the server for 10 minutes
 
-observe/signoz/
+observability/signoz/
 └── bootstrap-signoz.py                # Load dashboards + alerts via SigNoz's API
 ```
 
@@ -31,7 +31,7 @@ observe/signoz/
 One script loads both dashboards and alerts via SigNoz's HTTP API. Pass the admin credentials you set on first UI visit; the script prompts for your password and logs in for you:
 
 ```bash
-observe/signoz/bootstrap-signoz.py \
+observability/signoz/bootstrap-signoz.py \
   --host http://localhost:8080     \
   --email admin@example.com
 # SigNoz password for admin@example.com: ********
@@ -42,7 +42,7 @@ The script POSTs the credentials to `/api/v2/sessions/email_password`, captures 
 For CI or SSO setups that don't fit the email/password flow, pass a pre-fetched JWT:
 
 ```bash
-observe/signoz/bootstrap-signoz.py \
+observability/signoz/bootstrap-signoz.py \
   --host http://localhost:8080     \
   --token <jwt>
 ```
@@ -83,7 +83,7 @@ After loading, open each alert in the UI and attach your notification channel (S
 
 If you'd rather not script:
 
-- **Dashboards** can be imported via the SigNoz UI: **Dashboards → New dashboard → Import JSON**, then select `helm/observe/signoz/dashboards/ai-optimizer-overview.json`.
+- **Dashboards** can be imported via the SigNoz UI: **Dashboards → New dashboard → Import JSON**, then select `helm/observability/signoz/dashboards/ai-optimizer-overview.json`.
 - **Alerts cannot.** SigNoz's UI does not support JSON import for alerts (only dashboards). Either run the bootstrap script, or recreate each alert by hand in **Alerts → New Alert** using the JSON file as a reference. Field-to-UI mapping for hand recreation:
 
 | JSON field | UI field |
@@ -107,7 +107,7 @@ The exact API endpoint paths track the SigNoz version; if the bootstrap script r
 When you change a dashboard or alert in the UI:
 
 1. Use the SigNoz UI's **Export JSON** action on the dashboard or alert.
-2. Replace the corresponding file under `helm/observe/signoz/dashboards/` or `helm/observe/signoz/alerts/`.
+2. Replace the corresponding file under `helm/observability/signoz/dashboards/` or `helm/observability/signoz/alerts/`.
 3. Open a PR. The committed file is the version other operators will load.
 
 This makes the assets a small but real piece of the codebase rather than a one-time gift, and prevents the situation where one operator's improvements live only in their personal SigNoz instance.
@@ -121,7 +121,7 @@ If you upgrade to a future SigNoz that changes either the API paths or the alert
 If a dashboard fails to import:
 
 - Open the JSON in the UI's **Edit** view to see which panel/query SigNoz rejects.
-- Recreate the offending panel manually using the description in [`helm/observe/signoz/dashboards/ai-optimizer-overview.json`](../../helm/observe/signoz/dashboards/ai-optimizer-overview.json) (each widget has a `description` field).
+- Recreate the offending panel manually using the description in [`helm/observability/signoz/dashboards/ai-optimizer-overview.json`](../../helm/observability/signoz/dashboards/ai-optimizer-overview.json) (each widget has a `description` field).
 - Export and overwrite the committed file.
 
 ## Attributes the dashboards rely on
@@ -137,6 +137,6 @@ These attributes are emitted by the server's instrumentation; the panels filter 
 | `llm.token_count.total` | OpenInference LangChain instrumentor | Token sum panel |
 | `openinference.span.kind` | OpenInference LangChain instrumentor | Not used by panels in v1 — see note below |
 
-The `openinference.span.kind` attribute is emitted on every OpenInference span (`LLM`, `RETRIEVER`, `EMBEDDING`, etc.) but the v1 dashboard does not depend on it. Filtering by `llm.model_name exists` covers LLM spans without needing that key indexed, which matters because `openinference.span.kind` takes longer to register in SigNoz than `llm.model_name` after the first traffic. To add an embedding-latency panel, recreate it manually in the UI once your install has indexed `openinference.span.kind`: filter on `openinference.span.kind = EMBEDDING`, aggregate p95 of `durationNano`. Then export the dashboard JSON and overwrite `helm/observe/signoz/dashboards/ai-optimizer-overview.json`.
+The `openinference.span.kind` attribute is emitted on every OpenInference span (`LLM`, `RETRIEVER`, `EMBEDDING`, etc.) but the v1 dashboard does not depend on it. Filtering by `llm.model_name exists` covers LLM spans without needing that key indexed, which matters because `openinference.span.kind` takes longer to register in SigNoz than `llm.model_name` after the first traffic. To add an embedding-latency panel, recreate it manually in the UI once your install has indexed `openinference.span.kind`: filter on `openinference.span.kind = EMBEDDING`, aggregate p95 of `durationNano`. Then export the dashboard JSON and overwrite `helm/observability/signoz/dashboards/ai-optimizer-overview.json`.
 
 For a fuller catalog of what each span carries, see [Reading Traces](../../docs/content/observability/reading-traces.md).

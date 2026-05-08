@@ -1,5 +1,5 @@
 {
-  "description": "Service health (request rate, latency, errors) plus LLM usage (calls and tokens by model). Filters on service.name = ai-optimizer-server; relies on attributes documented in observe/signoz/README.md.",
+  "description": "Service health (request rate, latency, errors) plus LLM usage (calls and tokens by model). Filters on service.name = ai-optimizer-server; relies on attributes documented in observability/signoz/README.md.",
   "layout": [
     {
       "h": 4,

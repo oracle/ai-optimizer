@@ -357,12 +357,12 @@ kubectl port-forward -n <namespace> svc/<release>-signoz 8080:8080
 # Browse to http://localhost:8080 — first visit prompts for admin account
 
 # Load curated dashboards/alerts (after at least one chat completion has been ingested):
-observe/signoz/bootstrap-signoz.py \
+observability/signoz/bootstrap-signoz.py \
   --host http://localhost:8080 \
   --email <admin-email>
 ```
 
-See [`observe/signoz/README.md`](https://github.com/oracle/ai-optimizer/blob/main/observe/signoz/README.md) for why a real chat request is required before bootstrap, and how to round-trip dashboard changes back to the repository.
+See [`observability/signoz/README.md`](https://github.com/oracle/ai-optimizer/blob/main/observability/signoz/README.md) for why a real chat request is required before bootstrap, and how to round-trip dashboard changes back to the repository.
 
 ###### Wiring `server.otel`
 

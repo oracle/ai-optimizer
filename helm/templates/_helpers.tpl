@@ -91,9 +91,8 @@ Define the API Key Secret with Defaults
 
 {{/* ******************************************
 Validate that either client.cookieSecret or client.cookieSecretName is provided.
-The cookie secret signs Streamlit's XSRF tokens; a committed default would make
-the key public, and an auto-generated one would diverge across replicas. Operator
-must own it explicitly — same contract as global.api.apiKey.
+The cookie secret must be stable and operator-provided so Streamlit state remains
+consistent across replicas. Same contract as global.api.apiKey.
 *********************************************** */}}
 {{- define "client.cookieKeyOrSecretName.required" -}}
   {{- $cookieSecret := .Values.client.cookieSecret | trim | default "" -}}

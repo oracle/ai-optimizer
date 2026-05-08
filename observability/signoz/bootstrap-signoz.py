@@ -4,7 +4,7 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 Bootstrap a SigNoz install with the curated dashboards and alert rules
-under ``helm/observe/signoz/``. Targets a fresh install or one that has
+under ``helm/observability/signoz/``. Targets a fresh install or one that has
 just been wiped via ``compose down -v``.
 
 Re-running creates duplicates because SigNoz assigns a new id per POST.
@@ -171,7 +171,7 @@ def load_directory(host: str, token: str, label: str, directory: Path, endpoint:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Bootstrap a SigNoz install with the dashboards and alerts under helm/observe/signoz/.",
+        description="Bootstrap a SigNoz install with the dashboards and alerts under helm/observability/signoz/.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -266,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     repo_root = Path(__file__).resolve().parents[2]
-    assets_root = repo_root / "helm" / "observe" / "signoz"
+    assets_root = repo_root / "helm" / "observability" / "signoz"
     print(f"Bootstrapping SigNoz at {args.host}")
 
     failures = 0

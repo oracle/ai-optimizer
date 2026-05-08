@@ -32,6 +32,17 @@ stringData:
   password: "${db_password}"
   service: "${db_service}"
 %{ endif }
+%{ if is_observability_enabled && deploy_optimizer ~}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${label}-signoz-authn
+  namespace: ${label}
+type: Opaque
+stringData:
+  password: "${signoz_authn}"
+%{ endif }
 ---
 # Secret containing privileged DB User details.
 # Used to create user defined in -db-authn in init-container

@@ -4,28 +4,30 @@
 
 locals {
   k8s_manifest = templatefile("${path.module}/templates/k8s-manifest.yaml", {
-    label             = var.label_prefix
-    repository_host   = local.repository_host
-    repository_base   = local.repository_base
-    compartment_ocid  = var.lb.compartment_id
-    lb_ocid           = var.lb.id
-    lb_subnet_ocid    = var.public_subnet_id
-    lb_ip_ocid        = var.lb.ip_address_details[0].ip_address
-    lb_nsgs           = var.lb_nsg_id
-    lb_min_shape      = var.lb.shape_details[0].minimum_bandwidth_in_mbps
-    lb_max_shape      = var.lb.shape_details[0].maximum_bandwidth_in_mbps
-    db_name           = lower(var.db_name)
-    db_username       = var.db_conn.username
-    db_password       = var.db_conn.password
-    db_service        = var.db_conn.service
-    optimizer_api_key = random_string.optimizer_api_key.result
-    deploy_buildkit   = var.byo_ocir_url == ""
-    deploy_optimizer  = var.deploy_optimizer
-    optimizer_version = var.optimizer_version
-    optimizer_branch  = var.optimizer_branch
-    ssl_enabled       = var.ssl_enabled
-    ssl_cert_b64      = var.ssl_enabled ? base64encode(var.ssl_cert_pem) : ""
-    ssl_key_b64       = var.ssl_enabled ? base64encode(var.ssl_key_pem) : ""
+    label                    = var.label_prefix
+    repository_host          = local.repository_host
+    repository_base          = local.repository_base
+    compartment_ocid         = var.lb.compartment_id
+    lb_ocid                  = var.lb.id
+    lb_subnet_ocid           = var.public_subnet_id
+    lb_ip_ocid               = var.lb.ip_address_details[0].ip_address
+    lb_nsgs                  = var.lb_nsg_id
+    lb_min_shape             = var.lb.shape_details[0].minimum_bandwidth_in_mbps
+    lb_max_shape             = var.lb.shape_details[0].maximum_bandwidth_in_mbps
+    db_name                  = lower(var.db_name)
+    db_username              = var.db_conn.username
+    db_password              = var.db_conn.password
+    db_service               = var.db_conn.service
+    optimizer_api_key        = random_string.optimizer_api_key.result
+    deploy_buildkit          = var.byo_ocir_url == ""
+    deploy_optimizer         = var.deploy_optimizer
+    optimizer_version        = var.optimizer_version
+    optimizer_branch         = var.optimizer_branch
+    ssl_enabled              = var.ssl_enabled
+    ssl_cert_b64             = var.ssl_enabled ? base64encode(var.ssl_cert_pem) : ""
+    ssl_key_b64              = var.ssl_enabled ? base64encode(var.ssl_key_pem) : ""
+    is_observability_enabled = var.is_observability_enabled
+    signoz_authn             = random_string.signoz_authn.result
   })
 }
 

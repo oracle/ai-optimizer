@@ -31,10 +31,10 @@ server:
 
   # -- OpenTelemetry export to the in-cluster SigNoz collector.
   # Endpoint auto-populates from signoz.enabled below; otel must follow
-  # signoz_enabled because the chart validator rejects otel-on with no
+  # signoz.enabled because the chart validator rejects otel-on with no
   # endpoint.
   otel:
-    enabled: ${signoz_enabled}
+    enabled: ${is_observability_enabled}
     insecure: true
 
   # -- Oracle Database Configuration
@@ -82,19 +82,31 @@ client:
 
 # -- Self-hosted SigNoz observability backend. The BYO branch routes every
 # image via signoz.global.imageRegistry and disables the clickhouse `udf`
-# initContainer (it fetches histogram-quantile from github.com at pod start,
-# which an airgapped cluster cannot reach; the histogramQuantile UDF is
-# lost as a result). Reach the UI via:
+# initContainer (it fetches histogram-quantile from github.com at pod start;
+# private-registry deployments should not rely on runtime downloads, so
+# disabling this removes the histogramQuantile UDF). Reach the UI via:
 #   kubectl port-forward -n <ns> svc/<release>-signoz 8080:8080
+%{ if is_observability_enabled ~}
 signoz:
-  enabled: ${signoz_enabled}
-%{ if signoz_image_registry != "" ~}
+  enabled: true
+%{ if ocir_url != "" ~}
   global:
-    imageRegistry: "${signoz_image_registry}"
+    imageRegistry: "${ocir_url}"
   clickhouse:
     initContainers:
       udf:
         enabled: false
+%{ endif ~}
+  signoz:
+    env:
+      SIGNOZ_USER_ROOT_ENABLED: "true"
+      SIGNOZ_USER_ROOT_ORG_NAME: "AIOptimizer"
+      SIGNOZ_USER_ROOT_EMAIL: "admin@${label}.local"
+      SIGNOZ_USER_ROOT_PASSWORD:
+        valueFrom:
+          secretKeyRef:
+            name: "${label}-signoz-authn"
+            key: password
 %{ endif ~}
 
 ollama:

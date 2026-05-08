@@ -100,7 +100,7 @@ When outbound calls are made (LLM provider APIs, OCI SDK requests, etc.), additi
 
 ## 4. Load the Starter Dashboards and Alerts
 
-The repository ships a curated set of SigNoz assets under [`observe/signoz/`](https://github.com/oracle/ai-optimizer/tree/main/observe/signoz) so a fresh install does not start from a blank UI:
+The repository ships a curated set of SigNoz assets under [`observability/signoz/`](https://github.com/oracle/ai-optimizer/tree/main/observability/signoz) so a fresh install does not start from a blank UI:
 
 - One overview dashboard — request rate, p95 latency, 5xx rate, LLM call rate, LLM tokens by model.
 - Three starter alert rules — 5xx spike, chat-completions p95 breach, telemetry silence (no traces received).
@@ -108,12 +108,12 @@ The repository ships a curated set of SigNoz assets under [`observe/signoz/`](ht
 The fastest path is the bundled bootstrap script, which loads both dashboards and alerts via SigNoz's HTTP API. Pass the admin credentials you set on first UI visit; the script prompts for your password and logs in for you:
 
 ```bash
-observe/signoz/bootstrap-signoz.py \
+observability/signoz/bootstrap-signoz.py \
   --host http://localhost:8080     \
   --email <admin-email>
 ```
 
-For CI / SSO setups, pass a pre-fetched JWT as `--token` (or `$SIGNOZ_TOKEN`) instead — it bypasses the login step. Manual paths exist as well — dashboards can be imported via **Dashboards → New dashboard → Import JSON**, but the SigNoz UI has no JSON import for alerts, so the script (or the UI form) is the only way to load them. See the directory's [README](https://github.com/oracle/ai-optimizer/blob/main/observe/signoz/README.md) for the full workflow, including the prerequisite that at least one chat completion has been ingested before bootstrapping (LLM-related dashboard panels filter on attribute keys that SigNoz only indexes once it has seen them in real spans).
+For CI / SSO setups, pass a pre-fetched JWT as `--token` (or `$SIGNOZ_TOKEN`) instead — it bypasses the login step. Manual paths exist as well — dashboards can be imported via **Dashboards → New dashboard → Import JSON**, but the SigNoz UI has no JSON import for alerts, so the script (or the UI form) is the only way to load them. See the directory's [README](https://github.com/oracle/ai-optimizer/blob/main/observability/signoz/README.md) for the full workflow, including the prerequisite that at least one chat completion has been ingested before bootstrapping (LLM-related dashboard panels filter on attribute keys that SigNoz only indexes once it has seen them in real spans).
 
 The committed JSON is the source of truth: SigNoz's own state lives in container volumes and is wiped on a re-install, so changes made in the UI need to be exported back to this directory to survive.
 
@@ -153,6 +153,6 @@ To **wipe everything** and start fresh — collected traces, dashboards built in
 podman compose -p ai-optimizer-signoz down -v
 ```
 
-The `-v` flag deletes the named volumes Compose declared. After this, anything you built in the SigNoz UI is gone; the assets in [`observe/signoz/`](https://github.com/oracle/ai-optimizer/tree/main/observe/signoz) are the only way to bring dashboards and alerts back automatically.
+The `-v` flag deletes the named volumes Compose declared. After this, anything you built in the SigNoz UI is gone; the assets in [`observability/signoz/`](https://github.com/oracle/ai-optimizer/tree/main/observability/signoz) are the only way to bring dashboards and alerts back automatically.
 
 The project name (`ai-optimizer-signoz`) must match the one used at `compose up`. If you started SigNoz without `-p`, substitute the directory-derived default (`docker` if you ran from `tmp/signoz/deploy/docker`).

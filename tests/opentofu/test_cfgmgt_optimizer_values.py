@@ -4,8 +4,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Contract tests for opentofu/modules/kubernetes/templates/ai-optimizer-values.yaml:
 under k8s_byo_ocir_url every SigNoz subchart image must resolve through
-signoz.global.imageRegistry, and the rendered chart must make no outbound
-internet fetches (airgap contract).
+signoz.global.imageRegistry, and the rendered chart must not require
+external network downloads in BYO registry mode.
 """
 # spell-checker: disable
 
@@ -51,8 +51,8 @@ _INTERNAL_HOST_RE = re.compile(
 
 def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
     """Render ai-optimizer-values.yaml the way cfgmgt_optimizer.tf does:
-    is_observability_enabled drives signoz_enabled, byo_ocir_url is
-    forwarded as signoz_image_registry."""
+    is_observability_enabled forwards directly; byo_ocir_url is
+    forwarded as ocir_url."""
     is_obs_hcl = "true" if is_obs else "false"
     main_tf = tmp_path / "main.tf"
     main_tf.write_text(
@@ -73,8 +73,7 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 ssl_enabled              = false
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 is_observability_enabled = local.is_observability_enabled
-                signoz_enabled           = local.is_observability_enabled
-                signoz_image_registry    = local.byo_ocir_url
+                ocir_url                 = local.byo_ocir_url
               }})
             }}
             output "rendered" {{
@@ -141,7 +140,7 @@ def byo_helm_render(tmp_path_factory) -> tuple[str, str]:
     return rendered, _helm_template(values_file)
 
 
-def test_signoz_image_registry_set_when_byo_ocir_set(tmp_path):
+def test_ocir_url_set_when_byo_ocir_set(tmp_path):
     """BYO routes every signoz image via signoz.global.imageRegistry."""
     rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
     assert re.search(
@@ -154,7 +153,7 @@ def test_signoz_image_registry_set_when_byo_ocir_set(tmp_path):
     )
 
 
-def test_signoz_image_registry_omitted_when_no_byo(tmp_path):
+def test_ocir_url_omitted_when_no_byo(tmp_path):
     """Without BYO the key must be absent (an empty string would force
     `/<owner>/<image>` paths instead of using upstream defaults)."""
     rendered = _render(tmp_path, is_obs=True, byo_url="")
@@ -174,16 +173,22 @@ def test_signoz_image_registry_omitted_when_no_byo(tmp_path):
     )
 
 
-def test_signoz_disabled_when_observability_off(tmp_path):
+def test_signoz_block_omitted_when_observability_off(tmp_path):
+    """When observability is off the entire signoz: block is omitted from
+    the values file. The umbrella chart's default (signoz.enabled=false)
+    then applies, leaving the subchart disabled."""
     rendered = _render(tmp_path, is_obs=False, byo_url="")
-    assert "signoz:\n  enabled: false" in rendered, (
-        "signoz.enabled should be false when observability is off. "
-        "Rendered:\n" + rendered
+    payload = "\n".join(
+        line for line in rendered.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert re.search(r"^signoz:", payload, re.MULTILINE) is None, (
+        "signoz: block should be absent when observability is off so the "
+        "chart-default (enabled: false) governs. Rendered:\n" + rendered
     )
 
 
 def test_otel_enabled_when_byo_ocir_set(tmp_path):
-    """server.otel.enabled tracks signoz_enabled."""
+    """server.otel.enabled tracks is_observability_enabled."""
     rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
     # Pin to the server.otel block specifically — `enabled:` appears in
     # many places in the rendered values.
@@ -244,12 +249,12 @@ def test_byo_render_makes_no_outbound_internet_calls(byo_helm_render):
         ):
             offenders.append(f"line {i}: {stripped}")
     assert not offenders, (
-        "BYO render still issues outbound internet fetches (airgap "
-        "violation). Disable or override the responsible subchart values:\n  "
+        "BYO render still includes external runtime downloads. Disable or "
+        "override the responsible subchart values:\n  "
         + "\n  ".join(offenders[:10])
     )
     assert "histogram-quantile" not in helm_stdout, (
         "clickhouse.initContainers.udf is still rendering under BYO; the "
         "optimizer template should set signoz.clickhouse.initContainers.udf"
-        ".enabled=false to keep the install airgap-safe."
+        ".enabled=false so the install does not depend on runtime downloads."
     )

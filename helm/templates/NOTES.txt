@@ -96,13 +96,21 @@ SIGNOZ (OBSERVABILITY)
        (defaults to 8080). Hardcoding the remote port would break operators
        who legitimately pass through `signoz.signoz.service.port`. */ -}}
 {{- $signozPort := dig "signoz" "service" "port" 8080 (.Values.signoz | default dict) -}}
+{{- $rootEnabled := eq (dig "signoz" "env" "SIGNOZ_USER_ROOT_ENABLED" "" (.Values.signoz | default dict) | toString) "true" -}}
+{{- $rootEmail := dig "signoz" "env" "SIGNOZ_USER_ROOT_EMAIL" "" (.Values.signoz | default dict) -}}
 SigNoz is deployed in this release. Port-forward to reach the UI:
   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "signoz.releaseFullname" . }} 8080:{{ $signozPort }}
 
 Then open in your browser:
   http://localhost:8080
 
+{{ if $rootEnabled -}}
+The admin account is auto-provisioned at first start. Log in with:
+  email:    {{ $rootEmail }}
+  password: from the secret referenced by SIGNOZ_USER_ROOT_PASSWORD in signoz.signoz.env
+{{- else -}}
 The first visit prompts you to create an admin account.
+{{- end }}
 
 {{- /* Show the auto-wired endpoint URLs only when they're actually used.
        The deployment's per-signal precedence is: an explicit per-signal
@@ -155,12 +163,6 @@ server.otel.insecure=true for the default plaintext gRPC collector) to
 complete that wiring. SigNoz can still receive telemetry from other
 workloads in the cluster.
 {{- end }}
-
-After the server has handled at least one chat completion, load the
-starter dashboards/alerts:
-  observe/signoz/bootstrap-signoz.py \
-    --host http://localhost:8080 \
-    --email <your-admin-email>
 {{- end }}
 
 ================================================================================
