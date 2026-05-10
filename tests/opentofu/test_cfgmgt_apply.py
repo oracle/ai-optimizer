@@ -29,6 +29,8 @@ pytestmark = pytest.mark.skipif(
 def _load_apply():
     """Import apply.py as a module without executing its CLI entry point."""
     spec = importlib.util.spec_from_file_location("cfgmgt_apply", APPLY_PY)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load spec for {APPLY_PY}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

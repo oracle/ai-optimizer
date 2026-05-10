@@ -20,6 +20,8 @@ os.environ["KUBECONFIG"] = os.path.join(STAGE_PATH, "kubeconfig")
 
 ORACLE_OPERATOR_NS = "oracle-database-operator-system"
 ORACLE_OPERATOR_DEPLOYMENT = "oracle-database-operator-controller-manager"
+ORACLE_OPERATOR_CRB = "oracle-database-operator-manager-clusterrolebinding"
+ORACLE_OPERATOR_CR = "oracle-database-operator-manager-role"
 
 # --- Helm Charts Configuration ---
 HELM_CHARTS = [
@@ -338,6 +340,25 @@ def patch_oracle_operator():
     if not check_resource_exists("deployment", ORACLE_OPERATOR_DEPLOYMENT, ORACLE_OPERATOR_NS):
         print(f"⊘ Deployment {ORACLE_OPERATOR_DEPLOYMENT} not found. Skipping operator patch.\n")
         return
+
+    # Bind manager ClusterRole to the namespace's default ServiceAccount
+    if check_resource_exists("clusterrolebinding", ORACLE_OPERATOR_CRB):
+        print(f"✓ ClusterRoleBinding {ORACLE_OPERATOR_CRB} already exists.")
+    else:
+        print(f"🔗 Creating ClusterRoleBinding {ORACLE_OPERATOR_CRB}...")
+        crb_cmd = [
+            "kubectl",
+            "create",
+            "clusterrolebinding",
+            ORACLE_OPERATOR_CRB,
+            f"--clusterrole={ORACLE_OPERATOR_CR}",
+            f"--serviceaccount={ORACLE_OPERATOR_NS}:default",
+        ]
+        _, stderr, rc = run_cmd(crb_cmd, capture_output=False)
+        if rc != 0:
+            print(f"❌ Failed to create ClusterRoleBinding:\n{stderr}")
+            sys.exit(1)
+        print("✅ ClusterRoleBinding created.\n")
 
     # Apply patch
     print("🔧 Patching oracle-database-operator deployment...")
