@@ -4,7 +4,9 @@
 {{- $signoz := .Values.signoz | default dict -}}
 {{- $cleanupChi := and $signoz.enabled (dig "clickhouse" "enabled" true $signoz) }}
 {{- $cleanupMigrator := and $signoz.enabled (dig "telemetryStoreMigrator" "enabled" true $signoz) }}
-{{- if or $cleanupChi $cleanupMigrator }}
+{{- $cleanupReleasePVCs := and $signoz.enabled .Values.global.cleanupPVCs }}
+{{- $needsReleaseRbac := or $cleanupMigrator $cleanupReleasePVCs }}
+{{- if or $cleanupChi $needsReleaseRbac }}
 {{- /* Reserve room for the longer of the two suffixes
        (`-signoz-migrator-cleanup`, 24 chars) before truncating, so the two
        hook names stay distinct under long fullnames or fullnameOverride. */ -}}
@@ -22,6 +24,13 @@
 {{- $migratorSA := default $migratorJob $migratorSAOverride }}
 {{- $chi := include "signoz.clickhouseFullname" . }}
 {{- $chiNamespace := include "signoz.clickhouseNamespace" . }}
+{{- /* `signoz.clickhouse.zookeeper.namespaceOverride` lets operators put
+       the zookeeper StatefulSet in its own namespace; its retained PVCs
+       end up there and are missed by the release-namespace sweep. */ -}}
+{{- $zkOverride := dig "clickhouse" "zookeeper" "namespaceOverride" "" $signoz }}
+{{- $zkNamespace := default .Release.Namespace $zkOverride }}
+{{- $cleanupZkPVCs := and $cleanupChi $cleanupReleasePVCs (ne $zkNamespace .Release.Namespace) }}
+{{- $zkNeedsOwnRbac := and $cleanupZkPVCs (ne $zkNamespace $chiNamespace) }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -84,11 +93,12 @@ roleRef:
   kind: Role
   name: {{ $name }}
 {{- end }}
-{{- if $cleanupMigrator }}
+{{- if $needsReleaseRbac }}
 ---
-{{- /* The subchart converts the migrator SA+Job into pre-upgrade hooks;
-       helm uninstall orphans them and blocks the next install. Lives in
-       the release namespace regardless of where ClickHouse runs. */}}
+{{- /* Release-namespace cleanup. Covers two leftovers helm uninstall
+       does not handle on its own: the subchart's migrator SA+Job (converted
+       into pre-upgrade hooks, so they fall outside the release manifest)
+       and StatefulSet PVCs (retained by Kubernetes design). */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -102,12 +112,19 @@ metadata:
     helm.sh/hook-weight: "-20"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 rules:
+{{- if $cleanupMigrator }}
   - apiGroups: [""]
     resources: ["serviceaccounts"]
     verbs: ["get", "list", "delete"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["get", "list", "delete"]
+{{- end }}
+{{- if $cleanupReleasePVCs }}
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "delete"]
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -129,6 +146,47 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ $migratorCleanup }}
+{{- end }}
+{{- if $zkNeedsOwnRbac }}
+---
+{{- $zkCleanup := printf "%s-signoz-zookeeper-cleanup" $prefix }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $zkCleanup }}
+  namespace: {{ $zkNamespace }}
+  labels:
+    app.kubernetes.io/component: observability
+    {{- include "global.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $zkCleanup }}
+  namespace: {{ $zkNamespace }}
+  labels:
+    app.kubernetes.io/component: observability
+    {{- include "global.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $zkCleanup }}
 {{- end }}
 ---
 apiVersion: batch/v1
@@ -165,7 +223,9 @@ spec:
           args:
             - |
               set -eu
+              {{- if $needsReleaseRbac }}
               release_ns={{ .Release.Namespace | quote }}
+              {{- end }}
               {{- if $cleanupMigrator }}
               migrator_job={{ $migratorJob | quote }}
               {{- if $migratorSACreate }}
@@ -234,5 +294,35 @@ spec:
               {{- else }}
               echo "Leaving ClickHouse PVCs in place because global.cleanupPVCs=false"
               {{- end }}
+              {{- end }}
+              {{- if $cleanupReleasePVCs }}
+              # StatefulSet `volumeClaimTemplates` PVCs (zookeeper, signoz-db, …)
+              # are retained by Kubernetes when the StatefulSet is deleted. The
+              # StatefulSet controller copies its selector matchLabels onto each
+              # generated PVC, so `app.kubernetes.io/instance=<release>` reliably
+              # scopes the sweep to this release and lets parallel installs
+              # clean only their own.
+              echo "Deleting release-scoped PVCs in ${release_ns}"
+              release_pvcs=$(kubectl -n "$release_ns" get pvc \
+                -l "app.kubernetes.io/instance={{ .Release.Name }}" \
+                -o name --ignore-not-found)
+              if [ -n "$release_pvcs" ]; then
+                # shellcheck disable=SC2086
+                kubectl -n "$release_ns" delete --ignore-not-found=true --wait=false $release_pvcs
+              fi
+              {{- end }}
+              {{- if $cleanupZkPVCs }}
+              # Zookeeper lives outside the release namespace when
+              # `signoz.clickhouse.zookeeper.namespaceOverride` is set; sweep
+              # its PVCs there with the same release-scoped selector.
+              zk_ns={{ $zkNamespace | quote }}
+              echo "Deleting release-scoped PVCs in zookeeper namespace ${zk_ns}"
+              zk_pvcs=$(kubectl -n "$zk_ns" get pvc \
+                -l "app.kubernetes.io/instance={{ .Release.Name }}" \
+                -o name --ignore-not-found)
+              if [ -n "$zk_pvcs" ]; then
+                # shellcheck disable=SC2086
+                kubectl -n "$zk_ns" delete --ignore-not-found=true --wait=false $zk_pvcs
+              fi
               {{- end }}
 {{- end }}

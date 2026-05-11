@@ -781,6 +781,21 @@ def _signoz_cleanup_script(docs: list[dict]) -> str:
     return "\n".join(job["spec"]["template"]["spec"]["containers"][0]["args"])
 
 
+def _release_role_resources(docs: list[dict]) -> set[str]:
+    role = _signoz_migrator_cleanup_doc(docs, "Role")
+    assert role is not None, "missing release-ns cleanup Role"
+    return {r for rule in role["rules"] for r in rule.get("resources", [])}
+
+
+def _signoz_zk_cleanup_doc(docs: list[dict], kind: str) -> dict | None:
+    for d in docs:
+        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith(
+            "-signoz-zookeeper-cleanup"
+        ):
+            return d
+    return None
+
+
 class TestSigNozClickHouseCleanupHook:
     """SigNoz ClickHouse operator children must not survive Helm uninstall."""
 
@@ -877,19 +892,27 @@ class TestSigNozClickHouseCleanupHook:
         ]
         assert pvc_rules, "PVC delete permission should render only when opted in"
 
+        # Release-namespace Role also gets PVC delete so the new release-scoped
+        # PVC sweep can run.
+        assert "persistentvolumeclaims" in _release_role_resources(docs)
+
         script = _signoz_cleanup_script(docs)
         assert "Deleting ClickHouse PVCs" in script
         assert "get pvc" in script
+        assert 'app.kubernetes.io/instance=test' in script
 
     def test_cleanup_hook_role_omits_pvc_delete_by_default(self):
         result = _render(*_SIGNOZ_OTEL_BASE)
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
-        role = _signoz_cleanup_doc(_docs(result.stdout), "Role")
+        docs = _docs(result.stdout)
+        role = _signoz_cleanup_doc(docs, "Role")
         assert role is not None, "missing cleanup Role"
         assert all(
             "persistentvolumeclaims" not in rule.get("resources", [])
             for rule in role["rules"]
         )
+        assert "persistentvolumeclaims" not in _release_role_resources(docs)
+        assert 'kubectl -n "$release_ns" get pvc' not in _signoz_cleanup_script(docs)
 
     def test_migrator_cleanup_role_and_script_render(self):
         # The SigNoz subchart converts the telemetrystore-migrator SA + Job
@@ -1003,6 +1026,111 @@ class TestSigNozClickHouseCleanupHook:
         assert 'migrator_sa="signoz-telemetrystore-migrator"' in script
         assert 'migrator_job=""' not in script
         assert 'migrator_sa=""' not in script
+
+    def test_release_pvc_sweep_renders_for_external_clickhouse(self):
+        # External ClickHouse + cleanupPVCs=true: no CHI cleanup runs, but
+        # the SigNoz subchart's signoz-db / zookeeper PVCs still need
+        # sweeping in the release namespace.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.clickhouse.enabled=false",
+            "signoz.externalClickhouse.host=clickhouse.example.com",
+            "global.cleanupPVCs=true",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _signoz_cleanup_doc(docs, "Role") is None, (
+            "CHI Role must not render under external ClickHouse"
+        )
+        assert "persistentvolumeclaims" in _release_role_resources(docs)
+        script = _signoz_cleanup_script(docs)
+        assert 'kubectl -n "$release_ns" get pvc' in script
+        assert "ClickHouseInstallation" not in script
+
+    def test_zookeeper_pvc_sweep_targets_override_namespace(self):
+        # signoz.clickhouse.zookeeper.namespaceOverride places the ZK
+        # StatefulSet outside the release namespace. With cleanupPVCs=true,
+        # the hook must sweep that namespace too — a dedicated Role +
+        # RoleBinding render there, and the script runs an extra
+        # kubectl delete pvc targeted at it.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.clickhouse.zookeeper.namespaceOverride=zk-only",
+            "global.cleanupPVCs=true",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+
+        zk_role = _signoz_zk_cleanup_doc(docs, "Role")
+        assert zk_role is not None, "missing zookeeper-cleanup Role"
+        assert zk_role["metadata"]["namespace"] == "zk-only"
+        zk_resources = {
+            r for rule in zk_role["rules"] for r in rule.get("resources", [])
+        }
+        assert zk_resources == {"persistentvolumeclaims"}
+
+        zk_binding = _signoz_zk_cleanup_doc(docs, "RoleBinding")
+        assert zk_binding is not None
+        assert zk_binding["metadata"]["namespace"] == "zk-only"
+        assert zk_binding["subjects"][0]["name"].endswith("signoz-cleanup")
+
+        script = _signoz_cleanup_script(docs)
+        assert 'zk_ns="zk-only"' in script
+        assert 'kubectl -n "$zk_ns" get pvc' in script
+
+    def test_zookeeper_pvc_sweep_omitted_when_zk_in_release_namespace(self):
+        # No override → ZK lives in release ns → the release sweep already
+        # catches its PVCs; no dedicated ZK Role or sweep block should render.
+        result = _render(*_SIGNOZ_OTEL_BASE, "global.cleanupPVCs=true")
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _signoz_zk_cleanup_doc(docs, "Role") is None
+        script = _signoz_cleanup_script(docs)
+        assert "zk_ns=" not in script
+        assert "zookeeper namespace" not in script
+
+    def test_zookeeper_pvc_sweep_reuses_chi_role_when_namespaces_match(self):
+        # ZK override matches an explicit CHI namespace override: the
+        # existing CHI Role already has PVC delete in that namespace, so no
+        # second dedicated Role should render. The sweep block must still
+        # run and target the shared namespace.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.clickhouse.namespace=ch-shared",
+            "signoz.clickhouse.zookeeper.namespaceOverride=ch-shared",
+            "global.cleanupPVCs=true",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _signoz_zk_cleanup_doc(docs, "Role") is None, (
+            "dedicated ZK Role must not render when ZK shares CHI namespace"
+        )
+        script = _signoz_cleanup_script(docs)
+        assert 'zk_ns="ch-shared"' in script
+        assert 'kubectl -n "$zk_ns" get pvc' in script
+
+    def test_zookeeper_pvc_sweep_omitted_without_cleanupPVCs(self):
+        # cleanupPVCs=false: even with an override namespace, no sweep.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.clickhouse.zookeeper.namespaceOverride=zk-only",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _signoz_zk_cleanup_doc(docs, "Role") is None
+        assert "zk_ns=" not in _signoz_cleanup_script(docs)
+
+    def test_release_pvc_sweep_renders_when_migrator_disabled(self):
+        # cleanupPVCs=true with migrator disabled: release-ns Role still
+        # renders but only with PVC perms — no SA/Job verbs.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.telemetryStoreMigrator.enabled=false",
+            "global.cleanupPVCs=true",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _release_role_resources(docs) == {"persistentvolumeclaims"}
 
     def test_cleanup_hook_omitted_when_chi_and_migrator_both_disabled(self):
         # No CHI to delete and no migrator orphans means no cleanup needed.

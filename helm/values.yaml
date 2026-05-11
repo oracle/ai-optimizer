@@ -56,9 +56,12 @@ global:
   # Example: [mirror-creds]
   imagePullSecrets: []
 
-  # -- When true, the SigNoz uninstall cleanup hook also deletes ClickHouse
-  # PVCs created by the in-chart SigNoz deployment. Defaults to false so
-  # telemetry data survives uninstall unless explicitly discarded.
+  # -- When true, the SigNoz uninstall cleanup hook deletes every PVC
+  # created by this release — ClickHouse plus the StatefulSet-owned
+  # `volumeClaimTemplates` PVCs (zookeeper, signoz-db, …) that Kubernetes
+  # retains by default. The sweep is scoped to `app.kubernetes.io/instance=<release>`,
+  # so parallel installs in the same namespace each clean only their own.
+  # Defaults to false so telemetry data survives uninstall unless explicitly discarded.
   cleanupPVCs: false
 
 # -----------------------
@@ -338,8 +341,7 @@ server:
     tracesExporter: ""
 
     # -- Application log export to OTLP. Opt-in. Enable only for backends
-    # intended to retain application logs; review access and retention
-    # settings first. Maps to AIO_OTEL_LOGS_ENABLED.
+    # intended to retain application logs. Maps to AIO_OTEL_LOGS_ENABLED.
     logsEnabled: false
 
     # -- Override the log exporter list. Set to "none" to keep tracing
