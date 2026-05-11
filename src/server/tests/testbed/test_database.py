@@ -321,6 +321,36 @@ async def test_process_report_missing_rag_report_returns_none():
     assert result is None
 
 
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_process_report_wrong_subfield_type_returns_none():
+    """A dict whose sub-fields aren't dicts (e.g. Giskard output drift) is refused."""
+    eid_bytes = bytes.fromhex("aabbccdd")
+    bad_payload = {"report": "not a dict", "correct_by_topic": {}, "failures": {}}
+    rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, bad_payload)]
+    conn = AsyncMock()
+    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
+        result = await process_report(conn, "AABBCCDD")
+    assert result is None
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_process_report_partial_payload_defaults_missing_keys():
+    """Legacy rows missing some sub-keys still resolve, with empty dicts for the gaps."""
+    eid_bytes = bytes.fromhex("aabbccdd")
+    partial_payload = {"report": {"col": "data"}}
+    rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, partial_payload)]
+    conn = AsyncMock()
+    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
+        result = await process_report(conn, "AABBCCDD")
+
+    assert result is not None
+    assert result["report"] == {"col": "data"}
+    assert result["correct_by_topic"] == {}
+    assert result["failures"] == {}
+
+
 # ---------------------------------------------------------------------------
 # Guard: testbed report handling must stay on JSON-compatible loaders
 # ---------------------------------------------------------------------------

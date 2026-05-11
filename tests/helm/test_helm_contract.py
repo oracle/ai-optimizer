@@ -826,6 +826,7 @@ class TestSigNozClickHouseCleanupHook:
             )
 
         job = _signoz_cleanup_doc(docs, "Job")
+        assert job is not None
         container = job["spec"]["template"]["spec"]["containers"][0]
         assert container["image"] == "docker.io/alpine/k8s:1.28.13"
         script = "\n".join(container["args"])
@@ -835,6 +836,7 @@ class TestSigNozClickHouseCleanupHook:
         assert "get pvc" not in script
 
         role = _signoz_cleanup_doc(docs, "Role")
+        assert role is not None
         core_resources = {
             resource
             for rule in role["rules"]
