@@ -6,7 +6,7 @@ Vector store operations — populate, merge, index, query, and metadata manageme
 
 Sync LangChain OracleVS operations are bridged to async via ``asyncio.to_thread()``.
 """
-# spell-checker:ignore hnsw oraclevs vectorstores docos docling
+# spell-checker:ignore docling genai hnsw enquote executemany oraclevs vectorstores
 
 import asyncio
 import copy
@@ -135,7 +135,7 @@ def _create_temp_vector_store(
     # Drop temp table if exists
     try:
         with db_conn.cursor() as cur:
-            cur.execute(f'DROP TABLE "{safe_tmp_name}" PURGE')
+            cur.execute(f"DROP TABLE {oracledb.enquote_name(safe_tmp_name, capitalize=False)} PURGE")
     except oracledb.DatabaseError as exc:
         if exc.args and getattr(exc.args[0], "code", None) == 942:
             pass  # Table doesn't exist — fine
@@ -220,6 +220,8 @@ def _merge_and_index_vector_store(
     if vector_store_tmp.vector_store is None:
         raise ValueError("vector_store_tmp.vector_store must be set")
     safe_tmp_name = validate_vs_table_name(vector_store_tmp.vector_store)
+    quoted_name = oracledb.enquote_name(safe_name, capitalize=False)
+    quoted_tmp = oracledb.enquote_name(safe_tmp_name, capitalize=False)
     strategy = vector_store.distance_strategy or DistanceStrategy.COSINE
 
     vs_real = OracleVS(
@@ -237,7 +239,7 @@ def _merge_and_index_vector_store(
     # Delete stale chunks for modified files so the INSERT below replaces them
     if modified_filenames:
         LOGGER.info("Deleting stale chunks for %d modified files", len(modified_filenames))
-        delete_sql = f"DELETE FROM \"{safe_name}\" WHERE JSON_VALUE(metadata, '$.filename') = :fname"
+        delete_sql = f"DELETE FROM {quoted_name} WHERE JSON_VALUE(metadata, '$.filename') = :fname"
         with db_conn.cursor() as cur:
             cur.executemany(delete_sql, [{"fname": fn} for fn in modified_filenames])
         db_conn.commit()
@@ -246,8 +248,8 @@ def _merge_and_index_vector_store(
     _normalize_metadata_oson(db_conn, safe_tmp_name)
 
     merge_sql = f"""
-        INSERT INTO "{safe_name}" SELECT * FROM "{safe_tmp_name}" src
-         WHERE NOT EXISTS (SELECT 1 FROM "{safe_name}" tgt WHERE tgt.ID = src.ID)
+        INSERT INTO {quoted_name} SELECT * FROM {quoted_tmp} src
+         WHERE NOT EXISTS (SELECT 1 FROM {quoted_name} tgt WHERE tgt.ID = src.ID)
     """
     LOGGER.info("Merging %s into %s", vector_store_tmp.vector_store, vector_store.vector_store)
     with db_conn.cursor() as cur:
@@ -257,7 +259,7 @@ def _merge_and_index_vector_store(
     # Drop temp table
     try:
         with db_conn.cursor() as cur:
-            cur.execute(f'DROP TABLE "{safe_tmp_name}" PURGE')
+            cur.execute(f"DROP TABLE {oracledb.enquote_name(safe_tmp_name, capitalize=False)} PURGE")
     except oracledb.DatabaseError:
         pass
 
@@ -327,10 +329,11 @@ async def update_vs_comment(
     if vector_store.vector_store is None:
         raise ValueError("vector_store.vector_store must be set")
     safe_name = validate_vs_table_name(vector_store.vector_store)
-    # COMMENT ON TABLE is DDL — Oracle accepts no bind variables for either
-    # the identifier or the body, so escape both manually.
-    safe_comment = comment_json.replace("'", "''")
-    sql = f"COMMENT ON TABLE \"{safe_name}\" IS 'GENAI: {safe_comment}'"
+    # COMMENT ON TABLE is DDL — Oracle accepts no binds for the identifier
+    # or the body, so use oracledb's quoting primitives.
+    quoted_name = oracledb.enquote_name(safe_name, capitalize=False)
+    quoted_body = oracledb.enquote_literal(f"GENAI: {comment_json}")
+    sql = f"COMMENT ON TABLE {quoted_name} IS {quoted_body}"
     await execute_sql(conn, sql)
 
 
@@ -360,8 +363,9 @@ async def get_total_chunks_count(
 ) -> int:
     """Get total number of chunks in the vector store."""
     safe_name = validate_vs_table_name(vector_store_name)
+    quoted_name = oracledb.enquote_name(safe_name, capitalize=False)
     try:
-        rows = await execute_sql(conn, f'SELECT COUNT(*) FROM "{safe_name}"')
+        rows = await execute_sql(conn, f"SELECT COUNT(*) FROM {quoted_name}")
         return rows[0][0] if rows else 0
     except Exception as ex:
         LOGGER.warning("Could not count chunks in %s: %s", vector_store_name, ex)
@@ -378,6 +382,7 @@ async def get_processed_objects_metadata(
     one row per chunk — bounding API memory regardless of corpus size.
     """
     safe_name = validate_vs_table_name(vector_store_name)
+    quoted_name = oracledb.enquote_name(safe_name, capitalize=False)
     try:
         LOGGER.info("Retrieving metadata from %s", vector_store_name)
         new_format_sql = (
@@ -385,7 +390,7 @@ async def get_processed_objects_metadata(
             " MAX(JSON_VALUE(metadata, '$.etag')),"
             " MAX(JSON_VALUE(metadata, '$.time_modified')),"
             " MAX(JSON_VALUE(metadata, '$.size'))"
-            f' FROM "{safe_name}"'
+            f" FROM {quoted_name}"
             " WHERE JSON_VALUE(metadata, '$.filename') IS NOT NULL"
             " GROUP BY JSON_VALUE(metadata, '$.filename')"
         )
@@ -409,7 +414,7 @@ async def get_processed_objects_metadata(
         LOGGER.info("No filename field found, trying old format with 'source' field")
         legacy_sql = (
             "SELECT DISTINCT JSON_VALUE(metadata, '$.source')"
-            f' FROM "{safe_name}"'
+            f" FROM {quoted_name}"
             " WHERE JSON_VALUE(metadata, '$.source') IS NOT NULL"
         )
         legacy_rows = await execute_sql(conn, legacy_sql)
@@ -450,6 +455,7 @@ async def get_vector_store_files(
     metadata regardless of corpus size.
     """
     safe_name = validate_vs_table_name(vector_store_name)
+    quoted_name = oracledb.enquote_name(safe_name, capitalize=False)
     LOGGER.info("Retrieving file list from %s", vector_store_name)
     sql = (
         "SELECT JSON_VALUE(metadata, '$.filename'),"
@@ -458,7 +464,7 @@ async def get_vector_store_files(
         " MAX(JSON_VALUE(metadata, '$.etag')),"
         " MAX(JSON_VALUE(metadata, '$.time_modified')),"
         " MAX(JSON_VALUE(metadata, '$.size'))"
-        f' FROM "{safe_name}"'
+        f" FROM {quoted_name}"
         " GROUP BY JSON_VALUE(metadata, '$.filename'),"
         " JSON_VALUE(metadata, '$.source')"
     )

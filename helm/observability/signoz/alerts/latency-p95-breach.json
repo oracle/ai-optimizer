@@ -1,0 +1,70 @@
+{
+  "alert": "AI Optimizer \u2014 /v1/chat/completions p95 > 10s (5m)",
+  "alertType": "TRACES_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "version": "v5",
+  "disabled": false,
+  "evaluation": {
+    "kind": "rolling",
+    "spec": {
+      "evalWindow": "5m0s",
+      "frequency": "1m"
+    }
+  },
+  "condition": {
+    "compositeQuery": {
+      "panelType": "graph",
+      "queryType": "builder",
+      "unit": "ns",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "stepInterval": 60,
+            "signal": "traces",
+            "source": "",
+            "aggregations": [
+              {
+                "expression": "p95(duration_nano)"
+              }
+            ],
+            "filter": {
+              "expression": "service.name = 'ai-optimizer-server' AND kind = 2 AND http.route = '/v1/chat/completions'"
+            },
+            "having": {
+              "expression": ""
+            }
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {
+          "name": "critical",
+          "target": 10000000000,
+          "targetUnit": "ns",
+          "recoveryTarget": null,
+          "matchType": "all_the_times",
+          "op": "above",
+          "channels": []
+        }
+      ]
+    }
+  },
+  "annotations": {
+    "summary": "/v1/chat/completions p95 above 10s for 5 minutes",
+    "description": "p95 chat-completion latency above 10s for the entire 5-minute window. Open the slowest recent /v1/chat/completions trace; the LLM span's duration is the most common cause."
+  },
+  "notificationSettings": {
+    "renotify": {
+      "enabled": false,
+      "interval": "30m"
+    },
+    "usePolicy": true
+  }
+}

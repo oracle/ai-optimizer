@@ -11,6 +11,15 @@ resource "random_string" "optimizer_api_key" {
   override_special = "!@#$%^&*()-_=+[]{}|:,.<>?"
 }
 
+resource "random_string" "signoz_authn" {
+  length           = 32
+  min_special      = 1
+  min_upper        = 1
+  min_lower        = 1
+  min_numeric      = 1
+  override_special = "!@#$%^&*()-_=+[]{}|:,.<>?"
+}
+
 // oci_artifacts_container_repository
 // OCIR
 resource "oci_artifacts_container_repository" "optimizer_repositories" {
@@ -98,6 +107,7 @@ resource "oci_containerengine_addon" "oraoper_addon" {
   lifecycle {
     create_before_destroy = false
   }
+  depends_on = [oci_identity_policy.workers_policies]
 }
 
 resource "oci_containerengine_addon" "certmgr_addon" {

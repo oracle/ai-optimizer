@@ -9,8 +9,6 @@ conversion) is owned by ``langchain_litellm.ChatLiteLLM`` and tested there.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 from typing import Any, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 

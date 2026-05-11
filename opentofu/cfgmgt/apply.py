@@ -20,6 +20,8 @@ os.environ["KUBECONFIG"] = os.path.join(STAGE_PATH, "kubeconfig")
 
 ORACLE_OPERATOR_NS = "oracle-database-operator-system"
 ORACLE_OPERATOR_DEPLOYMENT = "oracle-database-operator-controller-manager"
+ORACLE_OPERATOR_CRB = "oracle-database-operator-manager-clusterrolebinding"
+ORACLE_OPERATOR_CR = "oracle-database-operator-manager-role"
 
 # --- Helm Charts Configuration ---
 HELM_CHARTS = [
@@ -102,6 +104,62 @@ def check_resource_exists(resource_type, resource_name, namespace=None):
     return rc == 0
 
 
+def chart_has_dependencies(chart_path):
+    """Return True if Chart.yaml at chart_path declares a top-level dependencies block."""
+    chart_yaml = os.path.join(chart_path, "Chart.yaml")
+    if not os.path.exists(chart_yaml):
+        return False
+    with open(chart_yaml, "r", encoding="utf-8") as f:
+        return any(line.startswith("dependencies:") for line in f)
+
+
+def helm_register_chart_dependency_repos(chart_path):
+    """Register every dependency repository declared in Chart.yaml.
+
+    `helm dependency build` resolves tarballs by repository URL via
+    `helm repo list`. On a fresh host the repo isn't registered and `build`
+    fails with `no repository definition for <url>` even when Chart.lock is
+    present. Pre-registering each declared repo makes `build` succeed
+    quietly without falling back to `helm dependency update`.
+
+    Uses `helm dependency list` to enumerate dependencies so any future
+    subchart additions are picked up automatically.
+    `helm repo add --force-update` makes the registration idempotent.
+    """
+    stdout, _, rc = run_cmd(["helm", "dependency", "list", chart_path])
+    if rc != 0:
+        return
+    for line in stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 3 or parts[0] in {"NAME", "WARNING:"}:
+            continue
+        name, _version, repo = parts[0], parts[1], parts[2]
+        if not (repo.startswith("http://") or repo.startswith("https://")):
+            continue
+        run_cmd(["helm", "repo", "add", "--force-update", name, repo])
+
+
+def helm_resolve_dependencies(chart_path):
+    """Pull subchart dependencies into chart_path/charts/.
+
+    Pre-registers each declared repo (so `build` succeeds on fresh hosts),
+    tries `helm dependency build` first (uses Chart.lock for reproducibility),
+    and falls back to `helm dependency update` if the lock is missing or stale.
+    Returns True on success.
+    """
+    print(f"📦 Resolving subchart dependencies for '{chart_path}'...")
+    helm_register_chart_dependency_repos(chart_path)
+    _, stderr, rc = run_cmd(["helm", "dependency", "build", chart_path])
+    if rc == 0:
+        return True
+    print(f"⚠️ helm dependency build failed, retrying with update: {stderr}")
+    _, stderr, rc = run_cmd(["helm", "dependency", "update", chart_path])
+    if rc != 0:
+        print(f"❌ Failed to resolve dependencies:\n{stderr}")
+        return False
+    return True
+
+
 # --- Core Functionalities ---
 def helm_repo_add_if_missing(repos_to_add):
     """Add/Update Helm Repos for charts that need remote repositories"""
@@ -144,11 +202,16 @@ def apply_helm_chart_inner(chart_config, namespace, optimizer_version=None, use_
     # Use chart-specific namespace if defined, otherwise use provided namespace
     target_namespace = chart_config.get("namespace", namespace)
 
-    # Check for local helm directory override
     chart_ref = chart_config["chart_ref"]
     local_path = os.path.join(LOCAL_HELM_DIR, chart_name)
     if os.path.isdir(local_path):
         chart_ref = local_path
+
+    # Local chart paths don't ship dependency tarballs; resolve them so
+    # `helm upgrade` can find subcharts under charts/.
+    if os.path.isdir(chart_ref) and chart_has_dependencies(chart_ref):
+        if not helm_resolve_dependencies(chart_ref):
+            return False
 
     values_path = os.path.join(STAGE_PATH, values_file)
 
@@ -277,6 +340,25 @@ def patch_oracle_operator():
     if not check_resource_exists("deployment", ORACLE_OPERATOR_DEPLOYMENT, ORACLE_OPERATOR_NS):
         print(f"⊘ Deployment {ORACLE_OPERATOR_DEPLOYMENT} not found. Skipping operator patch.\n")
         return
+
+    # Bind manager ClusterRole to the namespace's default ServiceAccount
+    if check_resource_exists("clusterrolebinding", ORACLE_OPERATOR_CRB):
+        print(f"✓ ClusterRoleBinding {ORACLE_OPERATOR_CRB} already exists.")
+    else:
+        print(f"🔗 Creating ClusterRoleBinding {ORACLE_OPERATOR_CRB}...")
+        crb_cmd = [
+            "kubectl",
+            "create",
+            "clusterrolebinding",
+            ORACLE_OPERATOR_CRB,
+            f"--clusterrole={ORACLE_OPERATOR_CR}",
+            f"--serviceaccount={ORACLE_OPERATOR_NS}:default",
+        ]
+        _, stderr, rc = run_cmd(crb_cmd, capture_output=False)
+        if rc != 0:
+            print(f"❌ Failed to create ClusterRoleBinding:\n{stderr}")
+            sys.exit(1)
+        print("✅ ClusterRoleBinding created.\n")
 
     # Apply patch
     print("🔧 Patching oracle-database-operator deployment...")

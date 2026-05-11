@@ -15,7 +15,21 @@ metadata:
     app.kubernetes.io/component: database
     {{- include "global.labels" . | nindent 4 }}
 spec:
+  {{- /* `spec.action` is owned by the OraOperator after the initial bind:
+         the operator writes to it to drive lifecycle ops (Restart, Stop,
+         Sync, …) and resets it on completion. Re-templating it on every
+         upgrade fights server-side-apply field ownership and fails with
+         a "conflict with manager" error. Gate on whether this CR already
+         exists in the cluster, not on `.Release.IsInstall` — that flag
+         misses the upgrade path where a release migrates to ADB-S and
+         this CR is created for the first time during a helm upgrade.
+         To re-issue an action later,
+         `kubectl patch adb <name> --type=merge -p '{"spec":{"action":"Sync"}}'`. */}}
+  {{- $adbName := printf "%s-adb-s" .Release.Name }}
+  {{- $existing := lookup "database.oracle.com/v4" "AutonomousDatabase" .Release.Namespace $adbName }}
+  {{- if not $existing }}
   action: "Sync"
+  {{- end }}
   details:
     id: {{ .Values.server.database.oci.ocid }}
   wallet:

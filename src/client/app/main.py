@@ -12,7 +12,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from _version import __version__
-from client.app.core.api import api_get, get_server_settings, start_server
+from client.app.core.api import _server_module_available, api_get, get_server_settings, start_server
 from logging_config import configure_logging
 
 configure_logging()
@@ -59,11 +59,11 @@ st.html(
 )
 st.logo(str(ASSETS_DIR / "logo.png"))
 
-if "settings" not in state:
+if state.get("settings") is None:
     st.sidebar.space(size="small")
     with st.sidebar.spinner("Connecting to server...", show_time=True):
         state.settings = get_server_settings(client=state.optimizer_client)
-    if state.settings is None:
+    if state.settings is None and _server_module_available():
         with st.sidebar.spinner("Starting server...", show_time=True):
             start_server()
             state.settings = get_server_settings(client=state.optimizer_client)

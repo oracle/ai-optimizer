@@ -24,6 +24,17 @@ The Oracle AI Optimizer enables developers and data scientists to explore Large 
 - (Optional) Oracle Database Operator for ADB-S integration
 - (Optional) Storage class for persistent volumes (if using containerized databases)
 
+When installing from a working copy of the repository (rather than from the published Helm repo), register the SigNoz repository and fetch chart dependencies once:
+
+```bash
+helm repo add --force-update signoz https://charts.signoz.io
+helm dependency build
+```
+
+`helm dependency build` resolves tarballs by repository URL against `helm repo list`; without the `helm repo add` step it fails with `no repository definition for https://charts.signoz.io` even when `Chart.lock` is committed. `--force-update` makes the add idempotent.
+
+This downloads the SigNoz subchart referenced in `Chart.yaml` into `helm/charts/`, using the digest pinned in `Chart.lock`. The tarball is gitignored; rerun both commands after pulling upstream changes that bump dependency versions. Use `helm dependency update` instead of `build` if `Chart.lock` is missing or you intentionally want to re-resolve. Skip these steps entirely when installing from the published `ai-optimizer/ai-optimizer` repo — the released chart is packaged with dependencies already embedded.
+
 ## Quick Start
 
 ### 1. Generate API Key
@@ -142,6 +153,24 @@ helm install ai-optimizer . \
 > per-pod heartbeat stops and the cross-pod reaper marks the
 > orphaned row `failed` within ~3 minutes so polling clients
 > observe a terminal state instead of polling indefinitely.
+
+### Example 5b: OKE Hands-On Demo with 50 Attendees
+
+For a workshop where attendees concurrently use chat, Vector Search, NL2SQL,
+and document embedding, keep the server single-replica unless sticky routing
+has been configured and tested. After the OpenTofu stack has applied, layer
+the demo capacity overlay onto the existing release:
+
+```bash
+helm upgrade ai-optimizer . \
+  --reuse-values \
+  --values examples/values-oke-demo-50.yaml
+```
+
+The overlay raises the server client cache and database pool, adds explicit
+pod resources, and relaxes the Streamlit probe timeout for demo load. It does
+not configure database credentials, model credentials, ingress hosts, or sticky
+routing.
 
 ### Example 6: Ingress with TLS
 
@@ -280,18 +309,6 @@ Use `scripts/oci_config.py` to create the `fileSecretName` secret from your `~/.
 | `client.image.tag` | Client container image tag | `latest` |
 | `client.service.type` | Kubernetes service type | `ClusterIP` |
 
-#### Client Feature Flags
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `client.features.disableTestbed` | Disable Q&A testbed feature | `false` |
-| `client.features.disableApi` | Disable API server monitoring | `false` |
-| `client.features.disableTools` | Disable prompt engineering & embed tools | `false` |
-| `client.features.disableDbCfg` | Disable database configuration | `false` |
-| `client.features.disableModelCfg` | Disable model configuration | `false` |
-| `client.features.disableOciCfg` | Disable OCI configuration | `false` |
-| `client.features.disableSettings` | Disable settings import/export | `false` |
-
 #### Client Autoscaling
 
 Same structure as server autoscaling (see above).
@@ -429,6 +446,12 @@ helm diff upgrade ai-optimizer . --values my-custom-values.yaml
 ```bash
 helm uninstall ai-optimizer
 ```
+
+When `signoz.enabled=true`, the chart runs a `pre-delete` cleanup hook that
+removes the SigNoz ClickHouseInstallation and active ClickHouse resources
+created by the operator. ClickHouse PVCs are preserved by default. Set
+`global.cleanupPVCs=true` before uninstall if you also want Helm uninstall to
+delete the SigNoz ClickHouse PVCs and their telemetry data.
 
 **Note**: Secrets with `helm.sh/resource-policy: keep` annotation (like database credentials) will be retained. Delete them manually if needed:
 

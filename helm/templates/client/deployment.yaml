@@ -34,13 +34,10 @@ spec:
     spec:
       securityContext:
         fsGroup: 10001
-      {{- with .Values.client.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "global.imagePullSecrets" (dict "local" .Values.client.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.client.image.repository }}:{{ .Values.client.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "global.image" (dict "image" .Values.client.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.client.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             capabilities:
@@ -76,12 +73,6 @@ spec:
             {{- if .Values.client.ssl.keyFile }}
             - name: AIO_CLIENT_SSL_KEY_FILE
               value: {{ .Values.client.ssl.keyFile | quote }}
-            {{- end }}
-            {{- end }}
-            {{- range $key, $value := .Values.client.features }}
-            {{- if $value }}
-            - name: {{ snakecase $key | upper }}
-              value: {{ $value | quote }}
             {{- end }}
             {{- end }}
           ports:

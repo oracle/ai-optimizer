@@ -10,11 +10,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from server.app.testbed.schemas import EvalId, TestsetId
+
 
 class QASets(BaseModel):
     """Testset metadata — maps to aio_testsets rows."""
 
-    tid: str = Field(description="Testset ID (hex)")
+    tid: TestsetId
     name: str = Field(description="Name of QA Set")
     created: str = Field(description="Date QA Set was loaded")
 
@@ -38,7 +40,7 @@ class QASetData(BaseModel):
 class Evaluation(BaseModel):
     """Evaluation summary record."""
 
-    eid: str = Field(description="Evaluation ID (hex)")
+    eid: EvalId
     evaluated: str = Field(description="Date of Evaluation")
     correctness: float = Field(description="Correctness score")
 

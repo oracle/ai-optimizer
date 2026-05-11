@@ -15,11 +15,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+)
+from fastapi import Path as PathParam
 from giskard.llm import set_llm_model
 from giskard.rag import QATestset, evaluate
 from giskard.rag.base import AgentAnswer
 from litellm.exceptions import APIConnectionError
+from pydantic import ValidationError
 
 from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
 from server.app.api.v1.endpoints.chat import get_orchestrator
@@ -52,6 +62,7 @@ from server.app.testbed.generation import (
     load_and_split,
 )
 from server.app.testbed.metrics import CustomCorrectnessMetric
+from server.app.testbed.schemas import EvalId, QARecord, QuestionCount, TestsetId, TestsetName
 
 LOGGER = logging.getLogger(__name__)
 
@@ -85,7 +96,7 @@ async def list_testsets():
 
 
 @auth.get("/evaluations", response_model=list[Evaluation])
-async def list_evaluations(tid: str):
+async def list_evaluations(tid: Annotated[TestsetId, Query()]):
     """Get evaluations for a testset."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
@@ -93,7 +104,7 @@ async def list_evaluations(tid: str):
 
 
 @auth.get("/evaluation", response_model=EvaluationReport)
-async def get_evaluation(eid: str):
+async def get_evaluation(eid: Annotated[EvalId, Query()]):
     """Get a single evaluation report."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
@@ -104,7 +115,7 @@ async def get_evaluation(eid: str):
 
 
 @auth.get("/testset_qa", response_model=QASetData)
-async def get_testset_qa_endpoint(tid: str):
+async def get_testset_qa_endpoint(tid: Annotated[TestsetId, Query()]):
     """Get Q&A data for a testset."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
@@ -117,7 +128,7 @@ async def get_testset_qa_endpoint(tid: str):
 
 
 @auth.delete("/testset_delete/{tid}", response_model=MessageResponse)
-async def delete_testset_endpoint(tid: str):
+async def delete_testset_endpoint(tid: Annotated[TestsetId, PathParam()]):
     """Delete a testset and its Q&A records."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
@@ -132,23 +143,40 @@ async def delete_testset_endpoint(tid: str):
 
 @auth.post("/testset_load", response_model=QASetData)
 async def upload_testset(
-    files: list[UploadFile] = File(...),
-    name: str = Form(),
-    tid: Optional[str] = Form(default=None),
+    files: Annotated[list[UploadFile], File()],
+    name: Annotated[TestsetName, Form()],
+    tid: Annotated[Optional[TestsetId], Form()] = None,
 ):
     """Upload JSONL/JSON files to create or update a testset."""
     created = datetime.now().isoformat()
     pool = _require_core_pool()
-    try:
-        all_qa = []
-        for file in files:
-            file_content = await file.read()
+
+    all_qa: list[dict] = []
+    for file in files:
+        file_content = await file.read()
+        try:
             content = jsonl_to_json_content(file_content)
             parsed = json.loads(content)
-            if isinstance(parsed, list):
-                all_qa.extend(parsed)
-            else:
-                all_qa.append(parsed)
+        except (ValueError, UnicodeDecodeError) as ex:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not parse '{file.filename}' as JSON or JSONL.",
+            ) from ex
+        items = parsed if isinstance(parsed, list) else [parsed]
+        for idx, item in enumerate(items):
+            try:
+                QARecord.model_validate(item)
+            except ValidationError as ex:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"Invalid QA record at index {idx} in '{file.filename}'.",
+                        "errors": ex.errors(include_url=False, include_input=False),
+                    },
+                ) from ex
+            all_qa.append(item)
+
+    try:
         async with pool.acquire() as conn:
             db_id = await upsert_qa(conn, name, created, json.dumps(all_qa), tid)
             await conn.commit()
@@ -162,11 +190,11 @@ async def upload_testset(
 
 @auth.post("/testset_generate", response_model=QASetData)
 async def generate_testset_endpoint(
-    files: list[UploadFile] = File(...),
-    name: str = Form(),
-    ll_model: str = Form(),
-    embed_model: str = Form(),
-    questions: int = Form(default=2),
+    files: Annotated[list[UploadFile], File()],
+    name: Annotated[TestsetName, Form()],
+    ll_model: Annotated[str, Form()],
+    embed_model: Annotated[str, Form()],
+    questions: Annotated[QuestionCount, Form()] = 2,
     client: Annotated[ClientId, Header()] = "server",
 ):
     """Generate a Q&A testset from uploaded PDF files."""
@@ -254,7 +282,7 @@ async def generate_testset_endpoint(
 
 @auth.post("/evaluate", response_model=EvaluationReport)
 async def evaluate_testset(
-    tid: str,
+    tid: Annotated[TestsetId, Query()],
     judge: str,
     client: Annotated[ClientId, Header()] = "server",
 ):

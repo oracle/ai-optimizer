@@ -6,15 +6,15 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = "~> 7.31" // Last evaluated Jan-2026
+      version = "~> 8.0" // Last evaluated May-2026
     }
     tls = {
       source  = "hashicorp/tls"
-      version = ">= 4.0"
+      version = ">= 4.2" // Last evaluated May-2026
     }
     random = {
       source  = "hashicorp/random"
-      version = ">= 3.6"
+      version = ">= 3.8" // Last evaluated May-2026
     }
   }
   required_version = ">= 1.5"

@@ -6,8 +6,6 @@ Tests for server.app.mcp.tools.vs_retriever.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 import json
 from types import SimpleNamespace
 from typing import Any, List, Optional, cast

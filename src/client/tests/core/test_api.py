@@ -646,6 +646,47 @@ class TestStartServer:
 
             start_server()
 
+    def test_skips_spawn_when_server_module_absent(self, tmp_path):
+        """Component-specific images (Helm client pod, server-only image)
+        strip the unused tree. With no `server/` directory under src/, the
+        spawn target `server.app.main:app` cannot resolve — and on a
+        read-only Helm filesystem the spawn would crash trying to open the
+        uvicorn log file. The gate must short-circuit before any of that."""
+        # tmp_path has no `server` subdirectory.
+        with (
+            patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
+            patch(f"{MODULE}._SRC_DIR", tmp_path),
+            patch(f"{MODULE}._spawn_server") as mock_spawn,
+            patch(f"{MODULE}._wait_for_server_ready") as mock_wait,
+        ):
+            from client.app.core.api import start_server
+
+            start_server()
+        mock_spawn.assert_not_called()
+        mock_wait.assert_not_called()
+
+    def test_spawns_when_server_module_present(self, tmp_path):
+        """Positive gate: when the server tree IS present, the spawn path
+        runs as before. Locks in that the directory check doesn't suppress
+        all-in-one mode where both trees coexist."""
+        (tmp_path / "server").mkdir()
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_fh = MagicMock()
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
+            patch(f"{MODULE}._SRC_DIR", tmp_path),
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)) as mock_spawn,
+            patch(f"{MODULE}._wait_for_server_ready", return_value=True),
+            patch(f"{MODULE}.atexit.register"),
+        ):
+            from client.app.core.api import start_server
+
+            start_server()
+        mock_spawn.assert_called_once()
+
     def test_generates_api_key_when_none(self):
         """Verify start_server generates an API key when none is configured."""
         mock_proc = MagicMock()

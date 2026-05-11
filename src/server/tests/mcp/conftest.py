@@ -6,8 +6,6 @@ Shared fixtures for MCP-related tests (tools, prompts, proxies).
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import json

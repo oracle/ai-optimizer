@@ -56,6 +56,7 @@ variableGroups:
       - k8s_cpu_node_pool_size
       - k8s_node_pool_gpu_deploy
       - k8s_gpu_node_pool_size
+      - k8s_is_observability_enabled
       - k8s_byo_ocir
       - k8s_byo_ocir_url
     visible:
@@ -208,11 +209,21 @@ variables:
     multipleOf: 1
     visible: k8s_node_pool_gpu_deploy
 
+  k8s_is_observability_enabled:
+    title: "Deploy Observability Stack (SigNoz)?"
+    description: |
+      Deploy a self-hosted SigNoz observability backend alongside the application
+      and wire the server's OpenTelemetry exporter to it. Reach the UI by port-forwarding
+      the SigNoz Service after install.
+    type: boolean
+    default: true
+    required: true
+
   k8s_byo_ocir:
     title: "Bring Your Own Oracle Container Image Registry (OCIR)?"
     description: |
-      All container images should pre-exist in and will be pulled from the BYO OCIR.
-      For more information:
+      All container images should pre-exist in and will be pulled from the BYO OCIR. 
+      Mirror upstream images preserving their `<owner>/<image>:<tag>` paths under the BYO URL.
     type: boolean
     default: false
     required: true

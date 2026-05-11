@@ -6,8 +6,6 @@ Tests for server.app.mcp.tools.vs_discovery.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 from typing import cast
 
 import pytest

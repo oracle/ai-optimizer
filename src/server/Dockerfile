@@ -26,8 +26,8 @@ COPY pyproject.toml /app/pyproject.toml
 # Generate requirements and install deps only (cached layer)
 # Avoid re-installing packages when only the source changes
 RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir wheel uv && \
-    ${VIRTUAL_ENV}/bin/pip install --no-cache-dir docling==2.91.0 --extra-index-url https://download.pytorch.org/whl/cpu && \
-    ${VIRTUAL_ENV}/bin/uv pip compile /app/pyproject.toml --extra server \
+    ${VIRTUAL_ENV}/bin/pip install --no-cache-dir docling==2.93.0 --extra-index-url https://download.pytorch.org/whl/cpu && \
+    ${VIRTUAL_ENV}/bin/uv pip compile /app/pyproject.toml --extra server --extra otel \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         --index-strategy unsafe-best-match \
         -o /tmp/requirements.txt && \
@@ -37,7 +37,7 @@ RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir wheel uv && \
 
 # Copy source and install project (deps already installed, so this is fast)
 COPY src /app/src
-RUN ${VIRTUAL_ENV}/bin/uv pip install "/app[server]" \
+RUN ${VIRTUAL_ENV}/bin/uv pip install "/app[server,otel]" \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         --index-strategy unsafe-best-match && \
     # Remove build-only tools from venv (keep setuptools for pkg_resources)
