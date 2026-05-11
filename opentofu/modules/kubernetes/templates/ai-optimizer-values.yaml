@@ -95,7 +95,7 @@ signoz:
 %{ endif ~}
 
 ollama:
-  enabled: ${node_pool_gpu_deploy}
+  enabled: ${install_ollama}
   models:
     enabled: true
     modelPullList:
