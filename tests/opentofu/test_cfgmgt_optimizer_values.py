@@ -71,6 +71,7 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 db_dsn                   = "test"
                 db_name                  = "test"
                 node_pool_gpu_deploy     = false
+                install_ollama           = false
                 ssl_enabled              = false
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 is_observability_enabled = local.is_observability_enabled
