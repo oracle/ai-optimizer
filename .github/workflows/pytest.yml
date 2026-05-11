@@ -17,9 +17,8 @@ concurrency:
   group: pytest-${{ github.ref }}
   cancel-in-progress: true
 
-# Helm install script pin — referenced by every job that needs the helm
-# binary (check-helm, check-opentofu). Update both values together when
-# bumping helm.
+# Helm binary/install-script pin — referenced by every job that needs helm
+# (check-helm, check-opentofu). Update both values together when bumping helm.
 env:
   HELM_INSTALL_SCRIPT_VERSION: v4.1.4
   HELM_INSTALL_SCRIPT_SHA256: 38b65f882d9cae3891755bdb03becc6a01ae6f9cb24826c191f219ddfee70a5d
@@ -190,7 +189,8 @@ jobs:
             echo "Actual:   $ACTUAL_HASH"
             exit 1
           fi
-          bash "$HELM_INSTALL_SCRIPT"
+          bash "$HELM_INSTALL_SCRIPT" --version "$HELM_INSTALL_SCRIPT_VERSION"
+          helm version --short
 
       - name: Run yamllint
         run: yamllint helm/
@@ -244,7 +244,8 @@ jobs:
             echo "Actual:   $ACTUAL_HASH"
             exit 1
           fi
-          bash "$HELM_INSTALL_SCRIPT"
+          bash "$HELM_INSTALL_SCRIPT" --version "$HELM_INSTALL_SCRIPT_VERSION"
+          helm version --short
 
       - name: Run Ruff
         run: ruff check opentofu
