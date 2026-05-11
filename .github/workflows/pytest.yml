@@ -134,7 +134,7 @@ jobs:
       - name: Setup Python + uv
         uses: ./.github/actions/setup-python-uv
         with:
-          extras: ${{ matrix.variant }},dev
+          extras: ${{ matrix.variant == 'server' && 'server,otel,dev' || format('{0},dev', matrix.variant) }}
           cache-suffix: ${{ matrix.variant }}
 
       - name: Run yamllint
