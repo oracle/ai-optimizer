@@ -6,7 +6,7 @@ Domain identities and shared shapes for the testbed feature.
 """
 # spell-checker: ignore testset testsets
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,28 @@ QuestionCount = Annotated[
     int,
     Field(ge=1, description="Number of questions to generate (>= 1)."),
 ]
+
+
+class QARecord(BaseModel):
+    """One QA sample as Giskard's ``QuestionSample`` expects on load.
+
+    Mirrors ``giskard.rag.testset.QuestionSample``. Unknown extras are
+    rejected (``extra='forbid'``): Giskard's ``QATestset.load`` instantiates
+    ``QuestionSample(**record)``, a dataclass that raises ``TypeError`` on
+    unexpected kwargs — so a record that's stored with extras would upload
+    fine but fail at evaluate time.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    id: str
+    question: str
+    reference_answer: str
+    reference_context: str
+    conversation_history: list[dict[str, str]]
+    metadata: dict[str, Any]
+    agent_answer: Optional[str] = None
+    correctness: Optional[bool] = None
 
 
 class RAGReportPayload(BaseModel):

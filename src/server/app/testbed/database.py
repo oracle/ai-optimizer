@@ -176,8 +176,6 @@ async def process_report(conn: oracledb.AsyncConnection, eid: str) -> Optional[d
         return None
 
     eid_val, evaluated, correctness, settings_val, rag_report_val = results[0]
-    # Validate the persisted JSON shape; legacy non-dict scalars, NULL rows,
-    # and dicts with wrong-typed sub-fields are refused (returned as None).
     try:
         payload = RAGReportPayload.model_validate(rag_report_val)
     except ValidationError:

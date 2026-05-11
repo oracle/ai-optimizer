@@ -29,6 +29,7 @@ from giskard.llm import set_llm_model
 from giskard.rag import QATestset, evaluate
 from giskard.rag.base import AgentAnswer
 from litellm.exceptions import APIConnectionError
+from pydantic import ValidationError
 
 from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
 from server.app.api.v1.endpoints.chat import get_orchestrator
@@ -61,7 +62,7 @@ from server.app.testbed.generation import (
     load_and_split,
 )
 from server.app.testbed.metrics import CustomCorrectnessMetric
-from server.app.testbed.schemas import EvalId, QuestionCount, RAGReportPayload, TestsetId, TestsetName
+from server.app.testbed.schemas import EvalId, QARecord, QuestionCount, TestsetId, TestsetName
 
 LOGGER = logging.getLogger(__name__)
 
@@ -144,24 +145,38 @@ async def delete_testset_endpoint(tid: Annotated[TestsetId, PathParam()]):
 async def upload_testset(
     files: Annotated[list[UploadFile], File()],
     name: Annotated[TestsetName, Form()],
-    tid: Annotated[
-        Optional[TestsetId],
-        Form(description="Optional existing testset ID as a 32-character hex string."),
-    ] = None,
+    tid: Annotated[Optional[TestsetId], Form()] = None,
 ):
     """Upload JSONL/JSON files to create or update a testset."""
     created = datetime.now().isoformat()
     pool = _require_core_pool()
-    try:
-        all_qa = []
-        for file in files:
-            file_content = await file.read()
+
+    all_qa: list[dict] = []
+    for file in files:
+        file_content = await file.read()
+        try:
             content = jsonl_to_json_content(file_content)
             parsed = json.loads(content)
-            if isinstance(parsed, list):
-                all_qa.extend(parsed)
-            else:
-                all_qa.append(parsed)
+        except (ValueError, UnicodeDecodeError) as ex:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not parse '{file.filename}' as JSON or JSONL.",
+            ) from ex
+        items = parsed if isinstance(parsed, list) else [parsed]
+        for idx, item in enumerate(items):
+            try:
+                QARecord.model_validate(item)
+            except ValidationError as ex:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"Invalid QA record at index {idx} in '{file.filename}'.",
+                        "errors": ex.errors(include_url=False, include_input=False),
+                    },
+                ) from ex
+            all_qa.append(item)
+
+    try:
         async with pool.acquire() as conn:
             db_id = await upsert_qa(conn, name, created, json.dumps(all_qa), tid)
             await conn.commit()
@@ -325,12 +340,11 @@ def _df_to_json_safe(obj) -> dict:
 
 def _serialise_report(report) -> dict:
     """Reduce a Giskard RAGReport to JSON-safe dicts (NaN/Inf → None for Oracle/FastAPI)."""
-    payload = RAGReportPayload(
-        report=_df_to_json_safe(report.to_pandas()),
-        correct_by_topic=_df_to_json_safe(report.correctness_by_topic()),
-        failures=_df_to_json_safe(report.failures),
-    )
-    return payload.model_dump()
+    return {
+        "report": _df_to_json_safe(report.to_pandas()),
+        "correct_by_topic": _df_to_json_safe(report.correctness_by_topic()),
+        "failures": _df_to_json_safe(report.failures),
+    }
 
 
 async def _load_file_chunks(
