@@ -53,15 +53,15 @@ def _render_raw(*extra_args: str) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
 
-def _install_dry_run(
+def _render_with_notes(
     *extra_sets: str, env: dict | None = None
 ) -> subprocess.CompletedProcess:
-    """Run helm install --dry-run=client to render NOTES.txt
-    (`helm template` does not emit NOTES output)."""
+    """Render manifests and NOTES.txt without contacting a Kubernetes cluster."""
     cmd = [
         "helm",
         "install",
         "--dry-run=client",
+        "--server-side=false",
         "test",
         str(CHART_DIR),
         "--namespace",
@@ -488,11 +488,11 @@ class TestSigNozAutoEndpointHttpProtocol:
         operator sets server.otel.tracesEndpoint, the SigNoz auto URL for
         traces must NOT appear in NOTES, otherwise it misleads the operator
         about where traces actually go."""
-        result = _install_dry_run(
+        result = _render_with_notes(
             *_SIGNOZ_OTEL_BASE,
             "server.otel.tracesEndpoint=http://upstream:9999",
         )
-        assert result.returncode == 0, f"install --dry-run failed: {result.stderr[:500]}"
+        assert result.returncode == 0, f"helm local render with NOTES failed: {result.stderr[:500]}"
         # SigNoz observability section
         notes = result.stdout
         assert "SIGNOZ (OBSERVABILITY)" in notes
@@ -509,11 +509,11 @@ class TestSigNozAutoEndpointHttpProtocol:
         (default 8080). NOTES hardcodes `8080:8080`, so when the operator
         passes through an override, the printed port-forward command targets
         a non-existent Service port. NOTES must use the configured value."""
-        result = _install_dry_run(
+        result = _render_with_notes(
             *_SIGNOZ_OTEL_BASE,
             "signoz.signoz.service.port=18080",
         )
-        assert result.returncode == 0, f"install --dry-run failed: {result.stderr[:500]}"
+        assert result.returncode == 0, f"helm local render with NOTES failed: {result.stderr[:500]}"
         notes = result.stdout
         port_forward_line = next(
             (line for line in notes.splitlines() if "port-forward" in line and "signoz" in line),
@@ -526,12 +526,12 @@ class TestSigNozAutoEndpointHttpProtocol:
 
     def test_notes_omits_logs_url_when_logs_endpoint_explicit(self):
         """Same per-signal contract for logs."""
-        result = _install_dry_run(
+        result = _render_with_notes(
             *_SIGNOZ_OTEL_BASE,
             "server.otel.logsEnabled=true",
             "server.otel.logsEndpoint=http://upstream:9998",
         )
-        assert result.returncode == 0, f"install --dry-run failed: {result.stderr[:500]}"
+        assert result.returncode == 0, f"helm local render with NOTES failed: {result.stderr[:500]}"
         notes = result.stdout
         assert "logs:   http://test-signoz-otel-collector" not in notes, (
             "NOTES claims SigNoz auto URL for logs even though "
@@ -543,8 +543,8 @@ class TestSigNozAutoEndpointHttpProtocol:
         logs even with signoz.enabled+server.otel.enabled. NOTES must not
         advertise an in-cluster logs endpoint in that case — operators read
         it as a wired path but the app never opens it."""
-        result = _install_dry_run(*_SIGNOZ_OTEL_BASE)
-        assert result.returncode == 0, f"install --dry-run failed: {result.stderr[:500]}"
+        result = _render_with_notes(*_SIGNOZ_OTEL_BASE)
+        assert result.returncode == 0, f"helm local render with NOTES failed: {result.stderr[:500]}"
         notes = result.stdout
         assert "SIGNOZ (OBSERVABILITY)" in notes
         assert "logs: " not in notes and "logs:\t" not in notes, (
@@ -557,11 +557,11 @@ class TestSigNozAutoEndpointHttpProtocol:
         """tracesExporter=console means the app does not OTLP-export traces
         even though signoz is deployed and server.otel is enabled. NOTES
         must not list a SigNoz traces endpoint in that case."""
-        result = _install_dry_run(
+        result = _render_with_notes(
             *_SIGNOZ_OTEL_BASE,
             "server.otel.tracesExporter=console",
         )
-        assert result.returncode == 0, f"install --dry-run failed: {result.stderr[:500]}"
+        assert result.returncode == 0, f"helm local render with NOTES failed: {result.stderr[:500]}"
         notes = result.stdout
         assert "SIGNOZ (OBSERVABILITY)" in notes
         assert "traces: http" not in notes, (
@@ -575,12 +575,12 @@ class TestSigNozAutoEndpointHttpProtocol:
         config and the deployment renders OTEL_EXPORTER_OTLP_LOGS_ENDPOINT.
         NOTES must mirror that — a case-sensitive comparison would tell
         the operator nothing is wired even though logs are flowing."""
-        result = _install_dry_run(
+        result = _render_with_notes(
             *_SIGNOZ_OTEL_BASE,
             "server.otel.logsEnabled=true",
             "server.otel.logsExporter=OTLP",
         )
-        assert result.returncode == 0, f"install --dry-run failed: {result.stderr[:500]}"
+        assert result.returncode == 0, f"helm local render with NOTES failed: {result.stderr[:500]}"
         notes = result.stdout
         assert "logs:   http://test-signoz-otel-collector" in notes, (
             "logs auto-URL should render with logsExporter=OTLP since the "
@@ -592,11 +592,11 @@ class TestSigNozAutoEndpointHttpProtocol:
         and logsEnabled=true with no explicit endpoints, NOTES must show
         the in-cluster auto-URLs for both signals. Locks in that the
         gating logic doesn't over-fire and silently kill the URLs."""
-        result = _install_dry_run(
+        result = _render_with_notes(
             *_SIGNOZ_OTEL_BASE,
             "server.otel.logsEnabled=true",
         )
-        assert result.returncode == 0, f"install --dry-run failed: {result.stderr[:500]}"
+        assert result.returncode == 0, f"helm local render with NOTES failed: {result.stderr[:500]}"
         notes = result.stdout
         assert "In-cluster OTLP collector endpoints wired into the server:" in notes
         assert "traces: http://test-signoz-otel-collector" in notes, (
@@ -608,14 +608,14 @@ class TestSigNozAutoEndpointHttpProtocol:
             "default logsExporter"
         )
 
-    def test_install_dry_run_does_not_require_cluster(self, tmp_path):
+    def test_render_with_notes_does_not_require_cluster(self, tmp_path):
         """The NOTES tests must run on CI runners that have no kubeconfig.
 
-        Helm 3.13+ treats bare ``helm install --dry-run`` as server-side
-        and contacts the API server before rendering NOTES — failing with
-        ``Kubernetes cluster unreachable`` on a fresh runner. The helper
-        must use the explicitly-client-side form so rendering is fully
-        local. This test drives the helper with KUBECONFIG and HOME
+        Helm 4 defaults server-side behavior on several install/template
+        paths, which can perform API discovery before rendering NOTES and
+        fail with ``Kubernetes cluster unreachable`` on a fresh runner. The
+        helper must explicitly disable server-side behavior while preserving
+        NOTES output. This test drives the helper with KUBECONFIG and HOME
         pointed at empty paths to simulate that CI environment.
         """
         env = {
@@ -623,9 +623,9 @@ class TestSigNozAutoEndpointHttpProtocol:
             "KUBECONFIG": str(tmp_path / "absent-kubeconfig"),
             "HOME": str(tmp_path),  # blocks ~/.kube/config fallback
         }
-        result = _install_dry_run(*_SIGNOZ_OTEL_BASE, env=env)
+        result = _render_with_notes(*_SIGNOZ_OTEL_BASE, env=env)
         assert result.returncode == 0, (
-            "the install-dry-run helper must render NOTES without contacting "
+            "the render-with-notes helper must render NOTES without contacting "
             f"the cluster; got rc={result.returncode}\nstderr={result.stderr[:500]}"
         )
         assert "SIGNOZ (OBSERVABILITY)" in result.stdout, (
