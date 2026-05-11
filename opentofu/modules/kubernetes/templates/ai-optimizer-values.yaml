@@ -3,7 +3,8 @@
 # spell-checker: disable
 
 global:
-  env: "prd"
+  env: "iac"
+  cleanupPVCs: true
   api:
     secretName: "${label}-optimizer-api-key"
 %{ if ocir_url != "" ~}

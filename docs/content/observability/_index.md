@@ -101,7 +101,7 @@ Log export to OTLP only activates when the OTLP trace exporter is active. With `
 {{% /notice %}}
 
 {{% notice style="code" title="Log export is opt-in" icon="triangle-exclamation" %}}
-Application log export to OTLP is **disabled by default**, even when tracing is configured. Enable it with `AIO_OTEL_LOGS_ENABLED=true` only for backends intended to retain application logs; review access and retention settings first.
+Application log export to OTLP is **disabled by default**, even when tracing is configured. Enable it with `AIO_OTEL_LOGS_ENABLED=true` only for backends intended to retain application logs.
 
 Span attribute visibility is controlled separately through the OpenInference settings below.
 {{% /notice %}}

@@ -160,7 +160,7 @@ For prompt-engineering work, enable payload export on a development backend:
 3. In the trace, open each `LLM`-kind span in order and read `input.value` and `output.value` — these are now exactly what was sent and received.
 4. Inspect `RETRIEVER`-kind spans for the context that was supplied to the LLM.
 
-Disable again before the deployment ships to a shared environment.
+Return these settings to their defaults before using a shared environment.
 
 ### "Something logged a warning during this request — what was happening?"
 

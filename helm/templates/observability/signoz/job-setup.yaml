@@ -45,8 +45,8 @@ spec:
       {{- include "global.imagePullSecrets" (dict "local" (list) "global" .Values.global.imagePullSecrets) | nindent 6 }}
       initContainers:
       - name: wait-for-signoz-service
-        image: {{ include "global.image" (dict "image" .Values.images.curl "global" .Values.global) | quote }}
-        imagePullPolicy: {{ .Values.images.curl.pullPolicy | default "IfNotPresent" }}
+        image: {{ include "global.image" (dict "image" .Values.utilities.curl.image "global" .Values.global) | quote }}
+        imagePullPolicy: {{ .Values.utilities.curl.image.pullPolicy | default "IfNotPresent" }}
         command:
         - sh
         - -c
@@ -57,8 +57,8 @@ spec:
           echo "signoz-service ready"
       containers:
       - name: signoz-setup
-        image: {{ include "global.image" (dict "image" .Values.images.curl "global" .Values.global) | quote }}
-        imagePullPolicy: {{ .Values.images.curl.pullPolicy | default "IfNotPresent" }}
+        image: {{ include "global.image" (dict "image" .Values.utilities.curl.image "global" .Values.global) | quote }}
+        imagePullPolicy: {{ .Values.utilities.curl.image.pullPolicy | default "IfNotPresent" }}
         command:
         - /bin/sh
         - -c

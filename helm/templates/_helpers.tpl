@@ -862,6 +862,36 @@ SigNoz subchart version exactly.
 {{- end -}}
 {{- end -}}
 
+{{- /* Namespace where the SigNoz subchart deploys ClickHouse and the
+       operator. Mirrors the subchart's `clickhouse.namespace` helper:
+       falls back to the release namespace when unset. Lifecycle hooks
+       must use this rather than `.Release.Namespace` because users may
+       deploy ClickHouse to a separate namespace via the documented
+       `signoz.clickhouse.namespace` override. */ -}}
+{{- define "signoz.clickhouseNamespace" -}}
+{{- $clickhouse := dig "clickhouse" (dict) (.Values.signoz | default dict) -}}
+{{- $ns := dig "namespace" "" $clickhouse | trim -}}
+{{- default .Release.Namespace $ns -}}
+{{- end -}}
+
+{{- /* Resolved ClickHouseInstallation name from the SigNoz ClickHouse
+       dependency. Mirrors the upstream clickhouse.fullname helper in the
+       pinned SigNoz chart so lifecycle hooks can target the operator CR.
+       Caller is responsible for gating on `.Values.signoz.enabled`. */ -}}
+{{- define "signoz.clickhouseFullname" -}}
+{{- $clickhouse := dig "clickhouse" (dict) (.Values.signoz | default dict) -}}
+{{- $override := dig "fullnameOverride" "" $clickhouse | trim -}}
+{{- $nameOverride := dig "nameOverride" "" $clickhouse | trim -}}
+{{- $name := default "clickhouse" $nameOverride -}}
+{{- if ne $override "" -}}
+{{- $override | trunc 63 | trimSuffix "-" -}}
+{{- else if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
 {{- /* Schemeful base URL of the in-cluster collector, no port. Returns "" when
        signoz.enabled is false. Used both as a "is the auto-default available?"
        sentinel in validation and as the building block for the per-signal

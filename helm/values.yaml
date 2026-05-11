@@ -39,7 +39,7 @@ global:
 
   # -- Mirror registry for private-registry deployments. When non-empty, replaces
   # the `registry` portion of every component image in this chart (server,
-  # client, ollama, database, sqlcl) and propagates into the SigNoz subchart
+  # client, ollama, database, utilities) and propagates into the SigNoz subchart
   # via Helm's global injection. Component-level `image.registry` values
   # are ignored while this is set.
   # Example: "mirror.acme.local"
@@ -56,25 +56,36 @@ global:
   # Example: [mirror-creds]
   imagePullSecrets: []
 
+  # -- When true, the SigNoz uninstall cleanup hook also deletes ClickHouse
+  # PVCs created by the in-chart SigNoz deployment. Defaults to false so
+  # telemetry data survives uninstall unless explicitly discarded.
+  cleanupPVCs: false
+
 # -----------------------
 # -- Shared utility images used by chart-managed jobs (not tied to a
 # single component). Each entry is consumed via the `global.image`
 # helper, so `global.imageRegistry` overrides the per-image `registry`.
-images:
-  # sqlcl: runs the database init Job (creates the AIO user, runs setup SQL).
+utilities:
   sqlcl:
-    registry: container-registry.oracle.com
-    repository: database/sqlcl
-    tag: "25.3.0"
-    pullPolicy: IfNotPresent
+    image:
+      registry: container-registry.oracle.com
+      repository: database/sqlcl
+      tag: "25.3.0"
+      pullPolicy: IfNotPresent
 
-  # curl: used by chart-managed Jobs that only need HTTP calls and POSIX
-  # shell helpers (for example, the SigNoz setup Job).
   curl:
-    registry: docker.io
-    repository: curlimages/curl
-    tag: "8.20.0"
-    pullPolicy: IfNotPresent
+    image:
+      registry: docker.io
+      repository: curlimages/curl
+      tag: "8.20.0"
+      pullPolicy: IfNotPresent
+
+  kubectl:
+    image:
+      registry: docker.io
+      repository: alpine/k8s
+      tag: "1.28.13"
+      pullPolicy: IfNotPresent
 
 # -----------------------
 # Server Configuration
@@ -120,6 +131,9 @@ server:
   # service: type of Kubernetes service to expose server port.
   service:
     type: "ClusterIP"
+    # -- Service port the server is reachable on (also used by the client to
+    # dial the server). The container always listens on 8000.
+    port: 8000
 
   # ssl: enable HTTPS on the uvicorn server.
   # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
@@ -469,6 +483,9 @@ client:
   # service: type of Kubernetes service to expose the HTTP port.
   service:
     type: "ClusterIP"
+    # -- Service port the client is reachable on. The container always
+    # listens on 8501.
+    port: 8501
 
   # ssl: enable HTTPS on the Streamlit server.
   # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
@@ -757,6 +774,14 @@ signoz:
           secretKeyRef:
             name: "signoz-authn"
             key: password
+  clickhouse:
+    zookeeper:
+      image:
+        # -- Set explicitly because the SigNoz subchart's global registry
+        # injection does not reach this nested image; rendering fails when
+        # global.imageRegistry is empty unless this is set.
+        registry: docker.io
+
   # -- Private-registry deployments should also set clickhouse.initContainers.udf.enabled=false
   # because the udf initContainer downloads a binary from github.com at pod start.
   # Trade-off: the histogramQuantile UDF is unavailable.

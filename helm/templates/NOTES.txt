@@ -1,5 +1,6 @@
 ## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore ollama sidb signoz streamlit autonomousdatabase
 
 Thank you for installing {{ .Chart.Name }} {{ .Chart.Version }}!
 
@@ -87,13 +88,13 @@ Check Ollama status:
 {{- end }}
 
 {{- if .Values.signoz.enabled }}
+{{- $rootEnabled := include "signoz.rootProvisioningEnabled" . -}}
+{{- $authnSecret := include "signoz.authnSecretName" . }}
 
 ================================================================================
 SIGNOZ (OBSERVABILITY)
 ================================================================================
 
-{{- $rootEnabled := include "signoz.rootProvisioningEnabled" . -}}
-{{- $authnSecret := include "signoz.authnSecretName" . -}}
 SigNoz is deployed in this release. Port-forward to reach the UI:
   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "signoz.releaseFullname" . }} 8080:{{ include "signoz.frontendPort" . }}
 
@@ -211,6 +212,18 @@ To upgrade this release:
 To uninstall this release:
   helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}
 
+{{- if .Values.signoz.enabled }}
+SigNoz uninstall cleanup:
+  The chart runs a pre-delete hook that removes the SigNoz ClickHouseInstallation
+  and active ClickHouse resources created by the ClickHouse operator.
+{{- if .Values.global.cleanupPVCs }}
+  global.cleanupPVCs=true: SigNoz ClickHouse PVCs will also be deleted.
+{{- else }}
+  global.cleanupPVCs=false: SigNoz ClickHouse PVCs are preserved. To discard
+  telemetry data on uninstall, set global.cleanupPVCs=true before uninstalling.
+{{- end }}
+
+{{- end }}
 Note: Secrets with "helm.sh/resource-policy: keep" annotation will be retained.
 To delete them manually:
   kubectl delete secret -n {{ .Release.Namespace }} {{ include "server.databaseSecret" . }}

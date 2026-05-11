@@ -48,7 +48,6 @@ resource "null_resource" "apply" {
   triggers = {
     always_run = "${timestamp()}"
   }
-
   lifecycle {
     precondition {
       condition     = local.can_apply_cfgmgt

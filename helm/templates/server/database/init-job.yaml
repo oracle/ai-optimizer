@@ -20,8 +20,8 @@ spec:
       {{- include "global.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
       - name: oracle-sqlcl-runner
-        image: {{ include "global.image" (dict "image" .Values.images.sqlcl "global" .Values.global) | quote }}
-        imagePullPolicy: {{ .Values.images.sqlcl.pullPolicy | default "IfNotPresent" }}
+        image: {{ include "global.image" (dict "image" .Values.utilities.sqlcl.image "global" .Values.global) | quote }}
+        imagePullPolicy: {{ .Values.utilities.sqlcl.image.pullPolicy | default "IfNotPresent" }}
         env:
         - name: TNS_ADMIN
           value: /app/tns_admin

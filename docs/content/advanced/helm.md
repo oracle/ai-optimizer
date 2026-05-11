@@ -89,7 +89,22 @@ The `global:` sections contains values that are shared across the chart and its 
 | global.api.secretKey | string | `"apiKey"` | Key name inside the Secret that contains the API key when secretName defined. |
 | global.api.secretName | string | `""` | Name of the Secret that stores the API key. This allows you to keep the API key out of the values file and manage it securely via Secrets. Example: "optimizer-api-keys" |
 | global.baseUrlPath | string | `"/"` | URL path appended to the host. Example: "/test" results in URLs like http://hostname/test/... |
+| global.cleanupPVCs | bool | `false` | When `true`, uninstall also deletes SigNoz ClickHouse PVCs created by the in-chart SigNoz deployment. Defaults to preserving telemetry data. |
 | global.env | string | `"prd"` | Environment name. Controls which .env file pydantic-settings reads (`.env.{env}`) and the mount path for envSecret. |
+
+---
+
+#### Utility Images
+
+Chart-managed Jobs use the `utilities:` block for helper container images. Override these when using a private registry or pinned internal image mirror.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| utilities.sqlcl.image | object | `container-registry.oracle.com/database/sqlcl:25.3.0` | Runs the database initialization Job. |
+| utilities.curl.image | object | `docker.io/curlimages/curl:8.20.0` | Runs HTTP-based chart Jobs such as SigNoz setup. |
+| utilities.kubectl.image | object | `docker.io/alpine/k8s:1.28.13` | Runs lifecycle cleanup hooks for operator-managed resources. |
+
+Older `images.sqlcl` and `images.curl` overrides have been replaced by `utilities.sqlcl.image` and `utilities.curl.image`.
 
 ---
 
@@ -267,7 +282,7 @@ The published image already includes the OTel SDK; setting `enabled: true` is su
 | server.otel.serviceName | string | `""` | Override the service name shown in the backend. Empty uses the application default (`ai-optimizer-server`). |
 | server.otel.resourceAttributes | object | `{}` | Map of string→string resource attributes attached to every span. Values are percent-encoded before joining, so commas/spaces/equals signs round-trip correctly. `deployment.environment` is already populated from `global.env`; only override here if you need a different value. |
 | server.otel.tracesExporter | string | `""` | Comma-separated exporter list. Supported tokens: `otlp`, `console`, `none`. `none` is the explicit opt-out and must stand alone. Empty uses the application default (`otlp`). |
-| server.otel.logsEnabled | bool | `false` | Application log export to OTLP. Disabled by default for privacy: log records can include chat content. Enable only against backends whose retention/access policy is approved for application payloads. |
+| server.otel.logsEnabled | bool | `false` | Application log export to OTLP. Disabled by default because log records can include chat content. Enable only for backends approved to store application payload logs. |
 | server.otel.logsExporter | string | `""` | Comma-separated log exporter list. Supported: `otlp` (ship logs) or `none` (explicit suppression). `console` is not implemented for logs. Use `none` to keep tracing while suppressing logs even when `logsEnabled=true`. |
 | server.otel.sampler | string | `""` | Trace sampler name (e.g. `parentbased_traceidratio`). Empty uses the SDK default (`parentbased_always_on`). |
 | server.otel.samplerArg | string | `""` | Sampler argument (e.g. ratio for `parentbased_traceidratio`). Numeric values are preserved. |
@@ -346,6 +361,17 @@ The dependency tarball is **not** committed; `build` pulls it from `charts.signo
 ###### Resource expectations
 
 The default SigNoz deploy runs ClickHouse, the query service, the frontend, and the OTel collector. Plan for **~3-5 GiB RAM minimum**. The Kind example below does not enable SigNoz for this reason; enable it only on a cluster sized to host it.
+
+###### Uninstall behavior
+
+SigNoz deploys ClickHouse through the Altinity ClickHouse operator. The chart includes a `pre-delete` cleanup hook so `helm uninstall` removes the ClickHouseInstallation and the active operator-generated Services, StatefulSets, and Pods before Helm removes the operator itself.
+
+ClickHouse PVCs are preserved by default so telemetry data is not discarded accidentally. To remove those PVCs during uninstall, install or upgrade the release with:
+
+```yaml
+global:
+  cleanupPVCs: true
+```
 
 ###### After install
 

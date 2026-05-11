@@ -447,6 +447,12 @@ helm diff upgrade ai-optimizer . --values my-custom-values.yaml
 helm uninstall ai-optimizer
 ```
 
+When `signoz.enabled=true`, the chart runs a `pre-delete` cleanup hook that
+removes the SigNoz ClickHouseInstallation and active ClickHouse resources
+created by the operator. ClickHouse PVCs are preserved by default. Set
+`global.cleanupPVCs=true` before uninstall if you also want Helm uninstall to
+delete the SigNoz ClickHouse PVCs and their telemetry data.
+
 **Note**: Secrets with `helm.sh/resource-policy: keep` annotation (like database credentials) will be retained. Delete them manually if needed:
 
 ```bash

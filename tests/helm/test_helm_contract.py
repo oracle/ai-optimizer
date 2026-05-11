@@ -755,3 +755,265 @@ class TestSigNozSetupJobGating:
             "SIGNOZ_USER_ROOT_ENABLED={value: 'false'}; the gate must read "
             "the unwrapped value from object form, not just from scalar form."
         )
+
+
+def _signoz_cleanup_doc(docs: list[dict], kind: str) -> dict | None:
+    for d in docs:
+        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith(
+            "-signoz-cleanup"
+        ):
+            return d
+    return None
+
+
+def _signoz_migrator_cleanup_doc(docs: list[dict], kind: str) -> dict | None:
+    for d in docs:
+        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith(
+            "-signoz-migrator-cleanup"
+        ):
+            return d
+    return None
+
+
+def _signoz_cleanup_script(docs: list[dict]) -> str:
+    job = _signoz_cleanup_doc(docs, "Job")
+    assert job is not None, "cleanup Job missing from rendered manifest"
+    return "\n".join(job["spec"]["template"]["spec"]["containers"][0]["args"])
+
+
+class TestSigNozClickHouseCleanupHook:
+    """SigNoz ClickHouse operator children must not survive Helm uninstall."""
+
+    def test_templates_do_not_reference_removed_images_value(self):
+        offenders = []
+        for path in (CHART_DIR / "templates").rglob("*.yaml"):
+            text = path.read_text()
+            if ".Values.images" in text:
+                offenders.append(str(path.relative_to(CHART_DIR)))
+        assert offenders == [], (
+            "templates must use utilities.<name>.image after the values "
+            f"rename; stale .Values.images references: {offenders}"
+        )
+
+    def test_cleanup_hook_renders_when_signoz_enabled(self):
+        result = _render(*_SIGNOZ_OTEL_BASE)
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+
+        for kind in ("ServiceAccount", "Role", "RoleBinding", "Job"):
+            doc = _signoz_cleanup_doc(docs, kind)
+            assert doc is not None, f"missing SigNoz cleanup {kind}"
+            annotations = doc["metadata"].get("annotations", {})
+            assert annotations.get("helm.sh/hook") == "pre-delete"
+            assert "before-hook-creation" in annotations.get(
+                "helm.sh/hook-delete-policy", ""
+            )
+
+        job = _signoz_cleanup_doc(docs, "Job")
+        container = job["spec"]["template"]["spec"]["containers"][0]
+        assert container["image"] == "docker.io/alpine/k8s:1.28.13"
+        script = "\n".join(container["args"])
+        assert "delete clickhouseinstallation.clickhouse.altinity.com" in script
+        assert "get configmap,statefulset,pod,service" in script
+        assert "global.cleanupPVCs=false" in script
+        assert "get pvc" not in script
+
+        role = _signoz_cleanup_doc(docs, "Role")
+        core_resources = {
+            resource
+            for rule in role["rules"]
+            if rule.get("apiGroups") == [""]
+            for resource in rule.get("resources", [])
+        }
+        assert {"configmaps", "pods", "services"}.issubset(core_resources)
+
+    def test_cleanup_hook_omitted_when_signoz_disabled(self):
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "signoz.enabled=false",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _signoz_cleanup_doc(docs, "Job") is None
+        assert _signoz_cleanup_doc(docs, "Role") is None
+
+    def test_chi_cleanup_omitted_for_external_clickhouse(self):
+        # External-ClickHouse configurations (signoz.clickhouse.enabled=false)
+        # have no in-chart operator/CRD, so the CHI cleanup Role/RoleBinding
+        # would fail and block uninstall. The migrator cleanup must still
+        # run because the subchart renders the migrator hook resources
+        # regardless of where ClickHouse lives.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.clickhouse.enabled=false",
+            "signoz.externalClickhouse.host=clickhouse.example.com",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _signoz_cleanup_doc(docs, "Role") is None
+        assert _signoz_cleanup_doc(docs, "RoleBinding") is None
+        assert _signoz_cleanup_doc(docs, "Job") is not None
+        assert _signoz_cleanup_doc(docs, "ServiceAccount") is not None
+        assert _signoz_migrator_cleanup_doc(docs, "Role") is not None
+        assert _signoz_migrator_cleanup_doc(docs, "RoleBinding") is not None
+
+        script = _signoz_cleanup_script(docs)
+        assert "signoz-telemetrystore-migrator" in script
+        assert "ClickHouseInstallation" not in script, (
+            "CHI deletion logic must not render when in-chart ClickHouse is off"
+        )
+
+    def test_cleanup_hook_pvc_cleanup_is_opt_in(self):
+        result = _render(*_SIGNOZ_OTEL_BASE, "global.cleanupPVCs=true")
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+
+        role = _signoz_cleanup_doc(docs, "Role")
+        assert role is not None, "missing cleanup Role"
+        pvc_rules = [
+            rule
+            for rule in role["rules"]
+            if "persistentvolumeclaims" in rule.get("resources", [])
+        ]
+        assert pvc_rules, "PVC delete permission should render only when opted in"
+
+        script = _signoz_cleanup_script(docs)
+        assert "Deleting ClickHouse PVCs" in script
+        assert "get pvc" in script
+
+    def test_cleanup_hook_role_omits_pvc_delete_by_default(self):
+        result = _render(*_SIGNOZ_OTEL_BASE)
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        role = _signoz_cleanup_doc(_docs(result.stdout), "Role")
+        assert role is not None, "missing cleanup Role"
+        assert all(
+            "persistentvolumeclaims" not in rule.get("resources", [])
+            for rule in role["rules"]
+        )
+
+    def test_migrator_cleanup_role_and_script_render(self):
+        # The SigNoz subchart converts the telemetrystore-migrator SA + Job
+        # into pre-upgrade hooks; helm uninstall leaves them orphaned and
+        # blocks reinstall with "invalid ownership metadata". The pre-delete
+        # hook must delete those leftovers from the release namespace.
+        result = _render(*_SIGNOZ_OTEL_BASE)
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+
+        role = _signoz_migrator_cleanup_doc(docs, "Role")
+        assert role is not None, "missing migrator-cleanup Role"
+        verbs_by_resource: dict[str, set[str]] = {}
+        for rule in role["rules"]:
+            for resource in rule.get("resources", []):
+                verbs_by_resource.setdefault(resource, set()).update(
+                    rule.get("verbs", [])
+                )
+        assert "delete" in verbs_by_resource.get("serviceaccounts", set())
+        assert "delete" in verbs_by_resource.get("jobs", set())
+
+        binding = _signoz_migrator_cleanup_doc(docs, "RoleBinding")
+        assert binding is not None, "missing migrator-cleanup RoleBinding"
+        assert binding["roleRef"]["name"].endswith("signoz-migrator-cleanup")
+        assert binding["subjects"][0]["name"].endswith("signoz-cleanup")
+
+        script = _signoz_cleanup_script(docs)
+        assert "signoz-telemetrystore-migrator" in script
+        assert 'delete job.batch "$migrator_job"' in script
+        assert 'delete serviceaccount "$migrator_sa"' in script
+
+    def test_migrator_cleanup_honors_custom_sa_name(self):
+        # The upstream chart uses `telemetryStoreMigrator.serviceAccount.name`
+        # for the SA but `telemetryStoreMigrator.name` for the Job. The
+        # cleanup script must resolve them independently or it will leave
+        # the customized hook SA orphaned.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.telemetryStoreMigrator.serviceAccount.name=my-custom-sa",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        script = _signoz_cleanup_script(docs)
+        assert 'migrator_job="signoz-telemetrystore-migrator"' in script
+        assert 'migrator_sa="my-custom-sa"' in script
+
+    def test_migrator_cleanup_skips_sa_when_create_disabled(self):
+        # When `telemetryStoreMigrator.serviceAccount.create=false` the
+        # subchart does not render an SA, so the cleanup should not attempt
+        # to delete one.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.telemetryStoreMigrator.serviceAccount.create=false",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        script = _signoz_cleanup_script(docs)
+        assert 'delete job.batch "$migrator_job"' in script
+        assert "delete serviceaccount" not in script
+        assert "migrator_sa" not in script
+
+    def test_migrator_cleanup_omitted_when_migrator_disabled(self):
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.telemetryStoreMigrator.enabled=false",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _signoz_migrator_cleanup_doc(docs, "Role") is None
+        assert _signoz_migrator_cleanup_doc(docs, "RoleBinding") is None
+        script = _signoz_cleanup_script(docs)
+        assert "telemetrystore-migrator" not in script
+
+    def test_cleanup_hook_names_stay_distinct_under_long_fullname(self):
+        # With a 56-char fullnameOverride, appending the two cleanup
+        # suffixes and then truncating to 63 chars used to collapse both
+        # names to the same string, producing duplicate Role/RoleBinding
+        # resources and breaking the hook. Reserve room for the longer
+        # suffix before truncating.
+        long_name = "a" * 56
+        result = _render(*_SIGNOZ_OTEL_BASE, f"fullnameOverride={long_name}")
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        chi_role = _signoz_cleanup_doc(docs, "Role")
+        mig_role = _signoz_migrator_cleanup_doc(docs, "Role")
+        assert chi_role is not None
+        assert mig_role is not None
+        chi_name = chi_role["metadata"]["name"]
+        mig_name = mig_role["metadata"]["name"]
+        assert chi_name != mig_name, (
+            f"cleanup names collided under long fullname: {chi_name!r} == {mig_name!r}"
+        )
+        assert len(chi_name) <= 63
+        assert len(mig_name) <= 63
+        assert chi_name.endswith("-signoz-cleanup")
+        assert mig_name.endswith("-signoz-migrator-cleanup")
+
+    def test_migrator_cleanup_defaults_empty_name(self):
+        # An operator explicitly setting `telemetryStoreMigrator.name=""`
+        # gets the subchart default ("signoz-telemetrystore-migrator");
+        # the cleanup script must mirror that fallback or it renders
+        # `kubectl delete job.batch ""` and fails under `set -e`.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.telemetryStoreMigrator.name=",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        script = _signoz_cleanup_script(docs)
+        assert 'migrator_job="signoz-telemetrystore-migrator"' in script
+        assert 'migrator_sa="signoz-telemetrystore-migrator"' in script
+        assert 'migrator_job=""' not in script
+        assert 'migrator_sa=""' not in script
+
+    def test_cleanup_hook_omitted_when_chi_and_migrator_both_disabled(self):
+        # No CHI to delete and no migrator orphans means no cleanup needed.
+        result = _render(
+            *_SIGNOZ_OTEL_BASE,
+            "signoz.clickhouse.enabled=false",
+            "signoz.externalClickhouse.host=clickhouse.example.com",
+            "signoz.telemetryStoreMigrator.enabled=false",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert _signoz_cleanup_doc(docs, "Job") is None
+        assert _signoz_cleanup_doc(docs, "ServiceAccount") is None
+        assert _signoz_migrator_cleanup_doc(docs, "Role") is None

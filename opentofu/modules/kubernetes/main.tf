@@ -107,6 +107,7 @@ resource "oci_containerengine_addon" "oraoper_addon" {
   lifecycle {
     create_before_destroy = false
   }
+  depends_on = [oci_identity_policy.workers_policies]
 }
 
 resource "oci_containerengine_addon" "certmgr_addon" {
