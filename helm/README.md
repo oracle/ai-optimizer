@@ -154,6 +154,24 @@ helm install ai-optimizer . \
 > orphaned row `failed` within ~3 minutes so polling clients
 > observe a terminal state instead of polling indefinitely.
 
+### Example 5b: OKE Hands-On Demo with 50 Attendees
+
+For a workshop where attendees concurrently use chat, Vector Search, NL2SQL,
+and document embedding, keep the server single-replica unless sticky routing
+has been configured and tested. After the OpenTofu stack has applied, layer
+the demo capacity overlay onto the existing release:
+
+```bash
+helm upgrade ai-optimizer . \
+  --reuse-values \
+  --values examples/values-oke-demo-50.yaml
+```
+
+The overlay raises the server client cache and database pool, adds explicit
+pod resources, and relaxes the Streamlit probe timeout for demo load. It does
+not configure database credentials, model credentials, ingress hosts, or sticky
+routing.
+
 ### Example 6: Ingress with TLS
 
 ```bash

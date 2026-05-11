@@ -653,8 +653,8 @@ would accept and silently produce zero telemetry from. An observability
 feature that quietly does nothing is the worst kind of failure.
 
 The rules below mirror the application's own exporter-selection and
-log-export gating; comments next to each check spell out which silent
-failure mode that check defends against.
+log-export gating; comments next to each check describe the condition
+each check handles.
 *********************************************** */}}
 {{- define "server.otel.validate" -}}
   {{- $otel := .Values.server.otel | default dict -}}
