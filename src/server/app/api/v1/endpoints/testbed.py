@@ -61,7 +61,7 @@ from server.app.testbed.generation import (
     load_and_split,
 )
 from server.app.testbed.metrics import CustomCorrectnessMetric
-from server.app.testbed.schemas import EvalId, QuestionCount, TestsetId, TestsetName
+from server.app.testbed.schemas import EvalId, QuestionCount, RAGReportPayload, TestsetId, TestsetName
 
 LOGGER = logging.getLogger(__name__)
 
@@ -325,11 +325,12 @@ def _df_to_json_safe(obj) -> dict:
 
 def _serialise_report(report) -> dict:
     """Reduce a Giskard RAGReport to JSON-safe dicts (NaN/Inf → None for Oracle/FastAPI)."""
-    return {
-        "report": _df_to_json_safe(report.to_pandas()),
-        "correct_by_topic": _df_to_json_safe(report.correctness_by_topic()),
-        "failures": _df_to_json_safe(report.failures),
-    }
+    payload = RAGReportPayload(
+        report=_df_to_json_safe(report.to_pandas()),
+        correct_by_topic=_df_to_json_safe(report.correctness_by_topic()),
+        failures=_df_to_json_safe(report.failures),
+    )
+    return payload.model_dump()
 
 
 async def _load_file_chunks(

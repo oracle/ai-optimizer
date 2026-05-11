@@ -6,9 +6,9 @@ Domain identities and shared shapes for the testbed feature.
 """
 # spell-checker: ignore testset testsets
 
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 HEX_RAW_ID_PATTERN = r"^[0-9a-fA-F]{32}$"
 
@@ -30,3 +30,16 @@ QuestionCount = Annotated[
     int,
     Field(ge=1, description="Number of questions to generate (>= 1)."),
 ]
+
+
+class RAGReportPayload(BaseModel):
+    """Shape of the Giskard RAG report persisted in aio_evaluations.rag_report.
+
+    Each field is a dict produced by ``DataFrame.to_json()`` — keys are column
+    names, values are nested ``{index: cell}`` dicts. Field-level defaults
+    preserve compatibility with legacy rows that may be missing some keys.
+    """
+
+    report: dict[str, Any] = Field(default_factory=dict)
+    correct_by_topic: dict[str, Any] = Field(default_factory=dict)
+    failures: dict[str, Any] = Field(default_factory=dict)

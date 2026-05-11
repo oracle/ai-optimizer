@@ -11,8 +11,10 @@ import logging
 from typing import Optional
 
 import oracledb
+from pydantic import ValidationError
 
 from server.app.database.sql import execute_sql
+from server.app.testbed.schemas import RAGReportPayload
 
 LOGGER = logging.getLogger(__name__)
 
@@ -174,9 +176,11 @@ async def process_report(conn: oracledb.AsyncConnection, eid: str) -> Optional[d
         return None
 
     eid_val, evaluated, correctness, settings_val, rag_report_val = results[0]
-    # rag_report must be a dict; refuse anything else (None for missing
-    # rows, legacy non-dict scalars, or unexpected types).
-    if not isinstance(rag_report_val, dict):
+    # Validate the persisted JSON shape; legacy non-dict scalars, NULL rows,
+    # and dicts with wrong-typed sub-fields are refused (returned as None).
+    try:
+        payload = RAGReportPayload.model_validate(rag_report_val)
+    except ValidationError:
         return None
 
     return {
@@ -184,8 +188,8 @@ async def process_report(conn: oracledb.AsyncConnection, eid: str) -> Optional[d
         "evaluated": evaluated,
         "correctness": correctness,
         "settings": settings_val if isinstance(settings_val, dict) else json.loads(settings_val),
-        "report": rag_report_val.get("report", {}),
-        "correct_by_topic": rag_report_val.get("correct_by_topic", {}),
-        "failures": rag_report_val.get("failures", {}),
+        "report": payload.report,
+        "correct_by_topic": payload.correct_by_topic,
+        "failures": payload.failures,
         "html_report": "<html><body></body></html>",
     }
