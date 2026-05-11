@@ -1,0 +1,32 @@
+"""
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+Domain identities and shared shapes for the testbed feature.
+"""
+# spell-checker: ignore testset testsets
+
+from typing import Annotated
+
+from pydantic import Field
+
+HEX_RAW_ID_PATTERN = r"^[0-9a-fA-F]{32}$"
+
+TestsetId = Annotated[
+    str,
+    Field(pattern=HEX_RAW_ID_PATTERN, description="Testset ID as a 32-character hex string."),
+]
+EvalId = Annotated[
+    str,
+    Field(pattern=HEX_RAW_ID_PATTERN, description="Evaluation ID as a 32-character hex string."),
+]
+
+# aio_testsets.name is VARCHAR2(255) NOT NULL — bound the input to match the column.
+TestsetName = Annotated[
+    str,
+    Field(min_length=1, max_length=255, description="Human-readable testset name."),
+]
+QuestionCount = Annotated[
+    int,
+    Field(ge=1, description="Number of questions to generate (>= 1)."),
+]

@@ -111,7 +111,8 @@ async def test_evaluate_no_auth(app_client):
 @pytest.mark.anyio
 async def test_list_testsets(app_client, auth_headers):
     """Returns testset list from database."""
-    mock_data = [{"tid": "AABB", "name": "Test", "created": "2026-01-01"}]
+    tid = "0123456789abcdef0123456789abcdef"
+    mock_data = [{"tid": tid, "name": "Test", "created": "2026-01-01"}]
     with patch(
         "server.app.api.v1.endpoints.testbed.get_testsets",
         new_callable=AsyncMock,
@@ -121,7 +122,7 @@ async def test_list_testsets(app_client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 1
-    assert body[0]["tid"] == "AABB"
+    assert body[0]["tid"] == tid
 
 
 @pytest.mark.unit
@@ -147,15 +148,29 @@ async def test_list_testsets_empty(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_list_evaluations(app_client, auth_headers):
     """Returns evaluation list for a testset."""
-    mock_data = [{"eid": "1122", "evaluated": "2026-01-01", "correctness": 0.9}]
+    mock_data = [{"eid": "fedcba9876543210fedcba9876543210", "evaluated": "2026-01-01", "correctness": 0.9}]
     with patch(
         "server.app.api.v1.endpoints.testbed.get_evaluations",
         new_callable=AsyncMock,
         return_value=mock_data,
     ):
-        resp = await app_client.get("/v1/testbed/evaluations", params={"tid": "ABC"}, headers=auth_headers)
+        resp = await app_client.get(
+            "/v1/testbed/evaluations", params={"tid": "0123456789abcdef0123456789abcdef"}, headers=auth_headers
+        )
     assert resp.status_code == 200
     assert resp.json()[0]["correctness"] == 0.9
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_evaluations_rejects_invalid_tid(app_client, auth_headers):
+    """Invalid tid query values must fail validation before DB parsing."""
+    with patch("server.app.api.v1.endpoints.testbed.get_evaluations", new_callable=AsyncMock) as mock_get:
+        resp = await app_client.get("/v1/testbed/evaluations", params={"tid": "string"}, headers=auth_headers)
+
+    assert resp.status_code == 422
+    assert "tid" in resp.text
+    mock_get.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -167,8 +182,9 @@ async def test_list_evaluations(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_get_evaluation(app_client, auth_headers):
     """Returns full evaluation report."""
+    eid = "fedcba9876543210fedcba9876543210"
     mock_data = {
-        "eid": "1122",
+        "eid": eid,
         "evaluated": "2026-01-01",
         "correctness": 0.9,
         "settings": {"client": "test"},
@@ -182,9 +198,11 @@ async def test_get_evaluation(app_client, auth_headers):
         new_callable=AsyncMock,
         return_value=mock_data,
     ):
-        resp = await app_client.get("/v1/testbed/evaluation", params={"eid": "1122"}, headers=auth_headers)
+        resp = await app_client.get(
+            "/v1/testbed/evaluation", params={"eid": eid}, headers=auth_headers
+        )
     assert resp.status_code == 200
-    assert resp.json()["eid"] == "1122"
+    assert resp.json()["eid"] == eid
 
 
 @pytest.mark.unit
@@ -196,8 +214,22 @@ async def test_get_evaluation_not_found(app_client, auth_headers):
         new_callable=AsyncMock,
         return_value=None,
     ):
-        resp = await app_client.get("/v1/testbed/evaluation", params={"eid": "MISSING"}, headers=auth_headers)
+        resp = await app_client.get(
+            "/v1/testbed/evaluation", params={"eid": "fedcba9876543210fedcba9876543210"}, headers=auth_headers
+        )
     assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_evaluation_rejects_invalid_eid(app_client, auth_headers):
+    """Invalid eid query values must fail validation before DB parsing."""
+    with patch("server.app.api.v1.endpoints.testbed.process_report", new_callable=AsyncMock) as mock_process:
+        resp = await app_client.get("/v1/testbed/evaluation", params={"eid": "string"}, headers=auth_headers)
+
+    assert resp.status_code == 422
+    assert "eid" in resp.text
+    mock_process.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -215,9 +247,23 @@ async def test_get_testset_qa(app_client, auth_headers):
         new_callable=AsyncMock,
         return_value=mock_data,
     ):
-        resp = await app_client.get("/v1/testbed/testset_qa", params={"tid": "ABC"}, headers=auth_headers)
+        resp = await app_client.get(
+            "/v1/testbed/testset_qa", params={"tid": "0123456789abcdef0123456789abcdef"}, headers=auth_headers
+        )
     assert resp.status_code == 200
     assert len(resp.json()["qa_data"]) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_testset_qa_rejects_invalid_tid(app_client, auth_headers):
+    """Invalid tid query values must fail validation before DB parsing."""
+    with patch("server.app.api.v1.endpoints.testbed.get_testset_qa", new_callable=AsyncMock) as mock_get:
+        resp = await app_client.get("/v1/testbed/testset_qa", params={"tid": "string"}, headers=auth_headers)
+
+    assert resp.status_code == 422
+    assert "tid" in resp.text
+    mock_get.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -233,9 +279,23 @@ async def test_delete_testset(app_client, auth_headers):
         "server.app.api.v1.endpoints.testbed.delete_testset",
         new_callable=AsyncMock,
     ):
-        resp = await app_client.delete("/v1/testbed/testset_delete/ABC123", headers=auth_headers)
+        resp = await app_client.delete(
+            "/v1/testbed/testset_delete/0123456789abcdef0123456789abcdef", headers=auth_headers
+        )
     assert resp.status_code == 200
     assert "deleted" in resp.json()["message"]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_testset_rejects_invalid_tid(app_client, auth_headers):
+    """Invalid tid path values must fail validation before DB parsing."""
+    with patch("server.app.api.v1.endpoints.testbed.delete_testset", new_callable=AsyncMock) as mock_delete:
+        resp = await app_client.delete("/v1/testbed/testset_delete/string", headers=auth_headers)
+
+    assert resp.status_code == 422
+    assert "tid" in resp.text
+    mock_delete.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +366,79 @@ async def test_upload_testset_multi_file(app_client, auth_headers):
     assert len(combined) == 2
     assert combined[0]["question"] == "Q1"
     assert combined[1]["question"] == "Q2"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "bad_tid",
+    [
+        "string",          # Swagger's default placeholder
+        "a" * 31,          # one char short
+        "a" * 33,          # one char long
+        "g" * 32,          # right length, non-hex
+    ],
+)
+async def test_upload_testset_rejects_invalid_tid(app_client, auth_headers, bad_tid):
+    """Non-32-hex tids must fail validation before any DB work."""
+    qa_content = json.dumps({"question": "What?", "answer": "Yes."})
+
+    with patch("server.app.api.v1.endpoints.testbed.upsert_qa", new_callable=AsyncMock) as mock_upsert:
+        resp = await app_client.post(
+            "/v1/testbed/testset_load",
+            data={"name": "Test Set", "tid": bad_tid},
+            files=[("files", ("test.jsonl", io.BytesIO(qa_content.encode()), "application/json"))],
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["loc"] == ["body", "tid"]
+    mock_upsert.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize("bad_name", ["", "x" * 256])
+async def test_upload_testset_rejects_invalid_name(app_client, auth_headers, bad_name):
+    """Empty or oversized names must fail validation before DB upsert."""
+    qa_content = json.dumps({"question": "What?", "answer": "Yes."})
+
+    with patch("server.app.api.v1.endpoints.testbed.upsert_qa", new_callable=AsyncMock) as mock_upsert:
+        resp = await app_client.post(
+            "/v1/testbed/testset_load",
+            data={"name": bad_name},
+            files=[("files", ("test.jsonl", io.BytesIO(qa_content.encode()), "application/json"))],
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["loc"] == ["body", "name"]
+    mock_upsert.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# POST /testbed/evaluate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_evaluate_rejects_invalid_tid(app_client, auth_headers):
+    """Invalid tid query values must fail validation before DB loading."""
+    with patch(
+        "server.app.api.v1.endpoints.testbed._load_testset_from_db",
+        new_callable=AsyncMock,
+        side_effect=AssertionError("invalid tid reached DB loading"),
+    ) as mock_load:
+        resp = await app_client.post(
+            "/v1/testbed/evaluate",
+            params={"tid": "string", "judge": "openai/gpt-4o-mini"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 422
+    assert "tid" in resp.text
+    mock_load.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +531,36 @@ async def test_generate_testset_no_files_returns_422(app_client, auth_headers):
         headers=auth_headers,
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("name", ""),
+        ("name", "x" * 256),
+        ("questions", "0"),
+        ("questions", "-1"),
+    ],
+)
+async def test_generate_testset_rejects_invalid_form_fields(app_client, auth_headers, field, value):
+    """Empty/oversized names and non-positive question counts must fail validation up front."""
+    data = {"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "2"}
+    data[field] = value
+    pdf_bytes = b"%PDF-1.4\n%fake\n"
+
+    with patch("server.app.api.v1.endpoints.testbed._load_file_chunks", new_callable=AsyncMock) as mock_load:
+        resp = await app_client.post(
+            "/v1/testbed/testset_generate",
+            data=data,
+            files=[("files", ("a.pdf", io.BytesIO(pdf_bytes), "application/pdf"))],
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["loc"] == ["body", field]
+    mock_load.assert_not_awaited()
 
 
 def _mock_load_chunks_factory(per_file_results):
