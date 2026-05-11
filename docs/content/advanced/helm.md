@@ -441,20 +441,6 @@ The frontend web client can be disabled by setting `global.enableClient` to `fal
 | client.cookieSecretName | string | `""` | Name of a pre-existing Secret containing the cookie signing key. Rotation contract: after rotating the Secret's contents in place, run `helm upgrade` so the chart reads the new value and rolls the client Deployment. Example: "optimizer-cookie-keys" |
 | client.cookieSecretKey | string | `"cookieSecret"` | Key name inside the Secret that contains the cookie signing key. |
 
-##### Client Features Settings
-
-Disable specific {{< short_app_ref >}} in the frontend web client.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| client.features.disableTestbed | bool | `false` | Disable the Test Bed |
-| client.features.disableApi | bool | `false` | Disable the API Server Administration/Monitoring |
-| client.features.disableTools | bool | `false` | Disable Tools such as Prompt Engineering and Split/Embed |
-| client.features.disableDbCfg | bool | `false` | Disable Tools Database Configuration |
-| client.features.disableModelCfg | bool | `false` | Disable Tools Model Configuration |
-| client.features.disableOciCfg | bool | `false` | Disable OCI Configuration |
-| client.features.disableSettings | bool | `false` | Disable the Import/Export of Settings |
-
 ##### Client Environment Configuration
 
 The client supports the same `.env.{env}` Secret mechanism as the [server](#server-environment-configuration). Pod environment variables always take precedence.

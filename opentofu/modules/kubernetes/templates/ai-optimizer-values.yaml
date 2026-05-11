@@ -74,15 +74,6 @@ client:
   service:
     type: "NodePort"
 
-  features:
-    disableTestbed: false
-    disableApi: false
-    disableTools: false
-    disableDbCfg: false
-    disableModelCfg: false
-    disableOciCfg: false
-    disableSettings: false
-
 # -- Self-hosted SigNoz observability backend. The BYO branch routes every
 # image via signoz.global.imageRegistry and disables the clickhouse `udf`
 # initContainer (it fetches histogram-quantile from github.com at pod start;

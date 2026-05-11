@@ -75,12 +75,6 @@ spec:
               value: {{ .Values.client.ssl.keyFile | quote }}
             {{- end }}
             {{- end }}
-            {{- range $key, $value := .Values.client.features }}
-            {{- if $value }}
-            - name: {{ snakecase $key | upper }}
-              value: {{ $value | quote }}
-            {{- end }}
-            {{- end }}
           ports:
             - name: client-port
               containerPort: 8501

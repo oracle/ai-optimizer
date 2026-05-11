@@ -528,23 +528,6 @@ client:
   #   content:
   #     AIO_LOG_LEVEL: INFO
 
-  # -- Disable specific client features
-  features:
-    # -- Disable the Test Bed
-    disableTestbed: false
-    # -- Disable the API Server Administration/Monitoring
-    disableApi: false
-    # -- Disable Tools such as Prompt Engineering and Split/Embed
-    disableTools: false
-    # -- Disable Tools Database Configuration
-    disableDbCfg: false
-    # -- Disable Tools Model Configuration
-    disableModelCfg: false
-    # -- Disable OCI Configuration
-    disableOciCfg: false
-    # -- Disable the Import/Export of Settings
-    disableSettings: false
-
   # livenessProbe: defines settings for the liveness probe.
   # Set `enabled` to false to disable the probe entirely.
   livenessProbe:

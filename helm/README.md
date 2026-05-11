@@ -291,18 +291,6 @@ Use `scripts/oci_config.py` to create the `fileSecretName` secret from your `~/.
 | `client.image.tag` | Client container image tag | `latest` |
 | `client.service.type` | Kubernetes service type | `ClusterIP` |
 
-#### Client Feature Flags
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `client.features.disableTestbed` | Disable Q&A testbed feature | `false` |
-| `client.features.disableApi` | Disable API server monitoring | `false` |
-| `client.features.disableTools` | Disable prompt engineering & embed tools | `false` |
-| `client.features.disableDbCfg` | Disable database configuration | `false` |
-| `client.features.disableModelCfg` | Disable model configuration | `false` |
-| `client.features.disableOciCfg` | Disable OCI configuration | `false` |
-| `client.features.disableSettings` | Disable settings import/export | `false` |
-
 #### Client Autoscaling
 
 Same structure as server autoscaling (see above).
