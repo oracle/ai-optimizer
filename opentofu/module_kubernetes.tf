@@ -50,6 +50,12 @@ variable "k8s_byo_ocir_url" {
   default     = ""
 }
 
+variable "k8s_is_observability_enabled" {
+  description = "Deploy a self-hosted SigNoz observability backend alongside the application and wire the server's OpenTelemetry exporter to it."
+  type        = bool
+  default     = true
+}
+
 locals {
   k8s_api_endpoint_allowed_cidrs = [
     for cidr in split(",", replace(var.k8s_api_endpoint_allowed_cidrs, "/\\s+/", "")) : cidr
@@ -107,6 +113,7 @@ module "kubernetes" {
   lb_nsg_id                  = oci_core_network_security_group.lb.id
   orm_install                = var.current_user_ocid != ""
   byo_ocir_url               = var.k8s_byo_ocir_url
+  is_observability_enabled   = var.k8s_is_observability_enabled
   optimizer_version          = var.optimizer_version
   optimizer_branch           = local.optimizer_branch
   ssl_enabled                = local.ssl_enabled

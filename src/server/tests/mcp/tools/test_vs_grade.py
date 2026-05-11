@@ -6,8 +6,6 @@ Tests for server.app.mcp.tools.vs_grade.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 from typing import Any, List, cast
 from unittest.mock import MagicMock
 
@@ -24,6 +22,7 @@ _DUMMY_SPEC = MagicMock(name="LiteLlmModelSpec")  # opaque to tests that mock ai
 
 def _patch_llm_with_response(monkeypatch, content: str) -> None:
     """Patch ainvoke_text_from_spec to return *content* directly."""
+
     async def _fake(*_args, **_kwargs) -> str:
         return content
 

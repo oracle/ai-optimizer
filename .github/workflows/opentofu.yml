@@ -80,11 +80,20 @@ jobs:
       - name: Install Python and Dependencies
         run: |
           apk add --no-cache python3 py3-pip
-          pip3 install --break-system-packages pyyaml jsonschema referencing
+          pip3 install --break-system-packages pyyaml jsonschema referencing pytest
 
       - name: Validate Oracle Resource Manager Schema
         working-directory: ./tests/opentofu
         run: python3 ./validate_omr_schema.py OMRMetaSchema.yaml ../../opentofu/schema.yaml
+
+      - name: Run OpenTofu render contract tests
+        # Exercises tests/opentofu/test_cfgmgt_optimizer_values.py, which
+        # invokes `tofu` to render ai-optimizer-values.yaml under various
+        # BYO/observability combinations. The container already has tofu.
+        # The single helm-requiring e2e test in that file skips here (no
+        # helm binary in this container); the unit-level tests cover the
+        # same defects without needing helm.
+        run: pytest tests/opentofu/ -v
 
   # Job 2: Security scanning (runs on host for Docker access)
   verify-iac-security:

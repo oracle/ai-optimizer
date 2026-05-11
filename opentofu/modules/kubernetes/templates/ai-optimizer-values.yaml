@@ -3,9 +3,13 @@
 # spell-checker: disable
 
 global:
-  env: "prd"
+  env: "iac"
+  cleanupPVCs: true
   api:
     secretName: "${label}-optimizer-api-key"
+%{ if ocir_url != "" ~}
+  imageRegistry: "${ocir_url}"
+%{ endif ~}
 
 # -- API Server configuration
 server:
@@ -28,6 +32,14 @@ server:
   oci_config:
     oke: true
     region: "${oci_region}"
+
+  # -- OpenTelemetry export to the in-cluster SigNoz collector.
+  # Endpoint auto-populates from signoz.enabled below; otel must follow
+  # signoz.enabled because the chart validator rejects otel-on with no
+  # endpoint.
+  otel:
+    enabled: ${is_observability_enabled}
+    insecure: true
 
   # -- Oracle Database Configuration
   database:
@@ -63,14 +75,24 @@ client:
   service:
     type: "NodePort"
 
-  features:
-    disableTestbed: false
-    disableApi: false
-    disableTools: false
-    disableDbCfg: false
-    disableModelCfg: false
-    disableOciCfg: false
-    disableSettings: false
+# -- Self-hosted SigNoz observability backend. The BYO branch routes every
+# image via signoz.global.imageRegistry and disables the clickhouse `udf`
+# initContainer (it fetches histogram-quantile from github.com at pod start;
+# private-registry deployments should not rely on runtime downloads, so
+# disabling this removes the histogramQuantile UDF). Reach the UI via:
+#   kubectl port-forward -n <ns> svc/<release>-signoz 8080:8080
+%{ if is_observability_enabled ~}
+signoz:
+  enabled: true
+  auth:
+    existingSecret: true
+%{ if ocir_url != "" ~}
+  clickhouse:
+    initContainers:
+      udf:
+        enabled: false
+%{ endif ~}
+%{ endif ~}
 
 ollama:
   enabled: ${node_pool_gpu_deploy}

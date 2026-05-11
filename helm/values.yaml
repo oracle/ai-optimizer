@@ -37,6 +37,59 @@ global:
   # and which file path the envSecret is mounted as (/app/.env.{env}).
   env: "prd"
 
+  # -- Mirror registry for private-registry deployments. When non-empty, replaces
+  # the `registry` portion of every component image in this chart (server,
+  # client, ollama, database, utilities) and propagates into the SigNoz subchart
+  # via Helm's global injection. Component-level `image.registry` values
+  # are ignored while this is set.
+  # Example: "mirror.acme.local"
+  imageRegistry: ""
+
+  # -- Image pull secrets applied to every pod spec in this chart, and
+  # propagated into the SigNoz subchart. Component-level `imagePullSecrets`
+  # are merged with this list. Each entry is a Secret of type
+  # kubernetes.io/dockerconfigjson that must already exist in the namespace.
+  # Use the bare-string form here: the SigNoz subchart's pull-secret helper
+  # renders `- name: {{ . }}` and would emit `name: map[name:...]` for the
+  # `{name: ...}` map form. Component-level `<component>.imagePullSecrets`
+  # below accept either form, since they're consumed only by this chart.
+  # Example: [mirror-creds]
+  imagePullSecrets: []
+
+  # -- When true, the SigNoz uninstall cleanup hook deletes every PVC
+  # created by this release — ClickHouse plus the StatefulSet-owned
+  # `volumeClaimTemplates` PVCs (zookeeper, signoz-db, …) that Kubernetes
+  # retains by default. The sweep is scoped to `app.kubernetes.io/instance=<release>`,
+  # so parallel installs in the same namespace each clean only their own.
+  # Defaults to false so telemetry data survives uninstall unless explicitly discarded.
+  cleanupPVCs: false
+
+# -----------------------
+# -- Shared utility images used by chart-managed jobs (not tied to a
+# single component). Each entry is consumed via the `global.image`
+# helper, so `global.imageRegistry` overrides the per-image `registry`.
+utilities:
+  sqlcl:
+    image:
+      registry: container-registry.oracle.com
+      repository: database/sqlcl
+      tag: "25.3.0"
+      pullPolicy: IfNotPresent
+
+  curl:
+    image:
+      registry: docker.io
+      repository: curlimages/curl
+      tag: "8.20.0"
+      pullPolicy: IfNotPresent
+
+  kubectl:
+    image:
+      registry: docker.io
+      repository: alpine/k8s
+      tag: "1.28.13"
+      pullPolicy: IfNotPresent
+
 # -----------------------
 # Server Configuration
 server:
@@ -70,8 +123,10 @@ server:
 
   # image: Image and Tag to pull including pull policy
   image:
-    # -- Image Repository
-    repository: localhost/ai-optimizer-server
+    # -- Registry host. Overridden by global.imageRegistry when that is set.
+    registry: localhost
+    # -- Image repository (path part, no host)
+    repository: ai-optimizer-server
     pullPolicy: IfNotPresent
     # -- Image Tag
     tag: latest
@@ -79,6 +134,9 @@ server:
   # service: type of Kubernetes service to expose server port.
   service:
     type: "ClusterIP"
+    # -- Service port the server is reachable on (also used by the client to
+    # dial the server). The container always listens on 8000.
+    port: 8000
 
   # ssl: enable HTTPS on the uvicorn server.
   # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
@@ -114,6 +172,10 @@ server:
     type: ""
     # -- For SIDB-FREE/ADB-FREE, location of the image and its tag; Exclude for ADB-S
     image:
+      # -- Registry host. Overridden by global.imageRegistry when that is set.
+      # When empty, `repository` is used verbatim (e.g. when the host is baked
+      # into the repository string).
+      registry: ""
       # -- For SIDB-FREE/ADB-FREE, repository location of the image
       repository: ""
       pullPolicy: IfNotPresent
@@ -219,6 +281,84 @@ server:
     cohere:
       secretName: ""
       secretKey: "apiKey"
+
+  # -- OpenTelemetry export configuration (server only).
+  # Wires the running pod up to a separately-deployed OTLP collector
+  # (e.g. SigNoz, Jaeger, Tempo). The collector is NOT installed by
+  # this chart; deploy it independently and point `endpoint` at it.
+  otel:
+    # -- Master switch. When false, no OTEL_* env vars are rendered and
+    # the server's init_telemetry() is a no-op.
+    enabled: false
+
+    # -- OTLP receiver URL applied to all signals. In-cluster example:
+    #   http://signoz-otel-collector.observability.svc.cluster.local:4317
+    # Required when enabled=true unless tracesEndpoint is set, or
+    # tracesExporter is set to "console" or "none". logsEndpoint alone
+    # does NOT satisfy this requirement: the application activates
+    # tracing first, and log export piggybacks on the traces path.
+    endpoint: ""
+
+    # -- Per-signal endpoint overrides. Empty inherits `endpoint`.
+    tracesEndpoint: ""
+    logsEndpoint: ""
+
+    # -- Wire protocol. One of: grpc (port 4317) or http/protobuf (port 4318).
+    # Empty = SDK default (grpc).
+    protocol: ""
+    tracesProtocol: ""
+    logsProtocol: ""
+
+    # -- Skip TLS verification for OTLP gRPC. Required for plaintext
+    # in-cluster collectors (typical for SigNoz with no TLS sidecar).
+    insecure: false
+
+    # -- Comma-separated `k=v` headers for vendor auth (e.g. SigNoz cloud
+    # API key). Prefer `headersSecret` for any value containing a credential.
+    headers: ""
+
+    # -- Pull headers from a Secret instead of plaintext values. Mutually
+    # exclusive with `headers` above.
+    headersSecret:
+      name: ""
+      key: "headers"
+
+    # -- Override the service name shown in the backend.
+    # Empty = application default ("ai-optimizer-server").
+    serviceName: ""
+
+    # -- Resource attributes attached to every span. Map of string→string;
+    # the chart joins them into a comma-separated OTEL_RESOURCE_ATTRIBUTES
+    # value. `deployment.environment` is already populated by the app
+    # from AIO_ENV; only override here if you need a different value.
+    resourceAttributes: {}
+      # service.namespace: ai-optimizer
+      # team: platform
+
+    # -- Exporter selection. Comma-separated list per OTel spec.
+    # Supported by the application: otlp, console, none.
+    # Empty = application default (otlp).
+    tracesExporter: ""
+
+    # -- Application log export to OTLP. Opt-in. Enable only for backends
+    # intended to retain application logs. Maps to AIO_OTEL_LOGS_ENABLED.
+    logsEnabled: false
+
+    # -- Override the log exporter list. Set to "none" to keep tracing
+    # while suppressing logs even when logsEnabled=true.
+    logsExporter: ""
+
+    # -- Trace sampler (e.g. parentbased_traceidratio for probabilistic).
+    # Empty = SDK default (parentbased_always_on).
+    sampler: ""
+    samplerArg: ""
+
+    # -- Free-form additional env vars passed through to the pod. Use
+    # only for OTel SDK knobs not surfaced above (e.g. OTEL_BSP_*,
+    # OTEL_PROPAGATORS). Each entry rendered as a literal env var.
+    extraEnv: []
+      # - name: OTEL_BSP_MAX_QUEUE_SIZE
+      #   value: "4096"
 
   # -- Environment configuration (.env.prd) mounted as a Secret.
   # Provides AIO_* settings to the server (pydantic-settings reads the file directly).
@@ -334,8 +474,10 @@ client:
 
   # image: Image and Tag to pull including pull policy
   image:
-    # -- Image Repository
-    repository: localhost/ai-optimizer-client
+    # -- Registry host. Overridden by global.imageRegistry when that is set.
+    registry: localhost
+    # -- Image repository (path part, no host)
+    repository: ai-optimizer-client
     # -- Image Tag
     tag: latest
     pullPolicy: IfNotPresent
@@ -343,6 +485,9 @@ client:
   # service: type of Kubernetes service to expose the HTTP port.
   service:
     type: "ClusterIP"
+    # -- Service port the client is reachable on. The container always
+    # listens on 8501.
+    port: 8501
 
   # ssl: enable HTTPS on the Streamlit server.
   # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
@@ -401,23 +546,6 @@ client:
   #   secretKey: "client.env"
   #   content:
   #     AIO_LOG_LEVEL: INFO
-
-  # -- Disable specific client features
-  features:
-    # -- Disable the Test Bed
-    disableTestbed: false
-    # -- Disable the API Server Administration/Monitoring
-    disableApi: false
-    # -- Disable Tools such as Prompt Engineering and Split/Embed
-    disableTools: false
-    # -- Disable Tools Database Configuration
-    disableDbCfg: false
-    # -- Disable Tools Model Configuration
-    disableModelCfg: false
-    # -- Disable OCI Configuration
-    disableOciCfg: false
-    # -- Disable the Import/Export of Settings
-    disableSettings: false
 
   # livenessProbe: defines settings for the liveness probe.
   # Set `enabled` to false to disable the probe entirely.
@@ -510,8 +638,10 @@ ollama:
 
   # image: Image and Tag to pull including pull policy
   image:
-    # -- Image Repository
-    repository: docker.io/ollama/ollama
+    # -- Registry host. Overridden by global.imageRegistry when that is set.
+    registry: docker.io
+    # -- Image repository (path part, no host)
+    repository: ollama/ollama
     # -- Image Tag
     tag: latest
     pullPolicy: IfNotPresent
@@ -590,3 +720,78 @@ ollama:
     # - key: "key1"
     #   operator: "Exists"
     #   effect: "NoSchedule"
+
+# -----------------------
+# SigNoz Configuration
+# Optional in-cluster OTLP backend deployed as a subchart
+# (https://github.com/SigNoz/charts).
+#
+# When enabled, the SigNoz OTel collector becomes the default destination
+# for `server.otel`: if `server.otel.enabled=true` and `server.otel.endpoint`
+# is empty, the chart fills in the in-cluster collector URL automatically.
+# Operator-supplied `server.otel.endpoint` always wins.
+#
+# SigNoz is heavy: the default deploy runs ClickHouse, the query service,
+# the frontend, and an OTel collector. Plan for ~3-5 GiB RAM minimum.
+# For everything below the `enabled` switch, see the upstream chart's
+# values.yaml for the full surface area; the keys here pass through
+# verbatim under the `signoz:` namespace.
+signoz:
+  # -- Master switch. When false, the subchart's resources are not rendered
+  # (gated by Chart.yaml's `condition: signoz.enabled`).
+  enabled: false
+  # -- Authentication configuration for the SigNoz admin user.
+  auth:
+    # -- When false (default), this chart creates the Secret named below
+    # with an auto-generated password. When true, the operator must
+    # pre-create the Secret. Required keys: email, password, orgName.
+    existingSecret: false
+    # -- Name of the Secret that holds the SigNoz admin credentials.
+    # Read by both the chart's authn-secret template and the setup Job's
+    # volume mount. To use a name other than `signoz-authn`, ALSO override
+    # the three `signoz.signoz.env.SIGNOZ_USER_ROOT_*.valueFrom.secretKeyRef.name`
+    # entries below — the subchart env block is static YAML and cannot
+    # follow this value.
+    secretName: "signoz-authn"
+    # -- Org display name for the admin user (ignored when existingSecret: true).
+    orgName: "AIOptimizer"
+    # -- Email for the admin user (ignored when existingSecret: true).
+    # The matching password is auto-generated and stored in the Secret.
+    email: "admin@aioptimizer.local"
+  signoz:
+    env:
+      SIGNOZ_USER_ROOT_ENABLED: "true"
+      SIGNOZ_USER_ROOT_ORG_NAME:
+        valueFrom:
+          secretKeyRef:
+            name: "signoz-authn"
+            key: orgName
+      SIGNOZ_USER_ROOT_EMAIL:
+        valueFrom:
+          secretKeyRef:
+            name: "signoz-authn"
+            key: email
+      SIGNOZ_USER_ROOT_PASSWORD:
+        valueFrom:
+          secretKeyRef:
+            name: "signoz-authn"
+            key: password
+  clickhouse:
+    zookeeper:
+      image:
+        # -- Set explicitly because the SigNoz subchart's global registry
+        # injection does not reach this nested image; rendering fails when
+        # global.imageRegistry is empty unless this is set.
+        registry: docker.io
+
+  # -- Private-registry deployments should also set clickhouse.initContainers.udf.enabled=false
+  # because the udf initContainer downloads a binary from github.com at pod start.
+  # Trade-off: the histogramQuantile UDF is unavailable.
+
+  # -- Override the upstream collector image, namespace placement, etc.
+  # Anything valid in https://github.com/SigNoz/charts goes here.
+  # Example surface for the collector's service:
+  #   otelCollector:
+  #     service:
+  #       type: ClusterIP   # default; LoadBalancer/NodePort also work
+  #     replicaCount: 1

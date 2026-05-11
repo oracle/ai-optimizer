@@ -33,6 +33,18 @@ _SERVER_READY_TIMEOUT_SECONDS = float(os.environ.get("AIO_SERVER_READY_TIMEOUT",
 _SERVER_READY_POLL_INTERVAL = 5.0
 
 
+_SRC_DIR = Path(__file__).resolve().parents[3]
+
+
+def _server_module_available() -> bool:
+    """The spawn path runs `uvicorn server.app.main:app`, which only resolves
+    when the server source ships in this image. Component-specific Docker
+    images and Helm split-pod deployments strip the unused tree (mirrors
+    entrypoint.py:detect_component), so an absent `server/` directory is
+    hard proof that the server is running in another process or pod."""
+    return (_SRC_DIR / "server").is_dir()
+
+
 def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Popen, TextIOWrapper]:
     """Spawn a uvicorn server subprocess and return the Popen handle and log file."""
     LOGGER.info("Writing API Server logs to: %s", log_path)
@@ -79,6 +91,9 @@ def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READ
 
 def start_server() -> None:
     """Start the server as a subprocess."""
+    if not _server_module_available():
+        LOGGER.info("Server source not present in this image; skipping local spawn.")
+        return
     LOGGER.info("Starting the AI Optimizer All-In-One mode...")
     proc = _SERVER["process"]
     if proc is not None and proc.poll() is None:

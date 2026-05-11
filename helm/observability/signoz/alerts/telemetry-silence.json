@@ -1,0 +1,61 @@
+{
+  "alert": "AI Optimizer — no telemetry received (10m)",
+  "alertType": "TRACES_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "version": "v5",
+  "disabled": false,
+  "evaluation": {
+    "kind": "rolling",
+    "spec": {
+      "evalWindow": "10m0s",
+      "frequency": "2m"
+    }
+  },
+  "condition": {
+    "alertOnAbsent": true,
+    "compositeQuery": {
+      "panelType": "graph",
+      "queryType": "builder",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "stepInterval": 60,
+            "signal": "traces",
+            "source": "",
+            "aggregations": [{"expression": "count()"}],
+            "filter": {
+              "expression": "service.name = 'ai-optimizer-server'"
+            },
+            "having": {"expression": ""}
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {
+          "name": "warning",
+          "target": 1,
+          "targetUnit": "",
+          "recoveryTarget": null,
+          "matchType": "all_the_times",
+          "op": "below",
+          "channels": []
+        }
+      ]
+    }
+  },
+  "annotations": {
+    "summary": "No traces from ai-optimizer-server for 10 minutes",
+    "description": "No spans with service.name=ai-optimizer-server arrived during the entire 10-minute window. Possible causes: app down, OTel exporter unreachable (collector endpoint, TLS, network), exporter crashed, or sampling/processing dropping everything. Check the app process, OTEL_EXPORTER_OTLP_ENDPOINT reachability, and recent app logs for exporter errors. Note: alertOnAbsent is required for this rule to fire — when the source is fully silent SigNoz returns no time series at all, so a count<1 threshold alone would never evaluate. The OpenTelemetry instrumentor's own 'Failed to export' log lines are also intentionally filtered out of OTLP log export to prevent feedback loops, which is why this alert watches trace absence rather than failure logs."
+  },
+  "notificationSettings": {
+    "renotify": {"enabled": false, "interval": "30m"},
+    "usePolicy": true
+  }
+}

@@ -6,8 +6,6 @@ Tests for server.app.mcp.prompts.registry.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 from server.app.core.mcp import mcp

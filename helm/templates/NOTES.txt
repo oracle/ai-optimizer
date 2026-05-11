@@ -1,5 +1,6 @@
 ## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore ollama sidb signoz streamlit autonomousdatabase
 
 Thank you for installing {{ .Chart.Name }} {{ .Chart.Version }}!
 
@@ -86,6 +87,95 @@ Check Ollama status:
   kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=ollama -f
 {{- end }}
 
+{{- if .Values.signoz.enabled }}
+{{- $rootEnabled := include "signoz.rootProvisioningEnabled" . -}}
+{{- $authnSecret := include "signoz.authnSecretName" . }}
+
+================================================================================
+SIGNOZ (OBSERVABILITY)
+================================================================================
+
+SigNoz is deployed in this release. Port-forward to reach the UI:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "signoz.releaseFullname" . }} 8080:{{ include "signoz.frontendPort" . }}
+
+Then open in your browser:
+  http://localhost:8080
+
+{{ if $rootEnabled -}}
+The admin account is auto-provisioned at first start. Log in with:
+{{- if .Values.signoz.auth.existingSecret }}
+  email:    from the `email` key in Secret {{ $authnSecret | quote }}
+  password: from the `password` key in Secret {{ $authnSecret | quote }}
+{{- else }}
+  {{- /* Mirror authn-secret.yaml's preserve-on-upgrade behavior:
+         once the Secret exists, the email it stores is what SigNoz
+         actually provisioned, regardless of any later edit to
+         signoz.auth.email. Show that, not the (ignored) values default. */ -}}
+  {{- $existingAuthn := lookup "v1" "Secret" .Release.Namespace $authnSecret -}}
+  {{- $email := .Values.signoz.auth.email -}}
+  {{- if and $existingAuthn (hasKey $existingAuthn.data "email") }}
+    {{- $email = index $existingAuthn.data "email" | b64dec -}}
+  {{- end }}
+  email:    {{ $email }}
+  password: from the `password` key in Secret {{ $authnSecret | quote }}
+{{- end }}
+{{- else -}}
+The first visit prompts you to create an admin account.
+{{- end }}
+
+{{- /* Show the auto-wired endpoint URLs only when they're actually used.
+       The deployment's per-signal precedence is: an explicit per-signal
+       endpoint wins over the generic; the generic wins over the SigNoz
+       auto-default. Also gate on the active exporter for each signal —
+       tracesExporter=console/none means the app does not OTLP-export
+       traces, and logsEnabled=false (the default) means the app never
+       activates log export. Surfacing the auto-URL in those cases reads
+       as "wired" but nothing actually flows to it. */ -}}
+{{- $otelEnabled := .Values.server.otel.enabled -}}
+{{- $endpointEmpty := eq (.Values.server.otel.endpoint | default "" | trim) "" -}}
+{{- $tracesEpEmpty := eq (.Values.server.otel.tracesEndpoint | default "" | trim) "" -}}
+{{- $logsEpEmpty := eq (.Values.server.otel.logsEndpoint | default "" | trim) "" -}}
+{{- /* Mirror the validator's per-token parse: empty/whitespace defaults
+       to "otlp"; otherwise OTLP is active only when "otlp" appears as a
+       token. Trim each token so "otlp, console" still resolves cleanly.
+       Traces stays case-sensitive — the app drops non-lowercase traces
+       tokens via set-intersection. Logs is case-insensitive because the
+       app and validator both lowercase log tokens before checking. */ -}}
+{{- $tracesRaw := .Values.server.otel.tracesExporter | default "" | trim -}}
+{{- $tracesUsesOtlp := eq $tracesRaw "" -}}
+{{- range (splitList "," $tracesRaw) -}}{{- if eq (trim .) "otlp" -}}{{- $tracesUsesOtlp = true -}}{{- end -}}{{- end -}}
+{{- $logsRaw := .Values.server.otel.logsExporter | default "" | trim -}}
+{{- $logsUsesOtlp := eq $logsRaw "" -}}
+{{- range (splitList "," $logsRaw) -}}{{- if eq (lower (trim .)) "otlp" -}}{{- $logsUsesOtlp = true -}}{{- end -}}{{- end -}}
+{{- $autoTracesEp := "" -}}
+{{- $autoLogsEp := "" -}}
+{{- if and $otelEnabled $tracesUsesOtlp $endpointEmpty $tracesEpEmpty -}}
+{{- $autoTracesEp = include "server.otel.defaultTracesEndpoint" . -}}
+{{- end -}}
+{{- if and $otelEnabled .Values.server.otel.logsEnabled $logsUsesOtlp $endpointEmpty $logsEpEmpty -}}
+{{- $autoLogsEp = include "server.otel.defaultLogsEndpoint" . -}}
+{{- end -}}
+{{- if or (ne $autoTracesEp "") (ne $autoLogsEp "") }}
+
+In-cluster OTLP collector endpoints wired into the server:
+{{- if ne $autoTracesEp "" }}
+  traces: {{ $autoTracesEp }}
+{{- end }}
+{{- if ne $autoLogsEp "" }}
+  logs:   {{ $autoLogsEp }}
+{{- end }}
+{{- end }}
+
+{{- if not $otelEnabled }}
+
+Note: server.otel.enabled is false, so the AI Optimizer server itself
+will not export telemetry to SigNoz. Set server.otel.enabled=true (and
+server.otel.insecure=true for the default plaintext gRPC collector) to
+complete that wiring. SigNoz can still receive telemetry from other
+workloads in the cluster.
+{{- end }}
+{{- end }}
+
 ================================================================================
 CONFIGURATION
 ================================================================================
@@ -116,12 +206,30 @@ Client Autoscaling (HPA):
 UPGRADE & UNINSTALL
 ================================================================================
 
-To upgrade this release:
-  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} --reuse-values
+To upgrade this release (substitute <chart-source> with the path, repo
+reference, or OCI URL you used to install — bare "{{ .Chart.Name }}" is
+interpreted by Helm as a repo name and will fail):
+  helm upgrade {{ .Release.Name }} <chart-source> -n {{ .Release.Namespace }} --reuse-values
+
+  # Examples:
+  #   helm upgrade {{ .Release.Name }} ./{{ .Chart.Name }} -n {{ .Release.Namespace }} --reuse-values    # local path
+  #   helm upgrade {{ .Release.Name }} myrepo/{{ .Chart.Name }} -n {{ .Release.Namespace }} --reuse-values  # repo
 
 To uninstall this release:
   helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}
 
+{{- if .Values.signoz.enabled }}
+SigNoz uninstall cleanup:
+  The chart runs a pre-delete hook that removes the SigNoz ClickHouseInstallation
+  and active ClickHouse resources created by the ClickHouse operator.
+{{- if .Values.global.cleanupPVCs }}
+  global.cleanupPVCs=true: SigNoz ClickHouse PVCs will also be deleted.
+{{- else }}
+  global.cleanupPVCs=false: SigNoz ClickHouse PVCs are preserved. To discard
+  telemetry data on uninstall, set global.cleanupPVCs=true before uninstalling.
+{{- end }}
+
+{{- end }}
 Note: Secrets with "helm.sh/resource-policy: keep" annotation will be retained.
 To delete them manually:
   kubectl delete secret -n {{ .Release.Namespace }} {{ include "server.databaseSecret" . }}

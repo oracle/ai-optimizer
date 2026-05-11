@@ -6,8 +6,6 @@ Shared mock factories and helpers used by runtime tests.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 import asyncio
 import urllib.error
 import urllib.request

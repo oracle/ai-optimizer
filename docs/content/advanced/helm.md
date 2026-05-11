@@ -89,7 +89,22 @@ The `global:` sections contains values that are shared across the chart and its 
 | global.api.secretKey | string | `"apiKey"` | Key name inside the Secret that contains the API key when secretName defined. |
 | global.api.secretName | string | `""` | Name of the Secret that stores the API key. This allows you to keep the API key out of the values file and manage it securely via Secrets. Example: "optimizer-api-keys" |
 | global.baseUrlPath | string | `"/"` | URL path appended to the host. Example: "/test" results in URLs like http://hostname/test/... |
+| global.cleanupPVCs | bool | `false` | When `true`, uninstall also deletes SigNoz ClickHouse PVCs created by the in-chart SigNoz deployment. Defaults to preserving telemetry data. |
 | global.env | string | `"prd"` | Environment name. Controls which .env file pydantic-settings reads (`.env.{env}`) and the mount path for envSecret. |
+
+---
+
+#### Utility Images
+
+Chart-managed Jobs use the `utilities:` block for helper container images. Override these when using a private registry or pinned internal image mirror.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| utilities.sqlcl.image | object | `container-registry.oracle.com/database/sqlcl:25.3.0` | Runs the database initialization Job. |
+| utilities.curl.image | object | `docker.io/curlimages/curl:8.20.0` | Runs HTTP-based chart Jobs such as SigNoz setup. |
+| utilities.kubectl.image | object | `docker.io/alpine/k8s:1.28.13` | Runs lifecycle cleanup hooks for operator-managed resources. |
+
+Older `images.sqlcl` and `images.curl` overrides have been replaced by `utilities.sqlcl.image` and `utilities.curl.image`.
 
 ---
 
@@ -240,6 +255,158 @@ Configure 3rd-Party AI Models used by the {{< short_app_ref >}} API Server.  Cre
 | server.models.openAI | object | `{"secretKey":"apiKey","secretName":""}` | OpenAI API Key |
 | server.models.perplexity | object | `{"secretKey":"apiKey","secretName":""}` | Perplexity API Key |
 
+##### Server OpenTelemetry Configuration
+
+Wires the running pod to an OTLP collector. Two deployment shapes:
+
+1. **Bring-your-own collector** — point `endpoint` at a separately-deployed SigNoz, Jaeger, Tempo, or vendor agent.
+2. **In-chart SigNoz** — set `signoz.enabled=true` (see [SigNoz subchart](#signoz-subchart) below). The chart then deploys SigNoz as a subchart and `server.otel.endpoint` defaults to the in-cluster collector URL automatically; explicit values still win.
+
+See [Observability]({{% relref "/observability" %}}) for the broader workflow and [SigNoz Quickstart]({{% relref "/observability/signoz" %}}) for the standalone-Compose path.
+
+The published image already includes the OTel SDK; setting `enabled: true` is sufficient to start exporting.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| server.otel.enabled | bool | `false` | Master switch. When false, no `OTEL_*` env vars are rendered and the server's telemetry init is a no-op. |
+| server.otel.endpoint | string | `""` | OTLP receiver URL applied to all signals. Required when `enabled=true` unless `tracesEndpoint` is set, or `tracesExporter` is `"console"` or `"none"`. `logsEndpoint` alone does **not** satisfy this — log export piggybacks on the traces path. Example: `http://signoz-otel-collector.observability.svc.cluster.local:4317` |
+| server.otel.tracesEndpoint | string | `""` | Per-signal endpoint override for traces. Empty inherits `endpoint`. |
+| server.otel.logsEndpoint | string | `""` | Per-signal endpoint override for logs. Empty inherits `endpoint`. |
+| server.otel.protocol | string | `""` | Wire protocol for all signals. One of `grpc` (port 4317) or `http/protobuf` (port 4318). Empty falls back to the SDK default of `grpc`. |
+| server.otel.tracesProtocol | string | `""` | Per-signal protocol override for traces. Empty inherits `protocol`. |
+| server.otel.logsProtocol | string | `""` | Per-signal protocol override for logs. Empty inherits `protocol`. |
+| server.otel.insecure | bool | `false` | Skip TLS verification for OTLP gRPC. Required for plaintext in-cluster collectors (typical for SigNoz with no TLS sidecar). |
+| server.otel.headers | string | `""` | Comma-separated `k=v` headers for vendor auth (e.g. SigNoz cloud API key). Mutually exclusive with `headersSecret`. Prefer `headersSecret` for any value containing a credential. |
+| server.otel.headersSecret.name | string | `""` | Name of a pre-existing Secret containing OTLP auth headers. Mutually exclusive with the plaintext `headers` field. |
+| server.otel.headersSecret.key | string | `"headers"` | Key within the Secret that holds the headers value. |
+| server.otel.serviceName | string | `""` | Override the service name shown in the backend. Empty uses the application default (`ai-optimizer-server`). |
+| server.otel.resourceAttributes | object | `{}` | Map of string→string resource attributes attached to every span. Values are percent-encoded before joining, so commas/spaces/equals signs round-trip correctly. `deployment.environment` is already populated from `global.env`; only override here if you need a different value. |
+| server.otel.tracesExporter | string | `""` | Comma-separated exporter list. Supported tokens: `otlp`, `console`, `none`. `none` is the explicit opt-out and must stand alone. Empty uses the application default (`otlp`). |
+| server.otel.logsEnabled | bool | `false` | Application log export to OTLP. Disabled by default because log records can include chat content. Enable only for backends approved to store application payload logs. |
+| server.otel.logsExporter | string | `""` | Comma-separated log exporter list. Supported: `otlp` (ship logs) or `none` (explicit suppression). `console` is not implemented for logs. Use `none` to keep tracing while suppressing logs even when `logsEnabled=true`. |
+| server.otel.sampler | string | `""` | Trace sampler name (e.g. `parentbased_traceidratio`). Empty uses the SDK default (`parentbased_always_on`). |
+| server.otel.samplerArg | string | `""` | Sampler argument (e.g. ratio for `parentbased_traceidratio`). Numeric values are preserved. |
+| server.otel.extraEnv | list | `[]` | Free-form additional env vars passed through to the pod (e.g. `OTEL_BSP_*`, `OTEL_PROPAGATORS`). Each entry is `{name, value}` or `{name, valueFrom}`. Scalar values are stringified for the Kubernetes API. |
+
+###### Examples
+
+**SigNoz, in-cluster, plaintext gRPC**
+
+```yaml
+server:
+  otel:
+    enabled: true
+    endpoint: http://signoz-otel-collector.observability.svc.cluster.local:4317
+    insecure: true
+    resourceAttributes:
+      service.namespace: ai-optimizer
+```
+
+**Vendor backend with API-key header from a Secret**
+
+```bash
+kubectl create secret generic otel-headers \
+  --from-literal=headers="signoz-access-token=<token>" \
+  -n ai-optimizer
+```
+
+```yaml
+server:
+  otel:
+    enabled: true
+    endpoint: https://ingest.example.com:4317
+    headersSecret:
+      name: otel-headers
+```
+
+**Local debug — console traces, no collector**
+
+```yaml
+server:
+  otel:
+    enabled: true
+    tracesExporter: console
+```
+
+##### SigNoz Subchart
+
+Deploys [SigNoz](https://signoz.io) alongside the application as a Helm subchart (from the official `https://charts.signoz.io` repository). Two switches must both be on for the server to actually export telemetry — `signoz.enabled=true` (deploys the collector and UI) and `server.otel.enabled=true` (turns on the application-side exporter). When both are set and `server.otel.endpoint` is empty, the server's OTLP endpoint auto-defaults to the in-cluster collector URL, so the operator only needs the two boolean flags. See [Wiring `server.otel`](#wiring-serverotel) for the full minimal values overlay.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| signoz.enabled | bool | `false` | Master switch. When `true`, the SigNoz subchart's resources render alongside the application. The chart pins SigNoz **0.122.0** in `Chart.yaml`. |
+
+The `signoz` block passes through to the upstream chart; any key valid in [`SigNoz/charts`](https://github.com/SigNoz/charts/blob/main/charts/signoz/values.yaml) can be overridden here, e.g.:
+
+```yaml
+signoz:
+  enabled: true
+  otelCollector:
+    service:
+      type: ClusterIP   # default; LoadBalancer/NodePort also work
+    replicaCount: 1
+```
+
+###### Prerequisite
+
+Run the following two commands against the chart directory once before `helm install` / `helm package`:
+
+```bash
+helm repo add --force-update signoz https://charts.signoz.io
+helm dependency build
+```
+
+The dependency tarball is **not** committed; `build` pulls it from `charts.signoz.io` using the digest in `Chart.lock`. The `helm repo add` is required because `build` resolves by repository URL against `helm repo list`, not by fetching the URL directly. Without these, `helm install` fails with either `no repository definition for https://charts.signoz.io` or `found in Chart.yaml, but missing in charts/ directory`.
+
+###### Resource expectations
+
+The default SigNoz deploy runs ClickHouse, the query service, the frontend, and the OTel collector. Plan for **~3-5 GiB RAM minimum**. The Kind example below does not enable SigNoz for this reason; enable it only on a cluster sized to host it.
+
+###### Uninstall behavior
+
+SigNoz deploys ClickHouse through the Altinity ClickHouse operator. The chart includes a `pre-delete` cleanup hook so `helm uninstall` removes the ClickHouseInstallation and the active operator-generated Services, StatefulSets, and Pods before Helm removes the operator itself.
+
+ClickHouse PVCs are preserved by default so telemetry data is not discarded accidentally. To remove those PVCs during uninstall, install or upgrade the release with:
+
+```yaml
+global:
+  cleanupPVCs: true
+```
+
+###### After install
+
+The bundled `NOTES.txt` prints the port-forward and bootstrap commands. To summarize:
+
+```bash
+# UI
+kubectl port-forward -n <namespace> svc/<release>-signoz 8080:8080
+# Browse to http://localhost:8080 — first visit prompts for admin account
+
+# Load curated dashboards/alerts (after at least one chat completion has been ingested):
+observability/signoz/bootstrap-signoz.py \
+  --host http://localhost:8080 \
+  --email <admin-email>
+```
+
+See [`observability/signoz/README.md`](https://github.com/oracle/ai-optimizer/blob/main/observability/signoz/README.md) for why a real chat request is required before bootstrap, and how to round-trip dashboard changes back to the repository.
+
+###### Wiring `server.otel`
+
+`signoz.enabled=true` does **not** turn on the server's exporter — `server.otel.enabled` remains the master switch for the application side. Both must be set:
+
+```yaml
+signoz:
+  enabled: true
+server:
+  otel:
+    enabled: true
+    insecure: true   # the in-chart collector serves plaintext gRPC
+```
+
+When `signoz.enabled=true` but `server.otel.enabled=false`, the install proceeds (SigNoz can host telemetry from other workloads in the cluster) and `NOTES.txt` prints a warning.
+
+---
+
 ##### Server Environment Configuration
 
 Application settings can be provided via a `.env.{env}` file (where `{env}` is set by `global.env`, default `prd`) stored as a Kubernetes Secret. The application uses [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) to read the file directly. Pod environment variables always take precedence over values in the `.env` file. See [Configuration](/env_config/) for available variables.
@@ -299,20 +466,6 @@ The frontend web client can be disabled by setting `global.enableClient` to `fal
 | client.cookieSecret | string | `""` | Signing key for the client's XSRF cookies. Either provide `cookieSecret` inline (Helm creates the Secret) or provide `cookieSecretName` referring to an existing Secret. Exactly one must be set; install fails otherwise. Must be shared across all replicas. Recommended to supply at command line or via `cookieSecretName` to avoid storing in the values file. Example: "abcd1234opt5678" |
 | client.cookieSecretName | string | `""` | Name of a pre-existing Secret containing the cookie signing key. Rotation contract: after rotating the Secret's contents in place, run `helm upgrade` so the chart reads the new value and rolls the client Deployment. Example: "optimizer-cookie-keys" |
 | client.cookieSecretKey | string | `"cookieSecret"` | Key name inside the Secret that contains the cookie signing key. |
-
-##### Client Features Settings
-
-Disable specific {{< short_app_ref >}} in the frontend web client.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| client.features.disableTestbed | bool | `false` | Disable the Test Bed |
-| client.features.disableApi | bool | `false` | Disable the API Server Administration/Monitoring |
-| client.features.disableTools | bool | `false` | Disable Tools such as Prompt Engineering and Split/Embed |
-| client.features.disableDbCfg | bool | `false` | Disable Tools Database Configuration |
-| client.features.disableModelCfg | bool | `false` | Disable Tools Model Configuration |
-| client.features.disableOciCfg | bool | `false` | Disable OCI Configuration |
-| client.features.disableSettings | bool | `false` | Disable the Import/Export of Settings |
 
 ##### Client Environment Configuration
 

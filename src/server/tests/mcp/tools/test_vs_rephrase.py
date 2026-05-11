@@ -6,8 +6,6 @@ Tests for server.app.mcp.tools.vs_rephrase.
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 from typing import Any, List, Optional, cast
 from unittest.mock import MagicMock
 

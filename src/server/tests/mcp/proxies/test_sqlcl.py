@@ -6,8 +6,6 @@ Tests for SQLcl Proxies
 """
 # spell-checker: disable
 
-from __future__ import annotations
-
 import asyncio
 from types import SimpleNamespace
 from typing import Any, cast

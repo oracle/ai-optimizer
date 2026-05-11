@@ -1,6 +1,7 @@
 # Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent tolerations ollama pplx
+{{- include "server.otel.validate" . }}
 
 apiVersion: apps/v1
 kind: Deployment
@@ -32,13 +33,10 @@ spec:
     spec:
       securityContext:
         fsGroup: 10001
-      {{- with .Values.server.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "global.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "global.image" (dict "image" .Values.server.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.server.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             capabilities:
@@ -105,6 +103,148 @@ spec:
                   {{- end }}
                 {{- end }}
               {{- end }}
+            {{- end }}
+            {{- with .Values.server.otel }}
+            {{- if .enabled }}
+            {{- /* Trim endpoints before render: the validator's
+                   required-endpoint check uses the trimmed value, but
+                   the Python OTLP exporter preserves any trailing/leading
+                   whitespace in the URL host/netloc and fails the
+                   connection silently. Trim here so the value the app
+                   sees matches the value the validator approved.
+                   YAML block scalars (`endpoint: |`) also leave a trailing
+                   newline that this catches. */ -}}
+            {{- $ep := .endpoint | default "" | trim }}
+            {{- $tep := .tracesEndpoint | default "" | trim }}
+            {{- $lep := .logsEndpoint | default "" | trim }}
+            {{- /* Per-signal (not generic) auto-default: a generic endpoint
+                   pinned to one protocol's port silently misroutes the other
+                   signal when their protocols differ. */ -}}
+            {{- if eq $ep "" }}
+            {{- if eq $tep "" }}{{- $tep = include "server.otel.defaultTracesEndpoint" $ }}{{- end }}
+            {{- if eq $lep "" }}{{- $lep = include "server.otel.defaultLogsEndpoint" $ }}{{- end }}
+            {{- end }}
+            {{- if ne $ep "" }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $ep | quote }}
+            {{- end }}
+            {{- if ne $tep "" }}
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: {{ $tep | quote }}
+            {{- end }}
+            {{- if ne $lep "" }}
+            - name: OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
+              value: {{ $lep | quote }}
+            {{- end }}
+            {{- /* Trim protocol fields before render: the application
+                   lowercases but does not trim the protocol env vars, and
+                   treats any value other than exact "grpc" as the
+                   HTTP/protobuf exporter — so a trailing space silently
+                   routes a gRPC collector via HTTP and telemetry disappears.
+                   Validator (server.otel.validate) already rejects unknown
+                   values; trimming here ensures the
+                   value the app sees is the one the validator approved. */ -}}
+            {{- $proto := .protocol | default "" | trim }}
+            {{- if ne $proto "" }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ $proto | quote }}
+            {{- end }}
+            {{- $tp := .tracesProtocol | default "" | trim }}
+            {{- if ne $tp "" }}
+            - name: OTEL_EXPORTER_OTLP_TRACES_PROTOCOL
+              value: {{ $tp | quote }}
+            {{- end }}
+            {{- $lp := .logsProtocol | default "" | trim }}
+            {{- if ne $lp "" }}
+            - name: OTEL_EXPORTER_OTLP_LOGS_PROTOCOL
+              value: {{ $lp | quote }}
+            {{- end }}
+            {{- if .insecure }}
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+            {{- end }}
+            {{- /* Trim before render: Kubernetes rejects secretKeyRef.name
+                   with surrounding whitespace, and the validator's mutex
+                   check uses the trimmed value too — gate on that same
+                   shape so whitespace-only names fall through to the
+                   plaintext branch instead of producing a bad ref. */ -}}
+            {{- $hs := .headersSecret | default dict }}
+            {{- $hsName := $hs.name | default "" | trim }}
+            {{- if ne $hsName "" }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $hsName | quote }}
+                  key: {{ $hs.key | default "headers" | trim | quote }}
+            {{- else if .headers }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: {{ .headers | quote }}
+            {{- end }}
+            {{- if .serviceName }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .serviceName | quote }}
+            {{- end }}
+            {{- with .resourceAttributes }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ include "server.otel.resourceAttributes" . | quote }}
+            {{- end }}
+            {{- /* Trim before truthy-checking: a whitespace-only value like
+                   "   " is truthy as a Helm string but the application's
+                   per-token split-and-strip reduces it to an empty exporter
+                   set, silently disabling the signal instead of falling
+                   back to the documented OTLP default. The validator
+                   already treats whitespace-only as unset; render the
+                   trimmed value here so the deployment matches that semantics. */ -}}
+            {{- $te := .tracesExporter | default "" | trim }}
+            {{- if ne $te "" }}
+            - name: OTEL_TRACES_EXPORTER
+              value: {{ $te | quote }}
+            {{- end }}
+            {{- if .logsEnabled }}
+            - name: AIO_OTEL_LOGS_ENABLED
+              value: "true"
+            {{- end }}
+            {{- $le := .logsExporter | default "" | trim }}
+            {{- if ne $le "" }}
+            - name: OTEL_LOGS_EXPORTER
+              value: {{ $le | quote }}
+            {{- end }}
+            {{- if .sampler }}
+            - name: OTEL_TRACES_SAMPLER
+              value: {{ .sampler | quote }}
+            {{- end }}
+            {{- /* `if .samplerArg` would drop the value when the operator
+                   supplied a YAML 0 / 0.0 (a legitimate "sample 0% of traces"
+                   ratio for parentbased_traceidratio); the OTel SDK then
+                   defaults to ratio=1.0, inverting the operator's intent.
+                   Use kindIs-invalid + printf to distinguish unset from zero. */ -}}
+            {{- if not (kindIs "invalid" .samplerArg) }}
+            {{- $sa := printf "%v" .samplerArg }}
+            {{- if ne $sa "" }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ $sa | quote }}
+            {{- end }}
+            {{- end }}
+            {{- /* Render extraEnv per-entry rather than bulk-piping through
+                   toYaml: Kubernetes EnvVar.value is a string field, but
+                   toYaml emits numeric/boolean YAML scalars unquoted (e.g.
+                   `value: 4096`, `value: true`), which the API server
+                   rejects. Stringify name and value explicitly; pass
+                   valueFrom through untouched (it's a structured
+                   EnvVarSource that toYaml renders correctly).
+                   hasKey (not `if`/`with`) gates the value branch so a
+                   legitimate `value: 0` or `value: false` still renders. */ -}}
+            {{- range .extraEnv }}
+            - name: {{ .name | toString | quote }}
+              {{- if hasKey . "value" }}
+              value: {{ .value | toString | quote }}
+              {{- end }}
+              {{- if hasKey . "valueFrom" }}
+              valueFrom:
+                {{- toYaml .valueFrom | nindent 16 }}
+              {{- end }}
+            {{- end }}
+            {{- end }}
             {{- end }}
           ports:
             - name: server-port
