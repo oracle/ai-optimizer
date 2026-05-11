@@ -1,0 +1,24 @@
+## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+# spell-checker: ignore nindent sidb
+
+# Database Service (SIDB-FREE or ADB-FREE in-cluster container DB)
+{{- if eq (include "server.database.isContainerDB" .) "true" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-{{ include "server.database.dbName" . }}-1521
+  labels:
+    app.kubernetes.io/component: database
+    {{- include "global.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: oracle-db
+      protocol: TCP
+      port: 1521
+      targetPort: 1521
+  selector:
+    app.kubernetes.io/component: database
+    {{- include "global.selectorLabels" . | nindent 4 }}
+{{- end }}

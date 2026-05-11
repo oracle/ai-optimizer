@@ -8,6 +8,7 @@ the client cookie-signing secret, mirroring the existing apiKey pattern.
 # spell-checker: disable
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -1145,3 +1146,61 @@ class TestSigNozClickHouseCleanupHook:
         assert _signoz_cleanup_doc(docs, "Job") is None
         assert _signoz_cleanup_doc(docs, "ServiceAccount") is None
         assert _signoz_migrator_cleanup_doc(docs, "Role") is None
+
+
+_ADB_S_BASE = (
+    "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+    "server.database.type=ADB-S",
+    "server.database.oci.ocid=ocid1.autonomousdatabase.oc1..test",
+    "server.database.adb.serviceName=mydb_low",
+    "server.database.username=admin",
+    "server.database.password=foo",
+)
+
+
+def _autonomousdatabase_doc(docs: list[dict]) -> dict | None:
+    for d in docs:
+        if d.get("kind") == "AutonomousDatabase":
+            return d
+    return None
+
+
+class TestAutonomousDatabaseAction:
+    """`spec.action` is owned by the OraOperator after the initial bind.
+    Re-templating it on every upgrade fights server-side-apply field
+    ownership and fails with `conflict with "manager"`. The chart gates
+    the field on whether the CR already exists in the cluster (via
+    `lookup`) so it renders on initial creation — whether that is a fresh
+    install OR an upgrade that migrates the release to ADB-S — and is
+    omitted on subsequent upgrades."""
+
+    def test_action_renders_when_cr_not_yet_in_cluster(self):
+        # `lookup` returns empty under `helm template`, so this also
+        # covers the "upgrade adds ADB-S for the first time" path —
+        # which is exactly when the operator still needs the Sync bind.
+        result = _render(*_ADB_S_BASE)
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        adb = _autonomousdatabase_doc(_docs(result.stdout))
+        assert adb is not None, "AutonomousDatabase CR did not render"
+        assert adb["spec"].get("action") == "Sync"
+
+    def test_action_gate_uses_lookup(self):
+        # Static check: the gate must consult cluster state via `lookup`
+        # so the field renders on first creation regardless of whether
+        # that creation happens via `helm install` or a migration during
+        # `helm upgrade` (non-ADB-S → ADB-S). A `.Release.IsInstall` gate
+        # would miss the migration path.
+        text = (
+            CHART_DIR / "templates" / "server" / "database" / "adb-operator.yaml"
+        ).read_text()
+        assert 'lookup "database.oracle.com/v4" "AutonomousDatabase"' in text, (
+            "adb-operator.yaml must `lookup` the AutonomousDatabase to gate "
+            "spec.action on cluster state, not on the release-level install flag"
+        )
+        # The gate condition itself (not the explanatory comment) must not
+        # use .Release.IsInstall. Strip Helm comment blocks before checking.
+        stripped = re.sub(r"{{-? */\*.*?\*/ *-?}}", "", text, flags=re.DOTALL)
+        assert ".Release.IsInstall" not in stripped, (
+            "spec.action gate must not use .Release.IsInstall — it misses "
+            "the upgrade-to-ADB-S migration path"
+        )

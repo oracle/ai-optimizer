@@ -206,8 +206,14 @@ Client Autoscaling (HPA):
 UPGRADE & UNINSTALL
 ================================================================================
 
-To upgrade this release:
-  helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} --reuse-values
+To upgrade this release (substitute <chart-source> with the path, repo
+reference, or OCI URL you used to install — bare "{{ .Chart.Name }}" is
+interpreted by Helm as a repo name and will fail):
+  helm upgrade {{ .Release.Name }} <chart-source> -n {{ .Release.Namespace }} --reuse-values
+
+  # Examples:
+  #   helm upgrade {{ .Release.Name }} ./{{ .Chart.Name }} -n {{ .Release.Namespace }} --reuse-values    # local path
+  #   helm upgrade {{ .Release.Name }} myrepo/{{ .Chart.Name }} -n {{ .Release.Namespace }} --reuse-values  # repo
 
 To uninstall this release:
   helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}
