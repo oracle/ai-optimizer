@@ -4,7 +4,7 @@ date: 2026-03-07
 draft: false
 ---
 
-The LLM-Only agent provides a pure conversational experience with no tools or external data sources. It is the simplest agent in the {{< short_app_ref >}}.
+The LLM-Only agent provides a pure conversational experience with no tools or external data sources. It is the simplest agent in the {{% short_app_ref %}}.
 
 ```mermaid
 flowchart TD

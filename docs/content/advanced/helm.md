@@ -10,24 +10,24 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore ashburn sidb myadb ocid ollama autonomousdatabase mxbai subcharts tolerations
 -->
 
-The {{< full_app_ref >}} was specifically designed to run on infrastructure supporting microservices architecture, including [Kubernetes](https://kubernetes.io/).  A [Helm](https://helm.sh/) Chart is provided to make the deployment easier.
+The {{% full_app_ref %}} was specifically designed to run on infrastructure supporting microservices architecture, including [Kubernetes](https://kubernetes.io/).  A [Helm](https://helm.sh/) Chart is provided to make the deployment easier.
 
-To use the {{< short_app_ref >}} Helm Chart:
-  1. [Build, Tag, and Push](#images) the {{< short_app_ref >}} Images
+To use the {{% short_app_ref %}} Helm Chart:
+  1. [Build, Tag, and Push](#images) the {{% short_app_ref %}} Images
   1. [Configure](#configure-valuesyaml) the [values.yaml](https://github.com/oracle/ai-optimizer/blob/main/helm/values.yaml)
   1. [Deploy!](#deploy)
 
 {{% notice style="code" title="Go Local" icon="laptop" %}}
-A full example of running the {{< short_app_ref >}} in a local Kubernetes cluster using Docker container "nodes" via the [Kind](https://kind.sigs.k8s.io/) tool is [provided](#kind-example).
+A full example of running the {{% short_app_ref %}} in a local Kubernetes cluster using Docker container "nodes" via the [Kind](https://kind.sigs.k8s.io/) tool is [provided](#kind-example).
 {{% /notice %}}
 
 
 ### Images
 
-You will need to build the {{< short_app_ref >}} container images and stage them in a container registry, such as the [OCI Container Registry](https://docs.oracle.com/en-us/iaas/Content/Registry/Concepts/registryoverview.htm) (**OCIR**).
+You will need to build the {{% short_app_ref %}} container images and stage them in a container registry, such as the [OCI Container Registry](https://docs.oracle.com/en-us/iaas/Content/Registry/Concepts/registryoverview.htm) (**OCIR**).
 
 1. Download the latest release:
-{{< latest_release >}}
+{{% latest_release %}}
 
 1. Uncompress the release in a new directory.  For example:
 
@@ -38,7 +38,7 @@ You will need to build the {{< short_app_ref >}} container images and stage them
    cd ai-optimizer
    ```
 
-1. Build the {{< short_app_ref >}} images:
+1. Build the {{% short_app_ref %}} images:
    
    _Note:_ Depending on the Kubernetes worker node architecture, you may need to specify `--arch amd64` or `--arch arm64`
 
@@ -48,7 +48,7 @@ You will need to build the {{< short_app_ref >}} container images and stage them
     podman build -f src/server/Dockerfile -t ai-optimizer-server:latest .
     ```
 
-1. Tag the {{< short_app_ref >}} images:
+1. Tag the {{% short_app_ref %}} images:
 
     Tag the images as required by your container registry.  For example, if using the **OCIR** registry in _US East (Ashburn)_ with a namespace of `testing`:
 
@@ -57,7 +57,7 @@ You will need to build the {{< short_app_ref >}} container images and stage them
     podman tag ai-optimizer-server:latest iad.ocir.io/testing/ai-optimizer-server:latest
     ```
 
-1. Push the {{< short_app_ref >}} images:
+1. Push the {{% short_app_ref %}} images:
 
     Push the images to your container registry.  If required, login to the registry first.
     For example, if using the **OCIR** registry in _US East (Ashburn)_ with a namespace of `testing`:
@@ -110,7 +110,7 @@ Older `images.sqlcl` and `images.curl` overrides have been replaced by `utilitie
 
 #### Server Settings
 
-The `server:` sections contains values that are used to configure the {{< short_app_ref >}} API Server.
+The `server:` sections contains values that are used to configure the {{% short_app_ref %}} API Server.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -122,7 +122,7 @@ The `server:` sections contains values that are used to configure the {{< short_
 
 ##### Server Database Settings
 
-Configure the Oracle Database used by the {{< short_app_ref >}} API Server.
+Configure the Oracle Database used by the {{% short_app_ref %}} API Server.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -207,7 +207,7 @@ Option 2 - Using individual components:
 
 ##### Server Oracle Cloud Infrastructure Settings
 
-Configure Oracle Cloud Infrastructure used by the {{< short_app_ref >}} API Server for access to Object Storage and OCI GenAI Services.
+Configure Oracle Cloud Infrastructure used by the {{% short_app_ref %}} API Server for access to Object Storage and OCI GenAI Services.
 
 
 | Key | Type | Default | Description |
@@ -247,7 +247,7 @@ Configure Oracle Cloud Infrastructure used by the {{< short_app_ref >}} API Serv
 
 ##### Server 3rd-Party Model Settings
 
-Configure 3rd-Party AI Models used by the {{< short_app_ref >}} API Server.  Create Kubernetes Secret(s) to hold the 3rd-Party API Keys.
+Configure 3rd-Party AI Models used by the {{% short_app_ref %}} API Server.  Create Kubernetes Secret(s) to hold the 3rd-Party API Keys.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -453,7 +453,7 @@ server:
 ---
 #### Client Settings
 
-The `client:` sections contains values that are used to configure the {{< short_app_ref >}} frontend web client.
+The `client:` sections contains values that are used to configure the {{% short_app_ref %}} frontend web client.
 
 The frontend web client can be disabled by setting `global.enableClient` to `false`.
 
@@ -542,7 +542,7 @@ Give the **Helm Chart** a spin using a locally installed [Kind](https://kind.sig
 
 1. Build the Images
 
-    [Build](#images) the {{< short_app_ref >}} Images per the above instructions.  There's no need to tag or push them.
+    [Build](#images) the {{% short_app_ref %}} Images per the above instructions.  There's no need to tag or push them.
 
 1. Load the images into the Kind cluster
 

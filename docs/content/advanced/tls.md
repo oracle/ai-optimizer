@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore streamlit sslcertfile sslkeyfile certfile
 -->
 
-Both the {{< short_app_ref >}} **Server** (FastAPI/uvicorn) and **Client** (Streamlit) can be configured to serve over **HTTPS** instead of plain HTTP.
+Both the {{% short_app_ref %}} **Server** (FastAPI/uvicorn) and **Client** (Streamlit) can be configured to serve over **HTTPS** instead of plain HTTP.
 
 ## Server
 

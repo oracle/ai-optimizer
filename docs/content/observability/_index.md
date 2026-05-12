@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore quickstarts streamlit fzmp httpx instrumentor langchain litellm parentbased relref signoz traceidratio uvicorn
 -->
 
-The {{< short_app_ref >}} **Server** can emit [OpenTelemetry](https://opentelemetry.io) traces and logs to any OTLP-compatible backend (e.g. [SigNoz](https://signoz.io), [Jaeger](https://www.jaegertracing.io), [Grafana Tempo](https://grafana.com/oss/tempo)). Telemetry is **opt-in** — disabled by default and activated entirely via environment variables.
+The {{% short_app_ref %}} **Server** can emit [OpenTelemetry](https://opentelemetry.io) traces and logs to any OTLP-compatible backend (e.g. [SigNoz](https://signoz.io), [Jaeger](https://www.jaegertracing.io), [Grafana Tempo](https://grafana.com/oss/tempo)). Telemetry is **opt-in** — disabled by default and activated entirely via environment variables.
 
 ## What Is Instrumented
 
@@ -108,7 +108,7 @@ Span attribute visibility is controlled separately through the OpenInference set
 
 ## Environment Variable Reference
 
-The {{< short_app_ref >}} honors the standard [OpenTelemetry SDK environment variables](https://opentelemetry.io/docs/languages/sdk-configuration/). The most relevant ones for operators:
+The {{% short_app_ref %}} honors the standard [OpenTelemetry SDK environment variables](https://opentelemetry.io/docs/languages/sdk-configuration/). The most relevant ones for operators:
 
 ### Endpoint and protocol
 
