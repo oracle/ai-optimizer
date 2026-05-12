@@ -16,7 +16,7 @@ locals {
     optimizer_version    = var.optimizer_version
     optimizer_branch     = var.optimizer_branch
     app_version          = var.app_version
-    install_ollama       = var.vm_is_gpu_shape ? true : false
+    install_ollama       = var.vm_is_gpu_shape || var.compute_install_ollama
     client_cookie_secret = var.client_cookie_secret
   })
 

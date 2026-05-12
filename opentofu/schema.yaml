@@ -70,6 +70,7 @@ variableGroups:
   - title: "Virtual Machine Infrastructure Options"
     variables:
       - vm_is_gpu_shape
+      - compute_install_ollama
     visible:
       eq:
         - infrastructure
@@ -199,6 +200,20 @@ variables:
     type: boolean
     title: "Use a GPU shape?"
     required: false
+
+  compute_install_ollama:
+    type: boolean
+    title: "Install Ollama?"
+    description: "Install Ollama on the compute instance and pull the default models. Warning: model performance on CPU shapes will be significantly slower than on GPU shapes and is not suitable for production workloads."
+    default: false
+    required: false
+    visible:
+      and:
+        - eq:
+            - infrastructure
+            - "VM"
+        - not:
+            - vm_is_gpu_shape
 
   k8s_gpu_node_pool_size:
     type: integer

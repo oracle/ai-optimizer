@@ -53,6 +53,11 @@ variable "vm_is_gpu_shape" {
   type = bool
 }
 
+variable "compute_install_ollama" {
+  type    = bool
+  default = false
+}
+
 variable "compute_os_ver" {
   type = string
 }

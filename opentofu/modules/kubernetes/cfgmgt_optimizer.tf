@@ -15,7 +15,7 @@ locals {
     db_ocid                  = var.db_ocid
     db_dsn                   = var.db_conn.service
     db_name                  = lower(var.db_name)
-    node_pool_gpu_deploy     = var.node_pool_gpu_deploy
+    install_ollama           = var.node_pool_gpu_deploy
     ssl_enabled              = var.ssl_enabled
     client_cookie_secret     = var.client_cookie_secret
     is_observability_enabled = var.is_observability_enabled
