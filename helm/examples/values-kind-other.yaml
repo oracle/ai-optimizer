@@ -2,12 +2,27 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore sidb ollama
 
-# Example Helm Values for external databases
+# Example Helm Values for external databases.
+#
+# OTHER mode requires explicit operator intent because the chart is not
+# the database lifecycle owner — it cannot conjure a user the external DB
+# does not have. Pick ONE of the two patterns below before installing:
+#
+#   * BYO user/credentials: pre-create a Secret with the existing
+#     application user's username/password/service keys, then point
+#     `server.database.authn.secretName` at it. The chart's init Job is
+#     skipped.
+#
+#   * Chart-provisioned user: pre-create a Secret with privileged
+#     (DBA-level) credentials on the external DB, then point
+#     `server.database.privAuthN.secretName` at it. The chart runs an
+#     init Job that creates the application user with a random password
+#     and stores it in the auth Secret.
 server:
   replicaCount: 1
   image:
     repository: localhost/ai-optimizer-server
-    tag: latest
+    tag: "0.0.0"
   database:
     type: "OTHER"
     other:
@@ -17,14 +32,16 @@ server:
       # host: "mydbhost.example.com"
       # port: "1521"
       # serviceName: "MYSERVICE"
-    privAuthN:
-      secretName: "db-priv-authn"
-      passwordKey: "password"
+    # Pick one of the two below before `helm install`:
+    authn:
+      secretName: "db-authn"   # BYO user — pre-create this Secret
+    # privAuthN:
+    #   secretName: "db-priv-authn"   # Chart-provisioned user — pre-create the privileged Secret
 client:
   replicaCount: 1
   image:
     repository: localhost/ai-optimizer-client
-    tag: latest
+    tag: "0.0.0"
 ollama:
   enabled: true
   replicaCount: 1

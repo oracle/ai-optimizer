@@ -1,0 +1,29 @@
+name: Setup Helm
+description: Install a SHA-pinned Helm release via the upstream get-helm-3 script
+
+inputs:
+  version:
+    description: Helm CLI release tag (e.g. v4.1.4)
+    required: false
+    default: v4.1.4
+  sha256:
+    description: Expected SHA-256 of the upstream get-helm-3 script for the pinned version
+    required: false
+    default: 38b65f882d9cae3891755bdb03becc6a01ae6f9cb24826c191f219ddfee70a5d
+
+runs:
+  using: composite
+  steps:
+    - name: Install Helm (${{ inputs.version }})
+      shell: bash
+      run: |
+        set -euo pipefail
+        script=$(mktemp)
+        curl -fsSL -o "$script" "https://raw.githubusercontent.com/helm/helm/${{ inputs.version }}/scripts/get-helm-3"
+        actual=$(sha256sum "$script" | cut -d' ' -f1)
+        if [ "$actual" != "${{ inputs.sha256 }}" ]; then
+          echo "::error::helm install script hash mismatch (expected ${{ inputs.sha256 }}, got $actual)"
+          exit 1
+        fi
+        bash "$script" --version "${{ inputs.version }}"
+        helm version --short

@@ -147,6 +147,10 @@ variable "optimizer_branch" {
   type = string
 }
 
+variable "app_version" {
+  type = string
+}
+
 variable "deploy_optimizer" {
   type    = bool
   default = true

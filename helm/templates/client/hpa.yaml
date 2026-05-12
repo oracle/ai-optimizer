@@ -1,20 +1,20 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent */}}
 
 {{- if and .Values.client.enabled .Values.client.autoscaling.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "global.fullname" . }}-client
+  name: {{ include "ai-optimizer.fullname" . }}-client
   labels:
     app.kubernetes.io/component: client
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "global.fullname" . }}-client
+    name: {{ include "ai-optimizer.fullname" . }}-client
   minReplicas: {{ .Values.client.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.client.autoscaling.maxReplicas }}
   metrics:

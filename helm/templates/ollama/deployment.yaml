@@ -1,21 +1,21 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent tolerations ollama
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent tolerations ollama */}}
 
 {{- if .Values.ollama.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "global.fullname" . }}-ollama
+  name: {{ include "ai-optimizer.fullname" . }}-ollama
   labels:
     app.kubernetes.io/component: ollama
-    {{- include "global.labels" . | nindent 4}}
+    {{- include "ai-optimizer.labels" . | nindent 4}}
 spec:
   replicas: {{ .Values.ollama.replicaCount }}
   selector:
     matchLabels:
       app.kubernetes.io/component: ollama
-      {{- include "global.selectorLabels" . | nindent 6 }}
+      {{- include "ai-optimizer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.ollama.podAnnotations }}
@@ -24,17 +24,17 @@ spec:
       {{- end }}
       labels:
         app.kubernetes.io/component: ollama
-        {{- include "global.labels" . | nindent 8 }}
+        {{- include "ai-optimizer.labels" . | nindent 8 }}
         {{- with .Values.ollama.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
       securityContext:
         fsGroup: 10001
-      {{- include "global.imagePullSecrets" (dict "local" .Values.ollama.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
+      {{- include "ai-optimizer.imagePullSecrets" (dict "local" .Values.ollama.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: {{ .Chart.Name }}-ollama
-          image: {{ include "global.image" (dict "image" .Values.ollama.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
+          image: {{ include "ai-optimizer.image" (dict "image" .Values.ollama.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.ollama.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             capabilities:
@@ -85,7 +85,7 @@ spec:
                     while ! /bin/ollama ps > /dev/null 2>&1; do
                       sleep 5
                     done
-                    echo "{{ include "ollama.modelPullList" . }}" | xargs -n1 /bin/ollama pull
+                    echo "{{ include "ai-optimizer.ollama.modelPullList" . }}" | xargs -n1 /bin/ollama pull
           {{- end }}
       volumes:
         - name: key

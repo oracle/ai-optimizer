@@ -1,15 +1,15 @@
 # Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent tolerations ollama pplx
-{{- include "server.otel.validate" . }}
+{{- include "ai-optimizer.server.otel.validate" . }}
 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "global.fullname" . }}-server
+  name: {{ include "ai-optimizer.fullname" . }}-server
   labels:
     app.kubernetes.io/component: server
-    {{- include "global.labels" . | nindent 4}}
+    {{- include "ai-optimizer.labels" . | nindent 4}}
 spec:
   {{- if not .Values.server.autoscaling.enabled }}
   replicas: {{ .Values.server.replicaCount }}
@@ -17,27 +17,27 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/component: server
-      {{- include "global.selectorLabels" . | nindent 6 }}
+      {{- include "ai-optimizer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/server-env-secret: {{ include "server.envSecretChecksum" . | quote }}
+        checksum/server-env-secret: {{ include "ai-optimizer.server.envSecretChecksum" . | quote }}
         {{- with .Values.server.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
         app.kubernetes.io/component: server
-        {{- include "global.labels" . | nindent 8 }}
+        {{- include "ai-optimizer.labels" . | nindent 8 }}
         {{- with .Values.server.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
       securityContext:
         fsGroup: 10001
-      {{- include "global.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
+      {{- include "ai-optimizer.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: {{ .Chart.Name }}
-          image: {{ include "global.image" (dict "image" .Values.server.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
+          image: {{ include "ai-optimizer.image" (dict "image" .Values.server.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.server.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             capabilities:
@@ -52,21 +52,21 @@ spec:
             - name: AIO_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "global.apiSecretName" . }}
-                  key: {{ include "global.apiSecretKey" . }}
-            {{- if .Values.server.database }}
-            {{- include "server.database.authN" . | nindent 12 }}
-              {{- if eq (include "server.database.isADBS" .) "true" }}
+                  name: {{ include "ai-optimizer.apiSecretName" . }}
+                  key: {{ include "ai-optimizer.apiSecretKey" . }}
+            {{- if and .Values.server.database .Values.server.database.type }}
+            {{- include "ai-optimizer.server.database.authn" . | nindent 12 }}
+              {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
             - name: DB_WALLET_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "server.database.adbWalletPassSecret" . }}
-                  key: {{ include "server.database.adbWalletPassSecretKey" . }}
+                  name: {{ include "ai-optimizer.server.database.adbWalletPassSecret" . }}
+                  key: {{ include "ai-optimizer.server.database.adbWalletPassSecretKey" . }}
               {{- end }}
             {{- end }}
             {{- with .Values.server.models }}
               {{- $models := . }}
-              {{- $envMap := dict "openAI" "OPENAI_API_KEY" "perplexity" "PPLX_API_KEY" "cohere" "COHERE_API_KEY" }}
+              {{- $envMap := dict "openai" "OPENAI_API_KEY" "perplexity" "PPLX_API_KEY" "cohere" "COHERE_API_KEY" }}
               {{- range $key, $envName := $envMap }}
                 {{- with index $models $key }}
                   {{- if .secretName }}
@@ -96,8 +96,8 @@ spec:
                    pinned to one protocol's port silently misroutes the other
                    signal when their protocols differ. */ -}}
             {{- if eq $ep "" }}
-            {{- if eq $tep "" }}{{- $tep = include "server.otel.defaultTracesEndpoint" $ }}{{- end }}
-            {{- if eq $lep "" }}{{- $lep = include "server.otel.defaultLogsEndpoint" $ }}{{- end }}
+            {{- if eq $tep "" }}{{- $tep = include "ai-optimizer.server.otel.defaultTracesEndpoint" $ }}{{- end }}
+            {{- if eq $lep "" }}{{- $lep = include "ai-optimizer.server.otel.defaultLogsEndpoint" $ }}{{- end }}
             {{- end }}
             {{- if ne $ep "" }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -161,7 +161,7 @@ spec:
             {{- end }}
             {{- with .resourceAttributes }}
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: {{ include "server.otel.resourceAttributes" . | quote }}
+              value: {{ include "ai-optimizer.server.otel.resourceAttributes" . | quote }}
             {{- end }}
             {{- /* Trim before truthy-checking: a whitespace-only value like
                    "   " is truthy as a Helm string but the application's
@@ -256,17 +256,17 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: "/app/tmp"
-            {{- if eq (include "server.database.isADBS" .) "true" }}
+            {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
             - name: tns-admin
               mountPath: /app/tns_admin
             {{- end }}
-            {{- if and .Values.server.oci_config .Values.server.oci_config.fileSecretName }}
+            {{- if and .Values.server.ociConfig .Values.server.ociConfig.fileSecretName }}
             - name: oci-config
               mountPath: "/app/.oci"
             {{- end }}
             - name: env-config
               mountPath: /app/src/.env.{{ .Values.global.env }}
-              subPath: {{ include "server.envSecretKey" . }}
+              subPath: {{ include "ai-optimizer.server.envSecretKey" . }}
               readOnly: true
           {{- with .Values.server.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -274,20 +274,20 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if eq (include "server.database.isADBS" .) "true" }}
+        {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
         - name: tns-admin
           secret:
-            secretName: {{ include "server.database.adbTnsAdminSecret" . }}
+            secretName: {{ include "ai-optimizer.server.database.adbTnsAdminSecret" . }}
         {{- end }}
-        {{- if and .Values.server.oci_config .Values.server.oci_config.fileSecretName }}
+        {{- if and .Values.server.ociConfig .Values.server.ociConfig.fileSecretName }}
         - name: oci-config
           secret:
-            secretName: {{ .Values.server.oci_config.fileSecretName | quote }}
+            secretName: {{ .Values.server.ociConfig.fileSecretName | quote }}
             optional: true
         {{- end }}
         - name: env-config
           secret:
-            secretName: {{ include "server.envSecretName" . }}
+            secretName: {{ include "ai-optimizer.server.envSecretName" . }}
       {{- with .Values.server.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

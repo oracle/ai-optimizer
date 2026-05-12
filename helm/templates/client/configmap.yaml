@@ -6,10 +6,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "global.fullname" . }}-st-config
+  name: {{ include "ai-optimizer.fullname" . }}-st-config
   labels:
     app.kubernetes.io/component: client
-    {{- include "global.labels" . | nindent 4}}
+    {{- include "ai-optimizer.labels" . | nindent 4}}
 data:
   config.toml: |
     [global]
@@ -23,7 +23,7 @@ data:
     port = "8501"
     headless = true
     fileWatcherType = "none"
-    {{- $path := include "global.getPath" . | trimSuffix "/" }}
+    {{- $path := include "ai-optimizer.getPath" . | trimSuffix "/" }}
     {{- if ne $path "" }}
     baseUrlPath = {{ $path | quote }}
     {{- end }}

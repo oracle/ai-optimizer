@@ -1,19 +1,19 @@
-## Copyright (c) 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore signoz authn nindent orgId accessToken urlencode
+{{/* Copyright (c) 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore signoz authn nindent orgId accessToken urlencode */}}
 {{- /* The Job authenticates with credentials from the authn Secret. SigNoz
        only provisions an admin from those credentials when
        SIGNOZ_USER_ROOT_ENABLED=true; with root provisioning off no admin
        exists at first install and the Job loops until backoffLimit, which
        breaks helm install --wait. */ -}}
-{{- if and .Values.signoz.enabled (include "signoz.rootProvisioningEnabled" .) }}
+{{- if and .Values.signoz.enabled (include "ai-optimizer.signoz.rootProvisioningEnabled" .) }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "global.fullname" . }}-signoz-setup-{{ .Release.Revision }}
+  name: {{ include "ai-optimizer.fullname" . }}-signoz-setup-{{ .Release.Revision }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
 spec:
   backoffLimit: 3
   completions: 1
@@ -30,7 +30,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/component: observability
-        {{- include "global.labels" . | nindent 8 }}
+        {{- include "ai-optimizer.labels" . | nindent 8 }}
     spec:
       affinity:
         podAffinity:
@@ -42,22 +42,22 @@ spec:
                 values:
                 - signoz
             topologyKey: "kubernetes.io/hostname"
-      {{- include "global.imagePullSecrets" (dict "local" (list) "global" .Values.global.imagePullSecrets) | nindent 6 }}
+      {{- include "ai-optimizer.imagePullSecrets" (dict "local" (list) "global" .Values.global.imagePullSecrets) | nindent 6 }}
       initContainers:
       - name: wait-for-signoz-service
-        image: {{ include "global.image" (dict "image" .Values.utilities.curl.image "global" .Values.global) | quote }}
+        image: {{ include "ai-optimizer.image" (dict "image" .Values.utilities.curl.image "global" .Values.global) | quote }}
         imagePullPolicy: {{ .Values.utilities.curl.image.pullPolicy | default "IfNotPresent" }}
         command:
         - sh
         - -c
         - |
           set -e
-          {{- include "global.shellWaitFunc" . | nindent 10 }}
-          wait_until "signoz-service" 120 5 curl -sf --max-time 5 --connect-timeout 2 -o /dev/null {{ include "signoz.frontendUrl" . }}/api/v1/health?live=1
+          {{- include "ai-optimizer.shellWaitFunc" . | nindent 10 }}
+          wait_until "signoz-service" 120 5 curl -sf --max-time 5 --connect-timeout 2 -o /dev/null {{ include "ai-optimizer.signoz.frontendUrl" . }}/api/v1/health?live=1
           echo "signoz-service ready"
       containers:
       - name: signoz-setup
-        image: {{ include "global.image" (dict "image" .Values.utilities.curl.image "global" .Values.global) | quote }}
+        image: {{ include "ai-optimizer.image" (dict "image" .Values.utilities.curl.image "global" .Values.global) | quote }}
         imagePullPolicy: {{ .Values.utilities.curl.image.pullPolicy | default "IfNotPresent" }}
         command:
         - /bin/sh
@@ -65,7 +65,7 @@ spec:
         args:
         - |
           set -eu
-          SIGNOZ_URL={{ include "signoz.frontendUrl" . | quote }}
+          SIGNOZ_URL={{ include "ai-optimizer.signoz.frontendUrl" . | quote }}
           # Cap each call so a stuck SigNoz frontend (post-healthcheck hang)
           # cannot freeze the Job past activeDeadlineSeconds.
           CURL_OPTS="-sf --connect-timeout 5 --max-time 30"
@@ -224,13 +224,13 @@ spec:
       volumes:
       - configMap:
           defaultMode: 420
-          name: {{ include "global.fullname" . }}-signoz-dashboards
+          name: {{ include "ai-optimizer.fullname" . }}-signoz-dashboards
         name: signoz-dashboards
       - configMap:
           defaultMode: 420
-          name: {{ include "global.fullname" . }}-signoz-alerts
+          name: {{ include "ai-optimizer.fullname" . }}-signoz-alerts
         name: signoz-alerts
       - name: signoz-authn
         secret:
-          secretName: {{ include "signoz.authnSecretName" . }}
+          secretName: {{ include "ai-optimizer.signoz.authnSecretName" . }}
 {{- end }}

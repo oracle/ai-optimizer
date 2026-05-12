@@ -1,19 +1,19 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent */}}
 
-{{- if .Values.server.oci_config }}
+{{- if .Values.server.ociConfig }}
 {{- /* Validate OCI config settings */ -}}
-{{- include "server.ociConfig.validate" . }}
+{{- include "ai-optimizer.server.ociConfig.validate" . }}
 {{- /* Only create ConfigMap if configMapName is not specified and at least one value is provided */ -}}
-{{- if not .Values.server.oci_config.configMapName }}
-{{- $tenancy := .Values.server.oci_config.tenancy | default "" }}
-{{- $user := .Values.server.oci_config.user | default "" }}
-{{- $fingerprint := .Values.server.oci_config.fingerprint | default "" }}
-{{- $region := .Values.server.oci_config.region | default "" }}
+{{- if not .Values.server.ociConfig.configMapName }}
+{{- $tenancy := .Values.server.ociConfig.tenancy | default "" }}
+{{- $user := .Values.server.ociConfig.user | default "" }}
+{{- $fingerprint := .Values.server.ociConfig.fingerprint | default "" }}
+{{- $region := .Values.server.ociConfig.region | default "" }}
 {{- if or (ne $tenancy "") (ne $user "") (ne $fingerprint "") (ne $region "") }}
 {{- /* Determine the default ConfigMap name */ -}}
-{{- $configMapName := printf "%s-oci-config" .Release.Name }}
+{{- $configMapName := include "ai-optimizer.server.ociConfigMapName" . }}
 
 apiVersion: v1
 kind: ConfigMap
@@ -21,9 +21,9 @@ metadata:
   name: {{ $configMapName }}
   labels:
     app.kubernetes.io/component: server
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
 data:
-  {{- with .Values.server.oci_config }}
+  {{- with .Values.server.ociConfig }}
     {{- if .tenancy }}
   tenancy: {{ .tenancy | quote }}
     {{- end }}

@@ -1,23 +1,23 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent freepdb1
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent freepdb1
 
-# Database Deployment (SIDB-FREE or ADB-FREE)
+Database Deployment (SIDB-FREE or ADB-FREE) */}}
 {{- if .Values.server.database }}
-{{- if eq (include "server.database.isContainerDB" .) "true" }}
+{{- if eq (include "ai-optimizer.server.database.isContainerDB" .) "true" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "global.fullname" . }}-{{ include "server.database.dbName" . }}
+  name: {{ include "ai-optimizer.fullname" . }}-{{ include "ai-optimizer.server.database.dbName" . }}
   labels:
     app.kubernetes.io/component: database
-    {{- include "global.labels" . | nindent 4}}
+    {{- include "ai-optimizer.labels" . | nindent 4}}
 spec:
   replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/component: database
-      {{- include "global.selectorLabels" . | nindent 6 }}
+      {{- include "ai-optimizer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.server.podAnnotations }}
@@ -26,7 +26,7 @@ spec:
       {{- end }}
       labels:
         app.kubernetes.io/component: database
-        {{- include "global.labels" . | nindent 8 }}
+        {{- include "ai-optimizer.labels" . | nindent 8 }}
         {{- with .Values.server.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -35,10 +35,10 @@ spec:
         fsGroup: 54321
         runAsGroup: 54321
         runAsUser: 54321
-      {{- include "global.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
+      {{- include "ai-optimizer.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: db-container
-          image: {{ include "global.image" (dict "image" .Values.server.database.image "global" .Values.global) | quote }}
+          image: {{ include "ai-optimizer.image" (dict "image" .Values.server.database.image "global" .Values.global) | quote }}
           imagePullPolicy: {{ .Values.server.database.image.pullPolicy | default "IfNotPresent" }}
           ports:
             - containerPort: 1521
@@ -48,13 +48,13 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 10
           env:
-            {{- include "server.database.authN" . | nindent 12 }}
-          {{- if eq (include "server.database.isSIDB" .) "true" }}
+            {{- include "ai-optimizer.server.database.authn" . | nindent 12 }}
+          {{- if eq (include "ai-optimizer.server.database.isSIDB" .) "true" }}
             - name: ORACLE_PWD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "server.databaseSecret" . }}
-                  key: {{ default "password" .Values.server.database.authN.passwordKey }}
+                  name: {{ include "ai-optimizer.server.databaseSecret" . }}
+                  key: {{ default "password" .Values.server.database.authn.passwordKey }}
           volumeMounts:
             - name: db-init-scripts
               mountPath: "/opt/oracle/scripts/startup"
@@ -66,19 +66,19 @@ spec:
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "server.databasePrivSecret" . }}
+                  name: {{ include "ai-optimizer.server.databasePrivSecret" . }}
                   key: {{ default "password" .Values.server.database.privAuthN.passwordKey }}
             - name: WALLET_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "server.databaseSecret" . }}
-                  key: {{ default "password" .Values.server.database.authN.passwordKey }}
+                  name: {{ include "ai-optimizer.server.databaseSecret" . }}
+                  key: {{ default "password" .Values.server.database.authn.passwordKey }}
           {{- end }}
-      {{- if eq (include "server.database.isSIDB" .) "true" }}
+      {{- if eq (include "ai-optimizer.server.database.isSIDB" .) "true" }}
       volumes:
         - name: db-init-scripts
           configMap:
-            name: {{ include "global.fullname" . }}-db-init
+            name: {{ include "ai-optimizer.fullname" . }}-db-init
       {{- end }}
 {{- end }}
 {{- end }}

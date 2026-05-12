@@ -104,9 +104,9 @@ helm install ai-optimizer . \
   --set global.api.apiKey="$API_KEY" \
   --set server.database.type="ADB-S" \
   --set server.database.oci.ocid="ocid1.autonomousdatabase.oc1..." \
-  --set server.database.authN.secretName="db-authn" \
-  --set server.oci_config.fileSecretName="oci-config-file" \
-  --set server.oci_config.region="us-ashburn-1"
+  --set server.database.authn.secretName="db-authn" \
+  --set server.ociConfig.fileSecretName="oci-config-file" \
+  --set server.ociConfig.region="us-ashburn-1"
 ```
 
 ### Example 4: Production with OpenAI Integration
@@ -118,7 +118,7 @@ kubectl create secret generic openai-secret \
 
 helm install ai-optimizer . \
   --set global.api.apiKey="$API_KEY" \
-  --set server.models.openAI.secretName="openai-secret" \
+  --set server.models.openai.secretName="openai-secret" \
   --set server.database.type="ADB-S" \
   --set server.database.oci.ocid="ocid1.autonomousdatabase..."
 ```
@@ -211,7 +211,7 @@ helm install ai-optimizer . \
 |-----------|-------------|---------|
 | `server.replicaCount` | Number of server pods (when autoscaling disabled) | `1` |
 | `server.image.repository` | Server container image repository | `localhost/ai-optimizer-server` |
-| `server.image.tag` | Server container image tag | `latest` |
+| `server.image.tag` | Server container image tag; empty defaults to `appVersion` | `""` |
 | `server.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `server.service.type` | Kubernetes service type | `ClusterIP` |
 | `server.resources` | CPU/Memory resource requests and limits | `{}` |
@@ -232,17 +232,17 @@ helm install ai-optimizer . \
 |-----------|-------------|---------|---------|
 | `server.database.type` | Type of Oracle Database | `""` | `SIDB-FREE`, `ADB-FREE`, `ADB-S`, `OTHER` |
 | `server.database.image.repository` | Container image for SIDB/ADB-FREE | `""` | See examples |
-| `server.database.image.tag` | Container image tag | `latest` | |
+| `server.database.image.tag` | Container image tag for in-cluster DB images | `""` | Required for SIDB-FREE/ADB-FREE |
 | `server.database.oci.ocid` | ADB-S OCID (for ADB-S only) | `""` | |
 | `server.database.other.dsn` | Full DSN (for OTHER only) | `""` | Either dsn OR (host+port+serviceName) |
 | `server.database.other.host` | Database host (for OTHER only) | `""` | Required if dsn not provided |
 | `server.database.other.port` | Database port (for OTHER only) | `""` | Required if dsn not provided |
 | `server.database.other.serviceName` | Database service name (for OTHER only) | `""` | Required if dsn not provided |
-| `server.database.authN.secretName` | Secret with DB credentials | `"db-authn"` | Auto-generated if not exists |
-| `server.database.authN.usernameKey` | Key for username in secret | `"username"` | |
-| `server.database.authN.passwordKey` | Key for password in secret | `"password"` | |
-| `server.database.authN.serviceKey` | Key for connection string in secret | `"service"` | |
-| `server.database.privAuthN.secretName` | Secret with privileged user password | `"db-priv-authn"` | For user creation |
+| `server.database.authn.secretName` | Secret with DB credentials | `""` | Empty defaults to `<fullname>-db-authn`; auto-generated if not exists |
+| `server.database.authn.usernameKey` | Key for username in secret | `"username"` | |
+| `server.database.authn.passwordKey` | Key for password in secret | `"password"` | |
+| `server.database.authn.serviceKey` | Key for connection string in secret | `"service"` | |
+| `server.database.privAuthN.secretName` | Secret with privileged user password | `""` | Empty defaults to `<fullname>-db-priv-authn`; for user creation |
 | `server.database.privAuthN.usernameKey` | Key for privileged username | `"username"` | |
 | `server.database.privAuthN.passwordKey` | Key for privileged password | `"password"` | |
 
@@ -256,13 +256,13 @@ helm install ai-optimizer . \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `server.oci_config.oke` | Enable OKE Workload Identity Principals | `false` |
-| `server.oci_config.tenancy` | OCI Tenancy OCID | `""` |
-| `server.oci_config.user` | OCI User OCID | `""` |
-| `server.oci_config.fingerprint` | OCI API Key Fingerprint | `""` |
-| `server.oci_config.region` | OCI Region | `""` |
-| `server.oci_config.fileSecretName` | Secret with OCI config file and keys | `""` |
-| `server.oci_config.keySecretName` | Secret with single API key (for operator) | `""` |
+| `server.ociConfig.oke` | Enable OKE Workload Identity Principals | `false` |
+| `server.ociConfig.tenancy` | OCI Tenancy OCID | `""` |
+| `server.ociConfig.user` | OCI User OCID | `""` |
+| `server.ociConfig.fingerprint` | OCI API Key Fingerprint | `""` |
+| `server.ociConfig.region` | OCI Region | `""` |
+| `server.ociConfig.fileSecretName` | Secret with OCI config file and keys | `""` |
+| `server.ociConfig.keySecretName` | Secret with single API key (for operator) | `""` |
 
 Use `scripts/oci_config.py` to create the `fileSecretName` secret from your `~/.oci/config`.
 
@@ -270,8 +270,8 @@ Use `scripts/oci_config.py` to create the `fileSecretName` secret from your `~/.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `server.models.openAI.secretName` | Secret containing OpenAI API key | `""` |
-| `server.models.openAI.secretKey` | Key within secret | `"apiKey"` |
+| `server.models.openai.secretName` | Secret containing OpenAI API key | `""` |
+| `server.models.openai.secretKey` | Key within secret | `"apiKey"` |
 | `server.models.perplexity.secretName` | Secret containing Perplexity API key | `""` |
 | `server.models.perplexity.secretKey` | Key within secret | `"apiKey"` |
 | `server.models.cohere.secretName` | Secret containing Cohere API key | `""` |
@@ -306,7 +306,7 @@ Use `scripts/oci_config.py` to create the `fileSecretName` secret from your `~/.
 | `client.enabled` | Enable client deployment | `true` |
 | `client.replicaCount` | Number of client pods | `1` |
 | `client.image.repository` | Client container image | `localhost/ai-optimizer-client` |
-| `client.image.tag` | Client container image tag | `latest` |
+| `client.image.tag` | Client container image tag; empty defaults to `appVersion` | `""` |
 | `client.service.type` | Kubernetes service type | `ClusterIP` |
 
 #### Client Autoscaling
@@ -329,7 +329,7 @@ Same structure as server autoscaling (see above).
 | `ollama.enabled` | Enable Ollama deployment | `false` |
 | `ollama.replicaCount` | Number of Ollama pods | `1` |
 | `ollama.image.repository` | Ollama image | `docker.io/ollama/ollama` |
-| `ollama.image.tag` | Ollama image tag | `latest` |
+| `ollama.image.tag` | Ollama image tag | `0.23.1` |
 | `ollama.models.enabled` | Auto-pull models on startup | `true` |
 | `ollama.models.modelPullList` | List of models to pull | `[qwen3:8b, mxbai-embed-large]` |
 | `ollama.resources` | Resource requests/limits (GPU support) | `{}` |
@@ -456,7 +456,10 @@ delete the SigNoz ClickHouse PVCs and their telemetry data.
 **Note**: Secrets with `helm.sh/resource-policy: keep` annotation (like database credentials) will be retained. Delete them manually if needed:
 
 ```bash
-kubectl delete secret ai-optimizer-db-authn
+# Resolved names follow the chart's fullname helper; for release "ai-optimizer"
+# with the default name, these are typically "ai-optimizer-db-authn" and
+# "ai-optimizer-db-priv-authn". Adjust for your release name.
+kubectl delete secret <release>-db-authn <release>-db-priv-authn
 ```
 
 ## Troubleshooting
@@ -504,7 +507,7 @@ python -c "import oracledb; print('DB driver loaded')"
 **Solution**:
 - For ADB-S: Verify wallet secret is created by database operator
 - For SIDB/ADB-FREE: Check database pod is running and service is accessible
-- Verify connection string in secret: `kubectl get secret db-authn -o yaml`
+- Verify connection string in secret: `kubectl get secret <release>-db-authn -o yaml` (or the operator-provided name if `server.database.authn.secretName` is set)
 
 #### 3. Image Pull Errors
 
