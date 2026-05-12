@@ -282,6 +282,50 @@ class TestClientCookieSecretContract:
         )
 
 
+class TestClientEnvSecretContract:
+    """Chart-derived server URL/port must reach the client pod regardless of
+    how the client env Secret is sourced.
+
+    The env Secret only carries operator overrides + client SSL settings; the
+    chart-managed Secret is skipped entirely when client.envSecret.secretName
+    points at a pre-existing operator-owned Secret. AIO_SERVER_URL and
+    AIO_SERVER_PORT are derived from the in-cluster Service and have no
+    sensible operator override, so they must travel via direct pod env —
+    otherwise the client falls back to http://localhost:8000 (the Pydantic
+    defaults in src/client/app/core/settings.py) and cannot reach the
+    in-cluster server.
+    """
+
+    def test_server_url_and_port_present_with_external_env_secret(self):
+        """When client.envSecret.secretName references an external Secret, the
+        chart skips its own env-secret render. AIO_SERVER_URL/PORT must still
+        be wired into the pod via direct env, not the mounted .env file."""
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "client.envSecret.secretName=operator-owned-client-env",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        deployment = _client_deployment(_docs(result.stdout))
+        env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+        url_entry = next((e for e in env if e["name"] == "AIO_SERVER_URL"), None)
+        port_entry = next((e for e in env if e["name"] == "AIO_SERVER_PORT"), None)
+        assert url_entry is not None, (
+            "AIO_SERVER_URL must be set as direct pod env so external-Secret "
+            "operators reach the in-cluster server; otherwise the client "
+            "Pydantic default (http://localhost) wins"
+        )
+        assert port_entry is not None, (
+            "AIO_SERVER_PORT must be set as direct pod env for the same reason"
+        )
+        assert url_entry["value"].startswith("http://test-ai-optimizer-server-http"), (
+            f"AIO_SERVER_URL should resolve to the in-cluster server Service; "
+            f"got {url_entry['value']!r}"
+        )
+        assert port_entry["value"] == "8000", (
+            f"AIO_SERVER_PORT should default to 8000; got {port_entry['value']!r}"
+        )
+
+
 def _server_deployment(docs: list[dict]) -> dict:
     """Return the server Deployment document."""
     for d in docs:

@@ -22,6 +22,7 @@ spec:
     metadata:
       annotations:
         checksum/client-cookie-secret: {{ include "client.cookieSecretChecksum" . | quote }}
+        checksum/client-password-secret: {{ include "client.passwordSecretChecksum" . | quote }}
         checksum/client-env-secret: {{ include "client.envSecretChecksum" . | quote }}
         {{- with .Values.client.podAnnotations }}
         {{- toYaml . | nindent 8 }}
@@ -50,6 +51,10 @@ spec:
           env:
             - name: AIO_ENV
               value: {{ .Values.global.env | quote }}
+            - name: AIO_SERVER_URL
+              value: {{ include "server.serviceUrl" . }}
+            - name: AIO_SERVER_PORT
+              value: {{ .Values.server.service.port | default 8000 | quote }}
             - name: AIO_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -60,6 +65,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "client.cookieSecretName" . }}
                   key: {{ include "client.cookieSecretKey" . }}
+            {{- if or (.Values.client.password | trim) (.Values.client.passwordSecretName | trim) }}
+            - name: AIO_CLIENT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "client.passwordSecretName" . }}
+                  key: {{ include "client.passwordSecretKey" . }}
+            {{- end }}
           ports:
             - name: client-port
               containerPort: 8501
@@ -98,7 +110,7 @@ spec:
             - name: streamlit-config
               mountPath: /app/.streamlit
             - name: env-config
-              mountPath: /app/.env.{{ .Values.global.env }}
+              mountPath: /app/src/.env.{{ .Values.global.env }}
               subPath: {{ include "client.envSecretKey" . }}
               readOnly: true
           {{- with .Values.client.volumeMounts }}

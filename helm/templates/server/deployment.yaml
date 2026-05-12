@@ -265,7 +265,7 @@ spec:
               mountPath: "/app/.oci"
             {{- end }}
             - name: env-config
-              mountPath: /app/.env.{{ .Values.global.env }}
+              mountPath: /app/src/.env.{{ .Values.global.env }}
               subPath: {{ include "server.envSecretKey" . }}
               readOnly: true
           {{- with .Values.server.volumeMounts }}

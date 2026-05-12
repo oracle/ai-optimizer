@@ -34,7 +34,7 @@ global:
   baseUrlPath: "/"
 
   # -- Environment name. Controls which .env file pydantic-settings reads (.env.{env})
-  # and which file path the envSecret is mounted as (/app/.env.{env}).
+  # and which file path the envSecret is mounted as (/app/src/.env.{env}).
   env: "prd"
 
   # -- Mirror registry for private-registry deployments. When non-empty, replaces
@@ -360,7 +360,7 @@ server:
       # - name: OTEL_BSP_MAX_QUEUE_SIZE
       #   value: "4096"
 
-  # -- Environment configuration mounted as a Secret at /app/.env.{global.env}.
+  # -- Environment configuration mounted as a Secret at /app/src/.env.{global.env}.
   # The chart always creates this Secret with the AIO_*, OCI_CLI_*, and
   # ON_PREM_* settings derived from chart values (server URL prefix,
   # max clients, SSL, OKE workload identity, Ollama URL). Pod env keeps
@@ -521,6 +521,20 @@ client:
   # -- Key inside cookieSecretName / the generated Secret that holds the value.
   cookieSecretKey: "cookieSecret"
 
+  # -- Shared password for selected client UI controls. The operator MAY supply
+  # either:
+  #   1) password — an inline value; Helm creates a Secret.
+  #   2) passwordSecretName — name of a pre-existing Secret in the namespace.
+  # When BOTH are empty, the additional UI access check is disabled and controls
+  # render as they would have without this feature.
+  # This setting applies to the Streamlit client UI only; API access continues
+  # to be governed by AIO_API_KEY.
+  password: ""
+  # -- Name of a pre-existing Secret containing the shared password.
+  passwordSecretName: ""
+  # -- Key inside passwordSecretName / the generated Secret that holds the value.
+  passwordSecretKey: "password"
+
   # Gateway: controls the Gateway API resources to expose the service
   gateway:
     enabled: false
@@ -541,7 +555,7 @@ client:
     #     - example.com
     #   secretName: example-tls
 
-  # -- Environment configuration mounted as a Secret at /app/.env.{global.env}.
+  # -- Environment configuration mounted as a Secret at /app/src/.env.{global.env}.
   # The chart always creates this Secret with the AIO_* settings derived
   # from chart values (server URL, server port, client SSL). Pod env
   # keeps only AIO_ENV plus the secretKeyRef bindings for AIO_API_KEY

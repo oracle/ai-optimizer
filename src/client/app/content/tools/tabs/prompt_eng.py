@@ -15,6 +15,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_post, api_put
+from client.app.core.auth import is_authenticated, locked_notice
 
 LOGGER = logging.getLogger("client.content.tools.tabs.prompt_eng")
 
@@ -109,8 +110,10 @@ def _reset_all_prompts() -> None:
 #####################################################
 def display_prompt_eng():
     """Streamlit GUI"""
+    locked_notice()
     st.header("Prompt Engineering")
     st.write("Review/Edit System Prompts and their Instructions.")
+    authenticated = is_authenticated()
 
     prompt_lookup = helpers.state_configs_lookup("prompt_configs", "title")
     state.runtime_prompt_titles = list(prompt_lookup.keys())
@@ -137,6 +140,7 @@ def display_prompt_eng():
             "System Instructions:",
             value=current_prompt,
             height="content",
+            disabled=not authenticated,
         )
         prompt_name = _get_prompt_name(selected_title)
 
@@ -148,13 +152,18 @@ def display_prompt_eng():
             width="stretch",
             on_click=_save_prompt,
             kwargs={"prompt_name": prompt_name, "new_prompt": new_prompt, "current_prompt": current_prompt},
+            disabled=not authenticated,
         )
         reset_col.button(
             "Reset Instructions",
             key="runtime_reset_prompt",
             on_click=_reset_prompt,
             kwargs={"prompt_name": prompt_name},
+            disabled=not authenticated,
         )
+
+    if not authenticated:
+        return
 
     # Bulk operations
     st.header("Bulk Prompt Operations", divider="red")

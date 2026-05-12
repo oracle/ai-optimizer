@@ -226,6 +226,33 @@ letting a whitespace cookieSecret clobber an operator-owned external Secret.
 {{- end }}
 
 {{/* ******************************************
+Validate that client.password and client.passwordSecretName are not both set.
+Either, neither, or one alone is acceptable: neither means the page gate is
+disabled; setting both is ambiguous.
+*********************************************** */}}
+{{- define "client.passwordBothSet.fail" -}}
+  {{- $password := .Values.client.password | trim | default "" -}}
+  {{- $secretName := .Values.client.passwordSecretName | trim | default "" -}}
+  {{- if and (ne $password "") (ne $secretName "") -}}
+    {{- fail "You cannot specify both client.password and client.passwordSecretName; please choose one" -}}
+  {{- end -}}
+{{- end -}}
+
+{{/* ******************************************
+Define the Client Password Secret name/key with defaults. Same trimming
+rationale as the cookie helpers: whitespace-only values are treated as unset.
+*********************************************** */}}
+{{- define "client.passwordSecretName" -}}
+{{- $explicit := .Values.client.passwordSecretName | trim -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-client-password" .Release.Name }}{{- end -}}
+{{- end }}
+
+{{- define "client.passwordSecretKey" -}}
+{{- $explicit := .Values.client.passwordSecretKey | trim -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}password{{- end -}}
+{{- end }}
+
+{{/* ******************************************
 Checksum used to roll the client Deployment when the cookie-signing secret
 changes. Two branches:
 
@@ -255,6 +282,44 @@ Secret-change requires a reloader controller and is out of scope for this chart.
   {{- else -}}
 {{- printf "unresolved:%s:%s" $name $key | sha256sum -}}
   {{- end -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
+Checksum used to roll the client Deployment when the shared password Secret
+changes. Mirrors client.cookieSecretChecksum with three branches:
+
+  * Inline path (.Values.client.password set): hash the rendered secret.yaml.
+    The cookie checksum already hashes the same file, so when BOTH cookie and
+    password are inline a value change on either rotates the pod — accepted
+    over-rotation; under-rotation is the bug we are preventing.
+
+  * External path (.Values.client.passwordSecretName set): `lookup` reads the
+    operator-owned Secret from the cluster and hashes its current data. On
+    `helm upgrade` after the operator rotates the Secret in place, the content
+    changes → hash changes → pods roll. During `helm template` / `--dry-run` /
+    first install, `lookup` returns empty; we fall back to a name-keyed
+    sentinel so the annotation stays stable and distinct per configuration.
+
+  * Gate disabled (neither value set): constant sentinel. No AIO_CLIENT_PASSWORD
+    env entry is rendered in this branch, so the pod has no dependency on a
+    password Secret and the annotation never needs to change.
+*********************************************** */}}
+{{- define "client.passwordSecretChecksum" -}}
+{{- if .Values.client.password | trim -}}
+{{- include (print $.Template.BasePath "/client/secret.yaml") . | sha256sum -}}
+{{- else if .Values.client.passwordSecretName | trim -}}
+  {{- $name := include "client.passwordSecretName" . -}}
+  {{- $key := include "client.passwordSecretKey" . -}}
+  {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
+  {{- if and $found $found.data (hasKey $found.data $key) -}}
+{{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
+  {{- else -}}
+{{- printf "unresolved:%s:%s" $name $key | sha256sum -}}
+  {{- end -}}
+{{- else -}}
+{{- printf "gate-disabled" | sha256sum -}}
 {{- end -}}
 {{- end -}}
 

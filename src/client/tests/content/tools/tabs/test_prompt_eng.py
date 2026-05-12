@@ -399,3 +399,45 @@ class TestDisplayPromptEng:
 
             display_prompt_eng()
         mock_st.file_uploader.assert_called_once()
+
+    def test_unauthenticated_disables_editor_and_hides_bulk_section(self, mock_st):
+        """When unauthenticated: System Instructions disabled, Save/Reset disabled, Bulk section omitted."""
+        state = _make_state()
+        mock_st.selectbox.return_value = "System Prompt"
+        mock_st.text_area.side_effect = [None, "You are helpful."]
+
+        save_col = MagicMock()
+        reset_col = MagicMock()
+
+        def _columns(widths, **_kw):
+            # First call is the save/reset row [2, 3, 5]; capture those for assertions.
+            n = widths if isinstance(widths, int) else len(widths)
+            if isinstance(widths, list) and widths == [2, 3, 5]:
+                return [save_col, reset_col, MagicMock()]
+            return [MagicMock() for _ in range(n)]
+
+        mock_st.columns.side_effect = _columns
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+            patch(f"{MODULE}.is_authenticated", return_value=False),
+        ):
+            from client.app.content.tools.tabs.prompt_eng import display_prompt_eng
+
+            display_prompt_eng()
+
+        # System Instructions: read-only when unauth.
+        instructions_call = next(
+            call for call in mock_st.text_area.mock_calls if call.args and call.args[0] == "System Instructions:"
+        )
+        assert instructions_call.kwargs.get("disabled") is True
+
+        # Save Instructions and Reset Instructions: disabled when unauth.
+        assert save_col.button.call_args.kwargs.get("disabled") is True
+        assert reset_col.button.call_args.kwargs.get("disabled") is True
+
+        # Bulk Prompt Operations section: not rendered at all when unauth.
+        header_calls = [c.args[0] for c in mock_st.header.call_args_list if c.args]
+        assert "Prompt Engineering" in header_calls
+        assert "Bulk Prompt Operations" not in header_calls
