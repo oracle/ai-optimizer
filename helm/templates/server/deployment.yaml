@@ -20,10 +20,11 @@ spec:
       {{- include "global.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.server.podAnnotations }}
       annotations:
+        checksum/server-env-secret: {{ include "server.envSecretChecksum" . | quote }}
+        {{- with .Values.server.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         app.kubernetes.io/component: server
         {{- include "global.labels" . | nindent 8 }}
@@ -53,28 +54,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "global.apiSecretName" . }}
                   key: {{ include "global.apiSecretKey" . }}
-            - name: AIO_SERVER_URL_PREFIX
-              value: {{ include "global.getPath" . | trimSuffix "/" | quote }}
-            - name: AIO_MAX_CLIENTS
-              value: {{ .Values.server.maxClients | quote }}
-            {{- if .Values.server.ssl.enabled }}
-            - name: AIO_SERVER_SSL
-              value: "true"
-            {{- if .Values.server.ssl.certFile }}
-            - name: AIO_SERVER_SSL_CERT_FILE
-              value: {{ .Values.server.ssl.certFile | quote }}
-            {{- end }}
-            {{- if .Values.server.ssl.keyFile }}
-            - name: AIO_SERVER_SSL_KEY_FILE
-              value: {{ .Values.server.ssl.keyFile | quote }}
-            {{- end }}
-            {{- end }}
-            {{- if (default false .Values.server.oci_config.oke) }}
-            - name: OCI_CLI_REGION
-              value: {{ .Values.server.oci_config.region }}
-            - name: OCI_CLI_AUTH
-              value: "oke_workload_identity"
-            {{- end }}
             {{- if .Values.server.database }}
             {{- include "server.database.authN" . | nindent 12 }}
               {{- if eq (include "server.database.isADBS" .) "true" }}
@@ -84,10 +63,6 @@ spec:
                   name: {{ include "server.database.adbWalletPassSecret" . }}
                   key: {{ include "server.database.adbWalletPassSecretKey" . }}
               {{- end }}
-            {{- end }}
-            {{- if .Values.ollama.enabled }}
-            - name: ON_PREM_OLLAMA_URL
-              value: {{ include "ollama.serviceUrl" $ }}
             {{- end }}
             {{- with .Values.server.models }}
               {{- $models := . }}
@@ -289,12 +264,10 @@ spec:
             - name: oci-config
               mountPath: "/app/.oci"
             {{- end }}
-            {{- if .Values.server.envSecret }}
             - name: env-config
-              mountPath: /app/.env.{{ .Values.global.env }}
+              mountPath: /app/src/.env.{{ .Values.global.env }}
               subPath: {{ include "server.envSecretKey" . }}
               readOnly: true
-            {{- end }}
           {{- with .Values.server.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -312,11 +285,9 @@ spec:
             secretName: {{ .Values.server.oci_config.fileSecretName | quote }}
             optional: true
         {{- end }}
-        {{- if .Values.server.envSecret }}
         - name: env-config
           secret:
             secretName: {{ include "server.envSecretName" . }}
-        {{- end }}
       {{- with .Values.server.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

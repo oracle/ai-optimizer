@@ -375,7 +375,7 @@ Returns either the user-provided secretName or a generated name.
 *********************************************** */}}
 {{- define "server.envSecretName" -}}
 {{- $envSecret := .Values.server.envSecret | default dict -}}
-{{- $envSecret.secretName | default (printf "%s-env" (include "global.fullname" .)) -}}
+{{- $envSecret.secretName | default (printf "%s-server-env" (include "global.fullname" .)) -}}
 {{- end -}}
 
 {{- define "server.envSecretKey" -}}
@@ -385,7 +385,7 @@ Returns either the user-provided secretName or a generated name.
 
 {{- define "client.envSecretName" -}}
 {{- $envSecret := .Values.client.envSecret | default dict -}}
-{{- $envSecret.secretName | default (printf "%s-env" (include "global.fullname" .)) -}}
+{{- $envSecret.secretName | default (printf "%s-client-env" (include "global.fullname" .)) -}}
 {{- end -}}
 
 {{- define "client.envSecretKey" -}}
@@ -393,14 +393,112 @@ Returns either the user-provided secretName or a generated name.
 {{- $envSecret.secretKey | default "client.env" -}}
 {{- end -}}
 
-{{- define "global.envSecretEnabled" -}}
-{{- $serverEnv := .Values.server.envSecret | default dict -}}
-{{- $clientEnv := .Values.client.envSecret | default dict -}}
-{{- $serverContent := $serverEnv.content | default dict -}}
-{{- $clientContent := $clientEnv.content | default dict -}}
-{{- $serverSecretName := $serverEnv.secretName | default "" -}}
-{{- $clientSecretName := $clientEnv.secretName | default "" -}}
-{{- or (and (eq $serverSecretName "") (gt (len $serverContent) 0)) (and (eq $clientSecretName "") (gt (len $clientContent) 0)) -}}
+{{/* ******************************************
+Checksums used to roll pods when the rendered env Secret content
+changes. The entrypoint loads .env.{AIO_ENV} once at startup, so when a
+helm upgrade flips a value that lands in the env Secret (maxClients,
+SSL, OKE, Ollama URL, server URL, operator overrides via
+envSecret.content), the pod template must change too — otherwise running
+pods keep stale config.
+
+Inline path hashes the rendered env-secret template. External path
+(`envSecret.secretName` set) uses `lookup` to read the operator-owned
+Secret's live content; falls back to a name-keyed sentinel during
+`helm template`/`--dry-run`/first install so the annotation is still
+stable and distinct per configuration.
+*********************************************** */}}
+{{- define "server.envSecretChecksum" -}}
+{{- $envSecret := .Values.server.envSecret | default dict -}}
+{{- $secretName := $envSecret.secretName | default "" | trim -}}
+{{- if eq $secretName "" -}}
+{{- include (print $.Template.BasePath "/server/env-secret.yaml") . | sha256sum -}}
+{{- else -}}
+  {{- $key := include "server.envSecretKey" . -}}
+  {{- $found := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+  {{- if and $found $found.data (hasKey $found.data $key) -}}
+{{- printf "live:%s:%s" $secretName (index $found.data $key) | sha256sum -}}
+  {{- else -}}
+{{- printf "unresolved:%s:%s" $secretName $key | sha256sum -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "client.envSecretChecksum" -}}
+{{- $envSecret := .Values.client.envSecret | default dict -}}
+{{- $secretName := $envSecret.secretName | default "" | trim -}}
+{{- if eq $secretName "" -}}
+{{- include (print $.Template.BasePath "/client/env-secret.yaml") . | sha256sum -}}
+{{- else -}}
+  {{- $key := include "client.envSecretKey" . -}}
+  {{- $found := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+  {{- if and $found $found.data (hasKey $found.data $key) -}}
+{{- printf "live:%s:%s" $secretName (index $found.data $key) | sha256sum -}}
+  {{- else -}}
+{{- printf "unresolved:%s:%s" $secretName $key | sha256sum -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ******************************************
+Compose the server's `.env.{AIO_ENV}` content as a dotenv string
+(`KEY=value` per line, terminated with `\n`). Chart-derived
+`AIO_*` / `OCI_CLI_*` / `ON_PREM_*` settings flow through the
+Secret-mounted file rather than as pod env entries. Operator-supplied
+`server.envSecret.content` overrides chart defaults via mergeOverwrite.
+*********************************************** */}}
+{{- define "server.envContent" -}}
+{{- $out := dict -}}
+{{- $_ := set $out "AIO_SERVER_URL_PREFIX" (include "global.getPath" . | trimSuffix "/") -}}
+{{- $_ = set $out "AIO_MAX_CLIENTS" (.Values.server.maxClients | toString) -}}
+{{- with .Values.server.ssl -}}
+{{- if .enabled -}}
+{{- $_ = set $out "AIO_SERVER_SSL" "true" -}}
+{{- if .certFile -}}{{- $_ = set $out "AIO_SERVER_SSL_CERT_FILE" .certFile -}}{{- end -}}
+{{- if .keyFile -}}{{- $_ = set $out "AIO_SERVER_SSL_KEY_FILE" .keyFile -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- with .Values.server.oci_config -}}
+{{- if (default false .oke) -}}
+{{- $_ = set $out "OCI_CLI_REGION" .region -}}
+{{- $_ = set $out "OCI_CLI_AUTH" "oke_workload_identity" -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.ollama.enabled -}}
+{{- $_ = set $out "ON_PREM_OLLAMA_URL" (include "ollama.serviceUrl" .) -}}
+{{- end -}}
+{{- with .Values.server.envSecret -}}{{- with .content -}}
+{{- $_ = mergeOverwrite $out . -}}
+{{- end -}}{{- end -}}
+{{- $lines := list -}}
+{{- range $k, $v := $out -}}
+{{- $lines = append $lines (printf "%s=%s" $k ($v | toString)) -}}
+{{- end -}}
+{{- join "\n" $lines -}}
+{{- end -}}
+
+{{/* ******************************************
+Compose the client's `.env.{AIO_ENV}` content as a dotenv string.
+Same contract as server.envContent.
+*********************************************** */}}
+{{- define "client.envContent" -}}
+{{- $out := dict -}}
+{{- $_ := set $out "AIO_SERVER_URL" (include "server.serviceUrl" .) -}}
+{{- $_ = set $out "AIO_SERVER_PORT" (.Values.server.service.port | default 8000 | toString) -}}
+{{- with .Values.client.ssl -}}
+{{- if .enabled -}}
+{{- $_ = set $out "AIO_CLIENT_SSL" "true" -}}
+{{- if .certFile -}}{{- $_ = set $out "AIO_CLIENT_SSL_CERT_FILE" .certFile -}}{{- end -}}
+{{- if .keyFile -}}{{- $_ = set $out "AIO_CLIENT_SSL_KEY_FILE" .keyFile -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- with .Values.client.envSecret -}}{{- with .content -}}
+{{- $_ = mergeOverwrite $out . -}}
+{{- end -}}{{- end -}}
+{{- $lines := list -}}
+{{- range $k, $v := $out -}}
+{{- $lines = append $lines (printf "%s=%s" $k ($v | toString)) -}}
+{{- end -}}
+{{- join "\n" $lines -}}
 {{- end -}}
 
 
