@@ -86,25 +86,10 @@ The `global:` sections contains values that are shared across the chart and its 
 |-----|------|---------|-------------|
 | global.api | object | | Either provide the 'apiKey' directly or provide a secretName referring to an existing Secret containing the API key. |
 | global.api.apiKey | string | `""` | Key for making API calls to the server. Recommended to supply at command line or use the secretName to avoid storing in the values file. Example: "abcd1234opt5678" |
-| global.api.secretKey | string | `"apiKey"` | Key name inside the Secret that contains the API key when secretName defined. |
 | global.api.secretName | string | `""` | Name of the Secret that stores the API key. This allows you to keep the API key out of the values file and manage it securely via Secrets. Example: "optimizer-api-keys" |
+| global.api.secretKey | string | `"apiKey"` | Key name inside the Secret that contains the API key when secretName defined. |
 | global.baseUrlPath | string | `"/"` | URL path appended to the host. Example: "/test" results in URLs like http://hostname/test/... |
-| global.cleanupPVCs | bool | `false` | When `true`, uninstall also deletes SigNoz ClickHouse PVCs created by the in-chart SigNoz deployment. Defaults to preserving telemetry data. |
 | global.env | string | `"prd"` | Environment name. Controls which .env file pydantic-settings reads (`.env.{env}`) and the mount path for envSecret. |
-
----
-
-#### Utility Images
-
-Chart-managed Jobs use the `utilities:` block for helper container images. Override these when using a private registry or pinned internal image mirror.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| utilities.sqlcl.image | object | `container-registry.oracle.com/database/sqlcl:25.3.0` | Runs the database initialization Job. |
-| utilities.curl.image | object | `docker.io/curlimages/curl:8.20.0` | Runs HTTP-based chart Jobs such as SigNoz setup. |
-| utilities.kubectl.image | object | `docker.io/alpine/k8s:1.28.13` | Runs lifecycle cleanup hooks for operator-managed resources. |
-
-Older `images.sqlcl` and `images.curl` overrides have been replaced by `utilities.sqlcl.image` and `utilities.curl.image`.
 
 ---
 

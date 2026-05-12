@@ -51,7 +51,6 @@ variableGroups:
   #########################################################################
   - title: "Kubernetes Infrastructure Options"
     variables:
-      - k8s_api_is_public
       - k8s_api_endpoint_allowed_cidrs
       - k8s_cpu_node_pool_size
       - k8s_node_pool_gpu_deploy
@@ -169,11 +168,6 @@ variables:
       - "Experimental"
 
   #########################################################################
-  k8s_api_is_public:
-    type: boolean
-    title: "Public API Endpoint?"
-    required: true
-
   k8s_api_endpoint_allowed_cidrs:
     type: array
     title: "API Endpoint Access Control"
@@ -181,7 +175,6 @@ variables:
     required: false
     default: ""
     pattern: "$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
-    visible: k8s_api_is_public
 
   k8s_cpu_node_pool_size:
     type: integer

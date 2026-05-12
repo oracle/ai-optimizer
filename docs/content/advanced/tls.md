@@ -10,7 +10,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore streamlit sslcertfile sslkeyfile certfile
 -->
 
-Both the {{% short_app_ref %}} **Server** (FastAPI/uvicorn) and **Client** (Streamlit) can be configured to serve over **HTTPS** instead of plain HTTP.
+Both the {{% short_app_ref %}} **Server** and **Client** can be configured to serve over **HTTPS** instead of plain **HTTP**.
+
+There are three options for each component:
+
+- **None** — No TLS; traffic is plain HTTP. This is the default and is fine for local desktop experimentation.
+- **Self-signed** — Let the {{% short_app_ref %}} create a certificate on the fly and reuse it across restarts. Traffic is encrypted, but since it is a self-signed certificate, browsers will show a "not secure" warning until you tell them to trust it. Great for development instances.
+- **Provided** — Bring your own certificate and key, usually one issued by a trusted certificate authority. This is what you'll want for production.
 
 ## Server
 

@@ -7,7 +7,7 @@ weight = 1
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker: ignore opentofu ollama imagelink kubeconfig
+spell-checker: ignore imagelink kubeconfig relref
 -->
 
 The {{% full_app_ref %}} can easily be deployed in Oracle Cloud Infrastructure (**OCI**) using Infrastructure as Code (**IaC**) provided in the source [opentofu](https://github.com/oracle/ai-optimizer/tree/main/opentofu) directory.
@@ -48,13 +48,11 @@ Most of the other configuration options are self-explanatory, but let's highligh
 
 * The {{% short_app_ref %}} REST endpoints require API token authentication, providing some protection. However, you should still restrict access to a limited set of CIDR blocks where possible for added security.
 
-* The **Oracle Autonomous Database** requires mTLS authentication with a wallet, providing strong initial protection. However, it is recommended to further restrict access to a limited set of CIDR blocks.
+{{% notice style="code" title="Access Denied!" icon="lock" %}}
+The default Access Control values restrict access from external clients. Before using the {{% short_app_ref %}} replace the defaults with the smallest CIDR ranges required for your client networks. For individual workstations, use a single-host `/32` entries.
+{{% /notice %}}
 
 ![Stack - Access Control](../images/iac_stack_access_control.png)
-
-{{% notice style="code" title="Configure Access Before Use" icon="lock" %}}
-The default Access Control values do not grant access from external clients. Before using the {{% short_app_ref %}} GUI, API Server, or Autonomous Database, replace the defaults with the smallest CIDR ranges required for your client networks. For individual workstations, prefer single-host `/32` entries.
-{{% /notice %}}
 
 To restrict access, provide a comma-separated list of CIDR blocks, for example: `192.168.1.0/24,10.0.0.0/16,203.0.113.42/32`
 
@@ -62,6 +60,14 @@ In this example:
 * `192.168.1.0/24` – Allows access from all IPs in the range 192.168.1.0 to 192.168.1.255 (a typical subnet).
 * `10.0.0.0/16` – Allows access from 10.0.0.0 to 10.0.255.255 (a broader range).
 * `203.0.113.42/32` – Allows access from a single public IP address only. The /32 denotes a single host.
+
+#### TLS Support
+
+You can configure the {{% short_app_ref %}} to serve over **HTTPS** instead of plain **HTTP**.
+
+![Stack - TLS](../images/iac_stack_tls.png)
+
+To learn more about the different TLS options, take a look at the [TLS / HTTPS]({{% relref "/advanced/tls" %}}) documentation.
 
 ### Review and Apply
 
@@ -77,7 +83,7 @@ The next screen will show the progress of the Apply job.  Once the job has Succe
 
 The Application Information tab will provide the URL's to access the {{% short_app_ref %}} GUI and API Server.  In the "All-in-One" deployment on the VM, the API Server will only become accessible after visiting the GUI at least once.
 
-![Stack - VM Application Information](../images/iac_stack_vm_info.png)
+![Stack - VM Application Information](../images/iac_stack_info.png)
 
 {{% notice style="code" title="502 Bad Gateway: Communication Breakdown!" icon="fire" %}}
 Although the infrastructure is deployed, the {{% short_app_ref %}} may still be initializing, which can result in a 502 Bad Gateway error when accessing the URLs. Please allow up to 10 minutes for the configuration to complete.
@@ -119,17 +125,17 @@ Most of the other configuration options are self-explanatory, but let's highligh
 
 * The {{% short_app_ref %}} REST endpoints require API token authentication, providing some protection. However, you should still restrict access to a limited set of CIDR blocks where possible for added security.
 
-* The **Oracle Autonomous Database** requires mTLS authentication with a wallet, providing strong initial protection. However, it is recommended to further restrict access to a limited set of CIDR blocks.
+{{% notice style="code" title="Access Denied!" icon="lock" %}}
+The default Access Control values restrict access from external clients. Before using the {{% short_app_ref %}} replace the defaults with the smallest CIDR ranges required for your client networks. For individual workstations, use a single-host `/32` entries.
+{{% /notice %}}
+
+**K8s API Endpoint Access Control** is left empty, so no public Kubernetes API ingress rule is created. If you intend to manage the cluster from your workstation with `kubectl`, set this to the smallest required source CIDR, typically your public IP as `/32`.
 
 ![Stack K8s - Access Control](../images/iac_stack_k8s_access_control.png)
+
+**Application GUI** and **API Server** Access Control fields use placeholder values that fully restrict client access. Replace them with the smallest CIDR ranges required for your client networks before using the {{% short_app_ref %}} services.
+
 ![Stack - Access Control](../images/iac_stack_access_control.png)
-
-{{% notice style="code" title="Configure Access Before Use" icon="lock" %}}
-The default Access Control settings do not grant external client access:
-
-* **K8s API Endpoint Access Control** is left empty, so no public Kubernetes API ingress rule is created. If you intend to manage the cluster from your workstation with `kubectl`, set this to the smallest required source CIDR, typically your public IP as `/32`.
-* **Application GUI**, **API Server**, and **Autonomous Database** Access Control fields use placeholder values that are not intended for client access. Replace them with the smallest CIDR ranges required for your client networks before using the {{% short_app_ref %}} services.
-{{% /notice %}}
 
 To restrict access, provide a comma-separated list of CIDR blocks, for example: `192.168.1.0/24,10.0.0.0/16,203.0.113.42/32`
 
@@ -152,7 +158,7 @@ The next screen will show the progress of the Apply job.  Once the job has Succe
 
 The Application Information tab will provide the URL's to access the {{% short_app_ref %}} GUI and API Server.  The command to create a `kubeconfig` file for connecting to your cluster using `kubectl` will also be provided.
 
-![Stack - K8s Application Information](../images/iac_stack_k8s_info.png)
+![Stack - K8s Application Information](../images/iac_stack_info.png)
 
 {{% notice style="code" title="502 Bad Gateway: Communication Breakdown!" icon="fire" %}}
 Although the infrastructure is deployed, the {{% short_app_ref %}} may still be initializing, which can result in a 502 Bad Gateway error when accessing the URLs. Please allow up to 10 minutes for the configuration to complete.
