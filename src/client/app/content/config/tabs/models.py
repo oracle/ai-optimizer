@@ -14,6 +14,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_delete, api_get, api_post, api_post_stream, api_put
+from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
 
 LOGGER = logging.getLogger("client.content.config.tabs.models")
 
@@ -142,7 +143,11 @@ def _initialize_model(
     if action == "add":
         model["enabled"] = True
     else:
-        model["enabled"] = st.checkbox("Enabled", value=model.get("enabled", False))
+        model["enabled"] = st.checkbox(
+            "Enabled",
+            value=model.get("enabled", False),
+            disabled=not is_authenticated(),
+        )
 
     return model
 
@@ -161,7 +166,7 @@ def _render_provider_selection(model: dict, supported_models: list, action: str)
         index=provider_index,
         options=[item["provider"] for item in supported_models],
         key="add_model_provider",
-        disabled=action == "edit",
+        disabled=action == "edit" or not is_authenticated(),
     )
 
     # Get model IDs for the selected provider
@@ -192,7 +197,7 @@ def _render_model_selection(model: dict, provider_models: list, action: str) -> 
         options=model_keys,
         key=f"add_model_id_{model.get('provider', '')}",
         accept_new_options=True,
-        disabled=action == "edit" or not model.get("provider"),
+        disabled=action == "edit" or not model.get("provider") or not is_authenticated(),
     )
 
     return model
@@ -200,6 +205,7 @@ def _render_model_selection(model: dict, provider_models: list, action: str) -> 
 
 def _render_api_configuration(model: dict, provider_models: list, disable_for_oci: bool) -> dict:
     """Render API configuration UI and return updated model."""
+    authenticated = is_authenticated()
     litellm_api_base = next(
         (m.get("api_base", "") for m in provider_models if m.get("key") == model.get("id")),
         model.get("api_base", ""),
@@ -210,17 +216,18 @@ def _render_api_configuration(model: dict, provider_models: list, disable_for_oc
         help=state.optimizer_help["model_url"],
         key="add_model_url",
         value=model.get("api_base", litellm_api_base),
-        disabled=disable_for_oci,
+        disabled=disable_for_oci or not authenticated,
     )
 
-    model["api_key"] = st.text_input(
+    api_key = redacted_password_input(
         "API Key:",
-        help=state.optimizer_help["model_api_key"],
-        key="add_model_api_key",
-        type="password",
         value=model.get("api_key", ""),
+        key="add_model_api_key",
         disabled=disable_for_oci,
+        help=state.optimizer_help["model_api_key"],
     )
+    if api_key is not None:
+        model["api_key"] = api_key
 
     return model
 
@@ -238,6 +245,7 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
             min_value=0,
             key="add_model_max_input_tokens",
             value=max_input_tokens,
+            disabled=not is_authenticated(),
         )
 
         max_tokens = next(
@@ -250,6 +258,7 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
             min_value=1,
             key="add_model_max_tokens",
             value=max_tokens,
+            disabled=not is_authenticated(),
         )
     else:
         max_chunk_size = model.get("max_chunk_size")
@@ -264,6 +273,7 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
             min_value=0,
             key="add_model_max_chunk_size",
             value=max_chunk_size,
+            disabled=not is_authenticated(),
         )
 
     return model
@@ -271,9 +281,12 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
 
 def _handle_dialog_submission(model: dict, model_type: str, action: str, original_model: dict | None = None) -> bool:
     """Handle dialog form submission and return True if successful."""
+    authenticated = is_authenticated()
     action_button, delete_button, cancel_button = st.columns([1.5, 7, 1.5])
     try:
-        if action == "add" and action_button.button(label="Add", type="primary", width="stretch"):
+        if action == "add" and action_button.button(
+            label="Add", type="primary", width="stretch", disabled=not authenticated
+        ):
             if not model.get("id") or not model.get("provider"):
                 if not model.get("id"):
                     st.error("Model name is required.")
@@ -283,7 +296,9 @@ def _handle_dialog_submission(model: dict, model_type: str, action: str, origina
             success = _handle_form_submit(model_type, True, model["provider"], model["id"], model)
             return success
 
-        if action == "edit" and action_button.button(label="Save", type="primary", width="stretch"):
+        if action == "edit" and action_button.button(
+            label="Save", type="primary", width="stretch", disabled=not authenticated
+        ):
             success = _handle_form_submit(
                 model_type,
                 False,
@@ -294,7 +309,9 @@ def _handle_dialog_submission(model: dict, model_type: str, action: str, origina
             )
             return success
 
-        if action != "add" and delete_button.button(label="Delete", type="secondary", width="content"):
+        if action != "add" and delete_button.button(
+            label="Delete", type="secondary", width="content", disabled=not authenticated
+        ):
             success = _remove_model(model["provider"], model["id"])
             return success
 
@@ -417,9 +434,10 @@ def render_model_rows(model_type: str) -> None:
                 on_click=pull_model_dialog,
                 key=f"runtime_{model_type}_{model_provider}_{model_id}_pull",
                 kwargs={"provider": model_provider, "model_id": model_id},
+                disabled=not is_authenticated(),
             )
 
-    if st.button(label="Add", type="primary", key=f"add_{model_type}_model"):
+    if st.button(label="Add", type="primary", key=f"add_{model_type}_model", disabled=not is_authenticated()):
         edit_model(model_type=model_type, action="add")
 
 
@@ -428,6 +446,7 @@ def render_model_rows(model_type: str) -> None:
 #####################################################
 def display_models() -> None:
     """Streamlit GUI"""
+    locked_notice()
     st.subheader("Language", divider="red")
     with st.container(border=True):
         render_model_rows("ll")

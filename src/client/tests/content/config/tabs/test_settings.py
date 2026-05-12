@@ -1805,3 +1805,28 @@ class TestDisplaySettings:
             display_settings()
 
         mock_src.assert_called_once()
+
+    def test_unauthenticated_returns_early(self, mock_st):
+        """When unauthenticated, display_settings renders locked notice and skips body."""
+        self._setup_display_st(mock_st)
+        state = AttrDict({"settings": {}})
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._fetch_settings") as mock_fetch,
+            patch(f"{MODULE}._render_download_settings_section") as mock_download,
+            patch(f"{MODULE}._render_upload_settings_section") as mock_upload,
+            patch(f"{MODULE}._render_source_code_templates_section") as mock_src,
+            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.locked_notice") as mock_notice,
+        ):
+            from client.app.content.config.tabs.settings import display_settings
+
+            display_settings()
+
+        mock_notice.assert_called_once()
+        mock_fetch.assert_not_called()
+        mock_download.assert_not_called()
+        mock_upload.assert_not_called()
+        mock_src.assert_not_called()

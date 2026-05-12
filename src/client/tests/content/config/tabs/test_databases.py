@@ -228,6 +228,49 @@ class TestPendingDbSelect:
         other_calls = [call for call in mock_st.text_input.mock_calls if not call.kwargs["key"].endswith("alias_CORE")]
         assert all(call.kwargs.get("disabled") is True for call in other_calls)
 
+    def test_unauthenticated_omits_password_widgets(self, make_state):
+        """When unauthenticated, DB password and wallet password widgets are not rendered with secrets."""
+        from client.app.content.config.tabs.databases import _render_databases
+
+        state = make_state(["MYDB"], "MYDB")
+
+        mock_st = MagicMock()
+        mock_st.selectbox.return_value = "MYDB"
+        mock_st.text_input.return_value = ""
+        mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.button.return_value = False
+        secret_pw = "super-secret-db-pass"
+        secret_wallet = "super-secret-wallet"
+
+        fetched = {
+            "alias": "MYDB",
+            "username": "admin",
+            "password": secret_pw,
+            "dsn": "orcl",
+            "wallet_password": secret_wallet,
+            "usable": True,
+        }
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers") as hlp,
+            patch(f"{MODULE}._fetch_database", return_value=fetched),
+            patch(f"{MODULE}.is_authenticated", return_value=False),
+        ):
+            hlp.selectbox_index.return_value = 0
+            _render_databases({"MYDB": fetched}, ["MYDB"], "MYDB")
+
+        for call in mock_st.text_input.mock_calls:
+            assert call.kwargs.get("value") != secret_pw, "DB password passed to text_input value"
+            assert call.kwargs.get("value") != secret_wallet, "Wallet password passed to text_input value"
+        password_keys = [
+            call.kwargs.get("key", "")
+            for call in mock_st.text_input.mock_calls
+            if "password" in call.kwargs.get("key", "")
+        ]
+        assert password_keys == [], "Password fields rendered while unauthenticated"
+
 
 class TestSelectionSyncsClientSettings:
     """_on_database_change calls sync_client_setting to persist the selection."""

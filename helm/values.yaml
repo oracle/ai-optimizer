@@ -515,6 +515,20 @@ client:
   # -- Key inside cookieSecretName / the generated Secret that holds the value.
   cookieSecretKey: "cookieSecret"
 
+  # -- Shared password for selected client UI controls. The operator MAY supply
+  # either:
+  #   1) password — an inline value; Helm creates a Secret.
+  #   2) passwordSecretName — name of a pre-existing Secret in the namespace.
+  # When BOTH are empty, the additional UI access check is disabled and controls
+  # render as they would have without this feature.
+  # This setting applies to the Streamlit client UI only; API access continues
+  # to be governed by AIO_API_KEY.
+  password: ""
+  # -- Name of a pre-existing Secret containing the shared password.
+  passwordSecretName: ""
+  # -- Key inside passwordSecretName / the generated Secret that holds the value.
+  passwordSecretKey: "password"
+
   # Gateway: controls the Gateway API resources to expose the service
   gateway:
     enabled: false

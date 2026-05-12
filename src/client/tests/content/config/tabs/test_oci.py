@@ -1512,6 +1512,32 @@ class TestDisplayOci:
         mock_get_oci.assert_called()
         mock_st.header.assert_called_once()
 
+    def test_unauthenticated_returns_early(self, mock_st):
+        """When unauthenticated, display_oci shows the locked notice and skips all subsequent rendering."""
+        from client.app.content.config.tabs.oci import display_oci
+
+        state = make_oci_state(profiles=[{"auth_profile": "DEFAULT", "usable": True}])
+        mock_st.selectbox.return_value = "DEFAULT"
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers"),
+            patch(f"{MODULE}._get_oci") as mock_get_oci,
+            patch(f"{MODULE}._render_profile_selection") as mock_profile,
+            patch(f"{MODULE}._render_oci_configuration_form") as mock_form,
+            patch(f"{MODULE}._render_oci_genai_section") as mock_genai,
+            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.locked_notice") as mock_notice,
+        ):
+            display_oci()
+
+        mock_notice.assert_called_once()
+        mock_get_oci.assert_not_called()
+        mock_profile.assert_not_called()
+        mock_form.assert_not_called()
+        mock_genai.assert_not_called()
+
     def test_genai_section_shown_for_existing_profile(self, mock_st):
         """GenAI section subheader is rendered for existing profile."""
         from client.app.content.config.tabs.oci import display_oci

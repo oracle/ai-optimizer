@@ -22,6 +22,7 @@ spec:
     metadata:
       annotations:
         checksum/client-cookie-secret: {{ include "client.cookieSecretChecksum" . | quote }}
+        checksum/client-password-secret: {{ include "client.passwordSecretChecksum" . | quote }}
         {{- with .Values.client.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -63,6 +64,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "client.cookieSecretName" . }}
                   key: {{ include "client.cookieSecretKey" . }}
+            {{- if or (.Values.client.password | trim) (.Values.client.passwordSecretName | trim) }}
+            - name: AIO_CLIENT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "client.passwordSecretName" . }}
+                  key: {{ include "client.passwordSecretKey" . }}
+            {{- end }}
             {{- if .Values.client.ssl.enabled }}
             - name: AIO_CLIENT_SSL
               value: "true"
