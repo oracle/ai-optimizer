@@ -242,7 +242,7 @@ llama3.1:latest             a80c4f17acd5    2.0 GB    3 minutes ago
 kubectl -n ollama exec svc/ollama -- ollama run "llama3.1" "what is spring boot?"
 ```
 
-**NOTICE**: The Microservices will access to the ADB23ai on which the vector store table should be created, as done in the local desktop example shown before. To access the {{< short_app_ref >}} running on **Oracle Backend for Microservices and AI** and create the same configuration, let’s do:
+**NOTICE**: The Microservices will access to the ADB23ai on which the vector store table should be created, as done in the local desktop example shown before. To access the {{% short_app_ref %}} running on **Oracle Backend for Microservices and AI** and create the same configuration, let’s do:
 
 * tunnel:
 
@@ -267,7 +267,7 @@ oractl:> create --app-name rag
 oractl:> bind --app-name rag --service-name myspringai --username vector
 ```
 
-The `bind` will create the new user, if not exists, but to have the `SPRING_AI_VECTORS` table compatible with SpringAI Oracle vector store adapter, the microservices needs to access to the vector store table created by the {{< short_app_ref >}} with user ADMIN on ADB, for example:
+The `bind` will create the new user, if not exists, but to have the `SPRING_AI_VECTORS` table compatible with SpringAI Oracle vector store adapter, the microservices needs to access to the vector store table created by the {{% short_app_ref %}} with user ADMIN on ADB, for example:
 
 ```sql
 GRANT SELECT ON ADMIN.MXBAI_EMBED_LARGE_512_103_COSINE TO vector;

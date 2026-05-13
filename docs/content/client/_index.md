@@ -10,21 +10,21 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker:ignore streamlit, uvicorn
 -->
 
-The {{< full_app_ref >}} consists of an API Server ([**ai-optimizer-server**](#api-server-ai-optimizer-server)) and an _optional_ web-based GUI ([**ai-optimizer-client**](#client-ai-optimizer-client)) component.  Both the API Server and GUI can be run on bare-metal or inside containers.  
+The {{% full_app_ref %}} consists of an API Server ([**ai-optimizer-server**](#api-server-ai-optimizer-server)) and an _optional_ web-based GUI ([**ai-optimizer-client**](#client-ai-optimizer-client)) component.  Both the API Server and GUI can be run on bare-metal or inside containers.  
 
 ![Architecture Overview](images/arch_overview.png)
 
-The following additional components, not delivered with the {{< short_app_ref >}}, are also required.  These can be run On-Premises or in the Cloud:
+The following additional components, not delivered with the {{% short_app_ref %}}, are also required.  These can be run On-Premises or in the Cloud:
 - [Oracle AI Database](#database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free)
 - Access to at least one [Large Language Model](#large-language-model)
 - Access to at least one [Embedding Model](#embedding-model) (for Retrieval Augmented Generation)
 - (Optional) Access to an [SQLcl **MCP Server**-enabled](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) instance 
 
-The {{< short_app_ref >}} is specifically designed to run in container orchestration systems, such as [Kubernetes](https://kubernetes.io/).  For more information on deploying the {{< short_app_ref >}} in Kubernetes, using a Helm Chart, please review the [Advanced - Helm Chart](/advanced/helm) documentation.
+The {{% short_app_ref %}} is specifically designed to run in container orchestration systems, such as [Kubernetes](https://kubernetes.io/).  For more information on deploying the {{% short_app_ref %}} in Kubernetes, using a Helm Chart, please review the [Advanced - Helm Chart](/advanced/helm) documentation.
 
 ## API Server (AI Optimizer Server)
 
-The workhorse of the {{< short_app_ref >}} is the API Server, referred to as the **AI Optimizer Server**.  By default, the **AI Optimizer Server** will start on port 8000
+The workhorse of the {{% short_app_ref %}} is the API Server, referred to as the **AI Optimizer Server**.  By default, the **AI Optimizer Server** will start on port 8000
 
 {{% notice style="code" title="All the docs" icon="circle-info" %}}
 The **AI Optimizer Server** API documentation can be accessed at `http://<IP Address>:<Port>/v1/docs#` of a running instance. 
@@ -46,7 +46,7 @@ You can develop and replace the provided client with any REST capable client.
 
 ## Database
 
-[Oracle AI Database](https://www.oracle.com/database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free) provides a persistent data store for the {{< short_app_ref >}}.  
+[Oracle AI Database](https://www.oracle.com/database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free) provides a persistent data store for the {{% short_app_ref %}}.  
 
 ![Database](./images/vector_storage.png)
 
@@ -59,7 +59,7 @@ Oracle AI Database provides:
 
 - the Vector Store for split and embedded documents used for Retrieval Augmented Generation (RAG).
 - storage for the [Testbed]({{% relref "/client/testbed" %}}) Q&A Test Sets and Evaluations
-- storage of {{< short_app_ref >}} settings and configuration
+- storage of {{% short_app_ref %}} settings and configuration
 
 ## Document Source
 
@@ -67,10 +67,10 @@ Access to document sources for the purpose of embedding and populating the Vecto
 
 ## AI Models
 
-The {{< short_app_ref >}} provides the ability to connect to any language or embedding model to be used for completions and creating vectors.  Adding, Deleting, and Modifying access to AI Models is quick and easy.
+The {{% short_app_ref %}} provides the ability to connect to any language or embedding model to be used for completions and creating vectors.  Adding, Deleting, and Modifying access to AI Models is quick and easy.
 
 ## SQLcl MCP Server
 
-The {{< short_app_ref >}} acts as a proxy MCP server and can therefore interface with external MCP servers. When connected to an Oracle SQLcl MCP server instance, the {{< short_app_ref >}} enables **Natural Language to SQL (NL2SQL)** capabilities. 
+The {{% short_app_ref %}} acts as a proxy MCP server and can therefore interface with external MCP servers. When connected to an Oracle SQLcl MCP server instance, the {{% short_app_ref %}} enables **Natural Language to SQL (NL2SQL)** capabilities. 
 
 This integration allows users to query structured data stored in an Oracle Database using natural language, without the need to write or execute SQL commands.

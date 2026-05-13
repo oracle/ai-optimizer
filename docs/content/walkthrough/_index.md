@@ -11,7 +11,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore mxbai, ollama, sqlplus, sysdba, spfile, freepdb, tablespace, firewalld, hnsw
 -->
 
-This walkthrough will guide you through a basic installation of the {{< full_app_ref >}}. It will allow you to experiment with GenAI, using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**) with the Oracle AI Database at the core.
+This walkthrough will guide you through a basic installation of the {{% full_app_ref %}}. It will allow you to experiment with GenAI, using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**) with the Oracle AI Database at the core.
 
 By the end of the walkthrough you will be familiar with:
 
@@ -19,7 +19,7 @@ By the end of the walkthrough you will be familiar with:
 - Configuring an Embedding Model
 - Configuring the Vector Storage
 - Splitting, Embedding, and Storing vectors
-- Experimenting with the {{< short_app_ref >}}
+- Experimenting with the {{% short_app_ref %}}
 
 What you'll need for the walkthrough:
 
@@ -38,19 +38,14 @@ When testing the **LLM**, if you don't get a response in a couple of minutes; yo
 
 ## Installation
 
-{{% notice style="code" title="Same... but Different" icon="circle-info" %}}
-The walkthrough will reference `podman` commands. If applicable to your environment, `podman` can be substituted with `docker`.
-If you are using `docker`, make the walkthrough easier by aliasing the `podman` command:
-
-`alias podman=docker`.
-{{% /notice %}}
+{{< podman_note >}}
 
 You will run four container images to establish the "Infrastructure":
 
 - On-Premises **LLM** - qwen3:8b
 - On-Premises Embedding Model - mxbai-embed-large
 - Vector Storage - Oracle AI Database Free
-- The {{< short_app_ref >}}
+- The {{% short_app_ref %}}
 
 ### LLM - qwen3:8b
 
@@ -116,9 +111,9 @@ To enable the **RAG** functionality, access to an embedding model is required. T
 
 ### The AI Optimizer
 
-The {{< short_app_ref >}} provides an easy to use front-end for experimenting with **LLM** parameters and **RAG**.
+The {{% short_app_ref %}} provides an easy to use front-end for experimenting with **LLM** parameters and **RAG**.
 
-1. Download and Unzip the [latest release](https://github.com/oracle/ai-optimizer/releases/latest) of the {{< short_app_ref >}}:
+1. Download and Unzip the [latest release](https://github.com/oracle/ai-optimizer/releases/latest) of the {{% short_app_ref %}}:
 
    ```bash
    curl -LO https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz
@@ -141,7 +136,7 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
    podman build -f src/Dockerfile -t localhost/ai-optimizer-aio:latest .
    ```
 
-1. Start the {{< short_app_ref >}}:
+1. Start the {{% short_app_ref %}}:
 
    ```bash
    podman run -d --name ai-optimizer-aio --network=host localhost/ai-optimizer-aio:latest
@@ -149,7 +144,7 @@ The {{< short_app_ref >}} provides an easy to use front-end for experimenting wi
 
 ### Vector Storage - Oracle AI Database Free
 
-AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The {{< short_app_ref >}} uses these capabilities to provide more accurate and relevant **LLM** responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
+AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The {{% short_app_ref %}} uses these capabilities to provide more accurate and relevant **LLM** responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
 
 To start the Oracle AI Database Free:
 
@@ -206,7 +201,7 @@ podman machine ssh -- -N -L 8501:localhost:8501
 {{% /tab %}}
 {{< /tabs >}}
 
-With the "Infrastructure" in-place, you're ready to configure the {{< short_app_ref >}}. 
+With the "Infrastructure" in-place, you're ready to configure the {{% short_app_ref %}}. 
 
 In a web browser, navigate to `http://localhost:8501`:
 ![Chatbot](images/chatbot_no_models.png)
@@ -307,7 +302,7 @@ From the command line:
 
 ## Experiment with Vector Search
 
-With the {{< short_app_ref >}} configured, you're ready for some experimentation.
+With the {{% short_app_ref %}} configured, you're ready for some experimentation.
 
 Navigate back to the _ChatBot_.
 
@@ -339,14 +334,14 @@ With **RAG** enabled, all the services (**LLM**/Embedding Models and Database) a
 Depending on your hardware, this may cause the response to be **_significantly_** delayed.
 {{% /notice %}}
 
-By asking `Are you sure?`, you are taking advantage of the {{< short_app_ref >}}'s history and context functionality.  
+By asking `Are you sure?`, you are taking advantage of the {{% short_app_ref %}}'s history and context functionality.  
 The response should be different and include a list of Operating System packages and maybe even an apology!.
 
 Under "Vector Search Details" you should see the PDF source, the vector store tables searched, and the rephrased query. 
 
 ## What's Next?
 
-You should now have a solid foundation in utilizing the {{< short_app_ref >}}.
+You should now have a solid foundation in utilizing the {{% short_app_ref %}}.
 To take your experiments to the next level, consider exploring these additional bits of functionality:
 
 - Turn On/Off/Clear history

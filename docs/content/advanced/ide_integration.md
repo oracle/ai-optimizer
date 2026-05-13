@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore apikey cline jsonl langgraph nl2sql sqlcl streamable windsurf aider
 -->
 
-Any IDE or coding agent that supports MCP can connect directly to the {{< short_app_ref >}} and use the same RAG tools, prompts, and resources that the built-in client uses.  For tools that do not support MCP, a limited OpenAI-style compatibility path is available.
+Any IDE or coding agent that supports MCP can connect directly to the {{% short_app_ref %}} and use the same RAG tools, prompts, and resources that the built-in client uses.  For tools that do not support MCP, a limited OpenAI-style compatibility path is available.
 
 ## Supported IDEs
 
@@ -27,7 +27,7 @@ Any IDE or coding agent that supports MCP can connect directly to the {{< short_
 
 ## Prerequisites
 
-1. Install and configure the {{< short_app_ref >}}.
+1. Install and configure the {{% short_app_ref %}}.
 2. Configure at least one usable language model.
 3. Configure a database if you want Vector Search or NL2SQL features.
 4. If you want Vector Search, embed your documents first — see [Split & Embed]({{% relref "client/tools/split_embed" %}}).
@@ -101,7 +101,7 @@ SQLcl tools (`sqlcl_*`) are registered automatically when SQLcl is available and
 
 Some tools — primarily terminal assistants like aider — do not support MCP and need an OpenAI-style endpoint.
 
-The {{< short_app_ref >}} exposes `/v1/chat/completions` and `/v1/chat/streams`, but these are **Optimizer-specific** endpoints, not drop-in OpenAI wire-compatible routes:
+The {{% short_app_ref %}} exposes `/v1/chat/completions` and `/v1/chat/streams`, but these are **Optimizer-specific** endpoints, not drop-in OpenAI wire-compatible routes:
 
 - Authentication uses `X-API-Key`, not `Authorization: Bearer`.
 - Model selection comes from the client's saved settings, not the `model` field in the request body.
