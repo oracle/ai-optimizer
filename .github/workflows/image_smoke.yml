@@ -10,11 +10,16 @@ on:
       - ready_for_review
     paths:
       - "src/**"
+      - ".dockerignore"
       - "pyproject.toml"
       - ".github/workflows/image_smoke.yml"
 
   # Allows running this workflow manually
   workflow_dispatch:
+
+concurrency:
+  group: image-smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Build and test all container images with optimized caching
@@ -48,10 +53,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
-      # Shared GHA cache, scoped per image so matrix entries don't stomp each
-      # other but do share base layers where Docker's content-addressable store
-      # allows. security_scan.yml uses the same `aio-image` scope to share
-      # layers with the `aio` build here.
+      # Per-image GHA cache scope. The BuildKit GHA cache index is mutable per
+      # scope, so concurrent matrix writers to a shared scope would race and the
+      # last manifest would win, orphaning the other images' image-specific
+      # layers. Keeping scopes distinct preserves each image's steady-state
+      # warm-cache hits. security_scan.yml uses the same `aio-image` scope to
+      # share layers with the aio build here.
       - name: Build Container Image
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
@@ -61,7 +68,7 @@ jobs:
           load: true
           push: false
           cache-from: type=gha,scope=${{ matrix.build.name }}-image
-          cache-to: type=gha,mode=max,scope=${{ matrix.build.name }}-image
+          cache-to: type=gha,mode=max,scope=${{ matrix.build.name }}-image,compression=zstd
 
       - name: Smoke Test - ${{ matrix.build.name }} Container
         run: |

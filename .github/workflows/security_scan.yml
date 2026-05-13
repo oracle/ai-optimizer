@@ -51,7 +51,7 @@ jobs:
           load: true
           push: false
           cache-from: type=gha,scope=aio-image
-          cache-to: type=gha,mode=max,scope=aio-image
+          cache-to: type=gha,mode=max,scope=aio-image,compression=zstd
 
       - name: Prepare Trivy Cache Directory
         run: mkdir -p "${{ github.workspace }}/.trivy-cache"
