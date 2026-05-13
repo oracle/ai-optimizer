@@ -54,7 +54,7 @@ server:
 %{ endif ~}
     authn:
       secretName: "${db_name}-optimizer-db-authn"
-    privAuthN:
+    privAuthn:
       secretName: "${db_name}-db-priv-authn"
 
 client:

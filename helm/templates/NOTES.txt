@@ -231,14 +231,14 @@ SigNoz uninstall cleanup:
 
 {{- end }}
 {{- /* Suggest `kubectl delete` only for the Secrets this chart actually
-       owns. An explicit authn.secretName / privAuthN.secretName means the
+       owns. An explicit authn.secretName / privAuthn.secretName means the
        operator manages that Secret (possibly shared across releases),
        and the chart did NOT render it under that name — deleting it on
        behalf of the operator would destroy real credentials. Mirror the
        same gates used by auth-secret.yaml and priv-secret.yaml. */}}
 {{- $db := .Values.server.database | default dict }}
 {{- $chartManagedAuth := and $db $db.type (eq (include "ai-optimizer.server.database.explicitAuthnName" .) "") }}
-{{- $chartManagedPriv := and $db $db.type (ne (include "ai-optimizer.server.database.isOther" .) "true") $db.privAuthN (eq (include "ai-optimizer.server.database.explicitPrivAuthnName" .) "") }}
+{{- $chartManagedPriv := and $db $db.type (ne (include "ai-optimizer.server.database.isOther" .) "true") $db.privAuthn (eq (include "ai-optimizer.server.database.explicitPrivAuthnName" .) "") }}
 {{- if or $chartManagedAuth $chartManagedPriv }}
 Note: Secrets with "helm.sh/resource-policy: keep" annotation will be retained.
 To delete the chart-managed ones manually:

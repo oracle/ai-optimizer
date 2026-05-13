@@ -524,8 +524,8 @@ Database Secret Name
 Database Privileged Secret Name
 *********************************************** */}}
 {{- define "ai-optimizer.server.databasePrivSecret" -}}
-{{- $authn := .Values.server.database.privAuthN | default dict }}
-{{- $secretName := $authn.secretName | default "" }}
+{{- $privAuthn := .Values.server.database.privAuthn | default dict }}
+{{- $secretName := $privAuthn.secretName | default "" }}
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
@@ -639,14 +639,14 @@ Requires either 'dsn' OR all of (host, port, serviceName).
              password isn't paired with a user that was never created:
                * authn.secretName set → operator brings their own user/Secret,
                  init Job is skipped.
-               * privAuthN.secretName set → chart provisions the AI_OPTIMIZER
+               * privAuthn.secretName set → chart provisions the AI_OPTIMIZER
                  user via the init Job using the operator's privileged creds.
              Empty for both means the chart would render a Secret with
              random credentials that the external DB cannot authenticate. */ -}}
       {{- $authnSecret := include "ai-optimizer.server.database.explicitAuthnName" . -}}
       {{- $privAuthSecret := include "ai-optimizer.server.database.explicitPrivAuthnName" . -}}
       {{- if and (eq $authnSecret "") (eq $privAuthSecret "") -}}
-        {{- fail "server.database.type=OTHER requires either server.database.authn.secretName (a pre-created Secret with valid external-DB credentials) or server.database.privAuthN.secretName (a Secret with privileged credentials so the chart can provision the application user). Without one of these, the chart would generate random credentials that the external database cannot authenticate." -}}
+        {{- fail "server.database.type=OTHER requires either server.database.authn.secretName (a pre-created Secret with valid external-DB credentials) or server.database.privAuthn.secretName (a Secret with privileged credentials so the chart can provision the application user). Without one of these, the chart would generate random credentials that the external database cannot authenticate." -}}
       {{- end -}}
     {{- end -}}
   {{- end -}}
@@ -658,13 +658,13 @@ DB Initialization Job gating: decide whether the init Job + ConfigMap
 render. Returns "true" when init should run, empty otherwise. For
 chart-managed databases (SIDB-FREE / ADB-FREE / ADB-S) the existing
 truthy `privAuthN` check is the gate; for OTHER mode we additionally
-require `privAuthN.secretName` so a BYO-user install (authn.secretName
+require `privAuthn.secretName` so a BYO-user install (authn.secretName
 provided, no priv creds) does not trigger a doomed init attempt.
 *********************************************** */}}
 {{- define "ai-optimizer.server.database.shouldRunInit" -}}
 {{- $db := .Values.server.database | default dict -}}
 {{- $type := $db.type | default "" -}}
-{{- if and $db $type $db.privAuthN -}}
+{{- if and $db $type $db.privAuthn -}}
   {{- if eq (include "ai-optimizer.server.database.isOther" .) "true" -}}
     {{- if ne (include "ai-optimizer.server.database.explicitPrivAuthnName" .) "" -}}true{{- end -}}
   {{- else -}}
@@ -807,7 +807,7 @@ Resource name of the AutonomousDatabase CR (ADB-S).
 
 {{/* ******************************************
 Connection-string value for the configured database type. Shared by the
-authn and priv-authn Secret renderers so the SIDB/ADB-FREE host:port,
+authN and priv-authN Secret renderers so the SIDB/ADB-FREE host:port,
 the ADB-S TNS alias, and the OTHER DSN/host:port formats stay in lock-step.
 *********************************************** */}}
 {{- define "ai-optimizer.server.database.connectionString" -}}
@@ -838,7 +838,7 @@ and helpers that gate on the explicit-name signal.
 {{- end -}}
 
 {{- define "ai-optimizer.server.database.explicitPrivAuthnName" -}}
-{{- (dig "privAuthN" "secretName" "" (.Values.server.database | default dict)) | toString | trim -}}
+{{- (dig "privAuthn" "secretName" "" (.Values.server.database | default dict)) | toString | trim -}}
 {{- end -}}
 
 

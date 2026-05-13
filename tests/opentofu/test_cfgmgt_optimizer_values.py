@@ -214,10 +214,10 @@ def test_render_uses_current_chart_value_names_and_pinned_tags(tmp_path):
     rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
     assert "ociConfig:" in rendered
     assert "authn:" in rendered
-    assert "privAuthN:" in rendered
+    assert "privAuthn:" in rendered
     assert "oci_config:" not in rendered
     assert "authN:" not in rendered
-    assert "privAuthn:" not in rendered
+    assert "privAuthN:" not in rendered
     assert 'tag: "latest"' not in rendered
     assert rendered.count('tag: "0.0.0"') == 2
 

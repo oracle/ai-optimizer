@@ -169,7 +169,7 @@ server:
     region: us-ashburn-1
 ```
 
-`server.database.authn` configures the application database credentials. `server.database.privAuthN` configures privileged credentials used by chart-managed user setup for database modes that need it.
+`server.database.authn` configures the application database credentials. `server.database.privAuthn` configures privileged credentials used by chart-managed user setup for database modes that need it.
 
 {{% icon star %}} More information about configuring the database can be found in the [Database Configuration]({{% relref "/client/configuration/databases" %}}) documentation.
 

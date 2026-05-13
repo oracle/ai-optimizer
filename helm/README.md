@@ -242,9 +242,9 @@ helm install ai-optimizer . \
 | `server.database.authn.usernameKey` | Key for username in secret | `"username"` | |
 | `server.database.authn.passwordKey` | Key for password in secret | `"password"` | |
 | `server.database.authn.serviceKey` | Key for connection string in secret | `"service"` | |
-| `server.database.privAuthN.secretName` | Secret with privileged user password | `""` | Empty defaults to `<fullname>-db-priv-authn`; for user creation |
-| `server.database.privAuthN.usernameKey` | Key for privileged username | `"username"` | |
-| `server.database.privAuthN.passwordKey` | Key for privileged password | `"password"` | |
+| `server.database.privAuthn.secretName` | Secret with privileged user password | `""` | Empty defaults to `<fullname>-db-priv-authn`; for user creation |
+| `server.database.privAuthn.usernameKey` | Key for privileged username | `"username"` | |
+| `server.database.privAuthn.passwordKey` | Key for privileged password | `"password"` | |
 
 **Database Types:**
 - **SIDB-FREE**: Oracle AI Database Free (containerized single instance)

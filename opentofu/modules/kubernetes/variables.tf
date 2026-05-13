@@ -81,10 +81,6 @@ variable "kubernetes_version" {
   type = string
 }
 
-variable "api_is_public" {
-  type = bool
-}
-
 variable "node_pool_gpu_deploy" {
   type = bool
 }

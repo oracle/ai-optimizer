@@ -43,12 +43,12 @@ spec:
           valueFrom:
             secretKeyRef:
               name: {{ include "ai-optimizer.server.databasePrivSecret" . }}
-              key: {{ default "username" .Values.server.database.privAuthN.usernameKey }}
+              key: {{ default "username" .Values.server.database.privAuthn.usernameKey }}
         - name: PRIV_PASSWORD
           valueFrom:
             secretKeyRef:
               name: {{ include "ai-optimizer.server.databasePrivSecret" . }}
-              key: {{ default "password" .Values.server.database.privAuthN.passwordKey }}
+              key: {{ default "password" .Values.server.database.privAuthn.passwordKey }}
         {{- include "ai-optimizer.server.database.authn" . | nindent 8 }}
         command: ["/bin/sh", "-c"]
         args:

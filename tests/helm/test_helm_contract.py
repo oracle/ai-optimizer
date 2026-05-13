@@ -411,7 +411,7 @@ class TestHelmBestPracticeContracts:
         cases = [
             "server.oci_config.region=us-ashburn-1",
             "server.database.authN.secretName=db-authn",
-            "server.database.privAuthn.secretName=db-priv-authn",
+            "server.database.privAuthN.secretName=db-priv-authn",
             "server.models.openAI.secretName=openai-secret",
         ]
         for set_arg in cases:
@@ -470,14 +470,14 @@ class TestHelmBestPracticeContracts:
 
     def test_explicit_priv_authn_secret_name_skips_chart_rendering_offline(self):
         """Same offline-render contract for the privileged Secret: explicit
-        privAuthN.secretName must not produce a chart-managed privileged
+        privAuthn.secretName must not produce a chart-managed privileged
         Secret with random SYSTEM/ADMIN credentials at that name."""
         result = _render(
             "client.cookieSecret=cccccccccccccccccccccccccccccccc",
             "server.database.type=SIDB-FREE",
             "server.database.image.repository=foo",
             "server.database.image.tag=1.0.0",
-            "server.database.privAuthN.secretName=byo-shared-priv",
+            "server.database.privAuthn.secretName=byo-shared-priv",
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         for d in _docs(result.stdout):
@@ -487,11 +487,11 @@ class TestHelmBestPracticeContracts:
             ):
                 raise AssertionError(
                     "chart must not render a Secret named after an operator-pinned "
-                    f"privAuthN.secretName; got: {d.get('stringData') or d.get('data')}"
+                    f"privAuthn.secretName; got: {d.get('stringData') or d.get('data')}"
                 )
 
     def test_other_database_mode_without_credentials_is_rejected(self):
-        """OTHER + no authn.secretName + no privAuthN.secretName must fail
+        """OTHER + no authn.secretName + no privAuthn.secretName must fail
         loudly, otherwise the chart generates an unusable random password
         against a user that doesn't exist on the external database."""
         result = _render(
@@ -500,23 +500,23 @@ class TestHelmBestPracticeContracts:
             "server.database.other.dsn=mydbhost.example.com:1521/MYSERVICE",
         )
         assert result.returncode != 0, (
-            "OTHER without authn.secretName or privAuthN.secretName must fail; "
+            "OTHER without authn.secretName or privAuthn.secretName must fail; "
             f"rendered successfully with stdout={result.stdout[:300]}"
         )
-        assert "authn.secretName" in result.stderr and "privAuthN.secretName" in result.stderr, (
+        assert "authn.secretName" in result.stderr and "privAuthn.secretName" in result.stderr, (
             f"failure message must name both escape hatches; got: {result.stderr[:500]}"
         )
 
     def test_other_database_mode_with_priv_credentials_runs_init_job(self):
         """Operator opts into chart-managed user provisioning by supplying
-        privAuthN.secretName — the init Job and its ConfigMap must render
+        privAuthn.secretName — the init Job and its ConfigMap must render
         so the AI_OPTIMIZER user is created on the external database with
         the same random password the chart-generated auth Secret carries."""
         result = _render(
             "client.cookieSecret=cccccccccccccccccccccccccccccccc",
             "server.database.type=OTHER",
             "server.database.other.dsn=mydbhost.example.com:1521/MYSERVICE",
-            "server.database.privAuthN.secretName=byo-priv-creds",
+            "server.database.privAuthn.secretName=byo-priv-creds",
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         docs = _docs(result.stdout)
@@ -524,10 +524,10 @@ class TestHelmBestPracticeContracts:
         run_sql_jobs = [n for n, k in kinds_by_name.items() if k == "Job" and "run-sql" in n]
         init_cms = [n for n, k in kinds_by_name.items() if k == "ConfigMap" and n.endswith("-db-init")]
         assert run_sql_jobs, (
-            f"OTHER + privAuthN.secretName must render the init Job; got names={list(kinds_by_name.keys())}"
+            f"OTHER + privAuthn.secretName must render the init Job; got names={list(kinds_by_name.keys())}"
         )
         assert init_cms, (
-            f"OTHER + privAuthN.secretName must render the init ConfigMap; got names={list(kinds_by_name.keys())}"
+            f"OTHER + privAuthn.secretName must render the init ConfigMap; got names={list(kinds_by_name.keys())}"
         )
 
     def test_container_database_requires_pinned_image_tag(self):
@@ -542,7 +542,7 @@ class TestHelmBestPracticeContracts:
 
 class TestNotesUninstallDeletesOnlyChartManagedSecrets:
     """NOTES.txt's `kubectl delete secret` hints must target only the
-    chart-managed Secrets — an explicit authn.secretName / privAuthN.secretName
+    chart-managed Secrets — an explicit authn.secretName / privAuthn.secretName
     is operator-owned (possibly shared across releases), and a copy/pasted
     delete command would destroy real credentials. Mirrors the offline-render
     contract enforced in auth-secret.yaml / priv-secret.yaml.
@@ -568,7 +568,7 @@ class TestNotesUninstallDeletesOnlyChartManagedSecrets:
             "server.database.adb.skipCrdCheck=true",
             "server.database.adb.serviceName=mydb_high",
             "server.database.authn.secretName=shared-prod-db",
-            "server.database.privAuthN.secretName=shared-prod-priv",
+            "server.database.privAuthn.secretName=shared-prod-priv",
         )
         delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
         assert delete_lines == [], (
@@ -597,7 +597,7 @@ class TestNotesUninstallDeletesOnlyChartManagedSecrets:
             "server.database.type=SIDB-FREE",
             "server.database.image.repository=foo",
             "server.database.image.tag=1.0.0",
-            "server.database.privAuthN.secretName=byo-priv",
+            "server.database.privAuthn.secretName=byo-priv",
         )
         delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
         assert len(delete_lines) == 1, (
@@ -622,14 +622,14 @@ class TestNotesUninstallDeletesOnlyChartManagedSecrets:
         assert any("db-priv-authn" in ln for ln in delete_lines), delete_lines
 
     def test_other_mode_chart_managed_auth_emits_only_auth_delete(self):
-        """OTHER mode with chart-provisioned-user path (privAuthN.secretName
+        """OTHER mode with chart-provisioned-user path (privAuthn.secretName
         set, no authn.secretName) — auth Secret is chart-managed, priv-secret
         is not rendered by the chart at all for OTHER mode. Exactly one
         delete hint, naming the chart-managed auth Secret."""
         notes = self._notes(
             "server.database.type=OTHER",
             "server.database.other.dsn=mydbhost.example.com:1521/MYSERVICE",
-            "server.database.privAuthN.secretName=byo-priv",
+            "server.database.privAuthn.secretName=byo-priv",
         )
         delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
         assert len(delete_lines) == 1, f"expected exactly one auth delete hint; got: {delete_lines}"

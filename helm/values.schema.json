@@ -78,7 +78,7 @@
               },
               {
                 "required": [
-                  "privAuthn"
+                  "privAuthN"
                 ]
               }
             ]
@@ -128,7 +128,7 @@
             "authn": {
               "$ref": "#/definitions/secretKeyConfig"
             },
-            "privAuthN": {
+            "privAuthn": {
               "$ref": "#/definitions/secretKeyConfig"
             }
           },

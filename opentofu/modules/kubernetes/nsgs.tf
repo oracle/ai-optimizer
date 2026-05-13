@@ -11,12 +11,12 @@ locals {
     for cidr in local.api_endpoint_allowed_cidrs : cidr
     if length(regexall("^127\\.", cidr)) == 0
   ]
-  api_endpoint_custom_rules = var.api_is_public ? {
+  api_endpoint_custom_rules = {
     for allowed_cidr in local.api_endpoint_allowed_cidrs :
     "Allow custom ingress to kube-apiserver from ${allowed_cidr}" => {
       protocol = 6, port = 6443, source = allowed_cidr, source_type = "CIDR_BLOCK"
     }
-  } : {}
+  }
 }
 
 resource "oci_core_network_security_group" "k8s_api_endpoint" {

@@ -245,7 +245,7 @@ server:
       serviceKey: "service"
     # -- (Optional) Privileged User Authentication/Connection Details
     # If defined, used to create the user defined in the authn secret
-    privAuthN:
+    privAuthn:
       # -- secretName containing privileged user (i.e. ADMIN/SYSTEM) password.
       # Empty defaults to "<fullname>-db-priv-authn"; same chart-managed contract
       # as authn.secretName above.

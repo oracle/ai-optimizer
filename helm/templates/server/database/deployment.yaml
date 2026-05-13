@@ -67,7 +67,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "ai-optimizer.server.databasePrivSecret" . }}
-                  key: {{ default "password" .Values.server.database.privAuthN.passwordKey }}
+                  key: {{ default "password" .Values.server.database.privAuthn.passwordKey }}
             - name: WALLET_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -59,8 +59,8 @@ resource "oci_containerengine_cluster" "default_cluster" {
   endpoint_config {
     // Architecture Decision: Keep endpoint on public subnet with public IP to avoid resource destruction
     // when toggling public/private access. Access control is managed via NSG rules instead:
-    //   - When api_is_public=true:  NSG allows ingress from specified CIDRs (see nsgs.tf)
-    //   - When api_is_public=false: NSG only allows internal VCN traffic (effectively private)
+    //   - With api_endpoint_allowed_cidrs set:   NSG allows ingress from those CIDRs (see nsgs.tf)
+    //   - With api_endpoint_allowed_cidrs empty: NSG only allows internal VCN traffic (effectively private)
     // This approach prevents cluster recreation when changing access patterns.
     is_public_ip_enabled = true
     nsg_ids              = [oci_core_network_security_group.k8s_api_endpoint.id]

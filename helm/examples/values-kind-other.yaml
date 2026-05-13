@@ -15,7 +15,7 @@
 #
 #   * Chart-provisioned user: pre-create a Secret with privileged
 #     (DBA-level) credentials on the external DB, then point
-#     `server.database.privAuthN.secretName` at it. The chart runs an
+#     `server.database.privAuthn.secretName` at it. The chart runs an
 #     init Job that creates the application user with a random password
 #     and stores it in the auth Secret.
 server:
@@ -35,7 +35,7 @@ server:
     # Pick one of the two below before `helm install`:
     authn:
       secretName: "db-authn"   # BYO user — pre-create this Secret
-    # privAuthN:
+    # privAuthn:
     #   secretName: "db-priv-authn"   # Chart-provisioned user — pre-create the privileged Secret
 client:
   replicaCount: 1
