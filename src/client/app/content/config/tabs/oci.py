@@ -17,6 +17,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_delete, api_get, api_post, api_put
+from client.app.core.auth import is_authenticated, locked_notice
 
 LOGGER = logging.getLogger("client.content.config.tabs.oci")
 
@@ -382,8 +383,12 @@ def _update_oci(auth_profile: str, supplied: dict, toast: bool = True) -> bool:
 #####################################################
 def display_oci() -> None:
     """Streamlit GUI"""
+    locked_notice()
     st.header("Oracle Cloud Infrastructure", divider="red")
     st.write("Configure OCI for Object Storage Access and OCI GenAI Services.")
+
+    if not is_authenticated():
+        return
 
     _get_oci()
 

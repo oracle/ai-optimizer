@@ -14,6 +14,7 @@ import pytest
 from client.tests.conftest import AttrDict, Rerun
 
 MODULE = "client.app.content.config.tabs.models"
+AUTH_MODULE = "client.app.core.auth"
 HELPERS_MODULE = "client.app.core.helpers"
 
 _OPTIMIZER_HELP = AttrDict(
@@ -740,7 +741,13 @@ class TestRenderApiConfiguration:
         model = {"id": "gpt-4o", "api_base": "http://test", "api_key": "sk-123"}
         mock_st.text_input.side_effect = ["http://test", "sk-123"]
 
-        with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", _OPTIMIZER_HELP):
+        # The api_key widget is rendered via redacted_password_input, which uses
+        # auth.st — patch both so a single mock observes both text_input calls.
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{AUTH_MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", _OPTIMIZER_HELP),
+        ):
             result = _render_api_configuration(model, [], False)
 
         assert mock_st.text_input.call_count == 2
@@ -754,7 +761,11 @@ class TestRenderApiConfiguration:
         model = {"id": "x", "api_base": "", "api_key": ""}
         mock_st.text_input.side_effect = ["", ""]
 
-        with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", _OPTIMIZER_HELP):
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{AUTH_MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", _OPTIMIZER_HELP),
+        ):
             _render_api_configuration(model, [], True)
 
         for c in mock_st.text_input.call_args_list:
@@ -768,11 +779,37 @@ class TestRenderApiConfiguration:
         provider_models = [{"key": "gpt-4o", "api_base": "https://litellm-default.com"}]
         mock_st.text_input.side_effect = ["https://litellm-default.com", ""]
 
-        with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", _OPTIMIZER_HELP):
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{AUTH_MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", _OPTIMIZER_HELP),
+        ):
             _render_api_configuration(model, provider_models, False)
 
         first_call = mock_st.text_input.call_args_list[0]
         assert first_call.kwargs["value"] == "https://litellm-default.com"
+
+    def test_unauthenticated_omits_api_key_widget(self, mock_st):
+        """When unauthenticated, the API Key widget is not rendered and the value never reaches text_input."""
+        from client.app.content.config.tabs.models import _render_api_configuration
+
+        secret_key = "sk-this-must-not-leak"
+        model = {"id": "gpt-4o", "api_base": "http://test", "api_key": secret_key}
+        mock_st.text_input.return_value = "http://test"
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", _OPTIMIZER_HELP),
+            patch(f"{MODULE}.is_authenticated", return_value=False),
+        ):
+            _render_api_configuration(model, [], False)
+
+        for call in mock_st.text_input.call_args_list:
+            assert call.kwargs.get("value") != secret_key, "API key passed to text_input value"
+        api_key_calls = [
+            call for call in mock_st.text_input.call_args_list if call.kwargs.get("key") == "add_model_api_key"
+        ]
+        assert api_key_calls == [], "API key widget rendered while unauthenticated"
 
 
 # ---------------------------------------------------------------------------

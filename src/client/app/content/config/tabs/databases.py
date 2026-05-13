@@ -12,6 +12,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_delete, api_get, api_post, api_put
+from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
 from client.app.core.embed_status import render_active_embed_jobs
 
 LOGGER = logging.getLogger("client.content.config.tabs.databases")
@@ -111,6 +112,7 @@ def _remove_database(selected: str) -> None:
 def _render_databases(database_lookup: dict, database_aliases: list, current_alias: str | None) -> tuple[str, bool]:
     """Render the database configuration form and return (selected_alias, is_new)."""
     st.subheader("Configuration", divider="red")
+    authenticated = is_authenticated()
 
     # Selector: existing aliases + "Add New..."
     options = database_aliases + [ADD_NEW]
@@ -127,6 +129,7 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
             index=helpers.selectbox_index(options, current_alias),
             key="runtime_database_selector",
             on_change=_on_database_change,
+            disabled=not authenticated,
             help="The database used for Vector Search and NL2SQL",
         )
         or ""
@@ -160,41 +163,39 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
         alias = st.text_input(
             "Alias:",
             value="CORE" if force_core else ("" if is_new else db_config.get("alias", "")),
-            disabled=force_core or not is_new,
+            disabled=force_core or not is_new or not authenticated,
             key=f"form_db_alias_{key_suffix}",
         )
-        form_data = {
+        form_data: dict = {
             "username": st.text_input(
                 "Username:",
                 value=db_config.get("username", "") or "",
-                disabled=fields_disabled,
+                disabled=fields_disabled or not authenticated,
                 key=f"form_db_username_{key_suffix}",
             )
             or None,
-            "password": st.text_input(
-                "Password:",
-                value=db_config.get("password", "") or "",
-                type="password",
-                disabled=fields_disabled,
-                key=f"form_db_password_{key_suffix}",
-            )
-            or None,
-            "dsn": st.text_input(
+        }
+        form_data["password"] = redacted_password_input(
+            "Password:",
+            value=db_config.get("password", "") or "",
+            key=f"form_db_password_{key_suffix}",
+            disabled=fields_disabled,
+        ) or None
+        form_data["dsn"] = (
+            st.text_input(
                 "DSN (Connect String):",
                 value=db_config.get("dsn", "") or "",
-                disabled=fields_disabled,
+                disabled=fields_disabled or not authenticated,
                 key=f"form_db_dsn_{key_suffix}",
             )
-            or None,
-            "wallet_password": st.text_input(
-                "Wallet Password:",
-                value=db_config.get("wallet_password", "") or "",
-                type="password",
-                disabled=fields_disabled,
-                key=f"form_db_wallet_password_{key_suffix}",
-            )
-            or None,
-        }
+            or None
+        )
+        form_data["wallet_password"] = redacted_password_input(
+            "Wallet Password:",
+            value=db_config.get("wallet_password", "") or "",
+            key=f"form_db_wallet_password_{key_suffix}",
+            disabled=fields_disabled,
+        ) or None
 
         # Connection status
         if not is_new:
@@ -207,7 +208,7 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
         save_button, remove_button, _ = st.columns([2, 3, 5])
         save_button.button(
             "Create" if is_new else "Save",
-            disabled=fields_disabled,
+            disabled=fields_disabled or not authenticated,
             type="primary",
             width="stretch",
             on_click=_handle_form_submit,
@@ -220,7 +221,7 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
             },
         )
         with remove_button:
-            if not is_new and not is_core:
+            if not is_new and not is_core and authenticated:
                 with st.popover("⚠️ Remove Database", disabled=is_core):
                     st.warning(f"Are you sure you want to remove **{selected}**?")
                     if st.button("Confirm Remove", key="confirm_delete_db", type="primary"):
@@ -231,6 +232,7 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
 
 def _render_vector_stores(database_lookup: dict, selected: str) -> None:
     """Render the vector stores table for the selected database."""
+    authenticated = is_authenticated()
     vector_stores = database_lookup[selected].get("vector_stores") or []
     if vector_stores:
         st.subheader("Vector Storage", divider="red")
@@ -253,6 +255,7 @@ def _render_vector_stores(database_lookup: dict, selected: str) -> None:
                     key=f"runtime_vs_drop_{row_key}",
                     on_click=_drop_vector_store,
                     args=[selected, table_name],
+                    disabled=not authenticated,
                     help="Drop Vector Storage Table",
                 )
 
@@ -288,6 +291,7 @@ def _render_vector_stores(database_lookup: dict, selected: str) -> None:
 #####################################################
 def display_databases() -> None:
     """Streamlit GUI"""
+    locked_notice()
 
     database_lookup = helpers.state_configs_lookup("database_configs", "alias")
     database_aliases = list(database_lookup.keys())

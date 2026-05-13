@@ -72,6 +72,7 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 db_name                  = "test"
                 node_pool_gpu_deploy     = false
                 install_ollama           = false
+                app_version              = "0.0.0"
                 ssl_enabled              = false
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 is_observability_enabled = local.is_observability_enabled
@@ -121,6 +122,8 @@ def _helm_template(values_path: Path) -> str:
             # _render's db_type=ADB-S needs serviceName separately.
             "--set",
             "server.database.adb.serviceName=test_low",
+            "--set",
+            "server.database.adb.skipCrdCheck=true",
         ],
         capture_output=True,
         text=True,
@@ -203,6 +206,20 @@ def test_otel_enabled_when_byo_ocir_set(tmp_path):
         "server.otel.enabled must be true when observability is on. "
         "Rendered:\n" + rendered
     )
+
+
+def test_render_uses_current_chart_value_names_and_pinned_tags(tmp_path):
+    """The generated values must match the chart schema after the Helm
+    best-practice key cleanup."""
+    rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
+    assert "ociConfig:" in rendered
+    assert "authn:" in rendered
+    assert "privAuthn:" in rendered
+    assert "oci_config:" not in rendered
+    assert "authN:" not in rendered
+    assert "privAuthN:" not in rendered
+    assert 'tag: "latest"' not in rendered
+    assert rendered.count('tag: "0.0.0"') == 2
 
 
 def test_byo_render_passes_helm_validation(byo_helm_render):

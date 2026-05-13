@@ -1,19 +1,22 @@
-# Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-# Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent ocid
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent ocid
 
-# AutonomousDatabase Operator Resource (ADB-S)
-# Skip creating this resource if using existing ADB secrets (e.g., from obaas chart)
+AutonomousDatabase Operator Resource (ADB-S)
+Skip creating this resource if using existing ADB secrets (e.g., from obaas chart) */}}
 {{- if .Values.server.database }}
-{{- if eq (include "server.database.isADBS" .) "true" }}
-{{- if ne (include "server.database.useExistingAdbSecrets" .) "true" }}
+{{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
+{{- if ne (include "ai-optimizer.server.database.useExistingAdbSecrets" .) "true" }}
+{{- if and (not (.Values.server.database.adb.skipCrdCheck | default false)) (not (.Capabilities.APIVersions.Has "database.oracle.com/v4/AutonomousDatabase")) }}
+{{- fail "server.database.type is ADB-S and server.database.adb.useExisting=false, but the database.oracle.com/v4 AutonomousDatabase CRD is not available. Install the Oracle Database Operator first, or set server.database.adb.skipCrdCheck=true for offline templating." }}
+{{- end }}
 apiVersion: database.oracle.com/v4
 kind: AutonomousDatabase
 metadata:
-  name: {{ .Release.Name }}-adb-s
+  name: {{ include "ai-optimizer.server.database.adbResourceName" . }}
   labels:
     app.kubernetes.io/component: database
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
 spec:
   {{- /* `spec.action` is owned by the OraOperator after the initial bind:
          the operator writes to it to drive lifecycle ops (Restart, Stop,
@@ -25,7 +28,7 @@ spec:
          this CR is created for the first time during a helm upgrade.
          To re-issue an action later,
          `kubectl patch adb <name> --type=merge -p '{"spec":{"action":"Sync"}}'`. */}}
-  {{- $adbName := printf "%s-adb-s" .Release.Name }}
+  {{- $adbName := include "ai-optimizer.server.database.adbResourceName" . }}
   {{- $existing := lookup "database.oracle.com/v4" "AutonomousDatabase" .Release.Namespace $adbName }}
   {{- if not $existing }}
   action: "Sync"
@@ -33,15 +36,15 @@ spec:
   details:
     id: {{ .Values.server.database.oci.ocid }}
   wallet:
-    name: {{ include "server.database.adbTnsAdminSecret" . }}
+    name: {{ include "ai-optimizer.server.database.adbTnsAdminSecret" . }}
     password:
       k8sSecret:
-        name: {{ include "server.database.adbWalletPassSecret" . }}
-  {{- if .Values.server.oci_config }}
+        name: {{ include "ai-optimizer.server.database.adbWalletPassSecret" . }}
+  {{- if .Values.server.ociConfig }}
   ociConfig:
-    configMapName: {{ .Values.server.oci_config.configMapName | default (printf "%s-oci-config" .Release.Name) }}
-    {{- if .Values.server.oci_config.keySecretName }}
-    secretName: {{ .Values.server.oci_config.keySecretName }}
+    configMapName: {{ include "ai-optimizer.server.ociConfigMapName" . }}
+    {{- if .Values.server.ociConfig.keySecretName }}
+    secretName: {{ .Values.server.ociConfig.keySecretName }}
     {{- end }}
   {{- end }}
 {{- end }}

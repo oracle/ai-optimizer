@@ -25,7 +25,7 @@ COPY pyproject.toml /app/pyproject.toml
 
 # Generate requirements and install deps only (cached layer)
 # Avoid re-installing packages when only the source changes
-RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir wheel uv && \
+RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir uv && \
     ${VIRTUAL_ENV}/bin/pip install --no-cache-dir docling==2.93.0 --extra-index-url https://download.pytorch.org/whl/cpu && \
     ${VIRTUAL_ENV}/bin/uv pip compile /app/pyproject.toml --extra all \
         --extra-index-url https://download.pytorch.org/whl/cpu \
@@ -41,9 +41,8 @@ RUN ${VIRTUAL_ENV}/bin/uv pip install "/app[all]" \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         --index-strategy unsafe-best-match && \
     # Remove build-only tools from venv (keep setuptools for pkg_resources)
-    ${VIRTUAL_ENV}/bin/pip uninstall -y pip wheel uv && \
+    ${VIRTUAL_ENV}/bin/pip uninstall -y pip uv && \
     rm -rf ${VIRTUAL_ENV}/lib/python3.11/site-packages/pip* \
-           ${VIRTUAL_ENV}/lib/python3.11/site-packages/wheel* \
            ${VIRTUAL_ENV}/lib/python3.11/site-packages/uv-*.dist-info
 
 ##################################################
@@ -61,21 +60,18 @@ ENV RUNUSER=oracleai \
     TIKTOKEN_CACHE_DIR=/app/tmp \
     NLTK_DATA=/app/tmp
 
+# Runtime: oracle-software repo, runuser, runtime-only system packages, app dirs
 RUN echo -e '[ol9_oracle_software]\n\
 name=Oracle Software for OracleLinux 9\n\
 baseurl=https://yum.oracle.com/repo/OracleLinux/OL9/oracle/software/$basearch\n\
 gpgcheck=0\n\
-enabled=1' > /etc/yum.repos.d/oracle-software.repo
-
-# Runtime-only system packages (python3.11 already in base)
-RUN groupadd -g 10001 $RUNUSER && \
+enabled=1' > /etc/yum.repos.d/oracle-software.repo && \
+    groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
     microdnf --nodocs -y install sqlcl java-21-openjdk-headless mesa-libGL && \
-    microdnf clean all
-
-# Prep the app directory
-RUN for dir in $TEMP $TNS_ADMIN /app/runtime/.oci; do \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
+    microdnf clean all && \
+    for dir in $TEMP $TNS_ADMIN /app/runtime/.oci; do \
+        install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
     done
 
 # Copy clean venv from builder (no pip/uv/wheel)
@@ -92,5 +88,4 @@ COPY --chown=$RUNUSER:$RUNUSER src /app/src
 EXPOSE 8000 8501
 USER $RUNUSER
 WORKDIR /app/
-RUN chmod +x /app/src/entrypoint.py
 ENTRYPOINT ["/app/src/entrypoint.py"]

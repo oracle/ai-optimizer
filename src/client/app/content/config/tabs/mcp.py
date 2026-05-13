@@ -12,6 +12,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core.api import api_get
+from client.app.core.auth import is_authenticated, locked_notice
 
 LOGGER = logging.getLogger("client.content.config.tabs.mcp")
 
@@ -154,6 +155,7 @@ def render_configs(mcp_server: str, mcp_type: str, configs: list) -> None:
 #############################################################################
 def display_mcp() -> None:
     """Streamlit GUI"""
+    locked_notice()
     st.header("Model Context Protocol", divider="red")
     try:
         get_mcp()
@@ -165,8 +167,9 @@ def display_mcp() -> None:
                     The {mcp_status["name"]} is running.
                     **Version**: {mcp_status["version"]}
                     """)
-        with st.expander("Client Configuration"):
-            st.code(get_mcp_client(), language="json")
+        if is_authenticated():
+            with st.expander("Client Configuration"):
+                st.code(get_mcp_client(), language="json")
     else:
         st.error("MCP Server is not running!", icon="🛑")
         st.stop()

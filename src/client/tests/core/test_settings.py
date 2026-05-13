@@ -77,6 +77,27 @@ class TestClientSettingsFields:
         s = self._make()
         assert s.client_url_prefix == ""
 
+    def test_client_password_none_by_default(self, monkeypatch):
+        """Default client_password is None when env var is absent."""
+        monkeypatch.delenv("AIO_CLIENT_PASSWORD", raising=False)
+        s = self._make()
+        assert s.client_password is None
+
+    def test_client_password_accepts_string(self):
+        """Explicit string client_password is preserved (wrapped as SecretStr)."""
+        from client.app.core.secrets import reveal
+
+        s = self._make(client_password="shared-pass")
+        assert reveal(s.client_password) == "shared-pass"
+
+    def test_client_password_loaded_from_env(self, monkeypatch):
+        """AIO_CLIENT_PASSWORD env var populates client_password as SecretStr."""
+        from client.app.core.secrets import reveal
+
+        monkeypatch.setenv("AIO_CLIENT_PASSWORD", "env-pass")
+        s = self._make()
+        assert reveal(s.client_password) == "env-pass"
+
 
 # ---------------------------------------------------------------------------
 # _normalize_url_prefix validator

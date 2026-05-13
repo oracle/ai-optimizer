@@ -109,6 +109,7 @@ module "kubernetes" {
   is_observability_enabled   = var.k8s_is_observability_enabled
   optimizer_version          = var.optimizer_version
   optimizer_branch           = local.optimizer_branch
+  app_version                = local.app_version
   ssl_enabled                = local.ssl_enabled
   ssl_cert_pem               = local.ssl_cert_pem
   ssl_key_pem                = local.ssl_key_pem

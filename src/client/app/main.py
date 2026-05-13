@@ -13,6 +13,7 @@ from streamlit import session_state as state
 
 from _version import __version__
 from client.app.core.api import _server_module_available, api_get, get_server_settings, start_server
+from client.app.core.auth import auth_sidebar, gate_active, is_authenticated
 from logging_config import configure_logging
 
 configure_logging()
@@ -88,6 +89,12 @@ tools = st.Page("content/tools/tools.py", title="Tools", icon="🧰")
 sidebar_navigation[""].append(tools)
 config = st.Page("content/config/config.py", title="Configuration", icon="⚙️")
 sidebar_navigation[""].append(config)
+if gate_active():
+    if is_authenticated():
+        sidebar_navigation[""].append(st.Page("content/signout.py", title="Sign-out", icon="🔓"))
+    else:
+        sidebar_navigation[""].append(st.Page("content/signin.py", title="Sign-in", icon="🔐"))
+auth_sidebar()
 
 pg_sidebar = st.navigation(sidebar_navigation, position="sidebar", expanded=False)
 pg_sidebar.run()

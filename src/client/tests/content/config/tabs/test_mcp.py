@@ -480,3 +480,30 @@ class TestDisplayMcp:
 
             display_mcp()
         mock_render.assert_not_called()
+
+    def test_unauthenticated_skips_client_config(self, mock_st):
+        """When unauthenticated, the Client Configuration content is not fetched or rendered."""
+        state = _make_state(
+            mcp_configs={
+                "tools": [],
+                "prompts": [],
+                "resources": [],
+            }
+        )
+        mock_st.selectbox.return_value = None
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.get_mcp"),
+            patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
+            patch(f"{MODULE}.get_mcp_client", return_value="{}") as mock_get_client,
+            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.locked_notice") as mock_locked_notice,
+            patch(f"{MODULE}.render_configs"),
+        ):
+            from client.app.content.config.tabs.mcp import display_mcp
+
+            display_mcp()
+        mock_get_client.assert_not_called()
+        mock_st.expander.assert_not_called()
+        mock_locked_notice.assert_called_once()

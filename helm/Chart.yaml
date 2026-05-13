@@ -1,21 +1,38 @@
 apiVersion: v2
 name: ai-optimizer
-description: A Helm chart Oracle AI Optimizer and Toolkit
+description: A Helm chart for the Oracle AI Optimizer and Toolkit
 # Do Not Modify. Updated automatically during release cycle by .github/workflows/releases.yml
 version: 0.0.0
 appVersion: "0.0.0"
 type: application
+kubeVersion: ">=1.23.0-0"
 home: https://github.com/oracle/ai-optimizer
 sources:
   - https://github.com/oracle/ai-optimizer
 icon: https://github.com/oracle/ai-optimizer/blob/main/src/client/media/logo.png
+keywords:
+  - ai
+  - oracle
+  - llm
+  - rag
+  - genai
+  - vector-search
+  - optimizer
+  - database
 maintainers:
   - name: Oracle
     email: obaas_ww@oracle.com
     url: https://github.com/oracle/ai-optimizer
+annotations:
+  artifacthub.io/license: UPL-1.0
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/oracle/ai-optimizer
+    - name: Issues
+      url: https://github.com/oracle/ai-optimizer/issues
 # SubCharts
 dependencies:
   - name: signoz
-    version: "0.122.0"
+    version: "~0.122.0"
     repository: https://charts.signoz.io
     condition: signoz.enabled

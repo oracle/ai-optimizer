@@ -1,69 +1,75 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent sqlcl sqlplus
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent sqlcl sqlplus
 
-# Database Initialization Job
-{{- if .Values.server.database }}
-{{- if .Values.server.database.privAuthN }}
+Database Initialization Job
+
+OTHER mode is included on purpose when the operator supplies privileged
+credentials: the init.sh script's `needsPrivAuth` branch already handles
+bring-your-own databases via `connect $PRIV_USERNAME/$PRIV_PASSWORD@$DB_DSN`.
+The earlier blanket OTHER exclusion left chart-managed auth Secrets
+pointing at an AI_OPTIMIZER user that was never created on the external
+database. Gating is centralised in `shouldRunInit` so the ConfigMap and
+the Job stay in lock-step. */}}
+{{- if eq (include "ai-optimizer.server.database.shouldRunInit" .) "true" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "global.fullname" . }}-run-sql-{{ .Release.Revision }}
+  name: {{ include "ai-optimizer.fullname" . }}-run-sql-{{ .Release.Revision }}
   labels:
     app.kubernetes.io/component: database
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
 spec:
   ttlSecondsAfterFinished: 300  # 5 minutes
   template:
     spec:
       restartPolicy: Never
-      {{- include "global.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
+      {{- include "ai-optimizer.imagePullSecrets" (dict "local" .Values.server.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
       - name: oracle-sqlcl-runner
-        image: {{ include "global.image" (dict "image" .Values.utilities.sqlcl.image "global" .Values.global) | quote }}
+        image: {{ include "ai-optimizer.image" (dict "image" .Values.utilities.sqlcl.image "global" .Values.global) | quote }}
         imagePullPolicy: {{ .Values.utilities.sqlcl.image.pullPolicy | default "IfNotPresent" }}
         env:
         - name: TNS_ADMIN
           value: /app/tns_admin
         - name: API_SERVER_HOST
-          value: {{ include "server.serviceName" . }}
+          value: {{ include "ai-optimizer.server.serviceName" . }}
         - name: API_SERVER_KEY
           valueFrom:
             secretKeyRef:
-              name: {{ include "global.apiSecretName" . }}
-              key: {{ include "global.apiSecretKey" . }}
+              name: {{ include "ai-optimizer.apiSecretName" . }}
+              key: {{ include "ai-optimizer.apiSecretKey" . }}
         - name: PRIV_USERNAME
           valueFrom:
             secretKeyRef:
-              name: {{ .Values.server.database.privAuthN.secretName }}
-              key: {{ default "username" .Values.server.database.privAuthN.usernameKey }}
+              name: {{ include "ai-optimizer.server.databasePrivSecret" . }}
+              key: {{ default "username" .Values.server.database.privAuthn.usernameKey }}
         - name: PRIV_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: {{ .Values.server.database.privAuthN.secretName }}
-              key: {{ default "password" .Values.server.database.privAuthN.passwordKey }}
-        {{- include "server.database.authN" . | nindent 8 }}
+              name: {{ include "ai-optimizer.server.databasePrivSecret" . }}
+              key: {{ default "password" .Values.server.database.privAuthn.passwordKey }}
+        {{- include "ai-optimizer.server.database.authn" . | nindent 8 }}
         command: ["/bin/sh", "-c"]
         args:
           - |
             set -e
-            {{- include "global.shellWaitFunc" . | nindent 12 }}
+            {{- include "ai-optimizer.shellWaitFunc" . | nindent 12 }}
             wait_until "database (${DB_DSN})" 360 10 sh /opt/oracle/scripts/startup/init.sh
         volumeMounts:
         - name: db-init-scripts
           mountPath: /opt/oracle/scripts/startup
-        {{- if eq (include "server.database.isADBS" .) "true" }}
+        {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
         - name: tns-admin
           mountPath: /app/tns_admin
         {{- end }}
       volumes:
       - name: db-init-scripts
         configMap:
-          name: {{ include "global.fullname" . }}-db-init
-      {{- if eq (include "server.database.isADBS" .) "true" }}
+          name: {{ include "ai-optimizer.fullname" . }}-db-init
+      {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
       - name: tns-admin
         secret:
-          secretName: {{ include "server.database.adbTnsAdminSecret" . }}
+          secretName: {{ include "ai-optimizer.server.database.adbTnsAdminSecret" . }}
       {{- end }}
-{{- end }}
 {{- end }}

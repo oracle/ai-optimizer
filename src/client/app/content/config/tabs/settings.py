@@ -22,6 +22,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_post, get_server_settings
+from client.app.core.auth import is_authenticated, locked_notice
 
 LOGGER = logging.getLogger("client.content.config.tabs.settings")
 
@@ -511,7 +512,11 @@ def _render_source_code_templates_section() -> None:
 #####################################################
 def display_settings():
     """Streamlit GUI"""
+    locked_notice()
     st.header("Optimizer Settings", divider="red")
+
+    if not is_authenticated():
+        return
 
     if "runtime_settings_upload_toggle" not in state:
         state.runtime_settings_upload_toggle = False

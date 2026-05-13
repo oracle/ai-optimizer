@@ -19,6 +19,7 @@ from streamlit import session_state as state
 
 from client.app.core import sidebar
 from client.app.core.api import api_delete, api_get, api_post
+from client.app.core.auth import is_authenticated, locked_notice
 from client.app.core.helpers import (
     enabled_models_lookup,
     extract_error_detail,
@@ -169,7 +170,7 @@ def _qa_update_gui(qa_testset: list) -> None:
     delete_col.button(
         "⚠ Delete Q&A",
         type="tertiary",
-        disabled=records == 1,
+        disabled=records == 1 or not is_authenticated(),
         width="stretch",
         on_click=_delete_record,
     )
@@ -620,6 +621,9 @@ def _render_evaluation_ui(available_ll_models: list) -> None:
 #############################################################################
 def main() -> None:
     """Streamlit GUI"""
+    # Testbed is a user workspace; only controls that change shared state for other
+    # users are gated. See ``Scope`` in client/app/core/auth.py for the full policy.
+    locked_notice()
     available_ll_models, available_embed_models, gen_testset_disabled = _check_prerequisites()
     testset_sources = _setup_testbed_sources()
 
@@ -702,7 +706,7 @@ def main() -> None:
         key="runtime_delete_test_set",
         type="tertiary",
         width="stretch",
-        disabled=not state.runtime_testbed["testset_id"],
+        disabled=not state.runtime_testbed["testset_id"] or not is_authenticated(),
         on_click=_qa_delete,
     )
 

@@ -18,11 +18,11 @@ Streamlit Client (Web UI):
   {{- if and .Values.client.ingress.tls (gt (len .Values.client.ingress.tls) 0) (index .Values.client.ingress.tls 0).hosts }}
   Access at: https://{{ first (index .Values.client.ingress.tls 0).hosts }}
   {{- else }}
-  Access at: http://<your-ingress-host>{{ include "global.getPath" . }}
+  Access at: http://<your-ingress-host>{{ include "ai-optimizer.getPath" . }}
   {{- end }}
 {{- else }}
   Port-forward to access locally:
-    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "global.fullname" . }}-client-http 8501:{{ .Values.client.service.port }}
+    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "ai-optimizer.fullname" . }}-client-http 8501:{{ .Values.client.service.port }}
 
   Then open in your browser:
     http://localhost:8501
@@ -36,16 +36,16 @@ Server API:
 {{- if .Values.server.ingress.enabled }}
   The server API is available via Ingress.
   {{- if and .Values.server.ingress.tls (gt (len .Values.server.ingress.tls) 0) (index .Values.server.ingress.tls 0).hosts }}
-  Access at: https://{{ first (index .Values.server.ingress.tls 0).hosts }}{{ include "global.getPath" . }}v1
+  Access at: https://{{ first (index .Values.server.ingress.tls 0).hosts }}{{ include "ai-optimizer.getPath" . }}v1
   {{- else }}
-  Access at: http://<your-ingress-host>{{ include "global.getPath" . }}v1
+  Access at: http://<your-ingress-host>{{ include "ai-optimizer.getPath" . }}v1
   {{- end }}
 {{- else }}
   Port-forward to access locally:
-    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "server.serviceName" . }} {{ .Values.server.service.port }}:{{ .Values.server.service.port }}
+    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "ai-optimizer.server.serviceName" . }} {{ .Values.server.service.port }}:{{ .Values.server.service.port }}
 
   Then access the API at:
-    http://localhost:{{ .Values.server.service.port }}{{ include "global.getPath" . }}v1
+    http://localhost:{{ .Values.server.service.port }}{{ include "ai-optimizer.getPath" . }}v1
 {{- end }}
 
 ================================================================================
@@ -56,7 +56,7 @@ View all resources:
   kubectl get all -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
 
 Check pod status:
-  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "global.name" . }}
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "ai-optimizer.name" . }}
 
 View server logs:
   kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=server -f
@@ -70,8 +70,8 @@ View client logs:
 {{- if eq .Values.server.database.type "ADB-S" }}
 
 Check database operator status:
-  kubectl get autonomousdatabase -n {{ .Release.Namespace }} {{ .Release.Name }}-adb-s
-  kubectl describe autonomousdatabase -n {{ .Release.Namespace }} {{ .Release.Name }}-adb-s
+  kubectl get autonomousdatabase -n {{ .Release.Namespace }} {{ include "ai-optimizer.server.database.adbResourceName" . }}
+  kubectl describe autonomousdatabase -n {{ .Release.Namespace }} {{ include "ai-optimizer.server.database.adbResourceName" . }}
 {{- else if or (eq .Values.server.database.type "SIDB-FREE") (eq .Values.server.database.type "ADB-FREE") }}
 
 Check database pod status:
@@ -88,15 +88,15 @@ Check Ollama status:
 {{- end }}
 
 {{- if .Values.signoz.enabled }}
-{{- $rootEnabled := include "signoz.rootProvisioningEnabled" . -}}
-{{- $authnSecret := include "signoz.authnSecretName" . }}
+{{- $rootEnabled := include "ai-optimizer.signoz.rootProvisioningEnabled" . -}}
+{{- $authnSecret := include "ai-optimizer.signoz.authnSecretName" . }}
 
 ================================================================================
 SIGNOZ (OBSERVABILITY)
 ================================================================================
 
 SigNoz is deployed in this release. Port-forward to reach the UI:
-  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "signoz.releaseFullname" . }} 8080:{{ include "signoz.frontendPort" . }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "ai-optimizer.signoz.releaseFullname" . }} 8080:{{ include "ai-optimizer.signoz.frontendPort" . }}
 
 Then open in your browser:
   http://localhost:8080
@@ -111,10 +111,10 @@ The admin account is auto-provisioned at first start. Log in with:
          once the Secret exists, the email it stores is what SigNoz
          actually provisioned, regardless of any later edit to
          signoz.auth.email. Show that, not the (ignored) values default. */ -}}
-  {{- $existingAuthn := lookup "v1" "Secret" .Release.Namespace $authnSecret -}}
+  {{- $existingAuthN := lookup "v1" "Secret" .Release.Namespace $authnSecret -}}
   {{- $email := .Values.signoz.auth.email -}}
-  {{- if and $existingAuthn (hasKey $existingAuthn.data "email") }}
-    {{- $email = index $existingAuthn.data "email" | b64dec -}}
+  {{- if and $existingAuthN (hasKey $existingAuthN.data "email") }}
+    {{- $email = index $existingAuthN.data "email" | b64dec -}}
   {{- end }}
   email:    {{ $email }}
   password: from the `password` key in Secret {{ $authnSecret | quote }}
@@ -150,10 +150,10 @@ The first visit prompts you to create an admin account.
 {{- $autoTracesEp := "" -}}
 {{- $autoLogsEp := "" -}}
 {{- if and $otelEnabled $tracesUsesOtlp $endpointEmpty $tracesEpEmpty -}}
-{{- $autoTracesEp = include "server.otel.defaultTracesEndpoint" . -}}
+{{- $autoTracesEp = include "ai-optimizer.server.otel.defaultTracesEndpoint" . -}}
 {{- end -}}
 {{- if and $otelEnabled .Values.server.otel.logsEnabled $logsUsesOtlp $endpointEmpty $logsEpEmpty -}}
-{{- $autoLogsEp = include "server.otel.defaultLogsEndpoint" . -}}
+{{- $autoLogsEp = include "ai-optimizer.server.otel.defaultLogsEndpoint" . -}}
 {{- end -}}
 {{- if or (ne $autoTracesEp "") (ne $autoLogsEp "") }}
 
@@ -181,25 +181,25 @@ CONFIGURATION
 ================================================================================
 
 API Key Secret:
-  kubectl get secret -n {{ .Release.Namespace }} {{ include "global.apiSecretName" . }}
+  kubectl get secret -n {{ .Release.Namespace }} {{ include "ai-optimizer.apiSecretName" . }}
 
 {{- if .Values.server.database }}
 Database Credentials:
-  kubectl get secret -n {{ .Release.Namespace }} {{ include "server.databaseSecret" . }}
+  kubectl get secret -n {{ .Release.Namespace }} {{ include "ai-optimizer.server.databaseSecret" . }}
 {{- end }}
 
 {{- if .Values.server.autoscaling.enabled }}
 
 Server Autoscaling (HPA):
-  kubectl get hpa -n {{ .Release.Namespace }} {{ include "global.fullname" . }}-server
-  kubectl describe hpa -n {{ .Release.Namespace }} {{ include "global.fullname" . }}-server
+  kubectl get hpa -n {{ .Release.Namespace }} {{ include "ai-optimizer.fullname" . }}-server
+  kubectl describe hpa -n {{ .Release.Namespace }} {{ include "ai-optimizer.fullname" . }}-server
 {{- end }}
 
 {{- if .Values.client.autoscaling.enabled }}
 
 Client Autoscaling (HPA):
-  kubectl get hpa -n {{ .Release.Namespace }} {{ include "global.fullname" . }}-client
-  kubectl describe hpa -n {{ .Release.Namespace }} {{ include "global.fullname" . }}-client
+  kubectl get hpa -n {{ .Release.Namespace }} {{ include "ai-optimizer.fullname" . }}-client
+  kubectl describe hpa -n {{ .Release.Namespace }} {{ include "ai-optimizer.fullname" . }}-client
 {{- end }}
 
 ================================================================================
@@ -230,12 +230,23 @@ SigNoz uninstall cleanup:
 {{- end }}
 
 {{- end }}
+{{- /* Suggest `kubectl delete` only for the Secrets this chart actually
+       owns. An explicit authn.secretName / privAuthn.secretName means the
+       operator manages that Secret (possibly shared across releases),
+       and the chart did NOT render it under that name — deleting it on
+       behalf of the operator would destroy real credentials. Mirror the
+       same gates used by auth-secret.yaml and priv-secret.yaml. */}}
+{{- $db := .Values.server.database | default dict }}
+{{- $chartManagedAuth := and $db $db.type (eq (include "ai-optimizer.server.database.explicitAuthnName" .) "") }}
+{{- $chartManagedPriv := and $db $db.type (ne (include "ai-optimizer.server.database.isOther" .) "true") $db.privAuthn (eq (include "ai-optimizer.server.database.explicitPrivAuthnName" .) "") }}
+{{- if or $chartManagedAuth $chartManagedPriv }}
 Note: Secrets with "helm.sh/resource-policy: keep" annotation will be retained.
-To delete them manually:
-  kubectl delete secret -n {{ .Release.Namespace }} {{ include "server.databaseSecret" . }}
-{{- if .Values.server.database }}
-{{- if .Values.server.database.privAuthN }}
-  kubectl delete secret -n {{ .Release.Namespace }} {{ include "server.databasePrivSecret" . }}
+To delete the chart-managed ones manually:
+{{- if $chartManagedAuth }}
+  kubectl delete secret -n {{ .Release.Namespace }} {{ include "ai-optimizer.server.databaseSecret" . }}
+{{- end }}
+{{- if $chartManagedPriv }}
+  kubectl delete secret -n {{ .Release.Namespace }} {{ include "ai-optimizer.server.databasePrivSecret" . }}
 {{- end }}
 {{- end }}
 
