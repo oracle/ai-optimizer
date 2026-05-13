@@ -1,1 +1,36 @@
+# Patterns to ignore when packaging this chart.
+# https://helm.sh/docs/topics/charts/#the-helmignore-file
+# Chart-specific
 scripts/
+
+# Common backups / temp files
+*.bak
+*.tmp
+*.swp
+*.swo
+*~
+*.orig
+
+# NOTE: do NOT add `*.tgz` here — `helm dependency build` vendors subchart
+# archives under `charts/*.tgz`, and a recursive `*.tgz` ignore would make
+# `helm template`/`helm package` drop the dependency at load time.
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+.gitkeep
+
+# CI / project metadata
+.github/
+OWNERS
+OWNERS_ALIASES
+
+# Documentation render artifacts
+README.md.gotmpl

@@ -25,7 +25,7 @@ COPY pyproject.toml /app/pyproject.toml
 
 # Generate requirements and install deps only (cached layer)
 # Avoid re-installing packages when only the source changes
-RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir wheel uv && \
+RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir uv && \
     ${VIRTUAL_ENV}/bin/uv pip compile /app/pyproject.toml --extra client -o /tmp/requirements.txt && \
     ${VIRTUAL_ENV}/bin/uv pip install -r /tmp/requirements.txt
 
@@ -33,9 +33,8 @@ RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir wheel uv && \
 COPY src /app/src
 RUN ${VIRTUAL_ENV}/bin/uv pip install "/app[client]" && \
     # Remove build-only tools from venv (keep setuptools for pkg_resources)
-    ${VIRTUAL_ENV}/bin/pip uninstall -y pip wheel uv && \
+    ${VIRTUAL_ENV}/bin/pip uninstall -y pip uv && \
     rm -rf ${VIRTUAL_ENV}/lib/python3.11/site-packages/pip* \
-           ${VIRTUAL_ENV}/lib/python3.11/site-packages/wheel* \
            ${VIRTUAL_ENV}/lib/python3.11/site-packages/uv-*.dist-info
 
 ##################################################
@@ -49,13 +48,11 @@ ENV RUNUSER=oracleai \
     MPLCONFIGDIR=/app/tmp \
     AIO_CLIENT_ADDRESS=0.0.0.0
 
-# Runtime-only system packages (python3.11 already in base)
+# Runtime: runuser and app dirs (python3.11 already in base)
 RUN groupadd -g 10001 $RUNUSER && \
-    useradd -u 10001 -g $RUNUSER -md /app $RUNUSER
-
-# Prep the app directory
-RUN for dir in $TEMP; do \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
+    useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
+    for dir in $TEMP; do \
+        install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
     done
 
 # Copy clean venv from builder (no pip/uv/wheel)
@@ -69,5 +66,4 @@ RUN rm -rf /app/src/server
 EXPOSE 8501
 USER $RUNUSER
 WORKDIR /app/
-RUN chmod +x /app/src/entrypoint.py
 ENTRYPOINT ["/app/src/entrypoint.py"]

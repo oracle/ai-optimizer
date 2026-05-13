@@ -10,17 +10,17 @@ locals {
 
 // Configuration Management Validation
 locals {
-  can_apply_cfgmgt         = var.orm_install || (var.api_is_public && length(local.api_endpoint_reachable_cidrs) > 0)
+  can_apply_cfgmgt         = var.orm_install || length(local.api_endpoint_reachable_cidrs) > 0
   should_show_manual_steps = var.run_cfgmgt && !local.can_apply_cfgmgt
 
   cfgmgt_error_message = <<-EOT
     Cannot run configuration management (Helm/kubectl) from local Terraform without a reachable K8s API endpoint.
 
-    The K8s API endpoint is configured as private, or no non-loopback public CIDR is allowed, and this is not an ORM deployment.
+    No non-loopback public CIDR is allowed on the K8s API endpoint, and this is not an ORM deployment.
     Local Terraform cannot reach the K8s API through the current NSG rules.
 
     Solutions:
-      1. Set api_is_public = true and allow your source CIDR, typically your public IP as /32
+      1. Set api_endpoint_allowed_cidrs to your source CIDR, typically your public IP as /32
       2. Set run_cfgmgt = false and manually apply Helm from a bastion host with VCN access
       3. Use Oracle Resource Manager (ORM) for deployment (has private endpoint access)
 
@@ -30,7 +30,7 @@ locals {
   manual_helm_instructions = <<-EOT
     ⚠️  Helm/kubectl configuration was NOT applied automatically.
 
-    The K8s API endpoint is private and you're running from local Terraform.
+    The K8s API endpoint has no reachable public CIDR allowed and you're running from local Terraform.
     You must apply Helm manually from a machine with VCN access (bastion host or VPN).
 
     Steps:

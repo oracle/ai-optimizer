@@ -9,7 +9,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 *********************************************** */}}
-{{- define "global.fullname" -}}
+{{- define "ai-optimizer.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" | trim }}
 {{- else }}
@@ -26,7 +26,7 @@ If release name contains chart name it will be used as a full name.
 {{/* ******************************************
 Expand the name of the chart.
 *********************************************** */}}
-{{- define "global.name" -}}
+{{- define "ai-optimizer.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" | trim }}
 {{- end }}
 
@@ -34,7 +34,7 @@ Expand the name of the chart.
 {{/* ******************************************
 Create chart name and version as used by the chart label.
 *********************************************** */}}
-{{- define "global.chart" -}}
+{{- define "ai-optimizer.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" | trim }}
 {{- end }}
 
@@ -42,8 +42,8 @@ Create chart name and version as used by the chart label.
 {{/* ******************************************
 Selector labels
 *********************************************** */}}
-{{- define "global.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "global.name" . }}
+{{- define "ai-optimizer.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ai-optimizer.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
@@ -51,9 +51,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{/* ******************************************
 Common labels
 *********************************************** */}}
-{{- define "global.labels" -}}
-helm.sh/chart: {{ include "global.chart" . }}
-{{ include "global.selectorLabels" . }}
+{{- define "ai-optimizer.labels" -}}
+helm.sh/chart: {{ include "ai-optimizer.chart" . }}
+{{ include "ai-optimizer.selectorLabels" . }}
+app.kubernetes.io/part-of: ai-optimizer
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -81,7 +82,7 @@ nonsensical refs like `localhost/iad.ocir.io/...` or
 repository alongside the chart's default registry. Operators who want
 the global mirror to override must use unqualified repositories.
 *********************************************** */}}
-{{- define "global.image" -}}
+{{- define "ai-optimizer.image" -}}
 {{- $repo := .image.repository -}}
 {{/* Tag fallback: use the explicit `image.tag` when set; otherwise the
      caller-supplied `appVersion` (typically `.Chart.AppVersion`). Restores
@@ -93,6 +94,9 @@ the global mirror to override must use unqualified repositories.
 {{- $tag = .appVersion | default "" -}}
 {{- end -}}
 {{- $tag = $tag | toString -}}
+{{- if or (eq $tag "") (eq $tag "latest") (eq $tag "head") (eq $tag "canary") -}}
+{{- fail (printf "image tag for repository %q must be pinned; use a fixed tag or leave server/client tags empty to default to Chart.appVersion" $repo) -}}
+{{- end -}}
 {{- $first := index (splitList "/" $repo) 0 -}}
 {{- $repoHasHost := or (contains "." $first) (contains ":" $first) (eq $first "localhost") -}}
 {{- if $repoHasHost -}}
@@ -118,7 +122,7 @@ Pass: dict "local" .Values.<component>.imagePullSecrets "global" .Values.global.
 Entries may be plain strings ("mirror-creds") or maps ({name: mirror-creds});
 both are normalized to the pod-spec map form.
 *********************************************** */}}
-{{- define "global.imagePullSecrets" -}}
+{{- define "ai-optimizer.imagePullSecrets" -}}
 {{- $merged := concat (default (list) .global) (default (list) .local) | uniq -}}
 {{- with $merged }}
 imagePullSecrets:
@@ -143,10 +147,10 @@ takes over). Stdout/stderr from the probed command are not redirected,
 so callers control verbosity via the command itself (e.g., `curl -s`).
 
 Usage in a script:
-  {{`{{ include "global.shellWaitFunc" . | nindent 10 }}`}}
+  {{`{{ include "ai-optimizer.shellWaitFunc" . | nindent 10 }}`}}
   wait_until "<label>" <max> <sleep_s> <cmd> [args...]
 *********************************************** */}}
-{{- define "global.shellWaitFunc" -}}
+{{- define "ai-optimizer.shellWaitFunc" -}}
 wait_until() {
   label="$1"; max="$2"; s="$3"; shift 3
   i=1
@@ -165,7 +169,7 @@ wait_until() {
 {{/* ******************************************
 Validate that either global.api.apiKey or global.api.secretName is provided.
 *********************************************** */}}
-{{- define "global.apiKeyOrSecretName.required" -}}
+{{- define "ai-optimizer.apiKeyOrSecretName.required" -}}
   {{- $apiKey := .Values.global.api.apiKey | trim | default "" -}}
   {{- $secretName := .Values.global.api.secretName | trim | default "" -}}
 
@@ -181,11 +185,11 @@ Validate that either global.api.apiKey or global.api.secretName is provided.
 {{/* ******************************************
 Define the API Key Secret with Defaults
 *********************************************** */}}
-{{- define "global.apiSecretName" -}}
-{{- .Values.global.api.secretName | default (printf "%s-api-key" .Release.Name) -}}
+{{- define "ai-optimizer.apiSecretName" -}}
+{{- .Values.global.api.secretName | default (printf "%s-api-key" (include "ai-optimizer.fullname" .)) -}}
 {{- end }}
 
-{{- define "global.apiSecretKey" -}}
+{{- define "ai-optimizer.apiSecretKey" -}}
 {{- .Values.global.api.secretKey | default "apiKey" -}}
 {{- end }}
 
@@ -195,7 +199,7 @@ Validate that either client.cookieSecret or client.cookieSecretName is provided.
 The cookie secret must be stable and operator-provided so Streamlit state remains
 consistent across replicas. Same contract as global.api.apiKey.
 *********************************************** */}}
-{{- define "client.cookieKeyOrSecretName.required" -}}
+{{- define "ai-optimizer.client.cookieKeyOrSecretName.required" -}}
   {{- $cookieSecret := .Values.client.cookieSecret | trim | default "" -}}
   {{- $secretName := .Values.client.cookieSecretName | trim | default "" -}}
 
@@ -215,12 +219,12 @@ validator above). Without the trim, a value like "   " would be truthy and skip
 the `default` fallback, producing invalid manifests (metadata.name: "   ") or
 letting a whitespace cookieSecret clobber an operator-owned external Secret.
 *********************************************** */}}
-{{- define "client.cookieSecretName" -}}
+{{- define "ai-optimizer.client.cookieSecretName" -}}
 {{- $explicit := .Values.client.cookieSecretName | trim -}}
-{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-client-cookie" .Release.Name }}{{- end -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-client-cookie" (include "ai-optimizer.fullname" .) }}{{- end -}}
 {{- end }}
 
-{{- define "client.cookieSecretKey" -}}
+{{- define "ai-optimizer.client.cookieSecretKey" -}}
 {{- $explicit := .Values.client.cookieSecretKey | trim -}}
 {{- if $explicit -}}{{ $explicit }}{{- else -}}cookieSecret{{- end -}}
 {{- end }}
@@ -230,7 +234,7 @@ Validate that client.password and client.passwordSecretName are not both set.
 Either, neither, or one alone is acceptable: neither means the page gate is
 disabled; setting both is ambiguous.
 *********************************************** */}}
-{{- define "client.passwordBothSet.fail" -}}
+{{- define "ai-optimizer.client.passwordBothSet.fail" -}}
   {{- $password := .Values.client.password | trim | default "" -}}
   {{- $secretName := .Values.client.passwordSecretName | trim | default "" -}}
   {{- if and (ne $password "") (ne $secretName "") -}}
@@ -242,12 +246,12 @@ disabled; setting both is ambiguous.
 Define the Client Password Secret name/key with defaults. Same trimming
 rationale as the cookie helpers: whitespace-only values are treated as unset.
 *********************************************** */}}
-{{- define "client.passwordSecretName" -}}
+{{- define "ai-optimizer.client.passwordSecretName" -}}
 {{- $explicit := .Values.client.passwordSecretName | trim -}}
-{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-client-password" .Release.Name }}{{- end -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-client-password" (include "ai-optimizer.fullname" .) }}{{- end -}}
 {{- end }}
 
-{{- define "client.passwordSecretKey" -}}
+{{- define "ai-optimizer.client.passwordSecretKey" -}}
 {{- $explicit := .Values.client.passwordSecretKey | trim -}}
 {{- if $explicit -}}{{ $explicit }}{{- else -}}password{{- end -}}
 {{- end }}
@@ -256,7 +260,7 @@ rationale as the cookie helpers: whitespace-only values are treated as unset.
 Checksum used to roll the client Deployment when the cookie-signing secret
 changes. Two branches:
 
-  * Inline path (.Values.client.cookieSecret set): hash the rendered secret.yaml.
+  * Inline path (.Values.client.cookieSecret set): hash the rendered cookie-secret.yaml.
     The hash changes whenever the chart-managed Secret's value changes.
 
   * External path (.Values.client.cookieSecretName set): use `lookup` to read
@@ -270,12 +274,12 @@ Rotation workflow for the external path: operator rotates the Secret, then
 runs `helm upgrade` (or equivalent CD step). Fully automated rotation on
 Secret-change requires a reloader controller and is out of scope for this chart.
 *********************************************** */}}
-{{- define "client.cookieSecretChecksum" -}}
+{{- define "ai-optimizer.client.cookieSecretChecksum" -}}
 {{- if .Values.client.cookieSecret | trim -}}
-{{- include (print $.Template.BasePath "/client/secret.yaml") . | sha256sum -}}
+{{- include (print $.Template.BasePath "/client/cookie-secret.yaml") . | sha256sum -}}
 {{- else -}}
-  {{- $name := include "client.cookieSecretName" . -}}
-  {{- $key := include "client.cookieSecretKey" . -}}
+  {{- $name := include "ai-optimizer.client.cookieSecretName" . -}}
+  {{- $key := include "ai-optimizer.client.cookieSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
   {{- if and $found $found.data (hasKey $found.data $key) -}}
 {{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
@@ -290,7 +294,7 @@ Secret-change requires a reloader controller and is out of scope for this chart.
 Checksum used to roll the client Deployment when the shared password Secret
 changes. Mirrors client.cookieSecretChecksum with three branches:
 
-  * Inline path (.Values.client.password set): hash the rendered secret.yaml.
+  * Inline path (.Values.client.password set): hash the rendered password-secret.yaml.
     The cookie checksum already hashes the same file, so when BOTH cookie and
     password are inline a value change on either rotates the pod — accepted
     over-rotation; under-rotation is the bug we are preventing.
@@ -306,12 +310,12 @@ changes. Mirrors client.cookieSecretChecksum with three branches:
     env entry is rendered in this branch, so the pod has no dependency on a
     password Secret and the annotation never needs to change.
 *********************************************** */}}
-{{- define "client.passwordSecretChecksum" -}}
+{{- define "ai-optimizer.client.passwordSecretChecksum" -}}
 {{- if .Values.client.password | trim -}}
-{{- include (print $.Template.BasePath "/client/secret.yaml") . | sha256sum -}}
+{{- include (print $.Template.BasePath "/client/password-secret.yaml") . | sha256sum -}}
 {{- else if .Values.client.passwordSecretName | trim -}}
-  {{- $name := include "client.passwordSecretName" . -}}
-  {{- $key := include "client.passwordSecretKey" . -}}
+  {{- $name := include "ai-optimizer.client.passwordSecretName" . -}}
+  {{- $key := include "ai-optimizer.client.passwordSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
   {{- if and $found $found.data (hasKey $found.data $key) -}}
 {{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
@@ -328,7 +332,7 @@ changes. Mirrors client.cookieSecretChecksum with three branches:
 Set the path based on baseUrlPath
 Always returns a path with leading and trailing slashes for proper concatenation.
 *********************************************** */}}
-{{- define "global.getPath" -}}
+{{- define "ai-optimizer.getPath" -}}
   {{- $baseUrlPath := .Values.global.baseUrlPath | default "" -}}
   {{- if eq $baseUrlPath "" -}}
     /
@@ -348,24 +352,24 @@ Always returns a path with leading and trailing slashes for proper concatenation
 {{/* ******************************************
 Define the serviceName and serviceUrl of the API Server for Client Access.
 *********************************************** */}}
-{{- define "server.serviceName" -}}
-{{ include "global.fullname" . }}-server-http
+{{- define "ai-optimizer.server.serviceName" -}}
+{{ include "ai-optimizer.fullname" . }}-server-http
 {{- end -}}
 
-{{- define "server.serviceUrl" -}}
-http://{{ include "server.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local
+{{- define "ai-optimizer.server.serviceUrl" -}}
+http://{{ include "ai-optimizer.server.serviceName" . }}.{{ .Release.Namespace }}.svc
 {{- end -}}
 
 
 {{/* ******************************************
 Define serviceName and serviceUrl of the Ollama Server for API Server Access.
 *********************************************** */}}
-{{- define "ollama.serviceName" -}}
-{{ .Release.Name }}-ollama-11434
+{{- define "ai-optimizer.ollama.serviceName" -}}
+{{ include "ai-optimizer.fullname" . }}-ollama-11434
 {{- end -}}
 
-{{- define "ollama.serviceUrl" -}}
-http://{{ include "ollama.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster.local:11434
+{{- define "ai-optimizer.ollama.serviceUrl" -}}
+http://{{ include "ai-optimizer.ollama.serviceName" . }}.{{ .Release.Namespace }}.svc:11434
 {{- end -}}
 
 
@@ -373,22 +377,22 @@ http://{{ include "ollama.serviceName" . }}.{{ .Release.Namespace }}.svc.cluster
 Env Secret Name Helpers
 Returns either the user-provided secretName or a generated name.
 *********************************************** */}}
-{{- define "server.envSecretName" -}}
+{{- define "ai-optimizer.server.envSecretName" -}}
 {{- $envSecret := .Values.server.envSecret | default dict -}}
-{{- $envSecret.secretName | default (printf "%s-server-env" (include "global.fullname" .)) -}}
+{{- $envSecret.secretName | default (printf "%s-server-env" (include "ai-optimizer.fullname" .)) -}}
 {{- end -}}
 
-{{- define "server.envSecretKey" -}}
+{{- define "ai-optimizer.server.envSecretKey" -}}
 {{- $envSecret := .Values.server.envSecret | default dict -}}
 {{- $envSecret.secretKey | default "server.env" -}}
 {{- end -}}
 
-{{- define "client.envSecretName" -}}
+{{- define "ai-optimizer.client.envSecretName" -}}
 {{- $envSecret := .Values.client.envSecret | default dict -}}
-{{- $envSecret.secretName | default (printf "%s-client-env" (include "global.fullname" .)) -}}
+{{- $envSecret.secretName | default (printf "%s-client-env" (include "ai-optimizer.fullname" .)) -}}
 {{- end -}}
 
-{{- define "client.envSecretKey" -}}
+{{- define "ai-optimizer.client.envSecretKey" -}}
 {{- $envSecret := .Values.client.envSecret | default dict -}}
 {{- $envSecret.secretKey | default "client.env" -}}
 {{- end -}}
@@ -407,13 +411,13 @@ Secret's live content; falls back to a name-keyed sentinel during
 `helm template`/`--dry-run`/first install so the annotation is still
 stable and distinct per configuration.
 *********************************************** */}}
-{{- define "server.envSecretChecksum" -}}
+{{- define "ai-optimizer.server.envSecretChecksum" -}}
 {{- $envSecret := .Values.server.envSecret | default dict -}}
 {{- $secretName := $envSecret.secretName | default "" | trim -}}
 {{- if eq $secretName "" -}}
 {{- include (print $.Template.BasePath "/server/env-secret.yaml") . | sha256sum -}}
 {{- else -}}
-  {{- $key := include "server.envSecretKey" . -}}
+  {{- $key := include "ai-optimizer.server.envSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $secretName -}}
   {{- if and $found $found.data (hasKey $found.data $key) -}}
 {{- printf "live:%s:%s" $secretName (index $found.data $key) | sha256sum -}}
@@ -423,13 +427,13 @@ stable and distinct per configuration.
 {{- end -}}
 {{- end -}}
 
-{{- define "client.envSecretChecksum" -}}
+{{- define "ai-optimizer.client.envSecretChecksum" -}}
 {{- $envSecret := .Values.client.envSecret | default dict -}}
 {{- $secretName := $envSecret.secretName | default "" | trim -}}
 {{- if eq $secretName "" -}}
 {{- include (print $.Template.BasePath "/client/env-secret.yaml") . | sha256sum -}}
 {{- else -}}
-  {{- $key := include "client.envSecretKey" . -}}
+  {{- $key := include "ai-optimizer.client.envSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $secretName -}}
   {{- if and $found $found.data (hasKey $found.data $key) -}}
 {{- printf "live:%s:%s" $secretName (index $found.data $key) | sha256sum -}}
@@ -446,9 +450,9 @@ Compose the server's `.env.{AIO_ENV}` content as a dotenv string
 Secret-mounted file rather than as pod env entries. Operator-supplied
 `server.envSecret.content` overrides chart defaults via mergeOverwrite.
 *********************************************** */}}
-{{- define "server.envContent" -}}
+{{- define "ai-optimizer.server.envContent" -}}
 {{- $out := dict -}}
-{{- $_ := set $out "AIO_SERVER_URL_PREFIX" (include "global.getPath" . | trimSuffix "/") -}}
+{{- $_ := set $out "AIO_SERVER_URL_PREFIX" (include "ai-optimizer.getPath" . | trimSuffix "/") -}}
 {{- $_ = set $out "AIO_MAX_CLIENTS" (.Values.server.maxClients | toString) -}}
 {{- with .Values.server.ssl -}}
 {{- if .enabled -}}
@@ -457,14 +461,14 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 {{- if .keyFile -}}{{- $_ = set $out "AIO_SERVER_SSL_KEY_FILE" .keyFile -}}{{- end -}}
 {{- end -}}
 {{- end -}}
-{{- with .Values.server.oci_config -}}
+{{- with .Values.server.ociConfig -}}
 {{- if (default false .oke) -}}
 {{- $_ = set $out "OCI_CLI_REGION" .region -}}
 {{- $_ = set $out "OCI_CLI_AUTH" "oke_workload_identity" -}}
 {{- end -}}
 {{- end -}}
 {{- if .Values.ollama.enabled -}}
-{{- $_ = set $out "ON_PREM_OLLAMA_URL" (include "ollama.serviceUrl" .) -}}
+{{- $_ = set $out "ON_PREM_OLLAMA_URL" (include "ai-optimizer.ollama.serviceUrl" .) -}}
 {{- end -}}
 {{- with .Values.server.envSecret -}}{{- with .content -}}
 {{- $_ = mergeOverwrite $out . -}}
@@ -480,9 +484,9 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 Compose the client's `.env.{AIO_ENV}` content as a dotenv string.
 Same contract as server.envContent.
 *********************************************** */}}
-{{- define "client.envContent" -}}
+{{- define "ai-optimizer.client.envContent" -}}
 {{- $out := dict -}}
-{{- $_ := set $out "AIO_SERVER_URL" (include "server.serviceUrl" .) -}}
+{{- $_ := set $out "AIO_SERVER_URL" (include "ai-optimizer.server.serviceUrl" .) -}}
 {{- $_ = set $out "AIO_SERVER_PORT" (.Values.server.service.port | default 8000 | toString) -}}
 {{- with .Values.client.ssl -}}
 {{- if .enabled -}}
@@ -505,13 +509,13 @@ Same contract as server.envContent.
 {{/* ******************************************
 Database Secret Name
 *********************************************** */}}
-{{- define "server.databaseSecret" -}}
-{{- $authN := .Values.server.database.authN | default dict }}
-{{- $secretName := $authN.secretName | default "" }}
+{{- define "ai-optimizer.server.databaseSecret" -}}
+{{- $authn := .Values.server.database.authn | default dict }}
+{{- $secretName := $authn.secretName | default "" }}
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
-  {{- printf "%s-db-authn" .Release.Name -}}
+  {{- printf "%s-db-authn" (include "ai-optimizer.fullname" .) -}}
 {{- end -}}
 {{- end }}
 
@@ -519,13 +523,13 @@ Database Secret Name
 {{/* ******************************************
 Database Privileged Secret Name
 *********************************************** */}}
-{{- define "server.databasePrivSecret" -}}
-{{- $authN := .Values.server.database.privAuthN | default dict }}
-{{- $secretName := $authN.secretName | default "" }}
+{{- define "ai-optimizer.server.databasePrivSecret" -}}
+{{- $privAuthn := .Values.server.database.privAuthn | default dict }}
+{{- $secretName := $privAuthn.secretName | default "" }}
 {{- if $secretName -}}
   {{- $secretName -}}
 {{- else -}}
-  {{- printf "%s-db-priv-authn" .Release.Name -}}
+  {{- printf "%s-db-priv-authn" (include "ai-optimizer.fullname" .) -}}
 {{- end -}}
 {{- end }}
 
@@ -533,29 +537,29 @@ Database Privileged Secret Name
 {{/* ******************************************
 Environment to include Database Authentication
 *********************************************** */}}
-{{- define "server.database.authN" -}}
+{{- define "ai-optimizer.server.database.authn" -}}
 - name: DB_USERNAME
   valueFrom:
     secretKeyRef:
-        name: {{ include "server.databaseSecret" . }}
-        key: {{ default "username" .Values.server.database.authN.usernameKey }}
+        name: {{ include "ai-optimizer.server.databaseSecret" . }}
+        key: {{ default "username" .Values.server.database.authn.usernameKey }}
 - name: DB_PASSWORD
   valueFrom:
     secretKeyRef:
-        name: {{ include "server.databaseSecret" . }}
-        key: {{ default "password" .Values.server.database.authN.passwordKey }}
+        name: {{ include "ai-optimizer.server.databaseSecret" . }}
+        key: {{ default "password" .Values.server.database.authn.passwordKey }}
 - name: DB_DSN
   valueFrom:
     secretKeyRef:
-        name: {{ include "server.databaseSecret" . }}
-        key: {{ default "service" .Values.server.database.authN.serviceKey }}
+        name: {{ include "ai-optimizer.server.databaseSecret" . }}
+        key: {{ default "service" .Values.server.database.authn.serviceKey }}
 {{- end }}
 
 
 {{/* ******************************************
 Create the pull model list for Ollama
 *********************************************** */}}
-{{- define "ollama.modelPullList" -}}
+{{- define "ai-optimizer.ollama.modelPullList" -}}
   {{- if and .Values.ollama.models.enabled .Values.ollama.models.modelPullList }}
     {{- join " " .Values.ollama.models.modelPullList -}}
   {{- else }}
@@ -565,10 +569,10 @@ Create the pull model list for Ollama
 
 {{/* ******************************************
 Validate that server.database.adb.serviceName is provided when database type is ADB-S
-and no external authN secret overrides the default.
+and no external authn secret overrides the default.
 *********************************************** */}}
-{{- define "server.database.validateADBSType" -}}
-  {{- if eq (include "server.database.isADBS" .) "true" -}}
+{{- define "ai-optimizer.server.database.validateADBSType" -}}
+  {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" -}}
     {{- $adb := .Values.server.database.adb | default dict -}}
     {{- $serviceName := $adb.serviceName | default "" -}}
     {{- if eq ($serviceName | trim) "" -}}
@@ -581,7 +585,7 @@ and no external authN secret overrides the default.
 Validate that server.database.other fields are provided when database type is OTHER.
 Requires either 'dsn' OR all of (host, port, serviceName).
 *********************************************** */}}
-{{- define "server.database.validateOtherType" -}}
+{{- define "ai-optimizer.server.database.validateOtherType" -}}
   {{- if .Values.server.database -}}
     {{- $dbType := .Values.server.database.type | default "" -}}
 
@@ -627,26 +631,64 @@ Requires either 'dsn' OR all of (host, port, serviceName).
           {{- fail "server.database.type is OTHER: must provide either 'dsn' OR all of (host, port, serviceName)" -}}
         {{- end -}}
       {{- end -}}
+
+      {{- /* OTHER mode owns the user lifecycle but the chart doesn't run a
+             new database — the application user must already exist on the
+             external DB or be creatable by the chart's init Job.
+             Require explicit operator intent so a chart-generated random
+             password isn't paired with a user that was never created:
+               * authn.secretName set → operator brings their own user/Secret,
+                 init Job is skipped.
+               * privAuthn.secretName set → chart provisions the AI_OPTIMIZER
+                 user via the init Job using the operator's privileged creds.
+             Empty for both means the chart would render a Secret with
+             random credentials that the external DB cannot authenticate. */ -}}
+      {{- $authnSecret := include "ai-optimizer.server.database.explicitAuthnName" . -}}
+      {{- $privAuthSecret := include "ai-optimizer.server.database.explicitPrivAuthnName" . -}}
+      {{- if and (eq $authnSecret "") (eq $privAuthSecret "") -}}
+        {{- fail "server.database.type=OTHER requires either server.database.authn.secretName (a pre-created Secret with valid external-DB credentials) or server.database.privAuthn.secretName (a Secret with privileged credentials so the chart can provision the application user). Without one of these, the chart would generate random credentials that the external database cannot authenticate." -}}
+      {{- end -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
 
+
 {{/* ******************************************
-Validate that if server.oci_config.configMapName is specified,
+DB Initialization Job gating: decide whether the init Job + ConfigMap
+render. Returns "true" when init should run, empty otherwise. For
+chart-managed databases (SIDB-FREE / ADB-FREE / ADB-S) the existing
+truthy `privAuthN` check is the gate; for OTHER mode we additionally
+require `privAuthn.secretName` so a BYO-user install (authn.secretName
+provided, no priv creds) does not trigger a doomed init attempt.
+*********************************************** */}}
+{{- define "ai-optimizer.server.database.shouldRunInit" -}}
+{{- $db := .Values.server.database | default dict -}}
+{{- $type := $db.type | default "" -}}
+{{- if and $db $type $db.privAuthn -}}
+  {{- if eq (include "ai-optimizer.server.database.isOther" .) "true" -}}
+    {{- if ne (include "ai-optimizer.server.database.explicitPrivAuthnName" .) "" -}}true{{- end -}}
+  {{- else -}}
+true
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ******************************************
+Validate that if server.ociConfig.configMapName is specified,
 then none of the other OCI config values (tenancy, user, fingerprint, region) should be provided.
 *********************************************** */}}
-{{- define "server.ociConfig.validate" -}}
-  {{- if .Values.server.oci_config -}}
-    {{- $configMapName := .Values.server.oci_config.configMapName | trim | default "" -}}
-    {{- $tenancy := .Values.server.oci_config.tenancy | trim | default "" -}}
-    {{- $user := .Values.server.oci_config.user | trim | default "" -}}
-    {{- $fingerprint := .Values.server.oci_config.fingerprint | trim | default "" -}}
-    {{- $region := .Values.server.oci_config.region | trim | default "" -}}
+{{- define "ai-optimizer.server.ociConfig.validate" -}}
+  {{- if .Values.server.ociConfig -}}
+    {{- $configMapName := .Values.server.ociConfig.configMapName | trim | default "" -}}
+    {{- $tenancy := .Values.server.ociConfig.tenancy | trim | default "" -}}
+    {{- $user := .Values.server.ociConfig.user | trim | default "" -}}
+    {{- $fingerprint := .Values.server.ociConfig.fingerprint | trim | default "" -}}
+    {{- $region := .Values.server.ociConfig.region | trim | default "" -}}
 
     {{- /* If configMapName is provided, ensure no other config values are provided */ -}}
     {{- if ne $configMapName "" -}}
       {{- if or (ne $tenancy "") (ne $user "") (ne $fingerprint "") (ne $region "") -}}
-        {{- fail "server.oci_config.configMapName is specified: you cannot also provide tenancy, user, fingerprint, or region. Either provide configMapName to reference an existing ConfigMap, OR provide the config values to create a new ConfigMap." -}}
+        {{- fail "server.ociConfig.configMapName is specified: you cannot also provide tenancy, user, fingerprint, or region. Either provide configMapName to reference an existing ConfigMap, OR provide the config values to create a new ConfigMap." -}}
       {{- end -}}
     {{- end -}}
   {{- end -}}
@@ -658,38 +700,38 @@ ADB-S Secret Name Helpers
 These helpers return the secret names for ADB-S wallet/tns-admin,
 supporting either existing secrets or auto-generated ones.
 *********************************************** */}}
-{{- define "server.database.useExistingAdbSecrets" -}}
+{{- define "ai-optimizer.server.database.useExistingAdbSecrets" -}}
 {{- $adb := .Values.server.database.adb | default dict -}}
 {{- default false $adb.useExisting -}}
 {{- end -}}
 
-{{- define "server.database.adbTnsAdminSecret" -}}
+{{- define "ai-optimizer.server.database.adbTnsAdminSecret" -}}
 {{- $adb := .Values.server.database.adb | default dict -}}
 {{- $tnsAdmin := $adb.tnsAdminSecretName | default "" -}}
 {{- if ne $tnsAdmin "" -}}
   {{- $tnsAdmin -}}
 {{- else -}}
-  {{- printf "%s-adb-tns-admin-%d" .Release.Name .Release.Revision -}}
+  {{- printf "%s-adb-tns-admin-%d" (include "ai-optimizer.fullname" .) .Release.Revision -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "server.database.adbWalletPassSecret" -}}
+{{- define "ai-optimizer.server.database.adbWalletPassSecret" -}}
 {{- $adb := .Values.server.database.adb | default dict -}}
 {{- $walletPass := $adb.walletPassSecretName | default "" -}}
 {{- if ne $walletPass "" -}}
   {{- $walletPass -}}
 {{- else -}}
-  {{- printf "%s-adb-wallet-pass-%d" .Release.Name .Release.Revision -}}
+  {{- printf "%s-adb-wallet-pass-%d" (include "ai-optimizer.fullname" .) .Release.Revision -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "server.database.adbWalletPassSecretKey" -}}
+{{- define "ai-optimizer.server.database.adbWalletPassSecretKey" -}}
 {{- $adb := .Values.server.database.adb | default dict -}}
 {{- $walletPassKey := $adb.walletPassSecretKey | default "" -}}
 {{- if ne $walletPassKey "" -}}
   {{- $walletPassKey -}}
 {{- else -}}
-  {{- include "server.database.adbWalletPassSecret" . -}}
+  {{- include "ai-optimizer.server.database.adbWalletPassSecret" . -}}
 {{- end -}}
 {{- end -}}
 
@@ -698,46 +740,46 @@ supporting either existing secrets or auto-generated ones.
 Database Type Helpers
 These helpers provide consistent database type checking across templates.
 *********************************************** */}}
-{{- define "server.database.type" -}}
+{{- define "ai-optimizer.server.database.type" -}}
 {{- if .Values.server.database -}}
   {{- .Values.server.database.type -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "server.database.isSIDB" -}}
-{{- eq (include "server.database.type" .) "SIDB-FREE" -}}
+{{- define "ai-optimizer.server.database.isSIDB" -}}
+{{- eq (include "ai-optimizer.server.database.type" .) "SIDB-FREE" -}}
 {{- end -}}
 
-{{- define "server.database.isADBFree" -}}
-{{- eq (include "server.database.type" .) "ADB-FREE" -}}
+{{- define "ai-optimizer.server.database.isADBFree" -}}
+{{- eq (include "ai-optimizer.server.database.type" .) "ADB-FREE" -}}
 {{- end -}}
 
-{{- define "server.database.isADBS" -}}
-{{- eq (include "server.database.type" .) "ADB-S" -}}
+{{- define "ai-optimizer.server.database.isADBS" -}}
+{{- eq (include "ai-optimizer.server.database.type" .) "ADB-S" -}}
 {{- end -}}
 
-{{- define "server.database.isOther" -}}
-{{- eq (include "server.database.type" .) "OTHER" -}}
+{{- define "ai-optimizer.server.database.isOther" -}}
+{{- eq (include "ai-optimizer.server.database.type" .) "OTHER" -}}
 {{- end -}}
 
-{{- define "server.database.isADB" -}}
-{{- or (eq (include "server.database.type" .) "ADB-S") (eq (include "server.database.type" .) "ADB-FREE") -}}
+{{- define "ai-optimizer.server.database.isADB" -}}
+{{- or (eq (include "ai-optimizer.server.database.type" .) "ADB-S") (eq (include "ai-optimizer.server.database.type" .) "ADB-FREE") -}}
 {{- end -}}
 
-{{- define "server.database.isContainerDB" -}}
-{{- or (eq (include "server.database.type" .) "SIDB-FREE") (eq (include "server.database.type" .) "ADB-FREE") -}}
+{{- define "ai-optimizer.server.database.isContainerDB" -}}
+{{- or (eq (include "ai-optimizer.server.database.type" .) "SIDB-FREE") (eq (include "ai-optimizer.server.database.type" .) "ADB-FREE") -}}
 {{- end -}}
 
-{{- define "server.database.needsPrivAuth" -}}
-{{- or (eq (include "server.database.isADB" .) "true") (eq (include "server.database.isOther" .) "true") -}}
+{{- define "ai-optimizer.server.database.needsPrivAuth" -}}
+{{- or (eq (include "ai-optimizer.server.database.isADB" .) "true") (eq (include "ai-optimizer.server.database.isOther" .) "true") -}}
 {{- end -}}
 
 {{/* ******************************************
 Database Service Name Helper
 Returns the short database type prefix (sidb or adb) for service naming.
 *********************************************** */}}
-{{- define "server.database.dbName" -}}
-{{- $dbType := include "server.database.type" . -}}
+{{- define "ai-optimizer.server.database.dbName" -}}
+{{- $dbType := include "ai-optimizer.server.database.type" . -}}
 {{- if $dbType -}}
   {{- lower (split "-" $dbType)._0 -}}
 {{- end -}}
@@ -745,9 +787,74 @@ Returns the short database type prefix (sidb or adb) for service naming.
 
 
 {{/* ******************************************
+Database Service host:port for SIDB/ADB-FREE in-cluster Services.
+Used both as the Service resource name and embedded in the connection
+service key of the auth/priv-auth Secrets. Centralized so the resource
+name and the consumer-side reference stay in lock-step.
+*********************************************** */}}
+{{- define "ai-optimizer.server.database.serviceName" -}}
+{{- printf "%s-%s-1521" (include "ai-optimizer.fullname" .) (include "ai-optimizer.server.database.dbName" .) -}}
+{{- end -}}
+
+
+{{/* ******************************************
+Resource name of the AutonomousDatabase CR (ADB-S).
+*********************************************** */}}
+{{- define "ai-optimizer.server.database.adbResourceName" -}}
+{{- printf "%s-adb-s" (include "ai-optimizer.fullname" .) -}}
+{{- end -}}
+
+
+{{/* ******************************************
+Connection-string value for the configured database type. Shared by the
+authN and priv-authN Secret renderers so the SIDB/ADB-FREE host:port,
+the ADB-S TNS alias, and the OTHER DSN/host:port formats stay in lock-step.
+*********************************************** */}}
+{{- define "ai-optimizer.server.database.connectionString" -}}
+{{- if or (eq (include "ai-optimizer.server.database.isSIDB" .) "true") (eq (include "ai-optimizer.server.database.isADBFree" .) "true") -}}
+{{- printf "%s:1521/FREEPDB1" (include "ai-optimizer.server.database.serviceName" .) -}}
+{{- else if eq (include "ai-optimizer.server.database.isADBS" .) "true" -}}
+{{- .Values.server.database.adb.serviceName -}}
+{{- else if eq (include "ai-optimizer.server.database.isOther" .) "true" -}}
+{{- $dsn := .Values.server.database.other.dsn | default "" | trim -}}
+{{- if ne $dsn "" -}}
+{{- $dsn -}}
+{{- else -}}
+{{- printf "%s:%v/%s" .Values.server.database.other.host .Values.server.database.other.port .Values.server.database.other.serviceName -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+
+{{/* ******************************************
+Operator-pinned auth/priv-auth Secret names. Empty when the operator
+left the corresponding `secretName` blank (chart owns the default name);
+non-empty when the operator pinned an externally managed Secret. Centralised
+so the `toString | trim` normalisation can't drift across the templates
+and helpers that gate on the explicit-name signal.
+*********************************************** */}}
+{{- define "ai-optimizer.server.database.explicitAuthnName" -}}
+{{- (dig "authn" "secretName" "" (.Values.server.database | default dict)) | toString | trim -}}
+{{- end -}}
+
+{{- define "ai-optimizer.server.database.explicitPrivAuthnName" -}}
+{{- (dig "privAuthn" "secretName" "" (.Values.server.database | default dict)) | toString | trim -}}
+{{- end -}}
+
+
+{{/* ******************************************
+Default name of the chart-managed OCI config ConfigMap.
+Used when server.ociConfig.configMapName is not overridden.
+*********************************************** */}}
+{{- define "ai-optimizer.server.ociConfigMapName" -}}
+{{- .Values.server.ociConfig.configMapName | default (printf "%s-oci-config" (include "ai-optimizer.fullname" .)) -}}
+{{- end -}}
+
+
+{{/* ******************************************
 Password Generator for Databases
 *********************************************** */}}
-{{- define "server.randomPassword" -}}
+{{- define "ai-optimizer.server.randomPassword" -}}
   {{- $minLen := 12 -}}
   {{- $maxLen := 30 -}}
   {{- $one := int 1 -}}
@@ -800,7 +907,7 @@ Keys are intentionally NOT encoded — OTel resource attribute keys
 forbid commas, equals, and whitespace by spec, and encoding them
 would mask user error rather than surface it.
 *********************************************** */}}
-{{- define "server.otel.resourceAttributes" -}}
+{{- define "ai-optimizer.server.otel.resourceAttributes" -}}
   {{- $pairs := list -}}
   {{- range $k, $v := . -}}
     {{- $encoded := $v | toString | urlquery | replace "+" "%20" -}}
@@ -819,7 +926,7 @@ The rules below mirror the application's own exporter-selection and
 log-export gating; comments next to each check describe the condition
 each check handles.
 *********************************************** */}}
-{{- define "server.otel.validate" -}}
+{{- define "ai-optimizer.server.otel.validate" -}}
   {{- $otel := .Values.server.otel | default dict -}}
   {{- if $otel.enabled -}}
 
@@ -833,9 +940,9 @@ each check handles.
            Each helper returns "" when the subchart is disabled OR when
            the collector port for the resolved protocol is disabled
            (`signoz.otelCollector.ports.<proto>.enabled=false`). */ -}}
-    {{- $signozEnabled := ne (include "signoz.baseUrl" .) "" -}}
-    {{- $signozTracesEp := include "server.otel.defaultTracesEndpoint" . -}}
-    {{- $signozLogsEp := include "server.otel.defaultLogsEndpoint" . -}}
+    {{- $signozEnabled := ne (include "ai-optimizer.signoz.baseUrl" .) "" -}}
+    {{- $signozTracesEp := include "ai-optimizer.server.otel.defaultTracesEndpoint" . -}}
+    {{- $signozLogsEp := include "ai-optimizer.server.otel.defaultLogsEndpoint" . -}}
 
     {{- /* Parse tracesExporter strictly: every non-empty token must be one
            of the supported sentinels. Failing per-token (rather than only
@@ -857,7 +964,7 @@ each check handles.
       {{- else if has $tok $supportedTracesExporters -}}
         {{- $supported = append $supported $tok -}}
       {{- else -}}
-        {{- fail (printf "server.otel.tracesExporter contains unsupported token %q. Supported tokens: \"otlp\", \"console\", \"none\". The application would silently drop this token at runtime." $tok) -}}
+        {{- fail (printf "ai-optimizer.server.otel.tracesExporter contains unsupported token %q. Supported tokens: \"otlp\", \"console\", \"none\". The application would silently drop this token at runtime." $tok) -}}
       {{- end -}}
     {{- end -}}
 
@@ -865,7 +972,7 @@ each check handles.
            (e.g. ",,, "). Per-token loop above accepts each as a skip,
            leaving $supported empty. */ -}}
     {{- if eq (len $supported) 0 -}}
-      {{- fail (printf "server.otel.tracesExporter=%q has no supported entries (use \"otlp\", \"console\", \"none\", or a comma-separated mix). The application would silently produce no telemetry." (trim $rawExporter)) -}}
+      {{- fail (printf "ai-optimizer.server.otel.tracesExporter=%q has no supported entries (use \"otlp\", \"console\", \"none\", or a comma-separated mix). The application would silently produce no telemetry." (trim $rawExporter)) -}}
     {{- end -}}
 
     {{- /* "none" is the documented opt-out sentinel and must be the ONLY
@@ -875,7 +982,7 @@ each check handles.
            intent. Reject mixed lists rather than silently honoring (or
            silently ignoring) half of the user's input. */ -}}
     {{- if and (has "none" $supported) (gt (len ($supported | uniq)) 1) -}}
-      {{- fail "server.otel.tracesExporter: \"none\" is the opt-out sentinel and must be the only token. The application's exporter intersection silently drops \"none\" when mixed with other tokens; use \"none\" alone to disable, or list only \"otlp\"/\"console\"." -}}
+      {{- fail "ai-optimizer.server.otel.tracesExporter: \"none\" is the opt-out sentinel and must be the only token. The application's exporter intersection silently drops \"none\" when mixed with other tokens; use \"none\" alone to disable, or list only \"otlp\"/\"console\"." -}}
     {{- end -}}
 
     {{- /* OTLP traces require a generic or traces-specific endpoint;
@@ -887,9 +994,9 @@ each check handles.
       {{- /* Distinguish the disabled-port case so the operator gets an
              actionable message rather than the generic "no endpoint". */ -}}
       {{- if and $signozEnabled (eq $endpoint "") (eq $tracesEp "") -}}
-        {{- fail "server.otel: tracesExporter includes \"otlp\" and signoz.enabled=true, but the SigNoz collector port for the resolved traces protocol is disabled. Re-enable signoz.otelCollector.ports.otlp.enabled (or otlp-http.enabled if using http/protobuf), switch protocols, or set server.otel.endpoint / tracesEndpoint explicitly." -}}
+        {{- fail "ai-optimizer.server.otel: tracesExporter includes \"otlp\" and signoz.enabled=true, but the SigNoz collector port for the resolved traces protocol is disabled. Re-enable signoz.otelCollector.ports.otlp.enabled (or otlp-http.enabled if using http/protobuf), switch protocols, or set server.otel.endpoint / tracesEndpoint explicitly." -}}
       {{- else -}}
-        {{- fail "server.otel: tracesExporter includes \"otlp\" but no endpoint is configured. Set server.otel.endpoint or server.otel.tracesEndpoint, enable signoz.enabled to use the in-chart collector, or set tracesExporter=\"console\" for local-only debugging." -}}
+        {{- fail "ai-optimizer.server.otel: tracesExporter includes \"otlp\" but no endpoint is configured. Set server.otel.endpoint or server.otel.tracesEndpoint, enable signoz.enabled to use the in-chart collector, or set tracesExporter=\"console\" for local-only debugging." -}}
       {{- end -}}
     {{- end -}}
 
@@ -905,7 +1012,7 @@ each check handles.
     {{- range $field, $val := dict "protocol" $otel.protocol "tracesProtocol" $otel.tracesProtocol "logsProtocol" $otel.logsProtocol -}}
       {{- $v := $val | default "" | toString | trim | lower -}}
       {{- if and (ne $v "") (not (has $v $allowedProtocols)) -}}
-        {{- fail (printf "server.otel.%s=%q is not a supported OTLP protocol. Use \"grpc\" (port 4317) or \"http/protobuf\" (port 4318); empty falls back to the SDK default of grpc." $field (toString $val)) -}}
+        {{- fail (printf "ai-optimizer.server.otel.%s=%q is not a supported OTLP protocol. Use \"grpc\" (port 4317) or \"http/protobuf\" (port 4318); empty falls back to the SDK default of grpc." $field (toString $val)) -}}
       {{- end -}}
     {{- end -}}
 
@@ -933,7 +1040,7 @@ each check handles.
       {{- else if eq $tok "none" -}}
         {{- $hasNoneLogs = true -}}
       {{- else -}}
-        {{- fail (printf "server.otel.logsExporter contains unsupported token %q. This application's log exporter supports only \"otlp\" or \"none\"." $tok) -}}
+        {{- fail (printf "ai-optimizer.server.otel.logsExporter contains unsupported token %q. This application's log exporter supports only \"otlp\" or \"none\"." $tok) -}}
       {{- end -}}
     {{- end -}}
 
@@ -943,7 +1050,7 @@ each check handles.
            rejects it is more confusing than one consistent rule.
            Operators learn one thing: "none" stands alone, on either field. */ -}}
     {{- if and $hasNoneLogs $hasOtlpLogs -}}
-      {{- fail "server.otel.logsExporter: \"none\" is the opt-out sentinel and must be the only token. Use \"none\" alone to suppress log export, or \"otlp\" alone to ship logs." -}}
+      {{- fail "ai-optimizer.server.otel.logsExporter: \"none\" is the opt-out sentinel and must be the only token. Use \"none\" alone to suppress log export, or \"otlp\" alone to ship logs." -}}
     {{- end -}}
 
     {{- /* logsEndpoint without OTLP in traces is wasted configuration: the
@@ -951,7 +1058,7 @@ each check handles.
            Skipped when the user has explicitly opted out via "none" — the
            wasted-config concern is moot because the app ignores the endpoint. */ -}}
     {{- if and (ne $logsEp "") (not (has "otlp" $supported)) (not $hasNoneLogs) -}}
-      {{- fail "server.otel.logsEndpoint is set but tracesExporter does not include \"otlp\"; the application activates log export only when OTLP traces are also active. Add \"otlp\" to tracesExporter, set logsExporter=\"none\" to acknowledge the opt-out, or remove logsEndpoint." -}}
+      {{- fail "ai-optimizer.server.otel.logsEndpoint is set but tracesExporter does not include \"otlp\"; the application activates log export only when OTLP traces are also active. Add \"otlp\" to tracesExporter, set logsExporter=\"none\" to acknowledge the opt-out, or remove logsEndpoint." -}}
     {{- end -}}
 
     {{- /* logsEnabled gates the application's log-export path. Three
@@ -968,17 +1075,17 @@ each check handles.
            the app returns from the log-init path without needing any of them. */ -}}
     {{- if and $otel.logsEnabled (not $hasNoneLogs) -}}
       {{- if not (has "otlp" $supported) -}}
-        {{- fail "server.otel.logsEnabled is true but tracesExporter does not include \"otlp\"; the application gates log export on OTLP traces being active. Either include \"otlp\" in tracesExporter (and set an endpoint), set logsExporter=\"none\" to opt out of log export, or disable logsEnabled." -}}
+        {{- fail "ai-optimizer.server.otel.logsEnabled is true but tracesExporter does not include \"otlp\"; the application gates log export on OTLP traces being active. Either include \"otlp\" in tracesExporter (and set an endpoint), set logsExporter=\"none\" to opt out of log export, or disable logsEnabled." -}}
       {{- end -}}
       {{- if and (eq $endpoint "") (eq $logsEp "") (eq $signozLogsEp "") -}}
         {{- if and $signozEnabled -}}
-          {{- fail "server.otel.logsEnabled is true and signoz.enabled=true, but the SigNoz collector port for the resolved logs protocol is disabled. Re-enable signoz.otelCollector.ports.otlp.enabled (or otlp-http.enabled if using http/protobuf), switch protocols, set server.otel.endpoint / logsEndpoint explicitly, set logsExporter=\"none\" to opt out, or disable logsEnabled." -}}
+          {{- fail "ai-optimizer.server.otel.logsEnabled is true and signoz.enabled=true, but the SigNoz collector port for the resolved logs protocol is disabled. Re-enable signoz.otelCollector.ports.otlp.enabled (or otlp-http.enabled if using http/protobuf), switch protocols, set server.otel.endpoint / logsEndpoint explicitly, set logsExporter=\"none\" to opt out, or disable logsEnabled." -}}
         {{- else -}}
-          {{- fail "server.otel.logsEnabled is true but no log endpoint is reachable. Set server.otel.endpoint (generic, used by both signals) or server.otel.logsEndpoint, enable signoz.enabled to use the in-chart collector, set logsExporter=\"none\" to opt out, or disable logsEnabled. server.otel.tracesEndpoint alone activates only traces; the application's log exporter does not read it." -}}
+          {{- fail "ai-optimizer.server.otel.logsEnabled is true but no log endpoint is reachable. Set server.otel.endpoint (generic, used by both signals) or server.otel.logsEndpoint, enable signoz.enabled to use the in-chart collector, set logsExporter=\"none\" to opt out, or disable logsEnabled. server.otel.tracesEndpoint alone activates only traces; the application's log exporter does not read it." -}}
         {{- end -}}
       {{- end -}}
       {{- if and (ne $rawLogsExporter "") (not $hasOtlpLogs) -}}
-        {{- fail (printf "server.otel.logsEnabled is true but logsExporter=%q would silently drop logs at runtime. Use \"otlp\" to ship logs, \"none\" to explicitly suppress them, drop the value to take the default, or disable logsEnabled." $rawLogsExporter) -}}
+        {{- fail (printf "ai-optimizer.server.otel.logsEnabled is true but logsExporter=%q would silently drop logs at runtime. Use \"otlp\" to ship logs, \"none\" to explicitly suppress them, drop the value to take the default, or disable logsEnabled." $rawLogsExporter) -}}
       {{- end -}}
     {{- end -}}
 
@@ -987,7 +1094,7 @@ each check handles.
     {{- $headersSecret := $otel.headersSecret | default dict -}}
     {{- $headersSecretName := $headersSecret.name | default "" | trim -}}
     {{- if and (ne $headers "") (ne $headersSecretName "") -}}
-      {{- fail "server.otel: cannot set both `headers` (plaintext) and `headersSecret.name`. Choose one." -}}
+      {{- fail "ai-optimizer.server.otel: cannot set both `headers` (plaintext) and `headersSecret.name`. Choose one." -}}
     {{- end -}}
 
   {{- end -}}
@@ -1010,7 +1117,7 @@ Helm has no cross-chart helper imports, so a future SigNoz rename of
 `otelCollector` would break the auto-default URL. Chart.yaml pins the
 SigNoz subchart version exactly.
 *********************************************** */}}
-{{- define "signoz.releaseFullname" -}}
+{{- define "ai-optimizer.signoz.releaseFullname" -}}
 {{- $signoz := .Values.signoz | default dict -}}
 {{- if $signoz.enabled -}}
 {{- $override := $signoz.fullnameOverride | default "" | trim -}}
@@ -1031,7 +1138,7 @@ SigNoz subchart version exactly.
        must use this rather than `.Release.Namespace` because users may
        deploy ClickHouse to a separate namespace via the documented
        `signoz.clickhouse.namespace` override. */ -}}
-{{- define "signoz.clickhouseNamespace" -}}
+{{- define "ai-optimizer.signoz.clickhouseNamespace" -}}
 {{- $clickhouse := dig "clickhouse" (dict) (.Values.signoz | default dict) -}}
 {{- $ns := dig "namespace" "" $clickhouse | trim -}}
 {{- default .Release.Namespace $ns -}}
@@ -1041,7 +1148,7 @@ SigNoz subchart version exactly.
        dependency. Mirrors the upstream clickhouse.fullname helper in the
        pinned SigNoz chart so lifecycle hooks can target the operator CR.
        Caller is responsible for gating on `.Values.signoz.enabled`. */ -}}
-{{- define "signoz.clickhouseFullname" -}}
+{{- define "ai-optimizer.signoz.clickhouseFullname" -}}
 {{- $clickhouse := dig "clickhouse" (dict) (.Values.signoz | default dict) -}}
 {{- $override := dig "fullnameOverride" "" $clickhouse | trim -}}
 {{- $nameOverride := dig "nameOverride" "" $clickhouse | trim -}}
@@ -1065,8 +1172,8 @@ SigNoz subchart version exactly.
        configured DNS suffix automatically, so this works on any cluster
        (including those with non-default cluster domains) without a
        chart-side `clusterDomain` knob. */ -}}
-{{- define "signoz.baseUrl" -}}
-{{- $base := include "signoz.releaseFullname" . -}}
+{{- define "ai-optimizer.signoz.baseUrl" -}}
+{{- $base := include "ai-optimizer.signoz.releaseFullname" . -}}
 {{- if ne $base "" -}}
 {{- $collectorName := default "otel-collector" (dig "otelCollector" "name" "" (.Values.signoz | default dict)) -}}
 {{- $svc := printf "%s-%s" $base $collectorName | trunc 63 | trimSuffix "-" -}}
@@ -1079,7 +1186,7 @@ SigNoz subchart version exactly.
        Mirrors `global.apiSecretName` / `client.cookieSecretName`: callers
        use this rather than re-applying `default "signoz-authn"` everywhere
        (chart's authn-secret.yaml + the setup Job's volume mount). */ -}}
-{{- define "signoz.authnSecretName" -}}
+{{- define "ai-optimizer.signoz.authnSecretName" -}}
 {{- .Values.signoz.auth.secretName | default "signoz-authn" -}}
 {{- end -}}
 
@@ -1092,7 +1199,7 @@ SigNoz subchart version exactly.
        and false-negatives the predicate. valueFrom-resolved entries are
        treated as unset (a runtime-resolved boolean toggle is unsupported;
        operators set this knob directly). Returns "true" or "". */ -}}
-{{- define "signoz.rootProvisioningEnabled" -}}
+{{- define "ai-optimizer.signoz.rootProvisioningEnabled" -}}
 {{- $raw := dig "signoz" "env" "SIGNOZ_USER_ROOT_ENABLED" "" (.Values.signoz | default dict) -}}
 {{- $value := "" -}}
 {{- if kindIs "map" $raw -}}
@@ -1106,7 +1213,7 @@ SigNoz subchart version exactly.
 
 {{- /* Configured SigNoz frontend service port (default 8080). Hardcoding
        would break operators who pass through `signoz.signoz.service.port`. */ -}}
-{{- define "signoz.frontendPort" -}}
+{{- define "ai-optimizer.signoz.frontendPort" -}}
 {{- dig "signoz" "service" "port" 8080 (.Values.signoz | default dict) -}}
 {{- end -}}
 
@@ -1115,10 +1222,10 @@ SigNoz subchart version exactly.
        API the setup Job talks to), with port. Mirrors `signoz.baseUrl` but
        targets the frontend service rather than the otel-collector service.
        Returns "" when signoz.enabled is false so callers can gate. */ -}}
-{{- define "signoz.frontendUrl" -}}
-{{- $base := include "signoz.releaseFullname" . -}}
+{{- define "ai-optimizer.signoz.frontendUrl" -}}
+{{- $base := include "ai-optimizer.signoz.releaseFullname" . -}}
 {{- if ne $base "" -}}
-{{- printf "http://%s.%s.svc:%v" $base .Release.Namespace (include "signoz.frontendPort" .) -}}
+{{- printf "http://%s.%s.svc:%v" $base .Release.Namespace (include "ai-optimizer.signoz.frontendPort" .) -}}
 {{- end -}}
 {{- end -}}
 
@@ -1137,14 +1244,14 @@ rather than silently wiring an endpoint pointing at an absent port.
        three cases the Service omits the port and our helper must return
        "" so the validator catches the mismatch instead of silently
        wiring to a non-existent port. */ -}}
-{{- define "signoz.collectorGrpcPort" -}}
+{{- define "ai-optimizer.signoz.collectorGrpcPort" -}}
 {{- $otlp := dig "otelCollector" "ports" "otlp" (dict) (.Values.signoz | default dict) -}}
 {{- if and $otlp $otlp.enabled -}}
 {{- default 4317 $otlp.servicePort -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "signoz.collectorHttpPort" -}}
+{{- define "ai-optimizer.signoz.collectorHttpPort" -}}
 {{- $otlp := dig "otelCollector" "ports" "otlp-http" (dict) (.Values.signoz | default dict) -}}
 {{- if and $otlp $otlp.enabled -}}
 {{- default 4318 $otlp.servicePort -}}
@@ -1175,7 +1282,7 @@ is truthy for `default` but is treated as unset by the env renderer
 + generic protocol=http/protobuf would silently render a gRPC auto
 endpoint while the app sends HTTP.
 *********************************************** */}}
-{{- define "server.otel.resolvedSignalProtocol" -}}
+{{- define "ai-optimizer.server.otel.resolvedSignalProtocol" -}}
 {{- /* Caller passes {signalProto, genericProto}. Returns the trimmed
        lowercased protocol the SDK will use for that signal. */ -}}
 {{- $signal := trim (default "" .signalProto | toString) -}}
@@ -1183,7 +1290,7 @@ endpoint while the app sends HTTP.
 {{- if ne $signal "" -}}{{ lower $signal }}{{- else -}}{{ lower $generic }}{{- end -}}
 {{- end -}}
 
-{{- define "server.otel.signalSuffix" -}}
+{{- define "ai-optimizer.server.otel.signalSuffix" -}}
 {{- /* Caller passes {proto, signal, grpcPort, httpPort}; returns the port
        (and signal path for HTTP) to append to the schemeful base URL,
        or "" when the port for the resolved protocol is unavailable
@@ -1209,22 +1316,22 @@ endpoint while the app sends HTTP.
        for that signal. Failing here would abort renders that don't
        depend on the auto-default at all (e.g., tracesExporter=console,
        or explicit server.otel.endpoint). */ -}}
-{{- define "server.otel.defaultTracesEndpoint" -}}
-{{- $base := include "signoz.baseUrl" . -}}
+{{- define "ai-optimizer.server.otel.defaultTracesEndpoint" -}}
+{{- $base := include "ai-optimizer.signoz.baseUrl" . -}}
 {{- if ne $base "" -}}
 {{- $otel := .Values.server.otel | default dict -}}
-{{- $proto := include "server.otel.resolvedSignalProtocol" (dict "signalProto" $otel.tracesProtocol "genericProto" $otel.protocol) -}}
-{{- $suffix := include "server.otel.signalSuffix" (dict "proto" $proto "signal" "traces" "grpcPort" (include "signoz.collectorGrpcPort" .) "httpPort" (include "signoz.collectorHttpPort" .)) -}}
+{{- $proto := include "ai-optimizer.server.otel.resolvedSignalProtocol" (dict "signalProto" $otel.tracesProtocol "genericProto" $otel.protocol) -}}
+{{- $suffix := include "ai-optimizer.server.otel.signalSuffix" (dict "proto" $proto "signal" "traces" "grpcPort" (include "ai-optimizer.signoz.collectorGrpcPort" .) "httpPort" (include "ai-optimizer.signoz.collectorHttpPort" .)) -}}
 {{- if ne $suffix "" -}}{{- printf "%s%s" $base $suffix -}}{{- end -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "server.otel.defaultLogsEndpoint" -}}
-{{- $base := include "signoz.baseUrl" . -}}
+{{- define "ai-optimizer.server.otel.defaultLogsEndpoint" -}}
+{{- $base := include "ai-optimizer.signoz.baseUrl" . -}}
 {{- if ne $base "" -}}
 {{- $otel := .Values.server.otel | default dict -}}
-{{- $proto := include "server.otel.resolvedSignalProtocol" (dict "signalProto" $otel.logsProtocol "genericProto" $otel.protocol) -}}
-{{- $suffix := include "server.otel.signalSuffix" (dict "proto" $proto "signal" "logs" "grpcPort" (include "signoz.collectorGrpcPort" .) "httpPort" (include "signoz.collectorHttpPort" .)) -}}
+{{- $proto := include "ai-optimizer.server.otel.resolvedSignalProtocol" (dict "signalProto" $otel.logsProtocol "genericProto" $otel.protocol) -}}
+{{- $suffix := include "ai-optimizer.server.otel.signalSuffix" (dict "proto" $proto "signal" "logs" "grpcPort" (include "ai-optimizer.signoz.collectorGrpcPort" .) "httpPort" (include "ai-optimizer.signoz.collectorHttpPort" .)) -}}
 {{- if ne $suffix "" -}}{{- printf "%s%s" $base $suffix -}}{{- end -}}
 {{- end -}}
 {{- end -}}

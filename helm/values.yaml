@@ -128,8 +128,8 @@ server:
     # -- Image repository (path part, no host)
     repository: ai-optimizer-server
     pullPolicy: IfNotPresent
-    # -- Image Tag
-    tag: latest
+    # -- Image tag. Empty defaults to Chart.appVersion.
+    tag: ""
 
   # service: type of Kubernetes service to expose server port.
   service:
@@ -179,8 +179,8 @@ server:
       # -- For SIDB-FREE/ADB-FREE, repository location of the image
       repository: ""
       pullPolicy: IfNotPresent
-      # -- For SIDB-FREE/ADB-FREE, tag of the image
-      tag: latest
+      # -- For SIDB-FREE/ADB-FREE, tag of the image.
+      tag: ""
 
     # -- For ADB-S, OCID of the Autonomous Database
     # Exclude for SIDB-FREE/ADB-FREE/OTHER
@@ -195,7 +195,10 @@ server:
       # -- Set to true to use existing ADB secrets instead of creating new ones.
       # When true, the chart will NOT create AutonomousDatabase or wallet-pass resources,
       # assuming they already exist with the standard naming convention:
-      # {Release.Name}-adb-tns-admin-{Release.Revision} and {Release.Name}-adb-wallet-pass-{Release.Revision}
+      # <fullname>-adb-tns-admin-<Release.Revision> and <fullname>-adb-wallet-pass-<Release.Revision>,
+      # where <fullname> resolves to the chart's `ai-optimizer.fullname` helper
+      # (typically "<release>-ai-optimizer", or just "<release>" when the release
+      # name already contains the chart name).
       useExisting: false
       # -- (Optional) Override the TNS admin secret name. If empty, uses default naming.
       tnsAdminSecretName: ""
@@ -204,6 +207,8 @@ server:
       # -- (Optional) Key within walletPassSecretName that contains the password.
       # If not specified, defaults to the secret name.
       walletPassSecretKey: ""
+      # -- Skip client-side CRD discovery when templating ADB-S offline.
+      skipCrdCheck: false
       # -- TNS alias from the wallet's tnsnames.ora (e.g., mydb_low).
       # Required when auto-creating the auth secret for ADB-S.
       serviceName: ""
@@ -225,9 +230,13 @@ server:
       serviceName: ""
 
     # -- Application User Authentication/Connection Details
-    authN:
-      # -- Name of Secret containing the authentication/connection details
-      secretName: "db-authn"
+    authn:
+      # -- Name of Secret containing the authentication/connection details.
+      # Empty defaults to "<fullname>-db-authn" (chart-managed, release-scoped,
+      # carries helm.sh/resource-policy: keep so the password survives upgrades).
+      # Set to an explicit name to share a Secret across releases or bring your
+      # own. The chart skips creation if a Secret with the resolved name exists.
+      secretName: ""
       # -- Key in secretName containing the username
       usernameKey: "username"
       # -- Key in secretName containing the password
@@ -235,10 +244,12 @@ server:
       # -- Key in secretName containing the connection service name
       serviceKey: "service"
     # -- (Optional) Privileged User Authentication/Connection Details
-    # If defined, used to create the user defined in the authN secret
-    privAuthN:
-      # -- secretName containing privileged user (i.e. ADMIN/SYSTEM) password
-      secretName: "db-priv-authn"
+    # If defined, used to create the user defined in the authn secret
+    privAuthn:
+      # -- secretName containing privileged user (i.e. ADMIN/SYSTEM) password.
+      # Empty defaults to "<fullname>-db-priv-authn"; same chart-managed contract
+      # as authn.secretName above.
+      secretName: ""
       # -- Key in secretName containing the username
       usernameKey: "username"
       # -- Key in secretName containing the password
@@ -247,7 +258,7 @@ server:
       serviceKey: "service"
 
   # -- Oracle Cloud Infrastructure Configuration
-  oci_config:
+  ociConfig:
     # -- Enable Workload Identity Principals (IAM policies must exist)
     oke: false
     # -- (Optional) Name of Pre-created configMap storing OCI API AuthN
@@ -270,7 +281,7 @@ server:
   # -- Specify secretName and secretKey to enable 3rd-Party Models
   models:
     # -- OpenAI API Key
-    openAI:
+    openai:
       secretName: ""
       secretKey: "apiKey"
     # -- Perplexity API Key
@@ -484,8 +495,8 @@ client:
     registry: localhost
     # -- Image repository (path part, no host)
     repository: ai-optimizer-client
-    # -- Image Tag
-    tag: latest
+    # -- Image tag.
+    tag: ""
     pullPolicy: IfNotPresent
 
   # service: type of Kubernetes service to expose the HTTP port.
@@ -666,8 +677,8 @@ ollama:
     registry: docker.io
     # -- Image repository (path part, no host)
     repository: ollama/ollama
-    # -- Image Tag
-    tag: latest
+    # -- Image tag.
+    tag: "0.23.1"
     pullPolicy: IfNotPresent
 
   # service: type of Kubernetes service to expose the HTTP port.
@@ -782,6 +793,14 @@ signoz:
     # -- Email for the admin user (ignored when existingSecret: true).
     # The matching password is auto-generated and stored in the Secret.
     email: "admin@aioptimizer.local"
+  cleanup:
+    # -- Create RBAC resources used by the SigNoz pre-delete cleanup hook.
+    rbac:
+      create: true
+    # -- ServiceAccount settings for the SigNoz pre-delete cleanup hook.
+    serviceAccount:
+      create: true
+      name: ""
   signoz:
     env:
       SIGNOZ_USER_ROOT_ENABLED: "true"

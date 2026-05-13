@@ -311,6 +311,8 @@ jobs:
           done
           echo "Rebuilt $REBUILT historical tag(s); remainder served from cache"
 
+      - uses: ./.github/actions/setup-helm
+
       - name: Register Helm subchart repositories
         # `helm dependency build` resolves tarballs by repository URL; the URL
         # in Chart.lock is matched against `helm repo list`, not fetched

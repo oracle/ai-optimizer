@@ -15,7 +15,7 @@ global:
 server:
   image:
     repository: ${repository_base}/ai-optimizer-server
-    tag: "latest"
+    tag: "${app_version}"
     pullPolicy: Always
 
   ingress:
@@ -29,7 +29,7 @@ server:
     type: "NodePort"
 
   # -- Enable Workload Identity
-  oci_config:
+  ociConfig:
     oke: true
     region: "${oci_region}"
 
@@ -52,9 +52,9 @@ server:
     oci:
       ocid: "${db_ocid}"
 %{ endif ~}
-    authN:
+    authn:
       secretName: "${db_name}-optimizer-db-authn"
-    privAuthN:
+    privAuthn:
       secretName: "${db_name}-db-priv-authn"
 
 client:
@@ -62,7 +62,7 @@ client:
   cookieSecret: "${client_cookie_secret}"
   image:
     repository: ${repository_base}/ai-optimizer-client
-    tag: "latest"
+    tag: "${app_version}"
     pullPolicy: Always
 
   ingress:

@@ -1,24 +1,27 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent freepdb1 oserror sidb spfile sqlplus adbs oraclevcn 
-# spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent freepdb1 oserror sidb spfile sqlplus adbs oraclevcn
+spell-checker: ignore sqlcode sqlerror varchar nolog ptype sysdba tablespace tblspace */}}
 
-{{- if and .Values.server.database .Values.server.database.type }}
+{{- /* Gated identically to init-job.yaml — the ConfigMap is the script
+       the Job runs, so they must render together. See `shouldRunInit`
+       for the OTHER-mode handling rationale. */ -}}
+{{- if eq (include "ai-optimizer.server.database.shouldRunInit" .) "true" }}
 ---
 # Database Initialization Scripts ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "global.fullname" . }}-db-init
+  name: {{ include "ai-optimizer.fullname" . }}-db-init
   labels:
     app.kubernetes.io/component: database
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
 data:
   init.sh: |
-    {{ if eq (include "server.database.isSIDB" .) "true" }}sqlplus{{ else }}sql{{ end }} /nolog <<- EOF
+    {{ if eq (include "ai-optimizer.server.database.isSIDB" .) "true" }}sqlplus{{ else }}sql{{ end }} /nolog <<- EOF
     WHENEVER SQLERROR EXIT 1
     WHENEVER OSERROR EXIT 1
-    {{- if eq (include "server.database.needsPrivAuth" .) "true" }}
+    {{- if eq (include "ai-optimizer.server.database.needsPrivAuth" .) "true" }}
     connect $PRIV_USERNAME/$PRIV_PASSWORD@$DB_DSN
     {{- else }}
     connect / as sysdba
@@ -39,14 +42,14 @@ data:
       SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = '$DB_USERNAME';
       EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" QUOTA UNLIMITED ON ' || l_tblspace;
       EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "$DB_USERNAME"';
-      {{- if eq (include "server.database.isADB" .) "true" }}
+      {{- if eq (include "ai-optimizer.server.database.isADB" .) "true" }}
       EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_AI TO "$DB_USERNAME"';
       EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO "$DB_USERNAME"';
       {{- end }}
       EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" DEFAULT ROLE ALL';
     END;
     /
-    {{- if eq (include "server.database.isADBS" .) "true" }}
+    {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
     BEGIN
       DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
         host => '*.oraclevcn.com',
@@ -59,7 +62,7 @@ data:
     END;
     /
     {{- end }}
-    {{- if eq (include "server.database.isSIDB" .) "true" }}
+    {{- if eq (include "ai-optimizer.server.database.isSIDB" .) "true" }}
     STARTUP FORCE;
     ALTER SYSTEM REGISTER;
     {{- end }}

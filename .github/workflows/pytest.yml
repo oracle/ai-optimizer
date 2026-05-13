@@ -17,12 +17,6 @@ concurrency:
   group: pytest-${{ github.ref }}
   cancel-in-progress: true
 
-# Helm binary/install-script pin — referenced by every job that needs helm
-# (check-helm, check-opentofu). Update both values together when bumping helm.
-env:
-  HELM_INSTALL_SCRIPT_VERSION: v4.1.4
-  HELM_INSTALL_SCRIPT_SHA256: 38b65f882d9cae3891755bdb03becc6a01ae6f9cb24826c191f219ddfee70a5d
-
 jobs:
   detect-changes:
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
@@ -54,10 +48,12 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
 
-          # Shared paths that force both client and server checks. Includes
-          # the workflow itself and the setup-python-uv composite so that
-          # PRs touching CI wiring still exercise the Python pipeline.
-          PYTHON_INFRA_RE='^(pyproject\.toml|pytest\.ini|\.yamllint|src/tests/|src/_version\.py|src/logging_config\.py|\.github/workflows/pytest\.yml|\.github/actions/setup-python-uv/)'
+          # CI wiring shared by every job: changes here re-run all pipelines.
+          CI_INFRA_RE='^(\.github/workflows/pytest\.yml|\.github/actions/setup-helm/)'
+
+          # Python-specific shared paths (project metadata, lint config, common
+          # test/runtime modules, and the Python composite action).
+          PYTHON_INFRA_RE="^(pyproject\.toml|pytest\.ini|\.yamllint|src/tests/|src/_version\.py|src/logging_config\.py|\.github/actions/setup-python-uv/)|$CI_INFRA_RE"
 
           CLIENT=false
           SERVER=false
@@ -78,15 +74,15 @@ jobs:
           fi
           echo "python-variants=$VARIANTS" >> $GITHUB_OUTPUT
 
-          # Helm — chart sources or the pytest contract suite under tests/helm/
-          if echo "$CHANGED" | grep -qE '^helm/|^tests/helm/'; then
+          # Helm — chart sources, the pytest contract suite, or CI wiring.
+          if echo "$CHANGED" | grep -qE "^helm/|^tests/helm/|$CI_INFRA_RE"; then
             echo "helm=true" >> $GITHUB_OUTPUT
           else
             echo "helm=false" >> $GITHUB_OUTPUT
           fi
 
-          # OpenTofu — module sources or the pytest suite under tests/opentofu/
-          if echo "$CHANGED" | grep -qE '^opentofu/|^tests/opentofu/'; then
+          # OpenTofu — module sources, the pytest suite, or CI wiring.
+          if echo "$CHANGED" | grep -qE "^opentofu/|^tests/opentofu/|$CI_INFRA_RE"; then
             echo "opentofu=true" >> $GITHUB_OUTPUT
           else
             echo "opentofu=false" >> $GITHUB_OUTPUT
@@ -117,7 +113,7 @@ jobs:
     if: needs.detect-changes.outputs.python-variants != '[]'
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      contents: read
 
     strategy:
       fail-fast: false
@@ -177,42 +173,85 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: |
-          pip install yamllint pytest pyyaml
-          HELM_INSTALL_SCRIPT=$(mktemp)
-          curl -fsSL -o "$HELM_INSTALL_SCRIPT" "https://raw.githubusercontent.com/helm/helm/${HELM_INSTALL_SCRIPT_VERSION}/scripts/get-helm-3"
-          ACTUAL_HASH=$(sha256sum "$HELM_INSTALL_SCRIPT" | cut -d' ' -f1)
-          if [ "$ACTUAL_HASH" != "$HELM_INSTALL_SCRIPT_SHA256" ]; then
-            echo "Helm install script hash mismatch!"
-            echo "Expected: $HELM_INSTALL_SCRIPT_SHA256"
-            echo "Actual:   $ACTUAL_HASH"
-            exit 1
-          fi
-          bash "$HELM_INSTALL_SCRIPT" --version "$HELM_INSTALL_SCRIPT_VERSION"
-          helm version --short
+      - name: Install Python tooling
+        run: pip install yamllint pytest pyyaml requests
+
+      - uses: ./.github/actions/setup-helm
 
       - name: Run yamllint
         run: yamllint helm/
+
+      # Cache the rendered subchart tarballs in helm/charts/.
+      # Key on Chart.lock so the cache is invalidated exactly when the
+      # locked dependency version changes (the only time we want a miss).
+      - name: Cache helm subcharts
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: helm/charts
+          key: helm-charts-${{ hashFiles('helm/Chart.lock') }}
 
       - name: Build chart dependencies
         # Pulls subchart tarballs into helm/charts/. The repo-add is
         # required because `helm dependency build` resolves by repository
         # URL via `helm repo list`, not by fetching the URL directly.
+        # On a cache hit, this becomes a fast no-op verification.
         run: |
           helm repo add --force-update signoz https://charts.signoz.io
           helm dependency build helm/
 
-      - name: Run Helm Lint (basic structure)
-        run: helm lint helm/
-
-      - name: Run Helm Lint (with required values)
-        run: helm lint helm/ --set global.api.apiKey=test-api-key --set client.cookieSecret=test-cookie
+      - name: Run Helm Lint (strict, with required values)
+        run: >-
+          helm lint --strict helm/
+          --set global.api.apiKey=test-api-key
+          --set client.cookieSecret=test-cookie-32-char-test-key-padding
 
       - name: Run Helm Package (validate chart builds)
         run: helm package helm/ --destination "$RUNNER_TEMP/helm-package"
         env:
           RUNNER_TEMP: ${{ runner.temp }}
+
+      # Render every example values file end-to-end. Catches regressions
+      # the lint+package pair can miss — e.g., a helper rename that breaks
+      # template resolution, or a schema tightening that rejects a shape
+      # the example files rely on.
+      - name: helm template against examples
+        run: |
+          shopt -s nullglob
+          failed=0
+          for f in helm/examples/*.yaml; do
+            echo "::group::$f"
+            if ! helm template ci helm/ \
+                --values "$f" \
+                --set global.api.apiKey=ci-test \
+                --set client.cookieSecret=ci-cookie-32-char-test-key-padding \
+                --set server.database.adb.skipCrdCheck=true >/dev/null; then
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+      # Validate the chart still renders at its declared Chart.yaml
+      # `kubeVersion` floor; a regression here would mean we've started
+      # using an API only available in a newer Kubernetes version.
+      - name: helm template at minimum kubeVersion (1.23.0)
+        run: >-
+          helm template ci helm/ --kube-version=1.23.0
+          --set global.api.apiKey=ci-test
+          --set client.cookieSecret=ci-cookie-32-char-test-key-padding
+
+      # Negative test: the schema must reject pinned-banned tags.
+      # Inverts the exit code so the step passes only when helm fails.
+      - name: values.schema.json rejects banned tag
+        run: |
+          if helm template ci helm/ \
+              --set server.image.tag=latest \
+              --set global.api.apiKey=ci-test \
+              --set client.cookieSecret=ci-cookie-32-char-test-key-padding \
+              >/dev/null 2>&1; then
+            echo "::error::values.schema.json no longer rejects image.tag=latest"
+            exit 1
+          fi
 
       - name: Run Helm contract tests
         run: pytest tests/helm/ -v
@@ -232,20 +271,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: |
-          pip install ruff pytest
-          HELM_INSTALL_SCRIPT=$(mktemp)
-          curl -fsSL -o "$HELM_INSTALL_SCRIPT" "https://raw.githubusercontent.com/helm/helm/${HELM_INSTALL_SCRIPT_VERSION}/scripts/get-helm-3"
-          ACTUAL_HASH=$(sha256sum "$HELM_INSTALL_SCRIPT" | cut -d' ' -f1)
-          if [ "$ACTUAL_HASH" != "$HELM_INSTALL_SCRIPT_SHA256" ]; then
-            echo "Helm install script hash mismatch!"
-            echo "Expected: $HELM_INSTALL_SCRIPT_SHA256"
-            echo "Actual:   $ACTUAL_HASH"
-            exit 1
-          fi
-          bash "$HELM_INSTALL_SCRIPT" --version "$HELM_INSTALL_SCRIPT_VERSION"
-          helm version --short
+      - name: Install Python tooling
+        run: pip install ruff pytest
+
+      - uses: ./.github/actions/setup-helm
 
       - name: Run Ruff
         run: ruff check opentofu

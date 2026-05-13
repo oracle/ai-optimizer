@@ -6,10 +6,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "global.fullname" . }}-client
+  name: {{ include "ai-optimizer.fullname" . }}-client
   labels:
     app.kubernetes.io/component: client
-    {{- include "global.labels" . | nindent 4}}
+    {{- include "ai-optimizer.labels" . | nindent 4}}
 spec:
   {{- if not .Values.client.autoscaling.enabled }}
   replicas: {{ .Values.client.replicaCount }}
@@ -17,29 +17,29 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/component: client
-      {{- include "global.selectorLabels" . | nindent 6 }}
+      {{- include "ai-optimizer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/client-cookie-secret: {{ include "client.cookieSecretChecksum" . | quote }}
-        checksum/client-password-secret: {{ include "client.passwordSecretChecksum" . | quote }}
-        checksum/client-env-secret: {{ include "client.envSecretChecksum" . | quote }}
+        checksum/client-cookie-secret: {{ include "ai-optimizer.client.cookieSecretChecksum" . | quote }}
+        checksum/client-password-secret: {{ include "ai-optimizer.client.passwordSecretChecksum" . | quote }}
+        checksum/client-env-secret: {{ include "ai-optimizer.client.envSecretChecksum" . | quote }}
         {{- with .Values.client.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
         app.kubernetes.io/component: client
-        {{- include "global.labels" . | nindent 8 }}
+        {{- include "ai-optimizer.labels" . | nindent 8 }}
         {{- with .Values.client.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
       securityContext:
         fsGroup: 10001
-      {{- include "global.imagePullSecrets" (dict "local" .Values.client.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
+      {{- include "ai-optimizer.imagePullSecrets" (dict "local" .Values.client.imagePullSecrets "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: {{ .Chart.Name }}
-          image: {{ include "global.image" (dict "image" .Values.client.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
+          image: {{ include "ai-optimizer.image" (dict "image" .Values.client.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.client.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             capabilities:
@@ -52,25 +52,25 @@ spec:
             - name: AIO_ENV
               value: {{ .Values.global.env | quote }}
             - name: AIO_SERVER_URL
-              value: {{ include "server.serviceUrl" . }}
+              value: {{ include "ai-optimizer.server.serviceUrl" . }}
             - name: AIO_SERVER_PORT
               value: {{ .Values.server.service.port | default 8000 | quote }}
             - name: AIO_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "global.apiSecretName" . }}
-                  key: {{ include "global.apiSecretKey" . }}
+                  name: {{ include "ai-optimizer.apiSecretName" . }}
+                  key: {{ include "ai-optimizer.apiSecretKey" . }}
             - name: AIO_CLIENT_COOKIE_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "client.cookieSecretName" . }}
-                  key: {{ include "client.cookieSecretKey" . }}
+                  name: {{ include "ai-optimizer.client.cookieSecretName" . }}
+                  key: {{ include "ai-optimizer.client.cookieSecretKey" . }}
             {{- if or (.Values.client.password | trim) (.Values.client.passwordSecretName | trim) }}
             - name: AIO_CLIENT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "client.passwordSecretName" . }}
-                  key: {{ include "client.passwordSecretKey" . }}
+                  name: {{ include "ai-optimizer.client.passwordSecretName" . }}
+                  key: {{ include "ai-optimizer.client.passwordSecretKey" . }}
             {{- end }}
           ports:
             - name: client-port
@@ -79,7 +79,7 @@ spec:
           {{- if .Values.client.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: {{ include "global.getPath" . }}ping
+              path: {{ include "ai-optimizer.getPath" . }}ping
               port: client-port
               {{- if .Values.client.ssl.enabled }}
               scheme: HTTPS
@@ -91,7 +91,7 @@ spec:
           {{- if .Values.client.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: {{ include "global.getPath" . }}ping
+              path: {{ include "ai-optimizer.getPath" . }}ping
               port: client-port
               {{- if .Values.client.ssl.enabled }}
               scheme: HTTPS
@@ -111,7 +111,7 @@ spec:
               mountPath: /app/.streamlit
             - name: env-config
               mountPath: /app/src/.env.{{ .Values.global.env }}
-              subPath: {{ include "client.envSecretKey" . }}
+              subPath: {{ include "ai-optimizer.client.envSecretKey" . }}
               readOnly: true
           {{- with .Values.client.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -121,10 +121,10 @@ spec:
           emptyDir: {}
         - name: streamlit-config
           configMap:
-            name: {{ include "global.fullname" . }}-st-config
+            name: {{ include "ai-optimizer.fullname" . }}-st-config
         - name: env-config
           secret:
-            secretName: {{ include "client.envSecretName" . }}
+            secretName: {{ include "ai-optimizer.client.envSecretName" . }}
       {{- with .Values.client.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

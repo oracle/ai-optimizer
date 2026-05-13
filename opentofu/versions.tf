@@ -6,5 +6,5 @@ locals {
   app_version     = "0.0.0"
   compute_os_ver  = "9"
   k8s_node_os_ver = "8.10"
-  k8s_version     = "1.34.2"
+  k8s_version     = "1.35.2"
 }

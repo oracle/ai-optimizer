@@ -1,15 +1,15 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent ollama
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent ollama */}}
 
 {{- if .Values.ollama.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "ollama.serviceName" . }}
+  name: {{ include "ai-optimizer.ollama.serviceName" . }}
   labels:
     app.kubernetes.io/component: ollama
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
 spec:
   type: "ClusterIP"
   ports:
@@ -19,5 +19,5 @@ spec:
       name: api
   selector:
     app.kubernetes.io/component: ollama
-    {{- include "global.selectorLabels" . | nindent 4 }}
+    {{- include "ai-optimizer.selectorLabels" . | nindent 4 }}
 {{ end -}}

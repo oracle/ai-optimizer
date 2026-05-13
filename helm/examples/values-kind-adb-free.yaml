@@ -7,17 +7,17 @@ server:
   replicaCount: 1
   image:
     repository: localhost/ai-optimizer-server
-    tag: latest
+    tag: "0.0.0"
   database:
     type: "ADB-FREE"
     image:
       repository: container-registry.oracle.com/database/adb-free
-      tag: latest
+      tag: "26.2.4.2-26ai"
 client:
   replicaCount: 1
   image:
     repository: localhost/ai-optimizer-client
-    tag: latest
+    tag: "0.0.0"
 ollama:
   enabled: true
   replicaCount: 1

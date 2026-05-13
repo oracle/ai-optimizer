@@ -81,10 +81,6 @@ variable "kubernetes_version" {
   type = string
 }
 
-variable "api_is_public" {
-  type = bool
-}
-
 variable "node_pool_gpu_deploy" {
   type = bool
 }
@@ -144,6 +140,10 @@ variable "optimizer_version" {
 }
 
 variable "optimizer_branch" {
+  type = string
+}
+
+variable "app_version" {
   type = string
 }
 

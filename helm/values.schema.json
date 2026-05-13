@@ -1,0 +1,518 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "global": {
+      "type": "object",
+      "properties": {
+        "api": {
+          "type": "object",
+          "properties": {
+            "apiKey": { "type": "string" },
+            "secretName": { "type": "string" },
+            "secretKey": { "type": "string" }
+          }
+        },
+        "baseUrlPath": {
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "imageRegistry": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array"
+        },
+        "cleanupPVCs": {
+          "type": "boolean"
+        }
+      }
+    },
+    "server": {
+      "type": "object",
+      "not": {
+        "required": [
+          "oci_config"
+        ]
+      },
+      "properties": {
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "maxClients": { "type": "integer", "minimum": 1 },
+        "autoscaling": { "$ref": "#/definitions/autoscaling" },
+        "imagePullSecrets": { "type": "array" },
+        "image": {
+          "$ref": "#/definitions/imageWithOptionalTag"
+        },
+        "service": { "$ref": "#/definitions/service" },
+        "ssl": { "$ref": "#/definitions/ssl" },
+        "gateway": { "$ref": "#/definitions/gateway" },
+        "ingress": { "$ref": "#/definitions/ingress" },
+        "livenessProbe": { "$ref": "#/definitions/probe" },
+        "readinessProbe": { "$ref": "#/definitions/probe" },
+        "podLabels": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "affinity": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "volumes": { "type": "array" },
+        "volumeMounts": { "type": "array" },
+        "envSecret": { "$ref": "#/definitions/envSecret" },
+        "otel": { "$ref": "#/definitions/otel" },
+        "database": {
+          "type": "object",
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "authN"
+                ]
+              },
+              {
+                "required": [
+                  "privAuthN"
+                ]
+              }
+            ]
+          },
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "",
+                "SIDB-FREE",
+                "ADB-FREE",
+                "ADB-S",
+                "OTHER"
+              ]
+            },
+            "image": {
+              "$ref": "#/definitions/imageWithOptionalTag"
+            },
+            "oci": {
+              "type": "object",
+              "properties": {
+                "ocid": { "type": "string" }
+              }
+            },
+            "adb": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "useExisting": { "type": "boolean" },
+                "tnsAdminSecretName": { "type": "string" },
+                "walletPassSecretName": { "type": "string" },
+                "walletPassSecretKey": { "type": "string" },
+                "skipCrdCheck": { "type": "boolean" },
+                "serviceName": { "type": "string" }
+              }
+            },
+            "other": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "dsn": { "type": "string" },
+                "host": { "type": "string" },
+                "port": { "type": ["string", "integer"] },
+                "serviceName": { "type": "string" }
+              }
+            },
+            "authn": {
+              "$ref": "#/definitions/secretKeyConfig"
+            },
+            "privAuthn": {
+              "$ref": "#/definitions/secretKeyConfig"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "SIDB-FREE",
+                      "ADB-FREE"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "image": {
+                    "properties": {
+                      "repository": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "tag": {
+                        "type": "string",
+                        "minLength": 1,
+                        "not": {
+                          "enum": [
+                            "latest",
+                            "head",
+                            "canary"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "ociConfig": {
+          "type": "object",
+          "properties": {
+            "oke": { "type": "boolean" },
+            "configMapName": { "type": "string" },
+            "tenancy": { "type": "string" },
+            "user": { "type": "string" },
+            "fingerprint": { "type": "string" },
+            "region": { "type": "string" },
+            "fileSecretName": { "type": "string" },
+            "keySecretName": { "type": "string" }
+          }
+        },
+        "models": {
+          "type": "object",
+          "not": {
+            "required": [
+              "openAI"
+            ]
+          },
+          "properties": {
+            "openai": {
+              "$ref": "#/definitions/modelSecret"
+            },
+            "perplexity": {
+              "$ref": "#/definitions/modelSecret"
+            },
+            "cohere": {
+              "$ref": "#/definitions/modelSecret"
+            }
+          }
+        }
+      }
+    },
+    "client": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "autoscaling": { "$ref": "#/definitions/autoscaling" },
+        "imagePullSecrets": { "type": "array" },
+        "image": {
+          "$ref": "#/definitions/imageWithOptionalTag"
+        },
+        "service": { "$ref": "#/definitions/service" },
+        "ssl": { "$ref": "#/definitions/ssl" },
+        "gateway": { "$ref": "#/definitions/gateway" },
+        "ingress": { "$ref": "#/definitions/ingress" },
+        "cookieSecret": { "type": "string" },
+        "cookieSecretName": { "type": "string" },
+        "cookieSecretKey": { "type": "string" },
+        "password": { "type": "string" },
+        "passwordSecretName": { "type": "string" },
+        "passwordSecretKey": { "type": "string" },
+        "envSecret": { "$ref": "#/definitions/envSecret" },
+        "livenessProbe": { "$ref": "#/definitions/probe" },
+        "readinessProbe": { "$ref": "#/definitions/probe" },
+        "podLabels": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "affinity": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "volumes": { "type": "array" },
+        "volumeMounts": { "type": "array" }
+      }
+    },
+    "ollama": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "imagePullSecrets": { "type": "array" },
+        "image": {
+          "$ref": "#/definitions/imageWithPinnedTag"
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "http": { "$ref": "#/definitions/service" }
+          }
+        },
+        "models": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "modelPullList": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "livenessProbe": { "$ref": "#/definitions/probe" },
+        "readinessProbe": { "$ref": "#/definitions/probe" },
+        "podLabels": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "affinity": { "type": "object" },
+        "tolerations": { "type": "array" }
+      }
+    },
+    "utilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "$ref": "#/definitions/imageWithPinnedTag"
+          }
+        }
+      }
+    },
+    "signoz": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "existingSecret": { "type": "boolean" },
+            "secretName": { "type": "string", "minLength": 1 },
+            "orgName": { "type": "string" },
+            "email": { "type": "string" }
+          }
+        },
+        "cleanup": {
+          "type": "object",
+          "properties": {
+            "rbac": {
+              "type": "object",
+              "properties": {
+                "create": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "serviceAccount": {
+              "type": "object",
+              "properties": {
+                "create": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "definitions": {
+    "imageWithOptionalTag": {
+      "type": "object",
+      "properties": {
+        "registry": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string",
+          "not": {
+            "enum": [
+              "latest",
+              "head",
+              "canary"
+            ]
+          }
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      }
+    },
+    "imageWithPinnedTag": {
+      "type": "object",
+      "properties": {
+        "registry": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "enum": [
+              "latest",
+              "head",
+              "canary"
+            ]
+          }
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      }
+    },
+    "secretKeyConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "secretName": {
+          "type": "string"
+        },
+        "usernameKey": {
+          "type": "string"
+        },
+        "passwordKey": {
+          "type": "string"
+        },
+        "serviceKey": {
+          "type": "string"
+        }
+      }
+    },
+    "modelSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "secretName": {
+          "type": "string"
+        },
+        "secretKey": {
+          "type": "string"
+        }
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minReplicas": { "type": "integer", "minimum": 1 },
+        "maxReplicas": { "type": "integer", "minimum": 1 },
+        "targetCPUUtilizationPercentage": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "targetMemoryUtilizationPercentage": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"]
+        },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "ssl": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "certFile": { "type": "string" },
+        "keyFile": { "type": "string" }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "tls": { "type": "object" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "tls": { "type": "array" }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "initialDelaySeconds": { "type": "integer", "minimum": 0 },
+        "periodSeconds": { "type": "integer", "minimum": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "failureThreshold": { "type": "integer", "minimum": 1 },
+        "successThreshold": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "envSecret": {
+      "type": "object",
+      "properties": {
+        "secretName": { "type": "string" },
+        "secretKey": { "type": "string" },
+        "content": { "type": "object" }
+      }
+    },
+    "otel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "endpoint": { "type": "string" },
+        "tracesEndpoint": { "type": "string" },
+        "logsEndpoint": { "type": "string" },
+        "protocol": {
+          "type": "string",
+          "$comment": "Enum intentionally omitted: the chart's runtime validator (ai-optimizer.server.otel.validate) trims+lowercases before checking against {grpc, http/protobuf}, and treats whitespace-only as unset. A schema enum would reject those legitimate inputs and produce a less helpful error."
+        },
+        "tracesProtocol": { "type": "string" },
+        "logsProtocol": { "type": "string" },
+        "insecure": { "type": "boolean" },
+        "headers": { "type": "string" },
+        "headersSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "key": { "type": "string" }
+          }
+        },
+        "serviceName": { "type": "string" },
+        "resourceAttributes": { "type": "object" },
+        "tracesExporter": { "type": "string" },
+        "logsEnabled": { "type": "boolean" },
+        "logsExporter": { "type": "string" },
+        "sampler": { "type": "string" },
+        "samplerArg": { "type": "string" },
+        "extraEnv": { "type": "array" }
+      }
+    }
+  }
+}

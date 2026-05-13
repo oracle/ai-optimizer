@@ -1,6 +1,6 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent */}}
 
 {{- if .Values.server.ingress.enabled -}}
 {{- if and .Values.server.ingress.className (not (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion)) }}
@@ -11,10 +11,10 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "server.serviceName" . }}
+  name: {{ include "ai-optimizer.server.serviceName" . }}
   labels:
     app.kubernetes.io/component: server
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   {{- with .Values.server.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -39,15 +39,15 @@ spec:
     - http:
         paths:
           - pathType: Prefix
-            path: {{ include "global.getPath" . }}v1
+            path: {{ include "ai-optimizer.getPath" . }}v1
             backend:
               {{- if semverCompare ">=1.19-0" $.Capabilities.KubeVersion.GitVersion }}
               service:
-                name: {{ include "server.serviceName" . }}
+                name: {{ include "ai-optimizer.server.serviceName" . }}
                 port:
                   number: {{ .Values.server.service.port | default 8000 }}
               {{- else }}
-              serviceName: {{ include "server.serviceName" . }}
+              serviceName: {{ include "ai-optimizer.server.serviceName" . }}
               servicePort: {{ .Values.server.service.port | default 8000 }}
               {{- end }}
 {{- end }}

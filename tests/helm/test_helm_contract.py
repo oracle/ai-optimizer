@@ -343,6 +343,306 @@ def _server_env(deployment: dict, name: str) -> dict | None:
     return next((e for e in env if e["name"] == name), None)
 
 
+def _docs_for_required_defaults() -> list[dict]:
+    result = _render("client.cookieSecret=cccccccccccccccccccccccccccccccc")
+    assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+    return _docs(result.stdout)
+
+
+class TestHelmBestPracticeContracts:
+    """Contracts for Helm chart best-practice cleanup."""
+
+    def test_default_render_has_no_database_owned_resources(self):
+        docs = _docs_for_required_defaults()
+        db_docs = [
+            d for d in docs
+            if d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "database"
+        ]
+        assert db_docs == [], (
+            "server.database.type defaults to empty, so the chart must not "
+            f"render database resources by default. got: {[(d.get('kind'), d.get('metadata', {}).get('name')) for d in db_docs]}"
+        )
+        server = _server_deployment(docs)
+        env_names = {
+            e["name"] for e in server["spec"]["template"]["spec"]["containers"][0]["env"]
+        }
+        assert {"DB_USERNAME", "DB_PASSWORD", "DB_DSN"}.isdisjoint(env_names)
+
+    def test_default_render_has_no_metadata_namespace(self):
+        docs = _docs_for_required_defaults()
+        namespaced = [
+            (d.get("kind"), d.get("metadata", {}).get("name"))
+            for d in docs
+            if d.get("metadata", {}).get("namespace")
+        ]
+        assert namespaced == [], (
+            "release-scoped resources should inherit the Helm release namespace "
+            f"instead of setting metadata.namespace: {namespaced}"
+        )
+
+    def test_default_render_has_no_comment_only_documents(self):
+        result = _render("client.cookieSecret=cccccccccccccccccccccccccccccccc")
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        chunks = [chunk for chunk in result.stdout.split("---\n") if chunk.strip()]
+        empty_sources = [
+            chunk.splitlines()[0]
+            for chunk in chunks
+            if "# Source:" in chunk and "apiVersion:" not in chunk
+        ]
+        assert empty_sources == []
+
+    def test_rendered_default_images_do_not_use_floating_tags(self):
+        docs = _docs_for_required_defaults()
+        images: list[str] = []
+        for d in docs:
+            pod_spec = (
+                d.get("spec", {})
+                .get("template", {})
+                .get("spec", {})
+            )
+            for c in pod_spec.get("containers", []):
+                images.append(c.get("image", ""))
+        assert images
+        assert all(not image.endswith(":latest") for image in images), images
+        assert all(not image.endswith(":head") for image in images), images
+        assert all(not image.endswith(":canary") for image in images), images
+
+    def test_old_breaking_value_keys_are_rejected(self):
+        cases = [
+            "server.oci_config.region=us-ashburn-1",
+            "server.database.authN.secretName=db-authn",
+            "server.database.privAuthN.secretName=db-priv-authn",
+            "server.models.openAI.secretName=openai-secret",
+        ]
+        for set_arg in cases:
+            result = _render(
+                "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+                set_arg,
+            )
+            assert result.returncode != 0, f"{set_arg} should be rejected"
+
+    def test_other_database_mode_does_not_render_db_deployment_or_init_job(self):
+        """BYO-user variant: operator supplies authn.secretName, so the chart
+        must render NO db-labelled resources — explicit secretName means the
+        Secret is operator-owned, and rendering one with chart-generated
+        random credentials at the same name would overwrite the real
+        credentials under GitOps apply."""
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "server.database.type=OTHER",
+            "server.database.other.dsn=mydbhost.example.com:1521/MYSERVICE",
+            "server.database.authn.secretName=byo-db-authn",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        db_owned = [
+            (d.get("kind"), d.get("metadata", {}).get("name"))
+            for d in docs
+            if d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "database"
+        ]
+        assert db_owned == [], (
+            f"OTHER + explicit authn.secretName must render no db-labelled resources "
+            f"(operator owns the Secret); got {db_owned}"
+        )
+
+    def test_explicit_authn_secret_name_skips_chart_rendering_offline(self):
+        """Regression guard for the GitOps/Argo CD/Flux offline render path:
+        an explicit authn.secretName must never produce a chart-managed
+        Secret carrying that same name with random credentials, regardless
+        of whether `lookup` returns a hit."""
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=foo",
+            "server.database.image.tag=1.0.0",
+            "server.database.authn.secretName=byo-shared-auth",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        for d in _docs(result.stdout):
+            if (
+                d.get("kind") == "Secret"
+                and d.get("metadata", {}).get("name") == "byo-shared-auth"
+            ):
+                raise AssertionError(
+                    "chart must not render a Secret named after an operator-pinned "
+                    f"authn.secretName; got: {d.get('stringData') or d.get('data')}"
+                )
+
+    def test_explicit_priv_authn_secret_name_skips_chart_rendering_offline(self):
+        """Same offline-render contract for the privileged Secret: explicit
+        privAuthn.secretName must not produce a chart-managed privileged
+        Secret with random SYSTEM/ADMIN credentials at that name."""
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=foo",
+            "server.database.image.tag=1.0.0",
+            "server.database.privAuthn.secretName=byo-shared-priv",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        for d in _docs(result.stdout):
+            if (
+                d.get("kind") == "Secret"
+                and d.get("metadata", {}).get("name") == "byo-shared-priv"
+            ):
+                raise AssertionError(
+                    "chart must not render a Secret named after an operator-pinned "
+                    f"privAuthn.secretName; got: {d.get('stringData') or d.get('data')}"
+                )
+
+    def test_other_database_mode_without_credentials_is_rejected(self):
+        """OTHER + no authn.secretName + no privAuthn.secretName must fail
+        loudly, otherwise the chart generates an unusable random password
+        against a user that doesn't exist on the external database."""
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "server.database.type=OTHER",
+            "server.database.other.dsn=mydbhost.example.com:1521/MYSERVICE",
+        )
+        assert result.returncode != 0, (
+            "OTHER without authn.secretName or privAuthn.secretName must fail; "
+            f"rendered successfully with stdout={result.stdout[:300]}"
+        )
+        assert "authn.secretName" in result.stderr and "privAuthn.secretName" in result.stderr, (
+            f"failure message must name both escape hatches; got: {result.stderr[:500]}"
+        )
+
+    def test_other_database_mode_with_priv_credentials_runs_init_job(self):
+        """Operator opts into chart-managed user provisioning by supplying
+        privAuthn.secretName — the init Job and its ConfigMap must render
+        so the AI_OPTIMIZER user is created on the external database with
+        the same random password the chart-generated auth Secret carries."""
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "server.database.type=OTHER",
+            "server.database.other.dsn=mydbhost.example.com:1521/MYSERVICE",
+            "server.database.privAuthn.secretName=byo-priv-creds",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        kinds_by_name = {d.get("metadata", {}).get("name", ""): d.get("kind") for d in docs}
+        run_sql_jobs = [n for n, k in kinds_by_name.items() if k == "Job" and "run-sql" in n]
+        init_cms = [n for n, k in kinds_by_name.items() if k == "ConfigMap" and n.endswith("-db-init")]
+        assert run_sql_jobs, (
+            f"OTHER + privAuthn.secretName must render the init Job; got names={list(kinds_by_name.keys())}"
+        )
+        assert init_cms, (
+            f"OTHER + privAuthn.secretName must render the init ConfigMap; got names={list(kinds_by_name.keys())}"
+        )
+
+    def test_container_database_requires_pinned_image_tag(self):
+        result = _render(
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=foo",
+        )
+        assert result.returncode != 0
+        assert "server/database/image/tag" in result.stderr or "image tag" in result.stderr
+
+
+class TestNotesUninstallDeletesOnlyChartManagedSecrets:
+    """NOTES.txt's `kubectl delete secret` hints must target only the
+    chart-managed Secrets — an explicit authn.secretName / privAuthn.secretName
+    is operator-owned (possibly shared across releases), and a copy/pasted
+    delete command would destroy real credentials. Mirrors the offline-render
+    contract enforced in auth-secret.yaml / priv-secret.yaml.
+    """
+
+    _COMMON = (
+        "global.api.apiKey=dummy-api-key",
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+    )
+
+    def _notes(self, *extra_sets: str) -> str:
+        result = _render_with_notes(*self._COMMON, *extra_sets)
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        return result.stdout
+
+    def test_byo_both_emits_no_delete_commands(self):
+        """`kubectl get secret <byo-name>` for inspection is fine (operator
+        already knows the name). The destructive case is `kubectl delete
+        secret <byo-name>`; that must never appear."""
+        notes = self._notes(
+            "server.database.type=ADB-S",
+            "server.database.oci.ocid=ocid1.adb.test",
+            "server.database.adb.skipCrdCheck=true",
+            "server.database.adb.serviceName=mydb_high",
+            "server.database.authn.secretName=shared-prod-db",
+            "server.database.privAuthn.secretName=shared-prod-priv",
+        )
+        delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
+        assert delete_lines == [], (
+            "NOTES must not suggest deleting any Secret when both authn and "
+            f"privAuthN are operator-owned; got: {delete_lines}"
+        )
+
+    def test_byo_authn_only_emits_only_priv_delete(self):
+        notes = self._notes(
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=foo",
+            "server.database.image.tag=1.0.0",
+            "server.database.authn.secretName=byo-auth",
+        )
+        delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
+        assert len(delete_lines) == 1, (
+            f"expected exactly one chart-managed delete hint (priv only); got: {delete_lines}"
+        )
+        assert "byo-auth" not in delete_lines[0], "operator-owned authn name leaked into delete hint"
+        assert "-db-priv-authn" in delete_lines[0], (
+            f"expected the chart-managed priv Secret suffix; got: {delete_lines[0]}"
+        )
+
+    def test_byo_priv_only_emits_only_auth_delete(self):
+        notes = self._notes(
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=foo",
+            "server.database.image.tag=1.0.0",
+            "server.database.privAuthn.secretName=byo-priv",
+        )
+        delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
+        assert len(delete_lines) == 1, (
+            f"expected exactly one chart-managed delete hint (auth only); got: {delete_lines}"
+        )
+        assert "byo-priv" not in delete_lines[0], "operator-owned priv name leaked into delete hint"
+        assert "-db-authn" in delete_lines[0], (
+            f"expected the chart-managed authn Secret suffix; got: {delete_lines[0]}"
+        )
+
+    def test_defaults_emit_both_chart_managed_deletes(self):
+        notes = self._notes(
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=foo",
+            "server.database.image.tag=1.0.0",
+        )
+        delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
+        assert len(delete_lines) == 2, f"expected both chart-managed deletes; got: {delete_lines}"
+        suffixes = sorted(ln.split()[-1].rsplit("-", 2)[-2:] for ln in delete_lines)
+        # Sanity: both should be the chart-managed default-name pattern.
+        assert any("db-authn" in ln for ln in delete_lines), delete_lines
+        assert any("db-priv-authn" in ln for ln in delete_lines), delete_lines
+
+    def test_other_mode_chart_managed_auth_emits_only_auth_delete(self):
+        """OTHER mode with chart-provisioned-user path (privAuthn.secretName
+        set, no authn.secretName) — auth Secret is chart-managed, priv-secret
+        is not rendered by the chart at all for OTHER mode. Exactly one
+        delete hint, naming the chart-managed auth Secret."""
+        notes = self._notes(
+            "server.database.type=OTHER",
+            "server.database.other.dsn=mydbhost.example.com:1521/MYSERVICE",
+            "server.database.privAuthn.secretName=byo-priv",
+        )
+        delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
+        assert len(delete_lines) == 1, f"expected exactly one auth delete hint; got: {delete_lines}"
+        assert "byo-priv" not in delete_lines[0], "operator-owned priv name leaked into NOTES"
+        assert "-db-authn" in delete_lines[0], delete_lines
+
+    def test_no_database_emits_no_delete_commands(self):
+        notes = self._notes()
+        assert "kubectl delete secret" not in notes, (
+            "with no database configured, NOTES must not suggest deleting db Secrets"
+        )
+
+
 _SIGNOZ_OTEL_BASE = (
     "signoz.enabled=true",
     "server.otel.enabled=true",
@@ -350,6 +650,7 @@ _SIGNOZ_OTEL_BASE = (
     "client.cookieSecret=cccccccccccccccccccccccccccccccc",
     "server.database.type=SIDB-FREE",
     "server.database.image.repository=foo",
+    "server.database.image.tag=1.0.0",
 )
 
 
@@ -1199,6 +1500,7 @@ _ADB_S_BASE = (
     "server.database.type=ADB-S",
     "server.database.oci.ocid=ocid1.autonomousdatabase.oc1..test",
     "server.database.adb.serviceName=mydb_low",
+    "server.database.adb.skipCrdCheck=true",
     "server.database.username=admin",
     "server.database.password=foo",
 )
@@ -1250,3 +1552,90 @@ class TestAutonomousDatabaseAction:
             "spec.action gate must not use .Release.IsInstall — it misses "
             "the upgrade-to-ADB-S migration path"
         )
+
+
+class TestSigNozCleanupHookRbacContract:
+    """`signoz.cleanup.{rbac,serviceAccount}.create=false` must actually
+    suppress chart-managed resources. Sprig's `default true X` returns true
+    when X is explicitly false (false is the zero value), so the original
+    `default true $cleanupRbac.create` idiom silently ignored operator
+    overrides. The chart uses `dig "create" true …` instead — these tests
+    lock in that contract.
+    """
+
+    _BASE = (
+        "global.api.apiKey=dummy-api-key",
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "signoz.enabled=true",
+    )
+
+    @staticmethod
+    def _cleanup_docs(stdout: str) -> list[dict]:
+        """Return rendered docs whose Source path is the cleanup-hook template."""
+        out: list[dict] = []
+        current_source = ""
+        for chunk in stdout.split("\n---\n"):
+            for line in chunk.splitlines():
+                if line.startswith("# Source:"):
+                    current_source = line.split(":", 1)[1].strip()
+                    break
+            if current_source.endswith("observability/signoz/cleanup-hook.yaml"):
+                for d in yaml.safe_load_all(chunk):
+                    if isinstance(d, dict):
+                        out.append(d)
+        return out
+
+    def test_rbac_create_false_suppresses_chart_roles(self):
+        result = _render_raw(
+            *_set_args(*self._BASE),
+            "--set", "signoz.cleanup.rbac.create=false",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        kinds = {d["kind"] for d in self._cleanup_docs(result.stdout)}
+        assert "Role" not in kinds and "RoleBinding" not in kinds, (
+            f"signoz.cleanup.rbac.create=false must suppress chart Role/RoleBindings; got {sorted(kinds)}"
+        )
+
+    def test_service_account_create_false_with_name_suppresses_chart_sa(self):
+        result = _render_raw(
+            *_set_args(*self._BASE),
+            "--set", "signoz.cleanup.serviceAccount.create=false",
+            "--set", "signoz.cleanup.serviceAccount.name=my-byo-sa",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = self._cleanup_docs(result.stdout)
+        sa_docs = [d for d in docs if d["kind"] == "ServiceAccount"]
+        assert sa_docs == [], (
+            f"serviceAccount.create=false must suppress chart ServiceAccount; got {[d['metadata']['name'] for d in sa_docs]}"
+        )
+        # RoleBindings should still reference the operator-supplied name.
+        rb_subject_names = {
+            subj["name"]
+            for d in docs
+            if d["kind"] == "RoleBinding"
+            for subj in d.get("subjects", [])
+            if subj.get("kind") == "ServiceAccount"
+        }
+        assert rb_subject_names == {"my-byo-sa"}, (
+            f"RoleBindings must reference the operator-supplied SA name; got {rb_subject_names}"
+        )
+
+    def test_service_account_create_false_without_name_fails(self):
+        result = _render_raw(
+            *_set_args(*self._BASE),
+            "--set", "signoz.cleanup.serviceAccount.create=false",
+        )
+        assert result.returncode != 0, (
+            "create=false without a name must fail validation; render succeeded"
+        )
+        assert "serviceAccount.name is required" in result.stderr, (
+            f"expected the explicit missing-name error; got: {result.stderr[:500]}"
+        )
+
+    def test_default_creates_chart_managed_sa_and_rbac(self):
+        result = _render_raw(*_set_args(*self._BASE))
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        kinds = [d["kind"] for d in self._cleanup_docs(result.stdout)]
+        assert kinds.count("ServiceAccount") >= 1
+        assert kinds.count("Role") >= 1
+        assert kinds.count("RoleBinding") >= 1

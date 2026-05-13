@@ -2,12 +2,6 @@
 # Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
-variable "k8s_api_is_public" {
-  description = "Make K8s API endpoint accessible from external networks via NSG rules. If false, only ORM deployments can apply Helm automatically."
-  type        = bool
-  default     = true
-}
-
 variable "k8s_api_endpoint_allowed_cidrs" {
   description = "Comma separated string of CIDR blocks from which the Kubernetes API endpoint can be accessed. Leave empty to avoid public API ingress; local configuration management requires a reachable source CIDR, typically your public IP as /32."
   type        = string
@@ -76,7 +70,7 @@ resource "terraform_data" "k8s_cfgmgt_validation" {
       condition = (
         !var.k8s_run_cfgmgt ||
         var.current_user_ocid != "" ||
-        (var.k8s_api_is_public && length(local.k8s_api_endpoint_reachable_cidrs) > 0)
+        length(local.k8s_api_endpoint_reachable_cidrs) > 0
       )
       error_message = "Local Kubernetes configuration management requires a reachable public API endpoint. Set k8s_api_endpoint_allowed_cidrs to your source CIDR, typically your public IP as /32, set k8s_run_cfgmgt=false, or deploy through OCI Resource Manager."
     }
@@ -96,7 +90,6 @@ module "kubernetes" {
   db_ocid                    = local.db_ocid
   db_name                    = local.db_name
   db_conn                    = local.db_conn
-  api_is_public              = var.k8s_api_is_public
   node_pool_gpu_deploy       = var.k8s_node_pool_gpu_deploy
   gpu_node_pool_size         = var.k8s_gpu_node_pool_size
   kubernetes_version         = local.k8s_version
@@ -116,6 +109,7 @@ module "kubernetes" {
   is_observability_enabled   = var.k8s_is_observability_enabled
   optimizer_version          = var.optimizer_version
   optimizer_branch           = local.optimizer_branch
+  app_version                = local.app_version
   ssl_enabled                = local.ssl_enabled
   ssl_cert_pem               = local.ssl_cert_pem
   ssl_key_pem                = local.ssl_key_pem

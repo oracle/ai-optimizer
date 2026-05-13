@@ -1,17 +1,34 @@
-## Copyright (c) 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore signoz nindent kubectl
+{{/* Copyright (c) 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore signoz nindent kubectl */}}
 {{- $signoz := .Values.signoz | default dict -}}
 {{- $cleanupChi := and $signoz.enabled (dig "clickhouse" "enabled" true $signoz) }}
 {{- $cleanupMigrator := and $signoz.enabled (dig "telemetryStoreMigrator" "enabled" true $signoz) }}
 {{- $cleanupReleasePVCs := and $signoz.enabled .Values.global.cleanupPVCs }}
 {{- $needsReleaseRbac := or $cleanupMigrator $cleanupReleasePVCs }}
 {{- if or $cleanupChi $needsReleaseRbac }}
+{{- $cleanupValues := $signoz.cleanup | default dict }}
+{{- $cleanupRbac := $cleanupValues.rbac | default dict }}
+{{- $cleanupSA := $cleanupValues.serviceAccount | default dict }}
+{{- /* `default true X` returns true when X is false because Sprig's
+       `default` treats false as the zero value; use `dig` instead so
+       an explicit `create: false` actually disables creation. */ -}}
+{{- $rbacCreate := dig "create" true $cleanupRbac }}
+{{- $saCreate := dig "create" true $cleanupSA }}
 {{- /* Reserve room for the longer of the two suffixes
        (`-signoz-migrator-cleanup`, 24 chars) before truncating, so the two
        hook names stay distinct under long fullnames or fullnameOverride. */ -}}
-{{- $prefix := include "global.fullname" . | trunc 39 | trimSuffix "-" }}
+{{- $prefix := include "ai-optimizer.fullname" . | trunc 39 | trimSuffix "-" }}
 {{- $name := printf "%s-signoz-cleanup" $prefix }}
+{{- /* When the operator brings their own ServiceAccount (`create: false`),
+       they MUST also supply a name — the chart-generated default refers to
+       a SA the chart no longer renders, so RoleBindings would dangle.
+       Validate the *raw* input before falling back to the default, otherwise
+       `default $name $cleanupSA.name` masks the missing value. */ -}}
+{{- if and (not $saCreate) (eq (($cleanupSA.name | default "") | toString | trim) "") }}
+{{- fail "signoz.cleanup.serviceAccount.name is required when signoz.cleanup.serviceAccount.create=false" }}
+{{- end }}
+{{- $serviceAccountName := default $name $cleanupSA.name }}
 {{- $migratorCleanup := printf "%s-signoz-migrator-cleanup" $prefix }}
 {{- /* Mirror the subchart's telemetryStoreMigrator.fullname /
        serviceAccountName helpers, including their `default` fallback on
@@ -22,8 +39,8 @@
 {{- $migratorSACreate := dig "telemetryStoreMigrator" "serviceAccount" "create" true $signoz }}
 {{- $migratorSAOverride := dig "telemetryStoreMigrator" "serviceAccount" "name" "" $signoz }}
 {{- $migratorSA := default $migratorJob $migratorSAOverride }}
-{{- $chi := include "signoz.clickhouseFullname" . }}
-{{- $chiNamespace := include "signoz.clickhouseNamespace" . }}
+{{- $chi := include "ai-optimizer.signoz.clickhouseFullname" . }}
+{{- $chiNamespace := include "ai-optimizer.signoz.clickhouseNamespace" . }}
 {{- /* `signoz.clickhouse.zookeeper.namespaceOverride` lets operators put
        the zookeeper StatefulSet in its own namespace; its retained PVCs
        end up there and are missed by the release-namespace sweep. */ -}}
@@ -31,18 +48,20 @@
 {{- $zkNamespace := default .Release.Namespace $zkOverride }}
 {{- $cleanupZkPVCs := and $cleanupChi $cleanupReleasePVCs (ne $zkNamespace .Release.Namespace) }}
 {{- $zkNeedsOwnRbac := and $cleanupZkPVCs (ne $zkNamespace $chiNamespace) }}
+{{- if $saCreate }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ $name }}
+  name: {{ $serviceAccountName }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-30"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-{{- if $cleanupChi }}
+{{- end }}
+{{- if and $cleanupChi $rbacCreate }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -51,7 +70,7 @@ metadata:
   namespace: {{ $chiNamespace }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-20"
@@ -79,21 +98,21 @@ metadata:
   namespace: {{ $chiNamespace }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-10"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 subjects:
   - kind: ServiceAccount
-    name: {{ $name }}
+    name: {{ $serviceAccountName }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ $name }}
 {{- end }}
-{{- if $needsReleaseRbac }}
+{{- if and $needsReleaseRbac $rbacCreate }}
 ---
 {{- /* Release-namespace cleanup. Covers two leftovers helm uninstall
        does not handle on its own: the subchart's migrator SA+Job (converted
@@ -103,10 +122,9 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ $migratorCleanup }}
-  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-20"
@@ -130,24 +148,23 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ $migratorCleanup }}
-  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-10"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 subjects:
   - kind: ServiceAccount
-    name: {{ $name }}
+    name: {{ $serviceAccountName }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ $migratorCleanup }}
 {{- end }}
-{{- if $zkNeedsOwnRbac }}
+{{- if and $zkNeedsOwnRbac $rbacCreate }}
 ---
 {{- $zkCleanup := printf "%s-signoz-zookeeper-cleanup" $prefix }}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -157,7 +174,7 @@ metadata:
   namespace: {{ $zkNamespace }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-20"
@@ -174,14 +191,14 @@ metadata:
   namespace: {{ $zkNamespace }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-10"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 subjects:
   - kind: ServiceAccount
-    name: {{ $name }}
+    name: {{ $serviceAccountName }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -195,7 +212,7 @@ metadata:
   name: {{ $name }}
   labels:
     app.kubernetes.io/component: observability
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "0"
@@ -208,14 +225,14 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/component: observability
-        {{- include "global.labels" . | nindent 8 }}
+        {{- include "ai-optimizer.labels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ $name }}
+      serviceAccountName: {{ $serviceAccountName }}
       restartPolicy: Never
-      {{- include "global.imagePullSecrets" (dict "local" (list) "global" .Values.global.imagePullSecrets) | nindent 6 }}
+      {{- include "ai-optimizer.imagePullSecrets" (dict "local" (list) "global" .Values.global.imagePullSecrets) | nindent 6 }}
       containers:
         - name: kubectl
-          image: {{ include "global.image" (dict "image" .Values.utilities.kubectl.image "global" .Values.global) | quote }}
+          image: {{ include "ai-optimizer.image" (dict "image" .Values.utilities.kubectl.image "global" .Values.global) | quote }}
           imagePullPolicy: {{ .Values.utilities.kubectl.image.pullPolicy | default "IfNotPresent" }}
           command:
             - /bin/sh
@@ -245,7 +262,7 @@ spec:
               chi={{ $chi | quote }}
               label_selector="clickhouse.altinity.com/chi=${chi}"
 
-              {{- include "global.shellWaitFunc" . | nindent 14 }}
+              {{- include "ai-optimizer.shellWaitFunc" . | nindent 14 }}
 
               list_chi_children() {
                 kubectl -n "$ns" get configmap,statefulset,pod,service -l "$label_selector" \

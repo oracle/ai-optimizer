@@ -1,16 +1,16 @@
-## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
-# spell-checker: ignore nindent sidb
+{{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+spell-checker: ignore nindent sidb
 
-# Database Service (SIDB-FREE or ADB-FREE in-cluster container DB)
-{{- if eq (include "server.database.isContainerDB" .) "true" }}
+Database Service (SIDB-FREE or ADB-FREE in-cluster container DB) */}}
+{{- if eq (include "ai-optimizer.server.database.isContainerDB" .) "true" }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}-{{ include "server.database.dbName" . }}-1521
+  name: {{ include "ai-optimizer.server.database.serviceName" . }}
   labels:
     app.kubernetes.io/component: database
-    {{- include "global.labels" . | nindent 4 }}
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
   ports:
@@ -20,5 +20,5 @@ spec:
       targetPort: 1521
   selector:
     app.kubernetes.io/component: database
-    {{- include "global.selectorLabels" . | nindent 4 }}
+    {{- include "ai-optimizer.selectorLabels" . | nindent 4 }}
 {{- end }}
