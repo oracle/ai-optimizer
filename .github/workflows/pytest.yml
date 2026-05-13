@@ -174,7 +174,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python tooling
-        run: pip install yamllint pytest pyyaml
+        run: pip install yamllint pytest pyyaml requests
 
       - uses: ./.github/actions/setup-helm
 
