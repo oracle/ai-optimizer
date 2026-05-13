@@ -207,7 +207,7 @@ spec:
                 --frontend dockerfile.v0 \
                 --local context=/workspace \
                 --local dockerfile=/workspace/src/server \
-                --output type=image,name=${repository_base}/ai-optimizer-server:latest,push=true
+                --output type=image,name=${repository_base}/ai-optimizer-server:${app_version},push=true
           securityContext:
             seccompProfile:
               type: Unconfined
