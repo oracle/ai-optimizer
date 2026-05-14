@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore tablespace mycomplexsecret mycomplexwalletsecret sqlcl streamable
 -->
 
-The {{< full_app_ref >}} exposes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server. At startup, the server registers tools, prompts, and any configured proxy servers (such as SQLcl for NL2SQL).
+The {{% full_app_ref %}} exposes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server. At startup, the server registers tools, prompts, and any configured proxy servers (such as SQLcl for NL2SQL).
 
 ## MCP Configuration Page
 
@@ -23,7 +23,7 @@ The MCP Configuration page displays:
 
 ## SQLcl MCP Server (NL2SQL)
 
-The {{< short_app_ref >}} natively supports the [Oracle SQLcl MCP Server](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) for Natural Language to SQL (NL2SQL) capabilities. When SQLcl is available and databases are configured, the SQLcl MCP server is **automatically registered** at startup as a proxy under the `sqlcl` namespace.
+The {{% short_app_ref %}} natively supports the [Oracle SQLcl MCP Server](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) for Natural Language to SQL (NL2SQL) capabilities. When SQLcl is available and databases are configured, the SQLcl MCP server is **automatically registered** at startup as a proxy under the `sqlcl` namespace.
 
 ### Requirements
 
@@ -32,7 +32,7 @@ The {{< short_app_ref >}} natively supports the [Oracle SQLcl MCP Server](https:
 
 ### How It Works
 
-At startup, the {{< short_app_ref >}}:
+At startup, the {{% short_app_ref %}}:
 
 1. Discovers the `sql` binary on the system path
 2. Creates connection store entries for each configured database
@@ -48,12 +48,12 @@ export AIO_SQLCL_HOME=/path/to/sqlcl/home
 ```
 
 {{% notice style="code" title="SQLcl Not Found?" icon="circle-info" %}}
-If SQLcl is not installed or the `sql` binary is not on the system path, the NL2SQL functionality will be unavailable. The {{< short_app_ref >}} will log a warning and continue without it.
+If SQLcl is not installed or the `sql` binary is not on the system path, the NL2SQL functionality will be unavailable. The {{% short_app_ref %}} will log a warning and continue without it.
 {{% /notice %}}
 
 ## Connecting External MCP Clients
 
-The {{< short_app_ref >}} MCP server can be consumed by external MCP clients such as Claude Desktop, Claude Code, VS Code Copilot, or Cursor.
+The {{% short_app_ref %}} MCP server can be consumed by external MCP clients such as Claude Desktop, Claude Code, VS Code Copilot, or Cursor.
 
 Use the client configuration from the MCP Configuration page (or the `/mcp/client-config` endpoint) to configure your client. The configuration provides the Streamable-HTTP URL and the required API key header.
 

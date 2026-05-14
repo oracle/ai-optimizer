@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore genai ollama sidb ashburn autonomousdatabase myadb mydbhost ocid relref signoz subchart
 -->
 
-The {{< full_app_ref >}} was specifically designed to run on infrastructure supporting microservices architecture, including [Kubernetes](https://kubernetes.io/).  A [Helm](https://helm.sh/) Chart is provided to make the deployment easier.
+The {{% full_app_ref %}} was specifically designed to run on infrastructure supporting microservices architecture, including [Kubernetes](https://kubernetes.io/).  A [Helm](https://helm.sh/) Chart is provided to make the deployment easier.
 
 This page is a deployment overview plus the handful of choices that matter in practice. For the full configuration surface, read [`helm/values.yaml`](https://github.com/oracle/ai-optimizer/blob/main/helm/values.yaml) or run:
 

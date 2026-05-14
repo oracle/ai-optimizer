@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 ## Overview
 
-The combined (orchestrator) route in {{< short_app_ref >}} performs classification, sub-session execution, and optional synthesis — all using the configured primary chat model (`ll_model`). This keeps the default configuration simple: a single model handles every stage. Developers building on this application should understand the implications and know where to customize if needed.
+The combined (orchestrator) route in {{% short_app_ref %}} performs classification, sub-session execution, and optional synthesis — all using the configured primary chat model (`ll_model`). This keeps the default configuration simple: a single model handles every stage. Developers building on this application should understand the implications and know where to customize if needed.
 
 ## How It Works
 

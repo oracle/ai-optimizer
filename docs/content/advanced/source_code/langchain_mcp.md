@@ -9,7 +9,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 -->
 
 ## Introduction to the MCP Server for a tested AI Optimizer & Toolkit configuration
-This document describes how to re-use the configuration tested in the **{{< short_app_ref >}}** and expose it as an MCP tool. The MCP tool can be consumed locally by **Claude Desktop** or deployed as a remote MCP server using the **Python/LangChain** framework. 
+This document describes how to re-use the configuration tested in the **{{% short_app_ref %}}** and expose it as an MCP tool. The MCP tool can be consumed locally by **Claude Desktop** or deployed as a remote MCP server using the **Python/LangChain** framework. 
 
 This early-stage implementation supports communication via the `stdio` and `sse` transports, enabling interaction between the agent dashboard (for example, Claude Desktop) and the exported RAG tool.
 
@@ -18,7 +18,7 @@ At present, only configurations using `Ollama` or `OpenAI` for both chat and emb
 {{% /notice %}}
 
 ## Export config
-After testing a configuration in the **{{< short_app_ref >}}**  web interface, navigate to: `Settings/Client Settings`:
+After testing a configuration in the **{{% short_app_ref %}}**  web interface, navigate to: `Settings/Client Settings`:
 
 ![Client Settings](../images/export.png)
 

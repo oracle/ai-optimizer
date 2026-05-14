@@ -10,11 +10,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore genai vllm pplx
 -->
 
-The {{< full_app_ref >}} can be configured using environment files (`.env.*`) to pre-configure settings at startup. This is optional — the application will start and function without any environment file, but features like RAG, settings persistence, and the Testbed require access to a "CORE" [database]({{% relref "/client/configuration/databases" %}}).
+The {{% full_app_ref %}} can be configured using environment files (`.env.*`) to pre-configure settings at startup. This is optional — the application will start and function without any environment file, but features like RAG, settings persistence, and the Testbed require access to a "CORE" [database]({{% relref "/client/configuration/databases" %}}).
 
 ## How It Works
 
-On startup, the {{< short_app_ref >}} loads variables from a `.env.{AIO_ENV}` file located in the `src/` directory. The `AIO_ENV` environment variable determines which file is loaded, defaulting to `dev` if not set.
+On startup, the {{% short_app_ref %}} loads variables from a `.env.{AIO_ENV}` file located in the `src/` directory. The `AIO_ENV` environment variable determines which file is loaded, defaulting to `dev` if not set.
 
 | `AIO_ENV` Value | File Loaded |
 |---|---|
@@ -26,7 +26,7 @@ Variables set in the `.env.*` file will **not** overwrite existing environment v
 
 ### Precedence
 
-The {{< short_app_ref >}} follows this precedence order (highest to lowest):
+The {{% short_app_ref %}} follows this precedence order (highest to lowest):
 
 1. **Exported environment variables** (e.g. `export AIO_DB_USERNAME=demo`)
 2. **Variables** in the `.env.*` file

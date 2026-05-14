@@ -9,13 +9,13 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
 
-The {{< full_app_ref >}} can be used immediately to interact with language models without any pre-configuration. To enable full functionality, including RAG and settings persistence, you will need to configure a database, models, and optionally Oracle Cloud Infrastructure (OCI).
+The {{% full_app_ref %}} can be used immediately to interact with language models without any pre-configuration. To enable full functionality, including RAG and settings persistence, you will need to configure a database, models, and optionally Oracle Cloud Infrastructure (OCI).
 
-Configuration can be done through the GUI, [environment files](/env_config/), or a combination of both. After you configure the {{< short_app_ref >}}, you can export the settings and import them into another deployment or restore them after a restart.
+Configuration can be done through the GUI, [environment files](/env_config/), or a combination of both. After you configure the {{% short_app_ref %}}, you can export the settings and import them into another deployment or restore them after a restart.
 
 ## 🤖 Model Configuration
 
-At a minimum, a large language model (LLM) will need to be configured to experiment with the {{< short_app_ref >}}. The LLM can be a third-party LLM, such as ChatGPT or Perplexity, or an on-premises LLM.
+At a minimum, a large language model (LLM) will need to be configured to experiment with the {{% short_app_ref %}}. The LLM can be a third-party LLM, such as ChatGPT or Perplexity, or an on-premises LLM.
 
 Additionally, to enable Retrieval-Augmented Generation (RAG) capabilities, an embedding model will need to be configured and enabled.
 
@@ -39,20 +39,20 @@ For more information on configuring OCI, please read about [OCI Configuration](o
 
 ## 💾 Settings
 
-Once you have configured the {{< short_app_ref >}}, you can export the settings and import them after a restart or new deployment.
+Once you have configured the {{% short_app_ref %}}, you can export the settings and import them after a restart or new deployment.
 
 For more information on importing (and exporting) settings, please read about [Settings](settings/).
 
 ## 🔗 MCP
 
-The {{< short_app_ref >}} now exposes an MCP Server. On server startup, an MCP endpoint is initialized to expose the {{< short_app_ref >}} tools.
+The {{% short_app_ref %}} now exposes an MCP Server. On server startup, an MCP endpoint is initialized to expose the {{% short_app_ref %}} tools.
 
-The {{< short_app_ref >}} natively supports the **SQLcl MCP Server** for Natural Language to SQL (NL2SQL) capabilities. When correctly configured, the SQLcl MCP server is automatically registered at startup.
+The {{% short_app_ref %}} natively supports the **SQLcl MCP Server** for Natural Language to SQL (NL2SQL) capabilities. When correctly configured, the SQLcl MCP server is automatically registered at startup.
 
 For more information on MCP settings, please read about [MCP](mcp/).
 
 ## 🧬 AgentSpec
 
-The {{< short_app_ref >}} provides portable AgentSpec definitions that describe agent pipelines as serializable JSON. These definitions can be inspected, customized, and loaded into any compatible runtime.
+The {{% short_app_ref %}} provides portable AgentSpec definitions that describe agent pipelines as serializable JSON. These definitions can be inspected, customized, and loaded into any compatible runtime.
 
 For more information on viewing AgentSpec definitions, please read about [AgentSpec](agentspec/).

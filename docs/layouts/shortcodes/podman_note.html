@@ -1,0 +1,8 @@
+{{- $md := "The documentation will reference `podman` commands. If applicable to your environment, `podman` can be substituted with `docker`.\nIf you are using `docker`, consider aliasing the `podman` command:\n\n`alias podman=docker`." -}}
+{{- partial "shortcodes/notice.html" (dict
+  "page"    .Page
+  "content" (.Page.RenderString (dict "display" "block") $md)
+  "style"   "code"
+  "title"   "Same... but Different"
+  "icon"    "circle-info"
+) -}}

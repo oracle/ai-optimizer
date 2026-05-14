@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore signoz otlp clickhouse
 -->
 
-This page walks through standing up a self-hosted [SigNoz](https://signoz.io) instance on a single host and pointing the {{< short_app_ref >}} **Server** at it. Once complete, server requests appear as traces in the SigNoz UI within seconds of being issued.
+This page walks through standing up a self-hosted [SigNoz](https://signoz.io) instance on a single host and pointing the {{% short_app_ref %}} **Server** at it. Once complete, server requests appear as traces in the SigNoz UI within seconds of being issued.
 
 The same data path works against any other OTLP backend (Jaeger, Grafana Tempo, vendor-managed receivers) — only the install steps and endpoint URL differ.
 
@@ -21,7 +21,7 @@ The bundled Helm chart can deploy SigNoz alongside the application as a subchart
 ## Prerequisites
 
 - [Podman](https://podman.io) with the `compose` plugin on the host that will run SigNoz. Docker is also supported — substitute `docker` for `podman` in the commands below.
-- The {{< short_app_ref >}} server installed with the `[otel]` extra (see [Observability]({{% relref "/observability" %}}) for the install command).
+- The {{% short_app_ref %}} server installed with the `[otel]` extra (see [Observability]({{% relref "/observability" %}}) for the install command).
 - Outbound network reachability from the server process to the SigNoz host on the OTLP ports (`4317` for gRPC, `4318` for HTTP).
 
 ## 1. Stand Up SigNoz
@@ -119,7 +119,7 @@ The committed JSON is the source of truth: SigNoz's own state lives in container
 
 ## Networking
 
-The endpoint URL depends on where the {{< short_app_ref >}} server runs relative to the SigNoz host.
+The endpoint URL depends on where the {{% short_app_ref %}} server runs relative to the SigNoz host.
 
 | Server location | SigNoz location | `OTEL_EXPORTER_OTLP_ENDPOINT` |
 |---|---|---|
