@@ -20,6 +20,10 @@ OciAuthType = Literal[
     "security_token",
 ]
 
+# Auth types where credentials are supplied by the deployment infrastructure
+# (instance metadata / workload identity) rather than a user-managed key.
+PRINCIPAL_OCI_AUTH_TYPES = frozenset({"instance_principal", "oke_workload_identity", "resource_principal"})
+
 # Fields the DB-backed GenAI overlay speaks for. Shared by ``persist_settings``
 # and the OCI/settings endpoints so the schema lives in one place.
 GENAI_OVERLAY_FIELDS = frozenset({"genai_compartment_id", "genai_region"})

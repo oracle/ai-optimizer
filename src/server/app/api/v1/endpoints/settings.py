@@ -41,7 +41,12 @@ from server.app.models.litellm_utils import find_model
 from server.app.models.ollama import load_ollama_models
 from server.app.models.registry import apply_env_overrides, reset_factory_models
 from server.app.models.schemas import ModelSensitive
-from server.app.oci.schemas import GENAI_OVERLAY_FIELDS, OciProfileConfig, OciSensitive
+from server.app.oci.schemas import (
+    GENAI_OVERLAY_FIELDS,
+    PRINCIPAL_OCI_AUTH_TYPES,
+    OciProfileConfig,
+    OciSensitive,
+)
 
 LOGGER = logging.getLogger(__name__)
 _DB_CONN_FIELDS = set(DatabaseUpdate.model_fields)
@@ -83,6 +88,37 @@ class LegacyMigratingImportRoute(APIRoute):
 
 auth = APIRouter(prefix="/settings")
 _import_router = APIRouter(route_class=LegacyMigratingImportRoute)
+
+
+def _apply_oci_import(
+    incoming: Optional[list[OciProfileConfig]], result: SettingsImportResult
+) -> Optional[dict[str, set[str]]]:
+    """Upsert OCI configs from an import body, returning the GenAI-touched map.
+
+    Profiles whose existing counterpart uses principal-based auth (instance/
+    workload/resource) are skipped — that auth is provided by the deployment
+    infrastructure and the OCI form disables editing for those profiles, so
+    flipping ``usable=False`` would leave the user with no way to re-validate.
+    """
+    if incoming is None:
+        return None
+    principal_profiles = {
+        cfg.auth_profile.casefold()
+        for cfg in settings.oci_configs
+        if cfg.authentication in PRINCIPAL_OCI_AUTH_TYPES
+    }
+    importable = [oci for oci in incoming if oci.auth_profile.casefold() not in principal_profiles]
+    skipped_profiles = [oci.auth_profile for oci in incoming if oci.auth_profile.casefold() in principal_profiles]
+    if skipped_profiles:
+        LOGGER.info("Skipping import for principal-auth OCI profiles: %s", sorted(skipped_profiles))
+    touched = _imported_oci_genai_touched(importable)
+    created, updated = upsert_list_field("oci_configs", importable)
+    for item in created + updated:
+        item.usable = False
+    result.oci_configs = ImportSectionResult(
+        created=len(created), updated=len(updated), skipped=len(skipped_profiles)
+    )
+    return touched
 
 
 def _imported_oci_genai_touched(
@@ -290,12 +326,7 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             result.model_configs = ImportSectionResult(created=len(created), updated=len(updated))
 
         # --- OCI configs ---
-        oci_touched = _imported_oci_genai_touched(body.oci_configs)
-        if body.oci_configs is not None:
-            created, updated = upsert_list_field("oci_configs", body.oci_configs)
-            for item in created + updated:
-                item.usable = False
-            result.oci_configs = ImportSectionResult(created=len(created), updated=len(updated))
+        oci_touched = _apply_oci_import(body.oci_configs, result)
 
         # --- Prompt configs ---
         if body.prompt_configs is not None:

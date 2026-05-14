@@ -423,6 +423,83 @@ async def test_import_oci_updates_existing(app_client, auth_headers, mock_persis
     assert settings.oci_configs[0].usable is False
 
 
+@pytest.mark.parametrize(
+    "auth",
+    ["instance_principal", "oke_workload_identity", "resource_principal"],
+)
+async def test_import_oci_skips_principal_auth_profile(app_client, auth_headers, mock_persist, auth):
+    """An existing principal-auth profile is not overwritten by an import.
+
+    Principal-based auth is provided by the deployment infrastructure (IP/WI/RP).
+    The OCI form is disabled for these profiles, so flipping usable=False on
+    import would leave the user with no way to re-validate the profile.
+    """
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            authentication=auth,
+            region="us-ashburn-1",
+            tenancy="ocid1.tenancy.oc1..original",
+            usable=True,
+        )
+    ]
+    payload = {
+        "oci_configs": [
+            {
+                "auth_profile": "DEFAULT",
+                "region": "us-phoenix-1",
+                "tenancy": "ocid1.tenancy.oc1..imported",
+            }
+        ]
+    }
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["oci_configs"]["created"] == 0
+    assert data["oci_configs"]["updated"] == 0
+    assert data["oci_configs"]["skipped"] == 1
+    profile = settings.oci_configs[0]
+    assert profile.region == "us-ashburn-1"
+    assert profile.tenancy == "ocid1.tenancy.oc1..original"
+    assert profile.usable is True
+    kwargs = mock_persist.await_args_list[-1].kwargs
+    assert kwargs.get("oci_user_touched") is None
+
+
+async def test_import_oci_mixed_principal_and_api_key(app_client, auth_headers, mock_persist):
+    """Principal-auth profiles are skipped; other profiles still import."""
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            authentication="instance_principal",
+            region="us-ashburn-1",
+            usable=True,
+        ),
+        OciProfileConfig(auth_profile="PROD", region="us-ashburn-1", usable=True),
+    ]
+    payload = {
+        "oci_configs": [
+            {"auth_profile": "DEFAULT", "region": "us-phoenix-1"},
+            {"auth_profile": "PROD", "region": "us-phoenix-1"},
+        ]
+    }
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["oci_configs"]["updated"] == 1
+    assert data["oci_configs"]["skipped"] == 1
+    default = next(p for p in settings.oci_configs if p.auth_profile == "DEFAULT")
+    prod = next(p for p in settings.oci_configs if p.auth_profile == "PROD")
+    assert default.region == "us-ashburn-1"
+    assert default.usable is True
+    assert prod.region == "us-phoenix-1"
+    assert prod.usable is False
+
+
 # ---------------------------------------------------------------------------
 # Prompt configs
 # ---------------------------------------------------------------------------

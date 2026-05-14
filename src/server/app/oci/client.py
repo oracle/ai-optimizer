@@ -16,7 +16,7 @@ import oci.signer
 
 from server.app.core.secrets import reveal
 
-from .schemas import OciProfileConfig, genai_inference_endpoint
+from .schemas import PRINCIPAL_OCI_AUTH_TYPES, OciProfileConfig, genai_inference_endpoint
 
 T = TypeVar("T")
 LOGGER = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def populate_principal_identity(profile: OciProfileConfig) -> None:
     APIs that take an explicit tenancy_id (e.g. list_region_subscriptions) fail
     with ValueError. No-op for api_key and security_token profiles.
     """
-    if profile.authentication not in ("instance_principal", "oke_workload_identity", "resource_principal"):
+    if profile.authentication not in PRINCIPAL_OCI_AUTH_TYPES:
         return
     if profile.tenancy and profile.region:
         return
