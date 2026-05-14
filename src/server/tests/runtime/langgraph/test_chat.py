@@ -26,7 +26,7 @@ from server.tests.runtime.chat_base import (
     StreamBase,
 )
 from server.tests.runtime.langgraph.helpers import mock_compiled_graph
-from server.tests.runtime.shared_helpers import mock_client_settings
+from server.tests.runtime.shared_helpers import mock_client_settings, temporary_oci_configs
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -79,6 +79,192 @@ class TestChatOrchestratorCache(_LangGraphChatMixin, CacheBase):
             await orch.execute_chat("q2", "c1")
 
         assert build_mock.await_count == 1
+
+    @pytest.mark.anyio
+    async def test_session_rebuilt_when_oci_compartment_changes(self):
+        """Cache must invalidate when the resolved OCI profile's compartment changes.
+
+        The OCI auth kwargs (oci_compartment_id, oci_region, oci_signer) are
+        baked into the OracleChatLiteLLM at session-build time. If the profile
+        is updated after a session is cached, subsequent calls reuse the stale
+        graph and litellm raises ``kwarg oci_compartment_id is required``. The
+        cache identity therefore needs to fold in OCI profile state so a
+        compartment change forces a rebuild.
+        """
+        from server.app.oci.schemas import OciProfileConfig
+
+        profile = OciProfileConfig(auth_profile="DEFAULT")
+        with temporary_oci_configs([profile], client_auth_profile="DEFAULT"):
+            cs = mock_client_settings(provider="oci", model_id="xai.grok-4.3")
+            orch = ChatOrchestrator(
+                server_url="http://127.0.0.1:8000/mcp",
+                api_key="test-key",
+                resolve_client=lambda _c: cs,
+            )
+
+            mock_session = MagicMock(spec=AgentGraphSession)
+            mock_session.chat = AsyncMock(return_value="ok")
+            mock_session.last_metadata = SessionMetadata()
+            build_mock = AsyncMock(return_value=mock_session)
+
+            with patch.object(orch, "_build_session", build_mock):
+                # First call: profile has no compartment yet (mirrors the GUI
+                # sequence where chat builds a session before OCI is configured).
+                await orch.execute_chat("q1", "c1")
+                profile.genai_compartment_id = "ocid1.compartment.oc1..real"
+                profile.genai_region = "us-chicago-1"
+                await orch.execute_chat("q2", "c1")
+
+            assert build_mock.await_count == 2, (
+                "Expected session rebuild after genai_compartment_id changed, "
+                f"but _build_session was called {build_mock.await_count} time(s). "
+                "Cache identity is OCI-blind — stale graph keeps None compartment."
+            )
+
+    @pytest.mark.anyio
+    async def test_session_rebuilt_when_oci_api_key_fields_change(self):
+        """Cache must invalidate when API-key auth fields rotate.
+
+        ``build_oci_litellm_params`` bakes ``oci_tenancy / oci_user /
+        oci_fingerprint / oci_key_file`` into the LLM's ``model_kwargs`` for
+        api_key profiles. Rotating any of those — e.g. swapping the user
+        OCID or pointing key_file at a new PEM — must force a rebuild so
+        the new credentials reach LiteLLM. ``authentication`` itself
+        decides whether the loader emits a signer or those four fields,
+        so a switch between modes must also invalidate.
+        """
+        from server.app.oci.schemas import OciProfileConfig
+
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            authentication="api_key",
+            tenancy="ocid1.tenancy.oc1..old",
+            user="ocid1.user.oc1..old",
+            fingerprint="aa:bb:cc",
+            key_file="/path/old.pem",
+            genai_compartment_id="ocid1.compartment.oc1..c",
+            genai_region="us-chicago-1",
+        )
+        with temporary_oci_configs([profile], client_auth_profile="DEFAULT"):
+            cs = mock_client_settings(provider="oci", model_id="xai.grok-4.3")
+            orch = ChatOrchestrator(
+                server_url="http://127.0.0.1:8000/mcp",
+                api_key="test-key",
+                resolve_client=lambda _c: cs,
+            )
+
+            mock_session = MagicMock(spec=AgentGraphSession)
+            mock_session.chat = AsyncMock(return_value="ok")
+            mock_session.last_metadata = SessionMetadata()
+            build_mock = AsyncMock(return_value=mock_session)
+
+            with patch.object(orch, "_build_session", build_mock):
+                await orch.execute_chat("q1", "c1")
+                profile.user = "ocid1.user.oc1..rotated"
+                await orch.execute_chat("q2", "c1")
+
+            assert build_mock.await_count == 2, (
+                "Expected rebuild when api_key fields rotate, but "
+                f"_build_session was called {build_mock.await_count} time(s). "
+                "Identity must cover every field build_oci_litellm_params consumes."
+            )
+
+    @pytest.mark.anyio
+    async def test_oci_identity_resolves_clients_own_auth_profile(self):
+        """Identity must follow the cached client's ``oci.auth_profile``,
+        not the global CONFIGURED selection.
+
+        A chat client (e.g. the SERVER client after ``/settings/server/copy``,
+        or a long-lived per-tab session) can be pinned to a different OCI
+        profile than CONFIGURED. Rotating *that* profile must invalidate
+        its cached graph; otherwise the cache hands back a session built
+        with stale auth params for the wrong profile.
+        """
+        from server.app.core.schemas import ClientSettings
+        from server.app.oci.schemas import OciProfileConfig
+
+        profile_a = OciProfileConfig(
+            auth_profile="PROFILE_A",
+            genai_compartment_id="ocid1.compartment.oc1..a",
+            genai_region="us-chicago-1",
+        )
+        profile_b = OciProfileConfig(
+            auth_profile="PROFILE_B",
+            genai_compartment_id="ocid1.compartment.oc1..b-old",
+            genai_region="us-chicago-1",
+        )
+        # CONFIGURED stays on A; the chat client pins itself to B.
+        with temporary_oci_configs([profile_a, profile_b], client_auth_profile="PROFILE_A"):
+            cs = ClientSettings(client="c1")
+            cs.ll_model.provider = "oci"
+            cs.ll_model.id = "xai.grok-4.3"
+            cs.oci.auth_profile = "PROFILE_B"
+
+            orch = ChatOrchestrator(
+                server_url="http://127.0.0.1:8000/mcp",
+                api_key="test-key",
+                resolve_client=lambda _c: cs,
+            )
+
+            mock_session = MagicMock(spec=AgentGraphSession)
+            mock_session.chat = AsyncMock(return_value="ok")
+            mock_session.last_metadata = SessionMetadata()
+            build_mock = AsyncMock(return_value=mock_session)
+
+            with patch.object(orch, "_build_session", build_mock):
+                await orch.execute_chat("q1", "c1")
+                profile_b.genai_compartment_id = "ocid1.compartment.oc1..b-new"
+                await orch.execute_chat("q2", "c1")
+
+            assert build_mock.await_count == 2, (
+                "Identity resolves CONFIGURED's profile, so mutating the "
+                "client-pinned profile does not invalidate the cache. "
+                f"_build_session was called {build_mock.await_count} time(s)."
+            )
+
+    @pytest.mark.anyio
+    async def test_refresh_prompts_recomputes_identity_after_oci_change(self):
+        """After refresh_prompts rebuilds with current OCI state, the cached
+        identity must reflect that current state — not the pre-refresh one.
+
+        Otherwise the freshly-built graph (with new model_kwargs) is filed
+        under the old identity: the next chat sees an identity mismatch
+        and rebuilds unnecessarily, and worse, if the profile reverts to
+        its prior values the cache hands back a session that was built
+        for different params as if it matched.
+        """
+        from server.app.oci.schemas import OciProfileConfig
+
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..A",
+            genai_region="us-chicago-1",
+        )
+        with temporary_oci_configs([profile], client_auth_profile="DEFAULT"):
+            cs = mock_client_settings(provider="oci", model_id="xai.grok-4.3")
+            orch = ChatOrchestrator(
+                server_url="http://127.0.0.1:8000/mcp",
+                api_key="test-key",
+                resolve_client=lambda _c: cs,
+            )
+            built = _make_agent_session()
+            with patch.object(orch, "_build_session", AsyncMock(return_value=built)):
+                await orch.execute_chat("q", "c1")
+
+            profile.genai_compartment_id = "ocid1.compartment.oc1..B"
+            rebuilt = _make_agent_session()
+            with patch.object(orch, "_build_agent_session", AsyncMock(return_value=rebuilt)):
+                await orch.refresh_prompts()
+
+            stored_identity = orch._session_cache[("c1", "llm_only")][2]
+            stored_compartment = stored_identity.get("_oci_resolved", {}).get(
+                "genai_compartment_id"
+            )
+            assert stored_compartment == "ocid1.compartment.oc1..B", (
+                "After refresh_prompts the cached identity should describe the "
+                "session that was actually rebuilt (current OCI state), "
+                f"but it still records {stored_compartment!r}."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +458,7 @@ class TestConversationIdPreservation:
         original_id = original_session.conversation_id
         cs_dict = mock_client_settings().model_dump()
 
-        orch._session_cache[("c1", "llm_only")] = (original_session, cs_dict)
+        orch._session_cache[("c1", "llm_only")] = (original_session, cs_dict, orch._build_identity(cs_dict))
 
         new_session = _make_agent_session()
         with patch.object(orch, "_build_agent_session", AsyncMock(return_value=new_session)):
@@ -291,7 +477,7 @@ class TestConversationIdPreservation:
         combined = _make_combined_session(nl2sql_session=nl2sql)
         cs_dict = mock_client_settings().model_dump()
 
-        orch._session_cache[("c1", "combined")] = (combined, cs_dict)
+        orch._session_cache[("c1", "combined")] = (combined, cs_dict, orch._build_identity(cs_dict))
 
         new_nl2sql = _make_nl2sql_session(thread_id="c1")
         new_combined = _make_combined_session(nl2sql_session=new_nl2sql)
@@ -394,7 +580,7 @@ class TestCheckpointerPreservation:
         original_session = _make_agent_session(checkpointer=sentinel_cp)
         cs_dict = mock_client_settings().model_dump()
 
-        orch._session_cache[("c1", "llm_only")] = (original_session, cs_dict)
+        orch._session_cache[("c1", "llm_only")] = (original_session, cs_dict, orch._build_identity(cs_dict))
 
         new_session = _make_agent_session()
 
@@ -418,7 +604,7 @@ class TestCheckpointerPreservation:
         combined = _make_combined_session(nl2sql_session=nl2sql)
         cs_dict = mock_client_settings().model_dump()
 
-        orch._session_cache[("c1", "combined")] = (combined, cs_dict)
+        orch._session_cache[("c1", "combined")] = (combined, cs_dict, orch._build_identity(cs_dict))
 
         new_nl2sql = _make_nl2sql_session(thread_id="c1")
         new_combined = _make_combined_session(nl2sql_session=new_nl2sql)

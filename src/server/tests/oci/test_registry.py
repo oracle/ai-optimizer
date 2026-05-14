@@ -17,6 +17,7 @@ from server.app.oci.registry import (
     _OCI_CLI_FIELD_MAP,
     _apply_oci_cli_overrides,
     apply_env_overrides,
+    find_oci_profile_by_name,
     load_oci_profiles,
     register_oci_profile,
 )
@@ -77,6 +78,31 @@ class TestRegisterOciProfile:
         register_oci_profile(p2)
         assert len(settings.oci_configs) == 1
         assert settings.oci_configs[0].tenancy == "new"
+
+
+class TestFindOciProfileByName:
+    """find_oci_profile_by_name must mirror the rest of the OCI stack's casing rules."""
+
+    def test_exact_match(self):
+        register_oci_profile(OciProfileConfig(auth_profile="DEFAULT"))
+        assert find_oci_profile_by_name("DEFAULT") is not None
+
+    def test_case_insensitive_match(self):
+        """Client settings may persist a profile reference with different casing
+        than the registered profile (config files, hand-edited DB rows). The
+        lookup must succeed so cache identity and the loader resolve the same
+        profile API callers see."""
+        register_oci_profile(OciProfileConfig(auth_profile="DEFAULT"))
+        assert find_oci_profile_by_name("default") is not None
+        assert find_oci_profile_by_name("DeFaUlT") is not None
+
+    def test_unknown_returns_none(self):
+        register_oci_profile(OciProfileConfig(auth_profile="DEFAULT"))
+        assert find_oci_profile_by_name("OTHER") is None
+
+    def test_none_name_returns_none(self):
+        register_oci_profile(OciProfileConfig(auth_profile="DEFAULT"))
+        assert find_oci_profile_by_name(None) is None
 
 
 # ---------------------------------------------------------------------------

@@ -27,4 +27,8 @@ async def build_nl2sql_graph(
     """Build a LangGraph agent for NL2SQL with dynamic MCP tool discovery."""
     prompt = await fetch_prompt_with_fallback(server_url, api_key, PROMPT_NAME, DEFAULT_NL2SQL_INSTRUCTION)
     agentspec_agent = build_nl2sql_agentspec(client_settings, server_url, api_key, prompt)
-    return await load_langgraph_component(agentspec_agent, checkpointer=checkpointer or MemorySaver())
+    return await load_langgraph_component(
+        agentspec_agent,
+        checkpointer=checkpointer or MemorySaver(),
+        auth_profile=client_settings.oci.auth_profile,
+    )

@@ -27,4 +27,8 @@ async def build_llm_only_graph(
     """Build a LangGraph agent for LLM-only conversation."""
     prompt = await fetch_prompt_with_fallback(server_url, api_key, PROMPT_NAME, DEFAULT_INSTRUCTION)
     agentspec_agent = build_llm_only_agentspec(client_settings, prompt)
-    return await load_langgraph_component(agentspec_agent, checkpointer=checkpointer or MemorySaver())
+    return await load_langgraph_component(
+        agentspec_agent,
+        checkpointer=checkpointer or MemorySaver(),
+        auth_profile=client_settings.oci.auth_profile,
+    )

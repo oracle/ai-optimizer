@@ -8,7 +8,7 @@ OCI profile registry and startup lifecycle.
 
 import logging
 import os
-from typing import cast, get_args
+from typing import Optional, cast, get_args
 
 from server.app.core.secrets import coerce_secret_str
 from server.app.core.settings import settings
@@ -42,6 +42,22 @@ def register_oci_profile(profile: OciProfileConfig) -> None:
     """Append *profile* to settings.oci_configs (deduplicate by auth_profile, last-write wins)."""
     key = profile.auth_profile.casefold()
     settings.oci_configs = [p for p in settings.oci_configs if p.auth_profile.casefold() != key] + [profile]
+
+
+def find_oci_profile_by_name(name: Optional[str]) -> Optional[OciProfileConfig]:
+    """Return the profile whose auth_profile matches *name* (case-insensitive), else None.
+
+    Matches the casing rules used by ``register_oci_profile`` (casefold dedup)
+    and the OCI API endpoints (``.lower()`` lookup) so cache identity and the
+    loader resolve the same profile regardless of how the client stored it.
+    """
+    if name is None:
+        return None
+    folded = name.casefold()
+    for cfg in settings.oci_configs:
+        if cfg.auth_profile.casefold() == folded:
+            return cfg
+    return None
 
 
 def _resolve_oci_cli_auth() -> OciAuthType | None:

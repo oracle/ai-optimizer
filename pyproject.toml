@@ -120,7 +120,7 @@ markers = [
     "slow: Slow tests (deselect with '-m \"not slow\"')",
     "db: Tests requiring Oracle database container (deselect with '-m \"not db\"')",
 ]
-norecursedirs = ["tmp"]
+norecursedirs = ["tmp", "build"]
 
 [tool.pyright]
 extraPaths = ["src"]

@@ -408,7 +408,7 @@ class BaseChatOrchestrator:
         self._server_url = server_url
         self._api_key = api_key
         self._resolve_client = resolve_client
-        self._session_cache: Dict[tuple, tuple[Any, Dict[str, Any]]] = {}
+        self._session_cache: Dict[tuple, tuple[Any, Dict[str, Any], Dict[str, Any]]] = {}
         self._build_lock = asyncio.Lock()
         self._stream_locks: Dict[tuple, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.history = HistoryStore()
@@ -426,11 +426,41 @@ class BaseChatOrchestrator:
 
     @staticmethod
     def _build_identity(cs_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """Build a cache-identity dict from settings, excluding chat_history."""
+        """Build a cache-identity dict from settings, excluding chat_history.
+
+        For OCI providers, the resolved profile is folded in — every field
+        ``build_oci_litellm_params`` consumes — so a credential rotation,
+        auth-mode switch, or compartment/region change invalidates the
+        cached graph instead of leaving stale ``model_kwargs`` baked in.
+        The profile is resolved by the cached client's ``oci.auth_profile``,
+        not by whatever CONFIGURED currently points at, so per-client OCI
+        pinning is honoured.
+        """
         out = cs_dict.copy()
         ll = out.get("ll_model")
         if isinstance(ll, dict):
             out["ll_model"] = {k: v for k, v in ll.items() if k != "chat_history"}
+            if ll.get("provider") == "oci":
+                # Lazy: runtime.common is imported before oci.registry is wired up.
+                from server.app.oci.registry import find_oci_profile_by_name
+
+                oci_section = out.get("oci")
+                profile_name = oci_section.get("auth_profile") if isinstance(oci_section, dict) else None
+                profile = find_oci_profile_by_name(profile_name)
+                out["_oci_resolved"] = (
+                    {
+                        "auth_profile": profile.auth_profile,
+                        "authentication": profile.authentication,
+                        "tenancy": profile.tenancy,
+                        "user": profile.user,
+                        "fingerprint": profile.fingerprint,
+                        "key_file": profile.key_file,
+                        "genai_compartment_id": profile.genai_compartment_id,
+                        "genai_region": profile.genai_region,
+                    }
+                    if profile is not None
+                    else {"auth_profile": profile_name, "resolved": False}
+                )
         return out
 
     def invalidate_session(self, client: str) -> None:

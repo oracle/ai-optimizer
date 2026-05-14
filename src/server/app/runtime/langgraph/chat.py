@@ -158,12 +158,12 @@ class ChatOrchestrator(BaseChatOrchestrator):
         identity = self._build_identity(cs_dict)
 
         cached = self._session_cache.get(key)
-        if cached is not None and self._build_identity(cached[1]) == identity:
+        if cached is not None and cached[2] == identity:
             return cached[0], route
 
         async with self._build_lock:
             cached = self._session_cache.get(key)
-            if cached is not None and self._build_identity(cached[1]) == identity:
+            if cached is not None and cached[2] == identity:
                 return cached[0], route
             old_session = cached[0] if cached is not None else None
             old_checkpointer = None
@@ -190,14 +190,17 @@ class ChatOrchestrator(BaseChatOrchestrator):
                     session.vs_session.history = old_session.vs_session.history
                     session.nl2sql_session.conversation_messages = old_session.nl2sql_session.conversation_messages
                     session.nl2sql_session.conversation_id = old_session.nl2sql_session.conversation_id
-            self._session_cache[key] = (session, cs_dict)
+            self._session_cache[key] = (session, cs_dict, identity)
         return session, route
 
     async def refresh_prompts(self) -> None:
         """Re-fetch prompts and rebuild cached sessions."""
-        for key, (session, cs_dict) in list(self._session_cache.items()):
+        for key, (session, cs_dict, _old_identity) in list(self._session_cache.items()):
             _client, _ = key
             cs = ClientSettings.model_validate(cs_dict)
+            # Rebuilds read live OCI state; the old identity would file the
+            # new graph under stale metadata and let a rollback re-match it.
+            new_identity = self._build_identity(cs_dict)
             if isinstance(session, CombinedSession):
                 new_session = await self._build_combined_session(
                     cs,
@@ -208,7 +211,7 @@ class ChatOrchestrator(BaseChatOrchestrator):
                 new_session.nl2sql_session.conversation_messages = session.nl2sql_session.conversation_messages
                 new_session.nl2sql_session.conversation_id = session.nl2sql_session.conversation_id
                 if key in self._session_cache:
-                    self._session_cache[key] = (new_session, cs_dict)
+                    self._session_cache[key] = (new_session, cs_dict, new_identity)
             elif isinstance(session, NL2SQLGraphSession):
                 old_msgs = session.conversation_messages
                 new_session = await self._build_nl2sql_agent_session(
@@ -218,20 +221,20 @@ class ChatOrchestrator(BaseChatOrchestrator):
                 )
                 new_session.conversation_messages = old_msgs
                 if key in self._session_cache:
-                    self._session_cache[key] = (new_session, cs_dict)
+                    self._session_cache[key] = (new_session, cs_dict, new_identity)
             elif isinstance(session, AgentGraphSession):
                 old_msgs = session.conversation_messages
                 new_session = await self._build_agent_session(cs, checkpointer=session.checkpointer)
                 new_session.conversation_messages = old_msgs
                 new_session.conversation_id = session.conversation_id
                 if key in self._session_cache:
-                    self._session_cache[key] = (new_session, cs_dict)
+                    self._session_cache[key] = (new_session, cs_dict, new_identity)
             elif isinstance(session, GraphFlowSession):
                 saved_history = session.history
                 new_session = await self._build_flow_session(cs)
                 new_session.history = saved_history
                 if key in self._session_cache:
-                    self._session_cache[key] = (new_session, cs_dict)
+                    self._session_cache[key] = (new_session, cs_dict, new_identity)
 
     # -- execute_chat (non-streaming) -------------------------------------
 
