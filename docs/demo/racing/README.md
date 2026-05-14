@@ -34,19 +34,17 @@ racing/
 
 ### Infrastructure
 1. **Kubernetes** - apply the OpenTofu Kubernetes stack for the target environment.  CPU is perfectly fine.
-1. **Database user** — create a schema-owner DB account (suggest `RACING`) on Oracle Database 26ai. Grant `DB_DEVELOPER_ROLE` and a tablespace quota.  http://localhost:1313/ai-optimizer/client/configuration/databases/#database-user
-1. **Load the schema** — as the `RACING` database user, run `schema.sql`. It creates the `teams`, `drivers`, `races`, `race_results`, `pit_stops`, `incidents`, `performance_metrics`, and `source_documents` tables; the `driver_standings`, `team_standings`, and `race_summary` views; and seeds Rounds 1–5 for all 100 drivers across 10 teams. Round 6 is scheduled but has **no** structured results — that's intentional.
+1. **Load the schema** — as the `AI_OPTIMIZER` database user, run `schema.sql`. It creates the `teams`, `drivers`, `races`, `race_results`, `pit_stops`, `incidents`, `performance_metrics`, and `source_documents` tables; the `driver_standings`, `team_standings`, and `race_summary` views; and seeds Rounds 1–5 for all 100 drivers across 10 teams. Round 6 is scheduled but has **no** structured results — that's intentional.
 1. **Verify Schema** — pick a driver number (e.g. Driver 1) and confirm in SQL that they exist and have results before Round 6:
    ```sql
    SELECT driver_label, team_id FROM drivers WHERE driver_code = 'Driver001';
    SELECT COUNT(*) FROM race_results rr JOIN drivers d USING (driver_id)
-   WHERE d.driver_code = 'Driver001';   -- > 0
+   WHERE d.driver_code = 'Driver001';
    ```
 
 ### AI Optimizer
 Log into the AI Optimizer to setup:
 
-1. **Wire the database** — in the AI Optimizer client at **Configuration → Databases**, add a connection alias (suggest `RACING`) pointing at the schema and confirm **Test Connection** passes.
 1. **Pick an LLM + embedding model** at **Configuration → Models**. Anything with solid tool-use works (e.g. OpenAI `gpt-4o` + `text-embedding-3-small`, or OCI `cohere.command-r-plus` + `cohere.embed-english-v3.0`). For an on-prem fallback, Ollama `llama3.1:8b` + `mxbai-embed-large` works, though combined-mode tools is weaker.
 1. **Import the prompts** — in **Tools → 🎤 Prompts**, import `prompts.json`. This installs the motorsport-analyst persona and the NL2SQL/RAG guidance the demo relies on.
 1. **Helm** - apply helm/examples/values-oke-demo-200.yaml

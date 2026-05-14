@@ -769,3 +769,5 @@ GROUP BY
   r.circuit,
   r.race_date,
   r.weather_condition;
+
+COMMIT;
