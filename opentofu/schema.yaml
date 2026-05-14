@@ -156,6 +156,7 @@ variables:
     enum:
       - "VM"
       - "Kubernetes"
+      - "AlwaysFree"
 
   optimizer_version:
     type: enum
@@ -230,7 +231,7 @@ variables:
   k8s_byo_ocir:
     title: "Bring Your Own Oracle Container Image Registry (OCIR)?"
     description: |
-      All container images should pre-exist in and will be pulled from the BYO OCIR. 
+      All container images should pre-exist in and will be pulled from the BYO OCIR.
       Mirror upstream images preserving their `<owner>/<image>:<tag>` paths under the BYO URL.
     type: boolean
     default: false
@@ -268,6 +269,7 @@ variables:
   compute_cpu_ocpu:
     type: integer
     title: "CPU Worker Core Count"
+    description: "When infrastructure is AlwaysFree, maximum is 4 OCPU (validated at plan time)."
     required: true
     minimum: 1
     maximum: 64
@@ -283,6 +285,9 @@ variables:
         - eq:
             - infrastructure
             - "Kubernetes"
+        - eq:
+            - infrastructure
+            - "AlwaysFree"
 
   compute_gpu_shape:
     type: enum
@@ -376,6 +381,11 @@ variables:
     minimum: 10
     maximum: 10
     multipleOf: 10
+    visible:
+      not:
+        - eq:
+            - infrastructure
+            - "AlwaysFree"
 
   lb_max_shape:
     type: integer
@@ -384,6 +394,11 @@ variables:
     minimum: 10
     maximum: 8000
     multipleOf: 10
+    visible:
+      not:
+        - eq:
+            - infrastructure
+            - "AlwaysFree"
 
   client_allowed_cidrs:
     type: array
@@ -458,8 +473,13 @@ variables:
       - "LICENSE_INCLUDED"
       - "BRING_YOUR_OWN_LICENSE"
     visible:
-      not:
-        - byo_db
+      and:
+        - not:
+            - byo_db
+        - not:
+            - eq:
+                - infrastructure
+                - "AlwaysFree"
 
   adb_edition:
     type: enum
@@ -473,6 +493,10 @@ variables:
       and:
         - not:
             - byo_db
+        - not:
+            - eq:
+                - infrastructure
+                - "AlwaysFree"
         - eq:
             - adb_license_model
             - BRING_YOUR_OWN_LICENSE
@@ -486,8 +510,13 @@ variables:
       - "SECURE_ACCESS"
       - "PRIVATE_ENDPOINT_ACCESS"
     visible:
-      not:
-        - byo_db
+      and:
+        - not:
+            - byo_db
+        - not:
+            - eq:
+                - infrastructure
+                - "AlwaysFree"
 
   adb_whitelist_cidrs:
     type: array
@@ -499,6 +528,10 @@ variables:
       and:
         - not:
             - byo_db
+        - not:
+            - eq:
+                - infrastructure
+                - "AlwaysFree"
         - eq:
             - adb_networking
             - PRIVATE_ENDPOINT_ACCESS
@@ -510,16 +543,26 @@ variables:
     minimum: 2
     multipleOf: 1
     visible:
-      not:
-        - byo_db
+      and:
+        - not:
+            - byo_db
+        - not:
+            - eq:
+                - infrastructure
+                - "AlwaysFree"
 
   adb_is_cpu_auto_scaling_enabled:
     type: boolean
     title: "Allow Autonomous Database CPU Auto Scaling? (3x CPU)"
     required: true
     visible:
-      not:
-        - byo_db
+      and:
+        - not:
+            - byo_db
+        - not:
+            - eq:
+                - infrastructure
+                - "AlwaysFree"
 
   adb_data_storage_size_in_gb:
     type: number
@@ -530,16 +573,26 @@ variables:
     maximum: 393216
     multipleOf: 1
     visible:
-      not:
-        - byo_db
+      and:
+        - not:
+            - byo_db
+        - not:
+            - eq:
+                - infrastructure
+                - "AlwaysFree"
 
   adb_is_storage_auto_scaling_enabled:
     type: boolean
     title: "Allow Autonomous Database Storage Auto Scaling?"
     required: true
     visible:
-      not:
-        - byo_db
+      and:
+        - not:
+            - byo_db
+        - not:
+            - eq:
+                - infrastructure
+                - "AlwaysFree"
 
   ### BYODB - AuthN ###
   byo_db_password:

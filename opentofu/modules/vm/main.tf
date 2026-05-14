@@ -180,7 +180,7 @@ resource "oci_core_instance" "instance" {
   dynamic "shape_config" {
     for_each = var.vm_is_gpu_shape ? [] : [1]
     content {
-      memory_in_gbs = var.compute_cpu_ocpu * 16
+      memory_in_gbs = var.compute_cpu_memory_gbs
       ocpus         = var.compute_cpu_ocpu
     }
   }

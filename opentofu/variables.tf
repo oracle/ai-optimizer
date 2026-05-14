@@ -94,12 +94,12 @@ variable "label_prefix" {
 }
 
 variable "infrastructure" {
-  description = "Choose between a full Kubernetes or a light-weight Virtual Machine deployment."
+  description = "Choose between a full Kubernetes, a light-weight Virtual Machine, or AlwaysFree deployment."
   type        = string
   default     = "VM"
   validation {
-    condition     = contains(["Kubernetes", "VM"], var.infrastructure)
-    error_message = "Must be either Kubernetes or VM."
+    condition     = contains(["Kubernetes", "VM", "AlwaysFree"], var.infrastructure)
+    error_message = "Must be either Kubernetes, VM, or AlwaysFree."
   }
 }
 
@@ -233,8 +233,8 @@ variable "compute_cpu_shape" {
   type        = string
   default     = "VM.Standard.E5.Flex"
   validation {
-    condition     = contains(["VM.Standard.E5.Flex", "VM.Standard.E4.Flex", "VM.Standard.A1.Flex", "VM.Standard.A2.Flex", ], var.compute_cpu_shape)
-    error_message = "Must be either VM.Standard.E5.Flex, VM.Standard.E4.Flex, VM.Standard.A1.Flex, or VM.Standard.A2.Flex"
+    condition     = contains(["VM.Standard.E5.Flex", "VM.Standard.E4.Flex", "VM.Standard.A1.Flex", "VM.Standard.A2.Flex"], var.compute_cpu_shape)
+    error_message = "Must be either VM.Standard.E5.Flex (x86), VM.Standard.E4.Flex (x86), VM.Standard.A1.Flex (ARM), or VM.Standard.A2.Flex (ARM)"
   }
 }
 
