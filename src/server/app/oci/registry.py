@@ -12,9 +12,10 @@ from typing import Optional, cast, get_args
 
 from server.app.core.secrets import coerce_secret_str
 from server.app.core.settings import settings
+from server.app.database.settings import load_oci_genai_overlay
 
 from .config import _check_usable, parse_oci_config_file
-from .schemas import OciAuthType, OciProfileConfig
+from .schemas import OciAuthType, OciProfileConfig, genai_inference_endpoint
 from .service import create_genai_models
 
 LOGGER = logging.getLogger(__name__)
@@ -25,6 +26,25 @@ _SECRET_PROFILE_FIELDS = frozenset({"key_content", "pass_phrase"})
 
 # Mapping of OCI CLI env vars to (settings_attr, profile_field, is_sensitive).
 # Precedence: OCI_CLI_* env var > AIO_OCI_CLI_* setting > config file value.
+# Snapshot of file+env-derived GenAI fields per profile, captured at the end of
+# ``load_oci_profiles`` before the DB overlay is applied. Keyed by casefolded
+# auth_profile, the inner dict has ``genai_compartment_id`` and ``genai_region``.
+# ``persist_settings`` compares against this baseline so values the user never
+# edited are not written to the DB (which would otherwise mask later config-file
+# changes).
+_source_baseline: dict[str, dict[str, Optional[str]]] = {}
+
+
+def get_oci_source_baseline() -> dict[str, dict[str, Optional[str]]]:
+    """Return the file+env baseline for OCI GenAI fields. Empty until startup runs."""
+    return _source_baseline
+
+
+def reset_oci_source_baseline() -> None:
+    """Clear the captured baseline. Used by tests to isolate state between cases."""
+    _source_baseline.clear()
+
+
 _OCI_CLI_FIELD_MAP: list[tuple[str, str, str, bool]] = [
     # (env_var, settings_attr, profile_field, is_sensitive)
     ("OCI_CLI_TENANCY", "oci_cli_tenancy", "tenancy", False),
@@ -168,6 +188,37 @@ async def load_oci_profiles() -> None:
 
     apply_env_overrides()
 
+    # Snapshot the file+env state per profile *before* applying the DB overlay.
+    # ``persist_settings`` compares against this so values that came from the
+    # config file (or env) and were never user-edited are not written back to
+    # the DB — otherwise the DB overlay would mask later edits to ``~/.oci/config``.
+    _source_baseline.clear()
+    _source_baseline.update(
+        {
+            prof.auth_profile.casefold(): {
+                "genai_compartment_id": prof.genai_compartment_id,
+                "genai_region": prof.genai_region,
+            }
+            for prof in settings.oci_configs
+        }
+    )
+
+    # Runs after apply_env_overrides() so an env-only DEFAULT profile (created
+    # there when no OCI config file exists) is present to receive the overlay.
+    # Precedence: env > DB > config file — env-supplied fields are skipped.
+    # ``None`` in the overlay is authoritative (records a user clear via UI/API)
+    # and overrides the config-file value; key presence — not truthiness — is
+    # what signals "the DB speaks for this field".
+    overlay = await load_oci_genai_overlay()
+    for prof in settings.oci_configs:
+        saved = overlay.get(prof.auth_profile.casefold())
+        if not saved:
+            continue
+        if not settings.genai_compartment_id and "genai_compartment_id" in saved:
+            prof.genai_compartment_id = saved["genai_compartment_id"]
+        if not settings.genai_region and "genai_region" in saved:
+            prof.genai_region = saved["genai_region"]
+
     if profiles:
         LOGGER.info("Loaded %d OCI profile(s) from config file", len(profiles))
 
@@ -187,8 +238,33 @@ async def load_oci_profiles() -> None:
         None,
     )
     if genai_profile:
+        # create_genai_models() purges existing provider=="oci" entries before
+        # registering fresh ones, and get_genai_models() swallows transient OCI
+        # errors (ServiceError, timeouts) — so an outage on the configured
+        # region yields an empty list and silently deletes the OCI model
+        # configs persisted on a prior run. Snapshot and restore so a transient
+        # failure at startup doesn't get committed by the post-startup persist.
+        # *Only* restore when the snapshot was taken against the current region
+        # (api_base encodes the region) — otherwise the user changed regions
+        # and the snapshot is stale, so honouring the new (possibly empty)
+        # state is more correct than re-exposing models pointing at the old
+        # region.
+        saved_model_configs = settings.model_configs[:]
+        expected_api_base = genai_inference_endpoint(genai_profile.genai_region)
+        prior_oci = [m for m in saved_model_configs if m.provider == "oci"]
+        snapshot_is_current = bool(prior_oci) and all(m.api_base == expected_api_base for m in prior_oci)
         try:
             models = await create_genai_models(genai_profile)
-            LOGGER.info("Auto-loaded %d GenAI model(s) from %s", len(models), genai_profile.auth_profile)
+            if not models and snapshot_is_current:
+                settings.model_configs = saved_model_configs
+                LOGGER.warning(
+                    "GenAI auto-load returned no models for %s; preserving %d previously persisted OCI model config(s)",
+                    genai_profile.auth_profile,
+                    len(prior_oci),
+                )
+            else:
+                LOGGER.info("Auto-loaded %d GenAI model(s) from %s", len(models), genai_profile.auth_profile)
         except Exception:
             LOGGER.warning("Failed to auto-load GenAI models", exc_info=True)
+            if snapshot_is_current:
+                settings.model_configs = saved_model_configs

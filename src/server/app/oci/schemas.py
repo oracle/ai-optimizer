@@ -20,6 +20,22 @@ OciAuthType = Literal[
     "security_token",
 ]
 
+# Fields the DB-backed GenAI overlay speaks for. Shared by ``persist_settings``
+# and the OCI/settings endpoints so the schema lives in one place.
+GENAI_OVERLAY_FIELDS = frozenset({"genai_compartment_id", "genai_region"})
+
+
+def genai_inference_endpoint(region: Optional[str]) -> str:
+    """Construct the OCI GenAI inference endpoint URL for *region*.
+
+    Accepts ``Optional[str]`` to match the call sites' upstream guarantees
+    (``create_genai_models`` only runs when region is set; client.py gates
+    the call on ``profile.genai_region``). Matches the prior inline
+    f-string semantics — a stray ``None`` produces a bogus URL rather than
+    raising.
+    """
+    return f"https://inference.generativeai.{region}.oci.oraclecloud.com"
+
 
 class OciSensitive(BaseModel):
     """OCI profile fields excluded from default API responses.

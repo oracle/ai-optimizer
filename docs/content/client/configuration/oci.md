@@ -17,7 +17,7 @@ Oracle Cloud Infrastructure (OCI) can _optionally_ be configured to enable addit
 
 ## Configuration
 
-OCI can either be configured through the [{{% short_app_ref %}} interface](#{{% short_app_ref %}}-interface), a [CLI Configuration File](#config-file), or by using [environment variables](#environment-variables).
+OCI can either be configured through the {{% short_app_ref %}} [interface](#interface), a [CLI Configuration File](#config-file), or by using [environment variables](#environment-variables).
 
 You will need to [generate an API Key](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm#two) to obtain the required configuration values.
 

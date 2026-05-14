@@ -8,7 +8,7 @@ Endpoint for retrieving server settings.
 
 import json
 import logging
-from typing import Annotated, Callable
+from typing import Annotated, Callable, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -41,7 +41,7 @@ from server.app.models.litellm_utils import find_model
 from server.app.models.ollama import load_ollama_models
 from server.app.models.registry import apply_env_overrides, reset_factory_models
 from server.app.models.schemas import ModelSensitive
-from server.app.oci.schemas import OciSensitive
+from server.app.oci.schemas import GENAI_OVERLAY_FIELDS, OciProfileConfig, OciSensitive
 
 LOGGER = logging.getLogger(__name__)
 _DB_CONN_FIELDS = set(DatabaseUpdate.model_fields)
@@ -83,6 +83,25 @@ class LegacyMigratingImportRoute(APIRoute):
 
 auth = APIRouter(prefix="/settings")
 _import_router = APIRouter(route_class=LegacyMigratingImportRoute)
+
+
+def _imported_oci_genai_touched(
+    incoming: Optional[list[OciProfileConfig]],
+) -> Optional[dict[str, set[str]]]:
+    """Return per-profile GenAI overlay fields the import body explicitly set.
+
+    ``persist_settings`` uses this to recognise an imported value matching
+    baseline as a deliberate revert rather than carrying the prior overlay
+    forward.
+    """
+    if not incoming:
+        return None
+    touched: dict[str, set[str]] = {}
+    for item in incoming:
+        fields = set(GENAI_OVERLAY_FIELDS & item.model_fields_set)
+        if fields:
+            touched[item.auth_profile] = fields
+    return touched or None
 
 
 def _restore_prompts(saved: dict[str, str]) -> None:
@@ -271,6 +290,7 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             result.model_configs = ImportSectionResult(created=len(created), updated=len(updated))
 
         # --- OCI configs ---
+        oci_touched = _imported_oci_genai_touched(body.oci_configs)
         if body.oci_configs is not None:
             created, updated = upsert_list_field("oci_configs", body.oci_configs)
             for item in created + updated:
@@ -300,7 +320,7 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             result.scalars = {"log_level": body.log_level}
 
         # --- Persist once — rollback everything on failure ---
-        if not await persist_settings():
+        if not await persist_settings(oci_user_touched=oci_touched):
             (settings.database_configs, settings.model_configs, settings.oci_configs, settings.log_level) = (
                 snapshot["db"],
                 snapshot["models"],

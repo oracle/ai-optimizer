@@ -16,7 +16,7 @@ import oci.signer
 
 from server.app.core.secrets import reveal
 
-from .schemas import OciProfileConfig
+from .schemas import OciProfileConfig, genai_inference_endpoint
 
 T = TypeVar("T")
 LOGGER = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ def init_client(client_type: Callable[..., T], profile: OciProfileConfig, **kwar
         and profile.genai_compartment_id
         and profile.genai_region
     ):
-        client_kwargs["service_endpoint"] = f"https://inference.generativeai.{profile.genai_region}.oci.oraclecloud.com"
+        client_kwargs["service_endpoint"] = genai_inference_endpoint(profile.genai_region)
 
     signer = get_signer(profile)
 

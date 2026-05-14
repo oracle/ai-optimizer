@@ -372,6 +372,43 @@ async def test_import_oci_creates_new(app_client, auth_headers, mock_persist):
     assert new_oci.usable is False
 
 
+async def test_import_oci_forwards_genai_touched(app_client, auth_headers, mock_persist):
+    """Imported OCI profiles must flag any included GenAI fields as touched.
+
+    Without this, an import that reverts a GenAI override back to the
+    file/env baseline gets re-emitted as the prior overlay on persist —
+    so the import is silently undone after restart.
+    """
+    settings.oci_configs = []
+    payload = {
+        "oci_configs": [
+            {
+                "auth_profile": "PROD",
+                "genai_compartment_id": "ocid1.compartment.oc1..imported",
+                "genai_region": "us-chicago-1",
+            }
+        ]
+    }
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+    assert resp.status_code == 200
+    kwargs = mock_persist.await_args_list[-1].kwargs
+    assert kwargs.get("oci_user_touched") == {
+        "PROD": {"genai_compartment_id", "genai_region"}
+    }
+
+
+async def test_import_oci_without_genai_fields_omits_touched(app_client, auth_headers, mock_persist):
+    """An import that doesn't include GenAI overlay fields must not pass touched."""
+    settings.oci_configs = []
+    payload = {"oci_configs": [{"auth_profile": "PROD", "region": "us-phoenix-1"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+    assert resp.status_code == 200
+    kwargs = mock_persist.await_args_list[-1].kwargs
+    assert kwargs.get("oci_user_touched") is None
+
+
 async def test_import_oci_updates_existing(app_client, auth_headers, mock_persist):
     """An existing OCI profile is updated in-place with usable=False."""
     settings.oci_configs = [OciProfileConfig(auth_profile="PROD", region="us-ashburn-1", usable=True)]

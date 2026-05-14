@@ -199,6 +199,41 @@ async def test_update_oci_profile_not_found(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_update_oci_profile_genai_field_forwards_touched(app_client, auth_headers, mock_persist_settings):
+    """PUT including a GenAI overlay field forwards the touched set to persist_settings.
+
+    Required so a user reverting an override is distinguishable from an
+    untouched env-masked field at persist time.
+    """
+    with patch(MOCK_CHECK, return_value=None):
+        resp = await app_client.put(
+            "/v1/oci/TEST",
+            json={"genai_compartment_id": "ocid1.compartment.oc1..changed"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    # Last call is the happy-path persist.
+    kwargs = mock_persist_settings.await_args_list[-1].kwargs
+    assert kwargs.get("oci_user_touched") == {"TEST": {"genai_compartment_id"}}
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_oci_profile_non_genai_field_omits_touched(app_client, auth_headers, mock_persist_settings):
+    """PUT with only non-overlay fields should not pass a touched set."""
+    with patch(MOCK_CHECK, return_value=None):
+        resp = await app_client.put(
+            "/v1/oci/TEST",
+            json={"tenancy": "ocid1.tenancy.oc1..updated"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    kwargs = mock_persist_settings.await_args_list[-1].kwargs
+    assert kwargs.get("oci_user_touched") is None
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_update_oci_profile_partial(app_client, auth_headers):
     """PUT only one field leaves others unchanged."""
     with patch(MOCK_CHECK, return_value=None):
@@ -281,6 +316,34 @@ async def test_update_previously_usable_now_fails(app_client, auth_headers):
             assert cfg.tenancy == "ocid1.tenancy.oc1..test"
             assert cfg.usable is True
             break
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_previously_usable_failure_does_not_mark_touched(
+    app_client, auth_headers, mock_persist_settings
+):
+    """Validation-failure rollback must not flag GenAI fields as touched.
+
+    Otherwise a request that happens to include a GenAI field matching the
+    baseline (e.g. env-masked) would cause persist to drop the saved overlay
+    even though the update was rejected and rolled back.
+    """
+    for cfg in settings.oci_configs:
+        if cfg.auth_profile == "TEST":
+            cfg.usable = True
+            break
+    with patch(MOCK_CHECK, return_value="auth failed"):
+        resp = await app_client.put(
+            "/v1/oci/TEST",
+            json={"genai_compartment_id": "ocid1.compartment.oc1..bogus"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 422
+    # The single persist call in the rollback path must not advertise the
+    # rolled-back field as user-touched.
+    kwargs = mock_persist_settings.await_args_list[-1].kwargs
+    assert kwargs.get("oci_user_touched") is None
 
 
 @pytest.mark.unit
