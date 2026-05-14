@@ -6,7 +6,7 @@ global:
   env: "iac"
   cleanupPVCs: true
   api:
-    secretName: "${label}-optimizer-api-key"
+    secretName: "ai-optimizer-api-key-${label}"
 %{ if ocir_url != "" ~}
   imageRegistry: "${ocir_url}"
 %{ endif ~}
