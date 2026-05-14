@@ -556,71 +556,57 @@ class TestRemoveModel:
 class TestInitializeModel:
     """Test _initialize_model helper."""
 
-    def test_edit_fetches_model(self, mock_st):
-        """Edit action fetches the model via _fetch_model."""
+    def test_edit_fetches_model(self):
+        """Edit action fetches the model via _fetch_model and returns it as-is."""
         from client.app.content.config.tabs.models import _initialize_model
 
         fetched = {"id": "gpt-4o", "provider": "openai", "enabled": True}
-        mock_st.checkbox.return_value = True
 
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}._fetch_model", return_value=fetched) as mock_fetch,
-        ):
+        with patch(f"{MODULE}._fetch_model", return_value=fetched) as mock_fetch:
             result = _initialize_model("edit", "ll", "gpt-4o", "openai")
 
         mock_fetch.assert_called_once_with("openai", "gpt-4o")
-        assert result["id"] == "gpt-4o"
+        assert result == fetched
 
-    def test_edit_falls_back_to_empty_dict(self, mock_st):
+    def test_edit_falls_back_to_empty_dict(self):
         """Edit action falls back to {} when fetch returns None."""
         from client.app.content.config.tabs.models import _initialize_model
 
-        mock_st.checkbox.return_value = False
-
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}._fetch_model", return_value=None),
-        ):
+        with patch(f"{MODULE}._fetch_model", return_value=None):
             result = _initialize_model("edit", "ll", "gpt-4o", "openai")
 
-        assert result == {"enabled": False}
+        assert result == {}
 
-    def test_add_returns_default_dict(self, mock_st):
+    def test_add_returns_default_dict(self):
         """Add action returns a default dict with enabled=True."""
         from client.app.content.config.tabs.models import _initialize_model
 
-        with patch(f"{MODULE}.st", mock_st):
-            result = _initialize_model("add", "ll", None, None)
+        result = _initialize_model("add", "ll", None, None)
 
         assert result["enabled"] is True
         assert result["type"] == "ll"
+        assert result["provider"] == "unset"
 
-    def test_add_does_not_fetch(self, mock_st):
+    def test_add_does_not_fetch(self):
         """Add action does not call _fetch_model."""
         from client.app.content.config.tabs.models import _initialize_model
 
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}._fetch_model") as mock_fetch,
-        ):
+        with patch(f"{MODULE}._fetch_model") as mock_fetch:
             _initialize_model("add", "embed", None, None)
 
         mock_fetch.assert_not_called()
 
-    def test_edit_renders_checkbox(self, mock_st):
-        """Edit action renders an Enabled checkbox."""
+    def test_initialize_does_not_render_widgets(self, mock_st):
+        """_initialize_model does not render any widgets."""
         from client.app.content.config.tabs.models import _initialize_model
-
-        mock_st.checkbox.return_value = True
 
         with (
             patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}._fetch_model", return_value={"enabled": False}),
+            patch(f"{MODULE}._fetch_model", return_value={"enabled": True}),
         ):
             _initialize_model("edit", "ll", "gpt-4o", "openai")
 
-        mock_st.checkbox.assert_called_once()
+        mock_st.checkbox.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1375,6 +1361,38 @@ class TestEditModel:
             getattr(edit_model, "__wrapped__")("embed", "edit", "gpt-4o", "openai")
 
         mock_st.rerun.assert_not_called()
+
+    def test_toggling_enabled_off_is_detected_as_change(self, make_model_state, mock_st):
+        """Unticking Enabled snapshots the persisted value before the widget mutates the form model."""
+        from client.app.content.config.tabs.models import edit_model
+
+        state = make_model_state()
+        fetched = {"id": "gpt-4o", "provider": "openai", "enabled": True, "api_base": "http://a"}
+        mock_st.checkbox.return_value = False
+        mock_st.selectbox.return_value = "openai"
+        mock_st.button.return_value = False
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._fetch_model", return_value=fetched),
+            patch(f"{MODULE}._get_supported_models", return_value=[{"provider": "openai", "ids": []}]),
+            patch(
+                f"{MODULE}._render_provider_selection",
+                side_effect=lambda model, *_: (model, [], False),
+            ),
+            patch(f"{MODULE}._render_model_selection", side_effect=lambda model, *_: model),
+            patch(f"{MODULE}._render_api_configuration", side_effect=lambda model, *_: model),
+            patch(f"{MODULE}._render_model_specific_config", side_effect=lambda model, *_: model),
+            patch(f"{MODULE}._handle_dialog_submission", return_value=False) as mock_submit,
+        ):
+            getattr(edit_model, "__wrapped__")("ll", "edit", "gpt-4o", "openai")
+
+        mock_submit.assert_called_once()
+        passed_model = mock_submit.call_args.args[0]
+        original_model = mock_submit.call_args.kwargs["original_model"]
+        assert original_model["enabled"] is True
+        assert passed_model["enabled"] is False
 
 
 # ---------------------------------------------------------------------------
