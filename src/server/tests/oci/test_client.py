@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, mock_open, patch
 
 from pydantic import SecretStr
 
-from server.app.oci.client import get_signer, init_client
+from server.app.oci.client import _tenancy_from_signer, get_signer, init_client, populate_principal_identity
 from server.app.oci.schemas import OciProfileConfig
 
 MODULE = "server.app.oci.client"
@@ -178,3 +178,107 @@ class TestInitClient:
         config_dict = mock_client_type.call_args[0][0]
         assert config_dict["key_content"] == "raw-key-data"
         assert "key_file" not in config_dict
+
+
+# ---------------------------------------------------------------------------
+# _tenancy_from_signer
+# ---------------------------------------------------------------------------
+
+
+class TestTenancyFromSigner:
+    """Test _tenancy_from_signer extraction strategies."""
+
+    def test_returns_direct_tenancy_id_attribute(self):
+        """InstancePrincipal/ResourcePrincipal signers expose tenancy_id directly."""
+        signer = MagicMock(spec=["tenancy_id"])
+        signer.tenancy_id = "ocid1.tenancy.oc1..direct"
+        assert _tenancy_from_signer(signer) == "ocid1.tenancy.oc1..direct"
+
+    def test_falls_back_to_res_tenant_jwt_claim(self):
+        """OKE workload identity signer lacks tenancy_id; extract from JWT."""
+        security_token = MagicMock()
+        security_token.get_jwt.return_value = {"res_tenant": "ocid1.tenancy.oc1..fromjwt"}
+        signer = MagicMock(spec=["security_token"])
+        signer.security_token = security_token
+        assert _tenancy_from_signer(signer) == "ocid1.tenancy.oc1..fromjwt"
+
+    def test_prefers_direct_attribute_over_jwt(self):
+        """Direct tenancy_id wins over JWT claim when both are present."""
+        security_token = MagicMock()
+        security_token.get_jwt.return_value = {"res_tenant": "from-jwt"}
+        signer = MagicMock(spec=["tenancy_id", "security_token"])
+        signer.tenancy_id = "from-attr"
+        signer.security_token = security_token
+        assert _tenancy_from_signer(signer) == "from-attr"
+
+    def test_returns_none_when_no_source_available(self):
+        """No tenancy_id and no security_token -> None."""
+        signer = MagicMock(spec=[])
+        assert _tenancy_from_signer(signer) is None
+
+    def test_returns_none_when_jwt_decode_raises(self):
+        """JWT decode failure is swallowed and returns None."""
+        security_token = MagicMock()
+        security_token.get_jwt.side_effect = RuntimeError("bad jwt")
+        signer = MagicMock(spec=["security_token"])
+        signer.security_token = security_token
+        assert _tenancy_from_signer(signer) is None
+
+
+# ---------------------------------------------------------------------------
+# populate_principal_identity
+# ---------------------------------------------------------------------------
+
+
+class TestPopulatePrincipalIdentity:
+    """Test populate_principal_identity fills tenancy/region from signer metadata."""
+
+    def test_oke_workload_identity_fills_tenancy_from_jwt(self):
+        """OKE workload identity tenancy comes from the JWT res_tenant claim."""
+        profile = OciProfileConfig(auth_profile="DEFAULT", authentication="oke_workload_identity")
+        security_token = MagicMock()
+        security_token.get_jwt.return_value = {"res_tenant": "ocid1.tenancy.oc1..oke"}
+        signer = MagicMock(spec=["security_token", "region"])
+        signer.security_token = security_token
+        signer.region = "us-phoenix-1"
+
+        with patch(f"{MODULE}.get_signer", return_value=signer):
+            populate_principal_identity(profile)
+
+        assert profile.tenancy == "ocid1.tenancy.oc1..oke"
+        assert profile.region == "us-phoenix-1"
+
+    def test_instance_principal_uses_direct_tenancy_id(self):
+        """Instance principal tenancy comes from signer.tenancy_id."""
+        profile = OciProfileConfig(auth_profile="DEFAULT", authentication="instance_principal")
+        signer = MagicMock(spec=["tenancy_id", "region"])
+        signer.tenancy_id = "ocid1.tenancy.oc1..ip"
+        signer.region = "us-ashburn-1"
+
+        with patch(f"{MODULE}.get_signer", return_value=signer):
+            populate_principal_identity(profile)
+
+        assert profile.tenancy == "ocid1.tenancy.oc1..ip"
+        assert profile.region == "us-ashburn-1"
+
+    def test_noop_for_api_key_auth(self):
+        """API key profiles are not touched."""
+        profile = OciProfileConfig(auth_profile="DEFAULT", authentication="api_key", tenancy=None, region=None)
+        with patch(f"{MODULE}.get_signer") as mock_get_signer:
+            populate_principal_identity(profile)
+            mock_get_signer.assert_not_called()
+        assert profile.tenancy is None
+        assert profile.region is None
+
+    def test_existing_values_preserved(self):
+        """Already-set tenancy and region short-circuit the signer call."""
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            authentication="oke_workload_identity",
+            tenancy="ocid1.tenancy.oc1..existing",
+            region="us-phoenix-1",
+        )
+        with patch(f"{MODULE}.get_signer") as mock_get_signer:
+            populate_principal_identity(profile)
+            mock_get_signer.assert_not_called()
+        assert profile.tenancy == "ocid1.tenancy.oc1..existing"

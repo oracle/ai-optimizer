@@ -39,6 +39,27 @@ def get_signer(profile: OciProfileConfig) -> Optional[object]:
     return None
 
 
+def _tenancy_from_signer(signer: object) -> Optional[str]:
+    """Extract tenancy OCID from a principal-based signer.
+
+    InstancePrincipalsSecurityTokenSigner and EphemeralResourcePrincipalSigner
+    expose ``tenancy_id`` directly. OkeWorkloadIdentityResourcePrincipalSigner
+    does not — its tenancy lives in the ``res_tenant`` JWT claim on the
+    security token.
+    """
+    tenancy = getattr(signer, "tenancy_id", None)
+    if tenancy:
+        return tenancy
+    security_token = getattr(signer, "security_token", None)
+    if security_token is None:
+        return None
+    try:
+        return security_token.get_jwt().get("res_tenant")
+    except Exception:
+        LOGGER.warning("Failed to decode tenancy from signer JWT", exc_info=True)
+        return None
+
+
 def populate_principal_identity(profile: OciProfileConfig) -> None:
     """For principal-based auth, fill missing tenancy/region from the signer's metadata.
 
@@ -64,7 +85,7 @@ def populate_principal_identity(profile: OciProfileConfig) -> None:
     if signer is None:
         return
     if not profile.tenancy:
-        tenancy = getattr(signer, "tenancy_id", None)
+        tenancy = _tenancy_from_signer(signer)
         if tenancy:
             profile.tenancy = tenancy
     if not profile.region:

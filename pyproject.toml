@@ -123,6 +123,7 @@ markers = [
 norecursedirs = ["tmp"]
 
 [tool.pyright]
+extraPaths = ["src"]
 exclude = [
     "**/.venv",
     "build",

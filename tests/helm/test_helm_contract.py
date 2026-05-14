@@ -19,9 +19,7 @@ import yaml
 CHART_DIR = Path(__file__).resolve().parent.parent.parent / "helm"
 
 helm_bin = shutil.which("helm")
-pytestmark = pytest.mark.skipif(
-    helm_bin is None, reason="helm binary not available on PATH"
-)
+pytestmark = pytest.mark.skipif(helm_bin is None, reason="helm binary not available on PATH")
 
 
 def _render(*extra_sets: str) -> subprocess.CompletedProcess:
@@ -53,9 +51,7 @@ def _render_raw(*extra_args: str) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
 
-def _render_with_notes(
-    *extra_sets: str, env: dict | None = None
-) -> subprocess.CompletedProcess:
+def _render_with_notes(*extra_sets: str, env: dict | None = None) -> subprocess.CompletedProcess:
     """Render manifests and NOTES.txt without contacting a Kubernetes cluster."""
     cmd = [
         "helm",
@@ -98,10 +94,7 @@ def _cookie_env(deployment: dict) -> dict:
 
 def _chart_rendered_cookie_secrets(docs: list[dict]) -> list[dict]:
     """Return Secrets that this chart rendered (identified by the cookieSecret data key)."""
-    return [
-        d for d in docs
-        if d.get("kind") == "Secret" and d.get("data", {}).get("cookieSecret") is not None
-    ]
+    return [d for d in docs if d.get("kind") == "Secret" and d.get("data", {}).get("cookieSecret") is not None]
 
 
 def _set_args(*sets: str) -> list[str]:
@@ -157,9 +150,7 @@ class TestClientCookieSecretContract:
             "client.cookieSecret=inline-val",
             "client.cookieSecretName=external-name",
         )
-        assert result.returncode != 0, (
-            "helm template should fail when both cookieSecret and cookieSecretName are set"
-        )
+        assert result.returncode != 0, "helm template should fail when both cookieSecret and cookieSecretName are set"
 
     def test_rollout_checksum_present(self):
         """Deployment pod template must carry a checksum annotation keyed to the Secret."""
@@ -190,7 +181,7 @@ class TestClientCookieSecretContract:
         """
         helpers_tpl = (CHART_DIR / "templates" / "_helpers.tpl").read_text()
         assert 'lookup "v1" "Secret"' in helpers_tpl, (
-            "_helpers.tpl must use `lookup \"v1\" \"Secret\"` so the "
+            '_helpers.tpl must use `lookup "v1" "Secret"` so the '
             "cookieSecret checksum reflects the live content of an external "
             "Secret; see reviewer finding P2"
         )
@@ -205,8 +196,10 @@ class TestClientCookieSecretContract:
         consistently across every site that branches on these values.
         """
         result = _render_raw(
-            "--set-string", "client.cookieSecret=   ",
-            "--set", "client.cookieSecretName=operator-owned-cookie-secret",
+            "--set-string",
+            "client.cookieSecret=   ",
+            "--set",
+            "client.cookieSecretName=operator-owned-cookie-secret",
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         docs = _docs(result.stdout)
@@ -228,8 +221,10 @@ class TestClientCookieSecretContract:
         The fix is to trim before the default fallback.
         """
         result = _render_raw(
-            "--set", "client.cookieSecret=valid-inline-value",
-            "--set-string", "client.cookieSecretName=   ",
+            "--set",
+            "client.cookieSecret=valid-inline-value",
+            "--set-string",
+            "client.cookieSecretName=   ",
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         docs = _docs(result.stdout)
@@ -238,9 +233,7 @@ class TestClientCookieSecretContract:
             f"expected exactly 1 chart-rendered cookie Secret, got {len(chart_cookie_secrets)}"
         )
         name = chart_cookie_secrets[0]["metadata"]["name"]
-        assert name and name.strip() == name, (
-            f"Secret metadata.name must not be blank/whitespace; got {name!r}"
-        )
+        assert name and name.strip() == name, f"Secret metadata.name must not be blank/whitespace; got {name!r}"
         assert name.endswith("-client-cookie"), (
             f"whitespace-only cookieSecretName must fall back to <release>-client-cookie; got {name!r}"
         )
@@ -250,12 +243,13 @@ class TestClientCookieSecretContract:
     def test_whitespace_only_both_fails_validation(self):
         """P2 invariant: both-whitespace must still fail validation (not slip through)."""
         result = _render_raw(
-            "--set-string", "client.cookieSecret=   ",
-            "--set-string", "client.cookieSecretName=   ",
+            "--set-string",
+            "client.cookieSecret=   ",
+            "--set-string",
+            "client.cookieSecretName=   ",
         )
         assert result.returncode != 0, (
-            "both whitespace-only values must fail the required validator, "
-            "just like both empty would"
+            "both whitespace-only values must fail the required validator, just like both empty would"
         )
 
     def test_external_secret_checksum_varies_by_name(self):
@@ -314,16 +308,11 @@ class TestClientEnvSecretContract:
             "operators reach the in-cluster server; otherwise the client "
             "Pydantic default (http://localhost) wins"
         )
-        assert port_entry is not None, (
-            "AIO_SERVER_PORT must be set as direct pod env for the same reason"
-        )
+        assert port_entry is not None, "AIO_SERVER_PORT must be set as direct pod env for the same reason"
         assert url_entry["value"].startswith("http://test-ai-optimizer-server-http"), (
-            f"AIO_SERVER_URL should resolve to the in-cluster server Service; "
-            f"got {url_entry['value']!r}"
+            f"AIO_SERVER_URL should resolve to the in-cluster server Service; got {url_entry['value']!r}"
         )
-        assert port_entry["value"] == "8000", (
-            f"AIO_SERVER_PORT should default to 8000; got {port_entry['value']!r}"
-        )
+        assert port_entry["value"] == "8000", f"AIO_SERVER_PORT should default to 8000; got {port_entry['value']!r}"
 
 
 def _server_deployment(docs: list[dict]) -> dict:
@@ -355,25 +344,23 @@ class TestHelmBestPracticeContracts:
     def test_default_render_has_no_database_owned_resources(self):
         docs = _docs_for_required_defaults()
         db_docs = [
-            d for d in docs
-            if d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "database"
+            d for d in docs if d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "database"
         ]
         assert db_docs == [], (
             "server.database.type defaults to empty, so the chart must not "
-            f"render database resources by default. got: {[(d.get('kind'), d.get('metadata', {}).get('name')) for d in db_docs]}"
+            f"""
+            render database resources by default. got:
+            {[(d.get("kind"), d.get("metadata", {}).get("name")) for d in db_docs]}
+            """
         )
         server = _server_deployment(docs)
-        env_names = {
-            e["name"] for e in server["spec"]["template"]["spec"]["containers"][0]["env"]
-        }
+        env_names = {e["name"] for e in server["spec"]["template"]["spec"]["containers"][0]["env"]}
         assert {"DB_USERNAME", "DB_PASSWORD", "DB_DSN"}.isdisjoint(env_names)
 
     def test_default_render_has_no_metadata_namespace(self):
         docs = _docs_for_required_defaults()
         namespaced = [
-            (d.get("kind"), d.get("metadata", {}).get("name"))
-            for d in docs
-            if d.get("metadata", {}).get("namespace")
+            (d.get("kind"), d.get("metadata", {}).get("name")) for d in docs if d.get("metadata", {}).get("namespace")
         ]
         assert namespaced == [], (
             "release-scoped resources should inherit the Helm release namespace "
@@ -385,9 +372,7 @@ class TestHelmBestPracticeContracts:
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         chunks = [chunk for chunk in result.stdout.split("---\n") if chunk.strip()]
         empty_sources = [
-            chunk.splitlines()[0]
-            for chunk in chunks
-            if "# Source:" in chunk and "apiVersion:" not in chunk
+            chunk.splitlines()[0] for chunk in chunks if "# Source:" in chunk and "apiVersion:" not in chunk
         ]
         assert empty_sources == []
 
@@ -395,11 +380,7 @@ class TestHelmBestPracticeContracts:
         docs = _docs_for_required_defaults()
         images: list[str] = []
         for d in docs:
-            pod_spec = (
-                d.get("spec", {})
-                .get("template", {})
-                .get("spec", {})
-            )
+            pod_spec = d.get("spec", {}).get("template", {}).get("spec", {})
             for c in pod_spec.get("containers", []):
                 images.append(c.get("image", ""))
         assert images
@@ -459,10 +440,7 @@ class TestHelmBestPracticeContracts:
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         for d in _docs(result.stdout):
-            if (
-                d.get("kind") == "Secret"
-                and d.get("metadata", {}).get("name") == "byo-shared-auth"
-            ):
+            if d.get("kind") == "Secret" and d.get("metadata", {}).get("name") == "byo-shared-auth":
                 raise AssertionError(
                     "chart must not render a Secret named after an operator-pinned "
                     f"authn.secretName; got: {d.get('stringData') or d.get('data')}"
@@ -481,10 +459,7 @@ class TestHelmBestPracticeContracts:
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         for d in _docs(result.stdout):
-            if (
-                d.get("kind") == "Secret"
-                and d.get("metadata", {}).get("name") == "byo-shared-priv"
-            ):
+            if d.get("kind") == "Secret" and d.get("metadata", {}).get("name") == "byo-shared-priv":
                 raise AssertionError(
                     "chart must not render a Secret named after an operator-pinned "
                     f"privAuthn.secretName; got: {d.get('stringData') or d.get('data')}"
@@ -616,7 +591,6 @@ class TestNotesUninstallDeletesOnlyChartManagedSecrets:
         )
         delete_lines = [ln for ln in notes.splitlines() if "kubectl delete secret" in ln]
         assert len(delete_lines) == 2, f"expected both chart-managed deletes; got: {delete_lines}"
-        suffixes = sorted(ln.split()[-1].rsplit("-", 2)[-2:] for ln in delete_lines)
         # Sanity: both should be the chart-managed default-name pattern.
         assert any("db-authn" in ln for ln in delete_lines), delete_lines
         assert any("db-priv-authn" in ln for ln in delete_lines), delete_lines
@@ -769,9 +743,7 @@ class TestSigNozAutoEndpointHttpProtocol:
             *_SIGNOZ_OTEL_BASE,
             "signoz.otelCollector.ports.otlp=null",
         )
-        assert result.returncode != 0, (
-            "helm template should fail when the otlp port block itself is null"
-        )
+        assert result.returncode != 0, "helm template should fail when the otlp port block itself is null"
 
     def test_whitespace_traces_protocol_falls_through_to_generic_protocol(self):
         """Validator and env renderer both trim signal-protocol values, so
@@ -781,16 +753,17 @@ class TestSigNozAutoEndpointHttpProtocol:
         to gRPC port even though the app sends HTTP."""
         result = _render_raw(
             *_set_args(*_SIGNOZ_OTEL_BASE),
-            "--set", "server.otel.protocol=http/protobuf",
-            "--set-string", "server.otel.tracesProtocol=   ",
+            "--set",
+            "server.otel.protocol=http/protobuf",
+            "--set-string",
+            "server.otel.tracesProtocol=   ",
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         deployment = _server_deployment(_docs(result.stdout))
         ep = _server_env(deployment, "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
         assert ep is not None
         assert ep["value"].endswith("/v1/traces"), (
-            f"whitespace tracesProtocol must fall through to generic http/protobuf; "
-            f"got {ep['value']!r}"
+            f"whitespace tracesProtocol must fall through to generic http/protobuf; got {ep['value']!r}"
         )
 
     def test_console_traces_exporter_with_disabled_grpc_port_renders(self):
@@ -809,10 +782,7 @@ class TestSigNozAutoEndpointHttpProtocol:
         )
         deployment = _server_deployment(_docs(result.stdout))
         ep = _server_env(deployment, "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
-        assert ep is None, (
-            f"no OTLP traces endpoint should be wired when tracesExporter=console; "
-            f"got {ep!r}"
-        )
+        assert ep is None, f"no OTLP traces endpoint should be wired when tracesExporter=console; got {ep!r}"
 
     def test_explicit_endpoint_with_disabled_grpc_port_renders(self):
         """When the operator pins server.otel.endpoint explicitly, the
@@ -824,8 +794,7 @@ class TestSigNozAutoEndpointHttpProtocol:
             "signoz.otelCollector.ports.otlp.enabled=false",
         )
         assert result.returncode == 0, (
-            f"render should succeed with explicit endpoint and disabled "
-            f"unused SigNoz port; got: {result.stderr[:600]}"
+            f"render should succeed with explicit endpoint and disabled unused SigNoz port; got: {result.stderr[:600]}"
         )
 
     def test_notes_omits_traces_url_when_traces_endpoint_explicit(self):
@@ -865,8 +834,7 @@ class TestSigNozAutoEndpointHttpProtocol:
             "<no signoz port-forward line>",
         )
         assert "svc/test-signoz 8080:18080" in notes, (
-            "NOTES port-forward must use the configured signoz service port; "
-            f"got the line:\n{port_forward_line}"
+            f"NOTES port-forward must use the configured signoz service port; got the line:\n{port_forward_line}"
         )
 
     def test_notes_omits_logs_url_when_logs_endpoint_explicit(self):
@@ -945,12 +913,10 @@ class TestSigNozAutoEndpointHttpProtocol:
         notes = result.stdout
         assert "In-cluster OTLP collector endpoints wired into the server:" in notes
         assert "traces: http://test-signoz-otel-collector" in notes, (
-            "traces auto-URL should render with default tracesExporter (otlp) "
-            "and signoz.enabled=true"
+            "traces auto-URL should render with default tracesExporter (otlp) and signoz.enabled=true"
         )
         assert "logs:   http://test-signoz-otel-collector" in notes, (
-            "logs auto-URL should render with logsEnabled=true and "
-            "default logsExporter"
+            "logs auto-URL should render with logsEnabled=true and default logsExporter"
         )
 
     def test_render_with_notes_does_not_require_cluster(self, tmp_path):
@@ -973,9 +939,7 @@ class TestSigNozAutoEndpointHttpProtocol:
             "the render-with-notes helper must render NOTES without contacting "
             f"the cluster; got rc={result.returncode}\nstderr={result.stderr[:500]}"
         )
-        assert "SIGNOZ (OBSERVABILITY)" in result.stdout, (
-            "NOTES output should be present in the cluster-less render"
-        )
+        assert "SIGNOZ (OBSERVABILITY)" in result.stdout, "NOTES output should be present in the cluster-less render"
 
     def test_endpoint_does_not_hardcode_cluster_local(self):
         """The auto-wired endpoint must not bake in `cluster.local` — that
@@ -989,18 +953,14 @@ class TestSigNozAutoEndpointHttpProtocol:
             ep = _server_env(deployment, var)
             assert ep is not None, f"expected {var} to be set"
             assert "cluster.local" not in ep["value"], (
-                f"{var} hard-codes cluster.local; use <svc>.<ns>.svc instead. "
-                f"got {ep['value']!r}"
+                f"{var} hard-codes cluster.local; use <svc>.<ns>.svc instead. got {ep['value']!r}"
             )
 
 
 def _signoz_setup_job(docs: list[dict]) -> dict | None:
     """Return the SigNoz setup Job document, or None if not rendered."""
     for d in docs:
-        if (
-            d.get("kind") == "Job"
-            and "signoz-setup" in d.get("metadata", {}).get("name", "")
-        ):
+        if d.get("kind") == "Job" and "signoz-setup" in d.get("metadata", {}).get("name", ""):
             return d
     return None
 
@@ -1017,10 +977,7 @@ class TestSigNozSetupJobGating:
         result = _render(*_SIGNOZ_OTEL_BASE)
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         job = _signoz_setup_job(_docs(result.stdout))
-        assert job is not None, (
-            "signoz-setup Job should render under default values "
-            "(SIGNOZ_USER_ROOT_ENABLED=true)"
-        )
+        assert job is not None, "signoz-setup Job should render under default values (SIGNOZ_USER_ROOT_ENABLED=true)"
 
     def test_setup_job_omitted_when_root_provisioning_disabled(self):
         """When the operator opts out of root provisioning, the Job must not
@@ -1028,7 +985,8 @@ class TestSigNozSetupJobGating:
         as, so it would loop until backoffLimit and fail `helm --wait`."""
         result = _render_raw(
             *_set_args(*_SIGNOZ_OTEL_BASE),
-            "--set-string", "signoz.signoz.env.SIGNOZ_USER_ROOT_ENABLED=false",
+            "--set-string",
+            "signoz.signoz.env.SIGNOZ_USER_ROOT_ENABLED=false",
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         job = _signoz_setup_job(_docs(result.stdout))
@@ -1047,9 +1005,7 @@ class TestSigNozSetupJobGating:
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         job = _signoz_setup_job(_docs(result.stdout))
-        assert job is None, (
-            "signoz-setup Job should not render when signoz.enabled=false"
-        )
+        assert job is None, "signoz-setup Job should not render when signoz.enabled=false"
 
     def test_setup_job_renders_with_object_form_root_enabled(self, tmp_path):
         """SigNoz's renderEnv accepts env-map entries in scalar form
@@ -1060,15 +1016,12 @@ class TestSigNozSetupJobGating:
         but no setup Job, and the bundled dashboards/alerts never load."""
         values_file = tmp_path / "object-form.yaml"
         values_file.write_text(
-            "signoz:\n"
-            "  signoz:\n"
-            "    env:\n"
-            "      SIGNOZ_USER_ROOT_ENABLED:\n"
-            "        value: \"true\"\n"
+            'signoz:\n  signoz:\n    env:\n      SIGNOZ_USER_ROOT_ENABLED:\n        value: "true"\n'
         )
         result = _render_raw(
             *_set_args(*_SIGNOZ_OTEL_BASE),
-            "-f", str(values_file),
+            "-f",
+            str(values_file),
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         job = _signoz_setup_job(_docs(result.stdout))
@@ -1084,15 +1037,12 @@ class TestSigNozSetupJobGating:
         Job suppressed (operator did opt out, just via the alternate shape)."""
         values_file = tmp_path / "object-form-off.yaml"
         values_file.write_text(
-            "signoz:\n"
-            "  signoz:\n"
-            "    env:\n"
-            "      SIGNOZ_USER_ROOT_ENABLED:\n"
-            "        value: \"false\"\n"
+            'signoz:\n  signoz:\n    env:\n      SIGNOZ_USER_ROOT_ENABLED:\n        value: "false"\n'
         )
         result = _render_raw(
             *_set_args(*_SIGNOZ_OTEL_BASE),
-            "-f", str(values_file),
+            "-f",
+            str(values_file),
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         job = _signoz_setup_job(_docs(result.stdout))
@@ -1105,18 +1055,14 @@ class TestSigNozSetupJobGating:
 
 def _signoz_cleanup_doc(docs: list[dict], kind: str) -> dict | None:
     for d in docs:
-        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith(
-            "-signoz-cleanup"
-        ):
+        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith("-signoz-cleanup"):
             return d
     return None
 
 
 def _signoz_migrator_cleanup_doc(docs: list[dict], kind: str) -> dict | None:
     for d in docs:
-        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith(
-            "-signoz-migrator-cleanup"
-        ):
+        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith("-signoz-migrator-cleanup"):
             return d
     return None
 
@@ -1135,9 +1081,7 @@ def _release_role_resources(docs: list[dict]) -> set[str]:
 
 def _signoz_zk_cleanup_doc(docs: list[dict], kind: str) -> dict | None:
     for d in docs:
-        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith(
-            "-signoz-zookeeper-cleanup"
-        ):
+        if d.get("kind") == kind and d.get("metadata", {}).get("name", "").endswith("-signoz-zookeeper-cleanup"):
             return d
     return None
 
@@ -1166,9 +1110,7 @@ class TestSigNozClickHouseCleanupHook:
             assert doc is not None, f"missing SigNoz cleanup {kind}"
             annotations = doc["metadata"].get("annotations", {})
             assert annotations.get("helm.sh/hook") == "pre-delete"
-            assert "before-hook-creation" in annotations.get(
-                "helm.sh/hook-delete-policy", ""
-            )
+            assert "before-hook-creation" in annotations.get("helm.sh/hook-delete-policy", "")
 
         job = _signoz_cleanup_doc(docs, "Job")
         assert job is not None
@@ -1233,11 +1175,7 @@ class TestSigNozClickHouseCleanupHook:
 
         role = _signoz_cleanup_doc(docs, "Role")
         assert role is not None, "missing cleanup Role"
-        pvc_rules = [
-            rule
-            for rule in role["rules"]
-            if "persistentvolumeclaims" in rule.get("resources", [])
-        ]
+        pvc_rules = [rule for rule in role["rules"] if "persistentvolumeclaims" in rule.get("resources", [])]
         assert pvc_rules, "PVC delete permission should render only when opted in"
 
         # Release-namespace Role also gets PVC delete so the new release-scoped
@@ -1247,7 +1185,7 @@ class TestSigNozClickHouseCleanupHook:
         script = _signoz_cleanup_script(docs)
         assert "Deleting ClickHouse PVCs" in script
         assert "get pvc" in script
-        assert 'app.kubernetes.io/instance=test' in script
+        assert "app.kubernetes.io/instance=test" in script
 
     def test_cleanup_hook_role_omits_pvc_delete_by_default(self):
         result = _render(*_SIGNOZ_OTEL_BASE)
@@ -1255,10 +1193,7 @@ class TestSigNozClickHouseCleanupHook:
         docs = _docs(result.stdout)
         role = _signoz_cleanup_doc(docs, "Role")
         assert role is not None, "missing cleanup Role"
-        assert all(
-            "persistentvolumeclaims" not in rule.get("resources", [])
-            for rule in role["rules"]
-        )
+        assert all("persistentvolumeclaims" not in rule.get("resources", []) for rule in role["rules"])
         assert "persistentvolumeclaims" not in _release_role_resources(docs)
         assert 'kubectl -n "$release_ns" get pvc' not in _signoz_cleanup_script(docs)
 
@@ -1276,9 +1211,7 @@ class TestSigNozClickHouseCleanupHook:
         verbs_by_resource: dict[str, set[str]] = {}
         for rule in role["rules"]:
             for resource in rule.get("resources", []):
-                verbs_by_resource.setdefault(resource, set()).update(
-                    rule.get("verbs", [])
-                )
+                verbs_by_resource.setdefault(resource, set()).update(rule.get("verbs", []))
         assert "delete" in verbs_by_resource.get("serviceaccounts", set())
         assert "delete" in verbs_by_resource.get("jobs", set())
 
@@ -1350,9 +1283,7 @@ class TestSigNozClickHouseCleanupHook:
         assert mig_role is not None
         chi_name = chi_role["metadata"]["name"]
         mig_name = mig_role["metadata"]["name"]
-        assert chi_name != mig_name, (
-            f"cleanup names collided under long fullname: {chi_name!r} == {mig_name!r}"
-        )
+        assert chi_name != mig_name, f"cleanup names collided under long fullname: {chi_name!r} == {mig_name!r}"
         assert len(chi_name) <= 63
         assert len(mig_name) <= 63
         assert chi_name.endswith("-signoz-cleanup")
@@ -1387,9 +1318,7 @@ class TestSigNozClickHouseCleanupHook:
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         docs = _docs(result.stdout)
-        assert _signoz_cleanup_doc(docs, "Role") is None, (
-            "CHI Role must not render under external ClickHouse"
-        )
+        assert _signoz_cleanup_doc(docs, "Role") is None, "CHI Role must not render under external ClickHouse"
         assert "persistentvolumeclaims" in _release_role_resources(docs)
         script = _signoz_cleanup_script(docs)
         assert 'kubectl -n "$release_ns" get pvc' in script
@@ -1412,9 +1341,7 @@ class TestSigNozClickHouseCleanupHook:
         zk_role = _signoz_zk_cleanup_doc(docs, "Role")
         assert zk_role is not None, "missing zookeeper-cleanup Role"
         assert zk_role["metadata"]["namespace"] == "zk-only"
-        zk_resources = {
-            r for rule in zk_role["rules"] for r in rule.get("resources", [])
-        }
+        zk_resources = {r for rule in zk_role["rules"] for r in rule.get("resources", [])}
         assert zk_resources == {"persistentvolumeclaims"}
 
         zk_binding = _signoz_zk_cleanup_doc(docs, "RoleBinding")
@@ -1538,9 +1465,7 @@ class TestAutonomousDatabaseAction:
         # that creation happens via `helm install` or a migration during
         # `helm upgrade` (non-ADB-S → ADB-S). A `.Release.IsInstall` gate
         # would miss the migration path.
-        text = (
-            CHART_DIR / "templates" / "server" / "database" / "adb-operator.yaml"
-        ).read_text()
+        text = (CHART_DIR / "templates" / "server" / "database" / "adb-operator.yaml").read_text()
         assert 'lookup "database.oracle.com/v4" "AutonomousDatabase"' in text, (
             "adb-operator.yaml must `lookup` the AutonomousDatabase to gate "
             "spec.action on cluster state, not on the release-level install flag"
@@ -1549,8 +1474,7 @@ class TestAutonomousDatabaseAction:
         # use .Release.IsInstall. Strip Helm comment blocks before checking.
         stripped = re.sub(r"{{-? */\*.*?\*/ *-?}}", "", text, flags=re.DOTALL)
         assert ".Release.IsInstall" not in stripped, (
-            "spec.action gate must not use .Release.IsInstall — it misses "
-            "the upgrade-to-ADB-S migration path"
+            "spec.action gate must not use .Release.IsInstall — it misses the upgrade-to-ADB-S migration path"
         )
 
 
@@ -1588,7 +1512,8 @@ class TestSigNozCleanupHookRbacContract:
     def test_rbac_create_false_suppresses_chart_roles(self):
         result = _render_raw(
             *_set_args(*self._BASE),
-            "--set", "signoz.cleanup.rbac.create=false",
+            "--set",
+            "signoz.cleanup.rbac.create=false",
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         kinds = {d["kind"] for d in self._cleanup_docs(result.stdout)}
@@ -1599,15 +1524,18 @@ class TestSigNozCleanupHookRbacContract:
     def test_service_account_create_false_with_name_suppresses_chart_sa(self):
         result = _render_raw(
             *_set_args(*self._BASE),
-            "--set", "signoz.cleanup.serviceAccount.create=false",
-            "--set", "signoz.cleanup.serviceAccount.name=my-byo-sa",
+            "--set",
+            "signoz.cleanup.serviceAccount.create=false",
+            "--set",
+            "signoz.cleanup.serviceAccount.name=my-byo-sa",
         )
         assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
         docs = self._cleanup_docs(result.stdout)
         sa_docs = [d for d in docs if d["kind"] == "ServiceAccount"]
-        assert sa_docs == [], (
-            f"serviceAccount.create=false must suppress chart ServiceAccount; got {[d['metadata']['name'] for d in sa_docs]}"
-        )
+        assert sa_docs == [], f"""
+            serviceAccount.create=false must suppress chart ServiceAccount;
+            got {[d["metadata"]["name"] for d in sa_docs]}
+            """
         # RoleBindings should still reference the operator-supplied name.
         rb_subject_names = {
             subj["name"]
@@ -1623,11 +1551,10 @@ class TestSigNozCleanupHookRbacContract:
     def test_service_account_create_false_without_name_fails(self):
         result = _render_raw(
             *_set_args(*self._BASE),
-            "--set", "signoz.cleanup.serviceAccount.create=false",
+            "--set",
+            "signoz.cleanup.serviceAccount.create=false",
         )
-        assert result.returncode != 0, (
-            "create=false without a name must fail validation; render succeeded"
-        )
+        assert result.returncode != 0, "create=false without a name must fail validation; render succeeded"
         assert "serviceAccount.name is required" in result.stderr, (
             f"expected the explicit missing-name error; got: {result.stderr[:500]}"
         )
