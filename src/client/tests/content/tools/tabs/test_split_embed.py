@@ -1202,3 +1202,229 @@ class TestActiveEmbedJobsPanelWiring:
             f"panel must follow populate section; got {call_order}"
         )
         mock_render.assert_called_once_with(refresh_on_idle=True, hide_when_idle=True)
+
+
+class TestOciSourceLockMatrix:
+    """Lock matrix for AIO_OCI_SOURCE_BUCKET_* env vars in _render_load_kb_section.
+
+    The compartment env is the anchor: when unset or unresolved, the bucket env
+    is ignored regardless of value. When the compartment resolves, the
+    compartment selectbox is pinned + disabled; the bucket selectbox is pinned
+    only when the env-named bucket also exists in the pinned compartment.
+    Auth state is never consulted.
+    """
+
+    PINNED_COMPARTMENT_LABEL = "Pinned"
+    PINNED_COMPARTMENT_OCID = "ocid1.compartment.oc1..pinned"
+    OTHER_COMPARTMENT_LABEL = "Other"
+    OTHER_COMPARTMENT_OCID = "ocid1.compartment.oc1..other"
+    PINNED_BUCKET = "pinned-bucket"
+    OTHER_BUCKET = "other-bucket"
+
+    def _compartments(self):
+        return {
+            self.PINNED_COMPARTMENT_LABEL: self.PINNED_COMPARTMENT_OCID,
+            self.OTHER_COMPARTMENT_LABEL: self.OTHER_COMPARTMENT_OCID,
+        }
+
+    def _run_render(
+        self,
+        monkeypatch,
+        mock_st,
+        *,
+        compartment_env=None,
+        bucket_env=None,
+        compartments=None,
+        bucket_list_for_pinned=None,
+    ):
+        """Drive _render_load_kb_section with controlled env + OCI fixtures.
+
+        Returns the list of st.selectbox call kwargs (one per call) so tests
+        can assert on options/index/disabled.
+        """
+        from client.app.content.tools.tabs import split_embed
+
+        monkeypatch.setattr(
+            split_embed.client_settings, "oci_source_bucket_compartment_id", compartment_env
+        )
+        monkeypatch.setattr(split_embed.client_settings, "oci_source_bucket_name", bucket_env)
+
+        compartments = compartments if compartments is not None else self._compartments()
+        bucket_list_for_pinned = (
+            bucket_list_for_pinned
+            if bucket_list_for_pinned is not None
+            else [self.PINNED_BUCKET, self.OTHER_BUCKET]
+        )
+
+        # Only the pinned compartment returns the configured bucket list, so
+        # tests can verify bucket resolution scopes to the pinned compartment.
+        def _get_buckets(compartment_ocid, _auth_profile):
+            if compartment_ocid == self.PINNED_COMPARTMENT_OCID:
+                return list(bucket_list_for_pinned)
+            return []
+
+        def _selectbox(_label, options, **kwargs):
+            options_list = list(options)
+            index = kwargs.get("index")
+            if index is None or not options_list:
+                return None
+            return options_list[index]
+
+        mock_st.selectbox.side_effect = _selectbox
+        mock_st.radio.return_value = "OCI"
+        mock_st.toggle.return_value = True
+
+        from client.tests.conftest import AttrDict
+
+        state_dict = AttrDict(
+            {
+                "settings": {
+                    "client_settings": {"oci": {"auth_profile": "DEFAULT"}},
+                },
+                "optimizer_help": {"embed_supported_file_types": ""},
+            }
+        )
+
+        with (
+            patch.object(split_embed, "st", mock_st),
+            patch.object(split_embed, "state", state_dict),
+            patch.object(split_embed, "_get_compartments", return_value=compartments),
+            patch.object(split_embed, "_get_buckets", side_effect=_get_buckets),
+        ):
+            split_embed._render_load_kb_section(
+                file_sources=["OCI"],
+                oci_setup={"namespace": "test-ns", "tenancy": "test-tenancy"},
+            )
+
+        return mock_st.selectbox.call_args_list
+
+    def _compartment_call(self, calls):
+        for call in calls:
+            args, kwargs = call
+            label = args[0] if args else kwargs.get("label")
+            if label == "Bucket compartment:":
+                return args, kwargs
+        raise AssertionError("Bucket compartment selectbox was not rendered")
+
+    def _bucket_call(self, calls):
+        for call in calls:
+            args, kwargs = call
+            label = args[0] if args else kwargs.get("label")
+            if label == "Source bucket:":
+                return args, kwargs
+        raise AssertionError("Source bucket selectbox was not rendered")
+
+    def test_no_env_vars_both_selectboxes_free(self, monkeypatch, mock_st):
+        """No env vars → both selectboxes editable, full compartment list."""
+        calls = self._run_render(monkeypatch, mock_st)
+
+        comp_args, comp_kwargs = self._compartment_call(calls)
+        assert list(comp_args[1]) == list(self._compartments().keys())
+        assert comp_kwargs.get("index") is None
+        assert comp_kwargs.get("disabled") is not True
+
+        bucket_args, bucket_kwargs = self._bucket_call(calls)
+        # Without a compartment chosen, bucket options are an empty list and
+        # the widget is disabled solely because no compartment is selected.
+        assert list(bucket_args[1]) == []
+        assert bucket_kwargs.get("index") is None
+        assert bucket_kwargs.get("disabled") is True
+
+    def test_bucket_only_env_is_ignored(self, monkeypatch, mock_st):
+        """Bucket env set without compartment env → bucket env ignored entirely."""
+        calls = self._run_render(monkeypatch, mock_st, bucket_env=self.PINNED_BUCKET)
+
+        comp_args, comp_kwargs = self._compartment_call(calls)
+        # Full compartment list, no pre-selection, editable — identical to the
+        # no-env-vars case.
+        assert list(comp_args[1]) == list(self._compartments().keys())
+        assert comp_kwargs.get("index") is None
+        assert comp_kwargs.get("disabled") is not True
+
+        # The bucket selectbox is empty because no compartment is chosen, and
+        # crucially is NOT pre-selected to the env value or disabled by the lock.
+        _, bucket_kwargs = self._bucket_call(calls)
+        assert bucket_kwargs.get("index") is None
+
+    def test_compartment_only_locks_compartment_and_scopes_bucket(self, monkeypatch, mock_st):
+        """Compartment env resolves → compartment locked; bucket free within it."""
+        calls = self._run_render(
+            monkeypatch,
+            mock_st,
+            compartment_env=self.PINNED_COMPARTMENT_OCID,
+        )
+
+        comp_args, comp_kwargs = self._compartment_call(calls)
+        # Compartment dropdown collapses to a single option (the resolved
+        # label) and is disabled.
+        assert list(comp_args[1]) == [self.PINNED_COMPARTMENT_LABEL]
+        assert comp_kwargs.get("index") == 0
+        assert comp_kwargs.get("disabled") is True
+
+        bucket_args, bucket_kwargs = self._bucket_call(calls)
+        # Bucket selectbox enumerates the pinned compartment's buckets and
+        # leaves selection to the user.
+        assert list(bucket_args[1]) == [self.PINNED_BUCKET, self.OTHER_BUCKET]
+        assert bucket_kwargs.get("index") is None
+        # disabled is driven by 'not bucket_compartment' alone here; the
+        # compartment IS selected (pinned), so the bucket selectbox is
+        # editable.
+        assert bucket_kwargs.get("disabled") is False
+
+    def test_both_env_resolve_locks_both(self, monkeypatch, mock_st):
+        """Compartment + bucket envs both resolve → both selectboxes locked."""
+        calls = self._run_render(
+            monkeypatch,
+            mock_st,
+            compartment_env=self.PINNED_COMPARTMENT_OCID,
+            bucket_env=self.PINNED_BUCKET,
+        )
+
+        comp_args, comp_kwargs = self._compartment_call(calls)
+        assert list(comp_args[1]) == [self.PINNED_COMPARTMENT_LABEL]
+        assert comp_kwargs.get("disabled") is True
+
+        bucket_args, bucket_kwargs = self._bucket_call(calls)
+        assert list(bucket_args[1]) == [self.PINNED_BUCKET]
+        assert bucket_kwargs.get("index") == 0
+        assert bucket_kwargs.get("disabled") is True
+
+    def test_bucket_not_in_compartment_silent_bucket_fallback(self, monkeypatch, mock_st):
+        """Bucket env not in pinned compartment → compartment locked, bucket free."""
+        calls = self._run_render(
+            monkeypatch,
+            mock_st,
+            compartment_env=self.PINNED_COMPARTMENT_OCID,
+            bucket_env="non-existent-bucket",
+        )
+
+        _, comp_kwargs = self._compartment_call(calls)
+        assert comp_kwargs.get("disabled") is True
+
+        bucket_args, bucket_kwargs = self._bucket_call(calls)
+        # Bucket falls back to the full pinned-compartment bucket list, no
+        # pre-selection. The compartment selectbox returned the pinned label,
+        # so the bucket widget is editable.
+        assert list(bucket_args[1]) == [self.PINNED_BUCKET, self.OTHER_BUCKET]
+        assert bucket_kwargs.get("index") is None
+        assert bucket_kwargs.get("disabled") is False
+
+    def test_compartment_unresolved_falls_back_completely(self, monkeypatch, mock_st):
+        """Compartment OCID does not resolve → both selectboxes free; bucket env ignored."""
+        calls = self._run_render(
+            monkeypatch,
+            mock_st,
+            compartment_env="ocid1.compartment.oc1..does-not-exist",
+            bucket_env=self.PINNED_BUCKET,
+        )
+
+        comp_args, comp_kwargs = self._compartment_call(calls)
+        # Full compartment list, no lock — the unresolvable OCID silently
+        # disables the entire lock.
+        assert list(comp_args[1]) == list(self._compartments().keys())
+        assert comp_kwargs.get("index") is None
+        assert comp_kwargs.get("disabled") is not True
+
+        # Bucket env is ignored when the compartment lock fails to engage.
+        _, bucket_kwargs = self._bucket_call(calls)
+        assert bucket_kwargs.get("index") is None

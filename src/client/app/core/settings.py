@@ -49,5 +49,11 @@ class ClientSettings(BaseSettings):
     # When unset, additional UI access checks are disabled.
     client_password: Optional[SecretStr] = None
 
+    # Operator-set OCI source defaults. When valid at render time, these can pin
+    # the Split & Embed OCI source selectors (compartment + bucket) for all users.
+    # Bucket pinning requires a valid configured compartment.
+    oci_source_bucket_compartment_id: Optional[str] = None
+    oci_source_bucket_name: Optional[str] = None
+
 
 settings = ClientSettings()

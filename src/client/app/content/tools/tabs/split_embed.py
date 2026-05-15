@@ -27,6 +27,7 @@ from client.app.core.embed_status import (
     mark_embed_job_started,
     render_active_embed_jobs,
 )
+from client.app.core.settings import settings as client_settings
 from client.app.core.sidebar import vector_store_selection
 from url_safety import validate_structural
 
@@ -206,6 +207,7 @@ def _get_compartments(auth_profile: str) -> dict:
         return {}
 
 
+@st.cache_data(ttl=60, show_spinner="Retrieving OCI Buckets")
 def _get_buckets(compartment_ocid: str, auth_profile: str) -> list:
     """Get OCI bucket names in a compartment."""
     try:
@@ -445,24 +447,40 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict | None) -> FileS
         auth_profile = state["settings"]["client_settings"].get("oci", {}).get("auth_profile", "")
         st.text(f"OCI namespace: {oci_setup.get('namespace', 'N/A')}")
         oci_compartments = _get_compartments(auth_profile)
+
+        pinned_compartment_id = client_settings.oci_source_bucket_compartment_id
+        pinned_compartment_label = (
+            next(
+                (label for label, ocid in oci_compartments.items() if ocid == pinned_compartment_id),
+                None,
+            )
+            if pinned_compartment_id
+            else None
+        )
+        compartment_locked = pinned_compartment_label is not None
+
         col2_1, col2_2 = st.columns([0.5, 0.5])
         with col2_1:
             bucket_compartment = st.selectbox(
                 "Bucket compartment:",
-                list(oci_compartments.keys()),
-                index=None,
-                placeholder="Select bucket compartment...",
+                [pinned_compartment_label] if compartment_locked else list(oci_compartments.keys()),
+                index=0 if compartment_locked else None,
+                placeholder=None if compartment_locked else "Select bucket compartment...",
+                disabled=compartment_locked,
             )
             src_bucket_list = (
                 _get_buckets(oci_compartments[bucket_compartment], auth_profile) if bucket_compartment else []
             )
+
+        bucket_locked = compartment_locked and client_settings.oci_source_bucket_name in src_bucket_list
+
         with col2_2:
             data.oci_bucket = st.selectbox(
                 "Source bucket:",
-                src_bucket_list,
-                index=None,
-                placeholder="Select source bucket...",
-                disabled=not bucket_compartment,
+                [client_settings.oci_source_bucket_name] if bucket_locked else src_bucket_list,
+                index=0 if bucket_locked else None,
+                placeholder=None if bucket_locked else "Select source bucket...",
+                disabled=bucket_locked or not bucket_compartment,
             )
 
         data.oci_all_files = st.toggle(

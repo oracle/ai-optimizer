@@ -4,35 +4,19 @@
 ##############################################################################
 **/*.log
 **/*.zip
-# **/requirements.txt
-# **/THIRD_PARTY_LICENSES.txt
-# sbin/**
 **/*.bak
 **/*.delete
 **/tmp/**
 **/temp/**
-# **/chatbot_graph.png
 **/etc/*.json
-# **/optimizer_settings.json
-# **/rag_base_optimizer_config.py
-# **/rag_base_optimizer_config_mcp.py
-# !opentofu/**/cloudinit-oke.sh
-# !opentofu/examples/manual-test.sh
-# !src/entrypoint.py
-# !src/client/source/spring_ai/templates/env.sh
-# test*/db_startup_temp
-# POC/**
 # ##############################################################################
 # # Environment (PyVen, IDE, etc.)
 # ##############################################################################
 **/.*venv*
-# **/.vscode
+**/.vscode
 **/.DS_Store
-# **/*.swp
-# **/.scannerwork
-# **/.cursorignore
+**/*.swp
 **/*.pem
-# sonar-project.properties
 
 # ##############################################################################
 # # Python
@@ -79,12 +63,7 @@ helm/values*.yaml
 **/*.tfplan
 **/*.tfplan.out
 
-# ##############################################################################
-# # Random
-# ##############################################################################
-# spring_ai/target/**
-# spring_ai/create_user.sql
-# spring_ai/drop.sql
-# src/client/spring_ai/target/classes/*
-# api_server_key
-# DEVELOPMENT_NOTES.md
+##############################################################################
+# Random
+##############################################################################
+docs/demo/**

@@ -332,6 +332,12 @@ def _server_env(deployment: dict, name: str) -> dict | None:
     return next((e for e in env if e["name"] == name), None)
 
 
+def _client_env(deployment: dict, name: str) -> dict | None:
+    """Return the named env var dict from the client container, or None if absent."""
+    env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+    return next((e for e in env if e["name"] == name), None)
+
+
 def _docs_for_required_defaults() -> list[dict]:
     result = _render("client.cookieSecret=cccccccccccccccccccccccccccccccc")
     assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
@@ -1566,3 +1572,54 @@ class TestSigNozCleanupHookRbacContract:
         assert kinds.count("ServiceAccount") >= 1
         assert kinds.count("Role") >= 1
         assert kinds.count("RoleBinding") >= 1
+
+
+class TestClientOciSourceBucketEnv:
+    """client.oci.sourceBucket* values map faithfully to pod env entries.
+
+    The chart layer does NOT enforce the compartment-as-anchor rule — it
+    injects whatever the operator supplies. The client honours or ignores
+    each env var at render time. These tests cover the chart's mapping.
+    """
+
+    _COOKIE = "client.cookieSecret=ccccccccccccccccccccccccccccccccc"
+    _COMPARTMENT_OCID = "ocid1.compartment.oc1..testbucketcompartment"
+    _BUCKET_NAME = "test-corpus-bucket"
+
+    def _deployment(self, result) -> dict:
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        return _client_deployment(_docs(result.stdout))
+
+    def test_neither_set_omits_both_env_entries(self):
+        deployment = self._deployment(_render(self._COOKIE))
+        assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID") is None
+        assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME") is None
+
+    def test_compartment_only_renders_compartment_env(self):
+        deployment = self._deployment(
+            _render(self._COOKIE, f"client.oci.sourceBucketCompartmentId={self._COMPARTMENT_OCID}")
+        )
+        entry = _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID")
+        assert entry is not None and entry["value"] == self._COMPARTMENT_OCID
+        assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME") is None
+
+    def test_bucket_only_renders_bucket_env_faithfully(self):
+        """The chart does not enforce compartment-as-anchor; an orphan
+        bucketName still gets injected. The client ignores it at runtime."""
+        deployment = self._deployment(
+            _render(self._COOKIE, f"client.oci.sourceBucketName={self._BUCKET_NAME}")
+        )
+        entry = _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME")
+        assert entry is not None and entry["value"] == self._BUCKET_NAME
+        assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID") is None
+
+    def test_both_set_renders_both_env_entries(self):
+        deployment = self._deployment(
+            _render(
+                self._COOKIE,
+                f"client.oci.sourceBucketCompartmentId={self._COMPARTMENT_OCID}",
+                f"client.oci.sourceBucketName={self._BUCKET_NAME}",
+            )
+        )
+        assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID")["value"] == self._COMPARTMENT_OCID
+        assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME")["value"] == self._BUCKET_NAME

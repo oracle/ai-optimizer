@@ -72,6 +72,14 @@ spec:
                   name: {{ include "ai-optimizer.client.passwordSecretName" . }}
                   key: {{ include "ai-optimizer.client.passwordSecretKey" . }}
             {{- end }}
+            {{- if .Values.client.oci.sourceBucketCompartmentId }}
+            - name: AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID
+              value: {{ .Values.client.oci.sourceBucketCompartmentId | quote }}
+            {{- end }}
+            {{- if .Values.client.oci.sourceBucketName }}
+            - name: AIO_OCI_SOURCE_BUCKET_NAME
+              value: {{ .Values.client.oci.sourceBucketName | quote }}
+            {{- end }}
           ports:
             - name: client-port
               containerPort: 8501
