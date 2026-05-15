@@ -34,6 +34,9 @@ Ask:
 - I am Driver `<driver number>`. What was my fastest lap and in which race?
 - I am Driver `<driver number>`. Did I have any incidents?
 - I am Driver `<driver number>`. How many pit stops did I make?
+
+<Change the Prompt to add "6. Return the SQL query that was run to obtain the result" >
+
 - Compare Driver `<driver number>` with Driver `<another driver number>` on total points, best finish, average lap time, and incidents.
 - Which drivers have the same driving style as Driver `<driver number>`?
 - Which team is leading before Round 6?
