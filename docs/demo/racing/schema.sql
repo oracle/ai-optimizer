@@ -145,12 +145,12 @@ CREATE TABLE source_documents (
 
 -------------------------------------------------------------------------------
 -- TEAMS and DRIVERS
+-- Driver/team attributes stay deterministic via MOD arithmetic so the
+-- per-driver corpus docs (corpus/driver_NNN.md) keep matching the database.
+-- DBMS_RANDOM is left unseeded so the synthetic-extension block below produces
+-- different pre-finale standings on every reset, varying the championship
+-- finale answer when combined with the fixed Round 6 bulletin.
 -------------------------------------------------------------------------------
-BEGIN
-  DBMS_RANDOM.SEED(42);
-END;
-/
-
 DECLARE
   TYPE t_vc_arr IS TABLE OF VARCHAR2(100);
 
@@ -401,8 +401,20 @@ INSERT INTO race_results (
   status,
   penalties
 )
-WITH candidates AS (
-  SELECT
+WITH team_form AS (
+  -- Per-team strength multiplier, computed once per reset. Drivers on a
+  -- high-form team get smaller ORDER BY values below and so tend to qualify
+  -- and finish higher across all 5 pre-finale rounds. Range 0.5..1.5 lifts
+  -- the spread between strongest and weakest pre-finale team to ~80 pts,
+  -- enough that any team can plausibly win the championship combined with
+  -- the Round 6 bulletin.
+  SELECT /*+ MATERIALIZE */
+    team_id,
+    0.5 + DBMS_RANDOM.VALUE AS form_factor
+  FROM teams
+),
+candidates AS (
+  SELECT /*+ MATERIALIZE */
     r.race_id,
     r.weather_condition,
     d.driver_id,
@@ -410,11 +422,11 @@ WITH candidates AS (
     existing.existing_results,
     ROW_NUMBER() OVER (
       PARTITION BY r.race_id
-      ORDER BY ORA_HASH(d.driver_code || ':' || r.race_id || ':qualifying'), d.driver_id
+      ORDER BY DBMS_RANDOM.VALUE / tf.form_factor, d.driver_id
     ) AS qualifying_rank,
     ROW_NUMBER() OVER (
       PARTITION BY r.race_id
-      ORDER BY ORA_HASH(d.driver_code || ':' || r.race_id || ':finish'), d.driver_id
+      ORDER BY DBMS_RANDOM.VALUE / tf.form_factor, d.driver_id
     ) AS finish_rank,
     CASE r.race_id
       WHEN 1 THEN 92.000
@@ -426,6 +438,7 @@ WITH candidates AS (
     END AS base_lap
   FROM races r
   CROSS JOIN drivers d
+  JOIN team_form tf ON tf.team_id = d.team_id
   JOIN (
     SELECT r2.race_id, COUNT(rr.result_id) AS existing_results
     FROM races r2
@@ -439,14 +452,17 @@ WITH candidates AS (
     AND r.race_id < 6
 ),
 scored AS (
-  SELECT
+  -- MATERIALIZE so incident_score / lap_offset are evaluated once per row;
+  -- otherwise the inlined CTE recomputes DBMS_RANDOM at each CASE branch
+  -- and the status / penalties columns can disagree on the same row.
+  SELECT /*+ MATERIALIZE */
     race_id,
     driver_id,
     existing_results + qualifying_rank AS qualifying_position,
     existing_results + finish_rank AS finish_position,
     base_lap,
-    MOD(ORA_HASH(driver_code || ':' || race_id || ':incident'), 100) AS incident_score,
-    MOD(ORA_HASH(driver_code || ':' || race_id || ':lap'), 1500) AS lap_offset
+    TRUNC(DBMS_RANDOM.VALUE(0, 100)) AS incident_score,
+    TRUNC(DBMS_RANDOM.VALUE(0, 1500)) AS lap_offset
   FROM candidates
 )
 SELECT
@@ -508,19 +524,19 @@ INSERT INTO performance_metrics (
 SELECT
   rr.driver_id,
   rr.race_id,
-  ROUND(rr.fastest_lap + 0.450 + (MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':avg'), 1800) / 1000), 3),
+  ROUND(rr.fastest_lap + 0.450 + (TRUNC(DBMS_RANDOM.VALUE(0, 1800)) / 1000), 3),
   ROUND(
     CASE
       WHEN LOWER(r.weather_condition) LIKE '%rain%' THEN 171.0
       WHEN LOWER(r.weather_condition) LIKE '%damp%' THEN 174.5
       ELSE 181.0
-    END + ((MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':speed'), 1000) - 450) / 100),
+    END + ((TRUNC(DBMS_RANDOM.VALUE(0, 1000)) - 450) / 100),
     2
   ),
-  ROUND(3.20 + (MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':tyres'), 560) / 100), 2),
+  ROUND(3.20 + (TRUNC(DBMS_RANDOM.VALUE(0, 560)) / 100), 2),
   GREATEST(rr.qualifying_position - NVL(rr.finish_position, 100), 0) +
-    MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':overtakes'), 4),
-  MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':mistakes'), 3)
+    TRUNC(DBMS_RANDOM.VALUE(0, 4)),
+  TRUNC(DBMS_RANDOM.VALUE(0, 3))
 FROM race_results rr
 JOIN races r ON r.race_id = rr.race_id
 JOIN drivers d ON d.driver_id = rr.driver_id
@@ -540,15 +556,15 @@ INSERT INTO pit_stops (
 SELECT
   rr.race_id,
   rr.driver_id,
-  12 + MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':pitlap'), 26),
-  1980 + MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':pitduration'), 1470),
-  CASE MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':compound'), 4)
+  12 + TRUNC(DBMS_RANDOM.VALUE(0, 26)),
+  1980 + TRUNC(DBMS_RANDOM.VALUE(0, 1470)),
+  CASE TRUNC(DBMS_RANDOM.VALUE(0, 4))
     WHEN 0 THEN 'Soft'
     WHEN 1 THEN 'Medium'
     WHEN 2 THEN 'Hard'
     ELSE 'Intermediate'
   END,
-  CASE MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':reason'), 6)
+  CASE TRUNC(DBMS_RANDOM.VALUE(0, 6))
     WHEN 0 THEN 'Scheduled tyre change'
     WHEN 1 THEN 'Undercut response'
     WHEN 2 THEN 'Long-run strategy'
@@ -557,12 +573,11 @@ SELECT
     ELSE 'Vibration check'
   END
 FROM race_results rr
-JOIN drivers d ON d.driver_id = rr.driver_id
 LEFT JOIN pit_stops already_seeded
   ON already_seeded.race_id = rr.race_id
  AND already_seeded.driver_id = rr.driver_id
 WHERE already_seeded.pit_stop_id IS NULL
-  AND MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':pit'), 100) < 72;
+  AND DBMS_RANDOM.VALUE(0, 100) < 72;
 
 INSERT INTO incidents (
   race_id,
@@ -573,9 +588,9 @@ INSERT INTO incidents (
   short_description
 )
 SELECT
-  rr.race_id,
-  rr.driver_id,
-  CASE MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':itype'), 6)
+  race_id,
+  driver_id,
+  CASE itype_pick
     WHEN 0 THEN 'Track limits'
     WHEN 1 THEN 'Unsafe release'
     WHEN 2 THEN 'Mechanical issue'
@@ -584,20 +599,31 @@ SELECT
     ELSE 'Spin'
   END,
   CASE
-    WHEN rr.status = 'DNF' THEN 'High'
-    WHEN MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':severity'), 3) = 0 THEN 'Low'
-    WHEN MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':severity'), 3) = 1 THEN 'Medium'
+    WHEN status = 'DNF' THEN 'High'
+    WHEN severity_pick = 0 THEN 'Low'
+    WHEN severity_pick = 1 THEN 'Medium'
     ELSE 'High'
   END,
-  1 + MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':ilap'), 44),
+  1 + ilap_pick,
   'Synthetic steward note generated from timing, telemetry and pit wall observations'
-FROM race_results rr
-JOIN drivers d ON d.driver_id = rr.driver_id
-LEFT JOIN incidents already_seeded
-  ON already_seeded.race_id = rr.race_id
- AND already_seeded.driver_id = rr.driver_id
-WHERE already_seeded.incident_id IS NULL
-  AND (rr.status = 'DNF' OR MOD(ORA_HASH(d.driver_code || ':' || rr.race_id || ':incident'), 100) < 16);
+FROM (
+  -- MATERIALIZE so each random pick (itype/severity/ilap) is evaluated once
+  -- per row; otherwise the inlined subquery recomputes DBMS_RANDOM at each
+  -- CASE branch and severity could disagree across the WHEN tests.
+  SELECT /*+ MATERIALIZE */
+    rr.race_id,
+    rr.driver_id,
+    rr.status,
+    TRUNC(DBMS_RANDOM.VALUE(0, 6)) AS itype_pick,
+    TRUNC(DBMS_RANDOM.VALUE(0, 3)) AS severity_pick,
+    TRUNC(DBMS_RANDOM.VALUE(0, 44)) AS ilap_pick
+  FROM race_results rr
+  LEFT JOIN incidents already_seeded
+    ON already_seeded.race_id = rr.race_id
+   AND already_seeded.driver_id = rr.driver_id
+  WHERE already_seeded.incident_id IS NULL
+    AND (rr.status = 'DNF' OR DBMS_RANDOM.VALUE(0, 100) < 16)
+);
 
 COMMIT;
 

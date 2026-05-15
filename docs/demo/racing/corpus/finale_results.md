@@ -17,16 +17,16 @@ The session ran in dry and hot conditions. Track evolution was high through the 
 
 | Team | Points | Race Control Note |
 |---|---:|---|
-| Nova Circuit | 142 | Strong final stint and clean pit execution |
-| Phoenix Racing Lab | 118 | Fastest average pit work; one minor track-limits warning reviewed with no team penalty |
-| Vertex GP | 104 | Consistent top-ten finishes across both race simulations |
-| Apex Dynamics | 92 | Good qualifying pace with moderate tyre degradation |
-| Carbon Shift | 86 | High top speed; lost points after late-race contact |
-| Quantum Apex | 78 | Efficient energy deployment over the final stint |
-| Velocity Forge | 70 | Reliable finish with limited overtaking opportunities |
-| Blue Torque | 64 | Conservative strategy reduced retirement risk |
-| Delta Velocity | 58 | Dry-race pace reduced by a wet-setup compromise |
-| Titan Motorsport | 52 | Mechanical checks extended two pit stops |
+| Nova Circuit | 95 | Strong final stint and clean pit execution |
+| Phoenix Racing Lab | 92 | Fastest average pit work; one minor track-limits warning reviewed with no team penalty |
+| Vertex GP | 89 | Consistent top-ten finishes across both race simulations |
+| Apex Dynamics | 86 | Good qualifying pace with moderate tyre degradation |
+| Carbon Shift | 83 | High top speed; lost points after late-race contact |
+| Quantum Apex | 80 | Efficient energy deployment over the final stint |
+| Velocity Forge | 77 | Reliable finish with limited overtaking opportunities |
+| Blue Torque | 74 | Conservative strategy reduced retirement risk |
+| Delta Velocity | 71 | Dry-race pace reduced by a wet-setup compromise |
+| Titan Motorsport | 68 | Mechanical checks extended two pit stops |
 
 ## Stewarding Notes
 
