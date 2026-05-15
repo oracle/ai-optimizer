@@ -532,19 +532,26 @@ client:
   # -- Key inside cookieSecretName / the generated Secret that holds the value.
   cookieSecretKey: "cookieSecret"
 
-  # -- Shared password for selected client UI controls. The operator MAY supply
-  # either:
-  #   1) password — an inline value; Helm creates a Secret.
-  #   2) passwordSecretName — name of a pre-existing Secret in the namespace.
-  # When BOTH are empty, the additional UI access check is disabled and controls
-  # render as they would have without this feature.
-  # This setting applies to the Streamlit client UI only; API access continues
-  # to be governed by AIO_API_KEY.
+  # -- Shared password for selected client UI controls. Exactly one (or none)
+  # of password / passwordSecretName / passwordAutoGenerate may be set; the
+  # chart fails the render when more than one is active. With none set, the
+  # additional UI access check is disabled. Applies to the Streamlit client
+  # UI only; API access continues to be governed by AIO_API_KEY.
   password: ""
-  # -- Name of a pre-existing Secret containing the shared password.
+  # -- Name of a pre-existing Secret containing the shared password (BYO).
+  # The chart references it but does not create or manage its lifecycle.
   passwordSecretName: ""
   # -- Key inside passwordSecretName / the generated Secret that holds the value.
   passwordSecretKey: "password"
+  # -- Auto-generate the shared password and let the chart own the Secret.
+  # On first install the chart creates `<fullname>-client-password` with a
+  # random value and `helm.sh/resource-policy: keep` so it survives upgrade
+  # and uninstall. Requires Helm with cluster access at render time — under
+  # `helm template` / ArgoCD without server-side render, `lookup` returns
+  # empty and the chart would re-mint the password on every render, so
+  # `kubectl apply` of that output would rotate the live Secret. Use BYO
+  # (passwordSecretName) instead for those pipelines.
+  passwordAutoGenerate: false
 
   # -- OCI source defaults applied to the Split & Embed tab for every user
   # of this deployment. The compartment is the anchor; the bucket alone

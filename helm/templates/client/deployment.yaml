@@ -65,7 +65,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-optimizer.client.cookieSecretName" . }}
                   key: {{ include "ai-optimizer.client.cookieSecretKey" . }}
-            {{- if or (.Values.client.password | trim) (.Values.client.passwordSecretName | trim) }}
+            {{- if include "ai-optimizer.client.passwordGate.enabled" . }}
             - name: AIO_CLIENT_PASSWORD
               valueFrom:
                 secretKeyRef:
