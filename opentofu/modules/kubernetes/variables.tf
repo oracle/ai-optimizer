@@ -174,3 +174,12 @@ variable "client_cookie_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "object_storage_bucket" {
+  type    = string
+  default = ""
+}
+
+variable "namespace" {
+  type = string
+}

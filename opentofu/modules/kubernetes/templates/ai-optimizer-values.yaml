@@ -65,6 +65,12 @@ client:
     tag: "${app_version}"
     pullPolicy: Always
 
+%{~ if object_storage_bucket != "" }
+  oci:
+    sourceBucketCompartmentId: "${compartment_id}"
+    sourceBucketName: "${object_storage_bucket}"
+%{~ endif }
+
   ingress:
     enabled: true
     className: native-ic

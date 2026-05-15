@@ -138,6 +138,10 @@ write_files:
       %{~ if install_ollama }
       AIO_ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
       %{~ endif }
+      %{~ if object_storage_bucket != "" }
+      AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID=${compartment_id}
+      AIO_OCI_SOURCE_BUCKET_NAME=${object_storage_bucket}
+      %{~ endif }
       ENVEOF
       chmod 640 /app/src/.env.vm
 

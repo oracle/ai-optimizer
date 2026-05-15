@@ -90,6 +90,12 @@ locals {
   adb_private_endpoint_label = local.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.label_prefix : null
 }
 
+// Object Storage
+locals {
+  object_storage_bucket    = var.prov_object_storage ? oci_objectstorage_bucket.bucket["managed"].name : ""
+  object_storage_namespace = (var.infrastructure == "Kubernetes" || var.prov_object_storage) ? data.oci_objectstorage_namespace.ns[0].namespace : ""
+}
+
 // Optimizer Branch
 locals {
   optimizer_branch = (

@@ -133,6 +133,15 @@ These override the DEFAULT OCI profile. For more details, see [OCI Configuration
 | `AIO_GENAI_COMPARTMENT_ID` | Compartment OCID for OCI GenAI inference |
 | `AIO_GENAI_REGION` | Region for the OCI GenAI service endpoint |
 
+### OCI Object Storage Source Lock
+
+Pin the Split & Embed tab's OCI source compartment (and optionally bucket) for every user of the deployment. The compartment is the anchor: setting only the bucket variable has no effect — it is silently ignored unless the compartment variable is also set and resolves against the active OCI auth profile.
+
+| Variable | Description |
+|---|---|
+| `AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID` | Compartment OCID pinned as the Split & Embed source compartment. When the OCID resolves, the "Bucket compartment:" selectbox is locked to it for all users. |
+| `AIO_OCI_SOURCE_BUCKET_NAME` | Bucket name pinned as the Split & Embed source bucket. Requires `AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID` to also be set and resolve, and the bucket to exist within the pinned compartment; otherwise this value is silently ignored. |
+
 ### Model Overrides
 
 These set API keys or URLs to automatically enable models at startup.

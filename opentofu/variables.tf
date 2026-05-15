@@ -319,3 +319,9 @@ variable "server_allowed_cidrs" {
     error_message = "Must be a comma separated string of valid CIDRs."
   }
 }
+
+variable "prov_object_storage" {
+  description = "If enabled, OCI corpus source will be limited to this bucket."
+  type        = bool
+  default     = false
+}
