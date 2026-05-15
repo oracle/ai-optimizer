@@ -22,6 +22,7 @@ The test script automatically loads credentials from `~/.oci/config`, sets compa
 | `vm-byo-adb.tfvars` | VM with bring-your-own ADB | VM | BYO ADB-S |
 | `vm-byo-other-db.tfvars` | VM with BYO other database | VM | BYO OTHER |
 | `k8s-byo-other-db.tfvars` | Kubernetes with BYO other database | Kubernetes (OKE) | BYO OTHER |
+| `always-free.tfvars` | Always Free (A1.Flex compute + free-tier ADB) | AlwaysFree | New ADB (Free Tier) |
 
 ## Manual Setup (Without Helper Script)
 

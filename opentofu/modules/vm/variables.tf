@@ -70,6 +70,10 @@ variable "compute_cpu_ocpu" {
   type = number
 }
 
+variable "compute_cpu_memory_gbs" {
+  type = number
+}
+
 variable "compute_gpu_shape" {
   type = string
 }

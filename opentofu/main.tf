@@ -43,8 +43,8 @@ resource "oci_load_balancer_load_balancer" "lb" {
   shape          = "flexible"
   is_private     = false
   shape_details {
-    minimum_bandwidth_in_mbps = var.lb_min_shape
-    maximum_bandwidth_in_mbps = var.lb_max_shape
+    minimum_bandwidth_in_mbps = local.lb_min_shape
+    maximum_bandwidth_in_mbps = local.lb_max_shape
   }
   subnet_ids = [
     local.public_subnet_ocid
@@ -59,21 +59,21 @@ resource "oci_database_autonomous_database" "default_adb" {
   for_each                             = var.byo_db_type == "" ? { managed = true } : {}
   admin_password                       = local.db_conn.password
   autonomous_maintenance_schedule_type = "REGULAR"
-  character_set                        = "AL32UTF8"
+  character_set                        = local.adb_is_free_tier ? null : "AL32UTF8"
   compartment_id                       = local.compartment_ocid
-  compute_count                        = var.adb_ecpu_core_count
+  compute_count                        = local.adb_is_free_tier ? 1 : var.adb_ecpu_core_count
   compute_model                        = "ECPU"
-  data_storage_size_in_gb              = var.adb_data_storage_size_in_gb
-  database_edition                     = var.adb_license_model == "BRING_YOUR_OWN_LICENSE" ? var.adb_edition : null
+  data_storage_size_in_gb              = local.adb_is_free_tier ? 20 : var.adb_data_storage_size_in_gb
+  database_edition                     = !local.adb_is_free_tier && var.adb_license_model == "BRING_YOUR_OWN_LICENSE" ? var.adb_edition : null
   db_name                              = local.db_name
   db_version                           = var.adb_version
   db_workload                          = "OLTP"
   display_name                         = local.db_name
-  is_free_tier                         = false
-  is_auto_scaling_enabled              = var.adb_is_cpu_auto_scaling_enabled
-  is_auto_scaling_for_storage_enabled  = var.adb_is_storage_auto_scaling_enabled
+  is_free_tier                         = local.adb_is_free_tier
+  is_auto_scaling_enabled              = local.adb_is_free_tier ? false : var.adb_is_cpu_auto_scaling_enabled
+  is_auto_scaling_for_storage_enabled  = local.adb_is_free_tier ? false : var.adb_is_storage_auto_scaling_enabled
   is_dedicated                         = false
-  license_model                        = var.adb_license_model
+  license_model                        = local.adb_is_free_tier ? "LICENSE_INCLUDED" : var.adb_license_model
   is_mtls_connection_required          = true
   nsg_ids                              = local.adb_nsg
   whitelisted_ips                      = local.adb_whitelist_cidrs

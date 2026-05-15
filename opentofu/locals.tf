@@ -6,6 +6,7 @@
 locals {
   compartment_ocid = var.compartment_ocid != "" ? var.compartment_ocid : var.tenancy_ocid
   label_prefix     = var.label_prefix != "" ? substr(lower(var.label_prefix), 0, 12) : substr(lower(random_pet.label.id), 0, 12)
+  is_always_free   = var.infrastructure == "AlwaysFree"
 }
 
 
@@ -28,6 +29,14 @@ locals {
   ])
 }
 
+// Compute
+locals {
+  // AlwaysFree forces A1.Flex regardless of the (often hidden) var.compute_cpu_shape.
+  // A1.Flex Always Free tier caps at 4 OCPU / 24 GB total per tenancy (6 GB/OCPU).
+  compute_cpu_shape      = local.is_always_free ? "VM.Standard.A1.Flex" : var.compute_cpu_shape
+  compute_cpu_memory_gbs = var.compute_cpu_ocpu * (local.is_always_free ? 6 : 16)
+}
+
 // Network
 locals {
   vcn_ocid                  = var.byo_vcn_ocid == "" ? module.network["managed"].vcn_ocid : var.byo_vcn_ocid
@@ -38,6 +47,12 @@ locals {
 
 // Database
 locals {
+  adb_is_free_tier = local.is_always_free && var.byo_db_type == ""
+
+  // Always Free ADB cannot be provisioned with a private endpoint; pin networking
+  // to SECURE_ACCESS so a stale tfvars/CLI adb_networking value can't cause apply to fail.
+  adb_networking = local.adb_is_free_tier ? "SECURE_ACCESS" : var.adb_networking
+
   db_ocid = (
     var.byo_db_type == "" ? oci_database_autonomous_database.default_adb["managed"].id :
     var.byo_db_type == "ADB-S" ? data.oci_database_autonomous_database.byo_adb["byo"].id :
@@ -64,15 +79,15 @@ locals {
   }
 
   adb_whitelist_cidrs = (
-    var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? null :
+    local.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? null :
     concat(
       var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
       [local.vcn_ocid]
     )
   )
-  adb_nsg                    = var.byo_vcn_ocid != "" && var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? [oci_core_network_security_group.adb[0].id] : []
-  adb_subnet_id              = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.private_subnet_ocid : null
-  adb_private_endpoint_label = var.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.label_prefix : null
+  adb_nsg                    = var.byo_vcn_ocid != "" && local.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? [oci_core_network_security_group.adb[0].id] : []
+  adb_subnet_id              = local.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.private_subnet_ocid : null
+  adb_private_endpoint_label = local.adb_networking == "PRIVATE_ENDPOINT_ACCESS" ? local.label_prefix : null
 }
 
 // Optimizer Branch
@@ -86,6 +101,10 @@ locals {
 
 // Load Balancer
 locals {
+  // AlwaysFree includes one 10 Mbps Flexible Load Balancer; cap both bounds at 10 Mbps
+  // so a stale lb_min/max_shape can't promote it to a paid bandwidth.
+  lb_min_shape         = local.is_always_free ? 10 : var.lb_min_shape
+  lb_max_shape         = local.is_always_free ? 10 : var.lb_max_shape
   lb_client_http_port  = 80
   lb_client_https_port = 443
   lb_server_http_port  = 8000
