@@ -113,6 +113,7 @@ EXAMPLES=(
     examples/vm-arm-shape.tfvars
     examples/vm-byo-other-db.tfvars
     examples/k8s-byo-other-db.tfvars
+    examples/always-free.tfvars
 )
 
 for example in "${EXAMPLES[@]}"; do

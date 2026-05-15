@@ -12,8 +12,21 @@ variable "compute_install_ollama" {
   default = false
 }
 
+# Blocking guard for AlwaysFree compute sizing. check {} blocks only warn,
+# so we use a precondition that fails plan/apply when violated.
+resource "terraform_data" "always_free_validation" {
+  count = local.is_always_free ? 1 : 0
+
+  lifecycle {
+    precondition {
+      condition     = var.compute_cpu_ocpu >= 1 && var.compute_cpu_ocpu <= 4
+      error_message = "AlwaysFree requires compute_cpu_ocpu between 1 and 4 (A1.Flex shape is forced automatically)."
+    }
+  }
+}
+
 module "vm" {
-  for_each               = var.infrastructure == "VM" ? { managed = true } : {}
+  for_each               = contains(["VM", "AlwaysFree"], var.infrastructure) ? { managed = true } : {}
   source                 = "./modules/vm"
   optimizer_version      = var.optimizer_version
   optimizer_branch       = local.optimizer_branch
@@ -34,11 +47,12 @@ module "vm" {
   ssl_ca_cert            = local.ssl_ca_cert_pem
   db_name                = local.db_name
   db_conn                = local.db_conn
-  vm_is_gpu_shape        = var.vm_is_gpu_shape
+  vm_is_gpu_shape        = local.is_always_free ? false : var.vm_is_gpu_shape
   compute_install_ollama = var.compute_install_ollama
   compute_os_ver         = local.compute_os_ver
   compute_cpu_ocpu       = var.compute_cpu_ocpu
-  compute_cpu_shape      = var.compute_cpu_shape
+  compute_cpu_memory_gbs = local.compute_cpu_memory_gbs
+  compute_cpu_shape      = local.compute_cpu_shape
   compute_gpu_shape      = var.compute_gpu_shape
   availability_domains   = local.availability_domains
   private_subnet_id      = local.private_subnet_ocid
