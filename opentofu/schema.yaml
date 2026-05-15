@@ -276,15 +276,16 @@ variables:
     multipleOf: 1
     visible:
       or:
-        - and:
+        - or:
+            - and:
+                - eq:
+                    - infrastructure
+                    - "VM"
+                - not:
+                    - vm_is_gpu_shape
             - eq:
                 - infrastructure
-                - "VM"
-            - not:
-                - vm_is_gpu_shape
-        - eq:
-            - infrastructure
-            - "Kubernetes"
+                - "Kubernetes"
         - eq:
             - infrastructure
             - "AlwaysFree"
@@ -491,12 +492,13 @@ variables:
       - "STANDARD_EDITION"
     visible:
       and:
-        - not:
-            - byo_db
-        - not:
-            - eq:
-                - infrastructure
-                - "AlwaysFree"
+        - and:
+            - not:
+                - byo_db
+            - not:
+                - eq:
+                    - infrastructure
+                    - "AlwaysFree"
         - eq:
             - adb_license_model
             - BRING_YOUR_OWN_LICENSE
@@ -526,12 +528,13 @@ variables:
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
     visible:
       and:
-        - not:
-            - byo_db
-        - not:
-            - eq:
-                - infrastructure
-                - "AlwaysFree"
+        - and:
+            - not:
+                - byo_db
+            - not:
+                - eq:
+                    - infrastructure
+                    - "AlwaysFree"
         - eq:
             - adb_networking
             - PRIVATE_ENDPOINT_ACCESS
