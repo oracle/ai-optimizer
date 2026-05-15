@@ -10,11 +10,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore agentspec pyagentspec
 -->
 
-The {{< full_app_ref >}} exposes portable [AgentSpec]({{% relref "/agents" %}}) definitions that describe agent pipelines as serializable JSON. These definitions can be inspected in the GUI, customized, and loaded into any compatible runtime.
+The {{% full_app_ref %}} exposes portable [AgentSpec]({{% relref "/agents" %}}) definitions that describe agent pipelines as serializable JSON. These definitions can be inspected in the GUI, customized, and loaded into any compatible runtime.
 
 ## Built-in Specifications
 
-The {{< short_app_ref >}} provides three built-in AgentSpec definitions:
+The {{% short_app_ref %}} provides three built-in AgentSpec definitions:
 
 | Name | Type | Description |
 |------|------|-------------|

@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore pydantic fastmcp agentspec pyagentspec
 -->
 
-The {{< short_app_ref >}} exposes an [MCP](https://modelcontextprotocol.io/) server built on [FastMCP](https://gofastmcp.com/).  All registered tools are available over the MCP protocol at the `/mcp` endpoint and through the REST API at `/mcp/tools`.
+The {{% short_app_ref %}} exposes an [MCP](https://modelcontextprotocol.io/) server built on [FastMCP](https://gofastmcp.com/).  All registered tools are available over the MCP protocol at the `/mcp` endpoint and through the REST API at `/mcp/tools`.
 
 Developers can add custom tools by dropping a Python file into the tools package — no other files need to be edited.
 
@@ -117,7 +117,7 @@ Registering a tool makes it available on the MCP server, but something still nee
 
 ### External MCP Clients
 
-Any MCP-compatible client can connect to the {{< short_app_ref >}} server and use registered tools directly.  Configure the client to connect to the `/mcp` endpoint with an `X-API-Key` header.
+Any MCP-compatible client can connect to the {{% short_app_ref %}} server and use registered tools directly.  Configure the client to connect to the `/mcp` endpoint with an `X-API-Key` header.
 
 Examples of MCP clients that can consume tools this way:
 
@@ -131,7 +131,7 @@ With this approach the tool is available immediately after registration — no a
 
 ### Internal Agent Use (AgentSpec)
 
-The {{< short_app_ref >}} uses [AgentSpec]({{% relref "agents" %}}) to define agents and flows as portable configurations.  There are two ways to bind MCP tools to an agent:
+The {{% short_app_ref %}} uses [AgentSpec]({{% relref "agents" %}}) to define agents and flows as portable configurations.  There are two ways to bind MCP tools to an agent:
 
 **MCPToolBox** — Connects to the MCP server and discovers *all* available tools at runtime.  The built-in NL2SQL Agent uses this pattern.  Any custom tool registered on the server is automatically available without code changes.
 

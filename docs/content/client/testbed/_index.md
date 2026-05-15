@@ -8,7 +8,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 spell-checker: ignore giskard 
 -->
-Generating a Test Dataset of Q&A pairs using an external LLM can significantly accelerate the testing phase. The {{< full_app_ref >}} integrates with the [Giskard](https://www.giskard.ai/) framework, which is specifically designed to support this process.
+Generating a Test Dataset of Q&A pairs using an external LLM can significantly accelerate the testing phase. The {{% full_app_ref %}} integrates with the [Giskard](https://www.giskard.ai/) framework, which is specifically designed to support this process.
 
 Giskard analyzes documents to identify high-level topics associated with the generated Q&A pairs and automatically includes this information in the resulting Test Dataset. All test datasets and evaluation results are stored in the database, enabling future evaluations, comparisons, and reviews.
 

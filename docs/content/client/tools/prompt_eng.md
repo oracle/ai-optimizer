@@ -8,7 +8,7 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
 
-Prompts are a set of instructions given to the language model to guide the response.  They are used to set the context or define the kind of response you are expecting.  The {{< full_app_ref >}} provides both [System](#system-prompt) and [Context](#context-prompt) example prompts and allows you to modify these prompts to your needs.
+Prompts are a set of instructions given to the language model to guide the response.  They are used to set the context or define the kind of response you are expecting.  The {{% full_app_ref %}} provides both [System](#system-prompt) and [Context](#context-prompt) example prompts and allows you to modify these prompts to your needs.
 
 {{% icon star %}} The provided example prompts work for *most* models but they may not work the same way across all models.  Different models may interpret or respond to the instructions in various ways requiring you to modify the example prompts per-model.
 

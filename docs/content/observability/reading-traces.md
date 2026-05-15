@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore signoz openinference langgraph oitracer
 -->
 
-Once telemetry is flowing into a backend, the question becomes: what do you *do* with it? This page covers the practical workflow for using traces and correlated logs to understand the {{< short_app_ref >}} server's behavior — debugging requests, watching production health, and reasoning about LLM cost.
+Once telemetry is flowing into a backend, the question becomes: what do you *do* with it? This page covers the practical workflow for using traces and correlated logs to understand the {{% short_app_ref %}} server's behavior — debugging requests, watching production health, and reasoning about LLM cost.
 
 The screenshots and view names below are from [SigNoz]({{% relref "/observability/signoz" %}}). The same data is available in any OTLP backend; only the UI navigation differs.
 
@@ -79,7 +79,7 @@ For non-LLM spans (chains, tools, retrievers), the relevant attributes vary; the
 
 ### Why prompts and responses are hidden by default
 
-User chat text, retrieved RAG context, and model responses can contain deployment-specific or private content. By default, the {{< short_app_ref >}} server configures OpenInference to omit these payloads from exported spans unless payload export is enabled.
+User chat text, retrieved RAG context, and model responses can contain deployment-specific or private content. By default, the {{% short_app_ref %}} server configures OpenInference to omit these payloads from exported spans unless payload export is enabled.
 
 Additional message-related attributes, including prompt template variables, retrieved document content, and tool parameters, follow the same default visibility setting as the main `input.value` / `output.value` payloads.
 

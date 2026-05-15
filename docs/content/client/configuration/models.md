@@ -11,7 +11,7 @@ spell-checker:ignore ollama, mxbai, nomic, thenlper, minilm, uniqueid, huggingfa
 
 ## Supported Models
 
-At a minimum, a Large _Language Model_ (LLM) must be configured in {{< short_app_ref >}} for basic functionality. For Retrieval-Augmented Generation (**RAG**), an _Embedding Model_ will also need to be configured.
+At a minimum, a Large _Language Model_ (LLM) must be configured in {{% short_app_ref %}} for basic functionality. For Retrieval-Augmented Generation (**RAG**), an _Embedding Model_ will also need to be configured.
 
 There is an extensive list of different API Model APIs available you can choose from.
 
@@ -21,9 +21,9 @@ To use **NL2SQL**, the selected LLM must support the **Model Context Protocol (M
 
 ## Configuration
 
-The models can either be configured using environment variables or through the {{< short_app_ref >}} interface. To configure models through environment variables, please read the [Additional Information](#additional-information) about the specific model you would like to configure.
+The models can either be configured using environment variables or through the {{% short_app_ref %}} interface. To configure models through environment variables, please read the [Additional Information](#additional-information) about the specific model you would like to configure.
 
-To configure an LLM or embedding model from the {{< short_app_ref >}}, navigate to _Configuration_ page and _Models_ tab:
+To configure an LLM or embedding model from the {{% short_app_ref %}}, navigate to _Configuration_ page and _Models_ tab:
 
 ![Model Config](../images/models_config.png)
 
@@ -37,7 +37,7 @@ Set the API, API Keys, API URL and other parameters as required.  Parameters suc
 
 #### API
 
-The {{< short_app_ref >}} supports a number of model API's.  When adding a model, choose the most appropriate Model API.  If unsure, or the specific API is not listed, try *CompatOpenAI* or *CompatOpenAIEmbeddings* before [opening an issue](https://github.com/oracle/ai-optimizer/issues/new) requesting an additional model API support.
+The {{% short_app_ref %}} supports a number of model API's.  When adding a model, choose the most appropriate Model API.  If unsure, or the specific API is not listed, try *CompatOpenAI* or *CompatOpenAIEmbeddings* before [opening an issue](https://github.com/oracle/ai-optimizer/issues/new) requesting an additional model API support.
 
 There are a number of local AI Model runners that use OpenAI compatible API's, including:
 - [LM Studio](https://lmstudio.ai)
@@ -64,7 +64,7 @@ On-Premises models, such as those from [Ollama](https://ollama.com/) or [Hugging
 
 ## CPU Optimization
 
-When running models on CPU-only systems (without GPU acceleration), smaller models provide significantly better performance and responsiveness. The {{< short_app_ref >}} includes built-in optimizations for CPU-friendly models.
+When running models on CPU-only systems (without GPU acceleration), smaller models provide significantly better performance and responsiveness. The {{% short_app_ref %}} includes built-in optimizations for CPU-friendly models.
 
 ### Recommended CPU-Friendly Models
 
@@ -79,7 +79,7 @@ The following Ollama models are optimized for CPU usage and are automatically en
 
 ### Automatic Optimization
 
-When a small model (<7B parameters) is selected, the {{< short_app_ref >}} automatically:
+When a small model (<7B parameters) is selected, the {{% short_app_ref %}} automatically:
 
 1. **Disables Document Grading** - Skips the extra LLM call to grade document relevance
 2. **Disables Query Rephrasing** - Skips the extra LLM call to rephrase user queries
@@ -110,7 +110,7 @@ You can manually enable or disable these features using the **Grade** and **Reph
 
 Please follow the [Getting Started](https://docs.oracle.com/en-us/iaas/Content/generative-ai/getting-started.htm) guide for deploying the service in your OCI tenancy.
 
-To use OCI GenAI, the {{< short_app_ref >}} must be configured for [OCI access](oci); including the Compartment OCID for the OCI GenAI service.
+To use OCI GenAI, the {{% short_app_ref %}} must be configured for [OCI access](oci); including the Compartment OCID for the OCI GenAI service.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
 OCI GenAI models can be enabled via environment variables. See [OCI GenAI](/env_config/#oci-genai) configuration.
@@ -128,7 +128,7 @@ genai_region=<OCI GenAI Region>
 
 [Ollama](https://ollama.com/) is an open-source project that simplifies the running of LLMs and Embedding Models On-Premises.
 
-When configuring an Ollama model in the {{< short_app_ref >}}, set the `API Server` URL (e.g `http://127.0.0.1:11434`) and leave the API Key blank. Substitute the IP Address with the IP of where Ollama is running.
+When configuring an Ollama model in the {{% short_app_ref %}}, set the `API Server` URL (e.g `http://127.0.0.1:11434`) and leave the API Key blank. Substitute the IP Address with the IP of where Ollama is running.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
 Ollama models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
@@ -208,9 +208,9 @@ Example of running thenlper/gte-base in a container:
 {{% tab title="Cohere" %}}
 # Cohere
 
-[Cohere](https://cohere.com/) is an AI-powered answer engine. To use Cohere, you will need to sign-up and provide the {{< short_app_ref >}} an API Key.  Cohere offers a free-trial, rate-limited API Key.
+[Cohere](https://cohere.com/) is an AI-powered answer engine. To use Cohere, you will need to sign-up and provide the {{% short_app_ref %}} an API Key.  Cohere offers a free-trial, rate-limited API Key.
 
-**WARNING:** Cohere is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
+**WARNING:** Cohere is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
 Cohere models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
@@ -219,9 +219,9 @@ Cohere models can be enabled via environment variables. See [Model Overrides](/e
 {{% tab title="OpenAI" %}}
 # OpenAI
 
-[OpenAI](https://openai.com/api/) is an AI research organization behind the popular, online ChatGPT chatbot. To use OpenAI models, you will need to sign-up, purchase credits, and provide the {{< short_app_ref >}} an API Key.
+[OpenAI](https://openai.com/api/) is an AI research organization behind the popular, online ChatGPT chatbot. To use OpenAI models, you will need to sign-up, purchase credits, and provide the {{% short_app_ref %}} an API Key.
 
-**WARNING:** OpenAI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
+**WARNING:** OpenAI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
 OpenAI models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
@@ -237,9 +237,9 @@ Many "AI Runners" provide OpenAI compatible APIs.  These can be used without any
 {{% tab title="Perplexity AI" %}}
 # Perplexity AI
 
-[Perplexity AI](https://docs.perplexity.ai/getting-started) is an AI-powered answer engine. To use Perplexity AI models, you will need to sign-up, purchase credits, and provide the {{< short_app_ref >}} an API Key.
+[Perplexity AI](https://docs.perplexity.ai/getting-started) is an AI-powered answer engine. To use Perplexity AI models, you will need to sign-up, purchase credits, and provide the {{% short_app_ref %}} an API Key.
 
-**WARNING:** Perplexity AI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{< short_app_ref >}}.
+**WARNING:** Perplexity AI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
 Perplexity models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.

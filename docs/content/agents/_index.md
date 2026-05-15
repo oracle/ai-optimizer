@@ -9,7 +9,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore agentspec pyagentspec vecsearch
 -->
 
-The {{< short_app_ref >}} uses [Oracle AgentSpec](https://oracle.github.io/agent-spec/development/) to define its AI agents and flows as portable, serializable configurations. These configurations are loaded into [LangGraph](https://langchain-ai.github.io/langgraph/) for execution.
+The {{% short_app_ref %}} uses [Oracle AgentSpec](https://oracle.github.io/agent-spec/development/) to define its AI agents and flows as portable, serializable configurations. These configurations are loaded into [LangGraph](https://langchain-ai.github.io/langgraph/) for execution.
 
 ## What is AgentSpec?
 
@@ -66,7 +66,7 @@ All agents and flows attempt to fetch their system prompt from the MCP server. I
 
 ## Porting Specs to Your Own Application
 
-AgentSpec definitions are pure data — they can be exported, modified, and loaded into any compatible runtime. The {{< short_app_ref >}} exposes all its specs through a REST API so developers can inspect and reuse them.
+AgentSpec definitions are pure data — they can be exported, modified, and loaded into any compatible runtime. The {{% short_app_ref %}} exposes all its specs through a REST API so developers can inspect and reuse them.
 
 ### Fetching Specs
 

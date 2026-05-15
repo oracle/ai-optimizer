@@ -7,7 +7,7 @@ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 -->
 
-The {{< full_app_ref >}} provides a Chatbot to experiment with different Language settings and Embeddings.  It allows you to manually find the optimal configuration for your AI project before launching it into Production. 
+The {{% full_app_ref %}} provides a Chatbot to experiment with different Language settings and Embeddings.  It allows you to manually find the optimal configuration for your AI project before launching it into Production. 
 
 There are a number of configurations you can experiment with to explore AI and RAG capabilities to understand their behavior without requiring deep technical knowledge.
 
@@ -45,7 +45,7 @@ For more details on the parameters, ask the Chatbot or review [Concepts for Gene
 
 ## Toolkit
 
-The {{< short_app_ref >}} provides tools to augment Large Language Models with your proprietary data using different tools, such as Retrieval Augmented Generation (**RAG**), including:
+The {{% short_app_ref %}} provides tools to augment Large Language Models with your proprietary data using different tools, such as Retrieval Augmented Generation (**RAG**), including:
 * [Vector Search](#vector-search) for Unstructured Data
 * [NL2SQL](#nl2sql-natural-language-to-sql) for interacting with your structured data using natural language
 
@@ -76,7 +76,7 @@ With Vector Search selected, if you have more than one Vector Store, you can eit
 
 The Natural Language to SQL (NL2SQL) tool enables users to query structured data stored in Oracle AI Database 26ai by using natural language instead of SQL statements. 
 
-To use this tool, the **Oracle SQLcl MCP server** must be enabled and properly configured within the {{< short_app_ref >}}. Detailed instructions are available in the official [Oracle documentation](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html):
+To use this tool, the **Oracle SQLcl MCP server** must be enabled and properly configured within the {{% short_app_ref %}}. Detailed instructions are available in the official [Oracle documentation](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html):
 
 ![MCP Configuration](images/mcp_configuration.png)
 
@@ -93,7 +93,7 @@ The response returned by the tool will be equivalent to the result of an actual 
 
 ![NL2SQL Example](images/nl2sql_example.png)
 
-By using this tool, the {{< short_app_ref >}} allows users to query structured data without writing any SQL code, simplifying data access and exploration.
+By using this tool, the {{% short_app_ref %}} allows users to query structured data without writing any SQL code, simplifying data access and exploration.
 
 You can experiment freely with your own structured datasets and progressively issue more complex natural language queries to explore the full capabilities of the NL2SQL tool.
 

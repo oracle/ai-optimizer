@@ -2,7 +2,7 @@
 ## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
 baseURL = 'https://oracle.github.io/ai-optimizer'
-languageCode = 'en-us'
+locale = 'en-us'
 title = 'Oracle AI Optimizer & Toolkit'
 theme = "relearn"
 sectionPagesMenu = 'main'
@@ -15,6 +15,8 @@ enableRobotsTXT = true
 [markup]
   [markup.goldmark]
     duplicateResourceFiles = false
+    [markup.goldmark.renderer]
+      unsafe = true
     [markup.goldmark.extensions]
       strikethrough = false
       [markup.goldmark.extensions.extras]

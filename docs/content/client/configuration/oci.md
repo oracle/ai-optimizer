@@ -10,14 +10,14 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore genai ocid
 -->
 
-Oracle Cloud Infrastructure (OCI) can _optionally_ be configured to enable additional {{< short_app_ref >}} functionality including:
+Oracle Cloud Infrastructure (OCI) can _optionally_ be configured to enable additional {{% short_app_ref %}} functionality including:
 
 - Document Source for Splitting and Embedding from [Object Storage](https://docs.oracle.com/en-us/iaas/Content/Object/Concepts/objectstorageoverview.htm)
 - Private Cloud Large Language and Embedding models from [OCI Generative AI service](https://docs.oracle.com/en-us/iaas/Content/generative-ai/home.htm)
 
 ## Configuration
 
-OCI can either be configured through the [{{< short_app_ref >}} interface](#{{< short_app_ref >}}-interface), a [CLI Configuration File](#config-file), or by using [environment variables](#environment-variables).
+OCI can either be configured through the [{{% short_app_ref %}} interface](#{{% short_app_ref %}}-interface), a [CLI Configuration File](#config-file), or by using [environment variables](#environment-variables).
 
 You will need to [generate an API Key](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm#two) to obtain the required configuration values.
 
@@ -25,7 +25,7 @@ You will need to [generate an API Key](https://docs.oracle.com/en-us/iaas/Conten
 
 ### Interface
 
-To configure OCI access from the {{< short_app_ref >}}, navigate to _Configuration_ menu and _OCI_ tab:
+To configure OCI access from the {{% short_app_ref %}}, navigate to _Configuration_ menu and _OCI_ tab:
 
 ![OCI Config](../images/oci_config.png)
 
@@ -37,7 +37,7 @@ OCI GenAI Services can also be configured on this page, once OCI access has been
 
 ### Config File
 
-Depending on the runtime environment, either [Bare Metal](#bare-metal) or [Containerized](#container), your local [CLI Configuration File](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm) can be used to configure {{< short_app_ref >}} for OCI access.
+Depending on the runtime environment, either [Bare Metal](#bare-metal) or [Containerized](#container), your local [CLI Configuration File](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm) can be used to configure {{% short_app_ref %}} for OCI access.
 
 In addition to the standard configuration file entries, two additional entries can be added to enable OCI GenAI Services:
 
@@ -46,7 +46,7 @@ In addition to the standard configuration file entries, two additional entries c
 
 #### Bare Metal
 
-During startup, the {{< short_app_ref >}} will automatically look for and consume a [CLI Configuration File](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm) for configuring OCI access.
+During startup, the {{% short_app_ref %}} will automatically look for and consume a [CLI Configuration File](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm) for configuring OCI access.
 
 #### Container
 
