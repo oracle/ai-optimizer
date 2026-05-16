@@ -64,6 +64,7 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
               byo_ocir_url             = "{byo_url}"
               rendered = templatefile("{TEMPLATE_PATH}", {{
                 label                    = "test"
+                compartment_id           = "ocid1.compartment.oc1..test"
                 repository_base          = local.byo_ocir_url == "" ? "iad.ocir.io/managed/test" : local.byo_ocir_url
                 oci_region               = "us-ashburn-1"
                 db_type                  = "ADB-S"
@@ -77,6 +78,7 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 is_observability_enabled = local.is_observability_enabled
                 ocir_url                 = local.byo_ocir_url
+                object_storage_bucket    = ""
               }})
             }}
             output "rendered" {{
