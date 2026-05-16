@@ -276,6 +276,7 @@ class BaseCombinedSession:
         system_prompt: str,
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
+        model_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.vs_session = vs_session
         self.nl2sql_session = nl2sql_session
@@ -283,15 +284,17 @@ class BaseCombinedSession:
         self._system_prompt = system_prompt
         self._api_key = api_key
         self._api_base = api_base
+        self._model_kwargs: Dict[str, Any] = dict(model_kwargs) if model_kwargs else {}
         self.last_metadata = SessionMetadata()
 
     def _auth_kwargs(self) -> Dict[str, Any]:
-        """Return api_key/api_base kwargs for litellm calls, if configured."""
+        """Return api_key/api_base + provider-specific kwargs for litellm calls."""
         kwargs: Dict[str, Any] = {}
         if self._api_key:
             kwargs["api_key"] = self._api_key
         if self._api_base:
             kwargs["api_base"] = self._api_base
+        kwargs.update(self._model_kwargs)
         return kwargs
 
     @staticmethod

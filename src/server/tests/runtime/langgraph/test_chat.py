@@ -661,3 +661,94 @@ class TestCheckpointerPreservation:
         rebuilt = orch._session_cache[("c1", "combined")][0]
         assert isinstance(rebuilt, CombinedSession)
         assert rebuilt.nl2sql_session.checkpointer is sentinel_cp
+
+
+# ---------------------------------------------------------------------------
+# TestCombinedSessionOciAuth
+# ---------------------------------------------------------------------------
+
+
+class TestCombinedSessionOciAuth:
+    """Verify _build_combined_session resolves OCI auth params for classify/synthesize.
+
+    The combined session's classify/synthesize calls go through OracleChatLiteLLM
+    directly (not through LiteLlmModelSpec), so OCI auth must be plumbed in by
+    the builder. Without this, LiteLLM raises ``Missing required parameters:
+    oci_user, oci_fingerprint, oci_tenancy, oci_compartment_id`` at synthesis
+    time and combined falls back to concatenated answers.
+    """
+
+    @pytest.mark.anyio
+    async def test_build_combined_session_forwards_oci_auth_params(self):
+        from server.app.core.schemas import ClientSettings
+        from server.app.oci.schemas import OciProfileConfig
+
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            authentication="api_key",
+            tenancy="ocid1.tenancy.oc1..t",
+            user="ocid1.user.oc1..u",
+            fingerprint="aa:bb:cc",
+            key_file="/etc/oci/key.pem",
+            genai_compartment_id="ocid1.compartment.oc1..c",
+            genai_region="us-chicago-1",
+        )
+        with temporary_oci_configs([profile], client_auth_profile="DEFAULT"):
+            cs = ClientSettings(client="c1")
+            cs.ll_model.provider = "oci"
+            cs.ll_model.id = "openai.gpt-oss-120b"
+
+            orch = ChatOrchestrator(
+                server_url="http://127.0.0.1:8000/mcp",
+                api_key="test-key",
+                resolve_client=lambda _c: cs,
+            )
+
+            with patch(
+                "server.app.runtime.langgraph.chat.build_vecsearch_graph",
+                new=AsyncMock(return_value=mock_compiled_graph()),
+            ), patch(
+                "server.app.runtime.langgraph.chat.build_nl2sql_graph",
+                new=AsyncMock(return_value=mock_compiled_graph()),
+            ), patch(
+                "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
+                new=AsyncMock(return_value=None),
+            ), patch(
+                "server.app.runtime.langgraph.chat.find_model",
+                return_value=None,
+            ), patch("server.app.runtime.langgraph.chat.CombinedSession") as mock_combined_cls:
+                mock_combined_cls.return_value = MagicMock(spec=CombinedSession)
+                await orch._build_combined_session(cs, client="c1")
+
+            mk = mock_combined_cls.call_args.kwargs.get("model_kwargs")
+            assert mk, "OCI provider must pass model_kwargs to CombinedSession"
+            assert mk["oci_user"] == "ocid1.user.oc1..u"
+            assert mk["oci_tenancy"] == "ocid1.tenancy.oc1..t"
+            assert mk["oci_fingerprint"] == "aa:bb:cc"
+            assert mk["oci_key_file"] == "/etc/oci/key.pem"
+            assert mk["oci_compartment_id"] == "ocid1.compartment.oc1..c"
+            assert mk["oci_region"] == "us-chicago-1"
+
+    @pytest.mark.anyio
+    async def test_build_combined_session_skips_oci_kwargs_for_non_oci_provider(self):
+        """Non-OCI providers must not receive OCI model_kwargs (would leak auth into Ollama/OpenAI requests)."""
+        cs = mock_client_settings(provider="ollama", model_id="qwen3:8b")
+        orch = _make_orchestrator(cs=cs)
+
+        with patch(
+            "server.app.runtime.langgraph.chat.build_vecsearch_graph",
+            new=AsyncMock(return_value=mock_compiled_graph()),
+        ), patch(
+            "server.app.runtime.langgraph.chat.build_nl2sql_graph",
+            new=AsyncMock(return_value=mock_compiled_graph()),
+        ), patch(
+            "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "server.app.runtime.langgraph.chat.find_model",
+            return_value=None,
+        ), patch("server.app.runtime.langgraph.chat.CombinedSession") as mock_combined_cls:
+            mock_combined_cls.return_value = MagicMock(spec=CombinedSession)
+            await orch._build_combined_session(cs, client="c1")
+
+        assert not mock_combined_cls.call_args.kwargs.get("model_kwargs")

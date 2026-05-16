@@ -17,7 +17,8 @@ from server.app.agentspec.agent_nl2sql import DEFAULT_NL2SQL_INSTRUCTION
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.core.schemas import ClientSettings
 from server.app.core.secrets import reveal
-from server.app.models.litellm_utils import find_model
+from server.app.models.litellm_utils import build_oci_litellm_params, find_model
+from server.app.oci.registry import find_oci_profile_by_name
 from server.app.runtime.common import (
     ROUTE_PROMPTS,
     BaseChatOrchestrator,
@@ -117,6 +118,14 @@ class ChatOrchestrator(BaseChatOrchestrator):
         classifier_model = f"{ll_model.provider}/{ll_model.id}"
         model_cfg = find_model(ll_model.provider, ll_model.id, enabled_only=False, case_insensitive=True)
 
+        # OCI auth must reach OracleChatLiteLLM via model_kwargs — LiteLLM's
+        # OCI provider validates these at request-build time, not via env vars.
+        model_kwargs: Dict[str, Any] = {}
+        if ll_model.provider == "oci":
+            oci_profile = find_oci_profile_by_name(cs.oci.auth_profile)
+            if oci_profile:
+                model_kwargs.update(build_oci_litellm_params(oci_profile))
+
         prompt = await fetch_prompt_for_route("combined", self._server_url, self.api_key)
         system_prompt = prompt or DEFAULT_COMBINED_INSTRUCTION
 
@@ -127,6 +136,7 @@ class ChatOrchestrator(BaseChatOrchestrator):
             system_prompt,
             api_key=reveal(model_cfg.api_key) if model_cfg else None,
             api_base=model_cfg.api_base if model_cfg else None,
+            model_kwargs=model_kwargs,
         )
 
     async def _build_session(

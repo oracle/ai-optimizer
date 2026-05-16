@@ -41,6 +41,7 @@ def _make_combined_session(
     classifier_model: str = "ollama/qwen3:8b",
     api_key: str | None = None,
     api_base: str | None = None,
+    model_kwargs: dict | None = None,
     vs_metadata: dict | None = None,
     grade_relevant: str = "yes",
 ) -> CombinedSession:
@@ -64,13 +65,15 @@ def _make_combined_session(
     )
     nl2sql_session = NL2SQLGraphSession(nl2sql_graph, SAMPLE_CLIENT_SETTINGS, thread_id="t-1")
 
+    kwargs: dict = {"api_key": api_key, "api_base": api_base}
+    if model_kwargs is not None:
+        kwargs["model_kwargs"] = model_kwargs
     return CombinedSession(
         vs_session,
         nl2sql_session,
         classifier_model,
         "Test system prompt",
-        api_key=api_key,
-        api_base=api_base,
+        **kwargs,
     )
 
 
@@ -144,6 +147,50 @@ class TestCombinedSessionCredentials:
             await session.classify("test query")
         assert mock_llm_cls.call_args.kwargs["api_key"] is None
         assert mock_llm_cls.call_args.kwargs["api_base"] is None
+
+    @pytest.mark.anyio
+    async def test_classify_forwards_model_kwargs_for_oci_auth(self):
+        oci_kwargs = {
+            "oci_user": "ocid1.user.oc1..u",
+            "oci_fingerprint": "aa:bb:cc",
+            "oci_tenancy": "ocid1.tenancy.oc1..t",
+            "oci_compartment_id": "ocid1.compartment.oc1..c",
+            "oci_key_file": "/etc/oci/key.pem",
+        }
+        with patch(
+            "server.app.runtime.langgraph.multi_tool.OracleChatLiteLLM",
+        ) as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="vecsearch", usage_metadata=None))
+            mock_llm_cls.return_value = mock_llm
+            session = _make_combined_session(
+                classifier_model="oci/openai.gpt-oss-120b",
+                model_kwargs=oci_kwargs,
+            )
+            await session.classify("test query")
+        assert mock_llm_cls.call_args.kwargs.get("model_kwargs") == oci_kwargs
+
+    @pytest.mark.anyio
+    async def test_synthesize_forwards_model_kwargs_for_oci_auth(self):
+        oci_kwargs = {
+            "oci_user": "ocid1.user.oc1..u",
+            "oci_fingerprint": "aa:bb:cc",
+            "oci_tenancy": "ocid1.tenancy.oc1..t",
+            "oci_compartment_id": "ocid1.compartment.oc1..c",
+            "oci_key_file": "/etc/oci/key.pem",
+        }
+        with patch(
+            "server.app.runtime.langgraph.multi_tool.OracleChatLiteLLM",
+        ) as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="synthesized", usage_metadata=None))
+            mock_llm_cls.return_value = mock_llm
+            session = _make_combined_session(
+                classifier_model="oci/openai.gpt-oss-120b",
+                model_kwargs=oci_kwargs,
+            )
+            await session.synthesize("query", "vs answer", "sql answer")
+        assert mock_llm_cls.call_args.kwargs.get("model_kwargs") == oci_kwargs
 
 
 class TestCombinedSessionV1ContentBlocks:

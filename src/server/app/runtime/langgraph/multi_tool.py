@@ -12,7 +12,7 @@ appropriate sub-session, or runs both in parallel and synthesizes.
 
 import asyncio
 import logging
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -54,8 +54,17 @@ class CombinedSession(BaseCombinedSession):
         system_prompt: str,
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
+        model_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
-        super().__init__(vs_session, nl2sql_session, classifier_model, system_prompt, api_key, api_base)
+        super().__init__(
+            vs_session,
+            nl2sql_session,
+            classifier_model,
+            system_prompt,
+            api_key,
+            api_base,
+            model_kwargs,
+        )
 
     async def _ainvoke_text(
         self,
@@ -71,6 +80,7 @@ class CombinedSession(BaseCombinedSession):
             api_base=self._api_base,
             temperature=temperature,
             max_tokens=max_tokens,
+            model_kwargs=self._model_kwargs,
         )
         result = await llm.ainvoke([HumanMessage(content=prompt)])
         text = extract_response_text(result.content)
