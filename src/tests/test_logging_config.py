@@ -51,6 +51,46 @@ class TestInjectVersion:
         assert getattr(record, "__version__") == "existing"
 
 
+class TestDropSuccessfulProbeAccess:
+    """Tests for _drop_successful_probe_access logging filter."""
+
+    @staticmethod
+    def _record(args):
+        return logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='%s - "%s %s HTTP/%s" %d',
+            args=args,
+            exc_info=None,
+        )
+
+    def test_drops_2xx_readiness(self):
+        record = self._record(("10.0.0.1:1234", "GET", "/v1/readiness", "1.1", 200))
+        assert logging_config._drop_successful_probe_access(record) is False
+
+    def test_drops_2xx_liveness(self):
+        record = self._record(("10.0.0.1:1234", "GET", "/v1/liveness", "1.1", 204))
+        assert logging_config._drop_successful_probe_access(record) is False
+
+    def test_keeps_non_2xx_probe(self):
+        record = self._record(("10.0.0.1:1234", "GET", "/v1/readiness", "1.1", 503))
+        assert logging_config._drop_successful_probe_access(record) is True
+
+    def test_keeps_non_probe_path(self):
+        record = self._record(("10.0.0.1:1234", "GET", "/v1/chat/completions", "1.1", 200))
+        assert logging_config._drop_successful_probe_access(record) is True
+
+    def test_ignores_query_string_on_probe(self):
+        record = self._record(("10.0.0.1:1234", "GET", "/v1/readiness?verbose=1", "1.1", 200))
+        assert logging_config._drop_successful_probe_access(record) is False
+
+    def test_passes_through_unexpected_args_shape(self):
+        record = self._record(None)
+        assert logging_config._drop_successful_probe_access(record) is True
+
+
 class TestConfigureLogging:
     """Tests for configure_logging function."""
 

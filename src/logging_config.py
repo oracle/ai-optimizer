@@ -35,6 +35,25 @@ def _drop_script_run_context(record: logging.LogRecord) -> bool:
     return "missing ScriptRunContext" not in record.getMessage()
 
 
+_PROBE_PATHS = frozenset({"/v1/liveness", "/v1/readiness"})
+
+
+def _drop_successful_probe_access(record: logging.LogRecord) -> bool:
+    """Drop uvicorn access logs for successful K8s probe requests.
+
+    uvicorn's access logger passes
+    ``(client_addr, method, full_path, http_version, status)`` as ``record.args``;
+    non-tuple or short args fall through unfiltered.
+    """
+    args = record.args
+    if not isinstance(args, tuple) or len(args) < 5:
+        return True
+    path, status = args[2], args[4]
+    if not isinstance(path, str) or not isinstance(status, int):
+        return True
+    return not (200 <= status < 300 and path.split("?", 1)[0] in _PROBE_PATHS)
+
+
 def configure_logging(log_level: str | None = None) -> None:
     """Apply unified logging settings.
 
@@ -133,6 +152,7 @@ def configure_logging(log_level: str | None = None) -> None:
     # Filter applied to the logger (not handler) so it runs before ALL handlers,
     # including any Streamlit adds after this configuration.
     logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").addFilter(_drop_script_run_context)
+    logging.getLogger("uvicorn.access").addFilter(_drop_successful_probe_access)
 
     # ``transformers`` installs its own ``StreamHandler`` with a non-standard
     # ``[transformers] ...`` format. Remove it so messages flow through the
