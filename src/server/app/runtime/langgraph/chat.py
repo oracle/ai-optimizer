@@ -23,7 +23,9 @@ from server.app.oci.registry import find_oci_profile_by_name
 from server.app.runtime.common import (
     ROUTE_PROMPTS,
     BaseChatOrchestrator,
+    Route,
     fetch_prompt_for_route,
+    format_history_text,
     resolve_route,
 )
 from server.app.runtime.langgraph.llm_only import (
@@ -65,10 +67,10 @@ SessionType = Union[GraphFlowSession, AgentGraphSession, CombinedSession]
 # Populate shared route prompts.
 ROUTE_PROMPTS.update(
     {
-        "llm_only": (LLM_ONLY_PROMPT, DEFAULT_LLM_ONLY_INSTRUCTION),
-        "nl2sql": (NL2SQL_PROMPT, DEFAULT_NL2SQL_INSTRUCTION),
-        "vecsearch": (VECSEARCH_PROMPT, DEFAULT_VECSEARCH_INSTRUCTION),
-        "combined": (COMBINED_PROMPT, DEFAULT_COMBINED_INSTRUCTION),
+        Route.LLM_ONLY: (LLM_ONLY_PROMPT, DEFAULT_LLM_ONLY_INSTRUCTION),
+        Route.NL2SQL: (NL2SQL_PROMPT, DEFAULT_NL2SQL_INSTRUCTION),
+        Route.VECSEARCH: (VECSEARCH_PROMPT, DEFAULT_VECSEARCH_INSTRUCTION),
+        Route.COMBINED: (COMBINED_PROMPT, DEFAULT_COMBINED_INSTRUCTION),
     }
 )
 
@@ -122,7 +124,7 @@ class ChatOrchestrator(BaseChatOrchestrator):
             if oci_profile:
                 model_kwargs.update(build_oci_litellm_params(oci_profile))
 
-        prompt = await fetch_prompt_for_route("combined", self._server_url, self.api_key)
+        prompt = await fetch_prompt_for_route(Route.COMBINED, self._server_url, self.api_key)
         system_prompt = prompt or DEFAULT_COMBINED_INSTRUCTION
 
         return CombinedSession(
@@ -138,21 +140,21 @@ class ChatOrchestrator(BaseChatOrchestrator):
     async def _build_session(
         self,
         cs: ClientSettings,
-        route: str,
+        route: Route,
         client: str = "",
     ) -> SessionType:
         """Dispatch to the appropriate session builder for the given route."""
-        if route == "llm_only":
+        if route == Route.LLM_ONLY:
             return await self._build_agent_session(cs)
-        if route == "nl2sql":
+        if route == Route.NL2SQL:
             return await self._build_nl2sql_agent_session(cs, client=client)
-        if route == "combined":
+        if route == Route.COMBINED:
             return await self._build_combined_session(cs, client=client)
         return await self._build_flow_session(cs)
 
     # -- session cache -----------------------------------------------------
 
-    async def _get_or_create_session(self, client: str) -> tuple[SessionType, str]:
+    async def _get_or_create_session(self, client: str) -> tuple[SessionType, Route]:
         """Return a cached session or build a new one for the client.
 
         Sessions carry no conversation state — the orchestrator-owned
@@ -216,11 +218,7 @@ class ChatOrchestrator(BaseChatOrchestrator):
         """``HistoryStore`` rendered as ``"User: q\\nAssistant: a\\n..."``."""
         if not cs.ll_model.chat_history:
             return ""
-        parts = [
-            f"{'User' if e.get('role') == 'user' else 'Assistant'}: {e.get('content', '')}"
-            for e in self._replayable_entries(client)
-        ]
-        return "\n".join(parts) + ("\n" if parts else "")
+        return format_history_text(self._replayable_entries(client))
 
     def _history_messages(self, client: str, cs: Any) -> list:
         """``HistoryStore`` rendered as LangChain ``HumanMessage``/``AIMessage``."""
@@ -280,7 +278,7 @@ class ChatOrchestrator(BaseChatOrchestrator):
     async def _run_flow_streaming(
         self,
         session: GraphFlowSession,
-        route: str,
+        route: Route,
         question: str,
         client: str,
         queue: asyncio.Queue,

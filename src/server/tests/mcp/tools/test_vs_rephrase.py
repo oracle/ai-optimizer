@@ -62,6 +62,27 @@ async def test_vs_rephrase_success(
     assert response.rephrased_prompt == "New question"
 
 
+async def test_vs_rephrase_string_history_without_label_space(
+    configure_ll_model,
+    prompt_config_factory,
+    monkeypatch,
+) -> None:
+    """A labeled string history without spaces after the colons (`User:hi`)
+    must still be counted as conversation turns. Pre-fix `count("User:")`
+    matched these; switching to `count(HISTORY_USER_PREFIX)` with a trailing
+    space silently zeroed them out and dropped them off the rephrase path.
+    """
+    configure_ll_model(provider="openai", model_id="gpt-rephrase")
+    prompt_config_factory("optimizer_vs-rephrase", "Prompt: {prompt}\nHistory: {history}\nQuestion: {question}")
+    prompt_config_factory("optimizer_context-default", "Context prompt")
+    _patch_llm_with_response(monkeypatch, "Rephrased")
+
+    response = await vs_rephrase._vs_rephrase_impl("Question?", "User:hi\nAssistant:hello")
+
+    assert response.was_rephrased is True
+    assert response.rephrased_prompt == "Rephrased"
+
+
 async def test_vs_rephrase_history_insufficient(configure_ll_model, prompt_config_factory, monkeypatch):
     """Insufficient history should skip rephrase."""
     configure_ll_model(provider="openai", model_id="gpt-rephrase")

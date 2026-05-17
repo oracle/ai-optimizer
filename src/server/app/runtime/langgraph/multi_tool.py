@@ -22,6 +22,8 @@ from server.app.runtime.common import (
     DEFAULT_COMBINED_INSTRUCTION,
     SYNTHESIS_TEMPLATE,
     BaseCombinedSession,
+    ClassifierDecision,
+    Route,
     SessionMetadata,
     _sum_token_usage,
 )
@@ -87,19 +89,19 @@ class CombinedSession(BaseCombinedSession):
         usage_metadata = result.usage_metadata if isinstance(result, AIMessage) else None
         return text, usage_metadata_to_token_usage(usage_metadata)
 
-    async def classify(self, query: str) -> tuple[str, Optional[TokenUsage]]:
-        """Classify a query as 'nl2sql', 'vecsearch', or 'both'."""
+    async def classify(self, query: str) -> tuple[ClassifierDecision, Optional[TokenUsage]]:
+        """Classify a query as nl2sql, vecsearch, or both."""
         prompt = CLASSIFIER_PROMPT.replace("{{query}}", query)
         try:
             text, usage = await self._ainvoke_text(prompt, temperature=0.0, max_tokens=10)
         except Exception:
-            LOGGER.exception("Classification failed, defaulting to 'both'")
-            return "both", None
-        decision = text.strip().lower().strip("'\".,!")
-        if decision in ("nl2sql", "vecsearch", "both"):
-            return decision, usage
-        LOGGER.warning("Classifier returned unexpected value %r, defaulting to 'both'", text)
-        return "both", usage
+            LOGGER.exception("Classification failed, defaulting to %s", ClassifierDecision.BOTH)
+            return ClassifierDecision.BOTH, None
+        try:
+            return ClassifierDecision(text.strip().lower().strip("'\".,!")), usage
+        except ValueError:
+            LOGGER.warning("Classifier returned unexpected value %r, defaulting to %s", text, ClassifierDecision.BOTH)
+            return ClassifierDecision.BOTH, usage
 
     async def synthesize(
         self,
@@ -132,13 +134,13 @@ class CombinedSession(BaseCombinedSession):
         self.last_metadata = SessionMetadata()
         history_messages = history_messages or []
 
-        if route == "vecsearch":
+        if route == ClassifierDecision.VECSEARCH:
             answer = await self.vs_session.execute(query, thread_id, history_text=history_text)
             self.last_metadata = self.vs_session.last_metadata.model_copy()
             combined_tu = _sum_token_usage(self.last_metadata.token_usage, classifier_tu)
             if combined_tu:
                 self.last_metadata.token_usage = combined_tu
-        elif route == "nl2sql":
+        elif route == ClassifierDecision.NL2SQL:
             answer = await self.nl2sql_session.chat(query, history_messages=history_messages)
             self.last_metadata.grade_relevant = "yes"
             combined_tu = _sum_token_usage(self.nl2sql_session.last_metadata.token_usage, classifier_tu)
@@ -178,10 +180,10 @@ class CombinedSession(BaseCombinedSession):
         if classifier_tu:
             await queue.put({"type": "_token_usage", **classifier_tu.model_dump()})
 
-        if route == "vecsearch":
-            await stream_flow(self.vs_session, "vecsearch", query, thread_id, queue, history_text)
+        if route == ClassifierDecision.VECSEARCH:
+            await stream_flow(self.vs_session, Route.VECSEARCH, query, thread_id, queue, history_text)
             self.last_metadata = self.vs_session.last_metadata.model_copy()
-        elif route == "nl2sql":
+        elif route == ClassifierDecision.NL2SQL:
             await stream_agent(self.nl2sql_session, history_messages, query, queue)
         else:
             # Synthesis requires both branches' answers, so we can't stream tokens

@@ -10,7 +10,8 @@ import asyncio
 import json
 import logging
 from collections import defaultdict
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Union
+from enum import Enum
+from typing import Any, AsyncGenerator, Callable, Dict, Iterable, List, Optional, Union
 
 import litellm
 from litellm.types.utils import Choices, ModelResponse
@@ -68,22 +69,60 @@ class HistoryStore:
         self._store.pop(client, None)
 
 
-def resolve_route(tools_enabled: List[str]) -> str:
+class Route(str, Enum):
+    """Top-level dispatch key for which session a client gets per turn."""
+
+    LLM_ONLY = "llm_only"
+    NL2SQL = "nl2sql"
+    VECSEARCH = "vecsearch"
+    COMBINED = "combined"
+
+
+class ClassifierDecision(str, Enum):
+    """``CombinedSession`` per-turn classification of where to route a query."""
+
+    NL2SQL = "nl2sql"
+    VECSEARCH = "vecsearch"
+    BOTH = "both"
+
+
+def resolve_route(tools_enabled: List[str]) -> Route:
     """Map tools_enabled to a route key."""
     has_nl2sql = TOOL_NL2SQL in tools_enabled
     has_vs = TOOL_VECSEARCH in tools_enabled
     if has_nl2sql and has_vs:
-        return "combined"
+        return Route.COMBINED
     if has_nl2sql:
-        return "nl2sql"
+        return Route.NL2SQL
     if has_vs:
-        return "vecsearch"
-    return "llm_only"
+        return Route.VECSEARCH
+    return Route.LLM_ONLY
+
+
+# Turn labels for the "User: ... Assistant: ..." wire-format history string.
+# Shared by the orchestrator producer and the `vs_rephrase.py` consumer.
+# Stored without a trailing space so consumers can count occurrences in
+# strings that omit the conventional space after the colon.
+HISTORY_USER_LABEL = "User:"
+HISTORY_ASSISTANT_LABEL = "Assistant:"
+
+
+def format_history_text(entries: Iterable[Dict[str, Any]]) -> str:
+    """Render conversation entries as ``"User: q\\nAssistant: a\\n..."``."""
+    parts: list[str] = []
+    for e in entries:
+        role = e.get("role")
+        content = e.get("content", "")
+        if role == "user":
+            parts.append(f"{HISTORY_USER_LABEL} {content}")
+        elif role == "assistant":
+            parts.append(f"{HISTORY_ASSISTANT_LABEL} {content}")
+    return "\n".join(parts) + ("\n" if parts else "")
 
 
 # Maps route → (prompt_name, default_text) for prompt refresh.
 # Populated lazily by each runtime to avoid import-time coupling.
-ROUTE_PROMPTS: Dict[str, tuple[str, str]] = {}
+ROUTE_PROMPTS: Dict[Route, tuple[str, str]] = {}
 
 
 async def fetch_prompt_with_fallback(
@@ -103,7 +142,7 @@ async def fetch_prompt_with_fallback(
         return default_prompt
 
 
-async def fetch_prompt_for_route(route: str, server_url: str, api_key: str) -> Optional[str]:
+async def fetch_prompt_for_route(route: Route, server_url: str, api_key: str) -> Optional[str]:
     """Fetch the current prompt text for a given route, or None if unknown."""
     entry = ROUTE_PROMPTS.get(route)
     if entry is None:
@@ -234,11 +273,11 @@ CLASSIFIER_PROMPT = (
     "You are a query classifier. Analyze what type of information is needed "
     "to answer the user's question.\n\n"
     "Respond with exactly one word:\n"
-    "- 'nl2sql' if the answer requires retrieving or computing over actual data "
+    f"- '{ClassifierDecision.NL2SQL.value}' if the answer requires retrieving or computing over actual data "
     "(specific values, aggregations, counts, listings, or current settings)\n"
-    "- 'vecsearch' if the answer requires knowledge "
+    f"- '{ClassifierDecision.VECSEARCH.value}' if the answer requires knowledge "
     "(concepts, definitions, explanations, best practices, or procedures)\n"
-    "- 'both' if the answer requires comparing actual data against "
+    f"- '{ClassifierDecision.BOTH.value}' if the answer requires comparing actual data against "
     "documented guidelines or recommendations\n\n"
     "Do not include any other text.\n\n"
     "User question: {{query}}"
@@ -302,8 +341,8 @@ class BaseCombinedSession:
         """Extract token usage from a litellm response, or None."""
         return extract_response_usage(response)
 
-    async def classify(self, query: str) -> tuple[str, Optional[TokenUsage]]:
-        """Classify a query as 'nl2sql', 'vecsearch', or 'both'."""
+    async def classify(self, query: str) -> tuple[ClassifierDecision, Optional[TokenUsage]]:
+        """Classify a query as nl2sql, vecsearch, or both."""
         prompt = CLASSIFIER_PROMPT.replace("{{query}}", query)
         try:
             response = await litellm.acompletion(
@@ -321,14 +360,16 @@ class BaseCombinedSession:
             if not isinstance(choice, Choices):
                 raise TypeError(f"Expected Choices, got {type(choice)}")
             raw = choice.message.content or ""
-            decision = raw.strip().lower().strip("'\".,!")
-            if decision in ("nl2sql", "vecsearch", "both"):
-                return decision, classifier_tu
-            LOGGER.warning("Classifier returned unexpected value %r, defaulting to 'both'", raw)
-            return "both", classifier_tu
+            try:
+                return ClassifierDecision(raw.strip().lower().strip("'\".,!")), classifier_tu
+            except ValueError:
+                LOGGER.warning(
+                    "Classifier returned unexpected value %r, defaulting to %s", raw, ClassifierDecision.BOTH
+                )
+                return ClassifierDecision.BOTH, classifier_tu
         except Exception:
-            LOGGER.exception("Classification failed, defaulting to 'both'")
-            return "both", None
+            LOGGER.exception("Classification failed, defaulting to %s", ClassifierDecision.BOTH)
+            return ClassifierDecision.BOTH, None
 
     async def synthesize(self, query: str, vs_answer: str, nl2sql_answer: str) -> tuple[str, Optional[TokenUsage]]:
         """Synthesize answers from both sources into a single response."""
@@ -483,13 +524,13 @@ class BaseChatOrchestrator:
 
     # -- hooks (override in subclasses) -------------------------------------
 
-    async def _get_or_create_session(self, client: str) -> tuple[Any, str]:
+    async def _get_or_create_session(self, client: str) -> tuple[Any, Route]:
         raise NotImplementedError
 
     async def _run_flow_streaming(
         self,
         session: Any,
-        route: str,
+        route: Route,
         question: str,
         client: str,
         queue: asyncio.Queue,
@@ -542,7 +583,7 @@ class BaseChatOrchestrator:
     def _create_streaming_task(
         self,
         session: Any,
-        route: str,
+        route: Route,
         cs: Any,
         question: str,
         client: str,
@@ -591,7 +632,7 @@ class BaseChatOrchestrator:
         client: str,
         collected: list[str],
         token_usage: Optional[TokenUsage],
-        route: str,
+        route: Route,
         history_enabled: bool,
     ) -> Dict[str, Any]:
         """Persist history and return the final _meta event dict.
