@@ -211,6 +211,41 @@ FACTORY_PROMPTS: list[dict] = [
         """),
     },
     {
+        'name': 'optimizer_combined-classify',
+        'title': 'Combined Session Classifier Prompt',
+        'description': (
+            'Per-turn classifier for the combined (NL2SQL + Vector Search) route.'
+            ' Decides whether a question needs database, documents, or both.'
+        ),
+        'tags': ['source', 'optimizer'],
+        'text': (
+            "You are a query classifier. Analyze what type of information is needed "
+            "to answer the user's question.\n\n"
+            "Respond with exactly one word:\n"
+            "- 'nl2sql' if the answer requires retrieving or computing over actual data "
+            "(specific values, aggregations, counts, listings, or current settings)\n"
+            "- 'vecsearch' if the answer requires knowledge "
+            "(concepts, definitions, explanations, best practices, or procedures)\n"
+            "- 'both' if the answer requires comparing actual data against "
+            "documented guidelines or recommendations\n\n"
+            "Do not include any other text.\n\n"
+            "User question: {{query}}"
+        ),
+    },
+    {
+        'name': 'optimizer_combined-synthesize',
+        'title': 'Combined Session Synthesis Prompt',
+        'description': 'Merges NL2SQL and Vector Search answers into a single response.',
+        'tags': ['source', 'optimizer'],
+        'text': (
+            "{system_prompt}\n\n"
+            "The user asked: {query}\n\n"
+            "Database query result:\n{sql_answer}\n\n"
+            "Document search result:\n{search_answer}\n\n"
+            "Synthesize both results into a single, coherent answer."
+        ),
+    },
+    {
         'name': 'optimizer_testbed-judge',
         'title': 'Testbed Judge Prompt',
         'description': (

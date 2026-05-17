@@ -10,7 +10,7 @@ from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from server.app.agentspec.agent_llm_only import DEFAULT_INSTRUCTION, build_llm_only_agentspec
+from server.app.agentspec.agent_llm_only import build_llm_only_agentspec
 from server.app.core.schemas import ClientSettings
 from server.app.runtime.common import fetch_prompt_with_fallback
 from server.app.runtime.langgraph.loader import load_langgraph_component
@@ -25,7 +25,7 @@ async def build_llm_only_graph(
     checkpointer: Any = None,
 ) -> Any:
     """Build a LangGraph agent for LLM-only conversation."""
-    prompt = await fetch_prompt_with_fallback(server_url, api_key, PROMPT_NAME, DEFAULT_INSTRUCTION)
+    prompt = await fetch_prompt_with_fallback(server_url, api_key, PROMPT_NAME)
     agentspec_agent = build_llm_only_agentspec(client_settings, prompt)
     return await load_langgraph_component(
         agentspec_agent,

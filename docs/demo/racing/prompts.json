@@ -44,6 +44,18 @@
       "text": "Question: {question}\n\nDocuments: {documents}\n\nAre the documents relevant to the question?\nReply yes if the documents contain information related to the topic\nor could help address what is being asked, even if not a complete direct answer.\n\nIMPORTANT: Reply with exactly one word: yes or no\n"
     },
     {
+      "name": "optimizer_combined-classify",
+      "title": "Combined Session Classifier Prompt",
+      "description": "Per-turn classifier for the combined (NL2SQL + Vector Search) route in the racing demo. Decides whether a question needs the structured database, the coaching/regulation corpus, or both.",
+      "text": "You are a motorsport query router for a racing championship demo. Decide which data source(s) answer the user's question.\n\nRespond with exactly one word:\n- 'nl2sql' for questions about race results, finishing positions, lap times, points, championship standings, pit-stop counts, penalties, setups, or any structured per-driver / per-race metric.\n- 'vecsearch' for questions about coaching feedback, driving-style advice, setup guidance, technique, regulations, race-control bulletins, or post-race written briefings.\n- 'both' for questions that combine the two — e.g. 'what should I review based on my worst race', 'how does my setup compare to the recommended setup', 'why did my fastest lap drop and what does my coach suggest'.\n\nDo not include any other text.\n\nUser question: {{query}}\n"
+    },
+    {
+      "name": "optimizer_combined-synthesize",
+      "title": "Combined Session Synthesis Prompt",
+      "description": "Synthesis prompt for the racing demo. Presents structured database facts first, then document context, then a concrete recommendation.",
+      "text": "{system_prompt}\n\nThe user asked: {query}\n\nStructured database result:\n{sql_answer}\n\nDocument / coaching-corpus result:\n{search_answer}\n\nProduce a single coherent response with this shape:\n1. Lead with a one-sentence Recommendation that names the specific driver / race / action when the question implies one.\n2. Section 'Structured database facts' — summarize the database findings as a short bulleted list of the actual values.\n3. Section 'Document / vector-search context' — summarize what the coaching or regulation documents add. If they were not relevant, say so plainly.\n4. Section 'Synthesis' — explain in 1–3 sentences how the database facts and document context combine into the recommendation.\n\nIf one of the two sources lacks usable information for this question, say so in its section rather than inventing content.\n"
+    },
+    {
       "name": "optimizer_vs-rephrase",
       "title": "Vector Search Rephrase Prompt",
       "description": "Prompt for rephrasing user query with conversation history context. Used by the vector search rephrase tool to contextualize the user's query based on conversation history before performing retrieval.",

@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Shared runtime utilities used by the LangGraph runtime.
 """
-# spell-checker: ignore vecsearch litellm acompletion agentspec
+# spell-checker: ignore vecsearch litellm acompletion agentspec genai
 
 import asyncio
 import json
@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from server.app.agentspec.adapters.mcp import fetch_mcp_prompt
 from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
 from server.app.core.schemas import TOOL_NL2SQL, TOOL_VECSEARCH
+from server.app.mcp.prompts.registry import require_factory_text
 
 LOGGER = logging.getLogger(__name__)
 
@@ -120,35 +121,29 @@ def format_history_text(entries: Iterable[Dict[str, Any]]) -> str:
     return "\n".join(parts) + ("\n" if parts else "")
 
 
-# Maps route → (prompt_name, default_text) for prompt refresh.
-# Populated lazily by each runtime to avoid import-time coupling.
-ROUTE_PROMPTS: Dict[Route, tuple[str, str]] = {}
+# Maps route → MCP prompt name. Populated lazily by each runtime to
+# avoid import-time coupling. The text always comes from MCP (or the
+# factory entry in mcp/prompts/defaults.py on fetch failure) — never
+# from a code-side copy.
+ROUTE_PROMPTS: Dict[Route, str] = {}
 
 
-async def fetch_prompt_with_fallback(
-    server_url: str,
-    api_key: str,
-    prompt_name: str,
-    default_prompt: str,
-) -> str:
-    """Fetch a system prompt from MCP, falling back to a default on failure."""
+async def fetch_prompt_with_fallback(server_url: str, api_key: str, prompt_name: str) -> str:
+    """Fetch a system prompt from MCP, falling back to the factory entry
+    (mcp/prompts/defaults.py) on transport failure."""
     try:
         return await fetch_mcp_prompt(server_url, api_key, prompt_name)
     except Exception:
-        LOGGER.warning(
-            "Failed to fetch prompt '%s' from MCP server, using default",
-            prompt_name,
-        )
-        return default_prompt
+        LOGGER.warning("Failed to fetch prompt %r from MCP server, using factory default", prompt_name)
+        return require_factory_text(prompt_name)
 
 
-async def fetch_prompt_for_route(route: Route, server_url: str, api_key: str) -> Optional[str]:
-    """Fetch the current prompt text for a given route, or None if unknown."""
-    entry = ROUTE_PROMPTS.get(route)
-    if entry is None:
-        return None
-    prompt_name, default_text = entry
-    return await fetch_prompt_with_fallback(server_url, api_key, prompt_name, default_text)
+async def fetch_prompt_for_route(route: Route, server_url: str, api_key: str) -> str:
+    """Fetch the current prompt text for a given route."""
+    prompt_name = ROUTE_PROMPTS.get(route)
+    if prompt_name is None:
+        raise ValueError(f"No prompt registered for route {route!r}")
+    return await fetch_prompt_with_fallback(server_url, api_key, prompt_name)
 
 
 # ---------------------------------------------------------------------------
@@ -268,36 +263,39 @@ class SessionMetadata(BaseModel):
 # ---------------------------------------------------------------------------
 
 COMBINED_PROMPT_NAME = "optimizer_tools-default"
+CLASSIFIER_PROMPT_NAME = "optimizer_combined-classify"
+SYNTHESIS_PROMPT_NAME = "optimizer_combined-synthesize"
 
-CLASSIFIER_PROMPT = (
-    "You are a query classifier. Analyze what type of information is needed "
-    "to answer the user's question.\n\n"
-    "Respond with exactly one word:\n"
-    f"- '{ClassifierDecision.NL2SQL.value}' if the answer requires retrieving or computing over actual data "
-    "(specific values, aggregations, counts, listings, or current settings)\n"
-    f"- '{ClassifierDecision.VECSEARCH.value}' if the answer requires knowledge "
-    "(concepts, definitions, explanations, best practices, or procedures)\n"
-    f"- '{ClassifierDecision.BOTH.value}' if the answer requires comparing actual data against "
-    "documented guidelines or recommendations\n\n"
-    "Do not include any other text.\n\n"
-    "User question: {{query}}"
+# Required substrings for an admin-supplied classifier prompt — the response
+# parser is hardcoded to recognize each ClassifierDecision value, so the
+# prompt MUST mention them all (otherwise the LLM has no menu).
+_CLASSIFIER_REQUIRED_SUBSTRINGS = (
+    "{{query}}",
+    ClassifierDecision.NL2SQL.value,
+    ClassifierDecision.VECSEARCH.value,
+    ClassifierDecision.BOTH.value,
 )
 
-DEFAULT_COMBINED_INSTRUCTION = (
-    "You have reference documents and database access. "
-    "Use database tools for live/current values, aggregations, counts, or listings. "
-    "Use documents for concepts, definitions, or best-practice guidelines. "
-    "When comparing current state to recommendations, use both sources and compare. "
-    "Answer using only information from these sources."
-)
+# Required str.format slots in an admin-supplied synthesis template.
+_SYNTHESIS_REQUIRED_SLOTS = ("{system_prompt}", "{query}", "{sql_answer}", "{search_answer}")
 
-SYNTHESIS_TEMPLATE = (
-    "{system_prompt}\n\n"
-    "The user asked: {query}\n\n"
-    "Database query result:\n{sql_answer}\n\n"
-    "Document search result:\n{search_answer}\n\n"
-    "Synthesize both results into a single, coherent answer."
-)
+def validate_classifier_prompt(text: str) -> bool:
+    """Return False if any decision token or the ``{{query}}`` slot is missing."""
+    return all(s in text for s in _CLASSIFIER_REQUIRED_SUBSTRINGS)
+
+
+def validate_synthesis_template(text: str) -> bool:
+    """Return False if a required ``str.format`` slot is missing OR if the
+    template raises when formatted with only the four runtime fields —
+    ``synthesize()`` runs ``.format()`` outside its try-block, so a stray
+    placeholder like ``{extra}`` would crash the synthesis call uncaught."""
+    if not all(slot in text for slot in _SYNTHESIS_REQUIRED_SLOTS):
+        return False
+    try:
+        text.format(system_prompt="", query="", sql_answer="", search_answer="")
+    except (KeyError, IndexError, ValueError):
+        return False
+    return True
 
 
 class BaseCombinedSession:
@@ -316,6 +314,8 @@ class BaseCombinedSession:
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
+        classifier_prompt: Optional[str] = None,
+        synthesis_template: Optional[str] = None,
     ) -> None:
         self.vs_session = vs_session
         self.nl2sql_session = nl2sql_session
@@ -324,6 +324,8 @@ class BaseCombinedSession:
         self._api_key = api_key
         self._api_base = api_base
         self._model_kwargs: Dict[str, Any] = dict(model_kwargs) if model_kwargs else {}
+        self._classifier_prompt = classifier_prompt or require_factory_text(CLASSIFIER_PROMPT_NAME)
+        self._synthesis_template = synthesis_template or require_factory_text(SYNTHESIS_PROMPT_NAME)
         self.last_metadata = SessionMetadata()
 
     def _auth_kwargs(self) -> Dict[str, Any]:
@@ -343,7 +345,7 @@ class BaseCombinedSession:
 
     async def classify(self, query: str) -> tuple[ClassifierDecision, Optional[TokenUsage]]:
         """Classify a query as nl2sql, vecsearch, or both."""
-        prompt = CLASSIFIER_PROMPT.replace("{{query}}", query)
+        prompt = self._classifier_prompt.replace("{{query}}", query)
         try:
             response = await litellm.acompletion(
                 model=self._classifier_model,
@@ -373,7 +375,7 @@ class BaseCombinedSession:
 
     async def synthesize(self, query: str, vs_answer: str, nl2sql_answer: str) -> tuple[str, Optional[TokenUsage]]:
         """Synthesize answers from both sources into a single response."""
-        prompt = SYNTHESIS_TEMPLATE.format(
+        prompt = self._synthesis_template.format(
             system_prompt=self._system_prompt,
             query=query,
             sql_answer=nl2sql_answer,
@@ -466,7 +468,9 @@ class BaseChatOrchestrator:
     def _validate_llm(cs: Any) -> None:
         """Raise LLMConfigurationError if provider or model ID is missing."""
         if cs.ll_model.provider is None or cs.ll_model.id is None:
-            raise LLMConfigurationError("No language model configured. Set a provider and model ID in client settings.")
+            raise LLMConfigurationError(
+                "No language model configured. Set a provider and model ID in client settings."
+            )
 
     @staticmethod
     def _build_identity(cs_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -521,6 +525,19 @@ class BaseChatOrchestrator:
         """Clear conversation history and invalidate sessions for a client."""
         self.history.clear(client)
         self.invalidate_session(client)
+
+    async def _fetch_validated_prompt(
+        self,
+        prompt_name: str,
+        validate: Callable[[str], bool],
+    ) -> str:
+        """Fetch *prompt_name* from MCP; fall back to the factory entry
+        (mcp/prompts/defaults.py) if fetch fails or *validate* rejects."""
+        text = await fetch_prompt_with_fallback(self._server_url, self.api_key, prompt_name)
+        if not validate(text):
+            LOGGER.warning("Prompt %r failed structural validation; using factory default", prompt_name)
+            return require_factory_text(prompt_name)
+        return text
 
     # -- hooks (override in subclasses) -------------------------------------
 
@@ -700,6 +717,4 @@ class BaseChatOrchestrator:
                     task.cancel()
                 return
 
-        yield self._finalize_stream(
-            session, question, client, collected, token_usage, route, cs.ll_model.chat_history
-        )
+        yield self._finalize_stream(session, question, client, collected, token_usage, route, cs.ll_model.chat_history)

@@ -11,7 +11,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
-from server.app.runtime.common import LLMConfigurationError, SessionMetadata
+from server.app.mcp.prompts.registry import get_factory_text
+from server.app.runtime.common import (
+    CLASSIFIER_PROMPT_NAME,
+    SYNTHESIS_PROMPT_NAME,
+    LLMConfigurationError,
+    SessionMetadata,
+    validate_classifier_prompt,
+    validate_synthesis_template,
+)
 from server.app.runtime.langgraph.chat import ChatOrchestrator
 from server.app.runtime.langgraph.multi_tool import CombinedSession
 from server.app.runtime.langgraph.session import (
@@ -410,6 +418,141 @@ def _make_combined_session(nl2sql_session=None):
 
 
 # ---------------------------------------------------------------------------
+# TestCombinedPromptFetch
+# ---------------------------------------------------------------------------
+
+
+class TestCombinedPromptFetch:
+    """Verify the combined-session classifier + synthesis prompts come from MCP
+    and fall back to the built-in default when structural validation fails."""
+
+    def test_validate_classifier_prompt_requires_all_tokens(self):
+        assert validate_classifier_prompt("nl2sql vecsearch both {{query}}")
+        assert not validate_classifier_prompt("vecsearch both {{query}}")
+        assert not validate_classifier_prompt("nl2sql both {{query}}")
+        assert not validate_classifier_prompt("nl2sql vecsearch {{query}}")
+        assert not validate_classifier_prompt("nl2sql vecsearch both")
+
+    def test_validate_synthesis_template_requires_all_slots(self):
+        good = "{system_prompt} {query} {sql_answer} {search_answer}"
+        assert validate_synthesis_template(good)
+        assert not validate_synthesis_template("{query} {sql_answer} {search_answer}")
+        assert not validate_synthesis_template("{system_prompt} {sql_answer} {search_answer}")
+        assert not validate_synthesis_template("{system_prompt} {query} {search_answer}")
+        assert not validate_synthesis_template("{system_prompt} {query} {sql_answer}")
+
+    def test_validate_synthesis_template_rejects_unformattable(self):
+        """A template that passes the substring check but raises at
+        ``.format()`` time would crash combined synthesis (the call is
+        outside the synthesize() try-block). Validator must reject."""
+        all_slots = "{system_prompt} {query} {sql_answer} {search_answer}"
+        # Stray extra placeholder — KeyError at format time.
+        assert not validate_synthesis_template(all_slots + " {extra_field}")
+        # Positional placeholder — IndexError when only kwargs are bound.
+        assert not validate_synthesis_template(all_slots + " {0}")
+        # Unclosed brace — ValueError at format time.
+        assert not validate_synthesis_template(all_slots + " {unclosed")
+        # Escaped braces are fine — they render as literal text.
+        assert validate_synthesis_template(all_slots + " {{escaped}}")
+
+    def test_factory_prompts_pass_their_validators(self):
+        """Sanity check: the canonical factory entries in
+        ``mcp/prompts/defaults.py`` must themselves validate. If this fails,
+        the fallback chain has no safe landing — both fetched-text-bad and
+        factory-bad would crash combined synthesis."""
+        classifier = get_factory_text(CLASSIFIER_PROMPT_NAME)
+        synthesis = get_factory_text(SYNTHESIS_PROMPT_NAME)
+        assert classifier is not None and validate_classifier_prompt(classifier)
+        assert synthesis is not None and validate_synthesis_template(synthesis)
+
+    @pytest.mark.anyio
+    async def test_invalid_classifier_prompt_falls_back_with_warning(self):
+        """A fetched classifier prompt missing a decision token must not be
+        used — the response parser would silently default to BOTH on every
+        turn. Fall back to the factory entry and warn."""
+        orch = _make_orchestrator(tools_enabled=["NL2SQL", "Vector Search"])
+
+        async def fake_fetch(_server_url, _api_key, prompt_name):
+            if prompt_name == CLASSIFIER_PROMPT_NAME:
+                return "broken prompt with only nl2sql token and {{query}}"
+            return get_factory_text(prompt_name) or ""
+
+        graph = mock_compiled_graph()
+        with (
+            patch("server.app.runtime.common.fetch_prompt_with_fallback", side_effect=fake_fetch),
+            patch("server.app.runtime.langgraph.chat.build_vecsearch_graph", AsyncMock(return_value=graph)),
+            patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
+            patch("server.app.runtime.langgraph.chat.find_model", return_value=None),
+            patch("server.app.runtime.common.LOGGER") as mock_logger,
+        ):
+            session = await orch._build_combined_session(
+                mock_client_settings(tools_enabled=["NL2SQL", "Vector Search"])
+            )
+
+        assert session._classifier_prompt == get_factory_text(CLASSIFIER_PROMPT_NAME)
+        assert any(
+            CLASSIFIER_PROMPT_NAME in str(c) and "validation" in str(c)
+            for c in mock_logger.warning.call_args_list
+        )
+
+    @pytest.mark.anyio
+    async def test_invalid_synthesis_template_falls_back_with_warning(self):
+        """A synthesis template missing a format slot would silently drop
+        half the input. Fall back to the factory entry and warn."""
+        orch = _make_orchestrator(tools_enabled=["NL2SQL", "Vector Search"])
+
+        async def fake_fetch(_server_url, _api_key, prompt_name):
+            if prompt_name == SYNTHESIS_PROMPT_NAME:
+                return "Only {query} no other slots"
+            return get_factory_text(prompt_name) or ""
+
+        graph = mock_compiled_graph()
+        with (
+            patch("server.app.runtime.common.fetch_prompt_with_fallback", side_effect=fake_fetch),
+            patch("server.app.runtime.langgraph.chat.build_vecsearch_graph", AsyncMock(return_value=graph)),
+            patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
+            patch("server.app.runtime.langgraph.chat.find_model", return_value=None),
+            patch("server.app.runtime.common.LOGGER") as mock_logger,
+        ):
+            session = await orch._build_combined_session(
+                mock_client_settings(tools_enabled=["NL2SQL", "Vector Search"])
+            )
+
+        assert session._synthesis_template == get_factory_text(SYNTHESIS_PROMPT_NAME)
+        assert any(
+            SYNTHESIS_PROMPT_NAME in str(c) and "validation" in str(c)
+            for c in mock_logger.warning.call_args_list
+        )
+
+    @pytest.mark.anyio
+    async def test_valid_prompts_are_passed_through(self):
+        """A valid fetched prompt overrides the factory text and reaches the session."""
+        orch = _make_orchestrator(tools_enabled=["NL2SQL", "Vector Search"])
+        custom_classifier = "Pick nl2sql vecsearch or both. Query: {{query}}"
+        custom_synthesis = "Sys: {system_prompt}\nQ: {query}\nSQL: {sql_answer}\nVS: {search_answer}"
+
+        async def fake_fetch(_server_url, _api_key, prompt_name):
+            return {
+                CLASSIFIER_PROMPT_NAME: custom_classifier,
+                SYNTHESIS_PROMPT_NAME: custom_synthesis,
+            }.get(prompt_name, get_factory_text(prompt_name) or "")
+
+        graph = mock_compiled_graph()
+        with (
+            patch("server.app.runtime.common.fetch_prompt_with_fallback", side_effect=fake_fetch),
+            patch("server.app.runtime.langgraph.chat.build_vecsearch_graph", AsyncMock(return_value=graph)),
+            patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
+            patch("server.app.runtime.langgraph.chat.find_model", return_value=None),
+        ):
+            session = await orch._build_combined_session(
+                mock_client_settings(tools_enabled=["NL2SQL", "Vector Search"])
+            )
+
+        assert session._classifier_prompt == custom_classifier
+        assert session._synthesis_template == custom_synthesis
+
+
+# ---------------------------------------------------------------------------
 # TestCombinedSessionOciAuth
 # ---------------------------------------------------------------------------
 
@@ -458,7 +601,10 @@ class TestCombinedSessionOciAuth:
                 new=AsyncMock(return_value=mock_compiled_graph()),
             ), patch(
                 "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
-                new=AsyncMock(return_value=None),
+                new=AsyncMock(return_value=""),
+            ), patch(
+                "server.app.runtime.common.fetch_prompt_with_fallback",
+                new=AsyncMock(side_effect=lambda _u, _k, name: get_factory_text(name) or ""),
             ), patch(
                 "server.app.runtime.langgraph.chat.find_model",
                 return_value=None,
@@ -489,7 +635,10 @@ class TestCombinedSessionOciAuth:
             new=AsyncMock(return_value=mock_compiled_graph()),
         ), patch(
             "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=""),
+        ), patch(
+            "server.app.runtime.common.fetch_prompt_with_fallback",
+            new=AsyncMock(side_effect=lambda _u, _k, name: get_factory_text(name) or ""),
         ), patch(
             "server.app.runtime.langgraph.chat.find_model",
             return_value=None,

@@ -125,7 +125,9 @@ def _validate_new_alias(alias: str) -> bool:
     if not alias:
         return True
     if not re.match(r"^[A-Za-z][A-Za-z0-9_]*$", alias):
-        st.error("Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores.")
+        st.error(
+            "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
+        )
         return True
     return False
 
@@ -485,13 +487,10 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict | None) -> FileS
 
         data.oci_all_files = st.toggle(
             "Embed all supported files in bucket",
-            value=True,
+            value=False,
             key="runtime_oci_all_files",
             disabled=not data.oci_bucket,
-            help=(
-                "When enabled, every supported file in the selected bucket is embedded "
-                "without per-file selection. Disable to pick individual files."
-            ),
+            help="When enabled, every supported file in the selected bucket is embedded.",
         )
 
         if data.oci_bucket:
@@ -860,12 +859,8 @@ def _poll_embed_job(job_id: str, client_header: dict) -> dict:
                     f"running server-side."
                 )
                 request = httpx.Request("GET", f"embed/jobs/{job_id}")
-                response = httpx.Response(
-                    503, json={"detail": detail}, request=request
-                )
-                raise httpx.HTTPStatusError(
-                    detail, request=request, response=response
-                ) from ex
+                response = httpx.Response(503, json={"detail": detail}, request=request)
+                raise httpx.HTTPStatusError(detail, request=request, response=response) from ex
             LOGGER.warning(
                 "Embed job %s polling: transport failure (%s: %s), retry %d/%d",
                 job_id,

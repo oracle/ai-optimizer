@@ -18,17 +18,14 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.runtime.common import (
-    CLASSIFIER_PROMPT,
-    DEFAULT_COMBINED_INSTRUCTION,
-    SYNTHESIS_TEMPLATE,
+    COMBINED_PROMPT_NAME as PROMPT_NAME,
+)
+from server.app.runtime.common import (
     BaseCombinedSession,
     ClassifierDecision,
     Route,
     SessionMetadata,
     _sum_token_usage,
-)
-from server.app.runtime.common import (
-    COMBINED_PROMPT_NAME as PROMPT_NAME,
 )
 from server.app.runtime.langgraph.adapters.litellm import (
     OracleChatLiteLLM,
@@ -42,7 +39,7 @@ from server.app.runtime.langgraph.session import (
 
 LOGGER = logging.getLogger(__name__)
 
-__all__ = ["CombinedSession", "PROMPT_NAME", "DEFAULT_COMBINED_INSTRUCTION"]
+__all__ = ["CombinedSession", "PROMPT_NAME"]
 
 
 class CombinedSession(BaseCombinedSession):
@@ -57,15 +54,19 @@ class CombinedSession(BaseCombinedSession):
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
+        classifier_prompt: Optional[str] = None,
+        synthesis_template: Optional[str] = None,
     ) -> None:
         super().__init__(
             vs_session,
             nl2sql_session,
             classifier_model,
             system_prompt,
-            api_key,
-            api_base,
-            model_kwargs,
+            api_key=api_key,
+            api_base=api_base,
+            model_kwargs=model_kwargs,
+            classifier_prompt=classifier_prompt,
+            synthesis_template=synthesis_template,
         )
 
     async def _ainvoke_text(
@@ -91,7 +92,7 @@ class CombinedSession(BaseCombinedSession):
 
     async def classify(self, query: str) -> tuple[ClassifierDecision, Optional[TokenUsage]]:
         """Classify a query as nl2sql, vecsearch, or both."""
-        prompt = CLASSIFIER_PROMPT.replace("{{query}}", query)
+        prompt = self._classifier_prompt.replace("{{query}}", query)
         try:
             text, usage = await self._ainvoke_text(prompt, temperature=0.0, max_tokens=10)
         except Exception:
@@ -110,7 +111,7 @@ class CombinedSession(BaseCombinedSession):
         nl2sql_answer: str,
     ) -> tuple[str, Optional[TokenUsage]]:
         """Synthesize answers from both sources into a single response."""
-        prompt = SYNTHESIS_TEMPLATE.format(
+        prompt = self._synthesis_template.format(
             system_prompt=self._system_prompt,
             query=query,
             sql_answer=nl2sql_answer,

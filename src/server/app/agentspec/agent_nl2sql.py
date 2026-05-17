@@ -19,11 +19,6 @@ from server.app.agentspec.adapters.mcp import build_mcp_transport
 from server.app.agentspec.agent_llm_only import build_llm_config
 from server.app.core.schemas import ClientSettings
 
-DEFAULT_NL2SQL_INSTRUCTION = (
-    "You are a database assistant. Convert natural language questions to SQL "
-    "and provide clear answers based on query results."
-)
-
 
 def build_nl2sql_agentspec(
     client_settings: ClientSettings,

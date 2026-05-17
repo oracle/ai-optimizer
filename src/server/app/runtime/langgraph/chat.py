@@ -13,20 +13,22 @@ from typing import Any, Dict, Optional, Union
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from server.app.agentspec.agent_llm_only import DEFAULT_INSTRUCTION as DEFAULT_LLM_ONLY_INSTRUCTION
-from server.app.agentspec.agent_nl2sql import DEFAULT_NL2SQL_INSTRUCTION
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.core.schemas import ClientSettings
 from server.app.core.secrets import reveal
 from server.app.models.litellm_utils import build_oci_litellm_params, find_model
 from server.app.oci.registry import find_oci_profile_by_name
 from server.app.runtime.common import (
+    CLASSIFIER_PROMPT_NAME,
     ROUTE_PROMPTS,
+    SYNTHESIS_PROMPT_NAME,
     BaseChatOrchestrator,
     Route,
     fetch_prompt_for_route,
     format_history_text,
     resolve_route,
+    validate_classifier_prompt,
+    validate_synthesis_template,
 )
 from server.app.runtime.langgraph.llm_only import (
     PROMPT_NAME as LLM_ONLY_PROMPT,
@@ -35,12 +37,9 @@ from server.app.runtime.langgraph.llm_only import (
     build_llm_only_graph,
 )
 from server.app.runtime.langgraph.multi_tool import (
-    DEFAULT_COMBINED_INSTRUCTION,
-    CombinedSession,
-)
-from server.app.runtime.langgraph.multi_tool import (
     PROMPT_NAME as COMBINED_PROMPT,
 )
+from server.app.runtime.langgraph.multi_tool import CombinedSession
 from server.app.runtime.langgraph.nl2sql import (
     PROMPT_NAME as NL2SQL_PROMPT,
 )
@@ -53,24 +52,20 @@ from server.app.runtime.langgraph.session import (
     NL2SQLGraphSession,
 )
 from server.app.runtime.langgraph.vecsearch import (
-    DEFAULT_VECSEARCH_INSTRUCTION,
-    build_vecsearch_graph,
-)
-from server.app.runtime.langgraph.vecsearch import (
     PROMPT_NAME as VECSEARCH_PROMPT,
 )
+from server.app.runtime.langgraph.vecsearch import build_vecsearch_graph
 
 LOGGER = logging.getLogger(__name__)
 
 SessionType = Union[GraphFlowSession, AgentGraphSession, CombinedSession]
 
-# Populate shared route prompts.
 ROUTE_PROMPTS.update(
     {
-        Route.LLM_ONLY: (LLM_ONLY_PROMPT, DEFAULT_LLM_ONLY_INSTRUCTION),
-        Route.NL2SQL: (NL2SQL_PROMPT, DEFAULT_NL2SQL_INSTRUCTION),
-        Route.VECSEARCH: (VECSEARCH_PROMPT, DEFAULT_VECSEARCH_INSTRUCTION),
-        Route.COMBINED: (COMBINED_PROMPT, DEFAULT_COMBINED_INSTRUCTION),
+        Route.LLM_ONLY: LLM_ONLY_PROMPT,
+        Route.NL2SQL: NL2SQL_PROMPT,
+        Route.VECSEARCH: VECSEARCH_PROMPT,
+        Route.COMBINED: COMBINED_PROMPT,
     }
 )
 
@@ -124,8 +119,11 @@ class ChatOrchestrator(BaseChatOrchestrator):
             if oci_profile:
                 model_kwargs.update(build_oci_litellm_params(oci_profile))
 
-        prompt = await fetch_prompt_for_route(Route.COMBINED, self._server_url, self.api_key)
-        system_prompt = prompt or DEFAULT_COMBINED_INSTRUCTION
+        system_prompt, classifier_prompt, synthesis_template = await asyncio.gather(
+            fetch_prompt_for_route(Route.COMBINED, self._server_url, self.api_key),
+            self._fetch_validated_prompt(CLASSIFIER_PROMPT_NAME, validate_classifier_prompt),
+            self._fetch_validated_prompt(SYNTHESIS_PROMPT_NAME, validate_synthesis_template),
+        )
 
         return CombinedSession(
             vs_session,
@@ -135,6 +133,8 @@ class ChatOrchestrator(BaseChatOrchestrator):
             api_key=reveal(model_cfg.api_key) if model_cfg else None,
             api_base=model_cfg.api_base if model_cfg else None,
             model_kwargs=model_kwargs,
+            classifier_prompt=classifier_prompt,
+            synthesis_template=synthesis_template,
         )
 
     async def _build_session(
