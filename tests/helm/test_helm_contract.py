@@ -1621,5 +1621,7 @@ class TestClientOciSourceBucketEnv:
                 f"client.oci.sourceBucketName={self._BUCKET_NAME}",
             )
         )
-        assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID")["value"] == self._COMPARTMENT_OCID
-        assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME")["value"] == self._BUCKET_NAME
+        compartment_entry = _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID")
+        bucket_entry = _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME")
+        assert compartment_entry is not None and compartment_entry["value"] == self._COMPARTMENT_OCID
+        assert bucket_entry is not None and bucket_entry["value"] == self._BUCKET_NAME
