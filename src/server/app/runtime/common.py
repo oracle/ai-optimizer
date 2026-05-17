@@ -466,10 +466,13 @@ class BaseChatOrchestrator:
                 )
         return out
 
+    def _keys_for_client(self, client: str) -> list:
+        """Return cache keys whose first element is *client*."""
+        return [k for k in self._session_cache if k[0] == client]
+
     def invalidate_session(self, client: str) -> None:
         """Remove all cached sessions for the given client."""
-        keys = [k for k in self._session_cache if k[0] == client]
-        for k in keys:
+        for k in self._keys_for_client(client):
             del self._session_cache[k]
             self._stream_locks.pop(k, None)
 
@@ -490,14 +493,14 @@ class BaseChatOrchestrator:
         question: str,
         client: str,
         queue: asyncio.Queue,
-        chat_history: bool = True,
+        history_text: str = "",
     ) -> None:
         raise NotImplementedError
 
     async def _run_agent_streaming(
         self,
         session: Any,
-        use_history: bool,
+        history_messages: list,
         question: str,
         queue: asyncio.Queue,
     ) -> None:
@@ -506,12 +509,21 @@ class BaseChatOrchestrator:
     def _get_agent_token_usage(self, session: Any) -> Optional[TokenUsage]:
         raise NotImplementedError
 
+    def _history_text(self, client: str, cs: Any) -> str:
+        """Return prior turns as a ``"User: ...\\nAssistant: ..."`` string."""
+        raise NotImplementedError
+
+    def _history_messages(self, client: str, cs: Any) -> list:
+        """Return prior turns as runtime-specific message objects."""
+        raise NotImplementedError
+
     # -- shared streaming logic ---------------------------------------------
 
     async def _run_combined_streaming(
         self,
         session: Any,
-        use_history: bool,
+        history_text: str,
+        history_messages: list,
         question: str,
         client: str,
         queue: asyncio.Queue,
@@ -520,7 +532,8 @@ class BaseChatOrchestrator:
         await session.execute_streaming(
             query=question,
             thread_id=client,
-            chat_history=use_history,
+            history_text=history_text,
+            history_messages=history_messages,
             queue=queue,
             stream_flow=self._run_flow_streaming,
             stream_agent=self._run_agent_streaming,
@@ -530,18 +543,35 @@ class BaseChatOrchestrator:
         self,
         session: Any,
         route: str,
-        use_history: bool,
+        cs: Any,
         question: str,
         client: str,
         queue: asyncio.Queue,
     ) -> asyncio.Task:
-        """Create an asyncio task for the appropriate streaming handler."""
+        """Create an asyncio task for the appropriate streaming handler.
+
+        Each route reads only the history representation it consumes, so a
+        long conversation doesn't pay to build both forms every turn.
+        """
         if isinstance(session, self._combined_session_type):
-            return asyncio.create_task(self._run_combined_streaming(session, use_history, question, client, queue))
+            return asyncio.create_task(
+                self._run_combined_streaming(
+                    session,
+                    self._history_text(client, cs),
+                    self._history_messages(client, cs),
+                    question,
+                    client,
+                    queue,
+                )
+            )
         if isinstance(session, self._agent_session_type):
-            return asyncio.create_task(self._run_agent_streaming(session, use_history, question, queue))
+            return asyncio.create_task(
+                self._run_agent_streaming(session, self._history_messages(client, cs), question, queue)
+            )
         return asyncio.create_task(
-            self._run_flow_streaming(session, route, question, client, queue, chat_history=use_history)
+            self._run_flow_streaming(
+                session, route, question, client, queue, history_text=self._history_text(client, cs)
+            )
         )
 
     @staticmethod
@@ -562,8 +592,14 @@ class BaseChatOrchestrator:
         collected: list[str],
         token_usage: Optional[TokenUsage],
         route: str,
+        history_enabled: bool,
     ) -> Dict[str, Any]:
-        """Persist history and return the final _meta event dict."""
+        """Persist history and return the final _meta event dict.
+
+        *history_enabled* stamps each appended entry with the chat_history
+        setting active for this turn, so turns taken with the toggle off
+        are not later replayed when the toggle flips on.
+        """
         answer = "".join(collected)
         vs_metadata: Optional[VsMetadata] = None
         if isinstance(session, (self._combined_session_type, self._flow_session_type)):
@@ -575,8 +611,8 @@ class BaseChatOrchestrator:
             vs_meta_dict = vs_metadata.model_dump(exclude_none=True) if vs_metadata else None
             tu_dict = token_usage.model_dump() if token_usage else None
             extras = {k: v for k, v in [("vs_metadata", vs_meta_dict), ("token_usage", tu_dict)] if v}
-            self.history.append(client, "user", question)
-            self.history.append(client, "assistant", answer, **extras)
+            self.history.append(client, "user", question, history_enabled=history_enabled)
+            self.history.append(client, "assistant", answer, history_enabled=history_enabled, **extras)
         # Return dict for streaming event — endpoint consumes via event.get()
         vs_meta_dict = vs_metadata.model_dump(exclude_none=True) if vs_metadata else None
         return {"type": "_meta", "route": route, "vs_metadata": vs_meta_dict}
@@ -594,8 +630,7 @@ class BaseChatOrchestrator:
 
         async with self._stream_locks[(client, route)]:
             cs = self._resolve_client(client)
-            use_history = cs.ll_model.chat_history
-            task = self._create_streaming_task(session, route, use_history, question, client, queue)
+            task = self._create_streaming_task(session, route, cs, question, client, queue)
 
             try:
                 while True:
@@ -624,4 +659,6 @@ class BaseChatOrchestrator:
                     task.cancel()
                 return
 
-        yield self._finalize_stream(session, question, client, collected, token_usage, route)
+        yield self._finalize_stream(
+            session, question, client, collected, token_usage, route, cs.ll_model.chat_history
+        )

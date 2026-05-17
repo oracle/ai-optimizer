@@ -8,7 +8,6 @@ Tests for the LangGraph session classes.
 
 import asyncio
 import json
-from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -39,12 +38,6 @@ class TestGraphFlowSessionInit:
         graph = mock_compiled_graph()
         session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
         assert session._model == "ollama/qwen3:8b"
-
-    def test_history_starts_empty(self):
-        """Verify history starts as empty string."""
-        graph = mock_compiled_graph()
-        session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
-        assert session.history == ""
 
     def test_last_metadata_starts_empty(self):
         """Verify last_metadata starts as empty SessionMetadata."""
@@ -94,28 +87,19 @@ class TestGraphFlowSessionExecute:
         }
 
     @pytest.mark.anyio
-    async def test_history_accumulates_across_calls(self):
-        """Verify chat_history grows with each Q&A turn."""
-        graph = mock_compiled_graph(
-            result={
-                "outputs": {"answer": "First answer"},
-                "messages": [],
-            }
-        )
+    async def test_history_text_passed_through_to_flow_input(self):
+        """Verify the caller-supplied history_text reaches the flow input."""
+        graph = mock_compiled_graph()
         session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
 
-        await session.execute("First question", thread_id="t-1")
-        assert "First question" in session.history
-        assert "First answer" in session.history
-
-        # Second call should include history
-        graph.ainvoke.return_value = {
-            "outputs": {"answer": "Second answer"},
-            "messages": [],
-        }
-        await session.execute("Follow-up", thread_id="t-1")
+        await session.execute(
+            "Follow-up",
+            thread_id="t-1",
+            history_text="User: First question\nAssistant: First answer\n",
+        )
         call_args = graph.ainvoke.call_args[0][0]
         assert "First question" in call_args["inputs"]["chat_history"]
+        assert "First answer" in call_args["inputs"]["chat_history"]
 
     @pytest.mark.anyio
     async def test_falls_back_to_last_ai_message(self):
@@ -134,28 +118,13 @@ class TestGraphFlowSessionExecute:
         assert result == "fallback text"
 
     @pytest.mark.anyio
-    async def test_no_history_sent_when_disabled(self):
-        """Verify chat_history input is empty when chat_history=False."""
-        graph = mock_compiled_graph(
-            result={
-                "outputs": {"answer": "first"},
-                "messages": [],
-            }
-        )
+    async def test_empty_history_text_default(self):
+        """Verify a missing history_text yields an empty chat_history input."""
+        graph = mock_compiled_graph()
         session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
-
-        await session.execute("first question", thread_id="t-1", chat_history=False)
-
-        graph.ainvoke.return_value = {
-            "outputs": {"answer": "second"},
-            "messages": [],
-        }
-        await session.execute("second question", thread_id="t-1", chat_history=False)
-
+        await session.execute("question", thread_id="t-1")
         call_args = graph.ainvoke.call_args[0][0]
         assert call_args["inputs"]["chat_history"] == ""
-        # Internal history still accumulates
-        assert "first question" in session.history
 
     @pytest.mark.anyio
     async def test_execute_flow_inputs_shape_matches_start_node_contract(self):
@@ -573,57 +542,23 @@ class TestAgentGraphSession:
         assert result == "final answer"
 
     @pytest.mark.anyio
-    async def test_tracks_conversation_messages(self):
-        """Verify conversation_messages accumulates when chat_history=True."""
+    async def test_chat_prepends_history_messages_to_graph_inputs(self):
+        """Caller-supplied history_messages must precede the new user message."""
         graph = mock_compiled_graph(
-            result={
-                "messages": [AIMessage(content="reply")],
-            }
+            result={"messages": [AIMessage(content="reply")]},
         )
         session = AgentGraphSession(graph)
-        await session.chat("hello", chat_history=True)
+        history = [HumanMessage(content="prior q"), AIMessage(content="prior a")]
+        await session.chat("new q", history_messages=history)
 
-        assert len(session.conversation_messages) == 2
-        assert isinstance(session.conversation_messages[0], HumanMessage)
-        assert isinstance(session.conversation_messages[1], AIMessage)
-
-    @pytest.mark.anyio
-    async def test_skips_conversation_messages_when_no_history(self):
-        """Verify conversation_messages not updated when chat_history=False."""
-        graph = mock_compiled_graph(
-            result={
-                "messages": [AIMessage(content="reply")],
-            }
-        )
-        session = AgentGraphSession(graph)
-        await session.chat("hello", chat_history=False)
-        assert len(session.conversation_messages) == 0
+        passed = graph.ainvoke.call_args[0][0]["messages"]
+        assert [m.content for m in passed] == ["prior q", "prior a", "new q"]
 
     @pytest.mark.anyio
     async def test_error_propagates(self):
         """Verify error re-raises after logging."""
         graph = mock_compiled_graph(side_effect=RuntimeError("agent failed"))
         session = AgentGraphSession(graph)
-        with pytest.raises(RuntimeError, match="agent failed"):
-            await session.chat("boom")
-
-    @pytest.mark.anyio
-    async def test_chat_clears_checkpoint_on_error(self):
-        """Verify checkpointer state is cleared when graph.ainvoke() fails."""
-        graph = mock_compiled_graph(side_effect=RuntimeError("agent failed"))
-        checkpointer = MagicMock()
-        session = AgentGraphSession(graph, conversation_id="thread-1", checkpointer=checkpointer)
-        with pytest.raises(RuntimeError, match="agent failed"):
-            await session.chat("boom")
-        checkpointer.delete_thread.assert_called_once_with("thread-1")
-
-    @pytest.mark.anyio
-    async def test_chat_clears_checkpoint_ignores_delete_failure(self):
-        """Verify chat() still raises original error if delete_thread itself fails."""
-        graph = mock_compiled_graph(side_effect=RuntimeError("agent failed"))
-        checkpointer = MagicMock()
-        checkpointer.delete_thread.side_effect = RuntimeError("delete failed")
-        session = AgentGraphSession(graph, conversation_id="thread-1", checkpointer=checkpointer)
         with pytest.raises(RuntimeError, match="agent failed"):
             await session.chat("boom")
 
@@ -672,21 +607,6 @@ class TestAgentGraphSession:
         while not queue.empty():
             events.append(queue.get_nowait())
         assert events == [{"type": "stream", "content": "response"}]
-
-    @pytest.mark.anyio
-    async def test_conversation_id_generated(self):
-        """Verify conversation_id is auto-generated when not provided."""
-        graph = mock_compiled_graph()
-        session = AgentGraphSession(graph)
-        assert session.conversation_id  # non-empty UUID string
-
-    @pytest.mark.anyio
-    async def test_conversation_id_preserved(self):
-        """Verify conversation_id is preserved when provided."""
-        graph = mock_compiled_graph()
-        session = AgentGraphSession(graph, conversation_id="custom-id")
-        assert session.conversation_id == "custom-id"
-
 
 # ---------------------------------------------------------------------------
 # TestNL2SQLGraphSession
@@ -762,31 +682,19 @@ class TestNL2SQLGraphSession:
         msg_content = call_args["messages"][0].content
         assert "thread_id" not in msg_content
 
+    @pytest.mark.anyio
+    async def test_history_messages_pass_through_unchanged(self):
+        """Past turns must come through clean; DB context only on new message."""
+        graph = mock_compiled_graph(
+            result={"messages": [AIMessage(content="result")]},
+        )
+        session = NL2SQLGraphSession(graph, SAMPLE_CLIENT_SETTINGS, thread_id="t-1")
+        history = [HumanMessage(content="prior"), AIMessage(content="prior reply")]
+        await session.chat("new", history_messages=history)
 
-# ---------------------------------------------------------------------------
-# TestCheckpointerStorage
-# ---------------------------------------------------------------------------
-
-
-class TestCheckpointerStorage:
-    """Tests for checkpointer storage on session classes."""
-
-    def test_checkpointer_stored_and_accessible(self):
-        """Verify checkpointer property returns stored checkpointer."""
-        sentinel = object()
-        graph = mock_compiled_graph()
-        session = AgentGraphSession(graph, checkpointer=sentinel)
-        assert session.checkpointer is sentinel
-
-    def test_checkpointer_defaults_to_none(self):
-        """Verify checkpointer defaults to None when not provided."""
-        graph = mock_compiled_graph()
-        session = AgentGraphSession(graph)
-        assert session.checkpointer is None
-
-    def test_nl2sql_checkpointer_passed_through(self):
-        """Verify NL2SQL passes checkpointer to parent."""
-        sentinel = object()
-        graph = mock_compiled_graph()
-        session = NL2SQLGraphSession(graph, SAMPLE_CLIENT_SETTINGS, checkpointer=sentinel)
-        assert session.checkpointer is sentinel
+        passed = graph.ainvoke.call_args[0][0]["messages"]
+        assert passed[0].content == "prior"
+        assert passed[1].content == "prior reply"
+        assert "model: ollama/qwen3:8b" in passed[2].content
+        assert "new" in passed[2].content
+        assert "prior" not in passed[2].content

@@ -378,34 +378,27 @@ class TestApiKeyLiveness(_LangGraphChatMixin, ApiKeyLivenessBase):
 
 
 # ---------------------------------------------------------------------------
-# TestConversationIdPreservation
+# Session helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_agent_session(conversation_id=None, checkpointer=None):
+def _make_agent_session():
     """Build a real AgentGraphSession with a mock graph."""
-    return AgentGraphSession(mock_compiled_graph(), conversation_id=conversation_id, checkpointer=checkpointer)
+    return AgentGraphSession(mock_compiled_graph())
 
 
-def _make_nl2sql_session(cs=None, thread_id="", conversation_id=None, checkpointer=None):
+def _make_nl2sql_session(cs=None, thread_id=""):
     """Build a real NL2SQLGraphSession with a mock graph."""
     if cs is None:
         from server.tests.conftest import SAMPLE_CLIENT_SETTINGS_OBJ
 
         cs = SAMPLE_CLIENT_SETTINGS_OBJ
-    return NL2SQLGraphSession(
-        MagicMock(),
-        cs,
-        thread_id=thread_id,
-        conversation_id=conversation_id,
-        checkpointer=checkpointer,
-    )
+    return NL2SQLGraphSession(MagicMock(), cs, thread_id=thread_id)
 
 
 def _make_combined_session(nl2sql_session=None):
     """Build a CombinedSession with mock sub-sessions."""
     vs = MagicMock(spec=GraphFlowSession)
-    vs.history = ""
     if nl2sql_session is None:
         nl2sql_session = _make_nl2sql_session(thread_id="c1")
     return CombinedSession(
@@ -414,253 +407,6 @@ def _make_combined_session(nl2sql_session=None):
         "ollama/qwen3:8b",
         "system prompt",
     )
-
-
-class TestConversationIdPreservation:
-    """Verify conversation_id is preserved when sessions are rebuilt."""
-
-    @pytest.mark.anyio
-    async def test_session_rebuilt_preserves_conversation_id(self):
-        """Settings change rebuild preserves agent session conversation_id."""
-        cs = mock_client_settings(chat_history=True)
-        orch = _make_orchestrator(cs=cs)
-
-        original_session = _make_agent_session()
-        original_id = original_session.conversation_id
-
-        new_session = _make_agent_session()
-        build_mock = AsyncMock(side_effect=[original_session, new_session])
-
-        with patch.object(orch, "_build_session", build_mock):
-            await orch.execute_chat("q1", "c1")
-
-            # Change a setting to trigger rebuild
-            cs.model_dump.return_value = {
-                **cs.model_dump(),
-                "ll_model": {**cs.model_dump()["ll_model"], "temperature": 0.99},
-            }
-            # Patch chat on new_session so execute_chat works
-            new_session.chat = AsyncMock(return_value="reply")
-            new_session.last_metadata = SessionMetadata()
-            original_session.chat = AsyncMock(return_value="reply")
-            original_session.last_metadata = SessionMetadata()
-
-            await orch.execute_chat("q2", "c1")
-
-        # The new session should have the original conversation_id
-        assert new_session.conversation_id == original_id
-
-    @pytest.mark.anyio
-    async def test_refresh_prompts_preserves_agent_conversation_id(self):
-        """refresh_prompts preserves agent session conversation_id."""
-        orch = _make_orchestrator()
-        original_session = _make_agent_session()
-        original_id = original_session.conversation_id
-        cs_dict = mock_client_settings().model_dump()
-
-        orch._session_cache[("c1", "llm_only")] = (original_session, cs_dict, orch._build_identity(cs_dict))
-
-        new_session = _make_agent_session()
-        with patch.object(orch, "_build_agent_session", AsyncMock(return_value=new_session)):
-            await orch.refresh_prompts()
-
-        rebuilt = orch._session_cache[("c1", "llm_only")][0]
-        assert isinstance(rebuilt, AgentGraphSession)
-        assert rebuilt.conversation_id == original_id
-
-    @pytest.mark.anyio
-    async def test_refresh_prompts_preserves_combined_nl2sql_conversation_id(self):
-        """refresh_prompts preserves nl2sql sub-session conversation_id in combined."""
-        orch = _make_orchestrator()
-        nl2sql = _make_nl2sql_session(thread_id="c1")
-        original_nl2sql_id = nl2sql.conversation_id
-        combined = _make_combined_session(nl2sql_session=nl2sql)
-        cs_dict = mock_client_settings().model_dump()
-
-        orch._session_cache[("c1", "combined")] = (combined, cs_dict, orch._build_identity(cs_dict))
-
-        new_nl2sql = _make_nl2sql_session(thread_id="c1")
-        new_combined = _make_combined_session(nl2sql_session=new_nl2sql)
-        with patch.object(orch, "_build_combined_session", AsyncMock(return_value=new_combined)):
-            await orch.refresh_prompts()
-
-        rebuilt = orch._session_cache[("c1", "combined")][0]
-        assert isinstance(rebuilt, CombinedSession)
-        assert rebuilt.nl2sql_session.conversation_id == original_nl2sql_id
-
-    @pytest.mark.anyio
-    async def test_settings_change_preserves_combined_nl2sql_conversation_id(self):
-        """Settings-change rebuild preserves nl2sql sub-session conversation_id in combined."""
-        cs = mock_client_settings(tools_enabled=["NL2SQL", "Vector Search"])
-        orch = _make_orchestrator(cs=cs)
-
-        nl2sql = _make_nl2sql_session(thread_id="c1")
-        original_nl2sql_id = nl2sql.conversation_id
-        original_combined = _make_combined_session(nl2sql_session=nl2sql)
-        original_combined.execute = AsyncMock(return_value="reply")
-        original_combined.last_metadata = SessionMetadata()
-
-        new_nl2sql = _make_nl2sql_session(thread_id="c1")
-        new_combined = _make_combined_session(nl2sql_session=new_nl2sql)
-        new_combined.execute = AsyncMock(return_value="reply2")
-        new_combined.last_metadata = SessionMetadata()
-
-        build_mock = AsyncMock(side_effect=[original_combined, new_combined])
-
-        with patch.object(orch, "_build_session", build_mock):
-            await orch.execute_chat("q1", "c1")
-
-            # Change a setting to trigger rebuild
-            cs.model_dump.return_value = {
-                **cs.model_dump(),
-                "ll_model": {**cs.model_dump()["ll_model"], "temperature": 0.99},
-            }
-
-            await orch.execute_chat("q2", "c1")
-
-        assert new_combined.nl2sql_session.conversation_id == original_nl2sql_id
-
-
-# ---------------------------------------------------------------------------
-# TestCheckpointerPreservation
-# ---------------------------------------------------------------------------
-
-
-class TestCheckpointerPreservation:
-    """Verify checkpointer is preserved when sessions are rebuilt."""
-
-    @pytest.mark.anyio
-    async def test_settings_change_preserves_checkpointer(self):
-        """Settings change rebuild preserves agent session checkpointer."""
-        cs = mock_client_settings(chat_history=True)
-        orch = _make_orchestrator(cs=cs)
-
-        sentinel_cp = MagicMock(name="sentinel_checkpointer")
-        original_session = _make_agent_session(checkpointer=sentinel_cp)
-        original_session.chat = AsyncMock(return_value="reply")
-        original_session.last_metadata = SessionMetadata()
-
-        # First build returns original_session
-        build_count = 0
-
-        async def fake_build(
-            _cs_dict,
-            _route,
-            **_kwargs,
-        ):
-            nonlocal build_count
-            build_count += 1
-            if build_count == 1:
-                return original_session
-            # Second build: verify checkpointer is passed through
-            new_session = _make_agent_session(checkpointer=_kwargs.get("checkpointer"))
-            new_session.chat = AsyncMock(return_value="reply2")
-            new_session.last_metadata = SessionMetadata()
-            return new_session
-
-        with patch.object(orch, "_build_session", side_effect=fake_build):
-            await orch.execute_chat("q1", "c1")
-
-            # Change a setting to trigger rebuild
-            cs.model_dump.return_value = {
-                **cs.model_dump(),
-                "ll_model": {**cs.model_dump()["ll_model"], "temperature": 0.99},
-            }
-            await orch.execute_chat("q2", "c1")
-
-        rebuilt = orch._session_cache[("c1", "llm_only")][0]
-        assert isinstance(rebuilt, AgentGraphSession)
-        assert rebuilt.checkpointer is sentinel_cp
-
-    @pytest.mark.anyio
-    async def test_refresh_prompts_preserves_agent_checkpointer(self):
-        """refresh_prompts preserves agent session checkpointer."""
-        orch = _make_orchestrator()
-        sentinel_cp = MagicMock(name="sentinel_checkpointer")
-        original_session = _make_agent_session(checkpointer=sentinel_cp)
-        cs_dict = mock_client_settings().model_dump()
-
-        orch._session_cache[("c1", "llm_only")] = (original_session, cs_dict, orch._build_identity(cs_dict))
-
-        new_session = _make_agent_session()
-
-        async def fake_build(_cs, checkpointer=None):
-            new_session._checkpointer = checkpointer
-            return new_session
-
-        with patch.object(orch, "_build_agent_session", side_effect=fake_build):
-            await orch.refresh_prompts()
-
-        rebuilt = orch._session_cache[("c1", "llm_only")][0]
-        assert isinstance(rebuilt, AgentGraphSession)
-        assert rebuilt.checkpointer is sentinel_cp
-
-    @pytest.mark.anyio
-    async def test_refresh_prompts_preserves_combined_nl2sql_checkpointer(self):
-        """refresh_prompts preserves nl2sql sub-session checkpointer in combined."""
-        orch = _make_orchestrator()
-        sentinel_cp = MagicMock(name="sentinel_nl2sql_cp")
-        nl2sql = _make_nl2sql_session(thread_id="c1", checkpointer=sentinel_cp)
-        combined = _make_combined_session(nl2sql_session=nl2sql)
-        cs_dict = mock_client_settings().model_dump()
-
-        orch._session_cache[("c1", "combined")] = (combined, cs_dict, orch._build_identity(cs_dict))
-
-        new_nl2sql = _make_nl2sql_session(thread_id="c1")
-        new_combined = _make_combined_session(nl2sql_session=new_nl2sql)
-
-        async def fake_build(_cs, **_kwargs):
-            new_combined.nl2sql_session._checkpointer = _kwargs.get("nl2sql_checkpointer")
-            return new_combined
-
-        with patch.object(orch, "_build_combined_session", side_effect=fake_build):
-            await orch.refresh_prompts()
-
-        rebuilt = orch._session_cache[("c1", "combined")][0]
-        assert isinstance(rebuilt, CombinedSession)
-        assert rebuilt.nl2sql_session.checkpointer is sentinel_cp
-
-    @pytest.mark.anyio
-    async def test_settings_change_preserves_combined_nl2sql_checkpointer(self):
-        """Settings-change rebuild preserves nl2sql sub-session checkpointer in combined."""
-        cs = mock_client_settings(tools_enabled=["NL2SQL", "Vector Search"])
-        orch = _make_orchestrator(cs=cs)
-
-        sentinel_cp = MagicMock(name="sentinel_nl2sql_cp")
-        nl2sql = _make_nl2sql_session(thread_id="c1", checkpointer=sentinel_cp)
-        original_combined = _make_combined_session(nl2sql_session=nl2sql)
-        original_combined.execute = AsyncMock(return_value="reply")
-        original_combined.last_metadata = SessionMetadata()
-
-        build_count = 0
-
-        async def fake_build(
-            _cs_dict,
-            _route,
-            **_kwargs,
-        ):
-            nonlocal build_count
-            build_count += 1
-            if build_count == 1:
-                return original_combined
-            new_nl2sql = _make_nl2sql_session(thread_id="c1", checkpointer=_kwargs.get("nl2sql_checkpointer"))
-            new_combined = _make_combined_session(nl2sql_session=new_nl2sql)
-            new_combined.execute = AsyncMock(return_value="reply2")
-            new_combined.last_metadata = SessionMetadata()
-            return new_combined
-
-        with patch.object(orch, "_build_session", side_effect=fake_build):
-            await orch.execute_chat("q1", "c1")
-
-            cs.model_dump.return_value = {
-                **cs.model_dump(),
-                "ll_model": {**cs.model_dump()["ll_model"], "temperature": 0.99},
-            }
-            await orch.execute_chat("q2", "c1")
-
-        rebuilt = orch._session_cache[("c1", "combined")][0]
-        assert isinstance(rebuilt, CombinedSession)
-        assert rebuilt.nl2sql_session.checkpointer is sentinel_cp
 
 
 # ---------------------------------------------------------------------------
@@ -752,3 +498,142 @@ class TestCombinedSessionOciAuth:
             await orch._build_combined_session(cs, client="c1")
 
         assert not mock_combined_cls.call_args.kwargs.get("model_kwargs")
+
+
+# ---------------------------------------------------------------------------
+# TestHistoryFeed
+# ---------------------------------------------------------------------------
+
+
+class TestHistoryFeed:
+    """Sessions are stateless w.r.t. history; the orchestrator feeds it in."""
+
+    @pytest.mark.anyio
+    async def test_agent_session_receives_history_messages_from_store(self):
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        cs = mock_client_settings(chat_history=True)
+        orch = _make_orchestrator(cs=cs)
+        orch.history.append("c1", "user", "I am Driver 1.")
+        orch.history.append("c1", "assistant", "Acknowledged.")
+
+        mock_session = MagicMock(spec=AgentGraphSession)
+        mock_session.chat = AsyncMock(return_value="team apex")
+        mock_session.last_metadata = SessionMetadata()
+
+        with patch.object(orch, "_build_session", AsyncMock(return_value=mock_session)):
+            await orch.execute_chat("Which team?", "c1")
+
+        passed = mock_session.chat.call_args.kwargs["history_messages"]
+        assert isinstance(passed[0], HumanMessage)
+        assert isinstance(passed[1], AIMessage)
+        assert [m.content for m in passed] == ["I am Driver 1.", "Acknowledged."]
+
+    @pytest.mark.anyio
+    async def test_flow_session_receives_history_text_from_store(self):
+        cs = mock_client_settings(chat_history=True, tools_enabled=["Vector Search"])
+        orch = _make_orchestrator(cs=cs)
+        orch.history.append("c1", "user", "what is X?")
+        orch.history.append("c1", "assistant", "X is foo.")
+
+        mock_session = MagicMock(spec=GraphFlowSession)
+        mock_session.execute = AsyncMock(return_value="answer")
+        mock_session.last_metadata = SessionMetadata()
+
+        with patch.object(orch, "_build_session", AsyncMock(return_value=mock_session)):
+            await orch.execute_chat("and Y?", "c1")
+
+        history_text = mock_session.execute.call_args.kwargs["history_text"]
+        assert history_text == "User: what is X?\nAssistant: X is foo.\n"
+
+    @pytest.mark.anyio
+    async def test_history_disabled_passes_empty_collections(self):
+        cs = mock_client_settings(chat_history=False)
+        orch = _make_orchestrator(cs=cs)
+        orch.history.append("c1", "user", "prior")
+        orch.history.append("c1", "assistant", "prior reply")
+
+        mock_session = MagicMock(spec=AgentGraphSession)
+        mock_session.chat = AsyncMock(return_value="answer")
+        mock_session.last_metadata = SessionMetadata()
+
+        with patch.object(orch, "_build_session", AsyncMock(return_value=mock_session)):
+            await orch.execute_chat("new turn", "c1")
+
+        assert mock_session.chat.call_args.kwargs["history_messages"] == []
+
+    @pytest.mark.anyio
+    async def test_route_switch_sees_full_history_without_migration(self):
+        """The 'I am Driver 1' bug: switching mode mid-conversation must
+        still surface prior turns without any per-session migration."""
+        cs = mock_client_settings(chat_history=True)
+        orch = _make_orchestrator(cs=cs)
+
+        llm_only_session = MagicMock(spec=AgentGraphSession)
+        llm_only_session.chat = AsyncMock(return_value="ack driver 1")
+        llm_only_session.last_metadata = SessionMetadata()
+
+        nl2sql_session = MagicMock(spec=NL2SQLGraphSession)
+        nl2sql_session.chat = AsyncMock(return_value="apex dynamics")
+        nl2sql_session.last_metadata = SessionMetadata()
+
+        builds = iter([llm_only_session, nl2sql_session])
+
+        async def fake_build(_cs, _route, **_kwargs):
+            return next(builds)
+
+        with patch.object(orch, "_build_session", side_effect=fake_build):
+            await orch.execute_chat("I am Driver 1.", "c1")
+            cs.tools_enabled = ["NL2SQL"]
+            cs.model_dump.return_value = {**cs.model_dump(), "tools_enabled": ["NL2SQL"]}
+            await orch.execute_chat("Which team?", "c1")
+
+        passed = nl2sql_session.chat.call_args.kwargs["history_messages"]
+        assert [m.content for m in passed] == ["I am Driver 1.", "ack driver 1"]
+
+    @pytest.mark.anyio
+    async def test_turns_captured_while_disabled_are_not_replayed(self):
+        """Toggling chat_history off then on must not resurface the off-turn
+        as LLM context — the pre-refactor `AgentGraphSession.chat` skipped
+        appending to its conversation buffer when chat_history was False,
+        and the new orchestrator-owned feed must match that.
+        """
+        cs = mock_client_settings(chat_history=False)
+        orch = _make_orchestrator(cs=cs)
+
+        mock_session = MagicMock(spec=AgentGraphSession)
+        mock_session.chat = AsyncMock(return_value="ack private")
+        mock_session.last_metadata = SessionMetadata()
+
+        with patch.object(orch, "_build_session", AsyncMock(return_value=mock_session)):
+            await orch.execute_chat("private turn", "c1")
+
+            cs.ll_model.chat_history = True
+            cs.model_dump.return_value = {
+                **cs.model_dump(),
+                "ll_model": {**cs.model_dump()["ll_model"], "chat_history": True},
+            }
+            await orch.execute_chat("new turn", "c1")
+
+        passed = mock_session.chat.call_args.kwargs["history_messages"]
+        contents = [m.content for m in passed]
+        assert "private turn" not in contents, contents
+        assert "ack private" not in contents, contents
+
+    @pytest.mark.anyio
+    async def test_combined_session_receives_both_history_forms(self):
+        cs = mock_client_settings(chat_history=True, tools_enabled=["NL2SQL", "Vector Search"])
+        orch = _make_orchestrator(cs=cs)
+        orch.history.append("c1", "user", "earlier")
+        orch.history.append("c1", "assistant", "earlier reply")
+
+        mock_session = MagicMock(spec=CombinedSession)
+        mock_session.execute = AsyncMock(return_value="answer")
+        mock_session.last_metadata = SessionMetadata()
+
+        with patch.object(orch, "_build_session", AsyncMock(return_value=mock_session)):
+            await orch.execute_chat("now", "c1")
+
+        kwargs = mock_session.execute.call_args.kwargs
+        assert kwargs["history_text"] == "User: earlier\nAssistant: earlier reply\n"
+        assert [m.content for m in kwargs["history_messages"]] == ["earlier", "earlier reply"]

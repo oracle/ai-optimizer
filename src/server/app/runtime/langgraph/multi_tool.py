@@ -120,27 +120,34 @@ class CombinedSession(BaseCombinedSession):
             LOGGER.exception("Synthesis failed, returning concatenated answers")
             return f"Database result:\n{nl2sql_answer}\n\nDocument result:\n{vs_answer}", None
 
-    async def execute(self, query: str, thread_id: str, chat_history: bool = True) -> str:
+    async def execute(
+        self,
+        query: str,
+        thread_id: str,
+        history_text: str = "",
+        history_messages: Optional[list] = None,
+    ) -> str:
         """Route and execute the query."""
         route, classifier_tu = await self.classify(query)
         self.last_metadata = SessionMetadata()
+        history_messages = history_messages or []
 
         if route == "vecsearch":
-            answer = await self.vs_session.execute(query, thread_id, chat_history=chat_history)
+            answer = await self.vs_session.execute(query, thread_id, history_text=history_text)
             self.last_metadata = self.vs_session.last_metadata.model_copy()
             combined_tu = _sum_token_usage(self.last_metadata.token_usage, classifier_tu)
             if combined_tu:
                 self.last_metadata.token_usage = combined_tu
         elif route == "nl2sql":
-            answer = await self.nl2sql_session.chat(query, chat_history=chat_history)
+            answer = await self.nl2sql_session.chat(query, history_messages=history_messages)
             self.last_metadata.grade_relevant = "yes"
             combined_tu = _sum_token_usage(self.nl2sql_session.last_metadata.token_usage, classifier_tu)
             if combined_tu:
                 self.last_metadata.token_usage = combined_tu
         else:
             vs_answer, nl2sql_answer = await asyncio.gather(
-                self.vs_session.execute(query, thread_id, chat_history=chat_history),
-                self.nl2sql_session.chat(query, chat_history=chat_history),
+                self.vs_session.execute(query, thread_id, history_text=history_text),
+                self.nl2sql_session.chat(query, history_messages=history_messages),
             )
             answer, synth_tu = await self._handle_both_results(query, vs_answer, nl2sql_answer)
             combined_tu = _sum_token_usage(
@@ -158,7 +165,8 @@ class CombinedSession(BaseCombinedSession):
         self,
         query: str,
         thread_id: str,
-        chat_history: bool,
+        history_text: str,
+        history_messages: list,
         queue: asyncio.Queue,
         stream_flow: Callable[..., Awaitable[None]],
         stream_agent: Callable[..., Awaitable[None]],
@@ -171,17 +179,17 @@ class CombinedSession(BaseCombinedSession):
             await queue.put({"type": "_token_usage", **classifier_tu.model_dump()})
 
         if route == "vecsearch":
-            await stream_flow(self.vs_session, "vecsearch", query, thread_id, queue, chat_history)
+            await stream_flow(self.vs_session, "vecsearch", query, thread_id, queue, history_text)
             self.last_metadata = self.vs_session.last_metadata.model_copy()
         elif route == "nl2sql":
-            await stream_agent(self.nl2sql_session, chat_history, query, queue)
+            await stream_agent(self.nl2sql_session, history_messages, query, queue)
         else:
             # Synthesis requires both branches' answers, so we can't stream tokens
             # before the synthesis. Run the branches in parallel and emit the
             # synthesized answer as a single stream event below.
             vs_answer, nl2sql_answer = await asyncio.gather(
-                self.vs_session.execute(query, thread_id, chat_history=chat_history),
-                self.nl2sql_session.chat(query, chat_history=chat_history),
+                self.vs_session.execute(query, thread_id, history_text=history_text),
+                self.nl2sql_session.chat(query, history_messages=history_messages),
             )
             answer, synth_tu = await self._handle_both_results(query, vs_answer, nl2sql_answer)
             await queue.put({"type": "stream", "content": answer})
