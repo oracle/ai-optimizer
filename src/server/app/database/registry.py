@@ -66,7 +66,7 @@ async def discover_vector_stores(conn: oracledb.AsyncConnection) -> list[VectorS
 
                 stores.append(VectorStoreConfig(vector_store=table_name, **comments_dict))
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
-                LOGGER.warning("Skipping vector store %s – bad metadata: %s", table_name, exc)
+                LOGGER.warning("Skipping vector store %s - bad metadata: %s", table_name, exc)
         LOGGER.debug("Discovered vector stores: %s", stores)
         return stores
     except (json.JSONDecodeError, TypeError, ValueError) as exc:

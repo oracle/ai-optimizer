@@ -425,10 +425,10 @@ class BaseChatOrchestrator:
 
     Type properties::
 
-        _agent_session_type    – e.g. AgentGraphSession or AgentChatSession
-        _combined_session_type – CombinedSession from the respective runtime
-        _flow_session_type     – GraphFlowSession or FlowSession
-        _nl2sql_session_type   – NL2SQLGraphSession or NL2SQLAgentSession
+        _agent_session_type    - e.g. AgentGraphSession or AgentChatSession
+        _combined_session_type - CombinedSession from the respective runtime
+        _flow_session_type     - GraphFlowSession or FlowSession
+        _nl2sql_session_type   - NL2SQLGraphSession or NL2SQLAgentSession
 
     Hook methods::
 
