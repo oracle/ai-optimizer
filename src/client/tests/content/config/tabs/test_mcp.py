@@ -121,21 +121,52 @@ class TestGetMcpStatus:
 class TestGetMcpClient:
     """Tests for get_mcp_client."""
 
-    def test_returns_json_string(self):
-        """Successful API call returns the config as a JSON string."""
-        config = {"servers": ["s1"]}
-        with patch(f"{MODULE}.api_get", return_value=config):
+    def test_returns_json_string_default_client(self):
+        """Successful API call returns the default client config as a JSON string."""
+        config = {"mcpServers": {"oracle-ai-optimizer": {"url": "http://test/mcp"}}}
+
+        with patch(f"{MODULE}.api_get", return_value=config) as mock_api_get:
             from client.app.content.config.tabs.mcp import get_mcp_client
 
             result = get_mcp_client()
+
         assert json.loads(result) == config
+        mock_api_get.assert_called_once_with(
+            "client-config",
+            api_prefix="/mcp",
+            params={"client": "generic"},
+        )
+
+    def test_returns_json_string_for_selected_client(self):
+        """Successful API call passes the selected MCP client to the API."""
+        config = {
+            "mcpServers": {
+                "oracle-ai-optimizer": {
+                    "command": "npx",
+                    "args": ["-y", "mcp-remote", "http://test/mcp"],
+                }
+            }
+        }
+
+        with patch(f"{MODULE}.api_get", return_value=config) as mock_api_get:
+            from client.app.content.config.tabs.mcp import get_mcp_client
+
+            result = get_mcp_client("claude-desktop")
+
+        assert json.loads(result) == config
+        mock_api_get.assert_called_once_with(
+            "client-config",
+            api_prefix="/mcp",
+            params={"client": "claude-desktop"},
+        )
 
     def test_http_error_returns_empty_json(self):
         """HTTP error is caught and an empty JSON object string is returned."""
         with patch(f"{MODULE}.api_get", side_effect=make_http_error(500)):
             from client.app.content.config.tabs.mcp import get_mcp_client
 
-            result = get_mcp_client()
+            result = get_mcp_client("cline")
+
         assert result == "{}"
 
     def test_connection_error_returns_empty_json(self):
@@ -143,7 +174,8 @@ class TestGetMcpClient:
         with patch(f"{MODULE}.api_get", side_effect=ConnectionError("refused")):
             from client.app.content.config.tabs.mcp import get_mcp_client
 
-            result = get_mcp_client()
+            result = get_mcp_client("inspector")
+
         assert result == "{}"
 
 
