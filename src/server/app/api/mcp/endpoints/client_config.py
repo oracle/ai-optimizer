@@ -17,12 +17,15 @@ auth = APIRouter()
 
 def _mcp_url(request: Request) -> str:
     """Build MCP URL from the incoming request."""
-    # NOTE: In Starlette ≥0.37 request.base_url uses scope["app_root_path"]
-    # and does NOT include the app's own root_path set via FastAPI(root_path=...).
-    # If a reverse proxy *also* sets root_path to the same prefix value, the URL
-    # will be double-prefixed — avoid configuring both simultaneously.
     base = str(request.base_url).rstrip("/")
-    return f"{base}{settings.server_url_prefix}/mcp"
+    prefix = settings.server_url_prefix or ""
+
+    if prefix and not prefix.startswith("/"):
+        prefix = f"/{prefix}"
+
+    prefix = prefix.rstrip("/")
+
+    return f"{base}{prefix}/mcp"
 
 
 def _api_key() -> str:
