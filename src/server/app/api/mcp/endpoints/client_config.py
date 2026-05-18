@@ -30,7 +30,15 @@ def _mcp_url(request: Request) -> str:
 
 def _api_key() -> str:
     """Reveal API key for client configuration."""
-    return reveal(settings.api_key)
+    api_key = reveal(settings.api_key)
+
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="MCP API key is not configured.",
+        )
+
+    return api_key
 
 
 def _streamable_http_entry(url: str, api_key: str, include_type: bool = True) -> dict:
