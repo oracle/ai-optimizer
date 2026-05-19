@@ -178,6 +178,15 @@ class TestGetMcpClient:
 
         assert result == "{}"
 
+    def test_os_error_returns_empty_json(self):
+        """OSError is caught and an empty JSON object string is returned."""
+        with patch(f"{MODULE}.api_get", side_effect=OSError("network unreachable")):
+            from client.app.content.config.tabs.mcp import get_mcp_client
+
+            result = get_mcp_client("generic")
+
+        assert result == "{}"
+
 
 # ---------------------------------------------------------------------------
 # get_mcp
@@ -449,7 +458,6 @@ class TestDisplayMcp:
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}") as mock_get_client,
-            patch(f"{MODULE}.render_mcp_client_instructions") as mock_render_instructions,
             patch(f"{MODULE}.is_authenticated", return_value=True),
         ):
             from client.app.content.config.tabs.mcp import display_mcp
@@ -458,7 +466,8 @@ class TestDisplayMcp:
 
         mock_st.header.assert_called()
         mock_get_client.assert_called_once_with("generic")
-        mock_render_instructions.assert_called_once_with("generic")
+        mock_st.caption.assert_called_once_with("Generic MCP client configuration using Streamable HTTP.")
+        mock_st.code.assert_called_once_with("{}", language="json")
 
     def test_stops_when_unavailable(self, mock_st):
         """An empty status causes an error and stops rendering."""
@@ -496,7 +505,6 @@ class TestDisplayMcp:
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}"),
-            patch(f"{MODULE}.render_mcp_client_instructions"),
             patch(f"{MODULE}.is_authenticated", return_value=True),
             patch(f"{MODULE}.render_configs") as mock_render,
         ):
@@ -526,7 +534,6 @@ class TestDisplayMcp:
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}"),
-            patch(f"{MODULE}.render_mcp_client_instructions"),
             patch(f"{MODULE}.is_authenticated", return_value=True),
             patch(f"{MODULE}.render_configs") as mock_render,
         ):
