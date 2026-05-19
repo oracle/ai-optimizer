@@ -5,10 +5,10 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Response models for client config endpoint.
 """
 
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import RootModel
 
 
-class MCPClientConfigResponse(BaseModel):
+class MCPClientConfigResponse(RootModel[dict[str, Any]]):
     """MCP client configuration response (passthrough dict)."""
-
-    mcpServers: dict
