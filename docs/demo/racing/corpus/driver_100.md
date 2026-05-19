@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 100
 Driver code: Driver100
-Team: Vertex GP
-Team engineering focus: Telemetry Analytics
 Driver group: Cohort J
 Simulator rig: Rig 25
 Vehicle setup: Wet Weather

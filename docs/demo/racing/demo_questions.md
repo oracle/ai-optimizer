@@ -9,11 +9,10 @@ The demo flow is designed to show the difference between an ungrounded LLM answe
 Purpose: show that the model does not know the synthetic demo data unless it is connected to a source.
 
 Ask:
-
-- I am Driver `<driver number>`. What is my driving style?
-- I am Driver `<driver number>`. What team am I on?
-- I am Driver `<driver number>`. How many championship points do I have?
-- I am Driver `<driver number>`. What should I improve before the next race?
+I am Driver `<driver number>`...
+- What team am I on?
+- How many championship points do I have?
+- What should I improve before the next race?
 
 Expected teaching point:
 
@@ -25,20 +24,18 @@ Purpose: show that structured questions can now be answered from Oracle tables a
 
 Ask:
 
-- I am Driver `<driver number>`. What is my driving style?
-- I am Driver `<driver number>`. What vehicle setup and simulator rig am I assigned to?
-- I am Driver `<driver number>`. Which team am I on?
-- I am Driver `<driver number>`. What is my team engineering focus?
-- I am Driver `<driver number>`. How many points do I have before the finale?
-- I am Driver `<driver number>`. What was my best finish?
-- I am Driver `<driver number>`. What was my fastest lap and in which race?
-- I am Driver `<driver number>`. Did I have any incidents?
-- I am Driver `<driver number>`. How many pit stops did I make?
-
-<Change the Prompt to add "6. Return the SQL query that was run to obtain the result" >
-
-- Compare Driver `<driver number>` with Driver `<another driver number>` on total points, best finish, average lap time, and incidents.
-- Which drivers have the same driving style as Driver `<driver number>`?
+I am Driver `<driver number>`...
+- What is my driving style?
+- What vehicle setup and simulator rig am I assigned to?
+- Which team am I on?
+- What is my team engineering focus?
+- How many points do I have before the finale?
+- What was my best finish?
+- What was my fastest lap and in which race?
+- Did I have any incidents?
+- How many pit stops did I make?
+- Compare me with Driver `<another driver number>` on total points, best finish, average lap time, and incidents.
+- Which drivers have the same driving style as me?
 - Which team is leading before Round 6?
 
 Expected teaching point:
@@ -52,13 +49,14 @@ Purpose: show that unstructured documents can answer briefing, coaching, and nar
 Before this step, participants should embed the driver document for their assigned driver from `driver_documents/`, for example `driver_documents/driver_001.md` for Driver 1.
 
 Ask:
-
-- I am Driver `<driver number>`. Summarize my driver briefing.
-- I am Driver `<driver number>`. What did my coach say I should improve?
-- I am Driver `<driver number>`. What setup advice was given to me?
-- I am Driver `<driver number>`. What does my race debrief say?
-- I am Driver `<driver number>`. What risks or weaknesses are mentioned in my notes?
-- I am Driver `<driver number>`. Give me three practical focus areas for my next simulator session.
+I am Driver `<driver number>`...
+- What team am I on?
+- Summarize my driver briefing.
+- What did my coach say I should improve?
+- What setup advice was given to me?
+- What does my race debrief say?
+- What risks or weaknesses are mentioned in my notes?
+- Give me three practical focus areas for my next simulator session.
 
 Expected teaching point:
 
@@ -70,11 +68,12 @@ Purpose: show that the strongest answers combine structured database facts with 
 
 Ask:
 
-- I am Driver `<driver number>`. Use my database results and my documents to summarize my season so far.
-- I am Driver `<driver number>`. Based on my points, incidents, and coaching notes, what should I focus on next?
-- I am Driver `<driver number>`. Which race should I review first, based on my worst structured result and my debrief notes?
-- I am Driver `<driver number>`. Did my structured performance match the feedback in my documents?
-- Compare Driver `<driver number>` with Driver `<another driver number>` using both database results and driver notes.
+I am Driver `<driver number>`...
+- Use my database results and my documents to summarize my season so far.
+- Based on my points, incidents, and coaching notes, what should I focus on next?
+- Which race should I review first, based on my worst structured result and my debrief notes?
+- Did my structured performance match the feedback in my documents?
+- Compare me with Driver `<another driver number>` using both database results and driver notes.
 
 Expected teaching point:
 

@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 50
 Driver code: Driver050
-Team: Vertex GP
-Team engineering focus: Telemetry Analytics
 Driver group: Cohort J
 Simulator rig: Rig 25
 Vehicle setup: Wet Weather
@@ -13,7 +11,7 @@ Primary skill focus: Consistency
 
 ## Session Context
 
-Vertex GP has kept Driver 50 on a Wet Weather direction. The assignment is Cohort J, Rig 25; driving profile logged as Qualifying Specialist. Engineering focus for the garage is Telemetry Analytics, so comments should be precise rather than general feel.
+The garage has kept Driver 50 on a Wet Weather direction. The assignment is Cohort J, Rig 25; driving profile logged as Qualifying Specialist. The engineering programme expects precise comments rather than general feel.
 
 ## Coach Review
 

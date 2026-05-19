@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 20
 Driver code: Driver020
-Team: Vertex GP
-Team engineering focus: Telemetry Analytics
 Driver group: Cohort J
 Simulator rig: Rig 20
 Vehicle setup: Wet Weather

@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 28
 Driver code: Driver028
-Team: Titan Motorsport
-Team engineering focus: Race Simulation
 Driver group: Cohort H
 Simulator rig: Rig 03
 Vehicle setup: Energy Recovery

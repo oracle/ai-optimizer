@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 7
 Driver code: Driver007
-Team: Velocity Forge
-Team engineering focus: Pit Stop Execution
 Driver group: Cohort G
 Simulator rig: Rig 07
 Vehicle setup: Low Drag
@@ -13,7 +11,7 @@ Primary skill focus: Tyre Management
 
 ## Overview
 
-Driver 7 / Driver007: Low Drag car, Consistency Focused approach, Velocity Forge garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to Pit Stop Execution, tyre phase, and traffic response.
+Driver 7 / Driver007: Low Drag car, Consistency Focused approach, working out of the team garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to the technical focus, tyre phase, and traffic response.
 
 ## Key Observations
 

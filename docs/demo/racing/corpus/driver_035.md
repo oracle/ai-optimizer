@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 35
 Driver code: Driver035
-Team: Nova Circuit
-Team engineering focus: Brake Stability
 Driver group: Cohort E
 Simulator rig: Rig 10
 Vehicle setup: Traction Focus
@@ -13,7 +11,7 @@ Primary skill focus: Recovery Drive
 
 ## Overview
 
-Driver 35 / Driver035: Traction Focus car, Tyre Saver approach, Nova Circuit garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to Brake Stability, tyre phase, and traffic response.
+Driver 35 / Driver035: Traction Focus car, Tyre Saver approach, working out of the team garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to the technical focus, tyre phase, and traffic response.
 
 ## Key Observations
 

@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 32
 Driver code: Driver032
-Team: Blue Torque
-Team engineering focus: Battery Deployment
 Driver group: Cohort B
 Simulator rig: Rig 07
 Vehicle setup: Kerb Stability

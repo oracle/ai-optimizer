@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 72
 Driver code: Driver072
-Team: Blue Torque
-Team engineering focus: Battery Deployment
 Driver group: Cohort B
 Simulator rig: Rig 22
 Vehicle setup: Kerb Stability

@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 74
 Driver code: Driver074
-Team: Delta Velocity
-Team engineering focus: Wet Setup
 Driver group: Cohort D
 Simulator rig: Rig 24
 Vehicle setup: Balanced
@@ -13,7 +11,7 @@ Primary skill focus: Consistency
 
 ## Session Context
 
-Delta Velocity has kept Driver 74 on a Balanced direction. The assignment is Cohort D, Rig 24; driving profile logged as Overtake Focused. Engineering focus for the garage is Wet Setup, so comments should be precise rather than general feel.
+The garage has kept Driver 74 on a Balanced direction. The assignment is Cohort D, Rig 24; driving profile logged as Overtake Focused. The engineering programme expects precise comments rather than general feel.
 
 ## Coach Review
 

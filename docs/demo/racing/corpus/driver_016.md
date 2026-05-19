@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 16
 Driver code: Driver016
-Team: Quantum Apex
-Team engineering focus: Suspension Balance
 Driver group: Cohort F
 Simulator rig: Rig 16
 Vehicle setup: Qualifying Trim

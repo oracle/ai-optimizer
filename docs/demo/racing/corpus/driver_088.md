@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 88
 Driver code: Driver088
-Team: Titan Motorsport
-Team engineering focus: Race Simulation
 Driver group: Cohort H
 Simulator rig: Rig 13
 Vehicle setup: Energy Recovery

@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 12
 Driver code: Driver012
-Team: Blue Torque
-Team engineering focus: Battery Deployment
 Driver group: Cohort B
 Simulator rig: Rig 12
 Vehicle setup: Kerb Stability

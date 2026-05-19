@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 15
 Driver code: Driver015
-Team: Nova Circuit
-Team engineering focus: Brake Stability
 Driver group: Cohort E
 Simulator rig: Rig 15
 Vehicle setup: Traction Focus
@@ -13,7 +11,7 @@ Primary skill focus: Tyre Management
 
 ## Overview
 
-Driver 15 / Driver015: Traction Focus car, Tyre Saver approach, Nova Circuit garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to Brake Stability, tyre phase, and traffic response.
+Driver 15 / Driver015: Traction Focus car, Tyre Saver approach, working out of the team garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to the technical focus, tyre phase, and traffic response.
 
 ## Key Observations
 

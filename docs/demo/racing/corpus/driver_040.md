@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 40
 Driver code: Driver040
-Team: Vertex GP
-Team engineering focus: Telemetry Analytics
 Driver group: Cohort J
 Simulator rig: Rig 15
 Vehicle setup: Wet Weather

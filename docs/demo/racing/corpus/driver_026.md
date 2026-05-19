@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 26
 Driver code: Driver026
-Team: Quantum Apex
-Team engineering focus: Suspension Balance
 Driver group: Cohort F
 Simulator rig: Rig 01
 Vehicle setup: Qualifying Trim
@@ -13,7 +11,7 @@ Primary skill focus: Consistency
 
 ## Session Context
 
-Quantum Apex has kept Driver 26 on a Qualifying Trim direction. The assignment is Cohort F, Rig 01; driving profile logged as Smooth Inputs. Engineering focus for the garage is Suspension Balance, so comments should be precise rather than general feel.
+The garage has kept Driver 26 on a Qualifying Trim direction. The assignment is Cohort F, Rig 01; driving profile logged as Smooth Inputs. The engineering programme expects precise comments rather than general feel.
 
 ## Coach Review
 

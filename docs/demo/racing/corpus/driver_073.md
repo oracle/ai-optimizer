@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 73
 Driver code: Driver073
-Team: Carbon Shift
-Team engineering focus: Tyre Strategy
 Driver group: Cohort C
 Simulator rig: Rig 23
 Vehicle setup: Tyre Saver
@@ -13,7 +11,7 @@ Primary skill focus: Qualifying Pace
 
 ## Driver Briefing
 
-Driver 73 is running with a Tyre Saver baseline on Rig 23. The profile remains Strategy Led, which fits the current Carbon Shift programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
+Driver 73 is running with a Tyre Saver baseline on Rig 23. The profile remains Strategy Led, which fits the current programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
 
 ## Coaching Notes
 

@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 61
 Driver code: Driver061
-Team: Apex Dynamics
-Team engineering focus: Aero Efficiency
 Driver group: Cohort A
 Simulator rig: Rig 11
 Vehicle setup: High Downforce
@@ -13,7 +11,7 @@ Primary skill focus: Strategy Awareness
 
 ## Driver Briefing
 
-Driver 61 is running with a High Downforce baseline on Rig 11. The profile remains Defensive Racer, which fits the current Apex Dynamics programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
+Driver 61 is running with a High Downforce baseline on Rig 11. The profile remains Defensive Racer, which fits the current programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
 
 ## Coaching Notes
 

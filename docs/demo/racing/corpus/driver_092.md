@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 92
 Driver code: Driver092
-Team: Blue Torque
-Team engineering focus: Battery Deployment
 Driver group: Cohort B
 Simulator rig: Rig 17
 Vehicle setup: Kerb Stability

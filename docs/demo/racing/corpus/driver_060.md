@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 60
 Driver code: Driver060
-Team: Vertex GP
-Team engineering focus: Telemetry Analytics
 Driver group: Cohort J
 Simulator rig: Rig 10
 Vehicle setup: Wet Weather

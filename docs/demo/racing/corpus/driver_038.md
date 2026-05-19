@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 38
 Driver code: Driver038
-Team: Titan Motorsport
-Team engineering focus: Race Simulation
 Driver group: Cohort H
 Simulator rig: Rig 13
 Vehicle setup: Energy Recovery
@@ -13,7 +11,7 @@ Primary skill focus: Wet Weather
 
 ## Session Context
 
-Titan Motorsport has kept Driver 38 on a Energy Recovery direction. The assignment is Cohort H, Rig 13; driving profile logged as Wet Specialist. Engineering focus for the garage is Race Simulation, so comments should be precise rather than general feel.
+The garage has kept Driver 38 on a Energy Recovery direction. The assignment is Cohort H, Rig 13; driving profile logged as Wet Specialist. The engineering programme expects precise comments rather than general feel.
 
 ## Coach Review
 

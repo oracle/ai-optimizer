@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 24
 Driver code: Driver024
-Team: Delta Velocity
-Team engineering focus: Wet Setup
 Driver group: Cohort D
 Simulator rig: Rig 24
 Vehicle setup: Balanced

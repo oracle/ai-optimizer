@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 52
 Driver code: Driver052
-Team: Blue Torque
-Team engineering focus: Battery Deployment
 Driver group: Cohort B
 Simulator rig: Rig 02
 Vehicle setup: Kerb Stability

@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 57
 Driver code: Driver057
-Team: Velocity Forge
-Team engineering focus: Pit Stop Execution
 Driver group: Cohort G
 Simulator rig: Rig 07
 Vehicle setup: Low Drag
@@ -13,7 +11,7 @@ Primary skill focus: Qualifying Pace
 
 ## Driver Briefing
 
-Driver 57 is running with a Low Drag baseline on Rig 07. The profile remains Consistency Focused, which fits the current Velocity Forge programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
+Driver 57 is running with a Low Drag baseline on Rig 07. The profile remains Consistency Focused, which fits the current programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
 
 ## Coaching Notes
 

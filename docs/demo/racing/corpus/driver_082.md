@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 82
 Driver code: Driver082
-Team: Blue Torque
-Team engineering focus: Battery Deployment
 Driver group: Cohort B
 Simulator rig: Rig 07
 Vehicle setup: Kerb Stability
@@ -13,7 +11,7 @@ Primary skill focus: Consistency
 
 ## Session Context
 
-Blue Torque has kept Driver 82 on a Kerb Stability direction. The assignment is Cohort B, Rig 07; driving profile logged as Late Braker. Engineering focus for the garage is Battery Deployment, so comments should be precise rather than general feel.
+The garage has kept Driver 82 on a Kerb Stability direction. The assignment is Cohort B, Rig 07; driving profile logged as Late Braker. The engineering programme expects precise comments rather than general feel.
 
 ## Coach Review
 

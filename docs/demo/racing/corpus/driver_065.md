@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 65
 Driver code: Driver065
-Team: Nova Circuit
-Team engineering focus: Brake Stability
 Driver group: Cohort E
 Simulator rig: Rig 15
 Vehicle setup: Traction Focus
@@ -13,7 +11,7 @@ Primary skill focus: Qualifying Pace
 
 ## Driver Briefing
 
-Driver 65 is running with a Traction Focus baseline on Rig 15. The profile remains Tyre Saver, which fits the current Nova Circuit programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
+Driver 65 is running with a Traction Focus baseline on Rig 15. The profile remains Tyre Saver, which fits the current programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
 
 ## Coaching Notes
 

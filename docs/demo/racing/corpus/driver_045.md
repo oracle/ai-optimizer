@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 45
 Driver code: Driver045
-Team: Nova Circuit
-Team engineering focus: Brake Stability
 Driver group: Cohort E
 Simulator rig: Rig 20
 Vehicle setup: Traction Focus
@@ -13,7 +11,7 @@ Primary skill focus: Strategy Awareness
 
 ## Driver Briefing
 
-Driver 45 is running with a Traction Focus baseline on Rig 20. The profile remains Tyre Saver, which fits the current Nova Circuit programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
+Driver 45 is running with a Traction Focus baseline on Rig 20. The profile remains Tyre Saver, which fits the current programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
 
 ## Coaching Notes
 

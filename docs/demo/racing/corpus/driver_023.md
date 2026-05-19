@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 23
 Driver code: Driver023
-Team: Carbon Shift
-Team engineering focus: Tyre Strategy
 Driver group: Cohort C
 Simulator rig: Rig 23
 Vehicle setup: Tyre Saver
@@ -13,7 +11,7 @@ Primary skill focus: Tyre Management
 
 ## Overview
 
-Driver 23 / Driver023: Tyre Saver car, Strategy Led approach, Carbon Shift garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to Tyre Strategy, tyre phase, and traffic response.
+Driver 23 / Driver023: Tyre Saver car, Strategy Led approach, working out of the team garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to the technical focus, tyre phase, and traffic response.
 
 ## Key Observations
 

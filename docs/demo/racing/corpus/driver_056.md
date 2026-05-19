@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 56
 Driver code: Driver056
-Team: Quantum Apex
-Team engineering focus: Suspension Balance
 Driver group: Cohort F
 Simulator rig: Rig 06
 Vehicle setup: Qualifying Trim

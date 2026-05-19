@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 39
 Driver code: Driver039
-Team: Phoenix Racing Lab
-Team engineering focus: Thermal Management
 Driver group: Cohort I
 Simulator rig: Rig 14
 Vehicle setup: Race Pace
@@ -13,7 +11,7 @@ Primary skill focus: Tyre Management
 
 ## Overview
 
-Driver 39 / Driver039: Race Pace car, Aggressive Starter approach, Phoenix Racing Lab garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to Thermal Management, tyre phase, and traffic response.
+Driver 39 / Driver039: Race Pace car, Aggressive Starter approach, working out of the team garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to the technical focus, tyre phase, and traffic response.
 
 ## Key Observations
 

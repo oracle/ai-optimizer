@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 89
 Driver code: Driver089
-Team: Phoenix Racing Lab
-Team engineering focus: Thermal Management
 Driver group: Cohort I
 Simulator rig: Rig 14
 Vehicle setup: Race Pace
@@ -13,7 +11,7 @@ Primary skill focus: Qualifying Pace
 
 ## Driver Briefing
 
-Driver 89 is running with a Race Pace baseline on Rig 14. The profile remains Aggressive Starter, which fits the current Phoenix Racing Lab programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
+Driver 89 is running with a Race Pace baseline on Rig 14. The profile remains Aggressive Starter, which fits the current programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
 
 ## Coaching Notes
 

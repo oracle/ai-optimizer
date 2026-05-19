@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 96
 Driver code: Driver096
-Team: Quantum Apex
-Team engineering focus: Suspension Balance
 Driver group: Cohort F
 Simulator rig: Rig 21
 Vehicle setup: Qualifying Trim

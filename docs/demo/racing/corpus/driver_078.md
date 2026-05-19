@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 78
 Driver code: Driver078
-Team: Titan Motorsport
-Team engineering focus: Race Simulation
 Driver group: Cohort H
 Simulator rig: Rig 03
 Vehicle setup: Energy Recovery
@@ -13,7 +11,7 @@ Primary skill focus: Wet Weather
 
 ## Session Context
 
-Titan Motorsport has kept Driver 78 on a Energy Recovery direction. The assignment is Cohort H, Rig 03; driving profile logged as Wet Specialist. Engineering focus for the garage is Race Simulation, so comments should be precise rather than general feel.
+The garage has kept Driver 78 on a Energy Recovery direction. The assignment is Cohort H, Rig 03; driving profile logged as Wet Specialist. The engineering programme expects precise comments rather than general feel.
 
 ## Coach Review
 

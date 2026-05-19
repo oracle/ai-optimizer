@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 91
 Driver code: Driver091
-Team: Apex Dynamics
-Team engineering focus: Aero Efficiency
 Driver group: Cohort A
 Simulator rig: Rig 16
 Vehicle setup: High Downforce
@@ -13,7 +11,7 @@ Primary skill focus: Recovery Drive
 
 ## Overview
 
-Driver 91 / Driver091: High Downforce car, Defensive Racer approach, Apex Dynamics garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to Aero Efficiency, tyre phase, and traffic response.
+Driver 91 / Driver091: High Downforce car, Defensive Racer approach, working out of the team garage. The run objective is not just pace; it is repeatable evidence. The useful comments will connect driver feel to the technical focus, tyre phase, and traffic response.
 
 ## Key Observations
 

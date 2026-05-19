@@ -6,7 +6,7 @@ A four-step demo (with a championship-reveal finale) that shows the progressive 
 2. **+ NL2SQL** — exact answers from the structured race database
 3. **+ Vector Search** — coaching, briefing, and debrief context from driver documents
 4. **+ Both together** — questions that need facts *and* context, answered in one turn
-5. **Final Reveal — Who won the championship?** — the answer requires combining pre-finale standings (database) with a Round 6 Race Control Bulletin (vector store). Neither source alone can name the champion.
+5. **Final Reveal — Who won the championship?** — a late Round 6 team-points insert updates the live database, then NL2SQL calculates the final champion from structured standings.
 
 All data in this folder is synthetic. There is no PII. "Driver 1", "Driver001", and friends are simulator identities only.
 
@@ -24,8 +24,7 @@ racing/
     ├── driver_001.md       # Per-driver briefing + coaching notes + debrief
     ├── driver_002.md
     ├── ...
-    ├── driver_100.md
-    └── finale_results.md   # Round 6 Race Control Bulletin (embed for the Final Reveal)
+    └── driver_100.md
 ```
 
 ---
@@ -34,7 +33,7 @@ racing/
 
 ### Infrastructure
 1. **Kubernetes** - apply the OpenTofu Kubernetes stack for the target environment.  CPU is perfectly fine.
-1. **Load the schema** — as the `AI_OPTIMIZER` database user, run `schema.sql`. It creates the `teams`, `drivers`, `races`, `race_results`, `pit_stops`, `incidents`, `performance_metrics`, and `source_documents` tables; the `driver_standings`, `team_standings`, and `race_summary` views; and seeds Rounds 1–5 for all 100 drivers across 10 teams. Round 6 is scheduled but has **no** structured results — that's intentional.
+1. **Load the schema** — as the `AI_OPTIMIZER` database user, run `schema.sql`. It creates the `teams`, `drivers`, `races`, `race_results`, `pit_stops`, `incidents`, `performance_metrics`, `team_race_points`, and `source_documents` tables; the `driver_standings`, `team_standings`, `championship_team_standings`, and `race_summary` views; and seeds Rounds 1–5 for all 100 drivers across 10 teams. Round 6 is scheduled but has **no** team points in the bootstrap database — that's intentional.
 1. **Verify Schema** — pick a driver number (e.g. Driver 1) and confirm in SQL that they exist and have results before Round 6:
    ```sql
    SELECT driver_label, team_id FROM drivers WHERE driver_code = 'Driver001';
@@ -47,10 +46,10 @@ Log into the AI Optimizer to setup:
 
 1. **Pick an LLM + embedding model** at **Configuration → Models**. Anything with solid tool-use works (e.g. OpenAI `gpt-4o` + `text-embedding-3-small`, or OCI `cohere.command-r-plus` + `cohere.embed-english-v3.0`). For an on-prem fallback, Ollama `llama3.1:8b` + `mxbai-embed-large` works, though combined-mode tools is weaker.
 1. **Import the prompts** — in **Tools → 🎤 Prompts**, import `prompts.json`. This installs the motorsport-analyst persona and the NL2SQL/RAG guidance the demo relies on.
-1. **Helm** - apply helm/examples/values-oke-demo-200.yaml
+1. **Helm** - apply `docs/demo/racing/values-oke-demo-100.yaml` (capacity overlay sized for ~100 concurrent attendees).
 
 
-Embedding the driver documents and the finale bulletin happens **during** the demo (Steps 3 and 5).
+Embedding the driver documents happens **during** the demo (Step 3). Loading the finale points happens **during** the Final Reveal by running `finale_insert.sql`.
 
 ---
 
@@ -79,7 +78,7 @@ The full prompt list is in `demo_questions.md` — print or share it so the audi
 
 ### Step 2 — Add NL2SQL
 
-**Settings:** NL2SQL **on**, database connection **RACING** selected.
+**Settings:** NL2SQL **on**, database connection **CORE** selected.
 
 **Prompts (same identity, real answers now):**
 > I am Driver `<N>`. What is my driving style, vehicle setup, and team?
@@ -94,7 +93,7 @@ The full prompt list is in `demo_questions.md` — print or share it so the audi
 
 **Expected behavior:** The agent calls SQLcl and runs queries against `drivers`, `race_results`, and the `driver_standings` / `team_standings` views — returning exact numbers for the driver and the championship through Round 5.
 
-**Talking point:** "Real-time, against the live database. No nightly extract, no stale dashboard. Note what it *can't* answer though — anything about coaching, debriefs, or Round 6 isn't in these tables."
+**Talking point:** "Real-time, against the live database. No nightly extract, no stale dashboard. Note what it *can't* answer though — anything about coaching, debriefs, or Round 6 before the final insert."
 
 ---
 
@@ -142,24 +141,28 @@ The full prompt list is in `demo_questions.md` — print or share it so the audi
 
 ### Final Reveal — Who won the championship?
 
-**Settings:** Vector Search **on**, NL2SQL **on**.
+**Settings:** NL2SQL **on**, database connection **CORE** selected. Vector Search can be off for this step.
 
-**One-time, in front of the audience:** embed `finale_results.md` into the vector store. This is the Round 6 Race Control Bulletin — it lists each team's Round 6 points but **does not** declare a champion. The pre-finale standings are in the database.
+**One-time, in front of the audience:** run `finale_insert.sql` as the `AI_OPTIMIZER` database user. This inserts the final Round 6 team points into `team_race_points` and makes them visible through `championship_team_standings`.
+
+```sql
+@docs/demo/racing/finale_insert.sql
+```
 
 **Prompts:**
-> Using the database team standings and the Round 6 Race Control Bulletin, which team won the championship? Show the pre-finale points, the Round 6 points, and the final total.
+> Using the database championship standings, which team won the championship? Show the pre-finale points, the Round 6 points, and the final total.
 >
-> Which teams were in contention before Round 6, and how did the Race Control Bulletin change the result?
+> Which teams were in contention before Round 6, and how did the final Round 6 database insert change the result?
 >
-> Why could NL2SQL alone not answer the final championship winner?
+> Why could NL2SQL not answer the final championship winner before the Round 6 insert?
 >
-> Why could RAG alone not confidently answer the final championship winner?
+> Show me the SQL used to calculate the final championship standings.
 
-**Expected behavior:** The model pulls pre-finale team points from `team_standings`, pulls Round 6 team points from the embedded bulletin, sums them, and names the champion — showing the working in a table.
+**Expected behavior:** The model queries `championship_team_standings`, shows pre-finale team points, Round 6 points, and final totals, then names the champion. Before `finale_insert.sql` runs, Round 6 points are zero and the final champion is not available.
 
-This is the money shot. Neither capability alone can produce it: NL2SQL has no Round 6 results in the structured tables, and the bulletin never names the champion outright.
+This is the money shot for live operational data: the same question changes when the late structured result lands in the database, and the model can explain the calculation from the underlying SQL.
 
-**Talking point:** "This is the question that doesn't fit on a dashboard *and* doesn't fit in a chatbot. Late-arriving documents plus structured history plus arithmetic — answered in one prompt."
+**Talking point:** "This is the question that proves the database is live. We did not re-index documents or rebuild a dashboard — the final classification arrived as structured data, and the assistant calculated the championship from it."
 
 ---
 
@@ -201,11 +204,11 @@ After Step 4, before the Final Reveal: **"Pick any driver number and ask anythin
 
 ## Troubleshooting
 
-- **Step 2 returns empty results or asks for column names:** the NL2SQL prompt needs to discover schema first. Confirm `prompts.json` was imported (the racing-tuned `optimizer_nl2sql-tools-default` tells the agent to chain `connect → schema-information → run-sql`). Re-import if Step 2 is flaky.
+- **Step 2 returns empty results or asks for column names:** confirm `prompts.json` was imported. The racing-tuned `optimizer_nl2sql-tools-default` includes the demo schema and tells the agent to run SQL directly. Re-import if Step 2 is flaky.
 - **Step 2 invents Round 6 results or a champion:** the model is over-reaching. The racing NL2SQL prompt explicitly forbids this — re-import `prompts.json` and try again.
 - **Step 3 says "no relevant sources":** the vector store is empty for that driver, or the embedding model differs from the one used at retrieval time. Re-embed the participant's `corpus/driver_<NNN>.md` using the same model that's selected in **Configuration → Models**.
 - **Step 4 answers from only one tool:** the classifier picked one path. Re-phrase to make the dual-source nature explicit ("using both my database results and my documents..."). On the Ollama fallback, this is more common — local models have weaker tool-use.
-- **Final Reveal names the wrong champion or refuses:** confirm `finale_results.md` was actually embedded and that the `team_standings` view returns non-zero `total_points` for each team. The model needs both halves.
+- **Final Reveal names the wrong champion or refuses:** confirm `finale_insert.sql` was run and that `championship_team_standings` returns non-zero `round6_points` for each team.
 - **Driver identifier ambiguity** (e.g. "Driver 1" matches multiple rows): switch to the padded code (`Driver001`). The racing prompt tells the model to normalize, but smaller models slip.
 
 ---
@@ -219,4 +222,4 @@ To re-run from scratch:
 DROP TABLE DRIVER_DOCS PURGE;
 ```
 
-Then re-run `schema.sql` and re-embed `corpus/driver_<NNN>.md` and `finale_results.md` during the demo as described above. If you customized any prompts, click **Restore Default** on each one — the originals will be re-installed from `prompts.json` on the next import.
+Then re-run `schema.sql`, re-embed `corpus/driver_<NNN>.md` during Step 3, and run `finale_insert.sql` during the Final Reveal. If you customized any prompts, click **Restore Default** on each one — the originals will be re-installed from `prompts.json` on the next import.

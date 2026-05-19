@@ -3,8 +3,6 @@
 Document type: Driver briefing and coaching notes
 Driver label: Driver 21
 Driver code: Driver021
-Team: Apex Dynamics
-Team engineering focus: Aero Efficiency
 Driver group: Cohort A
 Simulator rig: Rig 21
 Vehicle setup: High Downforce
@@ -13,7 +11,7 @@ Primary skill focus: Strategy Awareness
 
 ## Driver Briefing
 
-Driver 21 is running with a High Downforce baseline on Rig 21. The profile remains Defensive Racer, which fits the current Apex Dynamics programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
+Driver 21 is running with a High Downforce baseline on Rig 21. The profile remains Defensive Racer, which fits the current programme as long as the driver links style to measurable outputs: lap-time spread, tyre deg, pit timing, and mistakes under pressure.
 
 ## Coaching Notes
 
