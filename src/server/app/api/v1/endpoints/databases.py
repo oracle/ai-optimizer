@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Endpoints for retrieving database configurations.
 """
 
+import asyncio
 import logging
 from typing import Awaitable, Callable
 
@@ -17,7 +18,12 @@ from server.app.core.error_detail import response_error_detail
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.config import close_pool, get_core_pool
-from server.app.database.registry import drop_vector_store, init_core_database, test_connection
+from server.app.database.registry import (
+    drop_vector_store,
+    init_core_database,
+    refresh_db_vector_stores,
+    test_connection,
+)
 from server.app.database.schemas import DatabaseConfig, DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import persist_settings
 from server.app.embed.jobs import count_active_embed_jobs, count_active_embed_jobs_for_alias
@@ -154,7 +160,12 @@ def _check_username_dsn_conflict(username: str | None, dsn: str | None, exclude:
 async def list_databases():
     """Return all database configurations.  Sensitive fields are always
     omitted from list responses.
+
+    Reconciles ``vector_stores`` for every entry against the live
+    catalog so the list stays consistent with ``GET /v1/databases/{alias}``
+    and ``GET /v1/settings``.
     """
+    await asyncio.gather(*(refresh_db_vector_stores(cfg) for cfg in settings.database_configs))
     return [cfg.model_dump(exclude=SENSITIVE_FIELDS) for cfg in settings.database_configs]
 
 
@@ -164,9 +175,15 @@ async def get_database(
     request: Request,
     include_sensitive: bool = Query(default=False),
 ):
-    """Return a single database configuration by alias (case-insensitive)."""
+    """Return a single database configuration by alias (case-insensitive).
+
+    Reconciles the cached ``vector_stores`` list against the live DB so
+    out-of-band ``DROP TABLE`` (or any direct catalog change) is reflected
+    in the response.
+    """
     for cfg in settings.database_configs:
         if cfg.alias.lower() == alias.lower():
+            await refresh_db_vector_stores(cfg)
             if include_sensitive:
                 _log_sensitive_read(LOGGER, "databases", cfg.alias, request)
                 # Keep this path explicit so the configured serializer context

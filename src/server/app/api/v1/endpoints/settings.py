@@ -6,6 +6,7 @@ Endpoint for retrieving server settings.
 """
 # spell-checker: ignore litellm
 
+import asyncio
 import json
 import logging
 from typing import Annotated, Callable, Optional
@@ -33,6 +34,7 @@ from server.app.core.settings import (
     resolve_client,
     settings,
 )
+from server.app.database.registry import refresh_db_vector_stores
 from server.app.database.schemas import DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import delete_row, load_settings, persist_client_settings, persist_settings
 from server.app.mcp.prompts.registry import load_factory_prompts, reconcile_prompt_customizations, register_mcp_prompts
@@ -160,7 +162,15 @@ SENSITIVE_FIELDS = {
 async def get_client_settings(
     client: Annotated[ClientId, Query()] = "CONFIGURED",
 ):
-    """Return application settings combined with client settings."""
+    """Return application settings combined with client settings.
+
+    Each usable database has its ``vector_stores`` list re-discovered
+    against the live catalog so out-of-band ``DROP TABLE`` is reflected
+    in the GUI on the next refresh. Refreshes run concurrently and each
+    carries its own short deadline (see ``refresh_db_vector_stores``)
+    so a slow database can't stack delays or hang the response.
+    """
+    await asyncio.gather(*(refresh_db_vector_stores(cfg) for cfg in settings.database_configs))
     data = settings.model_dump(exclude=SENSITIVE_FIELDS)
     data["client_settings"] = resolve_client(client).model_dump()
     return data

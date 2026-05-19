@@ -6,6 +6,7 @@ Tests for settings endpoint.
 """
 # spell-checker: disable
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -85,6 +86,57 @@ async def test_get_client_settings_excludes_sensitive(app_client, auth_headers):
 
     # client_settings should be present from GET /settings
     assert "client_settings" in body
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_client_settings_rediscovers_vector_stores(app_client, auth_headers):
+    """GET /settings reconciles cached vector_stores against the live DB.
+
+    Simulates an admin DROP TABLE: the cache has a stale entry; the refresh
+    helper returns an empty discovery; the response must mirror reality.
+    """
+    from server.app.embed.schemas import VectorStoreConfig
+
+    settings.database_configs[0].vector_stores = [VectorStoreConfig(vector_store="STALE")]
+
+    async def _clear(cfg):
+        cfg.vector_stores = []
+
+    with patch(f"{SETTINGS_MODULE}.refresh_db_vector_stores", new=AsyncMock(side_effect=_clear)) as mock_refresh:
+        resp = await app_client.get("/v1/settings", headers=auth_headers)
+
+    assert resp.status_code == 200
+    mock_refresh.assert_awaited()
+    body = resp.json()
+    assert body["database_configs"][0].get("vector_stores", []) == []
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_client_settings_refreshes_vector_stores_in_parallel(app_client, auth_headers):
+    """Per-DB refreshes run concurrently so one slow DB doesn't stack with others."""
+    settings.database_configs = [
+        make_test_database_config(alias="A"),
+        make_test_database_config(alias="B"),
+        make_test_database_config(alias="C"),
+    ]
+    expected_concurrency = len(settings.database_configs)
+    in_flight = 0
+    peak = 0
+
+    async def _track(_cfg):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.05)
+        in_flight -= 1
+
+    with patch(f"{SETTINGS_MODULE}.refresh_db_vector_stores", new=AsyncMock(side_effect=_track)):
+        resp = await app_client.get("/v1/settings", headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert peak == expected_concurrency, f"expected {expected_concurrency} concurrent refreshes, observed peak={peak}"
 
 
 @pytest.mark.unit

@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Database initialization utilities for the server.
 """
 # spell-checker: ignore genai enquote oraclevs vectorstores
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -21,6 +22,8 @@ from .schemas import DatabaseConfig
 from .sql import execute_sql, validate_vs_table_name
 
 LOGGER = logging.getLogger(__name__)
+
+_DISCOVERY_TIMEOUT_SECONDS = 2.0
 
 
 async def discover_vector_stores(conn: oracledb.AsyncConnection) -> list[VectorStoreConfig]:
@@ -72,6 +75,48 @@ async def discover_vector_stores(conn: oracledb.AsyncConnection) -> list[VectorS
     except (json.JSONDecodeError, TypeError, ValueError) as exc:
         LOGGER.warning("Vector store discovery failed: %s", exc)
         return []
+
+
+async def refresh_db_vector_stores(db_config: DatabaseConfig) -> None:
+    """Re-run discovery and update ``db_config.vector_stores`` in place.
+
+    No-op when the config has no live pool. Discovery is bounded by
+    ``_DISCOVERY_TIMEOUT_SECONDS`` so a stale pool entry or a slow
+    listener can't block aggregate callers like ``GET /v1/settings``.
+    Errors and timeouts are logged and the cached list is left
+    untouched.
+
+    If the config's pool is rotated (e.g. a concurrent
+    ``PUT /v1/databases/{alias}``) while discovery is in flight, the
+    stale result is discarded rather than overwriting the fresh stores
+    published against the new pool — which would also leak into the
+    next ``persist_settings()``.
+    """
+    pool = db_config.pool
+    if pool is None or not db_config.usable:
+        return
+
+    async def _discover() -> list:
+        async with pool.acquire() as conn:
+            return await discover_vector_stores(conn)
+
+    try:
+        result = await asyncio.wait_for(_discover(), timeout=_DISCOVERY_TIMEOUT_SECONDS)
+    except (oracledb.Error, TimeoutError) as exc:
+        LOGGER.warning(
+            "vector store refresh failed for %s; keeping cached list: %s",
+            db_config.alias,
+            exc,
+        )
+        return
+
+    if db_config.pool is pool:
+        db_config.vector_stores = result
+    else:
+        LOGGER.info(
+            "vector store refresh for %s discarded: pool rotated during discovery",
+            db_config.alias,
+        )
 
 
 async def drop_vector_store(conn: oracledb.AsyncConnection, table_name: str) -> None:
