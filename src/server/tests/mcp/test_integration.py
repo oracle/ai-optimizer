@@ -12,6 +12,7 @@ avoided by using disabled code paths unless explicitly marked ``@pytest.mark.db`
 # spell-checker: disable
 
 import json
+from urllib.parse import urlparse
 
 import pytest
 
@@ -234,7 +235,7 @@ async def test_client_config_structure(app_client, auth_headers):
     server_entry = body["mcpServers"]["oracle-ai-optimizer"]
     assert server_entry["type"] == "streamableHttp"
     assert server_entry["transport"] == "streamable-http"
-    assert "/mcp/" in server_entry["url"]
+    assert urlparse(server_entry["url"]).path.endswith("/mcp")
     assert "X-API-Key" in server_entry["headers"]
 
 

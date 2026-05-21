@@ -121,21 +121,52 @@ class TestGetMcpStatus:
 class TestGetMcpClient:
     """Tests for get_mcp_client."""
 
-    def test_returns_json_string(self):
-        """Successful API call returns the config as a JSON string."""
-        config = {"servers": ["s1"]}
-        with patch(f"{MODULE}.api_get", return_value=config):
+    def test_returns_json_string_default_client(self):
+        """Successful API call returns the default client config as a JSON string."""
+        config = {"mcpServers": {"oracle-ai-optimizer": {"url": "http://test/mcp"}}}
+
+        with patch(f"{MODULE}.api_get", return_value=config) as mock_api_get:
             from client.app.content.config.tabs.mcp import get_mcp_client
 
             result = get_mcp_client()
+
         assert json.loads(result) == config
+        mock_api_get.assert_called_once_with(
+            "client-config",
+            api_prefix="/mcp",
+            params={"client": "generic"},
+        )
+
+    def test_returns_json_string_for_selected_client(self):
+        """Successful API call passes the selected MCP client to the API."""
+        config = {
+            "mcpServers": {
+                "oracle-ai-optimizer": {
+                    "command": "npx",
+                    "args": ["-y", "mcp-remote", "http://test/mcp"],
+                }
+            }
+        }
+
+        with patch(f"{MODULE}.api_get", return_value=config) as mock_api_get:
+            from client.app.content.config.tabs.mcp import get_mcp_client
+
+            result = get_mcp_client("claude-desktop")
+
+        assert json.loads(result) == config
+        mock_api_get.assert_called_once_with(
+            "client-config",
+            api_prefix="/mcp",
+            params={"client": "claude-desktop"},
+        )
 
     def test_http_error_returns_empty_json(self):
         """HTTP error is caught and an empty JSON object string is returned."""
         with patch(f"{MODULE}.api_get", side_effect=make_http_error(500)):
             from client.app.content.config.tabs.mcp import get_mcp_client
 
-            result = get_mcp_client()
+            result = get_mcp_client("cline")
+
         assert result == "{}"
 
     def test_connection_error_returns_empty_json(self):
@@ -143,7 +174,17 @@ class TestGetMcpClient:
         with patch(f"{MODULE}.api_get", side_effect=ConnectionError("refused")):
             from client.app.content.config.tabs.mcp import get_mcp_client
 
-            result = get_mcp_client()
+            result = get_mcp_client("inspector")
+
+        assert result == "{}"
+
+    def test_os_error_returns_empty_json(self):
+        """OSError is caught and an empty JSON object string is returned."""
+        with patch(f"{MODULE}.api_get", side_effect=OSError("network unreachable")):
+            from client.app.content.config.tabs.mcp import get_mcp_client
+
+            result = get_mcp_client("generic")
+
         assert result == "{}"
 
 
@@ -406,18 +447,27 @@ class TestDisplayMcp:
                 "resources": [],
             }
         )
-        mock_st.selectbox.return_value = "optimizer"
+
+        # First selectbox: MCP client selector.
+        # Second selectbox: configured MCP server selector.
+        mock_st.selectbox.side_effect = ["generic", "optimizer"]
+
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
-            patch(f"{MODULE}.get_mcp_client", return_value="{}"),
+            patch(f"{MODULE}.get_mcp_client", return_value="{}") as mock_get_client,
+            patch(f"{MODULE}.is_authenticated", return_value=True),
         ):
             from client.app.content.config.tabs.mcp import display_mcp
 
             display_mcp()
+
         mock_st.header.assert_called()
+        mock_get_client.assert_called_once_with("generic")
+        mock_st.caption.assert_called_once_with("Generic MCP client configuration using Streamable HTTP.")
+        mock_st.code.assert_called_once_with("{}", language="json")
 
     def test_stops_when_unavailable(self, mock_st):
         """An empty status causes an error and stops rendering."""
@@ -444,18 +494,24 @@ class TestDisplayMcp:
                 "resources": [],
             }
         )
-        mock_st.selectbox.return_value = "srv"
+
+        # First selectbox: MCP client selector.
+        # Second selectbox: configured MCP server selector.
+        mock_st.selectbox.side_effect = ["generic", "srv"]
+
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}"),
+            patch(f"{MODULE}.is_authenticated", return_value=True),
             patch(f"{MODULE}.render_configs") as mock_render,
         ):
             from client.app.content.config.tabs.mcp import display_mcp
 
             display_mcp()
+
         mock_render.assert_called_once_with("srv", "tools", ["search", "list"])
 
     def test_no_server_selected_returns_early(self, mock_st):
@@ -467,18 +523,24 @@ class TestDisplayMcp:
                 "resources": [],
             }
         )
-        mock_st.selectbox.return_value = None
+
+        # First selectbox: MCP client selector.
+        # Second selectbox: configured MCP server selector.
+        mock_st.selectbox.side_effect = ["generic", None]
+
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}"),
+            patch(f"{MODULE}.is_authenticated", return_value=True),
             patch(f"{MODULE}.render_configs") as mock_render,
         ):
             from client.app.content.config.tabs.mcp import display_mcp
 
             display_mcp()
+
         mock_render.assert_not_called()
 
     def test_unauthenticated_skips_client_config(self, mock_st):

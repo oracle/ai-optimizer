@@ -4,9 +4,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Endpoint returning MCP client configuration.
 """
-# spell-checker:ignore streamable
+# spell-checker:ignore streamable langgraph claude cline vscode npx
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from server.app.api.mcp.schemas.client_config import MCPClientConfigResponse
 from server.app.core.secrets import reveal
@@ -15,24 +15,121 @@ from server.app.core.settings import settings
 auth = APIRouter()
 
 
-@auth.get("/client-config", response_model=MCPClientConfigResponse)
-async def get_client_config(request: Request, client: str | None = None):
-    """Return a ready-to-use MCP client configuration object."""
-    # NOTE: In Starlette ≥0.37 request.base_url uses scope["app_root_path"]
-    # and does NOT include the app's own root_path set via FastAPI(root_path=...).
-    # If a reverse proxy *also* sets root_path to the same prefix value, the URL
-    # will be double-prefixed — avoid configuring both simultaneously.
+def _mcp_url(request: Request) -> str:
+    """Build MCP URL from the incoming request."""
     base = str(request.base_url).rstrip("/")
-    url = f"{base}{settings.server_url_prefix}/mcp/"
+    prefix = settings.server_url_prefix or ""
 
-    server_entry: dict = {
-        "type": "streamableHttp",
+    if prefix and not prefix.startswith("/"):
+        prefix = f"/{prefix}"
+
+    prefix = prefix.rstrip("/")
+
+    return f"{base}{prefix}/mcp"
+
+
+def _api_key() -> str:
+    """Reveal API key for client configuration."""
+    api_key = reveal(settings.api_key)
+
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="MCP API key is not configured.",
+        )
+
+    return api_key
+
+
+def _streamable_http_entry(url: str, api_key: str, include_type: bool = True) -> dict:
+    """Return a Streamable HTTP MCP server entry."""
+    entry = {
         "transport": "streamable-http",
         "url": url,
-        "headers": {"X-API-Key": reveal(settings.api_key)},
+        "headers": {"X-API-Key": api_key},
     }
 
-    if client == "langgraph":
-        server_entry.pop("type")
+    if include_type:
+        entry["type"] = "streamableHttp"
 
-    return {"mcpServers": {"oracle-ai-optimizer": server_entry}}
+    return entry
+
+
+def _client_config(client: str, url: str, api_key: str) -> dict:
+    """Return client-specific MCP configuration."""
+    client = client.lower().strip()
+
+    if client in {"cline", "vscode"}:
+        return {
+            "mcpServers": {
+                "oracle-ai-optimizer": _streamable_http_entry(
+                    url=url,
+                    api_key=api_key,
+                    include_type=True,
+                )
+            }
+        }
+
+    if client == "langgraph":
+        return {
+            "mcpServers": {
+                "oracle-ai-optimizer": _streamable_http_entry(
+                    url=url,
+                    api_key=api_key,
+                    include_type=False,
+                )
+            }
+        }
+
+    if client in {"inspector", "mcp-inspector", "npx-inspector"}:
+        return {
+            "command": "npx -y @modelcontextprotocol/inspector",
+            "transport": "Streamable HTTP",
+            "url": url,
+            "headers": {
+                "X-API-Key": api_key,
+            },
+        }
+
+    if client in {"claude", "claude-desktop"}:
+        return {
+            "mcpServers": {
+                "oracle-ai-optimizer": {
+                    "command": "npx",
+                    "args": [
+                        "-y",
+                        "mcp-remote",
+                        url,
+                        "--transport",
+                        "http-only",
+                        "--header",
+                        f"X-API-Key: {api_key}",
+                    ],
+                }
+            }
+        }
+
+    if client in {"generic", "default"}:
+        return {
+            "mcpServers": {
+                "oracle-ai-optimizer": _streamable_http_entry(
+                    url=url,
+                    api_key=api_key,
+                    include_type=True,
+                )
+            }
+        }
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unsupported MCP client: {client}",
+    )
+
+
+@auth.get("/client-config", response_model=MCPClientConfigResponse)
+async def get_client_config(request: Request, client: str = "generic"):
+    """Return a ready-to-use MCP client configuration object."""
+    url = _mcp_url(request)
+    api_key = _api_key()
+
+    return _client_config(client=client, url=url, api_key=api_key)
