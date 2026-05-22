@@ -377,6 +377,58 @@ class TestClientParamsOverrides:
         kwargs = mock_completion.call_args.kwargs
         assert kwargs.get("drop_params") is True
 
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_model_kwargs_forwarded_to_litellm_request(self, mock_completion):
+        """OCI auth and other model kwargs must reach the actual LiteLLM request."""
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(
+            model="oci/cohere.command-r",
+            model_kwargs={
+                "oci_region": "us-chicago-1",
+                "oci_compartment_id": "ocid1.compartment.oc1..test",
+                "oci_tenancy": "ocid1.tenancy.oc1..test",
+                "oci_user": "ocid1.user.oc1..test",
+                "oci_fingerprint": "aa:bb:cc",
+                "oci_key_file": "/path/to/key.pem",
+            },
+        )
+        llm._generate([HumanMessage(content="hi")])
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs["oci_region"] == "us-chicago-1"
+        assert kwargs["oci_compartment_id"] == "ocid1.compartment.oc1..test"
+        assert kwargs["oci_tenancy"] == "ocid1.tenancy.oc1..test"
+        assert kwargs["oci_key_file"] == "/path/to/key.pem"
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_oci_openai_gpt5_uses_max_completion_tokens(self, mock_completion):
+        """OCI OpenAI GPT-5 models reject ``max_tokens``."""
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="oci/openai.gpt-5.5", max_tokens=1234)
+        llm._generate([HumanMessage(content="hi")])
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs["max_completion_tokens"] == 1234
+        assert "max_tokens" not in kwargs
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_oci_openai_gpt5_converts_per_call_max_tokens(self, mock_completion):
+        """Per-call overrides are merged after ``_client_params`` and need conversion too."""
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="oci/openai.gpt-5.5")
+        llm._generate([HumanMessage(content="hi")], max_tokens=321)
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs["max_completion_tokens"] == 321
+        assert "max_tokens" not in kwargs
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_oci_openai_gpt5_converts_streaming_max_tokens(self, mock_completion):
+        """Streaming paths pass kwargs through upstream, so they need boundary conversion."""
+        mock_completion.return_value = _stream_chunks("ok")
+        llm = OracleChatLiteLLM(model="oci/openai.gpt-5.5")
+        list(llm._stream([HumanMessage(content="hi")], max_tokens=222))
+        kwargs = mock_completion.call_args.kwargs
+        assert kwargs["max_completion_tokens"] == 222
+        assert "max_tokens" not in kwargs
+
 
 class TestStreamingFallback:
     """OracleChatLiteLLM falls back to non-streaming when the provider rejects stream=True."""

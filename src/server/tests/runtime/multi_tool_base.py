@@ -86,6 +86,17 @@ class ClassificationBase:
             assert decision == "both"
             assert tu is None
 
+    @pytest.mark.anyio
+    async def test_classify_oci_openai_gpt5_uses_max_completion_tokens(self):
+        """OCI OpenAI GPT-5 classifiers reject ``max_tokens``."""
+        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.return_value = self.mock_response("vecsearch")
+            session = self.make_session(classifier_model="oci/openai.gpt-5.5")
+            await session.classify("test query")
+            kwargs = mock_acompletion.call_args.kwargs
+            assert kwargs["max_completion_tokens"] == 10
+            assert "max_tokens" not in kwargs
+
 
 # ---------------------------------------------------------------------------
 # Routing base
