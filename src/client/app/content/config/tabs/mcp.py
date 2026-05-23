@@ -16,6 +16,28 @@ from client.app.core.auth import is_authenticated, locked_notice
 
 LOGGER = logging.getLogger("client.content.config.tabs.mcp")
 
+MCP_CLIENTS = {
+    "generic": {
+        "label": "Generic Streamable HTTP",
+        "language": "json",
+        "description": "Generic MCP client configuration using Streamable HTTP.",
+    },
+    "cline": {
+        "label": "Cline for VS Code",
+        "language": "json",
+        "description": "Configuration for Cline MCP settings in VS Code.",
+    },
+    "langgraph": {
+        "label": "LangGraph",
+        "language": "json",
+        "description": "Configuration for LangGraph MCP integration.",
+    },
+    "claude-desktop": {
+        "label": "Claude Desktop",
+        "language": "json",
+        "description": "Configuration for Claude Desktop using mcp-remote as an HTTP bridge.",
+    },
+}
 
 ###################################
 # Helpers
@@ -37,10 +59,14 @@ def get_mcp_status() -> dict:
         return {}
 
 
-def get_mcp_client() -> str:
+def get_mcp_client(client: str = "generic") -> str:
     """Get MCP Client Configuration"""
     try:
-        mcp_client = api_get("client-config", api_prefix="/mcp")
+        mcp_client = api_get(
+            "client-config",
+            api_prefix="/mcp",
+            params={"client": client},
+        )
         return json.dumps(mcp_client, indent=2)
     except (httpx.HTTPStatusError, ConnectionError, OSError) as ex:
         LOGGER.error("Unable to get MCP Client: %s", ex)
@@ -169,7 +195,20 @@ def display_mcp() -> None:
                     """)
         if is_authenticated():
             with st.expander("Client Configuration"):
-                st.code(get_mcp_client(), language="json")
+                selected_client = st.selectbox(
+                    "MCP Client",
+                    options=list(MCP_CLIENTS.keys()),
+                    format_func=lambda key: MCP_CLIENTS[key]["label"],
+                    key="selected_mcp_client_config",
+                )
+
+                client_meta = MCP_CLIENTS[selected_client]
+
+                st.caption(client_meta["description"])
+
+                st.code(
+                    get_mcp_client(selected_client),
+                    language=client_meta["language"],)
     else:
         st.error("MCP Server is not running!", icon="🛑")
         st.stop()
