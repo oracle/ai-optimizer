@@ -78,15 +78,20 @@ resource "terraform_data" "k8s_cfgmgt_validation" {
 }
 
 module "kubernetes" {
-  for_each                   = var.infrastructure == "Kubernetes" ? { managed = true } : {}
-  source                     = "./modules/kubernetes"
-  label_prefix               = local.label_prefix
-  tenancy_id                 = var.tenancy_ocid
-  compartment_id             = local.compartment_ocid
-  vcn_id                     = local.vcn_ocid
-  oci_services               = data.oci_core_services.core_services.services.0
-  region                     = var.region
-  lb                         = oci_load_balancer_load_balancer.lb
+  for_each       = var.infrastructure == "Kubernetes" ? { managed = true } : {}
+  source         = "./modules/kubernetes"
+  label_prefix   = local.label_prefix
+  tenancy_id     = var.tenancy_ocid
+  compartment_id = local.compartment_ocid
+  vcn_id         = local.vcn_ocid
+  oci_services   = data.oci_core_services.core_services.services.0
+  region         = var.region
+  lb = {
+    id                 = oci_load_balancer_load_balancer.lb.id
+    compartment_id     = oci_load_balancer_load_balancer.lb.compartment_id
+    ip_address_details = oci_load_balancer_load_balancer.lb.ip_address_details
+    shape_details      = oci_load_balancer_load_balancer.lb.shape_details
+  }
   db_ocid                    = local.db_ocid
   db_name                    = local.db_name
   db_conn                    = local.db_conn
