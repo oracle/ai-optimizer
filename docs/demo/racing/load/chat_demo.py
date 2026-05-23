@@ -21,7 +21,7 @@ Example:
         --base-url http://localhost:8000 \\
         --workers 100 \\
         --database-alias CORE \\
-        --vs-alias-template 'RACING_PERDOC_DRIVER_{N:03d}' \\
+        --vs-alias-template 'RACE_DRIVER_{N:03d}' \\
         --steps 1,2,3,4,final
 
 Notes on the server side:
@@ -206,7 +206,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--vs-alias-template",
-        default="RACING_PERDOC_DRIVER_{N:03d}",
+        default="RACE_DRIVER_{N:03d}", 
         help=(
             "Python format string for the per-driver vector store alias. "
             "{N} (or {N:03d}) is the driver number. Use a constant string "

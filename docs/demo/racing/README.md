@@ -33,7 +33,7 @@ racing/
 
 ### Infrastructure
 1. **Kubernetes** - apply the OpenTofu Kubernetes stack for the target environment.  CPU is perfectly fine.
-1. **Load the schema** — as the `AI_OPTIMIZER` database user, run `schema.sql`. It creates the `teams`, `drivers`, `races`, `race_results`, `pit_stops`, `incidents`, `performance_metrics`, `team_race_points`, and `source_documents` tables; the `driver_standings`, `team_standings`, `championship_team_standings`, and `race_summary` views; and seeds Rounds 1–5 for all 100 drivers across 10 teams. Round 6 is scheduled but has **no** team points in the bootstrap database — that's intentional.
+1. **Load the schema** — as the `AI_OPTIMIZER` database user, run `schema.sql`. It creates the `teams`, `drivers`, `races`, `race_results`, `pit_stops`, `incidents`, `performance_metrics`, and `team_race_points` tables; the `driver_standings`, `team_standings`, `championship_team_standings`, and `race_summary` views; and seeds Rounds 1–5 for all 100 drivers across 10 teams. Round 6 is scheduled but has **no** team points in the bootstrap database — that's intentional.
 1. **Verify Schema** — pick a driver number (e.g. Driver 1) and confirm in SQL that they exist and have results before Round 6:
    ```sql
    SELECT driver_label, team_id FROM drivers WHERE driver_code = 'Driver001';

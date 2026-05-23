@@ -37,7 +37,7 @@ def _description_for(path: Path) -> str | None:
 
     The table-selection LLM only sees alias + description across 100 tables,
     so each one needs just enough identity signal to map a question like
-    "I am Driver 1" to RACING_PERDOC_DRIVER_001. Including both the padded
+    "I am Driver 1" to DRIVER001_NOTES. Including both the padded
     code and the human label covers both phrasings users tend to type.
     """
     try:
@@ -63,7 +63,7 @@ def main() -> int:
     parser = build_argparser(__doc__)
     parser.add_argument(
         "--alias-prefix",
-        default="RACING_PERDOC",
+        default="RACE",
         help="Alias prefix; full alias is {prefix}_{FILENAME_STEM}",
     )
     args = parser.parse_args()
