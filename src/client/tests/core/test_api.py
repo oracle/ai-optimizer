@@ -581,6 +581,22 @@ class TestWaitForServerReady:
             assert _wait_for_server_ready(mock_proc, timeout=5) is True
         mock_get.assert_called()
 
+    def test_probes_locally_when_server_url_overridden(self):
+        """AIO_SERVER_URL config must not redirect the local subprocess probe."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        ok_resp = MagicMock(status_code=200)
+        settings = _mock_settings(server_url="http://api.example.com", server_port=9000)
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,
+            patch(f"{MODULE}.time.sleep"),
+        ):
+            from client.app.core.api import _wait_for_server_ready
+
+            assert _wait_for_server_ready(mock_proc, timeout=5) is True
+        mock_get.assert_called_once_with("http://127.0.0.1:9000/v1/liveness", timeout=1.0)
+
     def test_returns_false_when_process_exits(self):
         """Verify the helper returns False when the subprocess dies before becoming ready."""
         mock_proc = MagicMock()
