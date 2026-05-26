@@ -74,7 +74,7 @@ def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READ
     stderr). Returns True once /liveness returns 200, False if the subprocess
     exits early or the timeout is reached.
     """
-    url = f"{_base_url()}/liveness"
+    url = f"{_local_server_base_url()}/liveness"
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
@@ -144,6 +144,11 @@ def start_server() -> None:
             _SERVER_READY_TIMEOUT_SECONDS,
             log_path,
         )
+
+
+def _local_server_base_url(api_prefix: str = "/v1") -> str:
+    """Return the direct URL for the locally spawned API server."""
+    return f"http://127.0.0.1:{settings.server_port}{api_prefix.rstrip('/')}"
 
 
 def _stop_process(proc: subprocess.Popen) -> None:
