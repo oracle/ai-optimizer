@@ -12,21 +12,20 @@ appropriate sub-session, or runs both in parallel and synthesizes.
 
 import asyncio
 import logging
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage
 
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.runtime.common import (
-    CLASSIFIER_PROMPT,
-    DEFAULT_COMBINED_INSTRUCTION,
-    SYNTHESIS_TEMPLATE,
-    BaseCombinedSession,
-    SessionMetadata,
-    _sum_token_usage,
+    COMBINED_PROMPT_NAME as PROMPT_NAME,
 )
 from server.app.runtime.common import (
-    COMBINED_PROMPT_NAME as PROMPT_NAME,
+    BaseCombinedSession,
+    ClassifierDecision,
+    Route,
+    SessionMetadata,
+    _sum_token_usage,
 )
 from server.app.runtime.langgraph.adapters.litellm import (
     OracleChatLiteLLM,
@@ -40,7 +39,7 @@ from server.app.runtime.langgraph.session import (
 
 LOGGER = logging.getLogger(__name__)
 
-__all__ = ["CombinedSession", "PROMPT_NAME", "DEFAULT_COMBINED_INSTRUCTION"]
+__all__ = ["CombinedSession", "PROMPT_NAME"]
 
 
 class CombinedSession(BaseCombinedSession):
@@ -54,8 +53,21 @@ class CombinedSession(BaseCombinedSession):
         system_prompt: str,
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
+        model_kwargs: Optional[Dict[str, Any]] = None,
+        classifier_prompt: Optional[str] = None,
+        synthesis_template: Optional[str] = None,
     ) -> None:
-        super().__init__(vs_session, nl2sql_session, classifier_model, system_prompt, api_key, api_base)
+        super().__init__(
+            vs_session,
+            nl2sql_session,
+            classifier_model,
+            system_prompt,
+            api_key=api_key,
+            api_base=api_base,
+            model_kwargs=model_kwargs,
+            classifier_prompt=classifier_prompt,
+            synthesis_template=synthesis_template,
+        )
 
     async def _ainvoke_text(
         self,
@@ -71,25 +83,26 @@ class CombinedSession(BaseCombinedSession):
             api_base=self._api_base,
             temperature=temperature,
             max_tokens=max_tokens,
+            model_kwargs=self._model_kwargs,
         )
         result = await llm.ainvoke([HumanMessage(content=prompt)])
         text = extract_response_text(result.content)
         usage_metadata = result.usage_metadata if isinstance(result, AIMessage) else None
         return text, usage_metadata_to_token_usage(usage_metadata)
 
-    async def classify(self, query: str) -> tuple[str, Optional[TokenUsage]]:
-        """Classify a query as 'nl2sql', 'vecsearch', or 'both'."""
-        prompt = CLASSIFIER_PROMPT.replace("{{query}}", query)
+    async def classify(self, query: str) -> tuple[ClassifierDecision, Optional[TokenUsage]]:
+        """Classify a query as nl2sql, vecsearch, or both."""
+        prompt = self._classifier_prompt.replace("{{query}}", query)
         try:
             text, usage = await self._ainvoke_text(prompt, temperature=0.0, max_tokens=10)
         except Exception:
-            LOGGER.exception("Classification failed, defaulting to 'both'")
-            return "both", None
-        decision = text.strip().lower().strip("'\".,!")
-        if decision in ("nl2sql", "vecsearch", "both"):
-            return decision, usage
-        LOGGER.warning("Classifier returned unexpected value %r, defaulting to 'both'", text)
-        return "both", usage
+            LOGGER.exception("Classification failed, defaulting to %s", ClassifierDecision.BOTH)
+            return ClassifierDecision.BOTH, None
+        try:
+            return ClassifierDecision(text.strip().lower().strip("'\".,!")), usage
+        except ValueError:
+            LOGGER.warning("Classifier returned unexpected value %r, defaulting to %s", text, ClassifierDecision.BOTH)
+            return ClassifierDecision.BOTH, usage
 
     async def synthesize(
         self,
@@ -98,7 +111,7 @@ class CombinedSession(BaseCombinedSession):
         nl2sql_answer: str,
     ) -> tuple[str, Optional[TokenUsage]]:
         """Synthesize answers from both sources into a single response."""
-        prompt = SYNTHESIS_TEMPLATE.format(
+        prompt = self._synthesis_template.format(
             system_prompt=self._system_prompt,
             query=query,
             sql_answer=nl2sql_answer,
@@ -110,27 +123,34 @@ class CombinedSession(BaseCombinedSession):
             LOGGER.exception("Synthesis failed, returning concatenated answers")
             return f"Database result:\n{nl2sql_answer}\n\nDocument result:\n{vs_answer}", None
 
-    async def execute(self, query: str, thread_id: str, chat_history: bool = True) -> str:
+    async def execute(
+        self,
+        query: str,
+        thread_id: str,
+        history_text: str = "",
+        history_messages: Optional[list] = None,
+    ) -> str:
         """Route and execute the query."""
         route, classifier_tu = await self.classify(query)
         self.last_metadata = SessionMetadata()
+        history_messages = history_messages or []
 
-        if route == "vecsearch":
-            answer = await self.vs_session.execute(query, thread_id, chat_history=chat_history)
+        if route == ClassifierDecision.VECSEARCH:
+            answer = await self.vs_session.execute(query, thread_id, history_text=history_text)
             self.last_metadata = self.vs_session.last_metadata.model_copy()
             combined_tu = _sum_token_usage(self.last_metadata.token_usage, classifier_tu)
             if combined_tu:
                 self.last_metadata.token_usage = combined_tu
-        elif route == "nl2sql":
-            answer = await self.nl2sql_session.chat(query, chat_history=chat_history)
+        elif route == ClassifierDecision.NL2SQL:
+            answer = await self.nl2sql_session.chat(query, history_messages=history_messages)
             self.last_metadata.grade_relevant = "yes"
             combined_tu = _sum_token_usage(self.nl2sql_session.last_metadata.token_usage, classifier_tu)
             if combined_tu:
                 self.last_metadata.token_usage = combined_tu
         else:
             vs_answer, nl2sql_answer = await asyncio.gather(
-                self.vs_session.execute(query, thread_id, chat_history=chat_history),
-                self.nl2sql_session.chat(query, chat_history=chat_history),
+                self.vs_session.execute(query, thread_id, history_text=history_text),
+                self.nl2sql_session.chat(query, history_messages=history_messages),
             )
             answer, synth_tu = await self._handle_both_results(query, vs_answer, nl2sql_answer)
             combined_tu = _sum_token_usage(
@@ -148,7 +168,8 @@ class CombinedSession(BaseCombinedSession):
         self,
         query: str,
         thread_id: str,
-        chat_history: bool,
+        history_text: str,
+        history_messages: list,
         queue: asyncio.Queue,
         stream_flow: Callable[..., Awaitable[None]],
         stream_agent: Callable[..., Awaitable[None]],
@@ -160,18 +181,18 @@ class CombinedSession(BaseCombinedSession):
         if classifier_tu:
             await queue.put({"type": "_token_usage", **classifier_tu.model_dump()})
 
-        if route == "vecsearch":
-            await stream_flow(self.vs_session, "vecsearch", query, thread_id, queue, chat_history)
+        if route == ClassifierDecision.VECSEARCH:
+            await stream_flow(self.vs_session, Route.VECSEARCH, query, thread_id, queue, history_text)
             self.last_metadata = self.vs_session.last_metadata.model_copy()
-        elif route == "nl2sql":
-            await stream_agent(self.nl2sql_session, chat_history, query, queue)
+        elif route == ClassifierDecision.NL2SQL:
+            await stream_agent(self.nl2sql_session, history_messages, query, queue)
         else:
             # Synthesis requires both branches' answers, so we can't stream tokens
             # before the synthesis. Run the branches in parallel and emit the
             # synthesized answer as a single stream event below.
             vs_answer, nl2sql_answer = await asyncio.gather(
-                self.vs_session.execute(query, thread_id, chat_history=chat_history),
-                self.nl2sql_session.chat(query, chat_history=chat_history),
+                self.vs_session.execute(query, thread_id, history_text=history_text),
+                self.nl2sql_session.chat(query, history_messages=history_messages),
             )
             answer, synth_tu = await self._handle_both_results(query, vs_answer, nl2sql_answer)
             await queue.put({"type": "stream", "content": answer})

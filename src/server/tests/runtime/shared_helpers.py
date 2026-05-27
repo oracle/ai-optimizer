@@ -9,11 +9,34 @@ Shared mock factories and helpers used by runtime tests.
 import asyncio
 import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Optional
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
     from litellm.types.utils import ModelResponse
+
+    from server.app.oci.schemas import OciProfileConfig
+
+
+@contextmanager
+def temporary_oci_configs(
+    profiles: "Iterable[OciProfileConfig]",
+    client_auth_profile: Optional[str] = None,
+) -> Iterator[None]:
+    """Install *profiles* in ``settings.oci_configs`` for the test body, then restore."""
+    from server.app.core.settings import settings
+
+    saved_oci = settings.oci_configs
+    saved_auth = settings.client_settings.oci.auth_profile
+    settings.oci_configs = list(profiles)
+    if client_auth_profile is not None:
+        settings.client_settings.oci.auth_profile = client_auth_profile
+    try:
+        yield
+    finally:
+        settings.oci_configs = saved_oci
+        settings.client_settings.oci.auth_profile = saved_auth
 
 
 def ollama_available() -> bool:
@@ -97,6 +120,7 @@ def mock_client_settings(
     model_id="qwen3:8b",
     tools_enabled=None,
     chat_history=True,
+    auth_profile="DEFAULT",
 ):
     """Build a mock ClientSettings."""
     cs = MagicMock()
@@ -104,6 +128,7 @@ def mock_client_settings(
     cs.ll_model.id = model_id
     cs.ll_model.chat_history = chat_history
     cs.tools_enabled = tools_enabled or []
+    cs.oci.auth_profile = auth_profile
     cs.model_dump.return_value = {
         "ll_model": {
             "provider": provider,
@@ -111,6 +136,7 @@ def mock_client_settings(
             "chat_history": chat_history,
         },
         "database": {"alias": "CORE"},
+        "oci": {"auth_profile": auth_profile},
         "vector_search": {},
     }
     return cs

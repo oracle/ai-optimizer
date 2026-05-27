@@ -29,7 +29,7 @@ from server.app.oci.bucket import (
     get_compartments,
 )
 from server.app.oci.config import _check_usable
-from server.app.oci.schemas import OciProfileConfig, OciProfileUpdate, OciSensitive
+from server.app.oci.schemas import GENAI_OVERLAY_FIELDS, OciProfileConfig, OciProfileUpdate, OciSensitive
 from server.app.oci.service import create_genai_models as _create_genai_models
 from server.app.oci.service import get_genai_models as _get_genai_models
 
@@ -104,13 +104,19 @@ async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
         originals = {field: getattr(cfg, field) for field in updates}
         for field, value in updates.items():
             setattr(cfg, field, value)
+        genai_touched = GENAI_OVERLAY_FIELDS.intersection(updates)
+        touched_arg = {cfg.auth_profile: genai_touched} if genai_touched else None
         error = _check_usable(cfg)
         if error:
             if was_usable:
                 for field, value in originals.items():
                     setattr(cfg, field, value)
                 cfg.usable = True
-            if not await persist_settings():
+                # Rollback restored pre-request state — clear touched so persist
+                # doesn't interpret an env-masked field equal to baseline as a
+                # user revert and drop the prior overlay.
+                touched_arg = None
+            if not await persist_settings(oci_user_touched=touched_arg):
                 # Persistence failed — ensure all mutations are rolled back
                 for field, value in originals.items():
                     setattr(cfg, field, value)
@@ -120,7 +126,7 @@ async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
         saved_model_configs = settings.model_configs[:]
         if cfg.genai_region != old_genai_region:
             settings.model_configs = [m for m in settings.model_configs if m.provider != "oci"]
-        if not await persist_settings():
+        if not await persist_settings(oci_user_touched=touched_arg):
             for field, value in originals.items():
                 setattr(cfg, field, value)
             cfg.usable = was_usable

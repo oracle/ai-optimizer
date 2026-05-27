@@ -204,6 +204,19 @@ server:
 
 {{% icon star %}} More information about OCI configuration can be found in the [OCI Configuration]({{% relref "/client/configuration/oci" %}}) documentation.
 
+### Split & Embed Source Lock
+
+To pin the Split & Embed tab's OCI source compartment (and optionally bucket) for every user of the deployment, set first-class values under `client.oci`:
+
+```yaml
+client:
+  oci:
+    sourceBucketCompartmentId: ocid1.compartment.oc1..aaaa
+    sourceBucketName: my-corpus-bucket
+```
+
+The compartment is the anchor — `sourceBucketName` alone has no effect. See [Environment Configuration](/env_config/) for the matching `AIO_OCI_SOURCE_BUCKET_*` variables and the runtime fallback rules.
+
 ## Observability
 
 OpenTelemetry export is controlled by `server.otel.enabled`. You can point it at your own collector:

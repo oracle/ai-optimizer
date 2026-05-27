@@ -9,6 +9,7 @@ MCP tool: Vector Search Retriever.
 import asyncio
 import json
 import logging
+import re
 import traceback
 from collections.abc import Coroutine
 from typing import Any, Optional
@@ -19,7 +20,7 @@ from langchain_oracledb import OracleVS
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.mcp.prompts.registry import find_prompt
-from server.app.models.litellm_utils import LiteLlmModelSpec, get_client_embed
+from server.app.models.litellm_utils import LiteLlmModelSpec, find_model, get_client_embed
 from server.app.runtime.langgraph.adapters.litellm import ainvoke_text_from_spec
 
 from .schemas import VectorSearchResponse, VectorTable, get_database_pool, get_oci_profile
@@ -28,8 +29,9 @@ from .vs_discovery import _vs_discovery_impl
 LOGGER = logging.getLogger(__name__)
 
 TABLE_SELECTION_TEMPERATURE = 0.0
-TABLE_SELECTION_MAX_TOKENS = 200
+TABLE_SELECTION_MAX_TOKENS = 4096
 DEFAULT_MAX_TABLES = 3
+_FENCED_JSON_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL | re.IGNORECASE)
 
 
 async def _get_available_vector_stores(client: str = "CONFIGURED") -> list[VectorTable]:
@@ -84,14 +86,24 @@ async def _select_tables_with_llm(
         )
 
         try:
+            # Clamp by the model's configured ceiling (not spec.max_tokens, which is
+            # the user's per-chat response-length preference) so this control-plane
+            # JSON call isn't starved by a low chat-answer setting.
+            model_cfg = find_model(spec.original_provider, spec.model_id, model_type="ll", enabled_only=False)
+            model_ceiling = (model_cfg.max_tokens if model_cfg else None) or TABLE_SELECTION_MAX_TOKENS
             text = await ainvoke_text_from_spec(
                 spec,
                 prompt,
                 temperature=TABLE_SELECTION_TEMPERATURE,
-                max_tokens=TABLE_SELECTION_MAX_TOKENS,
+                max_tokens=min(TABLE_SELECTION_MAX_TOKENS, model_ceiling),
             )
             selection_text = (text or "[]").strip()
             LOGGER.info("LLM table selection response: %s", selection_text)
+
+            # Models routinely wrap JSON in ```json ... ``` fences despite "no markdown".
+            fence_match = _FENCED_JSON_RE.match(selection_text)
+            if fence_match:
+                selection_text = fence_match.group(1)
 
             selected_tables = json.loads(selection_text)
         except Exception as ex:

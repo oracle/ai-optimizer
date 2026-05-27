@@ -203,12 +203,15 @@ class StreamingBase:
             await session.execute_streaming(
                 "What is X?",
                 "t-1",
-                True,
+                "history-text",
+                [],
                 queue,
                 stream_flow=stream_flow,
                 stream_agent=stream_agent,
             )
-            stream_flow.assert_awaited_once_with(session.vs_session, "vecsearch", "What is X?", "t-1", queue, True)
+            stream_flow.assert_awaited_once_with(
+                session.vs_session, "vecsearch", "What is X?", "t-1", queue, "history-text"
+            )
             stream_agent.assert_not_awaited()
 
     @pytest.mark.anyio
@@ -222,15 +225,19 @@ class StreamingBase:
             stream_flow = AsyncMock()
             stream_agent = AsyncMock()
 
+            history_messages: list = []
             await session.execute_streaming(
                 "How many tables?",
                 "t-1",
-                True,
+                "",
+                history_messages,
                 queue,
                 stream_flow=stream_flow,
                 stream_agent=stream_agent,
             )
-            stream_agent.assert_awaited_once_with(session.nl2sql_session, True, "How many tables?", queue)
+            stream_agent.assert_awaited_once_with(
+                session.nl2sql_session, history_messages, "How many tables?", queue
+            )
             stream_flow.assert_not_awaited()
 
     @pytest.mark.anyio
@@ -247,7 +254,8 @@ class StreamingBase:
             await session.execute_streaming(
                 "Is redo log right?",
                 "t-1",
-                True,
+                "",
+                [],
                 queue,
                 stream_flow=AsyncMock(),
                 stream_agent=AsyncMock(),
@@ -270,7 +278,8 @@ class StreamingBase:
             await session.execute_streaming(
                 "list connections",
                 "t-1",
-                True,
+                "",
+                [],
                 queue,
                 stream_flow=AsyncMock(),
                 stream_agent=AsyncMock(),

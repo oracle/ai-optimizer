@@ -62,7 +62,7 @@ locals {
   region_map      = { for r in data.oci_identity_regions.identity_regions.regions : r.name => r.key }
   image_region    = lookup(local.region_map, var.region)
   repository_host = lower(format("%s.ocir.io", local.image_region))
-  repository_base = var.byo_ocir_url != "" ? var.byo_ocir_url : lower(format("%s/%s/%s", local.repository_host, data.oci_objectstorage_namespace.objectstorage_namespace.namespace, var.label_prefix))
+  repository_base = var.byo_ocir_url != "" ? var.byo_ocir_url : lower(format("%s/%s/%s", local.repository_host, var.namespace, var.label_prefix))
 }
 
 // Cluster Details

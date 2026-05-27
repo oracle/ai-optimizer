@@ -72,8 +72,6 @@ async def _apply_configured_overlay(protected: set[str]) -> None:
         if source.prompt_configs:
             reconcile_prompt_customizations(source.prompt_configs)
 
-    await persist_settings("CONFIGURED", is_current=True)
-
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -114,6 +112,11 @@ async def lifespan(_app: FastAPI):
     register_mcp_prompts()
     register_mcp_tools()
     settings.nl2sql_available = await register_sqlcl_proxy() is not None
+
+    # Persist CONFIGURED after load_oci_profiles() so the OCI GenAI overlay
+    # picked up from the previous run's row is preserved (an earlier persist
+    # would write an empty oci_configs list and erase it).
+    await persist_settings("CONFIGURED", is_current=True)
 
     # --- Phase 6: Model reachability ---
     await check_model_reachability()

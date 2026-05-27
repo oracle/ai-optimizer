@@ -6,7 +6,7 @@ global:
   env: "iac"
   cleanupPVCs: true
   api:
-    secretName: "${label}-optimizer-api-key"
+    secretName: "ai-optimizer-api-key-${label}"
 %{ if ocir_url != "" ~}
   imageRegistry: "${ocir_url}"
 %{ endif ~}
@@ -64,6 +64,12 @@ client:
     repository: ${repository_base}/ai-optimizer-client
     tag: "${app_version}"
     pullPolicy: Always
+
+%{~ if object_storage_bucket != "" }
+  oci:
+    sourceBucketCompartmentId: "${compartment_id}"
+    sourceBucketName: "${object_storage_bucket}"
+%{~ endif }
 
   ingress:
     enabled: true

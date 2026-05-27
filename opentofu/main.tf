@@ -84,3 +84,12 @@ resource "oci_database_autonomous_database" "default_adb" {
     ignore_changes = [whitelisted_ips, private_endpoint_label, subnet_id]
   }
 }
+
+resource "oci_objectstorage_bucket" "bucket" {
+  for_each       = var.prov_object_storage ? { managed = true } : {}
+  compartment_id = local.compartment_ocid
+  namespace      = local.object_storage_namespace
+  name           = format("%s-bucket", local.label_prefix)
+  access_type    = "NoPublicAccess"
+  auto_tiering   = "Disabled"
+}

@@ -56,6 +56,7 @@ module "vm" {
   compute_gpu_shape      = var.compute_gpu_shape
   availability_domains   = local.availability_domains
   private_subnet_id      = local.private_subnet_ocid
+  object_storage_bucket  = local.object_storage_bucket
   client_cookie_secret   = random_password.client_cookie.result
   providers = {
     oci.home_region = oci.home_region

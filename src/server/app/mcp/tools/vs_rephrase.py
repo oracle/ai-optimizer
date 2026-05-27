@@ -18,6 +18,7 @@ from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.mcp.prompts.registry import find_prompt
 from server.app.models.litellm_utils import LiteLlmModelSpec
+from server.app.runtime.common import HISTORY_ASSISTANT_LABEL, HISTORY_USER_LABEL
 from server.app.runtime.langgraph.adapters.litellm import ainvoke_text_from_spec
 
 from .schemas import RephrasePrompt, get_oci_profile
@@ -88,7 +89,7 @@ async def _vs_rephrase_impl(
             history_len = (
                 len(chat_history)
                 if isinstance(chat_history, list)
-                else chat_history.count("User:") + chat_history.count("Assistant:")
+                else chat_history.count(HISTORY_USER_LABEL) + chat_history.count(HISTORY_ASSISTANT_LABEL)
             )
             if history_len >= MIN_CHAT_HISTORY_FOR_REPHRASE:
                 ctx_prompt_cfg = find_prompt("optimizer_context-default")

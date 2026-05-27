@@ -108,7 +108,7 @@ write_files:
       python3.11 -m venv .venv
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools uv
-      pip3 install docling==2.93.0 --extra-index-url https://download.pytorch.org/whl/cpu
+      pip3 install docling==2.95.0 --extra-index-url https://download.pytorch.org/whl/cpu
       uv pip install -e ".[all]" &
       INSTALL_PID=$!
 
@@ -137,6 +137,10 @@ write_files:
       %{~ endif }
       %{~ if install_ollama }
       AIO_ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
+      %{~ endif }
+      %{~ if object_storage_bucket != "" }
+      AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID=${compartment_id}
+      AIO_OCI_SOURCE_BUCKET_NAME=${object_storage_bucket}
       %{~ endif }
       ENVEOF
       chmod 640 /app/src/.env.vm

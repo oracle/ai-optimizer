@@ -132,7 +132,6 @@ def display_prompt_eng():
         st.text_area(
             "Description:",
             value=prompt_lookup[selected_title]["description"],
-            key="runtime_prompt_description",
             height="content",
             disabled=True,
         )

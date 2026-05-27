@@ -224,6 +224,7 @@
         "password": { "type": "string" },
         "passwordSecretName": { "type": "string" },
         "passwordSecretKey": { "type": "string" },
+        "passwordAutoGenerate": { "type": "boolean" },
         "envSecret": { "$ref": "#/definitions/envSecret" },
         "livenessProbe": { "$ref": "#/definitions/probe" },
         "readinessProbe": { "$ref": "#/definitions/probe" },

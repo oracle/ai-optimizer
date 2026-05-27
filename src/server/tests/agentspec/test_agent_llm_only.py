@@ -13,8 +13,11 @@ from pydantic import SecretStr
 from server.app.agentspec.adapters.litellm import LiteLlmConfig
 from server.app.agentspec.agent_llm_only import build_llm_config, build_llm_only_agentspec
 from server.app.core.schemas import ClientSettings
+from server.app.mcp.prompts.registry import get_factory_text
 from server.app.models.schemas import ModelConfig
 from server.tests.conftest import SAMPLE_CLIENT_SETTINGS_OBJ
+
+MOCK_SYSTEM_PROMPT = "test system prompt"
 
 
 class TestBuildLlmConfig:
@@ -133,41 +136,42 @@ class TestBuildLlmOnlyAgentspec:
 
     def test_returns_agentspec_agent(self):
         """Verify the function returns an AgentSpec Agent instance."""
-        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ)
+        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SYSTEM_PROMPT)
         assert isinstance(agent, AgentSpecAgent)
 
     def test_agent_name(self):
         """Verify the agentspec agent is named 'LLM Only Agent'."""
-        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ)
+        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SYSTEM_PROMPT)
         assert agent.name == "LLM Only Agent"
 
     def test_no_tools(self):
         """Verify the agentspec agent has no tools attached."""
-        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ)
+        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SYSTEM_PROMPT)
         assert agent.tools == []
 
-    def test_default_instruction(self):
-        """Verify the default system prompt mentions helpful assistant."""
-        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ)
-        assert "helpful assistant" in agent.system_prompt
+    def test_factory_default_instruction_describes_helpful_assistant(self):
+        """The MCP factory entry for the LLM-only system prompt — what the
+        runtime feeds to the builder — still describes a helpful assistant."""
+        text = get_factory_text("optimizer_basic-default")
+        assert text is not None and "helpful assistant" in text
 
-    def test_custom_instruction(self):
-        """Verify a custom instruction overrides the default system prompt."""
+    def test_system_prompt_reaches_agent(self):
+        """Verify the supplied system_prompt reaches the agent verbatim."""
         agent = build_llm_only_agentspec(
             SAMPLE_CLIENT_SETTINGS_OBJ,
-            custom_instruction="You are a pirate.",
+            system_prompt="You are a pirate.",
         )
         assert agent.system_prompt == "You are a pirate."
 
     def test_llm_config_is_litellm(self):
         """Verify the agent's LLM config is a LiteLlmConfig with correct model."""
-        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ)
+        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SYSTEM_PROMPT)
         assert isinstance(agent.llm_config, LiteLlmConfig)
         assert agent.llm_config.provider == "ollama_chat"
         assert agent.llm_config.model_id == "qwen3:8b"
 
     def test_human_in_the_loop_enabled(self):
         """Verify human_in_the_loop is enabled on the agent."""
-        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ)
+        agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SYSTEM_PROMPT)
         assert agent.human_in_the_loop is True
 

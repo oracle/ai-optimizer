@@ -230,16 +230,32 @@ letting a whitespace cookieSecret clobber an operator-owned external Secret.
 {{- end }}
 
 {{/* ******************************************
-Validate that client.password and client.passwordSecretName are not both set.
-Either, neither, or one alone is acceptable: neither means the page gate is
-disabled; setting both is ambiguous.
+Validate the three mutually-exclusive client password paths. At most one of
+client.password, client.passwordSecretName, or client.passwordAutoGenerate
+may be active. Combinations are ambiguous (which Secret does the deployment
+bind, who owns the lifecycle); fail loudly rather than apply silent precedence.
 *********************************************** */}}
 {{- define "ai-optimizer.client.passwordBothSet.fail" -}}
-  {{- $password := .Values.client.password | trim | default "" -}}
-  {{- $secretName := .Values.client.passwordSecretName | trim | default "" -}}
-  {{- if and (ne $password "") (ne $secretName "") -}}
-    {{- fail "You cannot specify both client.password and client.passwordSecretName; please choose one" -}}
+  {{- $inline := .Values.client.password | trim | default "" -}}
+  {{- $byo := .Values.client.passwordSecretName | trim | default "" -}}
+  {{- $auto := .Values.client.passwordAutoGenerate -}}
+  {{- $count := 0 -}}
+  {{- if ne $inline "" -}}{{- $count = add $count 1 -}}{{- end -}}
+  {{- if ne $byo "" -}}{{- $count = add $count 1 -}}{{- end -}}
+  {{- if $auto -}}{{- $count = add $count 1 -}}{{- end -}}
+  {{- if gt $count 1 -}}
+    {{- fail "client.password, client.passwordSecretName, and client.passwordAutoGenerate are mutually exclusive; set at most one" -}}
   {{- end -}}
+{{- end -}}
+
+{{/* ******************************************
+Returns "true" when the additional client UI access check is active. Off
+unless one of client.password, client.passwordSecretName, or
+client.passwordAutoGenerate is set. When off, AIO_CLIENT_PASSWORD is not
+rendered into the client pod env.
+*********************************************** */}}
+{{- define "ai-optimizer.client.passwordGate.enabled" -}}
+{{- if or (.Values.client.password | trim) (.Values.client.passwordSecretName | trim) .Values.client.passwordAutoGenerate -}}true{{- end -}}
 {{- end -}}
 
 {{/* ******************************************
@@ -292,28 +308,27 @@ Secret-change requires a reloader controller and is out of scope for this chart.
 
 {{/* ******************************************
 Checksum used to roll the client Deployment when the shared password Secret
-changes. Mirrors client.cookieSecretChecksum with three branches:
+changes. Mirrors client.cookieSecretChecksum:
 
-  * Inline path (.Values.client.password set): hash the rendered password-secret.yaml.
+  * Inline path (client.password set): hash the rendered password-secret.yaml.
     The cookie checksum already hashes the same file, so when BOTH cookie and
     password are inline a value change on either rotates the pod — accepted
     over-rotation; under-rotation is the bug we are preventing.
 
-  * External path (.Values.client.passwordSecretName set): `lookup` reads the
-    operator-owned Secret from the cluster and hashes its current data. On
-    `helm upgrade` after the operator rotates the Secret in place, the content
-    changes → hash changes → pods roll. During `helm template` / `--dry-run` /
-    first install, `lookup` returns empty; we fall back to a name-keyed
-    sentinel so the annotation stays stable and distinct per configuration.
+  * Lookup path (client.passwordSecretName set OR passwordAutoGenerate true):
+    `lookup` the Secret at the resolved name and hash its current data. BYO
+    is operator-owned; auto-generate is the default-name Secret created by
+    password-secret.yaml. Both bind the same Secret in the Deployment. During
+    `helm template` / `--dry-run` / first install, `lookup` returns empty; we
+    fall back to a name-keyed sentinel so the annotation stays stable and
+    distinct per configuration.
 
-  * Gate disabled (neither value set): constant sentinel. No AIO_CLIENT_PASSWORD
-    env entry is rendered in this branch, so the pod has no dependency on a
-    password Secret and the annotation never needs to change.
+  * Gate disabled (none set): constant sentinel.
 *********************************************** */}}
 {{- define "ai-optimizer.client.passwordSecretChecksum" -}}
 {{- if .Values.client.password | trim -}}
 {{- include (print $.Template.BasePath "/client/password-secret.yaml") . | sha256sum -}}
-{{- else if .Values.client.passwordSecretName | trim -}}
+{{- else if or (.Values.client.passwordSecretName | trim) .Values.client.passwordAutoGenerate -}}
   {{- $name := include "ai-optimizer.client.passwordSecretName" . -}}
   {{- $key := include "ai-optimizer.client.passwordSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}

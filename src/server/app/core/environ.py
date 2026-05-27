@@ -15,14 +15,14 @@ import tempfile
 
 _cache_dir = os.path.join(tempfile.gettempdir(), "ai-optimizer")
 
-# LiteLLM – use bundled cost map instead of fetching from GitHub
+# LiteLLM - use bundled cost map instead of fetching from GitHub
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
-# Giskard – disable error reporting and telemetry
+# Giskard - disable error reporting and telemetry
 os.environ.setdefault("GSK_DISABLE_SENTRY", "True")
 os.environ.setdefault("GSK_DISABLE_ANALYTICS", "True")
 
-# HuggingFace tokenizers – suppress fork-safety warnings
+# HuggingFace tokenizers - suppress fork-safety warnings
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "true")
 
 # Cache / data directories (Docker overrides these to /app/tmp)

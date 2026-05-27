@@ -16,7 +16,7 @@ import oci.signer
 
 from server.app.core.secrets import reveal
 
-from .schemas import OciProfileConfig
+from .schemas import PRINCIPAL_OCI_AUTH_TYPES, OciProfileConfig, genai_inference_endpoint
 
 T = TypeVar("T")
 LOGGER = logging.getLogger(__name__)
@@ -39,6 +39,27 @@ def get_signer(profile: OciProfileConfig) -> Optional[object]:
     return None
 
 
+def _tenancy_from_signer(signer: object) -> Optional[str]:
+    """Extract tenancy OCID from a principal-based signer.
+
+    InstancePrincipalsSecurityTokenSigner and EphemeralResourcePrincipalSigner
+    expose ``tenancy_id`` directly. OkeWorkloadIdentityResourcePrincipalSigner
+    does not — its tenancy lives in the ``res_tenant`` JWT claim on the
+    security token.
+    """
+    tenancy = getattr(signer, "tenancy_id", None)
+    if tenancy:
+        return tenancy
+    security_token = getattr(signer, "security_token", None)
+    if security_token is None:
+        return None
+    try:
+        return security_token.get_jwt().get("res_tenant")
+    except Exception:
+        LOGGER.warning("Failed to decode tenancy from signer JWT", exc_info=True)
+        return None
+
+
 def populate_principal_identity(profile: OciProfileConfig) -> None:
     """For principal-based auth, fill missing tenancy/region from the signer's metadata.
 
@@ -47,7 +68,7 @@ def populate_principal_identity(profile: OciProfileConfig) -> None:
     APIs that take an explicit tenancy_id (e.g. list_region_subscriptions) fail
     with ValueError. No-op for api_key and security_token profiles.
     """
-    if profile.authentication not in ("instance_principal", "oke_workload_identity", "resource_principal"):
+    if profile.authentication not in PRINCIPAL_OCI_AUTH_TYPES:
         return
     if profile.tenancy and profile.region:
         return
@@ -64,7 +85,7 @@ def populate_principal_identity(profile: OciProfileConfig) -> None:
     if signer is None:
         return
     if not profile.tenancy:
-        tenancy = getattr(signer, "tenancy_id", None)
+        tenancy = _tenancy_from_signer(signer)
         if tenancy:
             profile.tenancy = tenancy
     if not profile.region:
@@ -92,7 +113,7 @@ def init_client(client_type: Callable[..., T], profile: OciProfileConfig, **kwar
         and profile.genai_compartment_id
         and profile.genai_region
     ):
-        client_kwargs["service_endpoint"] = f"https://inference.generativeai.{profile.genai_region}.oci.oraclecloud.com"
+        client_kwargs["service_endpoint"] = genai_inference_endpoint(profile.genai_region)
 
     signer = get_signer(profile)
 

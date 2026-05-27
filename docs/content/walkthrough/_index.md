@@ -342,7 +342,12 @@ Under "Vector Search Details" you should see the PDF source, the vector store ta
 ## What's Next?
 
 You should now have a solid foundation in utilizing the {{% short_app_ref %}}.
-To take your experiments to the next level, consider exploring these additional bits of functionality:
+
+{{% notice style="code" title="Try a full Use Case" icon="circle-info" %}}
+The [Racing Championship use-case]({{% relref "/use-case/racing-championship" %}}) walks the same {{% short_app_ref %}} through an end-to-end demo that shows the progressive value of **NL2SQL**, **Vector Search**, and combined-mode grounding against a synthetic racing championship dataset. See all [Use Cases]({{% relref "/use-case" %}}) for more.
+{{% /notice %}}
+
+To take your experiments further, consider exploring:
 
 - Turn On/Off/Clear history
 - Experiment with different Large Language Models (LLMs) and Embedding Models

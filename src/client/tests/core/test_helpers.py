@@ -272,6 +272,22 @@ class TestSyncClientSetting:
         # Should not raise, value still set locally
         assert state["settings"]["client_settings"]["database"]["alias"] == "db1"
 
+    def test_transport_error_does_not_crash(self):
+        """Transport errors (timeout, connect) must not bubble out of the callback."""
+        state = _make_state()
+        state["settings"]["client_settings"] = {}
+        timeout = httpx.ReadTimeout("timed out", request=httpx.Request("PUT", "http://test"))
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.api_put", side_effect=timeout),
+            patch(f"{MODULE}.st.toast") as mock_toast,
+        ):
+            from client.app.core.helpers import sync_client_setting
+
+            sync_client_setting("database", "alias", "db1")
+        assert state["settings"]["client_settings"]["database"]["alias"] == "db1"
+        mock_toast.assert_called_once()
+
     def test_creates_nested_key(self):
         """Verify a nested key structure is created in client settings."""
         state = _make_state()

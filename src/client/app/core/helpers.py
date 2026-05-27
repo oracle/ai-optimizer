@@ -80,6 +80,9 @@ def sync_client_setting(key: str, field: str, value: str) -> None:
         state["settings"]["client_settings"] = result
     except httpx.HTTPStatusError:
         pass
+    except httpx.RequestError as exc:
+        LOGGER.warning("Failed to sync %s.%s: %s", key, field, exc)
+        st.toast(f"Couldn't sync **{key}** — server did not respond.", icon="⚠️")
 
 
 def clear_runtime_state() -> None:
@@ -96,7 +99,12 @@ def build_payload(form_data: dict) -> dict:
 
 def extract_error_detail(exc: httpx.HTTPStatusError) -> str:
     """Extract detail message from an HTTP error response."""
-    return exc.response.json().get("detail", str(exc)) if exc.response.content else str(exc)
+    if not exc.response.content:
+        return str(exc)
+    try:
+        return exc.response.json().get("detail", str(exc))
+    except ValueError:
+        return str(exc)
 
 
 def bool_to_emoji(value: bool) -> str:

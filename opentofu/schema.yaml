@@ -135,6 +135,14 @@ variableGroups:
       - byo_odb_service
     visible: true
 
+  #########################################################################
+  # Object Storage
+  #########################################################################
+  - title: "Object Storage Options"
+    variables:
+      - prov_object_storage
+    visible: true
+
 ###########################################################################
 variables:
   compartment_ocid:
@@ -669,6 +677,12 @@ variables:
         - eq:
             - byo_db_type
             - "OTHER"
+
+  #########################################################################
+  prov_object_storage:
+    type: boolean
+    title: "Create an OCI Bucket for document corpus?"
+    required: false
 
 ###########################################################################
 # Output Groups

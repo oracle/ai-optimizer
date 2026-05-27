@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore enquote mysupersecret tablespace varchar relref
 -->
 
-To use the Retrieval-Augmented Generation (RAG) functionality of the {{% short_app_ref %}}, you will need to setup/enable an [embedding model]({{% relref "/client/configuration/models" %}}) and have access to an **Oracle AI Database**. Both the [Always Free Oracle Autonomous Database Serverless (ADB-S)](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/autonomous-always-free.html) and the [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) are supported. They are a great, no-cost, way to get up and running quickly.
+To use the Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**) functionality of the {{% short_app_ref %}}, you will need access to an **Oracle AI Database**. Both the [Always Free Oracle Autonomous Database Serverless (ADB-S)](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/autonomous-always-free.html) and the [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) are supported. They are a great, no-cost, way to get up and running quickly.
 
 ## Configuration
 
@@ -26,11 +26,13 @@ To configure the Database from the {{% short_app_ref %}}, navigate to `Configura
 
 #### CORE Database
 
-The first database configured must use the alias **CORE**. The CORE database is used for application persistence (settings, test sets, evaluations). When no database has been configured, the alias field will automatically be set to `CORE` and cannot be changed.
+The first database configured must use the alias **CORE**. The **CORE** database is used for application persistence (settings, test sets, evaluations). When no database has been configured, the alias field will automatically be set to `CORE` and cannot be changed.
 
 #### Additional Databases
 
-Once the CORE database is configured, additional databases can be added with custom aliases by selecting **Add New...** from the database dropdown. These databases can be used for Vector Search and NL2SQL operations.
+Once the **CORE** database is configured, additional databases can be added with custom aliases by selecting **Add New...** from the database dropdown. These databases can be used for Vector Search and NL2SQL operations.
+
+![Database Add New](../images/database_add_new.png)
 
 #### Input Fields
 
@@ -86,7 +88,11 @@ podman run -v $TNS_ADMIN:/app/tns_admin -p 8501:8501 -it --rm ai-optimizer-aio
 
 ## Database User
 
-A database user is required to store the embeddings, used for **RAG**, into the Oracle Database. A non-privileged user with a *non-SYSTEM tablespace* should be used for this purpose.  Use the below syntax as an __example__ of creating a new user with least privileges (change the value of `c_user_password`):
+For both **RAG** and **NL2SQL** the {{% short_app_ref %}} will need to authenticate to an Oracle AI Database.  AI agents will use this user to retrieve data, 
+so it’s important to *carefully consider* the level of access granted to it. 
+At a minimum, a non-privileged user with a *non-SYSTEM tablespace* should be used for this purpose.    
+
+Use the below syntax as an __example__ of creating a new user with least privileges (change the value of `c_user_password`):
 
 ```sql
 DECLARE

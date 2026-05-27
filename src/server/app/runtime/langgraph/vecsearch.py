@@ -15,11 +15,6 @@ from server.app.runtime.langgraph.loader import load_langgraph_component
 
 PROMPT_NAME = "optimizer_vs-tools-default"
 
-DEFAULT_VECSEARCH_INSTRUCTION = (
-    "You are a knowledge assistant. Answer questions based on retrieved documents, "
-    "providing clear and accurate responses."
-)
-
 
 async def build_vecsearch_graph(
     client_settings: ClientSettings,
@@ -27,6 +22,6 @@ async def build_vecsearch_graph(
     api_key: str,
 ) -> Any:
     """Build a LangGraph flow for VecSearch."""
-    prompt = await fetch_prompt_with_fallback(server_url, api_key, PROMPT_NAME, DEFAULT_VECSEARCH_INSTRUCTION)
+    prompt = await fetch_prompt_with_fallback(server_url, api_key, PROMPT_NAME)
     agentspec_flow = build_vecsearch_flow(client_settings, server_url, api_key, prompt)
-    return await load_langgraph_component(agentspec_flow)
+    return await load_langgraph_component(agentspec_flow, auth_profile=client_settings.oci.auth_profile)

@@ -18,7 +18,7 @@ from server.app.models.registry import register_model
 from server.app.models.schemas import ModelConfig
 
 from .client import init_client
-from .schemas import OciProfileConfig
+from .schemas import OciProfileConfig, genai_inference_endpoint
 
 LOGGER = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ async def create_genai_models(profile: OciProfileConfig) -> list[ModelConfig]:
             "provider": "oci",
             "id": model["model_name"],
             "enabled": True,
-            "api_base": f"https://inference.generativeai.{profile.genai_region}.oci.oraclecloud.com",
+            "api_base": genai_inference_endpoint(profile.genai_region),
         }
         if "CHAT" in model["capabilities"]:
             model_dict["type"] = "ll"

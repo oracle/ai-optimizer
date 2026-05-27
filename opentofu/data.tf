@@ -6,6 +6,11 @@ data "oci_identity_availability_domains" "all" {
   compartment_id = var.tenancy_ocid
 }
 
+data "oci_objectstorage_namespace" "ns" {
+  count          = (var.infrastructure == "Kubernetes" || var.prov_object_storage) ? 1 : 0
+  compartment_id = local.compartment_ocid
+}
+
 data "oci_core_services" "core_services" {
   filter {
     name   = "name"

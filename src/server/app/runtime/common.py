@@ -4,13 +4,14 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Shared runtime utilities used by the LangGraph runtime.
 """
-# spell-checker: ignore vecsearch litellm acompletion agentspec
+# spell-checker: ignore vecsearch litellm acompletion agentspec genai
 
 import asyncio
 import json
 import logging
 from collections import defaultdict
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Union
+from enum import Enum
+from typing import Any, AsyncGenerator, Callable, Dict, Iterable, List, Optional, Union
 
 import litellm
 from litellm.types.utils import Choices, ModelResponse
@@ -19,6 +20,7 @@ from pydantic import BaseModel
 from server.app.agentspec.adapters.mcp import fetch_mcp_prompt
 from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
 from server.app.core.schemas import TOOL_NL2SQL, TOOL_VECSEARCH
+from server.app.mcp.prompts.registry import require_factory_text
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,48 +70,80 @@ class HistoryStore:
         self._store.pop(client, None)
 
 
-def resolve_route(tools_enabled: List[str]) -> str:
+class Route(str, Enum):
+    """Top-level dispatch key for which session a client gets per turn."""
+
+    LLM_ONLY = "llm_only"
+    NL2SQL = "nl2sql"
+    VECSEARCH = "vecsearch"
+    COMBINED = "combined"
+
+
+class ClassifierDecision(str, Enum):
+    """``CombinedSession`` per-turn classification of where to route a query."""
+
+    NL2SQL = "nl2sql"
+    VECSEARCH = "vecsearch"
+    BOTH = "both"
+
+
+def resolve_route(tools_enabled: List[str]) -> Route:
     """Map tools_enabled to a route key."""
     has_nl2sql = TOOL_NL2SQL in tools_enabled
     has_vs = TOOL_VECSEARCH in tools_enabled
     if has_nl2sql and has_vs:
-        return "combined"
+        return Route.COMBINED
     if has_nl2sql:
-        return "nl2sql"
+        return Route.NL2SQL
     if has_vs:
-        return "vecsearch"
-    return "llm_only"
+        return Route.VECSEARCH
+    return Route.LLM_ONLY
 
 
-# Maps route → (prompt_name, default_text) for prompt refresh.
-# Populated lazily by each runtime to avoid import-time coupling.
-ROUTE_PROMPTS: Dict[str, tuple[str, str]] = {}
+# Turn labels for the "User: ... Assistant: ..." wire-format history string.
+# Shared by the orchestrator producer and the `vs_rephrase.py` consumer.
+# Stored without a trailing space so consumers can count occurrences in
+# strings that omit the conventional space after the colon.
+HISTORY_USER_LABEL = "User:"
+HISTORY_ASSISTANT_LABEL = "Assistant:"
 
 
-async def fetch_prompt_with_fallback(
-    server_url: str,
-    api_key: str,
-    prompt_name: str,
-    default_prompt: str,
-) -> str:
-    """Fetch a system prompt from MCP, falling back to a default on failure."""
+def format_history_text(entries: Iterable[Dict[str, Any]]) -> str:
+    """Render conversation entries as ``"User: q\\nAssistant: a\\n..."``."""
+    parts: list[str] = []
+    for e in entries:
+        role = e.get("role")
+        content = e.get("content", "")
+        if role == "user":
+            parts.append(f"{HISTORY_USER_LABEL} {content}")
+        elif role == "assistant":
+            parts.append(f"{HISTORY_ASSISTANT_LABEL} {content}")
+    return "\n".join(parts) + ("\n" if parts else "")
+
+
+# Maps route → MCP prompt name. Populated lazily by each runtime to
+# avoid import-time coupling. The text always comes from MCP (or the
+# factory entry in mcp/prompts/defaults.py on fetch failure) — never
+# from a code-side copy.
+ROUTE_PROMPTS: Dict[Route, str] = {}
+
+
+async def fetch_prompt_with_fallback(server_url: str, api_key: str, prompt_name: str) -> str:
+    """Fetch a system prompt from MCP, falling back to the factory entry
+    (mcp/prompts/defaults.py) on transport failure."""
     try:
         return await fetch_mcp_prompt(server_url, api_key, prompt_name)
     except Exception:
-        LOGGER.warning(
-            "Failed to fetch prompt '%s' from MCP server, using default",
-            prompt_name,
-        )
-        return default_prompt
+        LOGGER.warning("Failed to fetch prompt %r from MCP server, using factory default", prompt_name)
+        return require_factory_text(prompt_name)
 
 
-async def fetch_prompt_for_route(route: str, server_url: str, api_key: str) -> Optional[str]:
-    """Fetch the current prompt text for a given route, or None if unknown."""
-    entry = ROUTE_PROMPTS.get(route)
-    if entry is None:
-        return None
-    prompt_name, default_text = entry
-    return await fetch_prompt_with_fallback(server_url, api_key, prompt_name, default_text)
+async def fetch_prompt_for_route(route: Route, server_url: str, api_key: str) -> str:
+    """Fetch the current prompt text for a given route."""
+    prompt_name = ROUTE_PROMPTS.get(route)
+    if prompt_name is None:
+        raise ValueError(f"No prompt registered for route {route!r}")
+    return await fetch_prompt_with_fallback(server_url, api_key, prompt_name)
 
 
 # ---------------------------------------------------------------------------
@@ -229,36 +263,39 @@ class SessionMetadata(BaseModel):
 # ---------------------------------------------------------------------------
 
 COMBINED_PROMPT_NAME = "optimizer_tools-default"
+CLASSIFIER_PROMPT_NAME = "optimizer_combined-classify"
+SYNTHESIS_PROMPT_NAME = "optimizer_combined-synthesize"
 
-CLASSIFIER_PROMPT = (
-    "You are a query classifier. Analyze what type of information is needed "
-    "to answer the user's question.\n\n"
-    "Respond with exactly one word:\n"
-    "- 'nl2sql' if the answer requires retrieving or computing over actual data "
-    "(specific values, aggregations, counts, listings, or current settings)\n"
-    "- 'vecsearch' if the answer requires knowledge "
-    "(concepts, definitions, explanations, best practices, or procedures)\n"
-    "- 'both' if the answer requires comparing actual data against "
-    "documented guidelines or recommendations\n\n"
-    "Do not include any other text.\n\n"
-    "User question: {{query}}"
+# Required substrings for an admin-supplied classifier prompt — the response
+# parser is hardcoded to recognize each ClassifierDecision value, so the
+# prompt MUST mention them all (otherwise the LLM has no menu).
+_CLASSIFIER_REQUIRED_SUBSTRINGS = (
+    "{{query}}",
+    ClassifierDecision.NL2SQL.value,
+    ClassifierDecision.VECSEARCH.value,
+    ClassifierDecision.BOTH.value,
 )
 
-DEFAULT_COMBINED_INSTRUCTION = (
-    "You have reference documents and database access. "
-    "Use database tools for live/current values, aggregations, counts, or listings. "
-    "Use documents for concepts, definitions, or best-practice guidelines. "
-    "When comparing current state to recommendations, use both sources and compare. "
-    "Answer using only information from these sources."
-)
+# Required str.format slots in an admin-supplied synthesis template.
+_SYNTHESIS_REQUIRED_SLOTS = ("{system_prompt}", "{query}", "{sql_answer}", "{search_answer}")
 
-SYNTHESIS_TEMPLATE = (
-    "{system_prompt}\n\n"
-    "The user asked: {query}\n\n"
-    "Database query result:\n{sql_answer}\n\n"
-    "Document search result:\n{search_answer}\n\n"
-    "Synthesize both results into a single, coherent answer."
-)
+def validate_classifier_prompt(text: str) -> bool:
+    """Return False if any decision token or the ``{{query}}`` slot is missing."""
+    return all(s in text for s in _CLASSIFIER_REQUIRED_SUBSTRINGS)
+
+
+def validate_synthesis_template(text: str) -> bool:
+    """Return False if a required ``str.format`` slot is missing OR if the
+    template raises when formatted with only the four runtime fields —
+    ``synthesize()`` runs ``.format()`` outside its try-block, so a stray
+    placeholder like ``{extra}`` would crash the synthesis call uncaught."""
+    if not all(slot in text for slot in _SYNTHESIS_REQUIRED_SLOTS):
+        return False
+    try:
+        text.format(system_prompt="", query="", sql_answer="", search_answer="")
+    except (KeyError, IndexError, ValueError):
+        return False
+    return True
 
 
 class BaseCombinedSession:
@@ -276,6 +313,9 @@ class BaseCombinedSession:
         system_prompt: str,
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
+        model_kwargs: Optional[Dict[str, Any]] = None,
+        classifier_prompt: Optional[str] = None,
+        synthesis_template: Optional[str] = None,
     ) -> None:
         self.vs_session = vs_session
         self.nl2sql_session = nl2sql_session
@@ -283,15 +323,19 @@ class BaseCombinedSession:
         self._system_prompt = system_prompt
         self._api_key = api_key
         self._api_base = api_base
+        self._model_kwargs: Dict[str, Any] = dict(model_kwargs) if model_kwargs else {}
+        self._classifier_prompt = classifier_prompt or require_factory_text(CLASSIFIER_PROMPT_NAME)
+        self._synthesis_template = synthesis_template or require_factory_text(SYNTHESIS_PROMPT_NAME)
         self.last_metadata = SessionMetadata()
 
     def _auth_kwargs(self) -> Dict[str, Any]:
-        """Return api_key/api_base kwargs for litellm calls, if configured."""
+        """Return api_key/api_base + provider-specific kwargs for litellm calls."""
         kwargs: Dict[str, Any] = {}
         if self._api_key:
             kwargs["api_key"] = self._api_key
         if self._api_base:
             kwargs["api_base"] = self._api_base
+        kwargs.update(self._model_kwargs)
         return kwargs
 
     @staticmethod
@@ -299,9 +343,9 @@ class BaseCombinedSession:
         """Extract token usage from a litellm response, or None."""
         return extract_response_usage(response)
 
-    async def classify(self, query: str) -> tuple[str, Optional[TokenUsage]]:
-        """Classify a query as 'nl2sql', 'vecsearch', or 'both'."""
-        prompt = CLASSIFIER_PROMPT.replace("{{query}}", query)
+    async def classify(self, query: str) -> tuple[ClassifierDecision, Optional[TokenUsage]]:
+        """Classify a query as nl2sql, vecsearch, or both."""
+        prompt = self._classifier_prompt.replace("{{query}}", query)
         try:
             response = await litellm.acompletion(
                 model=self._classifier_model,
@@ -318,18 +362,20 @@ class BaseCombinedSession:
             if not isinstance(choice, Choices):
                 raise TypeError(f"Expected Choices, got {type(choice)}")
             raw = choice.message.content or ""
-            decision = raw.strip().lower().strip("'\".,!")
-            if decision in ("nl2sql", "vecsearch", "both"):
-                return decision, classifier_tu
-            LOGGER.warning("Classifier returned unexpected value %r, defaulting to 'both'", raw)
-            return "both", classifier_tu
+            try:
+                return ClassifierDecision(raw.strip().lower().strip("'\".,!")), classifier_tu
+            except ValueError:
+                LOGGER.warning(
+                    "Classifier returned unexpected value %r, defaulting to %s", raw, ClassifierDecision.BOTH
+                )
+                return ClassifierDecision.BOTH, classifier_tu
         except Exception:
-            LOGGER.exception("Classification failed, defaulting to 'both'")
-            return "both", None
+            LOGGER.exception("Classification failed, defaulting to %s", ClassifierDecision.BOTH)
+            return ClassifierDecision.BOTH, None
 
     async def synthesize(self, query: str, vs_answer: str, nl2sql_answer: str) -> tuple[str, Optional[TokenUsage]]:
         """Synthesize answers from both sources into a single response."""
-        prompt = SYNTHESIS_TEMPLATE.format(
+        prompt = self._synthesis_template.format(
             system_prompt=self._system_prompt,
             query=query,
             sql_answer=nl2sql_answer,
@@ -379,10 +425,10 @@ class BaseChatOrchestrator:
 
     Type properties::
 
-        _agent_session_type    – e.g. AgentGraphSession or AgentChatSession
-        _combined_session_type – CombinedSession from the respective runtime
-        _flow_session_type     – GraphFlowSession or FlowSession
-        _nl2sql_session_type   – NL2SQLGraphSession or NL2SQLAgentSession
+        _agent_session_type    - e.g. AgentGraphSession or AgentChatSession
+        _combined_session_type - CombinedSession from the respective runtime
+        _flow_session_type     - GraphFlowSession or FlowSession
+        _nl2sql_session_type   - NL2SQLGraphSession or NL2SQLAgentSession
 
     Hook methods::
 
@@ -408,7 +454,7 @@ class BaseChatOrchestrator:
         self._server_url = server_url
         self._api_key = api_key
         self._resolve_client = resolve_client
-        self._session_cache: Dict[tuple, tuple[Any, Dict[str, Any]]] = {}
+        self._session_cache: Dict[tuple, tuple[Any, Dict[str, Any], Dict[str, Any]]] = {}
         self._build_lock = asyncio.Lock()
         self._stream_locks: Dict[tuple, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.history = HistoryStore()
@@ -422,21 +468,56 @@ class BaseChatOrchestrator:
     def _validate_llm(cs: Any) -> None:
         """Raise LLMConfigurationError if provider or model ID is missing."""
         if cs.ll_model.provider is None or cs.ll_model.id is None:
-            raise LLMConfigurationError("No language model configured. Set a provider and model ID in client settings.")
+            raise LLMConfigurationError(
+                "No language model configured. Set a provider and model ID in client settings."
+            )
 
     @staticmethod
     def _build_identity(cs_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """Build a cache-identity dict from settings, excluding chat_history."""
+        """Build a cache-identity dict from settings, excluding chat_history.
+
+        For OCI providers, the resolved profile is folded in — every field
+        ``build_oci_litellm_params`` consumes — so a credential rotation,
+        auth-mode switch, or compartment/region change invalidates the
+        cached graph instead of leaving stale ``model_kwargs`` baked in.
+        The profile is resolved by the cached client's ``oci.auth_profile``,
+        not by whatever CONFIGURED currently points at, so per-client OCI
+        pinning is honoured.
+        """
         out = cs_dict.copy()
         ll = out.get("ll_model")
         if isinstance(ll, dict):
             out["ll_model"] = {k: v for k, v in ll.items() if k != "chat_history"}
+            if ll.get("provider") == "oci":
+                # Lazy: runtime.common is imported before oci.registry is wired up.
+                from server.app.oci.registry import find_oci_profile_by_name
+
+                oci_section = out.get("oci")
+                profile_name = oci_section.get("auth_profile") if isinstance(oci_section, dict) else None
+                profile = find_oci_profile_by_name(profile_name)
+                out["_oci_resolved"] = (
+                    {
+                        "auth_profile": profile.auth_profile,
+                        "authentication": profile.authentication,
+                        "tenancy": profile.tenancy,
+                        "user": profile.user,
+                        "fingerprint": profile.fingerprint,
+                        "key_file": profile.key_file,
+                        "genai_compartment_id": profile.genai_compartment_id,
+                        "genai_region": profile.genai_region,
+                    }
+                    if profile is not None
+                    else {"auth_profile": profile_name, "resolved": False}
+                )
         return out
+
+    def _keys_for_client(self, client: str) -> list:
+        """Return cache keys whose first element is *client*."""
+        return [k for k in self._session_cache if k[0] == client]
 
     def invalidate_session(self, client: str) -> None:
         """Remove all cached sessions for the given client."""
-        keys = [k for k in self._session_cache if k[0] == client]
-        for k in keys:
+        for k in self._keys_for_client(client):
             del self._session_cache[k]
             self._stream_locks.pop(k, None)
 
@@ -445,26 +526,39 @@ class BaseChatOrchestrator:
         self.history.clear(client)
         self.invalidate_session(client)
 
+    async def _fetch_validated_prompt(
+        self,
+        prompt_name: str,
+        validate: Callable[[str], bool],
+    ) -> str:
+        """Fetch *prompt_name* from MCP; fall back to the factory entry
+        (mcp/prompts/defaults.py) if fetch fails or *validate* rejects."""
+        text = await fetch_prompt_with_fallback(self._server_url, self.api_key, prompt_name)
+        if not validate(text):
+            LOGGER.warning("Prompt %r failed structural validation; using factory default", prompt_name)
+            return require_factory_text(prompt_name)
+        return text
+
     # -- hooks (override in subclasses) -------------------------------------
 
-    async def _get_or_create_session(self, client: str) -> tuple[Any, str]:
+    async def _get_or_create_session(self, client: str) -> tuple[Any, Route]:
         raise NotImplementedError
 
     async def _run_flow_streaming(
         self,
         session: Any,
-        route: str,
+        route: Route,
         question: str,
         client: str,
         queue: asyncio.Queue,
-        chat_history: bool = True,
+        history_text: str = "",
     ) -> None:
         raise NotImplementedError
 
     async def _run_agent_streaming(
         self,
         session: Any,
-        use_history: bool,
+        history_messages: list,
         question: str,
         queue: asyncio.Queue,
     ) -> None:
@@ -473,12 +567,21 @@ class BaseChatOrchestrator:
     def _get_agent_token_usage(self, session: Any) -> Optional[TokenUsage]:
         raise NotImplementedError
 
+    def _history_text(self, client: str, cs: Any) -> str:
+        """Return prior turns as a ``"User: ...\\nAssistant: ..."`` string."""
+        raise NotImplementedError
+
+    def _history_messages(self, client: str, cs: Any) -> list:
+        """Return prior turns as runtime-specific message objects."""
+        raise NotImplementedError
+
     # -- shared streaming logic ---------------------------------------------
 
     async def _run_combined_streaming(
         self,
         session: Any,
-        use_history: bool,
+        history_text: str,
+        history_messages: list,
         question: str,
         client: str,
         queue: asyncio.Queue,
@@ -487,7 +590,8 @@ class BaseChatOrchestrator:
         await session.execute_streaming(
             query=question,
             thread_id=client,
-            chat_history=use_history,
+            history_text=history_text,
+            history_messages=history_messages,
             queue=queue,
             stream_flow=self._run_flow_streaming,
             stream_agent=self._run_agent_streaming,
@@ -496,19 +600,36 @@ class BaseChatOrchestrator:
     def _create_streaming_task(
         self,
         session: Any,
-        route: str,
-        use_history: bool,
+        route: Route,
+        cs: Any,
         question: str,
         client: str,
         queue: asyncio.Queue,
     ) -> asyncio.Task:
-        """Create an asyncio task for the appropriate streaming handler."""
+        """Create an asyncio task for the appropriate streaming handler.
+
+        Each route reads only the history representation it consumes, so a
+        long conversation doesn't pay to build both forms every turn.
+        """
         if isinstance(session, self._combined_session_type):
-            return asyncio.create_task(self._run_combined_streaming(session, use_history, question, client, queue))
+            return asyncio.create_task(
+                self._run_combined_streaming(
+                    session,
+                    self._history_text(client, cs),
+                    self._history_messages(client, cs),
+                    question,
+                    client,
+                    queue,
+                )
+            )
         if isinstance(session, self._agent_session_type):
-            return asyncio.create_task(self._run_agent_streaming(session, use_history, question, queue))
+            return asyncio.create_task(
+                self._run_agent_streaming(session, self._history_messages(client, cs), question, queue)
+            )
         return asyncio.create_task(
-            self._run_flow_streaming(session, route, question, client, queue, chat_history=use_history)
+            self._run_flow_streaming(
+                session, route, question, client, queue, history_text=self._history_text(client, cs)
+            )
         )
 
     @staticmethod
@@ -528,9 +649,15 @@ class BaseChatOrchestrator:
         client: str,
         collected: list[str],
         token_usage: Optional[TokenUsage],
-        route: str,
+        route: Route,
+        history_enabled: bool,
     ) -> Dict[str, Any]:
-        """Persist history and return the final _meta event dict."""
+        """Persist history and return the final _meta event dict.
+
+        *history_enabled* stamps each appended entry with the chat_history
+        setting active for this turn, so turns taken with the toggle off
+        are not later replayed when the toggle flips on.
+        """
         answer = "".join(collected)
         vs_metadata: Optional[VsMetadata] = None
         if isinstance(session, (self._combined_session_type, self._flow_session_type)):
@@ -542,8 +669,8 @@ class BaseChatOrchestrator:
             vs_meta_dict = vs_metadata.model_dump(exclude_none=True) if vs_metadata else None
             tu_dict = token_usage.model_dump() if token_usage else None
             extras = {k: v for k, v in [("vs_metadata", vs_meta_dict), ("token_usage", tu_dict)] if v}
-            self.history.append(client, "user", question)
-            self.history.append(client, "assistant", answer, **extras)
+            self.history.append(client, "user", question, history_enabled=history_enabled)
+            self.history.append(client, "assistant", answer, history_enabled=history_enabled, **extras)
         # Return dict for streaming event — endpoint consumes via event.get()
         vs_meta_dict = vs_metadata.model_dump(exclude_none=True) if vs_metadata else None
         return {"type": "_meta", "route": route, "vs_metadata": vs_meta_dict}
@@ -561,8 +688,7 @@ class BaseChatOrchestrator:
 
         async with self._stream_locks[(client, route)]:
             cs = self._resolve_client(client)
-            use_history = cs.ll_model.chat_history
-            task = self._create_streaming_task(session, route, use_history, question, client, queue)
+            task = self._create_streaming_task(session, route, cs, question, client, queue)
 
             try:
                 while True:
@@ -591,4 +717,4 @@ class BaseChatOrchestrator:
                     task.cancel()
                 return
 
-        yield self._finalize_stream(session, question, client, collected, token_usage, route)
+        yield self._finalize_stream(session, question, client, collected, token_usage, route, cs.ll_model.chat_history)

@@ -72,7 +72,7 @@ class CustomCorrectnessMetric:
         return self.evaluate(question_sample, answer)
 
     def evaluate(self, question_sample: Any, answer: Any) -> dict:
-        """Score a single question–answer pair for correctness."""
+        """Score a single question-answer pair for correctness."""
         llm_client = self._llm_client or get_default_client()
         try:
             out = llm_client.complete(

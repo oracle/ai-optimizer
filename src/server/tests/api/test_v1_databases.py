@@ -151,6 +151,48 @@ async def test_get_database_case_insensitive(app_client, auth_headers):
     assert resp.json()["alias"] == "TEST"
 
 
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_databases_rediscovers_vector_stores(app_client, auth_headers):
+    """GET /databases reconciles vector_stores for every entry in the list."""
+    for cfg in settings.database_configs:
+        cfg.vector_stores = [VectorStoreConfig(vector_store="STALE")]
+
+    async def _clear(cfg):
+        cfg.vector_stores = []
+
+    with patch(
+        "server.app.api.v1.endpoints.databases.refresh_db_vector_stores",
+        new=AsyncMock(side_effect=_clear),
+    ) as mock_refresh:
+        resp = await app_client.get("/v1/databases", headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert mock_refresh.await_count == len(settings.database_configs)
+    for entry in resp.json():
+        assert entry.get("vector_stores", []) == []
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_database_rediscovers_vector_stores(app_client, auth_headers):
+    """GET /databases/{alias} reconciles vector_stores against the live DB."""
+    settings.database_configs[0].vector_stores = [VectorStoreConfig(vector_store="STALE")]
+
+    async def _clear(cfg):
+        cfg.vector_stores = []
+
+    with patch(
+        "server.app.api.v1.endpoints.databases.refresh_db_vector_stores",
+        new=AsyncMock(side_effect=_clear),
+    ) as mock_refresh:
+        resp = await app_client.get("/v1/databases/TEST", headers=auth_headers)
+
+    assert resp.status_code == 200
+    mock_refresh.assert_awaited_once()
+    assert resp.json().get("vector_stores", []) == []
+
+
 # --- POST /databases ---
 
 

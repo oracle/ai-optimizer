@@ -257,7 +257,14 @@ def _render_oci_genai_section(oci_lookup: dict, selected_oci_auth_profile: str, 
                 st.stop()
             with st.spinner("Looking for OCI GenAI Models... please be patient.", show_time=True):
                 _update_oci(selected_oci_auth_profile, supplied, toast=False)
-                state.genai_models = _get_genai_models(selected_oci_auth_profile)
+                try:
+                    state.genai_models = _get_genai_models(selected_oci_auth_profile)
+                except httpx.HTTPStatusError as ex:
+                    state.genai_models = []
+                    st.error(
+                        f"Unable to list OCI GenAI models: {helpers.extract_error_detail(ex)}",
+                        icon="🚨",
+                    )
 
         if state.genai_models:
             regions = list({item["region"] for item in state.genai_models if "region" in item})
@@ -276,7 +283,14 @@ def _render_oci_genai_section(oci_lookup: dict, selected_oci_auth_profile: str, 
                 with st.spinner("Enabling OCI GenAI Models... please be patient.", show_time=True):
                     if not _update_oci(selected_oci_auth_profile, supplied, toast=False):
                         st.stop()
-                    _create_genai_models(selected_oci_auth_profile)
+                    try:
+                        _create_genai_models(selected_oci_auth_profile)
+                    except httpx.HTTPStatusError as ex:
+                        st.error(
+                            f"Unable to enable OCI GenAI models: {helpers.extract_error_detail(ex)}",
+                            icon="🚨",
+                        )
+                        st.stop()
                     helpers.refresh_settings()
                     _get_oci(force=True)
                 st.success("Oracle GenAI models - Enabled.", icon="✅")

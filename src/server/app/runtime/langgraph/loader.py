@@ -13,7 +13,7 @@ Provides:
 
 import logging
 import threading as _threading
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import anyio as _anyio
 import pyagentspec.adapters.langgraph.mcp_utils as _mcp_utils
@@ -31,6 +31,7 @@ from server.app.models.litellm_utils import (
     build_oci_litellm_params,
     strip_unsupported_penalties,
 )
+from server.app.oci.registry import find_oci_profile_by_name
 from server.app.runtime.langgraph.adapters.litellm import OracleChatLiteLLM
 from server.app.runtime.ollama_tools import normalize_ollama_provider
 
@@ -108,7 +109,7 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
     and merges sensitive_headers into transport headers for MCP auth.
     """
 
-    def __init__(self, checkpointer=None, config=None, **kwargs):
+    def __init__(self, checkpointer=None, config=None, auth_profile=None, **kwargs):
         LangGraphAgentSpecLoader.__init__(
             self,
             plugins=[get_litellm_deserialization_plugin()],
@@ -116,6 +117,7 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
             config=config,
             **kwargs,
         )
+        self._auth_profile = auth_profile
 
     def load_component(self, agentspec_component):
         """Use self as converter so LiteLlmConfig is handled."""
@@ -126,11 +128,17 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
             config=self.config,
         )
 
+    def _resolve_oci_profile(self):
+        """Resolve the pinned profile, or fall back to CONFIGURED if unpinned."""
+        if self._auth_profile is None:
+            return get_oci_profile()
+        return find_oci_profile_by_name(self._auth_profile)
+
     def _llm_convert_to_langgraph(self, llm_config, config):
         if isinstance(llm_config, LiteLlmConfig):
             model_kwargs: dict = {}
             if llm_config.provider == "oci":
-                oci_profile = get_oci_profile()
+                oci_profile = self._resolve_oci_profile()
                 if oci_profile:
                     model_kwargs.update(build_oci_litellm_params(oci_profile))
             provider = normalize_ollama_provider(llm_config.provider)
@@ -192,11 +200,19 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
         return super()._client_transport_convert_to_langgraph(agentspec_component)
 
 
-async def load_langgraph_component(agentspec_component: Any, checkpointer=None, config=None) -> Any:
+async def load_langgraph_component(
+    agentspec_component: Any,
+    checkpointer=None,
+    config=None,
+    auth_profile: Optional[str] = None,
+) -> Any:
     """Load an AgentSpec component into LangGraph with LiteLLM support.
 
     Runs the synchronous loader in a worker thread so the event loop stays
     free to accept inbound MCP connections from pyagentspec's tool discovery.
+
+    *auth_profile* selects which OCI profile the loader bakes into the
+    LLM's ``model_kwargs``. When omitted, falls back to CONFIGURED.
     """
-    loader = LiteLlmAgentSpecLoader(checkpointer=checkpointer, config=config)
+    loader = LiteLlmAgentSpecLoader(checkpointer=checkpointer, config=config, auth_profile=auth_profile)
     return await run_sync(lambda: cast(LangGraphComponent, loader.load_component(agentspec_component)))

@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 LiteLLM configuration builder and embedding client factory.
 """
-# spell-checker:ignore ollama genai litellm ocigenai vllm
+# spell-checker:ignore ollama genai litellm ocigenai vllm acompletion qwen
 
 import logging
 import re
@@ -202,8 +202,8 @@ class LiteLlmModelSpec:
         provider = normalize_ollama_provider(provider, self.model_type)
         self.model_key = f"{provider}/{model_id}"
 
-        # Cohere: rewrite api_base to the compatibility endpoint
-        if "cohere" in self.model_key:
+        # Cohere (direct, not OCI Cohere): rewrite api_base to the compatibility endpoint
+        if self.model_key.startswith("cohere/"):
             parsed = urlparse(self.api_base or "")
             self.api_base = f"{parsed.scheme or 'https'}://api.cohere.ai/compatibility/v1"
 

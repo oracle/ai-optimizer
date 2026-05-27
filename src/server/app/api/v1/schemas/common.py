@@ -10,7 +10,7 @@ from typing import Annotated
 from pydantic import AfterValidator, StringConstraints
 
 # Constraints for ClientId. The pattern accepts every printable ASCII
-# byte (0x21–0x7E) and the AfterValidator then rejects path separators
+# byte (0x21-0x7E) and the AfterValidator then rejects path separators
 # and bare dot-components. Permissive characters (`:`, `+`, `#`, `?`,
 # `$`, `!`, etc.) are allowed so identifiers persisted by the prior
 # unconstrained API (DB column is VARCHAR2(255)) stay reachable across

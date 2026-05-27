@@ -98,6 +98,30 @@ class TestClientSettingsFields:
         s = self._make()
         assert reveal(s.client_password) == "env-pass"
 
+    def test_oci_source_bucket_compartment_id_none_by_default(self, monkeypatch):
+        """Default oci_source_bucket_compartment_id is None when env var is absent."""
+        monkeypatch.delenv("AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID", raising=False)
+        s = self._make()
+        assert s.oci_source_bucket_compartment_id is None
+
+    def test_oci_source_bucket_compartment_id_loaded_from_env(self, monkeypatch):
+        """AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID env var populates the field."""
+        monkeypatch.setenv("AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID", "ocid1.compartment.oc1..abc")
+        s = self._make()
+        assert s.oci_source_bucket_compartment_id == "ocid1.compartment.oc1..abc"
+
+    def test_oci_source_bucket_name_none_by_default(self, monkeypatch):
+        """Default oci_source_bucket_name is None when env var is absent."""
+        monkeypatch.delenv("AIO_OCI_SOURCE_BUCKET_NAME", raising=False)
+        s = self._make()
+        assert s.oci_source_bucket_name is None
+
+    def test_oci_source_bucket_name_loaded_from_env(self, monkeypatch):
+        """AIO_OCI_SOURCE_BUCKET_NAME env var populates the field."""
+        monkeypatch.setenv("AIO_OCI_SOURCE_BUCKET_NAME", "my-corpus-bucket")
+        s = self._make()
+        assert s.oci_source_bucket_name == "my-corpus-bucket"
+
 
 # ---------------------------------------------------------------------------
 # _normalize_url_prefix validator

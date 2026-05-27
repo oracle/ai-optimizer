@@ -9,6 +9,7 @@ locals {
   # `<owner>/<image>:<tag>` paths under it.
   optimizer_values = templatefile("${path.module}/templates/ai-optimizer-values.yaml", {
     label                    = var.label_prefix
+    compartment_id           = var.compartment_id
     repository_base          = local.repository_base
     oci_region               = var.region
     db_type                  = var.db_conn.db_type
@@ -21,6 +22,7 @@ locals {
     client_cookie_secret     = var.client_cookie_secret
     is_observability_enabled = var.is_observability_enabled
     ocir_url                 = var.byo_ocir_url
+    object_storage_bucket    = var.object_storage_bucket
   })
 }
 

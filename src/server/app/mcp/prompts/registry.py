@@ -79,6 +79,14 @@ def get_factory_text(name: str) -> str | None:
     return None
 
 
+def require_factory_text(name: str) -> str:
+    """Return the FACTORY text for *name*; raise if absent."""
+    text = get_factory_text(name)
+    if text is None:
+        raise ValueError(f"No factory default registered for prompt {name!r}")
+    return text
+
+
 def register_mcp_prompt(pc: PromptConfig) -> None:
     """Register (or re-register) a single PromptConfig with FastMCP.
 

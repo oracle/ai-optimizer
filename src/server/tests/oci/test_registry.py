@@ -17,6 +17,7 @@ from server.app.oci.registry import (
     _OCI_CLI_FIELD_MAP,
     _apply_oci_cli_overrides,
     apply_env_overrides,
+    find_oci_profile_by_name,
     load_oci_profiles,
     register_oci_profile,
 )
@@ -77,6 +78,31 @@ class TestRegisterOciProfile:
         register_oci_profile(p2)
         assert len(settings.oci_configs) == 1
         assert settings.oci_configs[0].tenancy == "new"
+
+
+class TestFindOciProfileByName:
+    """find_oci_profile_by_name must mirror the rest of the OCI stack's casing rules."""
+
+    def test_exact_match(self):
+        register_oci_profile(OciProfileConfig(auth_profile="DEFAULT"))
+        assert find_oci_profile_by_name("DEFAULT") is not None
+
+    def test_case_insensitive_match(self):
+        """Client settings may persist a profile reference with different casing
+        than the registered profile (config files, hand-edited DB rows). The
+        lookup must succeed so cache identity and the loader resolve the same
+        profile API callers see."""
+        register_oci_profile(OciProfileConfig(auth_profile="DEFAULT"))
+        assert find_oci_profile_by_name("default") is not None
+        assert find_oci_profile_by_name("DeFaUlT") is not None
+
+    def test_unknown_returns_none(self):
+        register_oci_profile(OciProfileConfig(auth_profile="DEFAULT"))
+        assert find_oci_profile_by_name("OTHER") is None
+
+    def test_none_name_returns_none(self):
+        register_oci_profile(OciProfileConfig(auth_profile="DEFAULT"))
+        assert find_oci_profile_by_name(None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -537,3 +563,349 @@ class TestLoadOciProfiles:
             await load_oci_profiles()
 
         assert settings.client_settings.oci.auth_profile == before
+
+
+class TestLoadOciProfilesGenaiOverlay:
+    """DB overlay for GenAI compartment/region applied during load_oci_profiles."""
+
+    @pytest.mark.anyio
+    async def test_overlay_applied_when_db_has_values(self, _clear_oci_cli_env):
+        profile = OciProfileConfig(auth_profile="DEFAULT")
+        overlay = {
+            "default": {
+                "genai_compartment_id": "ocid1.compartment.oc1..fromdb",
+                "genai_region": "us-chicago-1",
+            }
+        }
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value=overlay),
+        ):
+            await load_oci_profiles()
+
+        assert profile.genai_compartment_id == "ocid1.compartment.oc1..fromdb"
+        assert profile.genai_region == "us-chicago-1"
+
+    @pytest.mark.anyio
+    async def test_env_var_takes_precedence_over_overlay(self, monkeypatch, _clear_oci_cli_env):
+        """env > DB: env genai_compartment_id wins when both are set."""
+        profile = OciProfileConfig(auth_profile="DEFAULT")
+        monkeypatch.setattr(settings, "genai_compartment_id", "ocid1.compartment.oc1..fromenv")
+        overlay = {"default": {"genai_compartment_id": "ocid1.compartment.oc1..fromdb", "genai_region": None}}
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value=overlay),
+        ):
+            await load_oci_profiles()
+
+        assert profile.genai_compartment_id == "ocid1.compartment.oc1..fromenv"
+
+    @pytest.mark.anyio
+    async def test_overlay_null_clears_config_file_value(self, _clear_oci_cli_env):
+        """Explicit null in overlay clears the field set by the config file.
+
+        Required so that clearing GenAI fields through the UI/API is durable
+        across restarts when ``~/.oci/config`` would otherwise repopulate them.
+        """
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..fromfile",
+            genai_region="us-ashburn-1",
+        )
+        overlay = {"default": {"genai_compartment_id": None, "genai_region": None}}
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value=overlay),
+        ):
+            await load_oci_profiles()
+
+        assert profile.genai_compartment_id is None
+        assert profile.genai_region is None
+
+    @pytest.mark.anyio
+    async def test_overlay_with_omitted_field_preserves_file_value(self, _clear_oci_cli_env):
+        """Partial overlay (only one key present) leaves the omitted field tracking the file.
+
+        Distinct from the null-clear case: key absence means "DB has no opinion".
+        """
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..fromfile",
+            genai_region="us-ashburn-1",
+        )
+        overlay = {"default": {"genai_region": "us-chicago-1"}}
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value=overlay),
+        ):
+            await load_oci_profiles()
+
+        assert profile.genai_compartment_id == "ocid1.compartment.oc1..fromfile"
+        assert profile.genai_region == "us-chicago-1"
+
+    @pytest.mark.anyio
+    async def test_overlay_null_clears_single_field_keeps_other(self, _clear_oci_cli_env):
+        """Partial clear: null for compartment overrides file, region from overlay applies."""
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..fromfile",
+            genai_region="us-ashburn-1",
+        )
+        overlay = {"default": {"genai_compartment_id": None, "genai_region": "us-chicago-1"}}
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value=overlay),
+        ):
+            await load_oci_profiles()
+
+        assert profile.genai_compartment_id is None
+        assert profile.genai_region == "us-chicago-1"
+
+    @pytest.mark.anyio
+    async def test_overlay_matches_profile_case_insensitively(self, _clear_oci_cli_env):
+        profile = OciProfileConfig(auth_profile="Production")
+        overlay = {"production": {"genai_compartment_id": "ocid1.compartment.oc1..prod", "genai_region": None}}
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value=overlay),
+        ):
+            await load_oci_profiles()
+
+        assert profile.genai_compartment_id == "ocid1.compartment.oc1..prod"
+
+    @pytest.mark.anyio
+    async def test_overlay_applies_to_env_only_default_profile(self, monkeypatch, _clear_oci_cli_env):
+        """Env-only deployment: DEFAULT created by apply_env_overrides still receives the overlay."""
+        monkeypatch.setattr(settings, "oci_cli_tenancy", "ocid1.tenancy.oc1..env")
+        overlay = {
+            "default": {
+                "genai_compartment_id": "ocid1.compartment.oc1..persisted",
+                "genai_region": "us-chicago-1",
+            }
+        }
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value=overlay),
+        ):
+            await load_oci_profiles()
+
+        assert len(settings.oci_configs) == 1
+        default = settings.oci_configs[0]
+        assert default.auth_profile == "DEFAULT"
+        assert default.genai_compartment_id == "ocid1.compartment.oc1..persisted"
+        assert default.genai_region == "us-chicago-1"
+
+    @pytest.mark.anyio
+    async def test_empty_overlay_is_noop(self, _clear_oci_cli_env):
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..fromfile",
+        )
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value={}),
+        ):
+            await load_oci_profiles()
+
+        assert profile.genai_compartment_id == "ocid1.compartment.oc1..fromfile"
+
+
+class TestLoadOciProfilesAutoLoadRollback:
+    """Startup auto-load must not let a transient OCI failure delete previously persisted models."""
+
+    @pytest.fixture
+    def _restore_model_configs(self):
+        saved = settings.model_configs[:]
+        yield
+        settings.model_configs = saved
+
+    @pytest.mark.anyio
+    async def test_empty_discovery_preserves_existing_oci_models(
+        self, _clear_oci_cli_env, _restore_model_configs
+    ):
+        """Empty discovery against the same region — assume transient and preserve."""
+        from server.app.models.schemas import ModelConfig
+
+        saved_oci_model = ModelConfig(
+            id="cohere.command",
+            type="ll",
+            provider="oci",
+            api_base="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
+            enabled=True,
+        )
+        settings.model_configs = [saved_oci_model]
+
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..cc",
+            genai_region="us-chicago-1",
+            usable=True,
+        )
+
+        async def _fake_create_genai_models(_profile):
+            settings.model_configs = [m for m in settings.model_configs if m.provider != "oci"]
+            return []
+
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value={}),
+            patch(f"{MODULE}.create_genai_models", side_effect=_fake_create_genai_models),
+        ):
+            await load_oci_profiles()
+
+        assert saved_oci_model in settings.model_configs
+
+    @pytest.mark.anyio
+    async def test_empty_discovery_after_region_change_does_not_restore_stale(
+        self, _clear_oci_cli_env, _restore_model_configs
+    ):
+        """Region changed → snapshot's api_base is stale → must not be restored.
+
+        Otherwise the server keeps exposing models whose api_base points at the
+        old region after the user has switched.
+        """
+        from server.app.models.schemas import ModelConfig
+
+        stale_model = ModelConfig(
+            id="cohere.command",
+            type="ll",
+            provider="oci",
+            api_base="https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com",
+            enabled=True,
+        )
+        settings.model_configs = [stale_model]
+
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..cc",
+            genai_region="us-chicago-1",
+            usable=True,
+        )
+
+        async def _fake_create_genai_models(_profile):
+            settings.model_configs = [m for m in settings.model_configs if m.provider != "oci"]
+            return []
+
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value={}),
+            patch(f"{MODULE}.create_genai_models", side_effect=_fake_create_genai_models),
+        ):
+            await load_oci_profiles()
+
+        assert stale_model not in settings.model_configs
+
+    @pytest.mark.anyio
+    async def test_exception_after_region_change_does_not_restore_stale(
+        self, _clear_oci_cli_env, _restore_model_configs
+    ):
+        """Exception path also must not restore stale models from a different region."""
+        from server.app.models.schemas import ModelConfig
+
+        stale_model = ModelConfig(
+            id="cohere.command",
+            type="ll",
+            provider="oci",
+            api_base="https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com",
+            enabled=True,
+        )
+        settings.model_configs = [stale_model]
+
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..cc",
+            genai_region="us-chicago-1",
+            usable=True,
+        )
+
+        async def _fake_create_genai_models(_profile):
+            settings.model_configs = [m for m in settings.model_configs if m.provider != "oci"]
+            raise RuntimeError("OCI service unavailable")
+
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value={}),
+            patch(f"{MODULE}.create_genai_models", side_effect=_fake_create_genai_models),
+        ):
+            await load_oci_profiles()
+
+        assert stale_model not in settings.model_configs
+
+    @pytest.mark.anyio
+    async def test_exception_during_discovery_restores_model_configs(
+        self, _clear_oci_cli_env, _restore_model_configs
+    ):
+        """An exception against the *current* region restores the pre-call snapshot."""
+        from server.app.models.schemas import ModelConfig
+
+        saved_oci_model = ModelConfig(
+            id="cohere.command",
+            type="ll",
+            provider="oci",
+            api_base="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
+            enabled=True,
+        )
+        settings.model_configs = [saved_oci_model]
+
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..cc",
+            genai_region="us-chicago-1",
+            usable=True,
+        )
+
+        async def _fake_create_genai_models(_profile):
+            settings.model_configs = [m for m in settings.model_configs if m.provider != "oci"]
+            raise RuntimeError("OCI service unavailable")
+
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value={}),
+            patch(f"{MODULE}.create_genai_models", side_effect=_fake_create_genai_models),
+        ):
+            await load_oci_profiles()
+
+        assert saved_oci_model in settings.model_configs
+
+    @pytest.mark.anyio
+    async def test_successful_discovery_replaces_models(self, _clear_oci_cli_env, _restore_model_configs):
+        """A successful create_genai_models() result is kept (no restore)."""
+        from server.app.models.schemas import ModelConfig
+
+        old = ModelConfig(id="old.model", type="ll", provider="oci", enabled=True)
+        new = ModelConfig(id="new.model", type="ll", provider="oci", enabled=True)
+        settings.model_configs = [old]
+
+        profile = OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..cc",
+            genai_region="us-chicago-1",
+            usable=True,
+        )
+
+        async def _fake_create_genai_models(_profile):
+            settings.model_configs = [m for m in settings.model_configs if m.provider != "oci"] + [new]
+            return [new]
+
+        with (
+            patch(f"{MODULE}.parse_oci_config_file", return_value=[profile]),
+            patch(f"{MODULE}._check_usable"),
+            patch(f"{MODULE}.load_oci_genai_overlay", return_value={}),
+            patch(f"{MODULE}.create_genai_models", side_effect=_fake_create_genai_models),
+        ):
+            await load_oci_profiles()
+
+        assert new in settings.model_configs
+        assert old not in settings.model_configs

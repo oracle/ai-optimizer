@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from client.tests.conftest import AttrDict, Rerun
+from client.tests.conftest import AttrDict, Rerun, make_http_error
 
 MODULE = "client.app.content.config.tabs.oci"
 
@@ -710,6 +710,53 @@ class TestRenderOciGenaiSection:
 
         mock_get.assert_called_once_with("DEFAULT")
 
+    def test_button_check_http_error_shows_error(self, mock_st):
+        """A 400 from the server is surfaced as st.error, not raised."""
+        from client.app.content.config.tabs.oci import _render_oci_genai_section
+
+        oci_lookup = {"DEFAULT": {"genai_compartment_id": "ocid1.comp"}}
+        state = make_oci_state()
+
+        mock_st.button.side_effect = [True, False]
+        mock_st.text_input.return_value = "ocid1.comp"
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._update_oci", return_value=True),
+            patch(f"{MODULE}._get_genai_models", side_effect=make_http_error(detail="bad compartment")),
+            patch(f"{MODULE}.helpers") as hlp,
+        ):
+            hlp.extract_error_detail.return_value = "bad compartment"
+            _render_oci_genai_section(oci_lookup, "DEFAULT", True, {})
+
+        assert state["genai_models"] == []
+        mock_st.error.assert_called_once()
+
+    def test_button_check_http_error_clears_stale_models(self, mock_st):
+        """Stale models from a prior successful Check must be cleared on a later failure."""
+        from client.app.content.config.tabs.oci import _render_oci_genai_section
+
+        oci_lookup = {"DEFAULT": {"genai_compartment_id": "ocid1.comp"}}
+        state = make_oci_state(
+            extra={"genai_models": [{"region": "us-chicago-1", "model_name": "m1", "capabilities": ["CHAT"]}]}
+        )
+
+        mock_st.button.side_effect = [True, False]
+        mock_st.text_input.return_value = "ocid1.comp"
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._update_oci", return_value=True),
+            patch(f"{MODULE}._get_genai_models", side_effect=make_http_error(detail="bad compartment")),
+            patch(f"{MODULE}.helpers") as hlp,
+        ):
+            hlp.extract_error_detail.return_value = "bad compartment"
+            _render_oci_genai_section(oci_lookup, "DEFAULT", True, {})
+
+        assert state["genai_models"] == []
+
     def test_disabled_when_not_usable(self, mock_st):
         """Buttons are disabled when profile is not usable."""
         from client.app.content.config.tabs.oci import _render_oci_genai_section
@@ -761,6 +808,40 @@ class TestRenderOciGenaiSection:
         assert mock_get_oci.call_count == 1
         mock_create.assert_called_once_with("DEFAULT")
         hlp.refresh_settings.assert_called_once()
+
+    def test_enable_button_create_http_error_shows_error_and_stops(self, mock_st):
+        """A 400 from create_genai_models is surfaced and refresh/success are skipped."""
+        from client.app.content.config.tabs.oci import _render_oci_genai_section
+
+        oci_lookup = {"DEFAULT": {"genai_compartment_id": "ocid1.comp"}}
+        state = make_oci_state(
+            extra={"genai_models": [{"region": "us-chicago-1", "model_name": "m1", "capabilities": ["CHAT"]}]}
+        )
+
+        mock_st.button.side_effect = [False, True]
+        mock_st.selectbox.return_value = "us-chicago-1"
+        mock_st.text_input.return_value = "ocid1.comp"
+        mock_st.stop.side_effect = Rerun
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._update_oci", return_value=True),
+            patch(f"{MODULE}._get_oci") as mock_get_oci,
+            patch(f"{MODULE}._create_genai_models", side_effect=make_http_error(detail="no subscription")),
+            patch(f"{MODULE}.helpers") as hlp,
+            patch(f"{MODULE}.pd") as mock_pd,
+        ):
+            mock_pd.DataFrame.return_value = MagicMock()
+            hlp.bool_to_emoji.return_value = "Y"
+            hlp.extract_error_detail.return_value = "no subscription"
+            with pytest.raises(Rerun):
+                _render_oci_genai_section(oci_lookup, "DEFAULT", True, {})
+
+        mock_st.error.assert_called_once()
+        hlp.refresh_settings.assert_not_called()
+        mock_get_oci.assert_not_called()
+        mock_st.success.assert_not_called()
 
     def test_check_button_without_compartment_shows_error(self, mock_st):
         """Missing compartment when checking models shows error and stops."""

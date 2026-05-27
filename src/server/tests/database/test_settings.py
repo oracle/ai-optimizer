@@ -16,8 +16,10 @@ from server.app.database.config import close_pool
 from server.app.database.registry import init_core_database
 from server.app.database.schemas import DatabaseConfig
 from server.app.database.settings import (
+    _UPSERT_SQL,
     delete_row,
     load_client_settings,
+    load_oci_genai_overlay,
     load_settings,
     persist_settings,
     row_exists,
@@ -29,6 +31,22 @@ pytestmark = [pytest.mark.db]
 
 _READ_SQL = "SELECT client, settings, is_current FROM aio_settings WHERE client = :client"
 _DELETE_SQL = "DELETE FROM aio_settings WHERE client = :client"
+
+
+@pytest.fixture(autouse=True)
+def _reset_oci_source_baseline():
+    """Isolate the OCI source-baseline (mutated by ``load_oci_profiles``) per test.
+
+    Without this, a registry test that ran first leaks its baseline into the
+    persist tests and changes which fields count as "deltas".
+    """
+    from server.app.oci.registry import get_oci_source_baseline, reset_oci_source_baseline
+
+    saved = dict(get_oci_source_baseline())
+    reset_oci_source_baseline()
+    yield
+    reset_oci_source_baseline()
+    get_oci_source_baseline().update(saved)
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +363,528 @@ async def test_delete_row_no_pool(core_pool):
 
     try:
         await delete_row("CONFIGURED")  # Should not raise
+    finally:
+        core_pool.pool = saved_pool
+        core_pool.usable = saved_usable
+
+
+# ---------------------------------------------------------------------------
+# OCI GenAI overlay tests
+# ---------------------------------------------------------------------------
+
+
+async def test_persist_settings_writes_oci_genai_overlay(core_pool):
+    """persist_settings() stores only GenAI fields for OCI profiles — no auth material.
+
+    Profiles whose fields match the (empty) file/env baseline contribute no
+    delta and are omitted; the user-set DEFAULT profile contributes both fields.
+    """
+    from pydantic import SecretStr
+
+    from server.app.oci.schemas import OciProfileConfig
+
+    saved_oci = settings.oci_configs[:]
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            tenancy="ocid1.tenancy.oc1..tt",
+            fingerprint="aa:bb",
+            key_content=SecretStr("SHOULD_NOT_PERSIST"),
+            genai_compartment_id="ocid1.compartment.oc1..cc",
+            genai_region="us-chicago-1",
+        ),
+        OciProfileConfig(auth_profile="EMPTY"),
+    ]
+    try:
+        await persist_settings()
+
+        rows = await _read_aio_settings(core_pool)
+        raw = rows[0][1]
+        data = json.loads(raw) if isinstance(raw, str) else raw
+
+        stored = data.get("oci_genai_overlay")
+        assert stored == [
+            {
+                "auth_profile": "DEFAULT",
+                "genai_compartment_id": "ocid1.compartment.oc1..cc",
+                "genai_region": "us-chicago-1",
+            }
+        ]
+
+        raw_str = raw if isinstance(raw, str) else json.dumps(raw, default=str)
+        assert "SHOULD_NOT_PERSIST" not in raw_str
+        assert "fingerprint" not in raw_str.lower() or "aa:bb" not in raw_str
+    finally:
+        settings.oci_configs = saved_oci
+
+
+async def test_persist_omits_source_derived_oci_fields(core_pool):
+    """File/env-derived OCI GenAI values that the user never edited are not persisted.
+
+    Without this, a value parsed from ``~/.oci/config`` (or AIO_GENAI_* env) becomes
+    sticky in the DB and subsequent edits to the config file are ignored.
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    saved_oci = settings.oci_configs[:]
+    saved_baseline = dict(oci_registry._source_baseline)
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..fromfile",
+            genai_region="us-ashburn-1",
+        ),
+    ]
+    # Post-load_oci_profiles state: baseline matches the in-memory values, so
+    # nothing was ever edited by the user.
+    oci_registry._source_baseline = {
+        "default": {
+            "genai_compartment_id": "ocid1.compartment.oc1..fromfile",
+            "genai_region": "us-ashburn-1",
+        },
+    }
+    try:
+        await persist_settings()
+        rows = await _read_aio_settings(core_pool)
+        raw = rows[0][1]
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        assert data.get("oci_genai_overlay") == []
+    finally:
+        settings.oci_configs = saved_oci
+        oci_registry._source_baseline = saved_baseline
+
+
+async def test_persist_then_load_oci_overlay_round_trips_explicit_clear(core_pool):
+    """Round-trip: persisting a profile with cleared GenAI fields yields ``None`` entries on reload.
+
+    This is what makes a UI-initiated clear durable across restarts even when
+    ``~/.oci/config`` still contains values for the same profile.
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    del core_pool
+    saved_oci = settings.oci_configs[:]
+    saved_baseline = dict(oci_registry._source_baseline)
+    # Baseline reflects what was parsed from the config file; in-memory is the
+    # user's cleared state.
+    oci_registry._source_baseline = {
+        "default": {
+            "genai_compartment_id": "ocid1.compartment.oc1..fromfile",
+            "genai_region": "us-ashburn-1",
+        }
+    }
+    settings.oci_configs = [OciProfileConfig(auth_profile="DEFAULT")]
+    try:
+        await persist_settings()
+        overlay = await load_oci_genai_overlay()
+        assert overlay == {
+            "default": {"genai_compartment_id": None, "genai_region": None}
+        }
+    finally:
+        settings.oci_configs = saved_oci
+        oci_registry._source_baseline = saved_baseline
+
+
+async def test_load_oci_genai_overlay_returns_persisted_values(core_pool):
+    """load_oci_genai_overlay() returns a casefold-keyed dict from the persisted row."""
+    from server.app.oci.schemas import OciProfileConfig
+
+    del core_pool
+    saved_oci = settings.oci_configs[:]
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="Production",
+            genai_compartment_id="ocid1.compartment.oc1..prod",
+            genai_region="us-chicago-1",
+        ),
+    ]
+    try:
+        await persist_settings()
+        overlay = await load_oci_genai_overlay()
+        assert overlay == {
+            "production": {
+                "genai_compartment_id": "ocid1.compartment.oc1..prod",
+                "genai_region": "us-chicago-1",
+            }
+        }
+    finally:
+        settings.oci_configs = saved_oci
+
+
+async def test_persist_touched_field_reverting_to_baseline_removes_override(core_pool):
+    """A field the user explicitly set back to baseline must remove the override.
+
+    Distinct from the env-masking case (untouched field, in-memory equals
+    baseline → carry forward): when ``oci_user_touched`` says the user *did*
+    touch the field, "current == baseline" means "revert" and the prior overlay
+    must be dropped.
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    saved_oci = settings.oci_configs[:]
+    oci_registry._source_baseline.update(
+        {
+            "default": {
+                "genai_compartment_id": "ocid1.compartment.oc1..A",
+                "genai_region": "us-ashburn-1",
+            }
+        }
+    )
+    # Run 1: user sets compartment=B (overrides file value A).
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..B",
+            genai_region="us-ashburn-1",
+        ),
+    ]
+    try:
+        await persist_settings()
+
+        # Run 2: user PUTs compartment back to A (the baseline).
+        settings.oci_configs[0].genai_compartment_id = "ocid1.compartment.oc1..A"
+        await persist_settings(oci_user_touched={"DEFAULT": {"genai_compartment_id"}})
+
+        rows = await _read_aio_settings(core_pool)
+        raw = rows[0][1]
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        assert data.get("oci_genai_overlay") == []
+    finally:
+        settings.oci_configs = saved_oci
+
+
+async def test_persist_touched_clear_with_baseline_none_removes_override(core_pool):
+    """User-touched explicit None when baseline is also None removes the override.
+
+    The user previously set a value (overlay has it); user now clears it. The
+    file baseline is None, so post-clear in-memory == baseline. ``touched``
+    tells persist this is a revert, not silent matching.
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    saved_oci = settings.oci_configs[:]
+    oci_registry._source_baseline.update(
+        {"default": {"genai_compartment_id": None, "genai_region": None}}
+    )
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..B",
+            genai_region=None,
+        ),
+    ]
+    try:
+        await persist_settings()
+        settings.oci_configs[0].genai_compartment_id = None
+        await persist_settings(oci_user_touched={"DEFAULT": {"genai_compartment_id"}})
+
+        rows = await _read_aio_settings(core_pool)
+        raw = rows[0][1]
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        assert data.get("oci_genai_overlay") == []
+    finally:
+        settings.oci_configs = saved_oci
+
+
+async def test_persist_does_not_prune_when_env_matches_saved_overlay(core_pool):
+    """Env values are transient — pruning when env happens to equal the saved
+    overlay would erase the user's saved GenAI value once env is unset.
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    saved_oci = settings.oci_configs[:]
+    saved_env_comp = settings.genai_compartment_id
+    settings.genai_compartment_id = None
+    # Run 1: no env, file=A, user persists override B.
+    oci_registry._source_baseline.update(
+        {
+            "default": {
+                "genai_compartment_id": "ocid1.compartment.oc1..A",
+                "genai_region": None,
+            }
+        }
+    )
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..B",
+        ),
+    ]
+    try:
+        await persist_settings()
+
+        # Run 2: env now masks compartment with the same value as the saved
+        # overlay. Baseline reflects env (B), in-memory is B, carry is B.
+        settings.genai_compartment_id = "ocid1.compartment.oc1..B"
+        oci_registry._source_baseline.clear()
+        oci_registry._source_baseline.update(
+            {
+                "default": {
+                    "genai_compartment_id": "ocid1.compartment.oc1..B",
+                    "genai_region": None,
+                }
+            }
+        )
+        settings.oci_configs = [
+            OciProfileConfig(
+                auth_profile="DEFAULT",
+                genai_compartment_id="ocid1.compartment.oc1..B",
+            ),
+        ]
+        await persist_settings()
+
+        rows = await _read_aio_settings(core_pool)
+        raw = rows[0][1]
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        assert data.get("oci_genai_overlay") == [
+            {
+                "auth_profile": "DEFAULT",
+                "genai_compartment_id": "ocid1.compartment.oc1..B",
+            }
+        ]
+    finally:
+        settings.oci_configs = saved_oci
+        settings.genai_compartment_id = saved_env_comp
+
+
+async def test_persist_prunes_overlay_when_baseline_catches_up(core_pool):
+    """A carry-forward value that now equals the *file* baseline must be dropped.
+
+    Scenario: user previously set ``compartment=B`` (overlay row has B); the
+    user then adds ``compartment=B`` to ``~/.oci/config``. Next restart's
+    baseline is B and in-memory is B with no env override. The override is
+    now redundant — if persist re-writes it, a later file edit (B → C) would
+    be masked.
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    saved_oci = settings.oci_configs[:]
+    saved_env_comp = settings.genai_compartment_id
+    saved_env_region = settings.genai_region
+    settings.genai_compartment_id = None
+    settings.genai_region = None
+    # Run 1: user override lands in the DB while file said A.
+    oci_registry._source_baseline.update(
+        {
+            "default": {
+                "genai_compartment_id": "ocid1.compartment.oc1..A",
+                "genai_region": None,
+            }
+        }
+    )
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..B",
+            genai_region=None,
+        ),
+    ]
+    try:
+        await persist_settings()
+
+        # Run 2: file now contains B; baseline matches in-memory.
+        oci_registry._source_baseline.clear()
+        oci_registry._source_baseline.update(
+            {
+                "default": {
+                    "genai_compartment_id": "ocid1.compartment.oc1..B",
+                    "genai_region": None,
+                }
+            }
+        )
+        settings.oci_configs = [
+            OciProfileConfig(
+                auth_profile="DEFAULT",
+                genai_compartment_id="ocid1.compartment.oc1..B",
+                genai_region=None,
+            ),
+        ]
+        await persist_settings()
+
+        rows = await _read_aio_settings(core_pool)
+        raw = rows[0][1]
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        # Override pruned — DB no longer masks future file edits.
+        assert data.get("oci_genai_overlay") == []
+    finally:
+        settings.oci_configs = saved_oci
+        settings.genai_compartment_id = saved_env_comp
+        settings.genai_region = saved_env_region
+
+
+async def test_persist_preserves_prior_overlay_when_env_masks_user_value(core_pool):
+    """Env-override at startup must not erase a previously persisted user edit.
+
+    Scenario: a prior UI edit wrote ``compartment=B`` to the DB.  On the next
+    restart, ``AIO_GENAI_COMPARTMENT_ID=X`` is exported, so
+    ``apply_env_overrides`` puts X on all profiles and the baseline snapshot is
+    also X.  In-memory now equals baseline, so the delta-only persist would
+    otherwise drop the field — overwriting the row and losing B.
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    saved_oci = settings.oci_configs[:]
+    # Run 1: user edit lands in the DB.
+    oci_registry._source_baseline.update(
+        {
+            "default": {
+                "genai_compartment_id": "ocid1.compartment.oc1..A",
+                "genai_region": "us-ashburn-1",
+            }
+        }
+    )
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..B",
+            genai_region="us-ashburn-1",
+        ),
+    ]
+    try:
+        await persist_settings()
+
+        # Run 2: env override active; baseline reflects env, in-memory matches.
+        oci_registry._source_baseline.clear()
+        oci_registry._source_baseline.update(
+            {
+                "default": {
+                    "genai_compartment_id": "ocid1.compartment.oc1..X",
+                    "genai_region": "us-ashburn-1",
+                }
+            }
+        )
+        settings.oci_configs = [
+            OciProfileConfig(
+                auth_profile="DEFAULT",
+                genai_compartment_id="ocid1.compartment.oc1..X",
+                genai_region="us-ashburn-1",
+            ),
+        ]
+        await persist_settings()
+
+        rows = await _read_aio_settings(core_pool)
+        raw = rows[0][1]
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        assert data.get("oci_genai_overlay") == [
+            {
+                "auth_profile": "DEFAULT",
+                "genai_compartment_id": "ocid1.compartment.oc1..B",
+            }
+        ]
+    finally:
+        settings.oci_configs = saved_oci
+
+
+async def test_load_settings_returns_none_for_non_object_payload(core_pool):
+    """A malformed CONFIGURED row containing valid JSON that isn't an object
+    must not crash startup — it should fall back to "no persisted settings".
+    """
+    import oracledb
+
+    async with core_pool.pool.acquire() as conn:
+        await execute_sql(
+            conn,
+            _UPSERT_SQL,
+            {"client": "CONFIGURED", "settings": [1, 2, 3], "is_current": 1},
+            input_sizes={"settings": oracledb.DB_TYPE_JSON},
+        )
+        await conn.commit()
+
+    result = await load_settings()
+    assert result is None
+
+
+async def test_load_settings_does_not_expose_sparse_oci_overlay(core_pool):
+    """``load_settings()`` must not return delta-only OCI entries as full profiles.
+
+    Generic callers (e.g. ``POST /settings``) dump the result; partial overlay
+    entries would surface as fake ``OciProfileConfig`` objects with everything
+    but ``auth_profile`` / GenAI fields defaulted.
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    del core_pool
+    saved_oci = settings.oci_configs[:]
+    oci_registry._source_baseline.update(
+        {
+            "default": {
+                "genai_compartment_id": "ocid1.compartment.oc1..A",
+                "genai_region": "us-ashburn-1",
+            }
+        }
+    )
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            tenancy="ocid1.tenancy.oc1..real",
+            genai_compartment_id="ocid1.compartment.oc1..B",
+            genai_region="us-ashburn-1",
+        ),
+    ]
+    try:
+        await persist_settings()
+
+        result = await load_settings()
+        assert result is not None
+        assert result.oci_configs == []
+    finally:
+        settings.oci_configs = saved_oci
+
+
+async def test_load_oci_genai_overlay_preserves_omitted_fields(core_pool):
+    """Loader must not materialize fields that were omitted from the persisted entry.
+
+    Required so that ``load_oci_profiles`` can tell ``"the DB has no opinion on
+    this field"`` (key absent → keep file value) from ``"the DB says null"``
+    (key present with null → override file value).
+    """
+    from server.app.oci import registry as oci_registry
+    from server.app.oci.schemas import OciProfileConfig
+
+    del core_pool
+    saved_oci = settings.oci_configs[:]
+    # Baseline mirrors compartment but leaves region as None → only region is a delta.
+    oci_registry._source_baseline.update(
+        {
+            "default": {
+                "genai_compartment_id": "ocid1.compartment.oc1..baseline",
+                "genai_region": None,
+            }
+        }
+    )
+    settings.oci_configs = [
+        OciProfileConfig(
+            auth_profile="DEFAULT",
+            genai_compartment_id="ocid1.compartment.oc1..baseline",
+            genai_region="us-chicago-1",
+        ),
+    ]
+    try:
+        await persist_settings()
+        overlay = await load_oci_genai_overlay()
+        assert overlay == {"default": {"genai_region": "us-chicago-1"}}
+    finally:
+        settings.oci_configs = saved_oci
+
+
+async def test_load_oci_genai_overlay_no_pool(core_pool):
+    """load_oci_genai_overlay() returns an empty dict when the pool is unavailable."""
+    saved_pool = core_pool.pool
+    saved_usable = core_pool.usable
+    core_pool.pool = None
+    core_pool.usable = False
+
+    try:
+        result = await load_oci_genai_overlay()
+        assert result == {}
     finally:
         core_pool.pool = saved_pool
         core_pool.usable = saved_usable

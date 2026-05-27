@@ -15,8 +15,6 @@ from server.app.agentspec.adapters.litellm import LiteLlmConfig
 from server.app.core.schemas import ClientSettings
 from server.app.models.litellm_utils import LiteLlmModelSpec
 
-DEFAULT_INSTRUCTION = "You are a helpful assistant. Answer the user's questions clearly and concisely."
-
 
 def build_llm_config(client_settings: ClientSettings) -> LiteLlmConfig:
     """Build a LiteLlmConfig (AgentSpec component) from client_settings.ll_model.
@@ -50,31 +48,15 @@ def build_llm_config(client_settings: ClientSettings) -> LiteLlmConfig:
 
 def build_llm_only_agentspec(
     client_settings: ClientSettings,
-    custom_instruction: str = DEFAULT_INSTRUCTION,
+    system_prompt: str,
 ) -> AgentSpecAgent:
-    """Build a pyagentspec Agent definition for LLM-only conversation.
-
-    This returns a portable AgentSpec config that can be serialized
-    to YAML/JSON or loaded directly into a runtime.
-
-    Parameters
-    ----------
-    client_settings:
-        The ClientSettings object containing ll_model config.
-    custom_instruction:
-        System instruction for the agent.
-
-    Returns
-    -------
-    AgentSpecAgent
-        A pyagentspec Agent ready to be serialized or loaded by a runtime adapter.
-    """
+    """Build a pyagentspec Agent definition for LLM-only conversation."""
     llm_config = build_llm_config(client_settings)
     return AgentSpecAgent(
         id="llm-only-agent",
         name="LLM Only Agent",
         llm_config=llm_config,
-        system_prompt=custom_instruction,
+        system_prompt=system_prompt,
         tools=[],
         toolboxes=[],
         human_in_the_loop=True,

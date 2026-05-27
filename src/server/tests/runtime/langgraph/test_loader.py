@@ -123,6 +123,40 @@ class TestLiteLlmAgentSpecLoader:
         assert "oci_region" not in bridge.model_kwargs
         assert "oci_signer" not in bridge.model_kwargs
 
+    def test_oci_loader_resolves_caller_auth_profile_not_configured(self):
+        """The loader must bake the *caller's* OCI profile into model_kwargs.
+
+        Per-client OCI pinning (e.g. server pinned to PROFILE_B while
+        CONFIGURED stays on PROFILE_A) must produce a graph whose LLM
+        carries PROFILE_B's compartment/region. Otherwise the cache
+        identity (which already follows the caller's selection) and the
+        baked OCI auth params would describe different profiles, and a
+        change to the caller's profile would not affect the live graph.
+        """
+        from server.app.oci.schemas import OciProfileConfig
+        from server.tests.runtime.shared_helpers import temporary_oci_configs
+
+        profile_a = OciProfileConfig(
+            auth_profile="PROFILE_A",
+            genai_compartment_id="ocid1.compartment.oc1..a",
+            genai_region="us-ashburn-1",
+        )
+        profile_b = OciProfileConfig(
+            auth_profile="PROFILE_B",
+            genai_compartment_id="ocid1.compartment.oc1..b",
+            genai_region="us-chicago-1",
+        )
+        with temporary_oci_configs([profile_a, profile_b], client_auth_profile="PROFILE_A"):
+            with patch("server.app.models.litellm_utils.get_signer", return_value=None):
+                loader = LiteLlmAgentSpecLoader(auth_profile="PROFILE_B")
+                agent = self._make_agent(provider="oci", model_id="cohere.command-a-03-2025")
+                graph = loader.load_component(agent)
+
+            bridge = _find_litellm_bridge(graph)
+            assert bridge is not None
+            assert bridge.model_kwargs["oci_compartment_id"] == "ocid1.compartment.oc1..b"
+            assert bridge.model_kwargs["oci_region"] == "us-chicago-1"
+
 
 class TestUnwrapToolContentBlocks:
     """Tests for _unwrap_tool_content_blocks patching."""

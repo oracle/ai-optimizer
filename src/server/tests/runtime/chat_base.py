@@ -134,8 +134,8 @@ class ExecuteChatBase:
 
         history = orch.history.get("c1")
         assert len(history) == 2
-        assert history[0] == {"role": "user", "content": "the question"}
-        assert history[1] == {"role": "assistant", "content": "the answer"}
+        assert history[0] == {"role": "user", "content": "the question", "history_enabled": True}
+        assert history[1] == {"role": "assistant", "content": "the answer", "history_enabled": True}
 
     @pytest.mark.anyio
     async def test_llm_only_returns_none_vs_metadata(self):
@@ -175,7 +175,7 @@ class StreamBase:
         orch = self.make_orchestrator(tools_enabled=["NL2SQL"])
         mock_session = self._mock_agent_session()
 
-        async def fake_run_agent(_self, _session, _use_history, _question, queue):
+        async def fake_run_agent(_self, _session, _history_messages, _question, queue):
             await queue.put({"type": "stream", "content": "Hello"})
             await queue.put({"type": "stream", "content": " world"})
 
@@ -202,7 +202,7 @@ class StreamBase:
         orch = self.make_orchestrator(tools_enabled=["NL2SQL"])
         mock_session = self._mock_agent_session()
 
-        async def failing_run(_self, _session, _use_history, _question, _queue):
+        async def failing_run(_self, _session, _history_messages, _question, _queue):
             raise RuntimeError("boom")
 
         with (
@@ -222,7 +222,7 @@ class StreamBase:
         """Verify combined route streams via _run_combined_streaming."""
         orch = self.make_orchestrator(tools_enabled=["NL2SQL", "Vector Search"])
 
-        async def fake_combined(_self, _session, _use_history, _question, _client, queue):
+        async def fake_combined(_self, _session, _history_text, _history_messages, _question, _client, queue):
             await queue.put({"type": "stream", "content": "subflow "})
             await queue.put({"type": "stream", "content": "answer"})
 
@@ -300,7 +300,7 @@ class StreamBase:
         orch = self.make_orchestrator(tools_enabled=["NL2SQL"])
         mock_session = self._mock_agent_session()
 
-        async def fake_run(_self, _session, _use_history, _question, queue):
+        async def fake_run(_self, _session, _history_messages, _question, queue):
             await queue.put({"type": "stream", "content": "Hello"})
             await queue.put({"type": "stream", "content": " world"})
 
@@ -313,8 +313,8 @@ class StreamBase:
 
         history = orch.history.get("c1")
         assert len(history) == 2
-        assert history[0] == {"role": "user", "content": "the question"}
-        assert history[1] == {"role": "assistant", "content": "Hello world"}
+        assert history[0] == {"role": "user", "content": "the question", "history_enabled": True}
+        assert history[1] == {"role": "assistant", "content": "Hello world", "history_enabled": True}
 
     @pytest.mark.anyio
     async def test_token_usage_event_passthrough(self):
@@ -322,7 +322,7 @@ class StreamBase:
         orch = self.make_orchestrator(tools_enabled=["NL2SQL"])
         mock_session = self._mock_agent_session()
 
-        async def fake_run(_self, _session, _use_history, _question, queue):
+        async def fake_run(_self, _session, _history_messages, _question, queue):
             await queue.put({"type": "stream", "content": "hello"})
             await queue.put(
                 {

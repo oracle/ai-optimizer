@@ -78,7 +78,6 @@ def _aggregate_usage_callback(callback: UsageMetadataCallbackHandler) -> Optiona
     consumes the three top-level totals today.
     """
     by_model = getattr(callback, "usage_metadata", None) or {}
-    LOGGER.warning("DEBUG _aggregate_usage_callback: by_model=%r", by_model)
     if not by_model:
         return None
     totals = reduce(add_usage, by_model.values())
@@ -102,33 +101,22 @@ class GraphFlowSession:
         self.graph = graph
         ll_model = client_settings.ll_model
         self._model = f"{ll_model.provider}/{ll_model.id}"
-        self._history: str = ""
         self.last_metadata = SessionMetadata()
 
-    @property
-    def history(self) -> str:
-        """Return accumulated chat history string."""
-        return self._history
-
-    @history.setter
-    def history(self, value: str) -> None:
-        """Set the chat history string."""
-        self._history = value
-
-    def build_inputs(self, query: str, thread_id: str, chat_history: bool = True) -> Dict[str, Any]:
+    def build_inputs(self, query: str, thread_id: str, history_text: str) -> Dict[str, Any]:
         """Build the flow input dict."""
         return {
             "query": query,
             "thread_id": thread_id,
             "model": self._model,
-            "chat_history": self._history if chat_history else "",
+            "chat_history": history_text,
         }
 
     async def execute(
         self,
         query: str,
         thread_id: str,
-        chat_history: bool = True,
+        history_text: str = "",
         queue: Optional[asyncio.Queue] = None,
     ) -> str:
         """Execute the flow graph and extract the answer.
@@ -138,7 +126,7 @@ class GraphFlowSession:
         but a final answer is produced, the full answer is delivered as a single
         ``stream`` event so callers always see the response.
         """
-        inputs = self.build_inputs(query, thread_id, chat_history=chat_history)
+        inputs = self.build_inputs(query, thread_id, history_text=history_text)
         self.last_metadata = SessionMetadata()
         usage_cb = UsageMetadataCallbackHandler()
         # LangGraph flow from AgentSpec uses FlowInputSchema:
@@ -186,49 +174,20 @@ class GraphFlowSession:
         if queue is not None and not streamed and answer:
             await queue.put({"type": "stream", "content": answer})
 
-        self._history += f"User: {query}\nAssistant: {answer}\n"
         return answer
 
 class AgentGraphSession:
     """Wraps a compiled LangGraph agent (ReAct agent from AgentSpec)."""
 
-    def __init__(self, graph: Any, conversation_id: Optional[str] = None, checkpointer: Any = None) -> None:
-        """Initialise with a compiled agent graph and optional conversation ID."""
+    def __init__(self, graph: Any) -> None:
+        """Initialise with a compiled agent graph."""
         self.graph = graph
-        self._thread_id = conversation_id or str(uuid.uuid4())
-        self._conversation_messages: List[Any] = []
         self.last_metadata = SessionMetadata()
-        self._checkpointer = checkpointer
-
-    @property
-    def conversation_messages(self) -> List[Any]:
-        """Return accumulated conversation messages."""
-        return self._conversation_messages
-
-    @conversation_messages.setter
-    def conversation_messages(self, value: List[Any]) -> None:
-        """Replace the conversation message list."""
-        self._conversation_messages = value
-
-    @property
-    def conversation_id(self) -> str:
-        """Return the thread/conversation ID."""
-        return self._thread_id
-
-    @conversation_id.setter
-    def conversation_id(self, value: str) -> None:
-        """Set the thread/conversation ID."""
-        self._thread_id = value
-
-    @property
-    def checkpointer(self) -> Any:
-        """Return the checkpointer instance."""
-        return self._checkpointer
 
     async def chat(
         self,
         message: str,
-        chat_history: bool = True,
+        history_messages: Optional[List[Any]] = None,
         queue: Optional[asyncio.Queue] = None,
     ) -> str:
         """Send a message and get a response.
@@ -241,12 +200,17 @@ class AgentGraphSession:
         self.last_metadata = SessionMetadata()
         usage_cb = UsageMetadataCallbackHandler()
 
+        # Fresh thread per turn — orchestrator-supplied history_messages is
+        # the source of truth; the checkpointer only serves in-turn
+        # resumability. Drop the thread after the turn (success or failure)
+        # so the in-memory checkpointer doesn't accumulate dead state.
+        thread_id = str(uuid.uuid4())
         config: Dict[str, Any] = {
-            "configurable": {"thread_id": self._thread_id if chat_history else str(uuid.uuid4())},
+            "configurable": {"thread_id": thread_id},
             "callbacks": [usage_cb],
             "recursion_limit": 25,
         }
-        graph_inputs = {"messages": [HumanMessage(content=message)]}
+        graph_inputs = {"messages": [*(history_messages or []), HumanMessage(content=message)]}
         streamed = False
 
         try:
@@ -256,14 +220,14 @@ class AgentGraphSession:
                 result, streamed = await _run_graph_with_streaming(self.graph, graph_inputs, config, queue)
         except Exception:
             LOGGER.exception("Agent chat failed for message: %s", message)
-            # Clear corrupt checkpoint so retries don't inherit partial tool-call state
-            if self._checkpointer is not None:
-                thread = config["configurable"]["thread_id"]
-                try:
-                    self._checkpointer.delete_thread(thread)
-                except Exception:
-                    LOGGER.debug("Could not clear checkpoint for thread %s", thread)
             raise
+        finally:
+            checkpointer = getattr(self.graph, "checkpointer", None)
+            if checkpointer is not None:
+                try:
+                    checkpointer.delete_thread(thread_id)
+                except Exception:
+                    LOGGER.debug("Could not clear checkpoint for thread %s", thread_id)
 
         messages = (result or {}).get("messages", [])
         answer = ""
@@ -271,11 +235,6 @@ class AgentGraphSession:
             if isinstance(msg, AIMessage) and not msg.tool_calls:
                 answer = str(msg.content) if msg.content else ""
                 break
-
-        if chat_history:
-            self._conversation_messages.append(HumanMessage(content=message))
-            if answer:
-                self._conversation_messages.append(AIMessage(content=answer))
 
         token_usage = _aggregate_usage_callback(usage_cb)
         if token_usage:
@@ -295,11 +254,13 @@ class NL2SQLGraphSession(AgentGraphSession):
         graph: Any,
         client_settings: ClientSettings,
         thread_id: str = "",
-        conversation_id: Optional[str] = None,
-        checkpointer: Any = None,
     ) -> None:
-        """Initialise with a graph, client settings, and optional thread ID."""
-        super().__init__(graph, conversation_id=conversation_id, checkpointer=checkpointer)
+        """Initialise with a graph and client settings.
+
+        *thread_id* is the per-client identifier that sqlcl_* tools use to
+        scope DB operations; it is NOT the LangGraph checkpointer thread.
+        """
+        super().__init__(graph)
 
         connection_name = client_settings.database.alias
         ll_model = client_settings.ll_model
@@ -313,15 +274,18 @@ class NL2SQLGraphSession(AgentGraphSession):
             context += f"- connection_name: {connection_name}\n"
 
         self._db_context = context
-        self.conversation_id = thread_id or self._thread_id
 
     async def chat(
         self,
         message: str,
-        chat_history: bool = True,
+        history_messages: Optional[List[Any]] = None,
         queue: Optional[asyncio.Queue] = None,
     ) -> str:
-        """Chat with DB context prepended to the first message."""
-        # Prepend DB context to the message so the LLM has it
+        """Chat with DB context prepended to the new message only.
+
+        Past turns in *history_messages* stay clean — the DB context goes
+        only on the current user message, where the LLM needs it for the
+        sqlcl_* tool call it's about to make.
+        """
         augmented = self._db_context + "\n" + message
-        return await super().chat(augmented, chat_history=chat_history, queue=queue)
+        return await super().chat(augmented, history_messages=history_messages, queue=queue)

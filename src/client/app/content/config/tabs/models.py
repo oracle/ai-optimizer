@@ -136,20 +136,8 @@ def _initialize_model(
 ) -> dict[str, Any]:
     """Initialize model configuration based on action type."""
     if action == "edit" and model_provider and model_id:
-        model = _fetch_model(model_provider, model_id) or {}
-    else:
-        model = {"id": "", "type": model_type, "provider": "unset", "enabled": False}
-
-    if action == "add":
-        model["enabled"] = True
-    else:
-        model["enabled"] = st.checkbox(
-            "Enabled",
-            value=model.get("enabled", False),
-            disabled=not is_authenticated(),
-        )
-
-    return model
+        return _fetch_model(model_provider, model_id) or {}
+    return {"id": "", "type": model_type, "provider": "unset", "enabled": True}
 
 
 def _render_provider_selection(model: dict, supported_models: list, action: str) -> tuple[dict, list, bool]:
@@ -334,6 +322,12 @@ def edit_model(
     """Model Edit Dialog Box."""
     model = _initialize_model(action, model_type, model_id, model_provider)
     original_model = dict(model) if action == "edit" else None
+    if action == "edit":
+        model["enabled"] = st.checkbox(
+            "Enabled",
+            value=model.get("enabled", False),
+            disabled=not is_authenticated(),
+        )
     supported_models = _get_supported_models(model_type)
 
     model, provider_models, disable_for_oci = _render_provider_selection(model, supported_models, action)

@@ -6,9 +6,10 @@ Endpoint for retrieving server settings.
 """
 # spell-checker: ignore litellm
 
+import asyncio
 import json
 import logging
-from typing import Annotated, Callable
+from typing import Annotated, Callable, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -33,6 +34,7 @@ from server.app.core.settings import (
     resolve_client,
     settings,
 )
+from server.app.database.registry import refresh_db_vector_stores
 from server.app.database.schemas import DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import delete_row, load_settings, persist_client_settings, persist_settings
 from server.app.mcp.prompts.registry import load_factory_prompts, reconcile_prompt_customizations, register_mcp_prompts
@@ -41,7 +43,12 @@ from server.app.models.litellm_utils import find_model
 from server.app.models.ollama import load_ollama_models
 from server.app.models.registry import apply_env_overrides, reset_factory_models
 from server.app.models.schemas import ModelSensitive
-from server.app.oci.schemas import OciSensitive
+from server.app.oci.schemas import (
+    GENAI_OVERLAY_FIELDS,
+    PRINCIPAL_OCI_AUTH_TYPES,
+    OciProfileConfig,
+    OciSensitive,
+)
 
 LOGGER = logging.getLogger(__name__)
 _DB_CONN_FIELDS = set(DatabaseUpdate.model_fields)
@@ -85,6 +92,56 @@ auth = APIRouter(prefix="/settings")
 _import_router = APIRouter(route_class=LegacyMigratingImportRoute)
 
 
+def _apply_oci_import(
+    incoming: Optional[list[OciProfileConfig]], result: SettingsImportResult
+) -> Optional[dict[str, set[str]]]:
+    """Upsert OCI configs from an import body, returning the GenAI-touched map.
+
+    Profiles whose existing counterpart uses principal-based auth (instance/
+    workload/resource) are skipped — that auth is provided by the deployment
+    infrastructure and the OCI form disables editing for those profiles, so
+    flipping ``usable=False`` would leave the user with no way to re-validate.
+    """
+    if incoming is None:
+        return None
+    principal_profiles = {
+        cfg.auth_profile.casefold()
+        for cfg in settings.oci_configs
+        if cfg.authentication in PRINCIPAL_OCI_AUTH_TYPES
+    }
+    importable = [oci for oci in incoming if oci.auth_profile.casefold() not in principal_profiles]
+    skipped_profiles = [oci.auth_profile for oci in incoming if oci.auth_profile.casefold() in principal_profiles]
+    if skipped_profiles:
+        LOGGER.info("Skipping import for principal-auth OCI profiles: %s", sorted(skipped_profiles))
+    touched = _imported_oci_genai_touched(importable)
+    created, updated = upsert_list_field("oci_configs", importable)
+    for item in created + updated:
+        item.usable = False
+    result.oci_configs = ImportSectionResult(
+        created=len(created), updated=len(updated), skipped=len(skipped_profiles)
+    )
+    return touched
+
+
+def _imported_oci_genai_touched(
+    incoming: Optional[list[OciProfileConfig]],
+) -> Optional[dict[str, set[str]]]:
+    """Return per-profile GenAI overlay fields the import body explicitly set.
+
+    ``persist_settings`` uses this to recognise an imported value matching
+    baseline as a deliberate revert rather than carrying the prior overlay
+    forward.
+    """
+    if not incoming:
+        return None
+    touched: dict[str, set[str]] = {}
+    for item in incoming:
+        fields = set(GENAI_OVERLAY_FIELDS & item.model_fields_set)
+        if fields:
+            touched[item.auth_profile] = fields
+    return touched or None
+
+
 def _restore_prompts(saved: dict[str, str]) -> None:
     """Restore prompt texts from a snapshot and re-register MCP prompts."""
     for pc in settings.prompt_configs:
@@ -105,7 +162,15 @@ SENSITIVE_FIELDS = {
 async def get_client_settings(
     client: Annotated[ClientId, Query()] = "CONFIGURED",
 ):
-    """Return application settings combined with client settings."""
+    """Return application settings combined with client settings.
+
+    Each usable database has its ``vector_stores`` list re-discovered
+    against the live catalog so out-of-band ``DROP TABLE`` is reflected
+    in the GUI on the next refresh. Refreshes run concurrently and each
+    carries its own short deadline (see ``refresh_db_vector_stores``)
+    so a slow database can't stack delays or hang the response.
+    """
+    await asyncio.gather(*(refresh_db_vector_stores(cfg) for cfg in settings.database_configs))
     data = settings.model_dump(exclude=SENSITIVE_FIELDS)
     data["client_settings"] = resolve_client(client).model_dump()
     return data
@@ -271,11 +336,7 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             result.model_configs = ImportSectionResult(created=len(created), updated=len(updated))
 
         # --- OCI configs ---
-        if body.oci_configs is not None:
-            created, updated = upsert_list_field("oci_configs", body.oci_configs)
-            for item in created + updated:
-                item.usable = False
-            result.oci_configs = ImportSectionResult(created=len(created), updated=len(updated))
+        oci_touched = _apply_oci_import(body.oci_configs, result)
 
         # --- Prompt configs ---
         if body.prompt_configs is not None:
@@ -300,7 +361,7 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             result.scalars = {"log_level": body.log_level}
 
         # --- Persist once — rollback everything on failure ---
-        if not await persist_settings():
+        if not await persist_settings(oci_user_touched=oci_touched):
             (settings.database_configs, settings.model_configs, settings.oci_configs, settings.log_level) = (
                 snapshot["db"],
                 snapshot["models"],
