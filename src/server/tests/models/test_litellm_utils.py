@@ -19,6 +19,9 @@ from server.app.models.litellm_utils import (
     find_model,
     get_client_embed,
     is_small_model,
+    normalize_completion_token_params,
+    patch_litellm_oci_openai_max_completion_tokens,
+    uses_max_completion_tokens,
 )
 from server.app.models.schemas import ModelConfig, ModelIdentity
 from server.app.oci.schemas import OciProfileConfig
@@ -359,6 +362,121 @@ def test_to_litellm_kwargs_oci_without_signer():
     assert result["oci_fingerprint"] == "aa:bb:cc"
     assert result["oci_key_file"] == "/path/to/key"
     assert "oci_signer" not in result
+
+
+@pytest.mark.unit
+def test_to_litellm_kwargs_oci_openai_gpt5_uses_max_completion_tokens():
+    """OCI OpenAI GPT-5 models reject max_tokens and require max_completion_tokens."""
+    mc = ModelConfig(id="openai.gpt-5.5", type="ll", provider="oci", max_tokens=1234, enabled=True)
+    settings.model_configs = [mc]
+
+    with (
+        patch("server.app.models.litellm_utils.litellm") as mock_litellm,
+        patch("server.app.models.litellm_utils.get_signer", return_value=None),
+    ):
+        mock_litellm.get_supported_openai_params.return_value = ["max_tokens"]
+        spec = LiteLlmModelSpec("oci", "openai.gpt-5.5", oci_profile=_oci_profile())
+        result = spec.to_litellm_kwargs()
+
+    assert result["max_completion_tokens"] == 1234
+    assert "max_tokens" not in result
+
+
+@pytest.mark.unit
+def test_uses_max_completion_tokens_model_key_rules():
+    assert uses_max_completion_tokens("oci/openai.gpt-5.5")
+    assert uses_max_completion_tokens("oci/openai/gpt-5.5")
+    assert uses_max_completion_tokens("openai.gpt-5.5")
+    assert uses_max_completion_tokens("openai/gpt-5.5")
+    assert uses_max_completion_tokens("oci/openai.o3")
+    assert not uses_max_completion_tokens("oci/openai.gpt-4o")
+    assert not uses_max_completion_tokens("oci/cohere.command-r")
+
+
+@pytest.mark.unit
+def test_normalize_completion_token_params_uses_model_from_params():
+    params = {"model": "oci/openai.gpt-5.5", "max_tokens": 99}
+    result = normalize_completion_token_params(None, params)
+    assert result["max_completion_tokens"] == 99
+    assert "max_tokens" not in result
+
+
+@pytest.mark.unit
+def test_normalize_completion_token_params_uses_custom_oci_provider_context():
+    params = {
+        "model": "openai.gpt-5.5",
+        "custom_llm_provider": "oci",
+        "max_tokens": 99,
+        "temperature": 0.0,
+        "top_p": 0.5,
+        "frequency_penalty": 0.1,
+        "presence_penalty": 0.2,
+    }
+    result = normalize_completion_token_params(None, params)
+    assert result["max_completion_tokens"] == 99
+    assert "max_tokens" not in result
+    assert "temperature" not in result
+    assert "top_p" not in result
+    assert "frequency_penalty" not in result
+    assert "presence_penalty" not in result
+
+
+@pytest.mark.unit
+def test_normalize_completion_token_params_drops_null_max_tokens():
+    """An explicit ``max_tokens=None`` must not survive for GPT-5/o-series models."""
+    params = {"model": "oci/openai.gpt-5.5", "max_tokens": None}
+    result = normalize_completion_token_params(None, params)
+    assert "max_tokens" not in result
+    assert "max_completion_tokens" not in result
+
+
+@pytest.mark.unit
+def test_normalize_completion_token_params_leaves_standard_models_untouched():
+    """Non GPT-5/o-series models keep ``max_tokens`` and sampling controls."""
+    params = {"model": "oci/cohere.command-r", "max_tokens": 256, "temperature": 0.5}
+    result = normalize_completion_token_params(None, params)
+    assert result["max_tokens"] == 256
+    assert result["temperature"] == 0.5
+    assert "max_completion_tokens" not in result
+
+
+@pytest.mark.unit
+def test_litellm_oci_openai_gpt5_payload_uses_max_completion_tokens():
+    from litellm.llms.oci.chat.transformation import OCIChatConfig
+
+    patch_litellm_oci_openai_max_completion_tokens()
+    payload = OCIChatConfig().transform_request(
+        "openai.gpt-5.5",
+        [{"role": "user", "content": "hi"}],
+        {"oci_compartment_id": "ocid1.compartment.oc1..test", "maxTokens": 99},
+        {},
+        {},
+    )
+
+    chat_request = payload["chatRequest"]
+    assert chat_request["maxCompletionTokens"] == 99
+    assert "maxTokens" not in chat_request
+
+
+@pytest.mark.unit
+def test_to_litellm_kwargs_oci_with_inline_key_content():
+    """OCI provider maps inline key content to LiteLLM's ``oci_key`` parameter."""
+    mc = ModelConfig(id="cohere.command-r", type="ll", provider="oci", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile()
+    profile.key_file = None
+    profile.key_content = SecretStr("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----")
+
+    with (
+        patch("server.app.models.litellm_utils.litellm") as mock_litellm,
+        patch("server.app.models.litellm_utils.get_signer", return_value=None),
+    ):
+        mock_litellm.get_supported_openai_params.return_value = []
+        spec = LiteLlmModelSpec("oci", "cohere.command-r", oci_profile=profile)
+        result = spec.to_litellm_kwargs()
+
+    assert result["oci_key"] == "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"
+    assert "oci_key_file" not in result
 
 
 # ---------------------------------------------------------------------------

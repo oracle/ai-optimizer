@@ -21,6 +21,7 @@ from server.app.agentspec.adapters.mcp import fetch_mcp_prompt
 from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
 from server.app.core.schemas import TOOL_NL2SQL, TOOL_VECSEARCH
 from server.app.mcp.prompts.registry import require_factory_text
+from server.app.models.litellm_utils import normalize_completion_token_params
 
 LOGGER = logging.getLogger(__name__)
 
@@ -347,14 +348,18 @@ class BaseCombinedSession:
         """Classify a query as nl2sql, vecsearch, or both."""
         prompt = self._classifier_prompt.replace("{{query}}", query)
         try:
-            response = await litellm.acompletion(
-                model=self._classifier_model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=10,
-                temperature=0.0,
-                drop_params=True,
-                **self._auth_kwargs(),
+            completion_kwargs = normalize_completion_token_params(
+                self._classifier_model,
+                {
+                    "model": self._classifier_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 10,
+                    "temperature": 0.0,
+                    "drop_params": True,
+                    **self._auth_kwargs(),
+                },
             )
+            response = await litellm.acompletion(**completion_kwargs)
             if not isinstance(response, ModelResponse):
                 raise TypeError(f"Expected ModelResponse, got {type(response)}")
             classifier_tu = self._extract_response_usage(response)
