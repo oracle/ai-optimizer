@@ -15,6 +15,10 @@ enableRobotsTXT = true
 [markup]
   [markup.goldmark]
     duplicateResourceFiles = false
+    [markup.goldmark.parser.attribute]
+      # Required by the relearn `children` shortcode, which emits a
+      # trailing `{class="children ..."}` block attribute.
+      block = true
     [markup.goldmark.renderer]
       unsafe = true
     [markup.goldmark.extensions]
