@@ -452,6 +452,7 @@ async def test_vs_retrieve_generic_error(monkeypatch: pytest.MonkeyPatch):
     assert "Vector search failed" in (response.error or "")
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_vs_retrieve_success(
     vector_db_config,

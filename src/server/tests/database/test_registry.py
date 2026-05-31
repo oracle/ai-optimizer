@@ -333,6 +333,7 @@ async def _create_vector_store(conn, name: str, comment: dict) -> None:
     await conn.commit()
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_discover_vector_stores(async_oracle_connection):
     """discover_vector_stores returns parsed metadata for GENAI tables."""
@@ -382,6 +383,7 @@ async def test_discover_vector_stores(async_oracle_connection):
     assert legacy.chunk_overlap == 32
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_discover_vector_stores_empty_real(async_oracle_connection):
     """Real DB with no GENAI tables returns empty list."""
@@ -400,6 +402,7 @@ async def test_discover_vector_stores_empty_real(async_oracle_connection):
     assert result == []
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_drop_vector_store_nonexistent_table(async_oracle_connection):
     """Dropping a nonexistent table is safe (ORA-942 swallowed by execute_sql)."""
@@ -407,6 +410,7 @@ async def test_drop_vector_store_nonexistent_table(async_oracle_connection):
     # No error raised
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_test_connection_real(configure_db_env):
     """Real connection sets usable=True and discovers stores."""
@@ -421,6 +425,7 @@ async def test_test_connection_real(configure_db_env):
         await close_pool(cfg.pool)
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_init_core_database_real(configure_db_env):
     """Real init creates schema tables and returns pool."""

@@ -8,7 +8,7 @@ LiteLLM configuration builder and embedding client factory.
 
 import logging
 import re
-from typing import Any, Dict, Optional
+from typing import Optional
 from urllib.parse import urlparse
 
 import litellm
@@ -105,72 +105,6 @@ def find_model(
 _PENALTY_UNSUPPORTED_PATTERNS = ("xai", "ollama")
 
 
-def uses_max_completion_tokens(model_key: str) -> bool:
-    """Return True for models that reject ``max_tokens`` in favor of ``max_completion_tokens``."""
-    model_lower = model_key.lower()
-    if model_lower.startswith("oci/"):
-        model_lower = model_lower.split("/", 1)[1]
-    if model_lower.startswith("openai/"):
-        model_lower = model_lower.split("/", 1)[1]
-    elif model_lower.startswith("openai."):
-        model_lower = model_lower.removeprefix("openai.")
-    return model_lower.startswith(("gpt-5", "o1", "o3", "o4"))
-
-
-def normalize_completion_token_params(model_key: Optional[str], params: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize generation params in place for models with restricted OpenAI-compatible controls.
-
-    GPT-5 and o-series models reject ``max_tokens`` and the sampling controls
-    ``temperature``/``top_p``/penalties. ``max_tokens`` is dropped unconditionally
-    for those models — including an explicit ``None`` (which
-    ``ChatLiteLLM._default_params`` always supplies) so no stray ``max_tokens``
-    reaches the request — carrying any real value over to ``max_completion_tokens``.
-    """
-    resolved_model = model_key or str(params.get("model") or "")
-    provider = str(params.get("custom_llm_provider") or "").lower()
-    uses_completion_tokens = uses_max_completion_tokens(resolved_model) or (
-        provider == "oci" and uses_max_completion_tokens(str(params.get("model") or ""))
-    )
-    if not uses_completion_tokens:
-        return params
-    max_tokens_value = params.pop("max_tokens", None)
-    if max_tokens_value is not None:
-        params["max_completion_tokens"] = max_tokens_value
-    for unsupported in ("temperature", "top_p", "frequency_penalty", "presence_penalty"):
-        params.pop(unsupported, None)
-    return params
-
-
-def patch_litellm_oci_openai_max_completion_tokens() -> None:
-    """Patch LiteLLM's OCI payload for OpenAI models that reject ``maxTokens``.
-
-    LiteLLM maps both ``max_tokens`` and ``max_completion_tokens`` to OCI's
-    ``maxTokens`` field. OCI GenericChatRequest also supports
-    ``maxCompletionTokens``, which OpenAI GPT-5/o-series models require.
-    """
-    try:
-        from litellm.llms.oci.chat.transformation import OCIChatConfig
-    except Exception:
-        return
-
-    original_transform_request = OCIChatConfig.transform_request
-    # Idempotent: skip if our wrapper is already installed.
-    if getattr(original_transform_request, "__name__", "") == "_transform_request_with_max_completion_tokens":
-        return
-
-    def _transform_request_with_max_completion_tokens(self, model, messages, optional_params, litellm_params, headers):
-        data = original_transform_request(self, model, messages, optional_params, litellm_params, headers)
-        chat_request = data.get("chatRequest")
-        if uses_max_completion_tokens(model) and isinstance(chat_request, dict) and "maxTokens" in chat_request:
-            chat_request["maxCompletionTokens"] = chat_request.pop("maxTokens")
-        return data
-
-    OCIChatConfig.transform_request = _transform_request_with_max_completion_tokens
-
-
-patch_litellm_oci_openai_max_completion_tokens()
-
-
 def strip_unsupported_penalties(
     model_key: str,
     frequency_penalty: Optional[float],
@@ -188,7 +122,9 @@ def build_oci_litellm_params(oci_profile: OciProfileConfig) -> dict:
 
     Returns a dict containing ``oci_region``, ``oci_compartment_id``, and
     either an ``oci_signer`` (for instance principal / workload identity) or
-    individual API-key fields (``oci_tenancy``, ``oci_user``, etc.).
+    individual API-key fields (``oci_tenancy``, ``oci_user``, ``oci_fingerprint``,
+    and either ``oci_key`` for inline PEM content or ``oci_key_file`` for a
+    filesystem path). LiteLLM's OCI provider accepts either key form.
     """
     params: dict[str, object] = {
         "oci_region": oci_profile.genai_region,
@@ -333,19 +269,14 @@ class LiteLlmModelSpec:
         for param_name, value in [
             ("temperature", self.temperature),
             ("top_p", self.top_p),
+            ("max_tokens", self.max_tokens),
             ("frequency_penalty", self.frequency_penalty),
             ("presence_penalty", self.presence_penalty),
         ]:
             if value is not None and param_name in supported_params:
                 kwargs[param_name] = value
-        if self.max_tokens is not None:
-            if uses_max_completion_tokens(self.model_key):
-                kwargs["max_completion_tokens"] = self.max_tokens
-            elif "max_tokens" in supported_params:
-                kwargs["max_tokens"] = self.max_tokens
 
         kwargs["model"] = self.model_key
-        normalize_completion_token_params(self.model_key, kwargs)
         # LiteLLM's ollama provider breaks tool call parsing when api_base is
         # passed as a call parameter; base_url works correctly for all providers.
         if self.api_base:

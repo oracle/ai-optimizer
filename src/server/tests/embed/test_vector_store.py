@@ -251,6 +251,7 @@ def test_merge_calls_normalize_before_merge_sql():
     )
 
 
+@pytest.mark.integration
 @pytest.mark.db
 def test_normalize_metadata_oson_real_db_round_trip_preserves_data(oracle_db_container):
     """[P2] Real-DB integration: insert metadata via DB_TYPE_JSON

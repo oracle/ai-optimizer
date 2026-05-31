@@ -37,7 +37,7 @@ from langchain_litellm import ChatLiteLLM
 from pydantic import BaseModel
 
 from server.app.api.v1.schemas.chat import TokenUsage
-from server.app.models.litellm_utils import LiteLlmModelSpec, normalize_completion_token_params
+from server.app.models.litellm_utils import LiteLlmModelSpec
 from server.app.runtime.ollama_tools import (
     contextualize_tool_result,
     is_ollama_model,
@@ -286,8 +286,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
         name_map = kwargs.pop(_OLLAMA_NAME_MAP_KEY, None)
         yielded_any = False
         try:
-            stream_kwargs = normalize_completion_token_params(self.model, dict(kwargs))
-            for chunk in super()._stream(messages, stop=stop, run_manager=run_manager, **stream_kwargs):
+            for chunk in super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs):
                 _flatten_chunk_content(chunk)
                 _unsanitize_chunk_tool_calls(chunk, name_map)
                 yielded_any = True
@@ -313,8 +312,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
         name_map = kwargs.pop(_OLLAMA_NAME_MAP_KEY, None)
         yielded_any = False
         try:
-            stream_kwargs = normalize_completion_token_params(self.model, dict(kwargs))
-            async for chunk in super()._astream(messages, stop=stop, run_manager=run_manager, **stream_kwargs):
+            async for chunk in super()._astream(messages, stop=stop, run_manager=run_manager, **kwargs):
                 _flatten_chunk_content(chunk)
                 _unsanitize_chunk_tool_calls(chunk, name_map)
                 yielded_any = True
@@ -372,7 +370,6 @@ class OracleChatLiteLLM(ChatLiteLLM):
         """
         message_dicts, params = self._create_message_dicts(messages, stop)
         params = {**params, **kwargs, "stream": False}
-        normalize_completion_token_params(self.model, params)
         return message_dicts, params
 
     def _fallback_non_streaming(
@@ -390,15 +387,6 @@ class OracleChatLiteLLM(ChatLiteLLM):
         )
         return self._create_chat_result(response)
 
-    def completion_with_retry(
-        self,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Final parameter normalization before LiteLLM's sync completion call."""
-        normalize_completion_token_params(self.model, kwargs)
-        return super().completion_with_retry(run_manager=run_manager, **kwargs)
-
     async def _afallback_non_streaming(
         self,
         messages: List[BaseMessage],
@@ -413,15 +401,6 @@ class OracleChatLiteLLM(ChatLiteLLM):
             **params,
         )
         return self._create_chat_result(response)
-
-    async def acompletion_with_retry(
-        self,
-        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Final parameter normalization before LiteLLM's async completion call."""
-        normalize_completion_token_params(self.model, kwargs)
-        return await super().acompletion_with_retry(run_manager=run_manager, **kwargs)
 
     @property
     def _client_params(self) -> Dict[str, Any]:
@@ -455,7 +434,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
             params["api_key"] = self.api_key
         if self.api_base:
             params["base_url"] = self.api_base
-        return normalize_completion_token_params(self.model, params)
+        return params
 
     @property
     def _llm_type(self) -> str:
