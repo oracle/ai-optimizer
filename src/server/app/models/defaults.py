@@ -92,7 +92,10 @@ FACTORY_MODELS: list[dict] = [
         'enabled': False,
         'type': 'embed',
         'provider': 'cohere',
-        'api_base': 'https://api.cohere.ai/compatibility/v1',
+        # Cohere's native embed endpoint; LiteLLM's cohere embed provider posts
+        # Cohere v2 embed payloads here. The /compatibility/v1 OpenAI-compat
+        # URL used for chat does NOT accept embed payloads.
+        'api_base': 'https://api.cohere.ai/v2/embed',
         'api_key': '',
         'max_chunk_size': 512,
     },

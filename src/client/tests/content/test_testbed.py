@@ -810,8 +810,12 @@ class TestCheckPrerequisites:
         assert embed == []
         mock_st.warning.assert_called_once()
 
-    def test_filters_oci_cohere_embed(self):
-        """Filters out oci/cohere* embedding models."""
+    def test_includes_oci_cohere_embed(self):
+        """All enabled embed models are surfaced, including oci/cohere*.
+
+        OCI Cohere embeddings now route via LiteLLM (and Giskard's LiteLLM
+        embedding backend) — they are no longer filtered out.
+        """
         from client.app.content.testbed import _check_prerequisites
 
         def _mixed_embed(t):
@@ -830,7 +834,7 @@ class TestCheckPrerequisites:
         ):
             _, embed, _ = _check_prerequisites()
         assert "openai/embed" in embed
-        assert "oci/cohere-v3" not in embed
+        assert "oci/cohere-v3" in embed
 
 
 # ---------------------------------------------------------------------------

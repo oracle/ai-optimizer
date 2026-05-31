@@ -23,7 +23,11 @@ LOGGER = logging.getLogger(__name__)
 
 
 def get_signer(profile: OciProfileConfig) -> Optional[object]:
-    """Return an OCI signer for delegation/principal auth types, else None."""
+    """Return an OCI signer for principal or security-token auth, else None.
+
+    Both ``init_client`` and ``build_oci_litellm_params`` consult this helper,
+    so adding an auth type here transparently extends LiteLLM and SDK callers.
+    """
     if profile.authentication == "instance_principal":
         LOGGER.info("Creating Instance Principal signer")
         return oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
@@ -35,6 +39,20 @@ def get_signer(profile: OciProfileConfig) -> Optional[object]:
     if profile.authentication == "oke_workload_identity":
         LOGGER.info("Creating OKE Workload Identity signer")
         return oci.auth.signers.get_oke_workload_identity_resource_principal_signer()
+
+    if profile.authentication == "security_token" and profile.security_token_file:
+        LOGGER.info("Creating Security Token signer")
+        with open(profile.security_token_file, "r", encoding="utf-8") as f:
+            token = f.read().strip()
+        if profile.key_file:
+            private_key = oci.signer.load_private_key_from_file(profile.key_file, reveal(profile.pass_phrase))
+        elif profile.key_content:
+            private_key = oci.signer.load_private_key(reveal(profile.key_content) or "", reveal(profile.pass_phrase))
+        else:
+            raise ValueError(
+                f"security_token profile '{profile.auth_profile}' has no key_file or key_content configured"
+            )
+        return oci.auth.signers.SecurityTokenSigner(token, private_key)
 
     return None
 
@@ -121,20 +139,6 @@ def init_client(client_type: Callable[..., T], profile: OciProfileConfig, **kwar
         return client_type(
             config={"region": profile.region},
             signer=signer,
-            **client_kwargs,
-        )
-
-    if profile.authentication == "security_token" and profile.security_token_file:
-        with open(profile.security_token_file, "r", encoding="utf-8") as f:
-            token = f.read()
-        if profile.key_file:
-            private_key = oci.signer.load_private_key_from_file(profile.key_file, reveal(profile.pass_phrase))
-        else:
-            private_key = oci.signer.load_private_key(reveal(profile.key_content) or "", reveal(profile.pass_phrase))
-        sec_token_signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
-        return client_type(
-            config={"region": profile.region},
-            signer=sec_token_signer,
             **client_kwargs,
         )
 

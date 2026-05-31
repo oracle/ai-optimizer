@@ -6,12 +6,13 @@ Tests for LiteLLM configuration builder and embedding client factory.
 """
 # spell-checker: disable
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from pydantic import SecretStr
 
 from server.app.core.settings import settings
+from server.app.models.litellm_embeddings import LiteLLMEmbeddings
 from server.app.models.litellm_utils import (
     SMALL_MODEL_THRESHOLD_B,
     LiteLlmModelSpec,
@@ -361,6 +362,46 @@ def test_to_litellm_kwargs_oci_without_signer():
     assert "oci_signer" not in result
 
 
+@pytest.mark.unit
+def test_to_litellm_kwargs_oci_security_token_forwards_signer():
+    """OCI security-token profile yields ``oci_signer`` in chat-completion kwargs.
+
+    Regression-pin for the chat path. Both ``LiteLlmModelSpec`` (chat) and
+    ``get_client_embed`` (embed) route through ``build_oci_litellm_params`` →
+    ``get_signer``; this asserts the chat side gets the same security-token
+    coverage as the embed side, not API-key fields.
+    """
+    mc = ModelConfig(id="cohere.command-r", type="ll", provider="oci", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile(
+        authentication="security_token",
+        security_token_file="/path/to/token",
+    )
+    mock_sec_signer = MagicMock(name="SecurityTokenSigner")
+    mock_private_key = MagicMock(name="PrivateKey")
+
+    with (
+        patch("server.app.models.litellm_utils.litellm") as mock_litellm,
+        patch("builtins.open", mock_open(read_data="token-data")),
+        patch(
+            "server.app.oci.client.oci.signer.load_private_key_from_file",
+            return_value=mock_private_key,
+        ),
+        patch(
+            "server.app.oci.client.oci.auth.signers.SecurityTokenSigner",
+            return_value=mock_sec_signer,
+        ),
+    ):
+        mock_litellm.get_supported_openai_params.return_value = []
+        spec = LiteLlmModelSpec("oci", "cohere.command-r", oci_profile=profile)
+        result = spec.to_litellm_kwargs()
+
+    assert result["oci_signer"] is mock_sec_signer
+    assert "oci_user" not in result
+    assert "oci_fingerprint" not in result
+    assert "oci_key_file" not in result
+
+
 # ---------------------------------------------------------------------------
 # LiteLlmModelSpec class methods
 # ---------------------------------------------------------------------------
@@ -389,6 +430,31 @@ def test_from_ll_model_settings():
 
 
 @pytest.mark.unit
+def test_litellm_model_spec_normalizes_provider_casing():
+    """Provider stored with non-lowercase casing still routes to the OCI branch.
+
+    Regression-pin: ``find_model`` is case-insensitive but the stored
+    ``model_cfg.provider`` casing was being adopted verbatim, so a 'OCI' (or
+    'Cohere') entry would skip every downstream lowercase-comparison and
+    produce a model_key LiteLLM cannot route.
+    """
+    mc = ModelConfig(id="cohere.command-r", type="ll", provider="OCI", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile()
+    mock_signer = MagicMock()
+
+    with (
+        patch("server.app.models.litellm_utils.litellm") as mock_litellm,
+        patch("server.app.models.litellm_utils.get_signer", return_value=mock_signer),
+    ):
+        mock_litellm.get_supported_openai_params.return_value = []
+        spec = LiteLlmModelSpec("oci", "cohere.command-r", oci_profile=profile)
+
+    assert spec.model_key == "oci/cohere.command-r"
+    assert spec.oci_params.get("oci_signer") is mock_signer
+
+
+@pytest.mark.unit
 def test_from_model_identity():
     """from_model_identity creates a spec with no generation overrides."""
     mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", temperature=0.7, enabled=True)
@@ -407,30 +473,127 @@ def test_from_model_identity():
 
 @pytest.mark.unit
 def test_get_client_embed_oci():
-    """OCI provider creates an OCIGenAIEmbeddings client."""
+    """OCI provider builds a LiteLLMEmbeddings with OCI auth params."""
     mc = ModelConfig(id="cohere.embed-english", type="embed", provider="oci", enabled=True)
     settings.model_configs = [mc]
     profile = _oci_profile()
-    mock_genai_client = MagicMock()
+    mock_signer = MagicMock()
 
-    with (
-        patch("server.app.models.litellm_utils.init_client", return_value=mock_genai_client),
-        patch("server.app.models.litellm_utils.OCIGenAIEmbeddings") as mock_cls,
-    ):
-        mock_cls.return_value = MagicMock()
+    with patch("server.app.models.litellm_utils.get_signer", return_value=mock_signer):
         result = get_client_embed(ModelIdentity(provider="oci", id="cohere.embed-english"), oci_profile=profile)
 
-    mock_cls.assert_called_once_with(
-        model_id="cohere.embed-english",
-        client=mock_genai_client,
-        compartment_id="ocid1.compartment.oc1..test",
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.model_key == "oci/cohere.embed-english"
+    assert result.extra_params["oci_region"] == "us-chicago-1"
+    assert result.extra_params["oci_compartment_id"] == "ocid1.compartment.oc1..test"
+    assert result.extra_params["oci_signer"] is mock_signer
+
+
+@pytest.mark.unit
+def test_get_client_embed_oci_preserves_batch_chunking():
+    """End-to-end: 200 inputs through get_client_embed(OCI) chunk to ≤96/call.
+
+    Pins the chunking guarantee preserved from the prior OCIGenAIEmbeddings
+    implementation through the LiteLLM swap.
+    """
+    mc = ModelConfig(id="cohere.embed-english-v3.0", type="embed", provider="oci", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile()
+
+    def fake_embed(input, **_):
+        resp = MagicMock()
+        resp.data = [{"embedding": [0.0] * 4} for _ in input]
+        return resp
+
+    with (
+        patch("server.app.models.litellm_utils.get_signer", return_value=MagicMock()),
+        patch("server.app.models.litellm_embeddings.litellm.embedding", side_effect=fake_embed) as mock_embed,
+    ):
+        client = get_client_embed(
+            ModelIdentity(provider="oci", id="cohere.embed-english-v3.0"),
+            oci_profile=profile,
+        )
+        result = client.embed_documents(["text"] * 200)
+
+    assert len(result) == 200
+    assert mock_embed.call_count == 3
+    batch_sizes = [len(call.kwargs["input"]) for call in mock_embed.call_args_list]
+    assert batch_sizes == [96, 96, 8]
+    assert all(size <= 96 for size in batch_sizes)
+
+
+@pytest.mark.unit
+def test_get_client_embed_oci_security_token_forwards_signer():
+    """OCI security-token profile yields a LiteLLMEmbeddings carrying ``oci_signer``.
+
+    Regression-pin: ``build_oci_litellm_params`` previously did not handle
+    ``authentication == "security_token"`` and fell through to API-key kwargs,
+    which would fail authentication against OCI. The fix lives in
+    ``get_signer``; this test proves the wired-through behavior.
+    """
+    mc = ModelConfig(id="cohere.embed-english-v3.0", type="embed", provider="oci", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile(
+        authentication="security_token",
+        security_token_file="/path/to/token",
     )
-    assert result is mock_cls.return_value
+    mock_sec_signer = MagicMock(name="SecurityTokenSigner")
+    mock_private_key = MagicMock(name="PrivateKey")
+
+    with (
+        patch("builtins.open", mock_open(read_data="token-data")),
+        patch(
+            "server.app.oci.client.oci.signer.load_private_key_from_file",
+            return_value=mock_private_key,
+        ),
+        patch(
+            "server.app.oci.client.oci.auth.signers.SecurityTokenSigner",
+            return_value=mock_sec_signer,
+        ),
+    ):
+        result = get_client_embed(
+            ModelIdentity(provider="oci", id="cohere.embed-english-v3.0"),
+            oci_profile=profile,
+        )
+
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.extra_params.get("oci_signer") is mock_sec_signer
+    # API-key fields must NOT leak in when a signer is constructed —
+    # OCI would otherwise see a mixed auth payload.
+    assert "oci_user" not in result.extra_params
+    assert "oci_fingerprint" not in result.extra_params
+    assert "oci_key_file" not in result.extra_params
+
+
+@pytest.mark.unit
+def test_get_client_embed_normalizes_provider_casing():
+    """Provider stored as 'OCI' (uppercase) still attaches OCI auth.
+
+    Regression-pin: ``find_model`` matched case-insensitively but the stored
+    casing was being adopted verbatim, so an 'OCI' entry would skip the
+    ``provider == "oci"`` branch and produce a model_key (``OCI/...``) that
+    LiteLLM cannot route.
+    """
+    mc = ModelConfig(id="cohere.embed-english-v3.0", type="embed", provider="OCI", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile()
+    mock_signer = MagicMock()
+
+    with patch("server.app.models.litellm_utils.get_signer", return_value=mock_signer):
+        result = get_client_embed(
+            ModelIdentity(provider="oci", id="cohere.embed-english-v3.0"),
+            oci_profile=profile,
+        )
+
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.model_key == "oci/cohere.embed-english-v3.0"
+    assert result.extra_params.get("oci_signer") is mock_signer
+    assert result.batch_size == 96
 
 
 @pytest.mark.unit
 def test_get_client_embed_hosted_vllm():
-    """hosted_vllm uses openai provider with check_embedding_ctx_length=False."""
+    """hosted_vllm builds a LiteLLMEmbeddings keyed on hosted_vllm/<model>."""
     mc = ModelConfig(
         id="bge-m3",
         type="embed",
@@ -440,20 +603,44 @@ def test_get_client_embed_hosted_vllm():
     )
     settings.model_configs = [mc]
 
-    with patch("server.app.models.litellm_utils.init_embeddings") as mock_init:
-        mock_init.return_value = MagicMock()
-        result = get_client_embed(ModelIdentity(provider="hosted_vllm", id="bge-m3"))
+    result = get_client_embed(ModelIdentity(provider="hosted_vllm", id="bge-m3"))
 
-    mock_init.assert_called_once()
-    call_kwargs = mock_init.call_args[1]
-    assert call_kwargs["provider"] == "openai"
-    assert call_kwargs["check_embedding_ctx_length"] is False
-    assert result is mock_init.return_value
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.model_key == "hosted_vllm/bge-m3"
+    assert result.api_base == "http://vllm:8000/v1"
+    assert result.extra_params == {}
+
+
+@pytest.mark.unit
+def test_get_client_embed_cohere_does_not_rewrite_to_compatibility_endpoint():
+    """Cohere-direct embed forwards the configured api_base verbatim.
+
+    Regression-pin: a previous iteration mirrored the chat-path rewrite to
+    ``/compatibility/v1`` for embed too — but litellm's cohere embed transform
+    posts Cohere v2 embed payloads at the URL as-is, and the OpenAI-compat
+    endpoint rejects them. The wrapper must hand litellm an embed-shaped URL
+    (``…/v2/embed``), not the chat compatibility URL.
+    """
+    mc = ModelConfig(
+        id="embed-english-light-v3.0",
+        type="embed",
+        provider="cohere",
+        api_base="https://api.cohere.ai/v2/embed",
+        api_key=SecretStr("co-key"),
+        enabled=True,
+    )
+    settings.model_configs = [mc]
+
+    result = get_client_embed(ModelIdentity(provider="cohere", id="embed-english-light-v3.0"))
+
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.api_base == "https://api.cohere.ai/v2/embed"
+    assert "/compatibility/v1" not in (result.api_base or "")
 
 
 @pytest.mark.unit
 def test_get_client_embed_default():
-    """Default provider passes through directly to init_embeddings."""
+    """Default OpenAI provider builds a LiteLLMEmbeddings with api_key."""
     mc = ModelConfig(
         id="text-embedding-3-small",
         type="embed",
@@ -463,15 +650,11 @@ def test_get_client_embed_default():
     )
     settings.model_configs = [mc]
 
-    with patch("server.app.models.litellm_utils.init_embeddings") as mock_init:
-        mock_init.return_value = MagicMock()
-        result = get_client_embed(ModelIdentity(provider="openai", id="text-embedding-3-small"))
+    result = get_client_embed(ModelIdentity(provider="openai", id="text-embedding-3-small"))
 
-    mock_init.assert_called_once()
-    call_kwargs = mock_init.call_args[1]
-    assert call_kwargs["provider"] == "openai"
-    assert call_kwargs["api_key"] == "sk-123"
-    assert result is mock_init.return_value
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.model_key == "openai/text-embedding-3-small"
+    assert result.api_key == "sk-123"
 
 
 @pytest.mark.unit

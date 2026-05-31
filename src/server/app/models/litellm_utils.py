@@ -12,16 +12,14 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import litellm
-import oci.generative_ai_inference
-from langchain.embeddings import init_embeddings
-from langchain_core.embeddings.embeddings import Embeddings
-from langchain_oci import OCIGenAIEmbeddings
+from langchain_core.embeddings import Embeddings
 
 from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 from server.app.models.connectivity import _normalize_ollama_name as _strip_latest
+from server.app.models.litellm_embeddings import LiteLLMEmbeddings
 from server.app.models.schemas import ModelConfig, ModelIdentity
-from server.app.oci.client import get_signer, init_client
+from server.app.oci.client import get_signer
 from server.app.oci.schemas import OciProfileConfig
 from server.app.runtime.ollama_tools import normalize_ollama_provider
 
@@ -194,8 +192,12 @@ class LiteLlmModelSpec:
             raise ValueError(f"Model {provider}/{model_id} not found in model_configs")
 
         self.original_provider = provider
-        # Use canonical provider from settings for LiteLLM routing
-        provider = model_cfg.provider or provider
+        # Use canonical provider from settings for LiteLLM routing.
+        # Lowercase because find_model matched case-insensitively but stored
+        # casing may differ from LiteLLM's lowercase provider strings, and
+        # every downstream check (normalize_ollama_provider, cohere/oci
+        # branches) is case-sensitive.
+        provider = (model_cfg.provider or provider).lower()
         model_id = model_cfg.id or model_id
         self.model_id = model_id
         self.model_type = model_cfg.type
@@ -293,46 +295,60 @@ class LiteLlmModelSpec:
         return kwargs
 
 
+# OCI custom-trained endpoints are addressed by OCID rather than model name.
+# litellm.embedding's OCI provider needs ``oci_serving_mode=DEDICATED`` +
+# ``oci_endpoint_id`` for these — without it OCI rejects the request.
+_OCI_CUSTOM_ENDPOINT_PREFIX = "ocid1.generativeaiendpoint"
+
+# Per-provider per-call input caps. OCI Cohere hard-caps at 96; OpenAI/Cohere-
+# direct allow far more, so a universal 96 floor wastes round-trips for them.
+_EMBED_BATCH_SIZES = {
+    "oci": 96,
+    "cohere": 96,
+    "openai": 1024,
+    "hosted_vllm": 1024,
+    "huggingface": 256,
+}
+
+
 def get_client_embed(
     embedding_model: ModelIdentity,
     oci_profile: Optional[OciProfileConfig] = None,
 ) -> Embeddings:
-    """Create a LangChain Embeddings client for the given model."""
+    """Create a LangChain Embeddings client for the given model.
+
+    All providers route through ``litellm.embedding`` via ``LiteLLMEmbeddings``.
+    For OCI, auth params from the profile are forwarded as litellm kwargs, and
+    custom-trained endpoint OCIDs are auto-routed via DEDICATED serving mode.
+    """
     provider = embedding_model.provider or ""
     model_id = embedding_model.id or ""
 
-    model_cfg = find_model(provider, model_id, enabled_only=False, case_insensitive=True)
+    model_cfg = find_model(
+        provider, model_id, model_type="embed", enabled_only=False, case_insensitive=True
+    )
     if model_cfg is None:
-        raise ValueError(f"Model {provider}/{model_id} not found in model_configs")
-    provider = model_cfg.provider or provider
+        raise ValueError(f"Embedding model {provider}/{model_id} not found in model_configs")
+    # Lowercase because find_model matched case-insensitively but stored casing
+    # may differ from LiteLLM's lowercase provider strings; every downstream
+    # check (oci/cohere branches, batch-size lookup, model_key) is
+    # case-sensitive.
+    provider = (model_cfg.provider or provider).lower()
     model_id = model_cfg.id or model_id
 
-    if provider == "oci" and oci_profile:
-        genai_client = init_client(
-            oci.generative_ai_inference.GenerativeAiInferenceClient,
-            oci_profile,
-        )
-        return OCIGenAIEmbeddings(
-            model_id=model_id,
-            client=genai_client,
-            compartment_id=oci_profile.genai_compartment_id,
-        )
+    extra_params: dict = {}
+    if provider == "oci":
+        if oci_profile is None:
+            raise ValueError(f"OCI embedding model {provider}/{model_id} requires an oci_profile")
+        extra_params = build_oci_litellm_params(oci_profile)
+        if model_id.startswith(_OCI_CUSTOM_ENDPOINT_PREFIX):
+            extra_params["oci_serving_mode"] = "DEDICATED"
+            extra_params["oci_endpoint_id"] = model_id
 
-    if provider == "hosted_vllm":
-        kwargs = {
-            "provider": "openai",
-            "model": model_id,
-            "base_url": model_cfg.api_base,
-            "check_embedding_ctx_length": False,
-        }
-    else:
-        kwargs = {
-            "provider": provider,
-            "model": model_id,
-            "base_url": model_cfg.api_base,
-        }
-
-    if model_cfg.api_key:
-        kwargs["api_key"] = reveal(model_cfg.api_key)
-
-    return init_embeddings(**kwargs)
+    return LiteLLMEmbeddings(
+        model_key=f"{provider}/{model_id}",
+        api_key=reveal(model_cfg.api_key) if model_cfg.api_key else None,
+        api_base=model_cfg.api_base,
+        batch_size=_EMBED_BATCH_SIZES.get(provider, 96),
+        extra_params=extra_params,
+    )
