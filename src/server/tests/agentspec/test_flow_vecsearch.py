@@ -46,10 +46,10 @@ class TestBuildVsTools:
         self.transport = build_mcp_transport(MOCK_SERVER_URL, MOCK_API_KEY)
 
     def test_rephrase_tool_name(self):
-        """Verify rephrase tool is named optimizer_vs-rephrase."""
+        """Verify rephrase tool is named optimizer_vs_rephrase."""
         tool = build_vs_rephrase_tool(self.transport)
         assert isinstance(tool, MCPTool)
-        assert tool.name == "optimizer_vs-rephrase"
+        assert tool.name == "optimizer_vs_rephrase"
 
     def test_rephrase_tool_inputs(self):
         """Verify rephrase tool accepts thread_id, question, and chat_history."""
@@ -61,9 +61,9 @@ class TestBuildVsTools:
         assert "chat_history" in input_names
 
     def test_discovery_tool_name(self):
-        """Verify discovery tool is named optimizer_vs-discovery."""
+        """Verify discovery tool is named optimizer_vs_discovery."""
         tool = build_vs_discovery_tool(self.transport)
-        assert tool.name == "optimizer_vs-discovery"
+        assert tool.name == "optimizer_vs_discovery"
 
     def test_discovery_tool_inputs(self):
         """Verify discovery tool accepts thread_id (filter_enabled_models uses MCP default)."""
@@ -74,9 +74,9 @@ class TestBuildVsTools:
         assert "filter_enabled_models" not in input_names
 
     def test_retriever_tool_name(self):
-        """Verify retriever tool is named optimizer_vs-retriever."""
+        """Verify retriever tool is named optimizer_vs_retriever."""
         tool = build_vs_retriever_tool(self.transport)
-        assert tool.name == "optimizer_vs-retriever"
+        assert tool.name == "optimizer_vs_retriever"
 
     def test_retriever_tool_inputs(self):
         """Verify retriever tool accepts thread_id and question."""
@@ -87,9 +87,9 @@ class TestBuildVsTools:
         assert "question" in input_names
 
     def test_grade_tool_name(self):
-        """Verify grade tool is named optimizer_vs-grade."""
+        """Verify grade tool is named optimizer_vs_grade."""
         tool = build_vs_grade_tool(self.transport)
-        assert tool.name == "optimizer_vs-grade"
+        assert tool.name == "optimizer_vs_grade"
 
     def test_grade_tool_inputs(self):
         """Verify grade tool accepts thread_id, question, and documents."""

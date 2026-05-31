@@ -134,7 +134,7 @@ def register_discovery_tool():
     """Register the VS discovery tool with FastMCP."""
 
     @mcp.tool(
-        name="optimizer_vs-discovery",
+        name="optimizer_vs_discovery",
         title="Vector Store Discovery",
         tags={"vector-search", "optimizer"},
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},

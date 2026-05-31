@@ -90,10 +90,10 @@ curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/prompts
 
 | Tool | Purpose |
 |------|---------|
-| `optimizer_vs-discovery` | List available vector stores |
-| `optimizer_vs-retriever` | Retrieve relevant chunks from vector stores |
-| `optimizer_vs-grade` | Grade document relevance |
-| `optimizer_vs-rephrase` | Rephrase queries using conversation history |
+| `optimizer_vs_discovery` | List available vector stores |
+| `optimizer_vs_retriever` | Retrieve relevant chunks from vector stores |
+| `optimizer_vs_grade` | Grade document relevance |
+| `optimizer_vs_rephrase` | Rephrase queries using conversation history |
 
 SQLcl tools (`sqlcl_*`) are registered automatically when SQLcl is available and a database is configured.  They provide read-only database access: schema inspection, SQL execution, and session metadata.
 

@@ -186,7 +186,7 @@ async def test_register_discovery_tool(monkeypatch: pytest.MonkeyPatch):
 
     vs_discovery.register_discovery_tool()
 
-    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs-discovery"))
+    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_discovery"))
 
     class _Ctx:
         """Collects MCP context messages."""

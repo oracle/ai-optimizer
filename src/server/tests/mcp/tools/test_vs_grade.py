@@ -152,7 +152,7 @@ async def test_register_grade_tool(monkeypatch):
 
     vs_grade.register_grade_tool()
 
-    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs-grade"))
+    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_grade"))
 
     class _Ctx:
         """Collects MCP context messages."""

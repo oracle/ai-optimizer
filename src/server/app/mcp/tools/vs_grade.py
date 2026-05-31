@@ -103,7 +103,7 @@ def register_grade_tool():
     """Register the VS grade tool with FastMCP."""
 
     @mcp.tool(
-        name="optimizer_vs-grade",
+        name="optimizer_vs_grade",
         title="Document Grading",
         tags={"vector-search", "optimizer"},
         annotations={"readOnlyHint": True, "openWorldHint": True},

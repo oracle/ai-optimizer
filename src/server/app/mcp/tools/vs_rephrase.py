@@ -141,7 +141,7 @@ def register_rephrase_tool():
     """Register the VS rephrase tool with FastMCP."""
 
     @mcp.tool(
-        name="optimizer_vs-rephrase",
+        name="optimizer_vs_rephrase",
         title="Question Rephrase",
         tags={"vector-search", "optimizer"},
         annotations={"readOnlyHint": True, "openWorldHint": True},
