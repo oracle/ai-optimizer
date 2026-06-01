@@ -380,7 +380,7 @@ def register_retriever_tool():
     """Register the VS retriever tool with FastMCP."""
 
     @mcp.tool(
-        name="optimizer_vs-retriever",
+        name="optimizer_vs_retriever",
         title="Vector Search Retriever",
         tags={"vector-search", "optimizer"},
         annotations={"readOnlyHint": True, "openWorldHint": True},

@@ -33,7 +33,7 @@ from server.app.testbed.database import (
 )
 from server.tests.conftest import make_core_db_config, make_test_vs_config
 
-pytestmark = [pytest.mark.db]
+pytestmark = [pytest.mark.db, pytest.mark.integration]
 
 
 # ---------------------------------------------------------------------------

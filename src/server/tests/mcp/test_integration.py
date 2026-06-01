@@ -22,10 +22,10 @@ from server.app.mcp.prompts.registry import register_mcp_prompt
 pytestmark = [pytest.mark.integration]
 
 EXPECTED_TOOL_NAMES = {
-    "optimizer_vs-discovery",
-    "optimizer_vs-rephrase",
-    "optimizer_vs-retriever",
-    "optimizer_vs-grade",
+    "optimizer_vs_discovery",
+    "optimizer_vs_rephrase",
+    "optimizer_vs_retriever",
+    "optimizer_vs_grade",
 }
 
 
@@ -76,7 +76,7 @@ async def test_call_discovery_disabled(_register_tools, mcp_client, model_config
     vs.description = "Test documents"
 
     result = await mcp_client.call_tool(
-        "optimizer_vs-discovery",
+        "optimizer_vs_discovery",
         {"thread_id": "int-test-1", "filter_enabled_models": False},
     )
 
@@ -98,7 +98,7 @@ async def test_call_discovery_incomplete_settings(_register_tools, mcp_client, m
     vs.distance_strategy = "COSINE"
 
     result = await mcp_client.call_tool(
-        "optimizer_vs-discovery",
+        "optimizer_vs_discovery",
         {"thread_id": "int-test-2", "filter_enabled_models": False},
     )
 
@@ -117,7 +117,7 @@ async def test_call_rephrase_disabled(_register_tools, mcp_client):
     settings.client_settings.vector_search.rephrase = False
 
     result = await mcp_client.call_tool(
-        "optimizer_vs-rephrase",
+        "optimizer_vs_rephrase",
         {"thread_id": "int-test-3", "question": "What is Oracle?"},
     )
 
@@ -138,7 +138,7 @@ async def test_call_grade_disabled(_register_tools, mcp_client):
     settings.client_settings.vector_search.grade = False
 
     result = await mcp_client.call_tool(
-        "optimizer_vs-grade",
+        "optimizer_vs_grade",
         {
             "thread_id": "int-test-4",
             "question": "What is X?",
@@ -159,7 +159,7 @@ async def test_call_grade_disabled_empty_docs(_register_tools, mcp_client):
     settings.client_settings.vector_search.grade = False
 
     result = await mcp_client.call_tool(
-        "optimizer_vs-grade",
+        "optimizer_vs_grade",
         {
             "thread_id": "int-test-5",
             "question": "Anything?",
@@ -258,7 +258,7 @@ async def test_call_discovery_with_real_db(
     settings.client_settings.vector_search.discovery = True
 
     result = await mcp_client.call_tool(
-        "optimizer_vs-discovery",
+        "optimizer_vs_discovery",
         {"thread_id": "db-test-1", "filter_enabled_models": True},
     )
 

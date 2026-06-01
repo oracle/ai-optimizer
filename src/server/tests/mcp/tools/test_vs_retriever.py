@@ -452,6 +452,7 @@ async def test_vs_retrieve_generic_error(monkeypatch: pytest.MonkeyPatch):
     assert "Vector search failed" in (response.error or "")
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_vs_retrieve_success(
     vector_db_config,
@@ -470,7 +471,7 @@ async def test_vs_retrieve_success(
     settings.client_settings.vector_search.score_threshold = 0.0
 
     prompt_config_factory(
-        "optimizer_vs-discovery",
+        "optimizer_vs_discovery",
         "Tables: {tables_info}\nQuestion: {question}\nMax: {max_tables}",
     )
 
@@ -525,7 +526,7 @@ async def test_register_retriever_tool(monkeypatch: pytest.MonkeyPatch):
 
     vs_retriever.register_retriever_tool()
 
-    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs-retriever"))
+    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_retriever"))
 
     class _Ctx:
         def __init__(self):

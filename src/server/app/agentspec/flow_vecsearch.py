@@ -117,9 +117,9 @@ def assemble_flow(
 
 
 def build_vs_rephrase_tool(transport: StreamableHTTPTransport) -> MCPTool:
-    """Define the optimizer_vs-rephrase MCPTool."""
+    """Define the optimizer_vs_rephrase MCPTool."""
     return MCPTool(
-        name="optimizer_vs-rephrase",
+        name="optimizer_vs_rephrase",
         description="Rephrase a question using conversation history for better retrieval.",
         client_transport=transport,
         inputs=[
@@ -132,9 +132,9 @@ def build_vs_rephrase_tool(transport: StreamableHTTPTransport) -> MCPTool:
 
 
 def build_vs_discovery_tool(transport: StreamableHTTPTransport) -> MCPTool:
-    """Define the optimizer_vs-discovery MCPTool."""
+    """Define the optimizer_vs_discovery MCPTool."""
     return MCPTool(
-        name="optimizer_vs-discovery",
+        name="optimizer_vs_discovery",
         description="List available vector storage tables.",
         client_transport=transport,
         inputs=[
@@ -145,9 +145,9 @@ def build_vs_discovery_tool(transport: StreamableHTTPTransport) -> MCPTool:
 
 
 def build_vs_retriever_tool(transport: StreamableHTTPTransport) -> MCPTool:
-    """Define the optimizer_vs-retriever MCPTool."""
+    """Define the optimizer_vs_retriever MCPTool."""
     return MCPTool(
-        name="optimizer_vs-retriever",
+        name="optimizer_vs_retriever",
         description="Perform vector similarity search to retrieve relevant documents.",
         client_transport=transport,
         inputs=[
@@ -159,9 +159,9 @@ def build_vs_retriever_tool(transport: StreamableHTTPTransport) -> MCPTool:
 
 
 def build_vs_grade_tool(transport: StreamableHTTPTransport) -> MCPTool:
-    """Define the optimizer_vs-grade MCPTool."""
+    """Define the optimizer_vs_grade MCPTool."""
     return MCPTool(
-        name="optimizer_vs-grade",
+        name="optimizer_vs_grade",
         description="Grade the relevance of retrieved documents to the question.",
         client_transport=transport,
         inputs=[

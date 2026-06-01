@@ -379,6 +379,7 @@ async def test_get_client_pool_missing():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_create_pool_success(configure_db_env):
     """create_pool() returns a usable pool with valid credentials."""
@@ -389,6 +390,7 @@ async def test_create_pool_success(configure_db_env):
     await pool.close()
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_close_pool_real(configure_db_env):
     """close_pool() closes a real pool without error."""

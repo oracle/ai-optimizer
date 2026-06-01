@@ -122,7 +122,9 @@ def build_oci_litellm_params(oci_profile: OciProfileConfig) -> dict:
 
     Returns a dict containing ``oci_region``, ``oci_compartment_id``, and
     either an ``oci_signer`` (for instance principal / workload identity) or
-    individual API-key fields (``oci_tenancy``, ``oci_user``, etc.).
+    individual API-key fields (``oci_tenancy``, ``oci_user``, ``oci_fingerprint``,
+    and either ``oci_key`` for inline PEM content or ``oci_key_file`` for a
+    filesystem path). LiteLLM's OCI provider accepts either key form.
     """
     params: dict[str, object] = {
         "oci_region": oci_profile.genai_region,
@@ -137,9 +139,12 @@ def build_oci_litellm_params(oci_profile: OciProfileConfig) -> dict:
                 "oci_tenancy": oci_profile.tenancy,
                 "oci_user": oci_profile.user,
                 "oci_fingerprint": oci_profile.fingerprint,
-                "oci_key_file": oci_profile.key_file,
             }
         )
+        if oci_profile.key_content:
+            params["oci_key"] = reveal(oci_profile.key_content)
+        elif oci_profile.key_file:
+            params["oci_key_file"] = oci_profile.key_file
     return params
 
 

@@ -31,7 +31,7 @@ class VectorTable(BaseModel):
 
 
 class VectorStoreListResponse(BaseModel):
-    """Response from the optimizer_vs-discovery tool."""
+    """Response from the optimizer_vs_discovery tool."""
 
     parsed_tables: list[VectorTable]
     status: str
@@ -39,7 +39,7 @@ class VectorStoreListResponse(BaseModel):
 
 
 class VectorGradeResponse(BaseModel):
-    """Response from the optimizer_vs-grade tool."""
+    """Response from the optimizer_vs_grade tool."""
 
     relevant: str
     formatted_documents: str
@@ -50,7 +50,7 @@ class VectorGradeResponse(BaseModel):
 
 
 class RephrasePrompt(BaseModel):
-    """Response from the optimizer_vs-rephrase tool."""
+    """Response from the optimizer_vs_rephrase tool."""
 
     original_prompt: str
     rephrased_prompt: str
@@ -60,7 +60,7 @@ class RephrasePrompt(BaseModel):
 
 
 class VectorSearchResponse(BaseModel):
-    """Response from the optimizer_vs-retriever tool."""
+    """Response from the optimizer_vs_retriever tool."""
 
     context_input: str
     documents: list[dict]

@@ -154,7 +154,7 @@ async def test_register_rephrase_tool(monkeypatch: pytest.MonkeyPatch):
 
     vs_rephrase.register_rephrase_tool()
 
-    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs-rephrase"))
+    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_rephrase"))
 
     class _Ctx:
         """Collects MCP context messages."""

@@ -322,6 +322,7 @@ class TestValidateVsTableName:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_execute_sql_select_real(async_oracle_connection):
     """SELECT 1 FROM DUAL returns [(1,)] against a real database."""
@@ -329,6 +330,7 @@ async def test_execute_sql_select_real(async_oracle_connection):
     assert result == [(1,)]
 
 
+@pytest.mark.integration
 @pytest.mark.db
 async def test_execute_sql_ddl_create_drop(async_oracle_connection):
     """CREATE TABLE + DROP TABLE round-trip succeeds."""
