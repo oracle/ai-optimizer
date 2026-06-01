@@ -56,42 +56,42 @@ def _oci_profile(**overrides) -> OciProfileConfig:
 @pytest.mark.unit
 def test_find_model_exact_match():
     """Returns a matching ModelConfig when provider and id match."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
-    result = find_model("openai", "gpt-4o")
+    result = find_model("openai", "gpt-5-mini")
     assert result is mc
 
 
 @pytest.mark.unit
 def test_find_model_no_match():
     """Returns None when no model matches."""
-    settings.model_configs = [ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)]
+    settings.model_configs = [ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True)]
     assert find_model("openai", "nonexistent") is None
 
 
 @pytest.mark.unit
 def test_find_model_type_filter():
     """Filters by model_type when specified."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
-    assert find_model("openai", "gpt-4o", model_type="embed") is None
-    assert find_model("openai", "gpt-4o", model_type="ll") is mc
+    assert find_model("openai", "gpt-5-mini", model_type="embed") is None
+    assert find_model("openai", "gpt-5-mini", model_type="ll") is mc
 
 
 @pytest.mark.unit
 def test_find_model_enabled_only():
     """Disabled models are excluded by default."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=False)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=False)
     settings.model_configs = [mc]
-    assert find_model("openai", "gpt-4o") is None
+    assert find_model("openai", "gpt-5-mini") is None
 
 
 @pytest.mark.unit
 def test_find_model_disabled_included():
     """enabled_only=False includes disabled models."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=False)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=False)
     settings.model_configs = [mc]
-    assert find_model("openai", "gpt-4o", enabled_only=False) is mc
+    assert find_model("openai", "gpt-5-mini", enabled_only=False) is mc
 
 
 @pytest.mark.unit
@@ -111,7 +111,7 @@ def test_find_model_strips_ollama_latest_tag():
 def test_model_spec_basic():
     """Basic spec has normalized model_key, api_base, and api_key."""
     mc = ModelConfig(
-        id="gpt-4o",
+        id="gpt-5-mini",
         type="ll",
         provider="openai",
         api_base="https://api.openai.com/v1",
@@ -120,8 +120,8 @@ def test_model_spec_basic():
         enabled=True,
     )
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("openai", "gpt-4o")
-    assert spec.model_key == "openai/gpt-4o"
+    spec = LiteLlmModelSpec("openai", "gpt-5-mini")
+    assert spec.model_key == "openai/gpt-5-mini"
     assert spec.api_base == "https://api.openai.com/v1"
     assert spec.api_key == "sk-123"
     assert spec.temperature == 0.7  # Falls back to ModelConfig default
@@ -131,7 +131,7 @@ def test_model_spec_basic():
 def test_model_spec_caller_overrides_win():
     """Caller-provided generation params override ModelConfig defaults."""
     mc = ModelConfig(
-        id="gpt-4o",
+        id="gpt-5-mini",
         type="ll",
         provider="openai",
         temperature=0.7,
@@ -139,7 +139,7 @@ def test_model_spec_caller_overrides_win():
         enabled=True,
     )
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("openai", "gpt-4o", temperature=0.3, max_tokens=500)
+    spec = LiteLlmModelSpec("openai", "gpt-5-mini", temperature=0.3, max_tokens=500)
     assert spec.temperature == 0.3
     assert spec.max_tokens == 500
 
@@ -147,10 +147,10 @@ def test_model_spec_caller_overrides_win():
 @pytest.mark.unit
 def test_model_spec_case_insensitive_provider():
     """Mixed-case provider strings resolve and normalize to canonical casing."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("OpenAI", "gpt-4o")
-    assert spec.model_key == "openai/gpt-4o"  # Canonical casing from ModelConfig
+    spec = LiteLlmModelSpec("OpenAI", "gpt-5-mini")
+    assert spec.model_key == "openai/gpt-5-mini"  # Canonical casing from ModelConfig
     assert spec.original_provider == "OpenAI"  # Raw input preserved
     assert spec.normalized_provider == "openai"
 
@@ -158,11 +158,11 @@ def test_model_spec_case_insensitive_provider():
 @pytest.mark.unit
 def test_model_spec_case_insensitive_model_id():
     """Mixed-case model_id strings resolve and normalize to canonical casing."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("openai", "GPT-4O")
-    assert spec.model_key == "openai/gpt-4o"  # Canonical casing from ModelConfig
-    assert spec.model_id == "gpt-4o"
+    spec = LiteLlmModelSpec("openai", "GPT-5-Mini")
+    assert spec.model_key == "openai/gpt-5-mini"  # Canonical casing from ModelConfig
+    assert spec.model_id == "gpt-5-mini"
 
 
 @pytest.mark.unit
@@ -267,7 +267,7 @@ def test_model_spec_ollama_drops_penalties():
 def test_to_litellm_kwargs_basic():
     """to_litellm_kwargs produces correct dict with model, api_base, drop_params."""
     mc = ModelConfig(
-        id="gpt-4o",
+        id="gpt-5-mini",
         type="ll",
         provider="openai",
         api_base="https://api.openai.com/v1",
@@ -279,10 +279,10 @@ def test_to_litellm_kwargs_basic():
 
     with patch("server.app.models.litellm_utils.litellm") as mock_litellm:
         mock_litellm.get_supported_openai_params.return_value = ["temperature", "max_tokens"]
-        spec = LiteLlmModelSpec("openai", "gpt-4o")
+        spec = LiteLlmModelSpec("openai", "gpt-5-mini")
         result = spec.to_litellm_kwargs()
 
-    assert result["model"] == "openai/gpt-4o"
+    assert result["model"] == "openai/gpt-5-mini"
     assert result["base_url"] == "https://api.openai.com/v1"
     assert result["drop_params"] is True
     assert result["api_key"] == "sk-123"
@@ -306,15 +306,15 @@ def test_to_litellm_kwargs_ollama():
 @pytest.mark.unit
 def test_to_litellm_kwargs_no_supported_params():
     """Handles None from litellm.get_supported_openai_params gracefully."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True, temperature=0.7)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True, temperature=0.7)
     settings.model_configs = [mc]
 
     with patch("server.app.models.litellm_utils.litellm") as mock_litellm:
         mock_litellm.get_supported_openai_params.return_value = None
-        spec = LiteLlmModelSpec("openai", "gpt-4o")
+        spec = LiteLlmModelSpec("openai", "gpt-5-mini")
         result = spec.to_litellm_kwargs()
 
-    assert result["model"] == "openai/gpt-4o"
+    assert result["model"] == "openai/gpt-5-mini"
     assert result["drop_params"] is True
     assert "temperature" not in result  # Not in supported_params
 
@@ -410,11 +410,11 @@ def test_to_litellm_kwargs_oci_security_token_forwards_signer():
 @pytest.mark.unit
 def test_from_ll_model_settings():
     """from_ll_model_settings extracts fields correctly."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
     ll_model = MagicMock()
     ll_model.provider = "openai"
-    ll_model.id = "gpt-4o"
+    ll_model.id = "gpt-5-mini"
     ll_model.temperature = 0.5
     ll_model.top_p = 0.9
     ll_model.max_tokens = 100
@@ -457,12 +457,12 @@ def test_litellm_model_spec_normalizes_provider_casing():
 @pytest.mark.unit
 def test_from_model_identity():
     """from_model_identity creates a spec with no generation overrides."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", temperature=0.7, enabled=True)
+    mc = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", temperature=0.7, enabled=True)
     settings.model_configs = [mc]
-    identity = ModelIdentity(provider="openai", id="gpt-4o")
+    identity = ModelIdentity(provider="openai", id="gpt-5-mini")
 
     spec = LiteLlmModelSpec.from_model_identity(identity)
-    assert spec.model_key == "openai/gpt-4o"
+    assert spec.model_key == "openai/gpt-5-mini"
     assert spec.temperature == 0.7  # Falls back to ModelConfig
 
 
@@ -699,7 +699,7 @@ class TestExtractParameterCount:
 
     def test_no_parameter_count(self):
         """extract_parameter_count should return None for models without parameter count."""
-        assert extract_parameter_count("gpt-4o") is None
+        assert extract_parameter_count("gpt-5-mini") is None
 
     def test_empty_string(self):
         """extract_parameter_count should return None for empty string."""
@@ -755,7 +755,7 @@ class TestIsSmallModel:
 
     def test_unknown_model_is_not_small(self):
         """is_small_model should return False for models without detectable param count."""
-        assert is_small_model("gpt-4o") is False
+        assert is_small_model("gpt-5-mini") is False
 
     def test_empty_string_is_not_small(self):
         """is_small_model should return False for empty string."""

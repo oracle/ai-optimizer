@@ -68,7 +68,7 @@ def test_jsonl_invalid_content():
 def test_giskard_config_ll_model():
     """LL model config renames 'model' to 'llm_model' and strips params."""
     config = {
-        "model": "openai/gpt-4o-mini",
+        "model": "openai/gpt-5-mini",
         "temperature": 0.5,
         "max_tokens": 4096,
         "api_base": "https://api.openai.com",
@@ -76,7 +76,7 @@ def test_giskard_config_ll_model():
     }
     result = get_giskard_config(config, "ll")
     assert "llm_model" in result
-    assert result["llm_model"] == "openai/gpt-4o-mini"
+    assert result["llm_model"] == "openai/gpt-5-mini"
     assert "model" not in result
     assert "temperature" not in result
     assert "max_tokens" not in result
@@ -102,7 +102,7 @@ def test_giskard_config_embed_model():
 @pytest.mark.unit
 def test_giskard_config_does_not_mutate_original():
     """get_giskard_config does not mutate the input dict."""
-    config = {"model": "openai/gpt-4o-mini", "temperature": 0.5}
+    config = {"model": "openai/gpt-5-mini", "temperature": 0.5}
     get_giskard_config(config, "ll")
     assert "model" in config
     assert "temperature" in config

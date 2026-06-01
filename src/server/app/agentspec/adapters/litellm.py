@@ -34,7 +34,7 @@ class LiteLlmConfig(LlmConfig):
     provider:
         LiteLLM provider prefix (e.g. "openai", "ollama", "oci").
     model_id:
-        Model name within the provider (e.g. "gpt-4o", "qwen3:8b").
+        Model name within the provider (e.g. "gpt-5-mini", "qwen3:8b").
     api_base:
         Optional base URL override.
     api_key:

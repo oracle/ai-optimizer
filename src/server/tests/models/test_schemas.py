@@ -79,9 +79,9 @@ class TestModelConfig:
 
     def test_inherits_model_identity(self):
         """ModelIdentity fields are accessible on ModelConfig."""
-        cfg = ModelConfig(type="ll", provider="openai", id="gpt-4o")
+        cfg = ModelConfig(type="ll", provider="openai", id="gpt-5-mini")
         assert cfg.provider == "openai"
-        assert cfg.id == "gpt-4o"
+        assert cfg.id == "gpt-5-mini"
 
     def test_api_base_optional(self):
         """api_base defaults to None and accepts a URL string."""
@@ -114,7 +114,7 @@ class TestModelConfig:
 
     def test_small_model_false_for_no_param_count(self):
         """small_model is False when no parameter count is detectable."""
-        cfg = ModelConfig(type="ll", id="gpt-4o")
+        cfg = ModelConfig(type="ll", id="gpt-5-mini")
         assert cfg.small_model is False
 
     def test_small_model_false_for_none_id(self):

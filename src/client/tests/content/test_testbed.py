@@ -59,8 +59,8 @@ def _qa_records(count=3):
 
 SAMPLE_REPORT = {
     "settings": {
-        "ll_model": {"model": "gpt-4o", "temperature": 0.7},
-        "testbed": {"judge_model": {"provider": "openai", "id": "gpt-4o"}},
+        "ll_model": {"model": "gpt-5-mini", "temperature": 0.7},
+        "testbed": {"judge_model": {"provider": "openai", "id": "gpt-5-mini"}},
         "vector_search": {
             "enabled": True,
             "vector_store": "ORACLE",
@@ -184,12 +184,12 @@ _ensure_testbed_loaded()
 @pytest.mark.parametrize(
     "identity,expected",
     [
-        ({"provider": "openai", "id": "gpt-4o"}, "openai/gpt-4o"),
+        ({"provider": "openai", "id": "gpt-5-mini"}, "openai/gpt-5-mini"),
         (None, None),
         ({}, None),
-        ({"id": "gpt-4o"}, None),
+        ({"id": "gpt-5-mini"}, None),
         ({"provider": "openai"}, None),
-        ({"provider": "", "id": "gpt-4o"}, None),
+        ({"provider": "", "id": "gpt-5-mini"}, None),
     ],
     ids=["valid", "none", "empty", "missing_provider", "missing_id", "empty_provider"],
 )
@@ -268,13 +268,13 @@ class TestSyncTestbedModel:
         """Splits value and calls update_client_settings with correct structure."""
         from client.app.content.testbed import _sync_testbed_model
 
-        state = _make_state({"wk": "openai/gpt-4o"})
+        state = _make_state({"wk": "openai/gpt-5-mini"})
         with (
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.update_client_settings") as mock_update,
         ):
             _sync_testbed_model("judge_model", "wk")
-            mock_update.assert_called_once_with({"testbed": {"judge_model": {"provider": "openai", "id": "gpt-4o"}}})
+            mock_update.assert_called_once_with({"testbed": {"judge_model": {"provider": "openai", "id": "gpt-5-mini"}}})
 
     def test_no_value_skips(self):
         """Does nothing when widget key has no value."""
@@ -676,7 +676,7 @@ class TestEvaluationReport:
         with patch(f"{MODULE}.api_get"):
             self._call(mock_st, report=SAMPLE_REPORT)
         markdown_calls = [str(c) for c in mock_st.markdown.call_args_list]
-        assert any("openai/gpt-4o" in c for c in markdown_calls)
+        assert any("openai/gpt-5-mini" in c for c in markdown_calls)
 
     def test_judge_model_string(self):
         """Renders string judge model as-is."""

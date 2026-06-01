@@ -51,7 +51,7 @@ class TestBuildLlmConfig:
             {
                 "ll_model": {
                     "provider": "openai",
-                    "id": "gpt-4o",
+                    "id": "gpt-5-mini",
                     "frequency_penalty": 0.5,
                     "presence_penalty": 0.3,
                 }
@@ -72,7 +72,7 @@ class TestBuildLlmConfig:
             {
                 "ll_model": {
                     "provider": "openai",
-                    "id": "gpt-4o",
+                    "id": "gpt-5-mini",
                 }
             }
         )
@@ -94,9 +94,9 @@ class TestBuildLlmConfig:
         original = app_settings.model_configs[:]
         try:
             app_settings.model_configs = [
-                ModelConfig(provider="openai", id="gpt-4o", type="ll", api_key=SecretStr("sk-test-key-123")),
+                ModelConfig(provider="openai", id="gpt-5-mini", type="ll", api_key=SecretStr("sk-test-key-123")),
             ]
-            cs = ClientSettings.model_validate({"ll_model": {"provider": "openai", "id": "gpt-4o"}})
+            cs = ClientSettings.model_validate({"ll_model": {"provider": "openai", "id": "gpt-5-mini"}})
             llm = build_llm_config(cs)
             assert llm.api_key == "sk-test-key-123"
         finally:

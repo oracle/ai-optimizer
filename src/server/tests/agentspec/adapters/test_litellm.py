@@ -48,7 +48,7 @@ class TestLiteLlmConfig:
             id="test",
             name="test",
             provider="openai",
-            model_id="gpt-4o",
+            model_id="gpt-5-mini",
             default_generation_parameters=gen,
         )
         assert config.default_generation_parameters is not None
@@ -62,10 +62,10 @@ class TestLiteLlmConfigSensitiveFields:
     def test_api_key_excluded_from_serialized_json(self):
         """api_key must not appear in plaintext in serialized AgentSpec JSON."""
         config = LiteLlmConfig(
-            id="openai/gpt-4o",
-            name="openai/gpt-4o",
+            id="openai/gpt-5-mini",
+            name="openai/gpt-5-mini",
             provider="openai",
-            model_id="gpt-4o",
+            model_id="gpt-5-mini",
             api_key="sk-super-secret-key",
         )
         serializer = AgentSpecSerializer(plugins=[get_litellm_serialization_plugin()])
@@ -75,10 +75,10 @@ class TestLiteLlmConfigSensitiveFields:
     def test_api_key_survives_roundtrip_via_disaggregated(self):
         """api_key should be recoverable through disaggregated deserialization."""
         config = LiteLlmConfig(
-            id="openai/gpt-4o",
-            name="openai/gpt-4o",
+            id="openai/gpt-5-mini",
+            name="openai/gpt-5-mini",
             provider="openai",
-            model_id="gpt-4o",
+            model_id="gpt-5-mini",
             api_key="sk-roundtrip-key",
         )
         # The api_key should be accessible on the object even though it's sensitive
@@ -107,10 +107,10 @@ class TestLiteLlmConfigSerialization:
         """Verify serialize then deserialize preserves all fields."""
         gen = LlmGenerationConfig(max_tokens=100, temperature=0.7)
         config = LiteLlmConfig(
-            id="openai/gpt-4o",
-            name="openai/gpt-4o",
+            id="openai/gpt-5-mini",
+            name="openai/gpt-5-mini",
             provider="openai",
-            model_id="gpt-4o",
+            model_id="gpt-5-mini",
             api_key="sk-test",
             default_generation_parameters=gen,
         )
@@ -124,12 +124,12 @@ class TestLiteLlmConfigSerialization:
         # api_key is a SensitiveField — supply it via components_registry
         restored = deserializer.from_json(
             json_str,
-            components_registry={"openai/gpt-4o.api_key": "sk-test"},
+            components_registry={"openai/gpt-5-mini.api_key": "sk-test"},
         )
 
         assert isinstance(restored, LiteLlmConfig)
         assert restored.provider == "openai"
-        assert restored.model_id == "gpt-4o"
+        assert restored.model_id == "gpt-5-mini"
         assert restored.api_key == "sk-test"
         assert restored.default_generation_parameters is not None
         assert restored.default_generation_parameters.max_tokens == 100

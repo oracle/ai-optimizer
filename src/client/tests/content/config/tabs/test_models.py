@@ -75,7 +75,7 @@ class TestModelConfigsLookup:
         from client.app.content.config.tabs.models import _model_configs_lookup
 
         configs = [
-            {"id": "gpt-4o", "provider": "openai", "type": "ll"},
+            {"id": "gpt-5-mini", "provider": "openai", "type": "ll"},
             {"id": "embed-v3", "provider": "cohere", "type": "embed"},
             {"id": "llama3", "provider": "ollama", "type": "ll"},
         ]
@@ -83,7 +83,7 @@ class TestModelConfigsLookup:
         with patch(f"{MODULE}.state", state):
             result = _model_configs_lookup("ll")
 
-        assert "openai/gpt-4o" in result
+        assert "openai/gpt-5-mini" in result
         assert "ollama/llama3" in result
         assert "cohere/embed-v3" not in result
 
@@ -91,7 +91,7 @@ class TestModelConfigsLookup:
         """Empty dict returned when no configs match the type."""
         from client.app.content.config.tabs.models import _model_configs_lookup
 
-        configs = [{"id": "gpt-4o", "provider": "openai", "type": "ll"}]
+        configs = [{"id": "gpt-5-mini", "provider": "openai", "type": "ll"}]
         state = make_model_state(model_configs=configs)
         with patch(f"{MODULE}.state", state):
             result = _model_configs_lookup("embed")
@@ -121,9 +121,9 @@ class TestFetchModel:
         """Successful GET returns the model config dict."""
         from client.app.content.config.tabs.models import _fetch_model
 
-        expected = {"id": "gpt-4o", "provider": "openai", "api_key": "sk-123"}
+        expected = {"id": "gpt-5-mini", "provider": "openai", "api_key": "sk-123"}
         with patch(f"{MODULE}.api_get", return_value=expected):
-            result = _fetch_model("openai", "gpt-4o")
+            result = _fetch_model("openai", "gpt-5-mini")
 
         assert result == expected
 
@@ -163,7 +163,7 @@ class TestGetSupportedModels:
         """Successful GET returns the provider list."""
         from client.app.content.config.tabs.models import _get_supported_models
 
-        expected = [{"provider": "openai", "ids": [{"key": "gpt-4o"}]}]
+        expected = [{"provider": "openai", "ids": [{"key": "gpt-5-mini"}]}]
         with patch(f"{MODULE}.api_get", return_value=expected):
             result = _get_supported_models("ll")
 
@@ -193,9 +193,9 @@ class TestClearClientModels:
         """ll_model provider/id are set to None when they match."""
         from client.app.content.config.tabs.models import _clear_client_models
 
-        state = make_model_state(ll_model={"provider": "openai", "id": "gpt-4o"})
+        state = make_model_state(ll_model={"provider": "openai", "id": "gpt-5-mini"})
         with patch(f"{MODULE}.state", state):
-            _clear_client_models("openai", "gpt-4o")
+            _clear_client_models("openai", "gpt-5-mini")
 
         assert state["settings"]["client_settings"]["ll_model"]["id"] is None
         assert state["settings"]["client_settings"]["ll_model"]["provider"] is None
@@ -204,11 +204,11 @@ class TestClearClientModels:
         """ll_model is untouched when provider/id do not match."""
         from client.app.content.config.tabs.models import _clear_client_models
 
-        state = make_model_state(ll_model={"provider": "openai", "id": "gpt-4o"})
+        state = make_model_state(ll_model={"provider": "openai", "id": "gpt-5-mini"})
         with patch(f"{MODULE}.state", state):
             _clear_client_models("anthropic", "sonnet")
 
-        assert state["settings"]["client_settings"]["ll_model"]["id"] == "gpt-4o"
+        assert state["settings"]["client_settings"]["ll_model"]["id"] == "gpt-5-mini"
         assert state["settings"]["client_settings"]["ll_model"]["provider"] == "openai"
 
     def test_clears_vector_search_on_match(self, make_model_state):
@@ -236,13 +236,13 @@ class TestClearClientModels:
         from client.app.content.config.tabs.models import _clear_client_models
 
         tb = {
-            "qa_ll_model": {"provider": "openai", "id": "gpt-4o"},
-            "qa_embed_model": {"provider": "openai", "id": "gpt-4o"},
+            "qa_ll_model": {"provider": "openai", "id": "gpt-5-mini"},
+            "qa_embed_model": {"provider": "openai", "id": "gpt-5-mini"},
             "judge_model": {"provider": "anthropic", "id": "sonnet"},
         }
         state = make_model_state(testbed=tb)
         with patch(f"{MODULE}.state", state):
-            _clear_client_models("openai", "gpt-4o")
+            _clear_client_models("openai", "gpt-5-mini")
 
         testbed = state["settings"]["client_settings"]["testbed"]
         assert testbed["qa_ll_model"] is None
@@ -256,7 +256,7 @@ class TestClearClientModels:
         tb = {"qa_ll_model": None, "qa_embed_model": None, "judge_model": None}
         state = make_model_state(testbed=tb)
         with patch(f"{MODULE}.state", state):
-            _clear_client_models("openai", "gpt-4o")
+            _clear_client_models("openai", "gpt-5-mini")
 
         testbed = state["settings"]["client_settings"]["testbed"]
         assert testbed["qa_ll_model"] is None
@@ -283,11 +283,11 @@ class TestHandleFormSubmit:
             patch(f"{MODULE}.api_post") as mock_post,
         ):
             hlp.build_payload = mock_build
-            result = _handle_form_submit("ll", True, "openai", "gpt-4o", form_data)
+            result = _handle_form_submit("ll", True, "openai", "gpt-5-mini", form_data)
 
         assert result is True
         assert form_data["provider"] == "openai"
-        assert form_data["id"] == "gpt-4o"
+        assert form_data["id"] == "gpt-5-mini"
         assert form_data["type"] == "ll"
         mock_post.assert_called_once()
 
@@ -302,11 +302,11 @@ class TestHandleFormSubmit:
             patch(f"{MODULE}.api_post") as mock_post,
         ):
             hlp.build_payload.return_value = form_data
-            _handle_form_submit("ll", True, "openai", "gpt-4o", form_data)
+            _handle_form_submit("ll", True, "openai", "gpt-5-mini", form_data)
 
         _, kwargs = mock_post.call_args
         assert "toast" in kwargs
-        assert "openai/gpt-4o" in kwargs["toast"]
+        assert "openai/gpt-5-mini" in kwargs["toast"]
 
     def test_update_calls_api_put_with_encoded_id(self, mock_st):
         """Update path URL-encodes the model_id in the PUT path."""
@@ -336,10 +336,10 @@ class TestHandleFormSubmit:
             patch(f"{MODULE}.api_put"),
         ):
             hlp.build_payload.return_value = form_data
-            _handle_form_submit("ll", False, "openai", "gpt-4o", form_data)
+            _handle_form_submit("ll", False, "openai", "gpt-5-mini", form_data)
 
         mock_st.toast.assert_called_once()
-        assert "openai/gpt-4o" in mock_st.toast.call_args.args[0]
+        assert "openai/gpt-5-mini" in mock_st.toast.call_args.args[0]
 
     def test_update_disabled_model_clears_client_models(self, mock_st):
         """Disabling a model calls _clear_client_models."""
@@ -353,9 +353,9 @@ class TestHandleFormSubmit:
             patch(f"{MODULE}._clear_client_models") as mock_clear,
         ):
             hlp.build_payload.return_value = form_data
-            _handle_form_submit("ll", False, "openai", "gpt-4o", form_data)
+            _handle_form_submit("ll", False, "openai", "gpt-5-mini", form_data)
 
-        mock_clear.assert_called_once_with("openai", "gpt-4o")
+        mock_clear.assert_called_once_with("openai", "gpt-5-mini")
 
     def test_update_enabled_model_does_not_clear(self, mock_st):
         """Enabling a model does not call _clear_client_models."""
@@ -369,7 +369,7 @@ class TestHandleFormSubmit:
             patch(f"{MODULE}._clear_client_models") as mock_clear,
         ):
             hlp.build_payload.return_value = form_data
-            _handle_form_submit("ll", False, "openai", "gpt-4o", form_data)
+            _handle_form_submit("ll", False, "openai", "gpt-5-mini", form_data)
 
         mock_clear.assert_not_called()
 
@@ -384,7 +384,7 @@ class TestHandleFormSubmit:
             patch(f"{MODULE}.api_post"),
         ):
             hlp.build_payload.return_value = form_data
-            result = _handle_form_submit("ll", True, "openai", "gpt-4o", form_data)
+            result = _handle_form_submit("ll", True, "openai", "gpt-5-mini", form_data)
 
         assert result is True
         hlp.refresh_settings.assert_called_once()
@@ -407,7 +407,7 @@ class TestHandleFormSubmit:
             from client.app.core.helpers import extract_error_detail
 
             hlp.extract_error_detail.side_effect = extract_error_detail
-            result = _handle_form_submit("ll", True, "openai", "gpt-4o", form_data)
+            result = _handle_form_submit("ll", True, "openai", "gpt-5-mini", form_data)
 
         assert result is False
         mock_st.error.assert_called_once()
@@ -424,7 +424,7 @@ class TestNoChangeDetection:
         form_data = {"enabled": True, "api_base": "http://test", "api_key": "sk-123"}
 
         with patch(f"{MODULE}.st", mock_st):
-            result = _handle_form_submit("ll", False, "openai", "gpt-4o", form_data, original_model=original)
+            result = _handle_form_submit("ll", False, "openai", "gpt-5-mini", form_data, original_model=original)
 
         assert result is False
         mock_st.toast.assert_called_once()
@@ -444,7 +444,7 @@ class TestNoChangeDetection:
             patch(f"{MODULE}._clear_client_models"),
         ):
             hlp.build_payload.return_value = form_data
-            result = _handle_form_submit("ll", False, "openai", "gpt-4o", form_data, original_model=original)
+            result = _handle_form_submit("ll", False, "openai", "gpt-5-mini", form_data, original_model=original)
 
         assert result is True
         mock_put.assert_called_once()
@@ -462,7 +462,7 @@ class TestNoChangeDetection:
             patch(f"{MODULE}.api_post") as mock_post,
         ):
             hlp.build_payload.return_value = form_data
-            result = _handle_form_submit("ll", True, "openai", "gpt-4o", form_data, original_model=original)
+            result = _handle_form_submit("ll", True, "openai", "gpt-5-mini", form_data, original_model=original)
 
         assert result is True
         mock_post.assert_called_once()
@@ -479,7 +479,7 @@ class TestNoChangeDetection:
             patch(f"{MODULE}.api_put") as mock_put,
         ):
             hlp.build_payload.return_value = form_data
-            result = _handle_form_submit("ll", False, "openai", "gpt-4o", form_data)
+            result = _handle_form_submit("ll", False, "openai", "gpt-5-mini", form_data)
 
         assert result is True
         mock_put.assert_called_once()
@@ -503,12 +503,12 @@ class TestRemoveModel:
             patch(f"{MODULE}._clear_client_models") as mock_clear,
             patch(f"{MODULE}.helpers") as hlp,
         ):
-            result = _remove_model("openai", "gpt-4o")
+            result = _remove_model("openai", "gpt-5-mini")
 
         assert result is True
         mock_delete.assert_called_once()
-        assert "gpt-4o" in mock_delete.call_args.args[0]
-        mock_clear.assert_called_once_with("openai", "gpt-4o")
+        assert "gpt-5-mini" in mock_delete.call_args.args[0]
+        mock_clear.assert_called_once_with("openai", "gpt-5-mini")
         hlp.refresh_settings.assert_called_once()
 
     def test_url_encodes_path(self, mock_st):
@@ -542,7 +542,7 @@ class TestRemoveModel:
             from client.app.core.helpers import extract_error_detail
 
             hlp.extract_error_detail.side_effect = extract_error_detail
-            result = _remove_model("openai", "gpt-4o")
+            result = _remove_model("openai", "gpt-5-mini")
 
         assert result is False
         mock_st.error.assert_called_once()
@@ -560,12 +560,12 @@ class TestInitializeModel:
         """Edit action fetches the model via _fetch_model and returns it as-is."""
         from client.app.content.config.tabs.models import _initialize_model
 
-        fetched = {"id": "gpt-4o", "provider": "openai", "enabled": True}
+        fetched = {"id": "gpt-5-mini", "provider": "openai", "enabled": True}
 
         with patch(f"{MODULE}._fetch_model", return_value=fetched) as mock_fetch:
-            result = _initialize_model("edit", "ll", "gpt-4o", "openai")
+            result = _initialize_model("edit", "ll", "gpt-5-mini", "openai")
 
-        mock_fetch.assert_called_once_with("openai", "gpt-4o")
+        mock_fetch.assert_called_once_with("openai", "gpt-5-mini")
         assert result == fetched
 
     def test_edit_falls_back_to_empty_dict(self):
@@ -573,7 +573,7 @@ class TestInitializeModel:
         from client.app.content.config.tabs.models import _initialize_model
 
         with patch(f"{MODULE}._fetch_model", return_value=None):
-            result = _initialize_model("edit", "ll", "gpt-4o", "openai")
+            result = _initialize_model("edit", "ll", "gpt-5-mini", "openai")
 
         assert result == {}
 
@@ -604,7 +604,7 @@ class TestInitializeModel:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}._fetch_model", return_value={"enabled": True}),
         ):
-            _initialize_model("edit", "ll", "gpt-4o", "openai")
+            _initialize_model("edit", "ll", "gpt-5-mini", "openai")
 
         mock_st.checkbox.assert_not_called()
 
@@ -623,7 +623,7 @@ class TestRenderProviderSelection:
 
         model = {"provider": "openai"}
         supported = [
-            {"provider": "openai", "ids": [{"key": "gpt-4o"}]},
+            {"provider": "openai", "ids": [{"key": "gpt-5-mini"}]},
             {"provider": "anthropic", "ids": [{"key": "sonnet"}]},
         ]
         mock_st.selectbox.return_value = "openai"
@@ -631,7 +631,7 @@ class TestRenderProviderSelection:
         with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", _OPTIMIZER_HELP):
             result_model, provider_models, _ = _render_provider_selection(model, supported, "add")
 
-        assert provider_models == [{"key": "gpt-4o"}]
+        assert provider_models == [{"key": "gpt-5-mini"}]
 
     def test_selectbox_disabled_on_edit(self, mock_st):
         """Provider selectbox is disabled in edit mode."""
@@ -674,7 +674,7 @@ class TestRenderModelSelection:
         from client.app.content.config.tabs.models import _render_model_selection
 
         model = {"id": "custom-model", "provider": "openai"}
-        provider_models = [{"key": "gpt-4o"}, {"key": "gpt-3.5"}]
+        provider_models = [{"key": "gpt-5-mini"}, {"key": "gpt-3.5"}]
         mock_st.selectbox.return_value = "custom-model"
 
         with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", _OPTIMIZER_HELP):
@@ -687,9 +687,9 @@ class TestRenderModelSelection:
         """Model selectbox is disabled in edit mode."""
         from client.app.content.config.tabs.models import _render_model_selection
 
-        model = {"id": "gpt-4o", "provider": "openai"}
-        provider_models = [{"key": "gpt-4o"}]
-        mock_st.selectbox.return_value = "gpt-4o"
+        model = {"id": "gpt-5-mini", "provider": "openai"}
+        provider_models = [{"key": "gpt-5-mini"}]
+        mock_st.selectbox.return_value = "gpt-5-mini"
 
         with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", _OPTIMIZER_HELP):
             _render_model_selection(model, provider_models, "edit")
@@ -701,9 +701,9 @@ class TestRenderModelSelection:
         """accept_new_options is True on the model selectbox."""
         from client.app.content.config.tabs.models import _render_model_selection
 
-        model = {"id": "gpt-4o", "provider": "openai"}
-        provider_models = [{"key": "gpt-4o"}]
-        mock_st.selectbox.return_value = "gpt-4o"
+        model = {"id": "gpt-5-mini", "provider": "openai"}
+        provider_models = [{"key": "gpt-5-mini"}]
+        mock_st.selectbox.return_value = "gpt-5-mini"
 
         with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", _OPTIMIZER_HELP):
             _render_model_selection(model, provider_models, "add")
@@ -724,7 +724,7 @@ class TestRenderApiConfiguration:
         """Two text_input widgets are rendered for api_base and api_key."""
         from client.app.content.config.tabs.models import _render_api_configuration
 
-        model = {"id": "gpt-4o", "api_base": "http://test", "api_key": "sk-123"}
+        model = {"id": "gpt-5-mini", "api_base": "http://test", "api_key": "sk-123"}
         mock_st.text_input.side_effect = ["http://test", "sk-123"]
 
         # The api_key widget is rendered via redacted_password_input, which uses
@@ -761,8 +761,8 @@ class TestRenderApiConfiguration:
         """LiteLLM api_base is used as the default value when available."""
         from client.app.content.config.tabs.models import _render_api_configuration
 
-        model = {"id": "gpt-4o"}
-        provider_models = [{"key": "gpt-4o", "api_base": "https://litellm-default.com"}]
+        model = {"id": "gpt-5-mini"}
+        provider_models = [{"key": "gpt-5-mini", "api_base": "https://litellm-default.com"}]
         mock_st.text_input.side_effect = ["https://litellm-default.com", ""]
 
         with (
@@ -780,7 +780,7 @@ class TestRenderApiConfiguration:
         from client.app.content.config.tabs.models import _render_api_configuration
 
         secret_key = "sk-this-must-not-leak"
-        model = {"id": "gpt-4o", "api_base": "http://test", "api_key": secret_key}
+        model = {"id": "gpt-5-mini", "api_base": "http://test", "api_key": secret_key}
         mock_st.text_input.return_value = "http://test"
 
         with (
@@ -810,7 +810,7 @@ class TestRenderModelSpecificConfig:
         """Language model type renders two number inputs."""
         from client.app.content.config.tabs.models import _render_model_specific_config
 
-        model = {"id": "gpt-4o", "max_input_tokens": 128000, "max_tokens": 4096}
+        model = {"id": "gpt-5-mini", "max_input_tokens": 128000, "max_tokens": 4096}
         mock_st.number_input.side_effect = [128000, 4096]
 
         with patch(f"{MODULE}.st", mock_st), patch(f"{MODULE}.state", _OPTIMIZER_HELP):
@@ -888,7 +888,7 @@ class TestHandleDialogSubmission:
         action_btn.button.return_value = True
         mock_st.columns.return_value[2].button.return_value = False
 
-        model = {"id": "gpt-4o", "provider": ""}
+        model = {"id": "gpt-5-mini", "provider": ""}
         with patch(f"{MODULE}.st", mock_st):
             result = _handle_dialog_submission(model, "ll", "add")
 
@@ -905,7 +905,7 @@ class TestHandleDialogSubmission:
         action_btn.button.return_value = True
         mock_st.columns.return_value[2].button.return_value = False
 
-        model = {"id": "gpt-4o", "provider": "openai"}
+        model = {"id": "gpt-5-mini", "provider": "openai"}
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}._handle_form_submit", return_value=True) as mock_submit,
@@ -913,7 +913,7 @@ class TestHandleDialogSubmission:
             result = _handle_dialog_submission(model, "ll", "add")
 
         assert result is True
-        mock_submit.assert_called_once_with("ll", True, "openai", "gpt-4o", model)
+        mock_submit.assert_called_once_with("ll", True, "openai", "gpt-5-mini", model)
 
     def test_edit_save_calls_handle_form_submit(self):
         """Save in edit mode delegates to _handle_form_submit with is_new=False."""
@@ -924,8 +924,8 @@ class TestHandleDialogSubmission:
         action_btn.button.return_value = True
         mock_st.columns.return_value[2].button.return_value = False
 
-        model = {"id": "gpt-4o", "provider": "openai"}
-        original = {"id": "gpt-4o", "provider": "openai"}
+        model = {"id": "gpt-5-mini", "provider": "openai"}
+        original = {"id": "gpt-5-mini", "provider": "openai"}
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}._handle_form_submit", return_value=True) as mock_submit,
@@ -933,7 +933,7 @@ class TestHandleDialogSubmission:
             result = _handle_dialog_submission(model, "ll", "edit", original_model=original)
 
         assert result is True
-        mock_submit.assert_called_once_with("ll", False, "openai", "gpt-4o", model, original_model=original)
+        mock_submit.assert_called_once_with("ll", False, "openai", "gpt-5-mini", model, original_model=original)
 
     def test_delete_calls_remove_model(self):
         """Delete button delegates to _remove_model."""
@@ -946,7 +946,7 @@ class TestHandleDialogSubmission:
         delete_btn.button.return_value = True
         mock_st.columns.return_value[2].button.return_value = False
 
-        model = {"id": "gpt-4o", "provider": "openai"}
+        model = {"id": "gpt-5-mini", "provider": "openai"}
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}._remove_model", return_value=True) as mock_remove,
@@ -954,7 +954,7 @@ class TestHandleDialogSubmission:
             result = _handle_dialog_submission(model, "ll", "edit")
 
         assert result is True
-        mock_remove.assert_called_once_with("openai", "gpt-4o")
+        mock_remove.assert_called_once_with("openai", "gpt-5-mini")
 
     def test_cancel_calls_rerun(self):
         """Cancel button triggers st.rerun."""
@@ -966,7 +966,7 @@ class TestHandleDialogSubmission:
         cancel_btn = mock_st.columns.return_value[2]
         cancel_btn.button.return_value = True
 
-        model = {"id": "gpt-4o", "provider": "openai"}
+        model = {"id": "gpt-5-mini", "provider": "openai"}
         with patch(f"{MODULE}.st", mock_st):
             result = _handle_dialog_submission(model, "ll", "edit")
 
@@ -988,7 +988,7 @@ class TestHandleDialogSubmission:
             response=MagicMock(status_code=400),
         )
 
-        model = {"id": "gpt-4o", "provider": "openai"}
+        model = {"id": "gpt-5-mini", "provider": "openai"}
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}._handle_form_submit", side_effect=error),
@@ -1135,7 +1135,7 @@ class TestRenderModelRows:
         from client.app.content.config.tabs.models import render_model_rows
 
         configs = [
-            {"id": "gpt-4o", "provider": "openai", "type": "ll", "enabled": True, "api_base": "http://a"},
+            {"id": "gpt-5-mini", "provider": "openai", "type": "ll", "enabled": True, "api_base": "http://a"},
             {"id": "embed-v3", "provider": "cohere", "type": "embed", "enabled": False, "api_base": "http://b"},
         ]
         state = make_model_state(model_configs=configs)
@@ -1223,7 +1223,7 @@ class TestRenderModelRows:
         from client.app.content.config.tabs.models import render_model_rows
 
         configs = [
-            {"id": "gpt-4o", "provider": "openai", "type": "ll", "enabled": True, "api_base": "http://a"},
+            {"id": "gpt-5-mini", "provider": "openai", "type": "ll", "enabled": True, "api_base": "http://a"},
             {
                 "id": "llama3",
                 "provider": "ollama",
@@ -1264,7 +1264,7 @@ class TestRenderModelRows:
         from client.app.content.config.tabs.models import render_model_rows
 
         configs = [
-            {"id": "gpt-4o", "provider": "openai", "type": "ll", "enabled": True, "api_base": "http://a"},
+            {"id": "gpt-5-mini", "provider": "openai", "type": "ll", "enabled": True, "api_base": "http://a"},
         ]
         state = make_model_state(model_configs=configs)
 
@@ -1282,7 +1282,7 @@ class TestRenderModelRows:
         _, kwargs = cols[3].button.call_args
         assert kwargs["kwargs"]["model_type"] == "ll"
         assert kwargs["kwargs"]["action"] == "edit"
-        assert kwargs["kwargs"]["model_id"] == "gpt-4o"
+        assert kwargs["kwargs"]["model_id"] == "gpt-5-mini"
         assert kwargs["kwargs"]["model_provider"] == "openai"
 
     def test_add_button_triggers_edit_model(self, make_model_state, mock_st):
@@ -1323,11 +1323,11 @@ class TestEditModel:
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
-            patch(f"{MODULE}._initialize_model", return_value={"id": "gpt-4o", "provider": "openai"}),
+            patch(f"{MODULE}._initialize_model", return_value={"id": "gpt-5-mini", "provider": "openai"}),
             patch(f"{MODULE}._get_supported_models", return_value=[{"provider": "openai", "ids": []}]),
             patch(
                 f"{MODULE}._render_provider_selection",
-                return_value=({"id": "gpt-4o", "provider": "openai"}, [], False),
+                return_value=({"id": "gpt-5-mini", "provider": "openai"}, [], False),
             ),
             patch(f"{MODULE}._render_model_selection", side_effect=lambda model, *_: model),
             patch(f"{MODULE}._render_api_configuration", side_effect=lambda model, *_: model),
@@ -1347,18 +1347,18 @@ class TestEditModel:
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
-            patch(f"{MODULE}._initialize_model", return_value={"id": "gpt-4o", "provider": "openai"}),
+            patch(f"{MODULE}._initialize_model", return_value={"id": "gpt-5-mini", "provider": "openai"}),
             patch(f"{MODULE}._get_supported_models", return_value=[{"provider": "openai", "ids": []}]),
             patch(
                 f"{MODULE}._render_provider_selection",
-                return_value=({"id": "gpt-4o", "provider": "openai"}, [], False),
+                return_value=({"id": "gpt-5-mini", "provider": "openai"}, [], False),
             ),
             patch(f"{MODULE}._render_model_selection", side_effect=lambda model, *_: model),
             patch(f"{MODULE}._render_api_configuration", side_effect=lambda model, *_: model),
             patch(f"{MODULE}._render_model_specific_config", side_effect=lambda model, *_: model),
             patch(f"{MODULE}._handle_dialog_submission", return_value=False),
         ):
-            getattr(edit_model, "__wrapped__")("embed", "edit", "gpt-4o", "openai")
+            getattr(edit_model, "__wrapped__")("embed", "edit", "gpt-5-mini", "openai")
 
         mock_st.rerun.assert_not_called()
 
@@ -1367,7 +1367,7 @@ class TestEditModel:
         from client.app.content.config.tabs.models import edit_model
 
         state = make_model_state()
-        fetched = {"id": "gpt-4o", "provider": "openai", "enabled": True, "api_base": "http://a"}
+        fetched = {"id": "gpt-5-mini", "provider": "openai", "enabled": True, "api_base": "http://a"}
         mock_st.checkbox.return_value = False
         mock_st.selectbox.return_value = "openai"
         mock_st.button.return_value = False
@@ -1386,7 +1386,7 @@ class TestEditModel:
             patch(f"{MODULE}._render_model_specific_config", side_effect=lambda model, *_: model),
             patch(f"{MODULE}._handle_dialog_submission", return_value=False) as mock_submit,
         ):
-            getattr(edit_model, "__wrapped__")("ll", "edit", "gpt-4o", "openai")
+            getattr(edit_model, "__wrapped__")("ll", "edit", "gpt-5-mini", "openai")
 
         mock_submit.assert_called_once()
         passed_model = mock_submit.call_args.args[0]

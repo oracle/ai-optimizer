@@ -181,7 +181,7 @@ class TestLoadOllamaModels:
     @pytest.mark.anyio
     async def test_non_ollama_models_preserved(self, monkeypatch):
         """Models from other providers are not affected."""
-        openai_model = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+        openai_model = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True)
         settings.model_configs = [openai_model]
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:

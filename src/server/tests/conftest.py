@@ -359,14 +359,14 @@ from server.app.models.schemas import ModelConfig  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _ensure_model_configs():
-    """Ensure ollama/qwen3:8b and openai/gpt-4o exist in model_configs for tests.
+    """Ensure ollama/qwen3:8b and openai/gpt-5-mini exist in model_configs for tests.
 
     LiteLlmModelSpec requires the model to be present in settings.model_configs.
     """
     original = settings.model_configs[:]
     defaults = [
         ModelConfig(provider="ollama", id="qwen3:8b", type="ll", api_base="http://localhost:11434"),
-        ModelConfig(provider="openai", id="gpt-4o", type="ll"),
+        ModelConfig(provider="openai", id="gpt-5-mini", type="ll"),
     ]
     existing = {(mc.provider, mc.id) for mc in settings.model_configs}
     for mc in defaults:

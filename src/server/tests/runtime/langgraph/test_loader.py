@@ -55,7 +55,7 @@ class TestLiteLlmAgentSpecLoader:
         loader = LiteLlmAgentSpecLoader()
         agent = self._make_agent(
             provider="openai",
-            model_id="gpt-4o",
+            model_id="gpt-5-mini",
             max_tokens=200,
             frequency_penalty=0.5,
             presence_penalty=0.3,
@@ -63,7 +63,7 @@ class TestLiteLlmAgentSpecLoader:
         graph = loader.load_component(agent)
         bridge = _find_litellm_bridge(graph)
         assert bridge is not None
-        assert bridge.model == "openai/gpt-4o"
+        assert bridge.model == "openai/gpt-5-mini"
         assert bridge.max_tokens == 200
         assert bridge.model_kwargs.get("frequency_penalty") == 0.5
         assert bridge.model_kwargs.get("presence_penalty") == 0.3

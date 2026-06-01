@@ -530,8 +530,8 @@ def test_merge_model_same_id_different_provider_appends():
 
 def test_upsert_model_composite_key_case_insensitive():
     """Composite key matching is case-insensitive."""
-    settings.model_configs = [ModelConfig(id="GPT-4o", type="ll", provider="OpenAI")]
-    incoming = [ModelConfig.model_validate({"id": "gpt-4o", "type": "ll", "provider": "openai", "enabled": True})]
+    settings.model_configs = [ModelConfig(id="GPT-5-MinI", type="ll", provider="OpenAI")]
+    incoming = [ModelConfig.model_validate({"id": "gpt-5-mini", "type": "ll", "provider": "openai", "enabled": True})]
 
     created, updated = upsert_list_field("model_configs", incoming)
 
@@ -539,7 +539,7 @@ def test_upsert_model_composite_key_case_insensitive():
     assert len(updated) == 1
     assert settings.model_configs[0].enabled is True
     # Original casing preserved
-    assert settings.model_configs[0].id == "GPT-4o"
+    assert settings.model_configs[0].id == "GPT-5-MinI"
     assert settings.model_configs[0].provider == "OpenAI"
 
 

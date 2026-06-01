@@ -31,7 +31,7 @@ FACTORY_MODELS: list[dict] = [
         'max_input_tokens': 128000,
     },
     {
-        'id': 'gpt-4o-mini',
+        'id': 'gpt-5-mini',
         'enabled': False,
         'type': 'll',
         'provider': 'openai',
