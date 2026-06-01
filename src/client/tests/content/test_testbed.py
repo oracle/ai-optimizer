@@ -274,7 +274,9 @@ class TestSyncTestbedModel:
             patch(f"{MODULE}.update_client_settings") as mock_update,
         ):
             _sync_testbed_model("judge_model", "wk")
-            mock_update.assert_called_once_with({"testbed": {"judge_model": {"provider": "openai", "id": "gpt-5-mini"}}})
+            mock_update.assert_called_once_with(
+                {"testbed": {"judge_model": {"provider": "openai", "id": "gpt-5-mini"}}}
+            )
 
     def test_no_value_skips(self):
         """Does nothing when widget key has no value."""
@@ -876,7 +878,6 @@ class TestSetupTestbedSources:
         assert "runtime_testbed_db_testsets" in state
         assert result == ["Local"]
 
-
     def test_503_sets_core_unavailable_and_warns(self):
         """A 503 from the testsets API sets _core_unavailable and shows a warning.
 
@@ -1060,7 +1061,10 @@ class TestRenderExistingTestsetUi:
         mock_st.radio.return_value = "Database"
         mock_st.selectbox.return_value = None
         state = _make_state(
-            {"runtime_testbed": {"uploader_key": 1}, "runtime_testbed_db_testsets": [{"name": "S1", "created": "2026"}]}
+            {
+                "runtime_testbed": {"uploader_key": 1},
+                "runtime_testbed_db_testsets": [{"name": "S1", "created": "2026"}],
+            }
         )
         with (
             patch(f"{MODULE}.st", mock_st),
