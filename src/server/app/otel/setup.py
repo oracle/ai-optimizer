@@ -18,13 +18,96 @@ import uuid
 from typing import TYPE_CHECKING
 
 from _version import __version__
+from logging_redaction import RedactingFilter
 from server.app.core.settings import settings
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
-    from opentelemetry.sdk.resources import Resource
+
+    # Aliased because ``Resource`` at module scope is bound to either the SDK
+    # class or ``None`` depending on whether the [otel] extra is installed;
+    # ``ResourceType`` keeps annotations referring to the class unambiguously.
+    from opentelemetry.sdk.resources import Resource as ResourceType
 
 LOGGER = logging.getLogger(__name__)
+
+# Optional [otel] extra. Each block isolates one class of functionality so a
+# partial install (e.g. trace SDK present, logs SDK absent) still degrades
+# gracefully. Functions below check the module-level sentinels (``is None``)
+# and exit early when absent.
+#
+# Pyright treats imports inside ``try/except ImportError`` as conditional, so
+# reportMissingImports stays clean without the [otel] extra installed.
+#
+# Modules with patchable symbols (set_logger_provider, LoggingInstrumentor,
+# LangChainInstrumentor) are imported as modules — not as direct symbols — so
+# monkeypatch.setattr at the upstream path is honored at call time.
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.resources import OTELResourceDetector, Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import (
+        BatchSpanProcessor,
+        ConsoleSpanExporter,
+        SimpleSpanProcessor,
+    )
+except ImportError:
+    trace = None
+    OTELResourceDetector = None
+    Resource = None
+    TracerProvider = None
+    BatchSpanProcessor = None
+    ConsoleSpanExporter = None
+    SimpleSpanProcessor = None
+
+try:
+    from opentelemetry import _logs as _otel_logs
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+except ImportError:
+    _otel_logs = None
+    LoggerProvider = None
+    LoggingHandler = None
+    BatchLogRecordProcessor = None
+
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+except ImportError:
+    FastAPIInstrumentor = None
+
+try:
+    from opentelemetry.instrumentation import logging as _otel_logging_instr
+except ImportError:
+    _otel_logging_instr = None
+
+try:
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as _GrpcSpanExporter
+except ImportError:
+    _GrpcSpanExporter = None
+
+try:
+    from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter as _GrpcLogExporter
+except ImportError:
+    _GrpcLogExporter = None
+
+try:
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as _HttpSpanExporter
+except ImportError:
+    _HttpSpanExporter = None
+
+try:
+    from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter as _HttpLogExporter
+except ImportError:
+    _HttpLogExporter = None
+
+try:
+    from openinference.instrumentation import TraceConfig
+    from openinference.instrumentation import langchain as _oi_langchain
+    from openinference.instrumentation.config import REDACTED_VALUE
+except ImportError:
+    TraceConfig = None
+    _oi_langchain = None
+    REDACTED_VALUE = None
 
 _INSTRUMENTORS = (
     ("opentelemetry.instrumentation.httpx", "HTTPXClientInstrumentor"),
@@ -54,12 +137,15 @@ def init_telemetry(service_name: str = "ai-optimizer-server") -> None:
     if _tracing_active():
         return
 
-    try:
-        from opentelemetry import trace
-        from opentelemetry.sdk.resources import OTELResourceDetector, Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor
-    except ImportError:
+    if (
+        trace is None
+        or TracerProvider is None
+        or Resource is None
+        or OTELResourceDetector is None
+        or BatchSpanProcessor is None
+        or SimpleSpanProcessor is None
+        or ConsoleSpanExporter is None
+    ):
         return
 
     # Our values are defaults; OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES override.
@@ -77,15 +163,12 @@ def init_telemetry(service_name: str = "ai-optimizer-server") -> None:
 
     if "otlp" in exporters:
         protocol = _otlp_protocol("TRACES")
-        try:
-            if protocol == "grpc":
-                from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-            else:
-                from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-            provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
-            attached.add("otlp")
-        except ImportError:
+        span_exporter_cls = _GrpcSpanExporter if protocol == "grpc" else _HttpSpanExporter
+        if span_exporter_cls is None:
             LOGGER.warning("OTLP %s exporter requested but not installed; skipping", protocol)
+        else:
+            provider.add_span_processor(BatchSpanProcessor(span_exporter_cls()))
+            attached.add("otlp")
 
     if "console" in exporters:
         provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
@@ -111,23 +194,18 @@ def instrument_fastapi(app: "FastAPI") -> None:
     """No-op when tracing is not initialized."""
     if not _tracing_active():
         return
-    try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    except ImportError:
+    if FastAPIInstrumentor is None:
         return
     FastAPIInstrumentor.instrument_app(app)
 
 
 def _tracing_active() -> bool:
-    try:
-        from opentelemetry import trace
-        from opentelemetry.sdk.trace import TracerProvider
-    except ImportError:
+    if trace is None or TracerProvider is None:
         return False
     return isinstance(trace.get_tracer_provider(), TracerProvider)
 
 
-def _init_logs(resource: "Resource") -> None:
+def _init_logs(resource: "ResourceType") -> None:
     """Wire OTLP log export and attach an OTel handler to root + propagate=False loggers."""
     # Log export is a separate opt-in from tracing because application logs can
     # include request content. Operators choose the backend and retention
@@ -155,20 +233,17 @@ def _init_logs(resource: "Resource") -> None:
         LOGGER.info("OTLP log export skipped: no logs/generic endpoint configured")
         return
 
-    try:
-        from opentelemetry._logs import set_logger_provider
-        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-    except ImportError:
+    if (
+        _otel_logs is None
+        or LoggerProvider is None
+        or LoggingHandler is None
+        or BatchLogRecordProcessor is None
+    ):
         return
 
     protocol = _otlp_protocol("LOGS")
-    try:
-        if protocol == "grpc":
-            from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-        else:
-            from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-    except ImportError:
+    log_exporter_cls = _GrpcLogExporter if protocol == "grpc" else _HttpLogExporter
+    if log_exporter_cls is None:
         LOGGER.warning("OTLP %s log exporter requested but not installed; skipping", protocol)
         return
 
@@ -181,8 +256,8 @@ def _init_logs(resource: "Resource") -> None:
     # The processor is structurally compatible with LogRecordProcessor; not a
     # subclass so its definition stays free of the optional [otel] base class.
     provider.add_log_record_processor(_RedactingLogProcessor())  # type: ignore[arg-type]
-    provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
-    set_logger_provider(provider)
+    provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter_cls()))
+    _otel_logs.set_logger_provider(provider)
 
     # Project's logging_config sets propagate=False on uvicorn, streamlit, etc.,
     # so root-only attachment would silently miss them. Attach to every named
@@ -194,8 +269,6 @@ def _init_logs(resource: "Resource") -> None:
     # Apply the project's field-value normalization directly on the OTel
     # handler. Some propagate=False logger chains do not include the project
     # filter, so attach it here for consistent exported records.
-    from logging_redaction import RedactingFilter
-
     handler.addFilter(RedactingFilter())
     logging.getLogger().addHandler(handler)
     for name in list(logging.root.manager.loggerDict):
@@ -224,8 +297,6 @@ class _RedactingLogProcessor:
     _EXCEPTION_KEYS = ("exception.message", "exception.stacktrace")
 
     def __init__(self) -> None:
-        from logging_redaction import RedactingFilter
-
         self._filter = RedactingFilter()
 
     def on_emit(self, log_record) -> None:  # type: ignore[no-untyped-def]
@@ -263,11 +334,9 @@ def _instrument_logging() -> None:
     record-factory hook (used by OTEL_PYTHON_LOG_CORRELATION) and skips the
     duplicate handler.
     """
-    try:
-        from opentelemetry.instrumentation.logging import LoggingInstrumentor
-    except ImportError:
+    if _otel_logging_instr is None:
         return
-    LoggingInstrumentor().instrument(enable_log_auto_instrumentation=False)
+    _otel_logging_instr.LoggingInstrumentor().instrument(enable_log_auto_instrumentation=False)
 
 
 def _instrument_langchain() -> None:
@@ -278,15 +347,9 @@ def _instrument_langchain() -> None:
     OPENINFERENCE_HIDE_* env vars.
     """
     # openinference-instrumentation-langchain ships in the optional [otel]
-    # extra and is absent under .[server,dev]. The try/except ImportError
-    # keeps this a runtime no-op; pyright also treats imports inside a
-    # try/except ImportError as conditional, so reportMissingImports stays
-    # clean without [otel] installed (verified).
-    try:
-        from openinference.instrumentation import TraceConfig
-        from openinference.instrumentation.config import REDACTED_VALUE
-        from openinference.instrumentation.langchain import LangChainInstrumentor
-    except ImportError:
+    # extra and is absent under .[server,dev]. The module-level sentinels
+    # keep this a runtime no-op when not installed.
+    if TraceConfig is None or _oi_langchain is None or REDACTED_VALUE is None:
         return
 
     # OpenInference's TraceConfig hide_* flags cover the standard value,
@@ -334,7 +397,11 @@ def _instrument_langchain() -> None:
         hide_prompts=_env_bool("OPENINFERENCE_HIDE_PROMPTS", default=True),
         hide_choices=_env_bool("OPENINFERENCE_HIDE_CHOICES", default=True),
     )
-    LangChainInstrumentor().instrument(config=config)
+    _oi_langchain.LangChainInstrumentor().instrument(config=config)
+
+
+_OTLP_PROTOCOLS = frozenset({"grpc", "http/protobuf"})
+_OTLP_DEFAULT_PROTOCOL = "grpc"
 
 
 def _otlp_protocol(signal: str) -> str:
@@ -342,12 +409,23 @@ def _otlp_protocol(signal: str) -> str:
 
     Per the OTel spec, the signal-specific OTEL_EXPORTER_OTLP_<SIGNAL>_PROTOCOL
     overrides the generic OTEL_EXPORTER_OTLP_PROTOCOL; fallback default is grpc.
+    Values outside the spec-defined set (grpc, http/protobuf) — including the
+    unsupported http/json — are coerced to the default with a warning so a typo
+    or stray whitespace does not silently route exports to the wrong transport.
     """
-    return (
+    raw = (
         os.getenv(f"OTEL_EXPORTER_OTLP_{signal}_PROTOCOL")
         or os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
-        or "grpc"
-    ).lower()
+        or _OTLP_DEFAULT_PROTOCOL
+    )
+    normalized = raw.strip().lower()
+    if normalized not in _OTLP_PROTOCOLS:
+        LOGGER.warning(
+            "Unrecognized OTLP %s protocol %r; falling back to %s",
+            signal, raw, _OTLP_DEFAULT_PROTOCOL,
+        )
+        return _OTLP_DEFAULT_PROTOCOL
+    return normalized
 
 
 def _env_bool(name: str, default: bool) -> bool:
