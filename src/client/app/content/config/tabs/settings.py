@@ -463,48 +463,55 @@ def _render_source_code_templates_section() -> None:
     ll_config, embed_config, spring_ai_conf = _get_model_configs()
     LOGGER.debug("config found: %s", spring_ai_conf)
 
-    if spring_ai_conf == "hybrid":
+    # LangChain MCP routes models through langchain-litellm, so it works with any
+    # provider combination once both a language and an embedding model are set.
+    langchain_ok = bool(ll_config and embed_config)
+    # Spring AI still only supports homogeneous Ollama or OpenAI configurations.
+    spring_ai_ok = spring_ai_conf in ("ollama", "openai")
+
+    if not langchain_ok:
         st.markdown(
             f"""
-            The current configuration combination of embedding and language models
-            is currently **not supported** for Spring AI and LangChain MCP templates.
+            Select an enabled Language and Embedding model to generate the
+            Source Code Templates.
             - Language Model:  **{ll_config.get("id", "Unset")}**
             - Embedding Model: **{embed_config.get("id", "Unset")}**
         """
         )
-    else:
-        # Session-cached so reruns don't re-fetch; invalidated on
-        # ``helpers.refresh_settings``.
-        if "_template_export" not in state:
-            state["_template_export"] = get_server_settings(
-                client=state.optimizer_client, include_sensitive=True
+        return
+
+    # Session-cached so reruns don't re-fetch; invalidated on
+    # ``helpers.refresh_settings``.
+    if "_template_export" not in state:
+        state["_template_export"] = get_server_settings(
+            client=state.optimizer_client, include_sensitive=True
+        )
+    fresh = state.get("_template_export") or state.settings
+
+    # Swap for the duration of the render; restored in ``finally``.
+    masked_settings = state.settings
+    try:
+        state.settings = fresh
+        ll_config, embed_config, _ = _get_model_configs()
+
+        col_left, col_centre, _ = st.columns([3, 4, 3])
+        with col_left:
+            st.download_button(
+                label="Download LangchainMCP",
+                data=_langchain_mcp_zip(fresh),
+                file_name="langchain_mcp.zip",
+                mime="application/zip",
             )
-        fresh = state.get("_template_export") or state.settings
-
-        # Swap for the duration of the render; restored in ``finally``.
-        masked_settings = state.settings
-        try:
-            state.settings = fresh
-            ll_config, embed_config, _ = _get_model_configs()
-
-            col_left, col_centre, _ = st.columns([3, 4, 3])
-            with col_left:
+        with col_centre:
+            if spring_ai_ok:
                 st.download_button(
-                    label="Download LangchainMCP",
-                    data=_langchain_mcp_zip(fresh),
-                    file_name="langchain_mcp.zip",
+                    label="Download SpringAI",
+                    data=_spring_ai_zip(spring_ai_conf, ll_config, embed_config),
+                    file_name="spring_ai.zip",
                     mime="application/zip",
                 )
-            with col_centre:
-                if spring_ai_conf != "hosted_vllm":
-                    st.download_button(
-                        label="Download SpringAI",
-                        data=_spring_ai_zip(spring_ai_conf, ll_config, embed_config),
-                        file_name="spring_ai.zip",
-                        mime="application/zip",
-                    )
-        finally:
-            state.settings = masked_settings
+    finally:
+        state.settings = masked_settings
 
 
 #####################################################

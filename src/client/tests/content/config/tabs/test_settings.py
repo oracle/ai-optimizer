@@ -1514,8 +1514,8 @@ class TestRenderSourceCodeTemplatesSection:
 
         mock_st.header.assert_called_once_with("Source Code Templates", divider="red")
 
-    def test_hybrid_config_shows_not_supported(self, mock_st):
-        """Hybrid config shows 'not supported' markdown, no download buttons."""
+    def test_unset_models_show_select_message(self, mock_st):
+        """Unset models show a 'select a model' markdown, no download buttons."""
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}._get_model_configs", return_value=({}, {}, "hybrid")),
@@ -1525,8 +1525,31 @@ class TestRenderSourceCodeTemplatesSection:
             _render_source_code_templates_section()
 
         mock_st.markdown.assert_called_once()
-        assert "not supported" in mock_st.markdown.call_args[0][0]
+        assert "Select" in mock_st.markdown.call_args[0][0]
         mock_st.columns.assert_not_called()
+
+    def test_hybrid_config_shows_langchain_only(self, mock_st):
+        """A mixed-provider config still offers LangChain MCP (litellm), but not SpringAI."""
+        cols = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.columns.return_value = cols
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(
+                f"{MODULE}._get_model_configs",
+                return_value=({"provider": "openai"}, {"provider": "ollama"}, "hybrid"),
+            ),
+            patch(f"{MODULE}.get_server_settings", return_value={"settings": {}}),
+            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()) as mock_lc_zip,
+            patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()) as mock_spring_zip,
+            patch(f"{MODULE}.state", AttrDict({"settings": {}, "optimizer_client": "test-client"})),
+        ):
+            from client.app.content.config.tabs.settings import _render_source_code_templates_section
+
+            _render_source_code_templates_section()
+
+        mock_lc_zip.assert_called_once()
+        mock_spring_zip.assert_not_called()
 
     def test_non_hybrid_shows_langchain_download(self, mock_st):
         """Non-hybrid config shows LangchainMCP download button."""
