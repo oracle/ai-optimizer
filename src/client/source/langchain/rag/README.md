@@ -6,7 +6,7 @@
 ## Introduction
 This document describe how to re-use the configuration tested in the **AI Optimizer & Toolkit** an expose it as an MCP tool to a local **Claude Desktop** and how to setup as a remote MCP server. This early draft implementation utilizes the `stdio`, `sse` and, by default, the `streamable-http` to interact between the agent dashboard, represented by the **Claude Desktop**, and the tool. 
 
-**NOTICE**: Only `Ollama`, `OpenAI`, `hosted_vllm` configurations are currently supported. Full support will come. `DB23ai`, `26ai` and `Autonomous DB` with wallet configuration is also supported. 
+**NOTICE**: Language and embedding models are routed through `langchain-litellm`, so any provider that LiteLLM supports (e.g. `Ollama`, `OpenAI`, `hosted_vllm`, `OCI GenAI`, `Cohere`) can be used with the exported configuration. `DB23ai`, `26ai` and `Autonomous DB` with wallet configuration is also supported. 
 
 ## Pre-requisites.
 You need:
@@ -22,7 +22,7 @@ With **[`uv`](https://docs.astral.sh/uv/getting-started/installation/)** install
 uv init --python=3.11 --no-workspace
 uv venv --python=3.11
 source .venv/bin/activate
-uv add mcp langchain-core==0.3.80 oracledb~=3.1 langchain-community==0.3.21 langchain-huggingface==0.1.2 langchain-openai==0.3.13 langchain-ollama==0.3.2
+uv add mcp langchain-core==1.4.0 oracledb~=4.0 langchain-oracledb==1.4.0 langchain-litellm==0.6.6 litellm==1.87.0 oci~=2.0
 ```
 
 ## Export config
