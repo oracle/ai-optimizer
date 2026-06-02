@@ -16,6 +16,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# The exported sample carries its own pinned dependencies (see its README); skip
+# these tests in environments — such as the client-only CI job — where the
+# LiteLLM / LangChain stack it relies on is not installed.
+pytest.importorskip("litellm")
+pytest.importorskip("langchain_litellm")
+pytest.importorskip("langchain_oracledb")
+
 _RAG_DIR = pathlib.Path(__file__).resolve().parents[4] / "source" / "langchain" / "rag"
 if str(_RAG_DIR) not in sys.path:
     sys.path.insert(0, str(_RAG_DIR))
