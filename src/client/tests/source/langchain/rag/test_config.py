@@ -20,7 +20,7 @@ _RAG_DIR = pathlib.Path(__file__).resolve().parents[4] / "source" / "langchain" 
 if str(_RAG_DIR) not in sys.path:
     sys.path.insert(0, str(_RAG_DIR))
 
-from optimizer_utils import config  # noqa: E402  pylint: disable=wrong-import-position
+from optimizer_utils import config  # noqa: E402,I001  # pyright: ignore[reportMissingImports]  # pylint: disable=wrong-import-position
 
 pytestmark = pytest.mark.unit
 
