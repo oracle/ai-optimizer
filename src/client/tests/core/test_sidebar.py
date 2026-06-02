@@ -66,7 +66,7 @@ class TestOnModelChange:
     def test_splits_provider_model(self):
         """Verify provider/model string is split and persisted."""
         state = _make_state()
-        state["runtime_chat_model_selector"] = "openai/gpt-4"
+        state["runtime_chat_model_selector"] = "openai/gpt-5"
         with (
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.update_client_settings") as mock_update,
@@ -74,7 +74,7 @@ class TestOnModelChange:
             from client.app.core.sidebar import _on_model_change
 
             _on_model_change()
-        mock_update.assert_called_once_with({"ll_model": {"provider": "openai", "id": "gpt-4"}})
+        mock_update.assert_called_once_with({"ll_model": {"provider": "openai", "id": "gpt-5"}})
 
     def test_noop_when_empty(self):
         """Verify no update when selector value is empty."""
@@ -929,7 +929,7 @@ class TestIsSmallModel:
         """Verify returns False when model id is not in model_configs."""
         state = _make_state()
         state["settings"]["model_configs"] = []
-        state["settings"]["client_settings"]["ll_model"] = {"provider": "openai", "id": "gpt-4o"}
+        state["settings"]["client_settings"]["ll_model"] = {"provider": "openai", "id": "gpt-5-mini"}
         with (
             patch(f"{MODULE}.state", state),
             patch(f"{HELPERS}.state", state),

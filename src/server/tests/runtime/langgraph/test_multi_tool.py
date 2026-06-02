@@ -17,6 +17,7 @@ from server.app.runtime.langgraph.session import (
     NL2SQLGraphSession,
 )
 from server.tests.conftest import SAMPLE_CLIENT_SETTINGS_OBJ as SAMPLE_CLIENT_SETTINGS
+from server.tests.constants import TEST_OLLAMA_MODEL_KEY
 from server.tests.runtime.langgraph.helpers import mock_compiled_graph
 from server.tests.runtime.multi_tool_base import (
     ClassificationBase,
@@ -38,7 +39,7 @@ COMMON_PATH = "server.app.runtime.common"
 def _make_combined_session(
     vs_answer: str = "doc answer",
     nl2sql_answer: str = "sql answer",
-    classifier_model: str = "ollama/qwen3:8b",
+    classifier_model: str = TEST_OLLAMA_MODEL_KEY,
     api_key: str | None = None,
     api_base: str | None = None,
     model_kwargs: dict | None = None,

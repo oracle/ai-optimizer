@@ -1626,7 +1626,7 @@ class TestRenderSourceCodeTemplatesSection:
         is not visible to other UI panels that read session state.
         """
         masked_db = {"alias": "TEST", "username": "u", "dsn": "//h:1521/s"}
-        masked_model = {"id": "gpt-4o", "type": "ll", "provider": "openai", "enabled": True, "usable": True}
+        masked_model = {"id": "gpt-5-mini", "type": "ll", "provider": "openai", "enabled": True, "usable": True}
         masked_state = AttrDict(
             {
                 "settings": {
@@ -1635,7 +1635,7 @@ class TestRenderSourceCodeTemplatesSection:
                     "prompt_configs": [{"name": "optimizer_basic-default", "text": "p"}],
                     "client_settings": {
                         "database": {"alias": "TEST"},
-                        "ll_model": {"provider": "openai", "id": "gpt-4o"},
+                        "ll_model": {"provider": "openai", "id": "gpt-5-mini"},
                         "vector_search": {},
                         "tools_enabled": [],
                     },
@@ -1649,7 +1649,7 @@ class TestRenderSourceCodeTemplatesSection:
             ],
             "model_configs": [
                 {
-                    "id": "gpt-4o",
+                    "id": "gpt-5-mini",
                     "type": "ll",
                     "provider": "openai",
                     "api_key": "sk-the-key",
@@ -1661,7 +1661,7 @@ class TestRenderSourceCodeTemplatesSection:
             "client_settings": masked_state["settings"]["client_settings"],
         }
 
-        ll_config = {"provider": "openai", "id": "gpt-4o"}
+        ll_config = {"provider": "openai", "id": "gpt-5-mini"}
         embed_config = {"provider": "openai", "id": "text-embed", "alias": ""}
         del tmp_path  # template files not exercised; renderers are mocked
 

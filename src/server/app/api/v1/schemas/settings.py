@@ -40,7 +40,7 @@ class SettingsImport(BaseModel):
                     {
                         "type": "ll",
                         "provider": "openai",
-                        "id": "gpt-4o-mini",
+                        "id": "gpt-5.4-mini",
                         "api_key": "sk-...",
                         "enabled": True,
                     }

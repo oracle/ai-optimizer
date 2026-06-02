@@ -17,6 +17,13 @@ from server.app.agentspec.adapters.litellm import (
     get_litellm_deserialization_plugin,
     get_litellm_serialization_plugin,
 )
+from server.tests.constants import (
+    TEST_OLLAMA_MODEL_ID,
+    TEST_OLLAMA_MODEL_KEY,
+    TEST_OPENAI_MODEL_API_KEY,
+    TEST_OPENAI_MODEL_ID,
+    TEST_OPENAI_MODEL_KEY,
+)
 
 
 class TestLiteLlmConfig:
@@ -24,20 +31,20 @@ class TestLiteLlmConfig:
 
     def test_component_type(self):
         """Verify component_type is 'LiteLlmConfig'."""
-        config = LiteLlmConfig(id="test", name="test", provider="ollama", model_id="qwen3:8b")
+        config = LiteLlmConfig(id="test", name="test", provider="ollama", model_id=TEST_OLLAMA_MODEL_ID)
         assert str(config.component_type) == "LiteLlmConfig"
 
     def test_fields(self):
         """Verify provider, model_id, api_base, and api_key fields."""
         config = LiteLlmConfig(
-            id="ollama/qwen3:8b",
-            name="ollama/qwen3:8b",
+            id=TEST_OLLAMA_MODEL_KEY,
+            name=TEST_OLLAMA_MODEL_KEY,
             provider="ollama",
-            model_id="qwen3:8b",
+            model_id=TEST_OLLAMA_MODEL_ID,
             api_base="http://localhost:11434",
         )
         assert config.provider == "ollama"
-        assert config.model_id == "qwen3:8b"
+        assert config.model_id == TEST_OLLAMA_MODEL_ID
         assert config.api_base == "http://localhost:11434"
         assert config.api_key is None
 
@@ -48,7 +55,7 @@ class TestLiteLlmConfig:
             id="test",
             name="test",
             provider="openai",
-            model_id="gpt-4o",
+            model_id=TEST_OPENAI_MODEL_ID,
             default_generation_parameters=gen,
         )
         assert config.default_generation_parameters is not None
@@ -62,10 +69,10 @@ class TestLiteLlmConfigSensitiveFields:
     def test_api_key_excluded_from_serialized_json(self):
         """api_key must not appear in plaintext in serialized AgentSpec JSON."""
         config = LiteLlmConfig(
-            id="openai/gpt-4o",
-            name="openai/gpt-4o",
+            id=TEST_OPENAI_MODEL_KEY,
+            name=TEST_OPENAI_MODEL_KEY,
             provider="openai",
-            model_id="gpt-4o",
+            model_id=TEST_OPENAI_MODEL_ID,
             api_key="sk-super-secret-key",
         )
         serializer = AgentSpecSerializer(plugins=[get_litellm_serialization_plugin()])
@@ -75,10 +82,10 @@ class TestLiteLlmConfigSensitiveFields:
     def test_api_key_survives_roundtrip_via_disaggregated(self):
         """api_key should be recoverable through disaggregated deserialization."""
         config = LiteLlmConfig(
-            id="openai/gpt-4o",
-            name="openai/gpt-4o",
+            id=TEST_OPENAI_MODEL_KEY,
+            name=TEST_OPENAI_MODEL_KEY,
             provider="openai",
-            model_id="gpt-4o",
+            model_id=TEST_OPENAI_MODEL_ID,
             api_key="sk-roundtrip-key",
         )
         # The api_key should be accessible on the object even though it's sensitive
@@ -91,26 +98,26 @@ class TestLiteLlmConfigSerialization:
     def test_serialize_to_json(self):
         """Verify LiteLlmConfig serializes to JSON with correct fields."""
         config = LiteLlmConfig(
-            id="ollama/qwen3:8b",
-            name="ollama/qwen3:8b",
+            id=TEST_OLLAMA_MODEL_KEY,
+            name=TEST_OLLAMA_MODEL_KEY,
             provider="ollama",
-            model_id="qwen3:8b",
+            model_id=TEST_OLLAMA_MODEL_ID,
         )
         serializer = AgentSpecSerializer(plugins=[get_litellm_serialization_plugin()])
         result = serializer.to_json(config)
         parsed = json.loads(result)
         assert parsed["component_type"] == "LiteLlmConfig"
         assert parsed["provider"] == "ollama"
-        assert parsed["model_id"] == "qwen3:8b"
+        assert parsed["model_id"] == TEST_OLLAMA_MODEL_ID
 
     def test_serialize_deserialize_roundtrip(self):
         """Verify serialize then deserialize preserves all fields."""
         gen = LlmGenerationConfig(max_tokens=100, temperature=0.7)
         config = LiteLlmConfig(
-            id="openai/gpt-4o",
-            name="openai/gpt-4o",
+            id=TEST_OPENAI_MODEL_KEY,
+            name=TEST_OPENAI_MODEL_KEY,
             provider="openai",
-            model_id="gpt-4o",
+            model_id=TEST_OPENAI_MODEL_ID,
             api_key="sk-test",
             default_generation_parameters=gen,
         )
@@ -124,12 +131,12 @@ class TestLiteLlmConfigSerialization:
         # api_key is a SensitiveField — supply it via components_registry
         restored = deserializer.from_json(
             json_str,
-            components_registry={"openai/gpt-4o.api_key": "sk-test"},
+            components_registry={TEST_OPENAI_MODEL_API_KEY: "sk-test"},
         )
 
         assert isinstance(restored, LiteLlmConfig)
         assert restored.provider == "openai"
-        assert restored.model_id == "gpt-4o"
+        assert restored.model_id == TEST_OPENAI_MODEL_ID
         assert restored.api_key == "sk-test"
         assert restored.default_generation_parameters is not None
         assert restored.default_generation_parameters.max_tokens == 100
@@ -138,10 +145,10 @@ class TestLiteLlmConfigSerialization:
     def test_serialize_agent_with_litellm(self):
         """Verify an Agent with LiteLlmConfig serializes correctly."""
         config = LiteLlmConfig(
-            id="ollama/qwen3:8b",
-            name="ollama/qwen3:8b",
+            id=TEST_OLLAMA_MODEL_KEY,
+            name=TEST_OLLAMA_MODEL_KEY,
             provider="ollama",
-            model_id="qwen3:8b",
+            model_id=TEST_OLLAMA_MODEL_ID,
         )
         agent = AgentSpecAgent(
             id="test-agent",

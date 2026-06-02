@@ -21,6 +21,7 @@ from pydantic import SecretStr
 from server.app.embed.schemas import VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
 from server.tests.api.conftest import _create_mock_pool
+from server.tests.constants import TEST_OPENAI_EMBED_ID
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -312,7 +313,7 @@ async def test_comment_vs(app_client, auth_headers):
             "/v1/embed/comment",
             json={
                 "vector_store": "MY_VS",
-                "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                 "chunk_size": 1000,
                 "chunk_overlap": 100,
                 "distance_strategy": "COSINE",
@@ -850,7 +851,7 @@ async def test_split_embed_no_files(app_client, auth_headers):
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -920,7 +921,7 @@ async def test_split_embed_success(app_client, auth_headers):
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -948,7 +949,7 @@ def _embed_oci_store_payload(**overrides) -> dict:
         "bucket_name": "rag-source",
         "auth_profile": "DEFAULT",
         "alias": "PRODUCT_DOCS",
-        "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+        "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
         "chunk_size": 1000,
         "chunk_overlap": 100,
         "distance_strategy": "COSINE",
@@ -1537,7 +1538,7 @@ async def test_refresh_no_changes(app_client, auth_headers):
     """Returns success with no-changes message."""
     mock_vs = VectorStoreConfig(
         vector_store="MY_VS",
-        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
         chunk_size=1000,
         chunk_overlap=100,
     )
@@ -1592,7 +1593,7 @@ async def test_refresh_uses_request_auth_profile(app_client, auth_headers):
 
     mock_vs = VectorStoreConfig(
         vector_store="MY_VS",
-        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
         chunk_size=1000,
         chunk_overlap=100,
     )
@@ -1756,7 +1757,7 @@ async def test_split_embed_concurrent_no_interference(app_client, auth_headers):
             ),
         ):
             req_json = {
-                "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                 "chunk_size": 1000,
                 "chunk_overlap": 100,
                 "distance_strategy": "COSINE",
@@ -1828,7 +1829,7 @@ async def test_split_embed_race_restores_files(app_client, auth_headers):
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -2688,7 +2689,7 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -3184,7 +3185,7 @@ async def test_split_embed_runtime_error_returns_fallback_detail(app_client, aut
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -3239,7 +3240,7 @@ async def test_refresh_bucket_value_error_returns_fallback_detail(app_client, au
     """The bucket refresh path returns the configured fallback detail."""
     mock_vs = VectorStoreConfig(
         vector_store="MY_VS",
-        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
         chunk_size=1000,
         chunk_overlap=100,
     )
@@ -3352,7 +3353,7 @@ async def test_jobs_scoped_per_client(app_client, auth_headers):
             post_a = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -3508,7 +3509,7 @@ async def test_split_embed_returns_immediately_with_slow_pipeline(app_client, au
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -3599,7 +3600,7 @@ async def test_split_embed_claims_files_before_returning_202(app_client, auth_he
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -3685,7 +3686,7 @@ async def test_split_embed_503_restores_uploaded_files_to_shared_dir(app_client,
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -3769,7 +3770,7 @@ async def test_split_embed_503_restores_user_uploaded_uuid_named_csv(app_client,
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -3988,7 +3989,7 @@ async def test_split_embed_post_submit_cancellation_cleans_up_when_task_never_st
             await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -4151,7 +4152,7 @@ async def test_split_embed_post_submit_cancellation_cancels_task(app_client, aut
             await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -4251,7 +4252,7 @@ async def test_split_embed_pre_claim_503_drops_sql_scratch_files(app_client, aut
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -4350,7 +4351,7 @@ async def test_split_embed_503_does_not_restore_sql_generated_csv(app_client, au
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -4448,7 +4449,7 @@ async def test_split_embed_restores_files_when_locked_db_snapshot_raises_503(app
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -4550,7 +4551,7 @@ async def test_split_embed_holds_client_lock_through_submission(app_client, auth
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -4628,7 +4629,7 @@ async def test_split_embed_translates_core_submit_failure_to_503(app_client, aut
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -4704,7 +4705,7 @@ async def test_split_embed_cleans_work_dir_when_submit_fails(app_client, auth_he
             await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -4839,7 +4840,7 @@ async def test_split_embed_pipeline_uses_submission_time_db_config(app_client, a
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -5004,7 +5005,7 @@ async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_cli
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -5110,7 +5111,7 @@ async def test_pipeline_refreshes_live_vector_store_cache_on_success(app_client,
     new_store = VectorStoreConfig(
         vector_store="VS_NEW_TABLE",
         alias="vs-new",
-        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
         chunk_size=1000,
         chunk_overlap=100,
         distance_strategy=DistanceStrategy.COSINE,
@@ -5176,7 +5177,7 @@ async def test_pipeline_refreshes_live_vector_store_cache_on_success(app_client,
                 resp = await app_client.post(
                     "/v1/embed/",
                     json={
-                        "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                        "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                         "chunk_size": 1000,
                         "chunk_overlap": 100,
                         "distance_strategy": "COSINE",
@@ -5252,7 +5253,7 @@ async def test_pipeline_skips_live_cache_refresh_after_pool_rotation(app_client,
     discovered_store = VectorStoreConfig(
         vector_store="VS_FROM_OLD_POOL",
         alias="vs-from-old-pool",
-        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
         chunk_size=1000,
         chunk_overlap=100,
         distance_strategy=DistanceStrategy.COSINE,
@@ -5329,7 +5330,7 @@ async def test_pipeline_skips_live_cache_refresh_after_pool_rotation(app_client,
                 resp = await app_client.post(
                     "/v1/embed/",
                     json={
-                        "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                        "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                         "chunk_size": 1000,
                         "chunk_overlap": 100,
                         "distance_strategy": "COSINE",
@@ -5432,7 +5433,7 @@ async def test_pipeline_cleans_work_dir_when_oci_lookup_fails(app_client, auth_h
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -5576,7 +5577,7 @@ async def test_split_embed_submits_under_settings_lock(app_client, auth_headers)
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -5651,7 +5652,7 @@ async def test_split_embed_translates_core_timeout_to_503(app_client, auth_heade
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -5767,7 +5768,7 @@ async def test_split_embed_requires_core_database(app_client, auth_headers):
         resp = await app_client.post(
             "/v1/embed/",
             json={
-                "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                 "chunk_size": 1000,
                 "chunk_overlap": 100,
                 "distance_strategy": "COSINE",
@@ -5867,7 +5868,7 @@ async def test_split_embed_records_target_db_alias_on_job_row(app_client, auth_h
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
@@ -5901,7 +5902,7 @@ async def test_split_embed_db_unavailable_returns_503_synchronously(app_client, 
         resp = await app_client.post(
             "/v1/embed/",
             json={
-                "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                 "chunk_size": 1000,
                 "chunk_overlap": 100,
                 "distance_strategy": "COSINE",
@@ -6031,7 +6032,7 @@ async def test_split_embed_resnapshots_db_config_under_settings_lock(app_client,
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
-                    "embedding_model": {"provider": "openai", "id": "text-embedding-3-small"},
+                    "embedding_model": {"provider": "openai", "id": TEST_OPENAI_EMBED_ID},
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",

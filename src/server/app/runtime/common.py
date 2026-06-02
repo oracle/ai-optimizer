@@ -21,6 +21,7 @@ from server.app.agentspec.adapters.mcp import fetch_mcp_prompt
 from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
 from server.app.core.schemas import TOOL_NL2SQL, TOOL_VECSEARCH
 from server.app.mcp.prompts.registry import require_factory_text
+from server.app.oci.registry import find_oci_profile_by_name
 
 LOGGER = logging.getLogger(__name__)
 
@@ -489,9 +490,6 @@ class BaseChatOrchestrator:
         if isinstance(ll, dict):
             out["ll_model"] = {k: v for k, v in ll.items() if k != "chat_history"}
             if ll.get("provider") == "oci":
-                # Lazy: runtime.common is imported before oci.registry is wired up.
-                from server.app.oci.registry import find_oci_profile_by_name
-
                 oci_section = out.get("oci")
                 profile_name = oci_section.get("auth_profile") if isinstance(oci_section, dict) else None
                 profile = find_oci_profile_by_name(profile_name)

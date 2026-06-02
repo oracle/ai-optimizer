@@ -21,6 +21,7 @@ from server.app.models.connectivity import (
 )
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
+from server.tests.constants import TEST_OLLAMA_MODEL_ID, TEST_OPENAI_MODEL_ID
 
 
 @pytest.fixture(autouse=True)
@@ -103,7 +104,7 @@ class TestRule1Unreachable:
         """Unreachable endpoint sets usable=False but leaves enabled unchanged."""
         settings.model_configs = [
             ModelConfig(
-                id="gpt-4o",
+                id=TEST_OPENAI_MODEL_ID,
                 type="ll",
                 provider="openai",
                 api_key=SecretStr("sk-123"),
@@ -130,7 +131,7 @@ class TestRule2ReachableWithKey:
         """Reachable endpoint with api_key sets usable=True."""
         settings.model_configs = [
             ModelConfig(
-                id="gpt-4o",
+                id=TEST_OPENAI_MODEL_ID,
                 type="ll",
                 provider="openai",
                 api_key=SecretStr("sk-123"),
@@ -177,7 +178,9 @@ class TestRule4NoKeyOtherProvider:
     async def test_no_key_openai(self):
         """Reachable keyless OpenAI model is not usable."""
         settings.model_configs = [
-            ModelConfig(id="gpt-4o", type="ll", provider="openai", api_base="http://api.openai.com", enabled=True),
+            ModelConfig(
+                id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", api_base="http://api.openai.com", enabled=True
+            ),
         ]
         with patch("server.app.models.connectivity.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
@@ -243,7 +246,7 @@ class TestDeduplication:
         """Two models sharing an api_base result in only one HEAD request."""
         settings.model_configs = [
             ModelConfig(
-                id="gpt-4o",
+                id=TEST_OPENAI_MODEL_ID,
                 type="ll",
                 provider="openai",
                 api_key=SecretStr("sk-1"),
@@ -280,7 +283,7 @@ class TestDisabledModelsSkipped:
         """Disabled models are skipped and remain unusable."""
         settings.model_configs = [
             ModelConfig(
-                id="gpt-4o",
+                id=TEST_OPENAI_MODEL_ID,
                 type="ll",
                 provider="openai",
                 api_key=SecretStr("sk-1"),
@@ -324,7 +327,7 @@ class TestNoEnabledModels:
     async def test_all_disabled_is_noop(self):
         """No enabled models means no HTTP calls are made."""
         settings.model_configs = [
-            ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=False),
+            ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=False),
         ]
         # Should not raise or make any HTTP calls
         await check_model_reachability()
@@ -336,7 +339,7 @@ class TestNoEnabledModels:
 
 OLLAMA_TAGS_RESPONSE = {
     "models": [
-        {"name": "qwen3:8b"},
+        {"name": TEST_OLLAMA_MODEL_ID},
         {"name": "llama3.2:1b"},
         {"name": "mxbai-embed-large:latest"},
     ]
@@ -363,7 +366,7 @@ class TestNormalizeOllamaName:
 
     def test_strips_latest(self):
         """':latest' suffix is removed."""
-        assert _normalize_ollama_name("qwen3:8b") == "qwen3:8b"
+        assert _normalize_ollama_name(TEST_OLLAMA_MODEL_ID) == TEST_OLLAMA_MODEL_ID
 
     def test_keeps_explicit_tag(self):
         """Non-latest tags like ':1b' are preserved."""
@@ -382,7 +385,7 @@ class TestRule6OllamaModels:
         """Ollama model present in /api/tags is marked usable."""
         settings.model_configs = [
             ModelConfig(
-                id="qwen3:8b",
+                id=TEST_OLLAMA_MODEL_ID,
                 type="ll",
                 provider="ollama",
                 api_base="http://localhost:11434",
@@ -422,7 +425,7 @@ class TestRule6OllamaModels:
         """Ollama server unreachable → usable=False but enabled stays True."""
         settings.model_configs = [
             ModelConfig(
-                id="qwen3:8b",
+                id=TEST_OLLAMA_MODEL_ID,
                 type="ll",
                 provider="ollama",
                 api_base="http://dead:11434",
@@ -463,7 +466,7 @@ class TestRule6OllamaModels:
         """Two Ollama models: one available, one not."""
         settings.model_configs = [
             ModelConfig(
-                id="qwen3:8b",
+                id=TEST_OLLAMA_MODEL_ID,
                 type="ll",
                 provider="ollama",
                 api_base="http://localhost:11434",
@@ -493,7 +496,7 @@ class TestRule6OllamaModels:
     async def test_check_single_model_ollama_available(self):
         """check_single_model verifies ollama model via /api/tags."""
         model = ModelConfig(
-            id="qwen3:8b",
+            id=TEST_OLLAMA_MODEL_ID,
             type="ll",
             provider="ollama",
             api_base="http://localhost:11434",

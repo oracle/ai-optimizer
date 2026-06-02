@@ -63,6 +63,44 @@ class TestGetSigner:
         result = get_signer(profile)
         assert result is None
 
+    def test_security_token_returns_signer(self):
+        """security_token auth reads the token file and returns a SecurityTokenSigner.
+
+        Required so ``build_oci_litellm_params`` (LiteLLM call path) emits
+        ``oci_signer`` for security-token profiles instead of falling through
+        to API-key kwargs, which would fail OCI authentication.
+        """
+        profile = OciProfileConfig(
+            auth_profile="TEST",
+            authentication="security_token",
+            security_token_file="/path/to/token",
+            key_file="/path/to/key",
+        )
+        mock_signer = MagicMock()
+        mock_private_key = MagicMock()
+
+        with (
+            patch("builtins.open", mock_open(read_data="token-data")),
+            patch(f"{MODULE}.oci.signer.load_private_key_from_file", return_value=mock_private_key),
+            patch(f"{MODULE}.oci.auth.signers.SecurityTokenSigner", return_value=mock_signer) as mock_cls,
+        ):
+            result = get_signer(profile)
+
+        assert result is mock_signer
+        mock_cls.assert_called_once_with("token-data", mock_private_key)
+
+    def test_security_token_without_token_file_returns_none(self):
+        """security_token auth without ``security_token_file`` returns None.
+
+        Mirrors the guard in ``init_client``'s explicit branch.
+        """
+        profile = OciProfileConfig(
+            auth_profile="TEST",
+            authentication="security_token",
+        )
+        result = get_signer(profile)
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # init_client
@@ -110,8 +148,12 @@ class TestInitClient:
         assert kwargs.get("signer") is mock_signer
         assert mock_client_type.call_args[1].get("signer") is mock_signer
 
-    def test_security_token_path_reads_file_and_creates_signer(self):
-        """security_token auth reads token file and creates SecurityTokenSigner."""
+    def test_security_token_routes_through_get_signer(self):
+        """security_token auth now flows through get_signer's signer path.
+
+        Previously init_client had a duplicate inline security-token branch;
+        that's been removed in favour of the single ``get_signer`` source.
+        """
         profile = OciProfileConfig(
             auth_profile="TEST",
             authentication="security_token",
@@ -120,15 +162,9 @@ class TestInitClient:
             region="us-phoenix-1",
         )
         mock_client_type = MagicMock()
-        mock_private_key = MagicMock()
         mock_sec_signer = MagicMock()
 
-        with (
-            patch(f"{MODULE}.get_signer", return_value=None),
-            patch("builtins.open", mock_open(read_data="token-data")),
-            patch(f"{MODULE}.oci.signer.load_private_key_from_file", return_value=mock_private_key),
-            patch(f"{MODULE}.oci.auth.signers.SecurityTokenSigner", return_value=mock_sec_signer),
-        ):
+        with patch(f"{MODULE}.get_signer", return_value=mock_sec_signer):
             init_client(mock_client_type, profile)
 
         mock_client_type.assert_called_once()

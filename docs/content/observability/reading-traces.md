@@ -62,7 +62,7 @@ Click any span labeled with the LLM operation (e.g. `ChatLiteLLM`, `ChatOpenAI`,
 | Attribute | Meaning | Visible by default? |
 |---|---|---|
 | `openinference.span.kind` | Span category — `LLM`, `CHAIN`, `RETRIEVER`, `TOOL`, `EMBEDDING`, etc. | Yes |
-| `llm.model_name` | The exact model used (e.g. `gpt-4`, `claude-3-opus-20240229`) | Yes |
+| `llm.model_name` | The exact model used (e.g. `gpt-5`, `claude-3-opus-20240229`) | Yes |
 | `llm.provider` | Provider name (e.g. `openai`, `anthropic`) | Yes |
 | `llm.token_count.prompt` | Tokens in the input | Yes |
 | `llm.token_count.completion` | Tokens in the output | Yes |

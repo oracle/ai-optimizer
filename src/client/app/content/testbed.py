@@ -296,15 +296,10 @@ def _check_prerequisites() -> tuple[list, list, bool]:
     # If no eligible Embedding Model; disable Generate Test Set
     gen_testset_disabled = False
     embed_models_enabled = enabled_models_lookup("embed")
-    # Remove oci/cohere* models as not supported by LiteLLM
-    available_embed_models = [
-        key
-        for key, value in embed_models_enabled.items()
-        if not (value.get("provider") == "oci" and "cohere" in value.get("id", ""))
-    ]
+    available_embed_models = list(embed_models_enabled.keys())
     if not available_embed_models:
         st.warning(
-            "No OpenAI compatible embedding models are configured and/or enabled." + " Disabling Test Set Generation.",
+            "No embedding models are configured and/or enabled. Disabling Test Set Generation.",
             icon="⚠️",
         )
         gen_testset_disabled = True

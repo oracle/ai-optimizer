@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.tests.api.conftest import _create_mock_pool
+from server.tests.constants import TEST_OPENAI_MODEL_KEY
 
 INVALID_CLIENT_VALUES = [
     "",  # Pydantic min_length
@@ -148,7 +149,7 @@ async def test_testbed_rejects_invalid_client_header(app_client, auth_headers, b
 
     resp = await app_client.post(
         "/v1/testbed/testset_generate",
-        data={"name": "T", "ll_model": "openai/gpt-4o", "embed_model": "openai/e", "questions": "2"},
+        data={"name": "T", "ll_model": TEST_OPENAI_MODEL_KEY, "embed_model": "openai/e", "questions": "2"},
         files=[("files", ("a.pdf", _io.BytesIO(b"%PDF-"), "application/pdf"))],
         headers={**auth_headers, "Client": bad_client},
     )

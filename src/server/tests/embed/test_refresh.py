@@ -15,6 +15,7 @@ from server.app.embed.refresh import refresh_vector_store_from_bucket
 from server.app.embed.schemas import VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
 from server.app.oci.schemas import OciProfileConfig
+from server.tests.constants import TEST_OPENAI_EMBED_ID
 
 MODULE = "server.app.embed.refresh"
 
@@ -28,7 +29,7 @@ def _make_db_config(**overrides) -> DatabaseConfig:
 
 def _make_vs_config(**overrides) -> VectorStoreConfig:
     defaults = {
-        "embedding_model": ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        "embedding_model": ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
         "chunk_size": 500,
         "chunk_overlap": 50,
     }

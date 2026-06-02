@@ -6,12 +6,13 @@ Tests for LiteLLM configuration builder and embedding client factory.
 """
 # spell-checker: disable
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from pydantic import SecretStr
 
 from server.app.core.settings import settings
+from server.app.models.litellm_embeddings import LiteLLMEmbeddings
 from server.app.models.litellm_utils import (
     SMALL_MODEL_THRESHOLD_B,
     LiteLlmModelSpec,
@@ -22,6 +23,15 @@ from server.app.models.litellm_utils import (
 )
 from server.app.models.schemas import ModelConfig, ModelIdentity
 from server.app.oci.schemas import OciProfileConfig
+from server.tests.constants import (
+    TEST_OLLAMA_CHAT_KEY,
+    TEST_OLLAMA_MODEL_ID,
+    TEST_OPENAI_EMBED_ID,
+    TEST_OPENAI_EMBED_KEY,
+    TEST_OPENAI_MODEL_ID,
+    TEST_OPENAI_MODEL_ID_MIXEDCASE,
+    TEST_OPENAI_MODEL_KEY,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -55,42 +65,42 @@ def _oci_profile(**overrides) -> OciProfileConfig:
 @pytest.mark.unit
 def test_find_model_exact_match():
     """Returns a matching ModelConfig when provider and id match."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
-    result = find_model("openai", "gpt-4o")
+    result = find_model("openai", TEST_OPENAI_MODEL_ID)
     assert result is mc
 
 
 @pytest.mark.unit
 def test_find_model_no_match():
     """Returns None when no model matches."""
-    settings.model_configs = [ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)]
+    settings.model_configs = [ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=True)]
     assert find_model("openai", "nonexistent") is None
 
 
 @pytest.mark.unit
 def test_find_model_type_filter():
     """Filters by model_type when specified."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
-    assert find_model("openai", "gpt-4o", model_type="embed") is None
-    assert find_model("openai", "gpt-4o", model_type="ll") is mc
+    assert find_model("openai", TEST_OPENAI_MODEL_ID, model_type="embed") is None
+    assert find_model("openai", TEST_OPENAI_MODEL_ID, model_type="ll") is mc
 
 
 @pytest.mark.unit
 def test_find_model_enabled_only():
     """Disabled models are excluded by default."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=False)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=False)
     settings.model_configs = [mc]
-    assert find_model("openai", "gpt-4o") is None
+    assert find_model("openai", TEST_OPENAI_MODEL_ID) is None
 
 
 @pytest.mark.unit
 def test_find_model_disabled_included():
     """enabled_only=False includes disabled models."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=False)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=False)
     settings.model_configs = [mc]
-    assert find_model("openai", "gpt-4o", enabled_only=False) is mc
+    assert find_model("openai", TEST_OPENAI_MODEL_ID, enabled_only=False) is mc
 
 
 @pytest.mark.unit
@@ -110,7 +120,7 @@ def test_find_model_strips_ollama_latest_tag():
 def test_model_spec_basic():
     """Basic spec has normalized model_key, api_base, and api_key."""
     mc = ModelConfig(
-        id="gpt-4o",
+        id=TEST_OPENAI_MODEL_ID,
         type="ll",
         provider="openai",
         api_base="https://api.openai.com/v1",
@@ -119,8 +129,8 @@ def test_model_spec_basic():
         enabled=True,
     )
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("openai", "gpt-4o")
-    assert spec.model_key == "openai/gpt-4o"
+    spec = LiteLlmModelSpec("openai", TEST_OPENAI_MODEL_ID)
+    assert spec.model_key == TEST_OPENAI_MODEL_KEY
     assert spec.api_base == "https://api.openai.com/v1"
     assert spec.api_key == "sk-123"
     assert spec.temperature == 0.7  # Falls back to ModelConfig default
@@ -130,7 +140,7 @@ def test_model_spec_basic():
 def test_model_spec_caller_overrides_win():
     """Caller-provided generation params override ModelConfig defaults."""
     mc = ModelConfig(
-        id="gpt-4o",
+        id=TEST_OPENAI_MODEL_ID,
         type="ll",
         provider="openai",
         temperature=0.7,
@@ -138,7 +148,7 @@ def test_model_spec_caller_overrides_win():
         enabled=True,
     )
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("openai", "gpt-4o", temperature=0.3, max_tokens=500)
+    spec = LiteLlmModelSpec("openai", TEST_OPENAI_MODEL_ID, temperature=0.3, max_tokens=500)
     assert spec.temperature == 0.3
     assert spec.max_tokens == 500
 
@@ -146,10 +156,10 @@ def test_model_spec_caller_overrides_win():
 @pytest.mark.unit
 def test_model_spec_case_insensitive_provider():
     """Mixed-case provider strings resolve and normalize to canonical casing."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("OpenAI", "gpt-4o")
-    assert spec.model_key == "openai/gpt-4o"  # Canonical casing from ModelConfig
+    spec = LiteLlmModelSpec("OpenAI", TEST_OPENAI_MODEL_ID)
+    assert spec.model_key == TEST_OPENAI_MODEL_KEY  # Canonical casing from ModelConfig
     assert spec.original_provider == "OpenAI"  # Raw input preserved
     assert spec.normalized_provider == "openai"
 
@@ -157,11 +167,11 @@ def test_model_spec_case_insensitive_provider():
 @pytest.mark.unit
 def test_model_spec_case_insensitive_model_id():
     """Mixed-case model_id strings resolve and normalize to canonical casing."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("openai", "GPT-4O")
-    assert spec.model_key == "openai/gpt-4o"  # Canonical casing from ModelConfig
-    assert spec.model_id == "gpt-4o"
+    spec = LiteLlmModelSpec("openai", TEST_OPENAI_MODEL_ID_MIXEDCASE)
+    assert spec.model_key == TEST_OPENAI_MODEL_KEY  # Canonical casing from ModelConfig
+    assert spec.model_id == TEST_OPENAI_MODEL_ID
 
 
 @pytest.mark.unit
@@ -183,10 +193,10 @@ def test_model_spec_none_provider_raises_valueerror():
 @pytest.mark.unit
 def test_model_spec_ollama_ll_keeps_prefix():
     """Ollama 'll' type models are rewritten to ollama_chat for /api/chat support."""
-    mc = ModelConfig(id="qwen3:8b", type="ll", provider="ollama", enabled=True)
+    mc = ModelConfig(id=TEST_OLLAMA_MODEL_ID, type="ll", provider="ollama", enabled=True)
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("ollama", "qwen3:8b")
-    assert spec.model_key == "ollama_chat/qwen3:8b"
+    spec = LiteLlmModelSpec("ollama", TEST_OLLAMA_MODEL_ID)
+    assert spec.model_key == TEST_OLLAMA_CHAT_KEY
     assert spec.normalized_provider == "ollama_chat"
 
 
@@ -244,7 +254,7 @@ def test_model_spec_xai_drops_penalties():
 def test_model_spec_ollama_drops_penalties():
     """Ollama models have presence_penalty and frequency_penalty stripped."""
     mc = ModelConfig(
-        id="qwen3:8b",
+        id=TEST_OLLAMA_MODEL_ID,
         type="ll",
         provider="ollama",
         presence_penalty=0.5,
@@ -252,7 +262,7 @@ def test_model_spec_ollama_drops_penalties():
         enabled=True,
     )
     settings.model_configs = [mc]
-    spec = LiteLlmModelSpec("ollama", "qwen3:8b")
+    spec = LiteLlmModelSpec("ollama", TEST_OLLAMA_MODEL_ID)
     assert spec.presence_penalty is None
     assert spec.frequency_penalty is None
 
@@ -266,7 +276,7 @@ def test_model_spec_ollama_drops_penalties():
 def test_to_litellm_kwargs_basic():
     """to_litellm_kwargs produces correct dict with model, api_base, drop_params."""
     mc = ModelConfig(
-        id="gpt-4o",
+        id=TEST_OPENAI_MODEL_ID,
         type="ll",
         provider="openai",
         api_base="https://api.openai.com/v1",
@@ -278,10 +288,10 @@ def test_to_litellm_kwargs_basic():
 
     with patch("server.app.models.litellm_utils.litellm") as mock_litellm:
         mock_litellm.get_supported_openai_params.return_value = ["temperature", "max_tokens"]
-        spec = LiteLlmModelSpec("openai", "gpt-4o")
+        spec = LiteLlmModelSpec("openai", TEST_OPENAI_MODEL_ID)
         result = spec.to_litellm_kwargs()
 
-    assert result["model"] == "openai/gpt-4o"
+    assert result["model"] == TEST_OPENAI_MODEL_KEY
     assert result["base_url"] == "https://api.openai.com/v1"
     assert result["drop_params"] is True
     assert result["api_key"] == "sk-123"
@@ -291,29 +301,29 @@ def test_to_litellm_kwargs_basic():
 @pytest.mark.unit
 def test_to_litellm_kwargs_ollama():
     """Ollama LL model keeps ollama/ prefix in kwargs."""
-    mc = ModelConfig(id="qwen3:8b", type="ll", provider="ollama", enabled=True)
+    mc = ModelConfig(id=TEST_OLLAMA_MODEL_ID, type="ll", provider="ollama", enabled=True)
     settings.model_configs = [mc]
 
     with patch("server.app.models.litellm_utils.litellm") as mock_litellm:
         mock_litellm.get_supported_openai_params.return_value = []
-        spec = LiteLlmModelSpec("ollama", "qwen3:8b")
+        spec = LiteLlmModelSpec("ollama", TEST_OLLAMA_MODEL_ID)
         result = spec.to_litellm_kwargs()
 
-    assert result["model"] == "ollama_chat/qwen3:8b"
+    assert result["model"] == TEST_OLLAMA_CHAT_KEY
 
 
 @pytest.mark.unit
 def test_to_litellm_kwargs_no_supported_params():
     """Handles None from litellm.get_supported_openai_params gracefully."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True, temperature=0.7)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=True, temperature=0.7)
     settings.model_configs = [mc]
 
     with patch("server.app.models.litellm_utils.litellm") as mock_litellm:
         mock_litellm.get_supported_openai_params.return_value = None
-        spec = LiteLlmModelSpec("openai", "gpt-4o")
+        spec = LiteLlmModelSpec("openai", TEST_OPENAI_MODEL_ID)
         result = spec.to_litellm_kwargs()
 
-    assert result["model"] == "openai/gpt-4o"
+    assert result["model"] == TEST_OPENAI_MODEL_KEY
     assert result["drop_params"] is True
     assert "temperature" not in result  # Not in supported_params
 
@@ -361,6 +371,46 @@ def test_to_litellm_kwargs_oci_without_signer():
     assert "oci_signer" not in result
 
 
+@pytest.mark.unit
+def test_to_litellm_kwargs_oci_security_token_forwards_signer():
+    """OCI security-token profile yields ``oci_signer`` in chat-completion kwargs.
+
+    Regression-pin for the chat path. Both ``LiteLlmModelSpec`` (chat) and
+    ``get_client_embed`` (embed) route through ``build_oci_litellm_params`` →
+    ``get_signer``; this asserts the chat side gets the same security-token
+    coverage as the embed side, not API-key fields.
+    """
+    mc = ModelConfig(id="cohere.command-r", type="ll", provider="oci", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile(
+        authentication="security_token",
+        security_token_file="/path/to/token",
+    )
+    mock_sec_signer = MagicMock(name="SecurityTokenSigner")
+    mock_private_key = MagicMock(name="PrivateKey")
+
+    with (
+        patch("server.app.models.litellm_utils.litellm") as mock_litellm,
+        patch("builtins.open", mock_open(read_data="token-data")),
+        patch(
+            "server.app.oci.client.oci.signer.load_private_key_from_file",
+            return_value=mock_private_key,
+        ),
+        patch(
+            "server.app.oci.client.oci.auth.signers.SecurityTokenSigner",
+            return_value=mock_sec_signer,
+        ),
+    ):
+        mock_litellm.get_supported_openai_params.return_value = []
+        spec = LiteLlmModelSpec("oci", "cohere.command-r", oci_profile=profile)
+        result = spec.to_litellm_kwargs()
+
+    assert result["oci_signer"] is mock_sec_signer
+    assert "oci_user" not in result
+    assert "oci_fingerprint" not in result
+    assert "oci_key_file" not in result
+
+
 # ---------------------------------------------------------------------------
 # LiteLlmModelSpec class methods
 # ---------------------------------------------------------------------------
@@ -369,11 +419,11 @@ def test_to_litellm_kwargs_oci_without_signer():
 @pytest.mark.unit
 def test_from_ll_model_settings():
     """from_ll_model_settings extracts fields correctly."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=True)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=True)
     settings.model_configs = [mc]
     ll_model = MagicMock()
     ll_model.provider = "openai"
-    ll_model.id = "gpt-4o"
+    ll_model.id = TEST_OPENAI_MODEL_ID
     ll_model.temperature = 0.5
     ll_model.top_p = 0.9
     ll_model.max_tokens = 100
@@ -389,14 +439,39 @@ def test_from_ll_model_settings():
 
 
 @pytest.mark.unit
+def test_litellm_model_spec_normalizes_provider_casing():
+    """Provider stored with non-lowercase casing still routes to the OCI branch.
+
+    Regression-pin: ``find_model`` is case-insensitive but the stored
+    ``model_cfg.provider`` casing was being adopted verbatim, so a 'OCI' (or
+    'Cohere') entry would skip every downstream lowercase-comparison and
+    produce a model_key LiteLLM cannot route.
+    """
+    mc = ModelConfig(id="cohere.command-r", type="ll", provider="OCI", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile()
+    mock_signer = MagicMock()
+
+    with (
+        patch("server.app.models.litellm_utils.litellm") as mock_litellm,
+        patch("server.app.models.litellm_utils.get_signer", return_value=mock_signer),
+    ):
+        mock_litellm.get_supported_openai_params.return_value = []
+        spec = LiteLlmModelSpec("oci", "cohere.command-r", oci_profile=profile)
+
+    assert spec.model_key == "oci/cohere.command-r"
+    assert spec.oci_params.get("oci_signer") is mock_signer
+
+
+@pytest.mark.unit
 def test_from_model_identity():
     """from_model_identity creates a spec with no generation overrides."""
-    mc = ModelConfig(id="gpt-4o", type="ll", provider="openai", temperature=0.7, enabled=True)
+    mc = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", temperature=0.7, enabled=True)
     settings.model_configs = [mc]
-    identity = ModelIdentity(provider="openai", id="gpt-4o")
+    identity = ModelIdentity(provider="openai", id=TEST_OPENAI_MODEL_ID)
 
     spec = LiteLlmModelSpec.from_model_identity(identity)
-    assert spec.model_key == "openai/gpt-4o"
+    assert spec.model_key == TEST_OPENAI_MODEL_KEY
     assert spec.temperature == 0.7  # Falls back to ModelConfig
 
 
@@ -407,30 +482,127 @@ def test_from_model_identity():
 
 @pytest.mark.unit
 def test_get_client_embed_oci():
-    """OCI provider creates an OCIGenAIEmbeddings client."""
+    """OCI provider builds a LiteLLMEmbeddings with OCI auth params."""
     mc = ModelConfig(id="cohere.embed-english", type="embed", provider="oci", enabled=True)
     settings.model_configs = [mc]
     profile = _oci_profile()
-    mock_genai_client = MagicMock()
+    mock_signer = MagicMock()
 
-    with (
-        patch("server.app.models.litellm_utils.init_client", return_value=mock_genai_client),
-        patch("server.app.models.litellm_utils.OCIGenAIEmbeddings") as mock_cls,
-    ):
-        mock_cls.return_value = MagicMock()
+    with patch("server.app.models.litellm_utils.get_signer", return_value=mock_signer):
         result = get_client_embed(ModelIdentity(provider="oci", id="cohere.embed-english"), oci_profile=profile)
 
-    mock_cls.assert_called_once_with(
-        model_id="cohere.embed-english",
-        client=mock_genai_client,
-        compartment_id="ocid1.compartment.oc1..test",
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.model_key == "oci/cohere.embed-english"
+    assert result.extra_params["oci_region"] == "us-chicago-1"
+    assert result.extra_params["oci_compartment_id"] == "ocid1.compartment.oc1..test"
+    assert result.extra_params["oci_signer"] is mock_signer
+
+
+@pytest.mark.unit
+def test_get_client_embed_oci_preserves_batch_chunking():
+    """End-to-end: 200 inputs through get_client_embed(OCI) chunk to ≤96/call.
+
+    Pins the chunking guarantee preserved from the prior OCIGenAIEmbeddings
+    implementation through the LiteLLM swap.
+    """
+    mc = ModelConfig(id="cohere.embed-english-v3.0", type="embed", provider="oci", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile()
+
+    def fake_embed(input, **_):
+        resp = MagicMock()
+        resp.data = [{"embedding": [0.0] * 4} for _ in input]
+        return resp
+
+    with (
+        patch("server.app.models.litellm_utils.get_signer", return_value=MagicMock()),
+        patch("server.app.models.litellm_embeddings.litellm.embedding", side_effect=fake_embed) as mock_embed,
+    ):
+        client = get_client_embed(
+            ModelIdentity(provider="oci", id="cohere.embed-english-v3.0"),
+            oci_profile=profile,
+        )
+        result = client.embed_documents(["text"] * 200)
+
+    assert len(result) == 200
+    assert mock_embed.call_count == 3
+    batch_sizes = [len(call.kwargs["input"]) for call in mock_embed.call_args_list]
+    assert batch_sizes == [96, 96, 8]
+    assert all(size <= 96 for size in batch_sizes)
+
+
+@pytest.mark.unit
+def test_get_client_embed_oci_security_token_forwards_signer():
+    """OCI security-token profile yields a LiteLLMEmbeddings carrying ``oci_signer``.
+
+    Regression-pin: ``build_oci_litellm_params`` previously did not handle
+    ``authentication == "security_token"`` and fell through to API-key kwargs,
+    which would fail authentication against OCI. The fix lives in
+    ``get_signer``; this test proves the wired-through behavior.
+    """
+    mc = ModelConfig(id="cohere.embed-english-v3.0", type="embed", provider="oci", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile(
+        authentication="security_token",
+        security_token_file="/path/to/token",
     )
-    assert result is mock_cls.return_value
+    mock_sec_signer = MagicMock(name="SecurityTokenSigner")
+    mock_private_key = MagicMock(name="PrivateKey")
+
+    with (
+        patch("builtins.open", mock_open(read_data="token-data")),
+        patch(
+            "server.app.oci.client.oci.signer.load_private_key_from_file",
+            return_value=mock_private_key,
+        ),
+        patch(
+            "server.app.oci.client.oci.auth.signers.SecurityTokenSigner",
+            return_value=mock_sec_signer,
+        ),
+    ):
+        result = get_client_embed(
+            ModelIdentity(provider="oci", id="cohere.embed-english-v3.0"),
+            oci_profile=profile,
+        )
+
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.extra_params.get("oci_signer") is mock_sec_signer
+    # API-key fields must NOT leak in when a signer is constructed —
+    # OCI would otherwise see a mixed auth payload.
+    assert "oci_user" not in result.extra_params
+    assert "oci_fingerprint" not in result.extra_params
+    assert "oci_key_file" not in result.extra_params
+
+
+@pytest.mark.unit
+def test_get_client_embed_normalizes_provider_casing():
+    """Provider stored as 'OCI' (uppercase) still attaches OCI auth.
+
+    Regression-pin: ``find_model`` matched case-insensitively but the stored
+    casing was being adopted verbatim, so an 'OCI' entry would skip the
+    ``provider == "oci"`` branch and produce a model_key (``OCI/...``) that
+    LiteLLM cannot route.
+    """
+    mc = ModelConfig(id="cohere.embed-english-v3.0", type="embed", provider="OCI", enabled=True)
+    settings.model_configs = [mc]
+    profile = _oci_profile()
+    mock_signer = MagicMock()
+
+    with patch("server.app.models.litellm_utils.get_signer", return_value=mock_signer):
+        result = get_client_embed(
+            ModelIdentity(provider="oci", id="cohere.embed-english-v3.0"),
+            oci_profile=profile,
+        )
+
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.model_key == "oci/cohere.embed-english-v3.0"
+    assert result.extra_params.get("oci_signer") is mock_signer
+    assert result.batch_size == 96
 
 
 @pytest.mark.unit
 def test_get_client_embed_hosted_vllm():
-    """hosted_vllm uses openai provider with check_embedding_ctx_length=False."""
+    """hosted_vllm builds a LiteLLMEmbeddings keyed on hosted_vllm/<model>."""
     mc = ModelConfig(
         id="bge-m3",
         type="embed",
@@ -440,22 +612,46 @@ def test_get_client_embed_hosted_vllm():
     )
     settings.model_configs = [mc]
 
-    with patch("server.app.models.litellm_utils.init_embeddings") as mock_init:
-        mock_init.return_value = MagicMock()
-        result = get_client_embed(ModelIdentity(provider="hosted_vllm", id="bge-m3"))
+    result = get_client_embed(ModelIdentity(provider="hosted_vllm", id="bge-m3"))
 
-    mock_init.assert_called_once()
-    call_kwargs = mock_init.call_args[1]
-    assert call_kwargs["provider"] == "openai"
-    assert call_kwargs["check_embedding_ctx_length"] is False
-    assert result is mock_init.return_value
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.model_key == "hosted_vllm/bge-m3"
+    assert result.api_base == "http://vllm:8000/v1"
+    assert result.extra_params == {}
+
+
+@pytest.mark.unit
+def test_get_client_embed_cohere_does_not_rewrite_to_compatibility_endpoint():
+    """Cohere-direct embed forwards the configured api_base verbatim.
+
+    Regression-pin: a previous iteration mirrored the chat-path rewrite to
+    ``/compatibility/v1`` for embed too — but litellm's cohere embed transform
+    posts Cohere v2 embed payloads at the URL as-is, and the OpenAI-compat
+    endpoint rejects them. The wrapper must hand litellm an embed-shaped URL
+    (``…/v2/embed``), not the chat compatibility URL.
+    """
+    mc = ModelConfig(
+        id="embed-english-light-v3.0",
+        type="embed",
+        provider="cohere",
+        api_base="https://api.cohere.ai/v2/embed",
+        api_key=SecretStr("co-key"),
+        enabled=True,
+    )
+    settings.model_configs = [mc]
+
+    result = get_client_embed(ModelIdentity(provider="cohere", id="embed-english-light-v3.0"))
+
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.api_base == "https://api.cohere.ai/v2/embed"
+    assert "/compatibility/v1" not in (result.api_base or "")
 
 
 @pytest.mark.unit
 def test_get_client_embed_default():
-    """Default provider passes through directly to init_embeddings."""
+    """Default OpenAI provider builds a LiteLLMEmbeddings with api_key."""
     mc = ModelConfig(
-        id="text-embedding-3-small",
+        id=TEST_OPENAI_EMBED_ID,
         type="embed",
         provider="openai",
         api_key=SecretStr("sk-123"),
@@ -463,15 +659,11 @@ def test_get_client_embed_default():
     )
     settings.model_configs = [mc]
 
-    with patch("server.app.models.litellm_utils.init_embeddings") as mock_init:
-        mock_init.return_value = MagicMock()
-        result = get_client_embed(ModelIdentity(provider="openai", id="text-embedding-3-small"))
+    result = get_client_embed(ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID))
 
-    mock_init.assert_called_once()
-    call_kwargs = mock_init.call_args[1]
-    assert call_kwargs["provider"] == "openai"
-    assert call_kwargs["api_key"] == "sk-123"
-    assert result is mock_init.return_value
+    assert isinstance(result, LiteLLMEmbeddings)
+    assert result.model_key == TEST_OPENAI_EMBED_KEY
+    assert result.api_key == "sk-123"
 
 
 @pytest.mark.unit
@@ -516,7 +708,7 @@ class TestExtractParameterCount:
 
     def test_no_parameter_count(self):
         """extract_parameter_count should return None for models without parameter count."""
-        assert extract_parameter_count("gpt-4o") is None
+        assert extract_parameter_count(TEST_OPENAI_MODEL_ID) is None
 
     def test_empty_string(self):
         """extract_parameter_count should return None for empty string."""
@@ -572,7 +764,7 @@ class TestIsSmallModel:
 
     def test_unknown_model_is_not_small(self):
         """is_small_model should return False for models without detectable param count."""
-        assert is_small_model("gpt-4o") is False
+        assert is_small_model(TEST_OPENAI_MODEL_ID) is False
 
     def test_empty_string_is_not_small(self):
         """is_small_model should return False for empty string."""

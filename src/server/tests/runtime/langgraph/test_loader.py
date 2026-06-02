@@ -15,12 +15,18 @@ from pyagentspec.agent import Agent as AgentSpecAgent
 from server.app.agentspec.adapters.litellm import LiteLlmConfig
 from server.app.runtime.langgraph.adapters.litellm import OracleChatLiteLLM
 from server.app.runtime.langgraph.loader import LiteLlmAgentSpecLoader
+from server.tests.constants import (
+    TEST_OLLAMA_CHAT_KEY,
+    TEST_OLLAMA_MODEL_ID,
+    TEST_OPENAI_MODEL_ID,
+    TEST_OPENAI_MODEL_KEY,
+)
 
 
 class TestLiteLlmAgentSpecLoader:
     """Verify LiteLlmAgentSpecLoader.load_component uses the LiteLlm-aware converter."""
 
-    def _make_agent(self, provider="ollama", model_id="qwen3:8b", **kwargs):
+    def _make_agent(self, provider="ollama", model_id=TEST_OLLAMA_MODEL_ID, **kwargs):
         config = LiteLlmConfig(
             id=f"{provider}/{model_id}",
             name=f"{provider}/{model_id}",
@@ -48,14 +54,14 @@ class TestLiteLlmAgentSpecLoader:
             "Expected OracleChatLiteLLM in the compiled graph — "
             "load_component may be using the base converter instead of the LiteLlm-aware one"
         )
-        assert bridge.model == "ollama_chat/qwen3:8b"
+        assert bridge.model == TEST_OLLAMA_CHAT_KEY
 
     def test_load_component_with_penalty_params(self):
         """Verify frequency/presence penalty survive the loader pipeline."""
         loader = LiteLlmAgentSpecLoader()
         agent = self._make_agent(
             provider="openai",
-            model_id="gpt-4o",
+            model_id=TEST_OPENAI_MODEL_ID,
             max_tokens=200,
             frequency_penalty=0.5,
             presence_penalty=0.3,
@@ -63,7 +69,7 @@ class TestLiteLlmAgentSpecLoader:
         graph = loader.load_component(agent)
         bridge = _find_litellm_bridge(graph)
         assert bridge is not None
-        assert bridge.model == "openai/gpt-4o"
+        assert bridge.model == TEST_OPENAI_MODEL_KEY
         assert bridge.max_tokens == 200
         assert bridge.model_kwargs.get("frequency_penalty") == 0.5
         assert bridge.model_kwargs.get("presence_penalty") == 0.3
@@ -116,7 +122,7 @@ class TestLiteLlmAgentSpecLoader:
     def test_non_oci_provider_has_no_oci_kwargs(self):
         """Non-OCI providers should not have OCI auth keys in model_kwargs."""
         loader = LiteLlmAgentSpecLoader()
-        agent = self._make_agent(provider="ollama", model_id="qwen3:8b")
+        agent = self._make_agent(provider="ollama", model_id=TEST_OLLAMA_MODEL_ID)
         graph = loader.load_component(agent)
         bridge = _find_litellm_bridge(graph)
         assert bridge is not None

@@ -16,6 +16,7 @@ from server.app.core.schemas import ClientSettings
 from server.app.mcp.prompts.registry import get_factory_text
 from server.app.models.schemas import ModelConfig
 from server.tests.conftest import SAMPLE_CLIENT_SETTINGS_OBJ
+from server.tests.constants import TEST_OLLAMA_CHAT_KEY, TEST_OLLAMA_MODEL_ID, TEST_OPENAI_MODEL_ID
 
 MOCK_SYSTEM_PROMPT = "test system prompt"
 
@@ -32,7 +33,7 @@ class TestBuildLlmConfig:
         """Verify provider is normalized and model_id is set from client settings."""
         llm = build_llm_config(SAMPLE_CLIENT_SETTINGS_OBJ)
         assert llm.provider == "ollama_chat"
-        assert llm.model_id == "qwen3:8b"
+        assert llm.model_id == TEST_OLLAMA_MODEL_ID
 
     def test_generation_config_set(self):
         """Verify generation parameters like temperature are populated."""
@@ -51,7 +52,7 @@ class TestBuildLlmConfig:
             {
                 "ll_model": {
                     "provider": "openai",
-                    "id": "gpt-4o",
+                    "id": TEST_OPENAI_MODEL_ID,
                     "frequency_penalty": 0.5,
                     "presence_penalty": 0.3,
                 }
@@ -64,7 +65,7 @@ class TestBuildLlmConfig:
     def test_name_format(self):
         """Verify config name follows the normalized provider/model_id format."""
         llm = build_llm_config(SAMPLE_CLIENT_SETTINGS_OBJ)
-        assert llm.name == "ollama_chat/qwen3:8b"
+        assert llm.name == TEST_OLLAMA_CHAT_KEY
 
     def test_default_generation_config_when_not_specified(self):
         """Verify generation parameters use defaults when not explicitly provided."""
@@ -72,7 +73,7 @@ class TestBuildLlmConfig:
             {
                 "ll_model": {
                     "provider": "openai",
-                    "id": "gpt-4o",
+                    "id": TEST_OPENAI_MODEL_ID,
                 }
             }
         )
@@ -94,9 +95,11 @@ class TestBuildLlmConfig:
         original = app_settings.model_configs[:]
         try:
             app_settings.model_configs = [
-                ModelConfig(provider="openai", id="gpt-4o", type="ll", api_key=SecretStr("sk-test-key-123")),
+                ModelConfig(
+                    provider="openai", id=TEST_OPENAI_MODEL_ID, type="ll", api_key=SecretStr("sk-test-key-123")
+                ),
             ]
-            cs = ClientSettings.model_validate({"ll_model": {"provider": "openai", "id": "gpt-4o"}})
+            cs = ClientSettings.model_validate({"ll_model": {"provider": "openai", "id": TEST_OPENAI_MODEL_ID}})
             llm = build_llm_config(cs)
             assert llm.api_key == "sk-test-key-123"
         finally:
@@ -109,9 +112,9 @@ class TestBuildLlmConfig:
         original = app_settings.model_configs[:]
         try:
             app_settings.model_configs = [
-                ModelConfig(provider="ollama", id="qwen3:8b", type="ll", api_base="http://localhost:11434"),
+                ModelConfig(provider="ollama", id=TEST_OLLAMA_MODEL_ID, type="ll", api_base="http://localhost:11434"),
             ]
-            cs = ClientSettings.model_validate({"ll_model": {"provider": "ollama", "id": "qwen3:8b"}})
+            cs = ClientSettings.model_validate({"ll_model": {"provider": "ollama", "id": TEST_OLLAMA_MODEL_ID}})
             llm = build_llm_config(cs)
             assert llm.api_base == "http://localhost:11434"
         finally:
@@ -124,7 +127,7 @@ class TestBuildLlmConfig:
         original = app_settings.model_configs[:]
         try:
             app_settings.model_configs = []
-            cs = ClientSettings.model_validate({"ll_model": {"provider": "ollama", "id": "qwen3:8b"}})
+            cs = ClientSettings.model_validate({"ll_model": {"provider": "ollama", "id": TEST_OLLAMA_MODEL_ID}})
             with pytest.raises(ValueError, match="not found"):
                 build_llm_config(cs)
         finally:
@@ -168,10 +171,9 @@ class TestBuildLlmOnlyAgentspec:
         agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SYSTEM_PROMPT)
         assert isinstance(agent.llm_config, LiteLlmConfig)
         assert agent.llm_config.provider == "ollama_chat"
-        assert agent.llm_config.model_id == "qwen3:8b"
+        assert agent.llm_config.model_id == TEST_OLLAMA_MODEL_ID
 
     def test_human_in_the_loop_enabled(self):
         """Verify human_in_the_loop is enabled on the agent."""
         agent = build_llm_only_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SYSTEM_PROMPT)
         assert agent.human_in_the_loop is True
-

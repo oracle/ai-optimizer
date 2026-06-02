@@ -9,6 +9,7 @@ Tests for testbed generation utilities.
 import pytest
 
 from server.app.testbed.generation import get_giskard_config, jsonl_to_json_content
+from server.tests.constants import TEST_OPENAI_EMBED_KEY, TEST_OPENAI_MODEL_KEY
 
 # ---------------------------------------------------------------------------
 # jsonl_to_json_content
@@ -68,7 +69,7 @@ def test_jsonl_invalid_content():
 def test_giskard_config_ll_model():
     """LL model config renames 'model' to 'llm_model' and strips params."""
     config = {
-        "model": "openai/gpt-4o-mini",
+        "model": TEST_OPENAI_MODEL_KEY,
         "temperature": 0.5,
         "max_tokens": 4096,
         "api_base": "https://api.openai.com",
@@ -76,7 +77,7 @@ def test_giskard_config_ll_model():
     }
     result = get_giskard_config(config, "ll")
     assert "llm_model" in result
-    assert result["llm_model"] == "openai/gpt-4o-mini"
+    assert result["llm_model"] == TEST_OPENAI_MODEL_KEY
     assert "model" not in result
     assert "temperature" not in result
     assert "max_tokens" not in result
@@ -87,13 +88,13 @@ def test_giskard_config_ll_model():
 def test_giskard_config_embed_model():
     """Embed model config preserves 'model' key and max_chunk_size."""
     config = {
-        "model": "openai/text-embedding-3-small",
+        "model": TEST_OPENAI_EMBED_KEY,
         "temperature": 0.5,
         "max_tokens": 8192,
         "max_chunk_size": 512,
     }
     result = get_giskard_config(config, "embed")
-    assert result["model"] == "openai/text-embedding-3-small"
+    assert result["model"] == TEST_OPENAI_EMBED_KEY
     assert result["max_chunk_size"] == 512
     assert "temperature" not in result
     assert "max_tokens" not in result
@@ -102,7 +103,7 @@ def test_giskard_config_embed_model():
 @pytest.mark.unit
 def test_giskard_config_does_not_mutate_original():
     """get_giskard_config does not mutate the input dict."""
-    config = {"model": "openai/gpt-4o-mini", "temperature": 0.5}
+    config = {"model": TEST_OPENAI_MODEL_KEY, "temperature": 0.5}
     get_giskard_config(config, "ll")
     assert "model" in config
     assert "temperature" in config

@@ -711,7 +711,7 @@ class TestInstrumentFastapi:
         # something other than a real (SDK) TracerProvider.
         monkeypatch.setattr(
             "opentelemetry.trace.get_tracer_provider",
-            lambda: ProxyTracerProvider(),
+            ProxyTracerProvider,
         )
 
         instrument_app = mock.MagicMock()

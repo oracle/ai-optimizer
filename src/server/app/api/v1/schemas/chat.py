@@ -48,7 +48,7 @@ class ChatRequest(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "model": "openai/gpt-4o-mini",
+                "model": "openai/gpt-5.4-mini",
                 "messages": [
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": "Summarize the latest sales report."},

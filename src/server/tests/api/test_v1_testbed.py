@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from server.tests.api.conftest import _create_mock_pool
+from server.tests.constants import TEST_OPENAI_MODEL_ID, TEST_OPENAI_MODEL_KEY, TEST_PLACEHOLDER_EMBED_KEY
 
 VALID_TID = "0123456789abcdef0123456789abcdef"
 VALID_EID = "fedcba9876543210fedcba9876543210"
@@ -101,7 +102,7 @@ async def test_generate_testset_no_auth(app_client):
 @pytest.mark.anyio
 async def test_evaluate_no_auth(app_client):
     """POST evaluate rejects requests without API key."""
-    resp = await app_client.post("/v1/testbed/evaluate", params={"tid": "ABC", "judge": "openai/gpt-4o-mini"})
+    resp = await app_client.post("/v1/testbed/evaluate", params={"tid": "ABC", "judge": TEST_OPENAI_MODEL_KEY})
     assert resp.status_code == 403
 
 
@@ -156,9 +157,7 @@ async def test_list_evaluations(app_client, auth_headers):
         new_callable=AsyncMock,
         return_value=mock_data,
     ):
-        resp = await app_client.get(
-            "/v1/testbed/evaluations", params={"tid": VALID_TID}, headers=auth_headers
-        )
+        resp = await app_client.get("/v1/testbed/evaluations", params={"tid": VALID_TID}, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()[0]["correctness"] == 0.9
 
@@ -199,9 +198,7 @@ async def test_get_evaluation(app_client, auth_headers):
         new_callable=AsyncMock,
         return_value=mock_data,
     ):
-        resp = await app_client.get(
-            "/v1/testbed/evaluation", params={"eid": VALID_EID}, headers=auth_headers
-        )
+        resp = await app_client.get("/v1/testbed/evaluation", params={"eid": VALID_EID}, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["eid"] == VALID_EID
 
@@ -215,9 +212,7 @@ async def test_get_evaluation_not_found(app_client, auth_headers):
         new_callable=AsyncMock,
         return_value=None,
     ):
-        resp = await app_client.get(
-            "/v1/testbed/evaluation", params={"eid": VALID_EID}, headers=auth_headers
-        )
+        resp = await app_client.get("/v1/testbed/evaluation", params={"eid": VALID_EID}, headers=auth_headers)
     assert resp.status_code == 404
 
 
@@ -248,9 +243,7 @@ async def test_get_testset_qa(app_client, auth_headers):
         new_callable=AsyncMock,
         return_value=mock_data,
     ):
-        resp = await app_client.get(
-            "/v1/testbed/testset_qa", params={"tid": VALID_TID}, headers=auth_headers
-        )
+        resp = await app_client.get("/v1/testbed/testset_qa", params={"tid": VALID_TID}, headers=auth_headers)
     assert resp.status_code == 200
     assert len(resp.json()["qa_data"]) == 1
 
@@ -280,9 +273,7 @@ async def test_delete_testset(app_client, auth_headers):
         "server.app.api.v1.endpoints.testbed.delete_testset",
         new_callable=AsyncMock,
     ):
-        resp = await app_client.delete(
-            f"/v1/testbed/testset_delete/{VALID_TID}", headers=auth_headers
-        )
+        resp = await app_client.delete(f"/v1/testbed/testset_delete/{VALID_TID}", headers=auth_headers)
     assert resp.status_code == 200
     assert "deleted" in resp.json()["message"]
 
@@ -390,10 +381,10 @@ async def test_upload_testset_multi_file(app_client, auth_headers):
 @pytest.mark.parametrize(
     "bad_tid",
     [
-        "string",          # Swagger's default placeholder
-        "a" * 31,          # one char short
-        "a" * 33,          # one char long
-        "g" * 32,          # right length, non-hex
+        "string",  # Swagger's default placeholder
+        "a" * 31,  # one char short
+        "a" * 33,  # one char long
+        "g" * 32,  # right length, non-hex
     ],
 )
 async def test_upload_testset_rejects_invalid_tid(app_client, auth_headers, bad_tid):
@@ -557,7 +548,7 @@ async def test_evaluate_rejects_invalid_tid(app_client, auth_headers):
     ) as mock_load:
         resp = await app_client.post(
             "/v1/testbed/evaluate",
-            params={"tid": "string", "judge": "openai/gpt-4o-mini"},
+            params={"tid": "string", "judge": TEST_OPENAI_MODEL_KEY},
             headers=auth_headers,
         )
 
@@ -651,7 +642,12 @@ async def test_generate_testset_no_files_returns_422(app_client, auth_headers):
     """FastAPI rejects the request when no files are attached."""
     resp = await app_client.post(
         "/v1/testbed/testset_generate",
-        data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "5"},
+        data={
+            "name": "Test",
+            "ll_model": TEST_OPENAI_MODEL_KEY,
+            "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+            "questions": "5",
+        },
         files=[],
         headers=auth_headers,
     )
@@ -671,7 +667,12 @@ async def test_generate_testset_no_files_returns_422(app_client, auth_headers):
 )
 async def test_generate_testset_rejects_invalid_form_fields(app_client, auth_headers, field, value):
     """Empty/oversized names and non-positive question counts must fail validation up front."""
-    data = {"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "2"}
+    data = {
+        "name": "Test",
+        "ll_model": TEST_OPENAI_MODEL_KEY,
+        "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+        "questions": "2",
+    }
     data[field] = value
     pdf_bytes = b"%PDF-1.4\n%fake\n"
 
@@ -730,7 +731,12 @@ async def test_generate_testset_distributes_questions(app_client, auth_headers):
     ):
         resp = await app_client.post(
             "/v1/testbed/testset_generate",
-            data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "7"},
+            data={
+                "name": "Test",
+                "ll_model": TEST_OPENAI_MODEL_KEY,
+                "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+                "questions": "7",
+            },
             files=[
                 ("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
                 ("files", ("b.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
@@ -781,7 +787,12 @@ async def test_generate_testset_enforces_min_one_per_file(app_client, auth_heade
     ):
         resp = await app_client.post(
             "/v1/testbed/testset_generate",
-            data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "1"},
+            data={
+                "name": "Test",
+                "ll_model": TEST_OPENAI_MODEL_KEY,
+                "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+                "questions": "1",
+            },
             files=[
                 ("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
                 ("files", ("b.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
@@ -827,7 +838,12 @@ async def test_generate_testset_rejects_small_file_and_proceeds(app_client, auth
     ):
         resp = await app_client.post(
             "/v1/testbed/testset_generate",
-            data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "4"},
+            data={
+                "name": "Test",
+                "ll_model": TEST_OPENAI_MODEL_KEY,
+                "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+                "questions": "4",
+            },
             files=[
                 ("files", ("small.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
                 ("files", ("big.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
@@ -905,7 +921,12 @@ async def test_generate_testset_all_rejected_returns_400(app_client, auth_header
     ):
         resp = await app_client.post(
             "/v1/testbed/testset_generate",
-            data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "4"},
+            data={
+                "name": "Test",
+                "ll_model": TEST_OPENAI_MODEL_KEY,
+                "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+                "questions": "4",
+            },
             files=[
                 ("files", ("tiny1.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
                 ("files", ("tiny2.pdf", io.BytesIO(b"%PDF-"), "application/pdf")),
@@ -987,7 +1008,12 @@ async def test_generate_testset_db_unavailable_fails_fast(app_client, auth_heade
     ):
         resp = await app_client.post(
             "/v1/testbed/testset_generate",
-            data={"name": "Test", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "2"},
+            data={
+                "name": "Test",
+                "ll_model": TEST_OPENAI_MODEL_KEY,
+                "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+                "questions": "2",
+            },
             files=[("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf"))],
             headers=auth_headers,
         )
@@ -1009,7 +1035,7 @@ async def test_generate_testset_api_error_returns_fallback_detail(app_client, au
     api_err = APIConnectionError(
         message="marker-alpha marker-beta marker-gamma",
         llm_provider="openai",
-        model="gpt-4o",
+        model=TEST_OPENAI_MODEL_ID,
     )
     mock_load = _mock_load_chunks_factory([("a.pdf", Path("/tmp/a.pdf"), None)])
     with (
@@ -1023,7 +1049,12 @@ async def test_generate_testset_api_error_returns_fallback_detail(app_client, au
     ):
         resp = await app_client.post(
             "/v1/testbed/testset_generate",
-            data={"name": "T", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "1"},
+            data={
+                "name": "T",
+                "ll_model": TEST_OPENAI_MODEL_KEY,
+                "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+                "questions": "1",
+            },
             files=[("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf"))],
             headers=auth_headers,
         )
@@ -1051,7 +1082,12 @@ async def test_generate_testset_value_error_returns_fallback_detail(app_client, 
     ):
         resp = await app_client.post(
             "/v1/testbed/testset_generate",
-            data={"name": "T", "ll_model": "openai/gpt-4o", "embed_model": "openai/embed", "questions": "1"},
+            data={
+                "name": "T",
+                "ll_model": TEST_OPENAI_MODEL_KEY,
+                "embed_model": TEST_PLACEHOLDER_EMBED_KEY,
+                "questions": "1",
+            },
             files=[("files", ("a.pdf", io.BytesIO(b"%PDF-"), "application/pdf"))],
             headers=auth_headers,
         )

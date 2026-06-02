@@ -32,6 +32,7 @@ from server.app.testbed.database import (
     upsert_qa,
 )
 from server.tests.conftest import make_core_db_config, make_test_vs_config
+from server.tests.constants import TEST_OPENAI_EMBED_ID
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
@@ -453,7 +454,7 @@ class TestVectorStoreCommentInputHandling:
         try:
             payload = "x' || (SELECT 'SENTINEL' FROM DUAL) || 'x"
             _, comment_json = generate_vs_metadata(
-                embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+                embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
                 chunk_size=1000,
                 chunk_overlap=100,
                 distance_strategy=DistanceStrategy.COSINE,
@@ -479,7 +480,7 @@ class TestVectorStoreCommentInputHandling:
         await _create_genai_table(conn, table, {"alias": "stage", "chunk_size": 1})
         try:
             _, comment_json = generate_vs_metadata(
-                embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+                embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
                 chunk_size=1000,
                 chunk_overlap=100,
                 distance_strategy=DistanceStrategy.COSINE,

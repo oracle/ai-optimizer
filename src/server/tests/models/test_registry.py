@@ -14,6 +14,7 @@ from server.app.core.settings import settings
 from server.app.models.defaults import FACTORY_MODELS
 from server.app.models.registry import _model_key, apply_env_overrides, load_default_models, register_model
 from server.app.models.schemas import ModelConfig
+from server.tests.constants import TEST_OPENAI_MODEL_ID, TEST_OPENAI_MODEL_ID_MIXEDCASE
 
 
 @pytest.fixture(autouse=True)
@@ -33,7 +34,7 @@ def _reset_model_configs():
 @pytest.mark.parametrize(
     "model_id,provider,expected",
     [
-        ("GPT-4o", "OpenAI", ("gpt-4o", "openai")),
+        (TEST_OPENAI_MODEL_ID_MIXEDCASE, "OpenAI", (TEST_OPENAI_MODEL_ID, "openai")),
         ("meta-llama/Llama-3.2", "hosted_vllm", ("meta-llama/llama-3.2", "hosted_vllm")),
         ("model", "provider", ("model", "provider")),
     ],
@@ -127,7 +128,7 @@ class TestApplyEnvOverrides:
 
     def test_patches_matching_provider(self, monkeypatch):
         """Env var value is written to the matching model field."""
-        cfg = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key=SecretStr("old"))
+        cfg = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", api_key=SecretStr("old"))
         settings.model_configs = [cfg]
         monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
         apply_env_overrides()
@@ -135,7 +136,7 @@ class TestApplyEnvOverrides:
 
     def test_enables_model_when_env_found(self, monkeypatch):
         """Model is enabled when its env var is present."""
-        cfg = ModelConfig(id="gpt-4o", type="ll", provider="openai", enabled=False)
+        cfg = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=False)
         settings.model_configs = [cfg]
         monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
         apply_env_overrides()
@@ -143,7 +144,9 @@ class TestApplyEnvOverrides:
 
     def test_skips_when_env_absent(self, monkeypatch):
         """Model is unchanged when the env var is not set."""
-        cfg = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key=SecretStr("original"), enabled=False)
+        cfg = ModelConfig(
+            id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", api_key=SecretStr("original"), enabled=False
+        )
         settings.model_configs = [cfg]
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         apply_env_overrides()
@@ -168,7 +171,7 @@ class TestApplyEnvOverrides:
 
     def test_patches_multiple_models_same_provider(self, monkeypatch):
         """All models sharing a provider are updated."""
-        cfg1 = ModelConfig(id="gpt-4o", type="ll", provider="openai", api_key=SecretStr("old1"))
+        cfg1 = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", api_key=SecretStr("old1"))
         cfg2 = ModelConfig(id="text-embed", type="embed", provider="openai", api_key=SecretStr("old2"))
         settings.model_configs = [cfg1, cfg2]
         monkeypatch.setenv("OPENAI_API_KEY", "sk-shared")
