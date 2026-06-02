@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from server.app.models.litellm_embeddings import DEFAULT_BATCH_SIZE, LiteLLMEmbeddings
+from server.tests.constants import TEST_OPENAI_EMBED_KEY
 
 pytestmark = pytest.mark.anyio
 
@@ -31,14 +32,14 @@ def test_default_batch_size_is_96():
 @pytest.mark.unit
 def test_embed_documents_single_batch():
     """≤batch_size inputs result in one litellm.embedding call."""
-    emb = LiteLLMEmbeddings("openai/text-embedding-3-small", api_key="sk-x")
+    emb = LiteLLMEmbeddings(TEST_OPENAI_EMBED_KEY, api_key="sk-x")
     with patch("server.app.models.litellm_embeddings.litellm.embedding") as mock_embed:
         mock_embed.return_value = _embedding_response(3)
         result = emb.embed_documents(["a", "b", "c"])
 
     assert mock_embed.call_count == 1
     assert mock_embed.call_args.kwargs["input"] == ["a", "b", "c"]
-    assert mock_embed.call_args.kwargs["model"] == "openai/text-embedding-3-small"
+    assert mock_embed.call_args.kwargs["model"] == TEST_OPENAI_EMBED_KEY
     assert mock_embed.call_args.kwargs["api_key"] == "sk-x"
     assert len(result) == 3
 
@@ -59,7 +60,7 @@ def test_embed_documents_chunks_by_batch_size():
 
 @pytest.mark.unit
 def test_embed_documents_custom_batch_size():
-    emb = LiteLLMEmbeddings("openai/text-embedding-3-small", batch_size=10)
+    emb = LiteLLMEmbeddings(TEST_OPENAI_EMBED_KEY, batch_size=10)
     with patch("server.app.models.litellm_embeddings.litellm.embedding") as mock_embed:
         mock_embed.side_effect = lambda input, **_: _embedding_response(len(input))
         emb.embed_documents(["text"] * 25)

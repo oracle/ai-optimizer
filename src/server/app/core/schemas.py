@@ -90,7 +90,7 @@ class ClientSettingsUpdate(BaseModel):
             "example": {
                 "ll_model": {
                     "provider": "openai",
-                    "id": "gpt-5-mini",
+                    "id": "gpt-5.4-mini",
                     "temperature": 0.3,
                     "max_tokens": 4096,
                     "chat_history": True,

@@ -27,6 +27,7 @@ from server.app.runtime.langgraph.session import (
     GraphFlowSession,
     NL2SQLGraphSession,
 )
+from server.tests.constants import TEST_OLLAMA_MODEL_ID, TEST_OLLAMA_MODEL_KEY
 from server.tests.runtime.chat_base import (
     ApiKeyLivenessBase,
     CacheBase,
@@ -412,7 +413,7 @@ def _make_combined_session(nl2sql_session=None):
     return CombinedSession(
         vs,
         nl2sql_session,
-        "ollama/qwen3:8b",
+        TEST_OLLAMA_MODEL_KEY,
         "system prompt",
     )
 
@@ -624,7 +625,7 @@ class TestCombinedSessionOciAuth:
     @pytest.mark.anyio
     async def test_build_combined_session_skips_oci_kwargs_for_non_oci_provider(self):
         """Non-OCI providers must not receive OCI model_kwargs (would leak auth into Ollama/OpenAI requests)."""
-        cs = mock_client_settings(provider="ollama", model_id="qwen3:8b")
+        cs = mock_client_settings(provider="ollama", model_id=TEST_OLLAMA_MODEL_ID)
         orch = _make_orchestrator(cs=cs)
 
         with patch(

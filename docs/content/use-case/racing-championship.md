@@ -29,7 +29,7 @@ You'll need:
 
 - A configured {{% short_app_ref %}} from the [Walkthrough]({{% relref "/walkthrough" %}}), or any equivalent install where you have an enabled chat model, an enabled embedding model, and a [database connection]({{% relref "/client/configuration/databases" %}}).
 - A chat model with solid tool use. The demo has been tuned against:
-  - OpenAI `gpt-5-mini` + `text-embedding-3-small`
+  - OpenAI `gpt-5.4-mini` + `text-embedding-3-small`
   - OCI `cohere.command-r-plus` + `cohere.embed-english-v3.0`
   - As an on-premises fallback, Ollama `llama3.1:8b` + `mxbai-embed-large`. The first three steps work well; combined-mode in Step 4 is weaker on small local models.
 - An Oracle AI Database connection with rights to create tables and views (the `DB_DEVELOPER_ROLE` granted in the Walkthrough is sufficient).

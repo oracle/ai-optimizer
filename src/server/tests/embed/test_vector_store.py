@@ -24,6 +24,7 @@ from server.app.embed.vector_store import (
 from server.app.models.schemas import ModelIdentity
 from server.app.oci.bucket import detect_changed_objects
 from server.tests.conftest import make_test_vs_config
+from server.tests.constants import TEST_OPENAI_EMBED_ID, TEST_OPENAI_EMBED_KEY
 
 # ---------------------------------------------------------------------------
 # generate_vs_metadata
@@ -33,7 +34,7 @@ from server.tests.conftest import make_test_vs_config
 @pytest.mark.unit
 def test_generate_vs_metadata_basic():
     """Generates valid table name and comment JSON."""
-    model = ModelIdentity(provider="openai", id="text-embedding-3-small")
+    model = ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID)
     table_name, comment_json = generate_vs_metadata(
         embedding_model=model,
         chunk_size=1000,
@@ -41,7 +42,7 @@ def test_generate_vs_metadata_basic():
         distance_strategy=DistanceStrategy.COSINE,
     )
     assert table_name.startswith("OPENAI_TEXT_EMBEDDING_3_SMALL_1000_100_COSINE_HNSW")
-    assert "openai/text-embedding-3-small" in comment_json
+    assert TEST_OPENAI_EMBED_KEY in comment_json
     assert '"chunk_size": 1000' in comment_json
 
 
@@ -601,7 +602,7 @@ _COMMENT_PREFIX = f'COMMENT ON TABLE "{_VS_INJECT_TABLE}" IS \'GENAI: '
 def _generate_comment(description: str | None = None, alias: str | None = None) -> str:
     """Build a comment_json the way the endpoint does."""
     _, comment_json = generate_vs_metadata(
-        embedding_model=ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
         chunk_size=1000,
         chunk_overlap=100,
         distance_strategy=DistanceStrategy.COSINE,

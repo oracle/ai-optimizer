@@ -12,6 +12,7 @@ import pytest
 from server.app.api.v1.endpoints import chat as chat_endpoint
 from server.app.core.settings import _client_store, settings
 from server.tests.conftest import make_test_model_config
+from server.tests.constants import TEST_OLLAMA_MODEL_ID
 from server.tests.runtime.shared_helpers import ollama_available
 
 
@@ -172,7 +173,7 @@ async def test_streams_ollama_integration(app_client, auth_headers):
     try:
         new_settings = original_settings.model_copy(deep=True)
         new_settings.ll_model.provider = "ollama"
-        new_settings.ll_model.id = "qwen3:8b"
+        new_settings.ll_model.id = TEST_OLLAMA_MODEL_ID
         new_settings.tools_enabled = []
         new_settings.client = "server"
 
@@ -182,7 +183,7 @@ async def test_streams_ollama_integration(app_client, auth_headers):
             *original_models,
             make_test_model_config(
                 provider="ollama",
-                id="qwen3:8b",
+                id=TEST_OLLAMA_MODEL_ID,
                 type="ll",
                 api_base="http://127.0.0.1:11434",
                 enabled=True,

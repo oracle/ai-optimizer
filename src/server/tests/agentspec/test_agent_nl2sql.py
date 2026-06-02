@@ -17,6 +17,7 @@ from server.tests.conftest import (
     MOCK_SYSTEM_PROMPT,
     SAMPLE_CLIENT_SETTINGS_OBJ,
 )
+from server.tests.constants import TEST_OLLAMA_MODEL_ID
 
 
 class TestBuildNl2sqlAgentspec:
@@ -71,7 +72,7 @@ class TestBuildNl2sqlAgentspec:
         agent = build_nl2sql_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SERVER_URL, MOCK_API_KEY, MOCK_SYSTEM_PROMPT)
         assert isinstance(agent.llm_config, LiteLlmConfig)
         assert agent.llm_config.provider == "ollama_chat"
-        assert agent.llm_config.model_id == "qwen3:8b"
+        assert agent.llm_config.model_id == TEST_OLLAMA_MODEL_ID
 
     def test_human_in_the_loop_enabled(self):
         """Verify human_in_the_loop is enabled on the agent."""

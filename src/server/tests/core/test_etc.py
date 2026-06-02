@@ -22,6 +22,7 @@ from server.app.core.settings import SettingsBase, settings
 from server.app.database.schemas import DatabaseConfig
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
+from server.tests.constants import TEST_OPENAI_MODEL_ID, TEST_OPENAI_MODEL_ID_MIXEDCASE
 
 pytestmark = pytest.mark.unit
 
@@ -530,8 +531,10 @@ def test_merge_model_same_id_different_provider_appends():
 
 def test_upsert_model_composite_key_case_insensitive():
     """Composite key matching is case-insensitive."""
-    settings.model_configs = [ModelConfig(id="GPT-5-MinI", type="ll", provider="OpenAI")]
-    incoming = [ModelConfig.model_validate({"id": "gpt-5-mini", "type": "ll", "provider": "openai", "enabled": True})]
+    settings.model_configs = [ModelConfig(id=TEST_OPENAI_MODEL_ID_MIXEDCASE, type="ll", provider="OpenAI")]
+    incoming = [
+        ModelConfig.model_validate({"id": TEST_OPENAI_MODEL_ID, "type": "ll", "provider": "openai", "enabled": True})
+    ]
 
     created, updated = upsert_list_field("model_configs", incoming)
 
@@ -539,7 +542,7 @@ def test_upsert_model_composite_key_case_insensitive():
     assert len(updated) == 1
     assert settings.model_configs[0].enabled is True
     # Original casing preserved
-    assert settings.model_configs[0].id == "GPT-5-MinI"
+    assert settings.model_configs[0].id == TEST_OPENAI_MODEL_ID_MIXEDCASE
     assert settings.model_configs[0].provider == "OpenAI"
 
 

@@ -24,6 +24,7 @@ from docker.errors import DockerException
 from httpx import ASGITransport, AsyncClient
 
 import server.app.core.environ  # noqa: F401  # side-effect: populates env defaults
+from server.tests.constants import TEST_OLLAMA_MODEL_ID, TEST_OPENAI_EMBED_ID, TEST_OPENAI_MODEL_ID
 
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 
@@ -266,7 +267,7 @@ def make_test_vs_config(**overrides):
 
     defaults = {
         "vector_store": "VS_TEST",
-        "embedding_model": ModelIdentity(provider="openai", id="text-embedding-3-small"),
+        "embedding_model": ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
         "chunk_size": 1000,
         "chunk_overlap": 100,
         "distance_strategy": DistanceStrategy.COSINE,
@@ -319,7 +320,7 @@ MOCK_API_KEY = "test-key"
 SAMPLE_CLIENT_SETTINGS = {
     "ll_model": {
         "provider": "ollama",
-        "id": "qwen3:8b",
+        "id": TEST_OLLAMA_MODEL_ID,
         "max_tokens": 512,
         "temperature": 0.1,
         "top_p": 1,
@@ -359,14 +360,14 @@ from server.app.models.schemas import ModelConfig  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _ensure_model_configs():
-    """Ensure ollama/qwen3:8b and openai/gpt-5-mini exist in model_configs for tests.
+    """Ensure required test models exist in model_configs.
 
     LiteLlmModelSpec requires the model to be present in settings.model_configs.
     """
     original = settings.model_configs[:]
     defaults = [
-        ModelConfig(provider="ollama", id="qwen3:8b", type="ll", api_base="http://localhost:11434"),
-        ModelConfig(provider="openai", id="gpt-5-mini", type="ll"),
+        ModelConfig(provider="ollama", id=TEST_OLLAMA_MODEL_ID, type="ll", api_base="http://localhost:11434"),
+        ModelConfig(provider="openai", id=TEST_OPENAI_MODEL_ID, type="ll"),
     ]
     existing = {(mc.provider, mc.id) for mc in settings.model_configs}
     for mc in defaults:

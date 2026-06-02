@@ -53,7 +53,7 @@ class ModelIdentity(BaseModel):
     """Model identity fields reused by client settings."""
 
     provider: Optional[str] = Field(default=None, examples=["openai", "anthropic", "ollama"])
-    id: Optional[str] = Field(default=None, examples=["gpt-5-mini", "sonnet", "qwen3:8b"])
+    id: Optional[str] = Field(default=None, examples=["gpt-5.4-mini", "sonnet", "qwen3:8b"])
 
     @classmethod
     def from_key(cls, model_key: str) -> "ModelIdentity":
@@ -76,7 +76,7 @@ class ModelConfig(LanguageModelParameters, EmbeddingModelParameters, ModelSensit
             "example": {
                 "type": "ll",
                 "provider": "openai",
-                "id": "gpt-5-mini",
+                "id": "gpt-5.4-mini",
                 "api_base": "https://api.openai.com/v1",
                 "api_key": "sk-...",
                 "enabled": True,

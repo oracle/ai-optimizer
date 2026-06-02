@@ -23,6 +23,7 @@ from server.app.runtime.langgraph.session import (
     _aggregate_usage_callback,
 )
 from server.tests.conftest import SAMPLE_CLIENT_SETTINGS_OBJ as SAMPLE_CLIENT_SETTINGS
+from server.tests.constants import TEST_OLLAMA_MODEL_KEY
 from server.tests.runtime.langgraph.helpers import mock_compiled_graph
 
 # ---------------------------------------------------------------------------
@@ -37,7 +38,7 @@ class TestGraphFlowSessionInit:
         """Verify model string is derived as provider/id from client_settings."""
         graph = mock_compiled_graph()
         session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
-        assert session._model == "ollama/qwen3:8b"
+        assert session._model == TEST_OLLAMA_MODEL_KEY
 
     def test_last_metadata_starts_empty(self):
         """Verify last_metadata starts as empty SessionMetadata."""
@@ -80,7 +81,7 @@ class TestGraphFlowSessionExecute:
             "inputs": {
                 "query": "What is X?",
                 "thread_id": "t-123",
-                "model": "ollama/qwen3:8b",
+                "model": TEST_OLLAMA_MODEL_KEY,
                 "chat_history": "",
             },
             "messages": [],
@@ -629,7 +630,7 @@ class TestNL2SQLGraphSession:
 
         call_args = graph.ainvoke.call_args[0][0]
         msg_content = call_args["messages"][0].content
-        assert "model: ollama/qwen3:8b" in msg_content
+        assert f"model: {TEST_OLLAMA_MODEL_KEY}" in msg_content
         assert "thread_id: t-1" in msg_content
         assert "connection_name: CORE" in msg_content
         assert "How many tables?" in msg_content
@@ -647,7 +648,7 @@ class TestNL2SQLGraphSession:
 
         call_args = graph.ainvoke.call_args[0][0]
         msg_content = call_args["messages"][0].content
-        assert "model: ollama/qwen3:8b" in msg_content
+        assert f"model: {TEST_OLLAMA_MODEL_KEY}" in msg_content
 
     @pytest.mark.anyio
     async def test_no_connection_name_when_alias_empty(self):
@@ -695,6 +696,6 @@ class TestNL2SQLGraphSession:
         passed = graph.ainvoke.call_args[0][0]["messages"]
         assert passed[0].content == "prior"
         assert passed[1].content == "prior reply"
-        assert "model: ollama/qwen3:8b" in passed[2].content
+        assert f"model: {TEST_OLLAMA_MODEL_KEY}" in passed[2].content
         assert "new" in passed[2].content
         assert "prior" not in passed[2].content

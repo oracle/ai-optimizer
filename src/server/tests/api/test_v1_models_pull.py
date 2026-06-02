@@ -14,8 +14,10 @@ from pydantic import SecretStr
 
 from server.app.core.settings import settings
 from server.app.models.schemas import ModelConfig
+from server.tests.constants import TEST_OLLAMA_MODEL_ID, TEST_OLLAMA_MODEL_KEY
 
 OLLAMA_URL = "http://localhost:11434"
+PULL_URL = f"/v1/models/pull/{TEST_OLLAMA_MODEL_KEY}"
 
 
 @pytest.fixture(autouse=True)
@@ -24,7 +26,7 @@ def _populate_configs():
     original = settings.model_configs
     settings.model_configs = [
         ModelConfig(
-            id="qwen3:8b",
+            id=TEST_OLLAMA_MODEL_ID,
             type="ll",
             provider="ollama",
             api_base=OLLAMA_URL,
@@ -81,7 +83,7 @@ async def _fake_pull_error(*_args, **_kwargs):
 async def test_pull_model_streams_progress(app_client, auth_headers):
     """POST pull returns 200 and streams NDJSON progress."""
     with patch("server.app.api.v1.endpoints.models.pull_ollama_model", side_effect=_fake_pull_success):
-        resp = await app_client.post("/v1/models/pull/ollama/qwen3:8b", headers=auth_headers)
+        resp = await app_client.post(PULL_URL, headers=auth_headers)
 
     assert resp.status_code == 200
     assert "application/x-ndjson" in resp.headers["content-type"]
@@ -103,7 +105,7 @@ async def test_pull_model_calls_check_and_persist(app_client, auth_headers):
             "server.app.api.v1.endpoints.models.persist_settings", new_callable=AsyncMock, return_value=True
         ) as mock_persist,
     ):
-        resp = await app_client.post("/v1/models/pull/ollama/qwen3:8b", headers=auth_headers)
+        resp = await app_client.post(PULL_URL, headers=auth_headers)
         # Consume the stream to trigger the post-pull logic
         _ = await _collect_ndjson(resp)
 
@@ -123,7 +125,7 @@ async def test_pull_model_persist_failure_emits_error(app_client, auth_headers):
         patch("server.app.api.v1.endpoints.models.check_single_model", new_callable=AsyncMock),
         patch("server.app.api.v1.endpoints.models.persist_settings", new_callable=AsyncMock, return_value=False),
     ):
-        resp = await app_client.post("/v1/models/pull/ollama/qwen3:8b", headers=auth_headers)
+        resp = await app_client.post(PULL_URL, headers=auth_headers)
 
     events = await _collect_ndjson(resp)
     statuses = [e.get("status") for e in events]
@@ -140,7 +142,7 @@ async def test_pull_model_persist_failure_emits_error(app_client, auth_headers):
 async def test_pull_model_error_no_success_event(app_client, auth_headers):
     """When Ollama returns an error, no 'success' event is emitted."""
     with patch("server.app.api.v1.endpoints.models.pull_ollama_model", side_effect=_fake_pull_error):
-        resp = await app_client.post("/v1/models/pull/ollama/qwen3:8b", headers=auth_headers)
+        resp = await app_client.post(PULL_URL, headers=auth_headers)
 
     events = await _collect_ndjson(resp)
     statuses = [e.get("status") for e in events]
@@ -184,5 +186,5 @@ async def test_pull_no_api_base_returns_400(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_pull_model_no_auth(app_client):
     """Pull without auth returns 403."""
-    resp = await app_client.post("/v1/models/pull/ollama/qwen3:8b")
+    resp = await app_client.post(PULL_URL)
     assert resp.status_code == 403

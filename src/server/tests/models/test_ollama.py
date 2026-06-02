@@ -14,19 +14,20 @@ import pytest
 from server.app.core.settings import settings
 from server.app.models.ollama import _is_embedding_model, load_ollama_models
 from server.app.models.schemas import ModelConfig
+from server.tests.constants import TEST_OLLAMA_MODEL_ID, TEST_OPENAI_MODEL_ID
 
 OLLAMA_URL = "http://localhost:11434"
 
 TAGS_RESPONSE = {
     "models": [
-        {"name": "qwen3:8b", "details": {"families": ["llama"]}},
+        {"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}},
         {"name": "llama3.2:1b", "details": {"families": ["llama"]}},
         {"name": "mxbai-embed-large:latest", "details": {"families": ["bert"]}},
     ]
 }
 
 SHOW_RESPONSES = {
-    "qwen3:8b": {"model_info": {"general.architecture": "llama", "llama.context_length": 131072}},
+    TEST_OLLAMA_MODEL_ID: {"model_info": {"general.architecture": "llama", "llama.context_length": 131072}},
     "llama3.2:1b": {"model_info": {"general.architecture": "llama", "llama.context_length": 131072}},
     "mxbai-embed-large:latest": {"model_info": {"general.architecture": "bert", "bert.context_length": 512}},
 }
@@ -92,7 +93,7 @@ class TestLoadOllamaModels:
 
         chat_models = [m for m in settings.model_configs if m.type == "ll"]
         assert len(chat_models) == 2
-        assert {m.id for m in chat_models} == {"qwen3:8b", "llama3.2:1b"}
+        assert {m.id for m in chat_models} == {TEST_OLLAMA_MODEL_ID, "llama3.2:1b"}
 
     @pytest.mark.anyio
     async def test_discovers_embed_models(self, monkeypatch):
@@ -113,12 +114,14 @@ class TestLoadOllamaModels:
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_mock_client({"models": [{"name": "qwen3:8b", "details": {"families": ["llama"]}}]})
+                return_value=_mock_client(
+                    {"models": [{"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}}]}
+                )
             )
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await load_ollama_models()
 
-        assert settings.model_configs[0].id == "qwen3:8b"
+        assert settings.model_configs[0].id == TEST_OLLAMA_MODEL_ID
 
     @pytest.mark.anyio
     async def test_keeps_explicit_tag(self, monkeypatch):
@@ -142,20 +145,22 @@ class TestLoadOllamaModels:
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_mock_client({"models": [{"name": "qwen3:8b", "details": {"families": ["llama"]}}]})
+                return_value=_mock_client(
+                    {"models": [{"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}}]}
+                )
             )
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await load_ollama_models()
 
         assert len(settings.model_configs) == 1
-        assert settings.model_configs[0].id == "qwen3:8b"
+        assert settings.model_configs[0].id == TEST_OLLAMA_MODEL_ID
 
     @pytest.mark.anyio
     async def test_preserves_persisted_settings(self, monkeypatch):
         """Persisted model settings (enabled, max_tokens, etc.) are preserved on rediscovery."""
         settings.model_configs = [
             ModelConfig(
-                id="qwen3:8b",
+                id=TEST_OLLAMA_MODEL_ID,
                 type="ll",
                 provider="ollama",
                 api_base="http://old:11434",
@@ -166,14 +171,16 @@ class TestLoadOllamaModels:
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_mock_client({"models": [{"name": "qwen3:8b", "details": {"families": ["llama"]}}]})
+                return_value=_mock_client(
+                    {"models": [{"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}}]}
+                )
             )
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await load_ollama_models()
 
         assert len(settings.model_configs) == 1
         model = settings.model_configs[0]
-        assert model.id == "qwen3:8b"
+        assert model.id == TEST_OLLAMA_MODEL_ID
         assert model.enabled is False  # preserved, not overwritten to True
         assert model.max_tokens == 2048  # preserved
         assert model.api_base == OLLAMA_URL  # updated to current URL
@@ -181,12 +188,14 @@ class TestLoadOllamaModels:
     @pytest.mark.anyio
     async def test_non_ollama_models_preserved(self, monkeypatch):
         """Models from other providers are not affected."""
-        openai_model = ModelConfig(id="gpt-5-mini", type="ll", provider="openai", enabled=True)
+        openai_model = ModelConfig(id=TEST_OPENAI_MODEL_ID, type="ll", provider="openai", enabled=True)
         settings.model_configs = [openai_model]
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_mock_client({"models": [{"name": "qwen3:8b", "details": {"families": ["llama"]}}]})
+                return_value=_mock_client(
+                    {"models": [{"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}}]}
+                )
             )
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await load_ollama_models()
@@ -212,7 +221,9 @@ class TestLoadOllamaModels:
     async def test_server_unreachable_updates_api_base(self, monkeypatch):
         """Unreachable server still updates api_base on existing models."""
         settings.model_configs = [
-            ModelConfig(id="qwen3:8b", type="ll", provider="ollama", api_base="http://old:11434", enabled=True),
+            ModelConfig(
+                id=TEST_OLLAMA_MODEL_ID, type="ll", provider="ollama", api_base="http://old:11434", enabled=True
+            ),
         ]
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
@@ -246,7 +257,9 @@ class TestLoadOllamaModels:
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", "http://legacy-host:11434")
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_mock_client({"models": [{"name": "qwen3:8b", "details": {"families": ["llama"]}}]})
+                return_value=_mock_client(
+                    {"models": [{"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}}]}
+                )
             )
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await load_ollama_models()
@@ -340,8 +353,8 @@ class TestContextLength:
     async def test_chat_model_gets_max_input_tokens(self, monkeypatch):
         """Chat model max_input_tokens is set from context_length."""
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
-        tags = {"models": [{"name": "qwen3:8b", "details": {"families": ["llama"]}}]}
-        show = {"qwen3:8b": {"model_info": {"general.architecture": "llama", "llama.context_length": 131072}}}
+        tags = {"models": [{"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}}]}
+        show = {TEST_OLLAMA_MODEL_ID: {"model_info": {"general.architecture": "llama", "llama.context_length": 131072}}}
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=_mock_client(tags, show))
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -368,7 +381,7 @@ class TestContextLength:
     async def test_show_failure_uses_defaults(self, monkeypatch):
         """Failed /api/show falls back to Pydantic defaults."""
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
-        tags = {"models": [{"name": "qwen3:8b", "details": {"families": ["llama"]}}]}
+        tags = {"models": [{"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}}]}
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(
                 return_value=_mock_client(tags, post_error=httpx.ConnectError("refused"))
@@ -385,11 +398,16 @@ class TestContextLength:
         """Persisted models do not trigger /api/show calls."""
         settings.model_configs = [
             ModelConfig(
-                id="qwen3:8b", type="ll", provider="ollama", api_base=OLLAMA_URL, enabled=True, max_input_tokens=8192
+                id=TEST_OLLAMA_MODEL_ID,
+                type="ll",
+                provider="ollama",
+                api_base=OLLAMA_URL,
+                enabled=True,
+                max_input_tokens=8192,
             ),
         ]
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
-        tags = {"models": [{"name": "qwen3:8b", "details": {"families": ["llama"]}}]}
+        tags = {"models": [{"name": TEST_OLLAMA_MODEL_ID, "details": {"families": ["llama"]}}]}
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             client = _mock_client(tags)
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=client)

@@ -13,6 +13,8 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, Optional
 from unittest.mock import MagicMock
 
+from server.tests.constants import TEST_OLLAMA_MODEL_ID
+
 if TYPE_CHECKING:
     from litellm.types.utils import ModelResponse
 
@@ -117,7 +119,7 @@ def drain_queue(queue: asyncio.Queue) -> list:
 
 def mock_client_settings(
     provider="ollama",
-    model_id="qwen3:8b",
+    model_id=TEST_OLLAMA_MODEL_ID,
     tools_enabled=None,
     chat_history=True,
     auth_profile="DEFAULT",

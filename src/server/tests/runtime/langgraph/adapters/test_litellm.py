@@ -23,6 +23,7 @@ from server.app.runtime.langgraph.adapters.litellm import (
     chat_model_from_spec,
     usage_metadata_to_token_usage,
 )
+from server.tests.constants import TEST_OLLAMA_MODEL_KEY, TEST_OPENAI_MODEL_KEY
 
 
 def _stream_chunks(*contents: str) -> Iterator[dict]:
@@ -85,7 +86,7 @@ class TestChatModelFromSpec:
     @staticmethod
     def _spec(**overrides: Any) -> Any:
         spec = MagicMock(name="LiteLlmModelSpec")
-        spec.model_key = "openai/gpt-5-mini"
+        spec.model_key = TEST_OPENAI_MODEL_KEY
         spec.api_key = "sk-test"
         spec.api_base = "https://api.example.com"
         spec.temperature = 0.7
@@ -100,7 +101,7 @@ class TestChatModelFromSpec:
 
     def test_basic_construction(self):
         llm = chat_model_from_spec(self._spec())
-        assert llm.model == "openai/gpt-5-mini"
+        assert llm.model == TEST_OPENAI_MODEL_KEY
         assert llm.api_key == "sk-test"
         assert llm.api_base == "https://api.example.com"
         assert llm.temperature == 0.7
@@ -232,7 +233,7 @@ class TestOracleChatLiteLLMNonOllama:
     """For non-Ollama models, OracleChatLiteLLM defers entirely to upstream."""
 
     def test_bind_tools_skips_sanitization(self):
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         tool = {"type": "function", "function": {"name": "my-tool", "parameters": {}}}
         bound = llm.bind_tools([tool])
         assert isinstance(bound, RunnableBinding)
@@ -248,7 +249,7 @@ class TestOracleChatLiteLLMNonOllama:
         as-is — so the caller's intent ("disable tool use") would be sent as
         ``tool_choice: false`` and rejected by the provider.
         """
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         tool = {"type": "function", "function": {"name": "my-tool", "parameters": {}}}
         bound = llm.bind_tools([tool], tool_choice=False)
         assert isinstance(bound, RunnableBinding)
@@ -259,7 +260,7 @@ class TestOracleChatLiteLLMFalseToolChoiceOllama:
     """The Ollama branch must apply the same false-to-none normalization."""
 
     def test_bind_tools_maps_false_tool_choice_to_none(self):
-        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        llm = OracleChatLiteLLM(model=TEST_OLLAMA_MODEL_KEY)
         tool = {"type": "function", "function": {"name": "sqlcl_list-connections", "parameters": {}}}
         bound = llm.bind_tools([tool], tool_choice=False)
         assert isinstance(bound, RunnableBinding)
@@ -270,7 +271,7 @@ class TestOracleChatLiteLLMOllama:
     """Ollama models get tool-name sanitization and tool-result contextualization."""
 
     def test_bind_tools_sanitizes_hyphens(self):
-        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        llm = OracleChatLiteLLM(model=TEST_OLLAMA_MODEL_KEY)
         tool = {"type": "function", "function": {"name": "sqlcl_list-connections", "parameters": {}}}
         bound = llm.bind_tools([tool])
         assert isinstance(bound, RunnableBinding)
@@ -278,7 +279,7 @@ class TestOracleChatLiteLLMOllama:
         assert bound_tools[0]["function"]["name"] == "sqlcl_list_connections"
 
     def test_bind_tools_threads_name_map_for_unsanitization(self):
-        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        llm = OracleChatLiteLLM(model=TEST_OLLAMA_MODEL_KEY)
         tool = {"type": "function", "function": {"name": "sqlcl_list-connections", "parameters": {}}}
         bound = llm.bind_tools([tool])
         assert isinstance(bound, RunnableBinding)
@@ -286,7 +287,7 @@ class TestOracleChatLiteLLMOllama:
         assert name_map == {"sqlcl_list_connections": "sqlcl_list-connections"}
 
     def test_tool_message_content_flattened_and_contextualized(self):
-        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        llm = OracleChatLiteLLM(model=TEST_OLLAMA_MODEL_KEY)
         tool_msg = ToolMessage(content=[{"type": "text", "text": "42"}], tool_call_id="c1", name="get_count")
         normalized = llm._normalize_tool_message(tool_msg)
         assert isinstance(normalized, ToolMessage)
@@ -295,7 +296,7 @@ class TestOracleChatLiteLLMOllama:
         assert "42" in normalized.content
 
     def test_tool_message_content_flattened_only_for_non_ollama(self):
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         tool_msg = ToolMessage(content=[{"type": "text", "text": "42"}], tool_call_id="c1", name="get_count")
         normalized = llm._normalize_tool_message(tool_msg)
         assert normalized.content == "42"
@@ -317,7 +318,7 @@ class TestClientParamsOverrides:
         original_api_key = litellm.api_key
         try:
             mock_completion.return_value = _non_streaming_response("ok")
-            llm = OracleChatLiteLLM(model="openai/gpt-5-mini", api_key="sk-client-A")
+            llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY, api_key="sk-client-A")
             llm._generate([HumanMessage(content="hi")])
             kwargs = mock_completion.call_args.kwargs
             assert kwargs.get("api_key") == "sk-client-A"
@@ -332,7 +333,7 @@ class TestClientParamsOverrides:
     def test_api_base_passed_as_base_url(self, mock_completion):
         """Ollama tool-call parsing fails when ``api_base`` is a call kwarg; use ``base_url``."""
         mock_completion.return_value = _non_streaming_response("ok")
-        llm = OracleChatLiteLLM(model="ollama/qwen3:8b", api_base="http://localhost:11434")
+        llm = OracleChatLiteLLM(model=TEST_OLLAMA_MODEL_KEY, api_base="http://localhost:11434")
         llm._generate([HumanMessage(content="hi")])
         kwargs = mock_completion.call_args.kwargs
         assert kwargs.get("base_url") == "http://localhost:11434"
@@ -342,7 +343,7 @@ class TestClientParamsOverrides:
     def test_top_p_forwarded(self, mock_completion):
         """Upstream's ``_default_params`` omits ``top_p`` even though it's a documented field."""
         mock_completion.return_value = _non_streaming_response("ok")
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini", top_p=0.95)
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY, top_p=0.95)
         llm._generate([HumanMessage(content="hi")])
         kwargs = mock_completion.call_args.kwargs
         assert kwargs.get("top_p") == 0.95
@@ -357,7 +358,7 @@ class TestClientParamsOverrides:
         ``_create_chat_result`` cannot parse.
         """
         mock_completion.return_value = _non_streaming_response("ok")
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini", streaming=True)
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY, streaming=True)
         llm._generate([HumanMessage(content="hi")], stream=False)
         kwargs = mock_completion.call_args.kwargs
         assert kwargs.get("stream") is False, "explicit stream=False must override self.streaming"
@@ -389,7 +390,7 @@ class TestStreamingFallback:
             return _non_streaming_response("non-streamed answer", prompt=4, completion=2)
 
         mock_completion.side_effect = fake_completion
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         emitted = list(llm._stream([HumanMessage(content="hi")]))
 
         ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
@@ -408,7 +409,7 @@ class TestStreamingFallback:
             return _non_streaming_response("non-streamed answer", prompt=4, completion=2)
 
         mock_completion.side_effect = fake_completion
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         emitted = list(llm._stream([HumanMessage(content="hi")]))
 
         ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
@@ -421,7 +422,7 @@ class TestStreamingFallback:
             raise RuntimeError("connection dropped mid-stream")
 
         mock_completion.return_value = stream_then_fail()
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         with pytest.raises(RuntimeError, match="connection dropped"):
             list(llm._stream([HumanMessage(content="hi")]))
 
@@ -447,7 +448,7 @@ class TestStreamingFallback:
             return _non_streaming_response("ok", prompt=2, completion=1)
 
         mock_completion.side_effect = fake_completion
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini", streaming=True)
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY, streaming=True)
         list(llm._stream([HumanMessage(content="hi")]))
         assert call_count == 2
 
@@ -460,7 +461,7 @@ class TestStreamingFallback:
             return _non_streaming_response("non-streamed answer", prompt=4, completion=2)
 
         mock_acompletion.side_effect = fake_acompletion
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
 
         ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
@@ -479,7 +480,7 @@ class TestStreamingFallback:
             return _non_streaming_response("non-streamed answer", prompt=4, completion=2)
 
         mock_acompletion.side_effect = fake_acompletion
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         emitted = [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
 
         ai_messages = [c.message for c in emitted if isinstance(c.message, AIMessageChunk)]
@@ -494,7 +495,7 @@ class TestStreamingFallback:
             raise RuntimeError("connection dropped mid-stream")
 
         mock_acompletion.return_value = stream_then_fail()
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini")
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
         with pytest.raises(RuntimeError, match="connection dropped"):
             [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
 
@@ -514,7 +515,7 @@ class TestStreamingFallback:
             return _non_streaming_response("ok", prompt=2, completion=1)
 
         mock_acompletion.side_effect = fake_acompletion
-        llm = OracleChatLiteLLM(model="openai/gpt-5-mini", streaming=True)
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY, streaming=True)
         [chunk async for chunk in llm._astream([HumanMessage(content="hi")])]
         assert call_count == 2
 
@@ -588,7 +589,7 @@ class TestOllamaToolCallUnsanitization:
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         }
 
-        llm = OracleChatLiteLLM(model="ollama/qwen3:8b")
+        llm = OracleChatLiteLLM(model=TEST_OLLAMA_MODEL_KEY)
         bound = llm.bind_tools(
             [{"type": "function", "function": {"name": "sqlcl_list-connections", "parameters": {}}}],
         )

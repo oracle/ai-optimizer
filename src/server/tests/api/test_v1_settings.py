@@ -19,6 +19,7 @@ from server.app.core.settings import (
     settings,
 )
 from server.tests.conftest import make_test_database_config, make_test_model_config, make_test_oci_profile
+from server.tests.constants import TEST_OPENAI_MODEL_ID
 
 SETTINGS_MODULE = "server.app.api.v1.endpoints.settings"
 
@@ -601,8 +602,8 @@ class TestReconcileLlModelTokens:
         """No changes when provider/id are unchanged."""
         from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens
 
-        current = self._make_ll_model(provider="openai", id="gpt-5-mini")
-        incoming = self._make_ll_model(provider="openai", id="gpt-5-mini")
+        current = self._make_ll_model(provider="openai", id=TEST_OPENAI_MODEL_ID)
+        incoming = self._make_ll_model(provider="openai", id=TEST_OPENAI_MODEL_ID)
         original_max = incoming.max_tokens
         _reconcile_ll_model_tokens(current, incoming)
         assert incoming.max_tokens == original_max
@@ -612,7 +613,7 @@ class TestReconcileLlModelTokens:
         """Unknown new model leaves incoming unchanged."""
         from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens
 
-        current = self._make_ll_model(provider="openai", id="gpt-5-mini")
+        current = self._make_ll_model(provider="openai", id=TEST_OPENAI_MODEL_ID)
         incoming = self._make_ll_model(provider="openai", id="unknown-model")
         original_max = incoming.max_tokens
         with patch(f"{SETTINGS_MODULE}.find_model", return_value=None):
@@ -626,7 +627,7 @@ class TestReconcileLlModelTokens:
 
         new_cfg = self._make_model_config(max_input_tokens=200000, max_tokens=8192)
         old_cfg = self._make_model_config(max_input_tokens=128000, max_tokens=4096)
-        current = self._make_ll_model(provider="openai", id="gpt-5-mini", max_tokens=4096)
+        current = self._make_ll_model(provider="openai", id=TEST_OPENAI_MODEL_ID, max_tokens=4096)
         incoming = self._make_ll_model(provider="anthropic", id="claude-3")
         with patch(f"{SETTINGS_MODULE}.find_model", side_effect=[new_cfg, old_cfg]):
             _reconcile_ll_model_tokens(current, incoming)
@@ -640,7 +641,7 @@ class TestReconcileLlModelTokens:
         old_cfg = self._make_model_config(max_input_tokens=128000, max_tokens=4096)
         new_cfg = self._make_model_config(max_input_tokens=200000, max_tokens=8192)
         # current.max_tokens matches old default → user did NOT customize
-        current = self._make_ll_model(provider="openai", id="gpt-5-mini", max_tokens=4096)
+        current = self._make_ll_model(provider="openai", id=TEST_OPENAI_MODEL_ID, max_tokens=4096)
         incoming = self._make_ll_model(provider="anthropic", id="claude-3")
         with patch(f"{SETTINGS_MODULE}.find_model", side_effect=[new_cfg, old_cfg]):
             _reconcile_ll_model_tokens(current, incoming)
@@ -654,7 +655,7 @@ class TestReconcileLlModelTokens:
         old_cfg = self._make_model_config(max_input_tokens=128000, max_tokens=4096)
         new_cfg = self._make_model_config(max_input_tokens=1000, max_tokens=500)
         # current.max_tokens differs from old default → user DID customize
-        current = self._make_ll_model(provider="openai", id="gpt-5-mini", max_tokens=5000)
+        current = self._make_ll_model(provider="openai", id=TEST_OPENAI_MODEL_ID, max_tokens=5000)
         incoming = self._make_ll_model(provider="anthropic", id="claude-3")
         with patch(f"{SETTINGS_MODULE}.find_model", side_effect=[new_cfg, old_cfg]):
             _reconcile_ll_model_tokens(current, incoming)

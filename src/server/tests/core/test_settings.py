@@ -21,6 +21,7 @@ from server.app.core.settings import (
     settings,
 )
 from server.app.models.schemas import ModelConfig
+from server.tests.constants import TEST_OPENAI_MODEL_ID
 
 pytestmark = [pytest.mark.unit]
 
@@ -106,20 +107,20 @@ class TestApplyDefaultLlModel:
         """No change when ll_model.id is already set."""
         cs = ClientSettings()
         cs.ll_model.provider = None
-        cs.ll_model.id = "gpt-5-mini"
+        cs.ll_model.id = TEST_OPENAI_MODEL_ID
         settings.model_configs = [_make_model("anthropic", "claude")]
 
         _apply_default_ll_model(cs)
 
-        assert cs.ll_model.id == "gpt-5-mini"
+        assert cs.ll_model.id == TEST_OPENAI_MODEL_ID
 
     def test_picks_first_enabled_usable_ll_model(self):
         """Selects the first model matching type=ll, enabled, usable."""
         settings.model_configs = [
             _make_model("openai", "embed-v3", model_type="embed"),
-            _make_model("openai", "gpt-5-mini", enabled=False),
+            _make_model("openai", TEST_OPENAI_MODEL_ID, enabled=False),
             _make_model("anthropic", "claude", enabled=True, usable=True),
-            _make_model("openai", "gpt-5-mini", enabled=True, usable=True),
+            _make_model("openai", TEST_OPENAI_MODEL_ID, enabled=True, usable=True),
         ]
         cs = ClientSettings()
 
@@ -130,7 +131,7 @@ class TestApplyDefaultLlModel:
 
     def test_copies_max_input_tokens_when_present(self):
         """max_input_tokens is copied from the selected model."""
-        settings.model_configs = [_make_model("openai", "gpt-5-mini", max_input_tokens=128000)]
+        settings.model_configs = [_make_model("openai", TEST_OPENAI_MODEL_ID, max_input_tokens=128000)]
         cs = ClientSettings()
 
         _apply_default_ll_model(cs)
@@ -139,7 +140,7 @@ class TestApplyDefaultLlModel:
 
     def test_copies_max_tokens_when_present(self):
         """max_tokens is copied from the selected model."""
-        settings.model_configs = [_make_model("openai", "gpt-5-mini", max_tokens=8192)]
+        settings.model_configs = [_make_model("openai", TEST_OPENAI_MODEL_ID, max_tokens=8192)]
         cs = ClientSettings()
 
         _apply_default_ll_model(cs)
@@ -150,7 +151,7 @@ class TestApplyDefaultLlModel:
         """When no enabled+usable ll model exists, ll_model stays None/None."""
         settings.model_configs = [
             _make_model("openai", "embed-v3", model_type="embed"),
-            _make_model("openai", "gpt-5-mini", enabled=False),
+            _make_model("openai", TEST_OPENAI_MODEL_ID, enabled=False),
         ]
         cs = ClientSettings()
 
@@ -275,12 +276,12 @@ class TestResolveClient:
     def test_applies_default_ll_model_on_creation(self):
         """New client gets the default ll_model applied."""
         _client_store.clear()
-        settings.model_configs = [_make_model("openai", "gpt-5-mini")]
+        settings.model_configs = [_make_model("openai", TEST_OPENAI_MODEL_ID)]
 
         cs = resolve_client("WITH_MODEL")
 
         assert cs.ll_model.provider == "openai"
-        assert cs.ll_model.id == "gpt-5-mini"
+        assert cs.ll_model.id == TEST_OPENAI_MODEL_ID
 
     def test_stored_in_client_store(self):
         """New client is stored in _client_store."""

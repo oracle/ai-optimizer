@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from server.app.models.ollama import pull_ollama_model
+from server.tests.constants import TEST_OLLAMA_MODEL_ID
 
 OLLAMA_URL = "http://localhost:11434"
 
@@ -61,7 +62,7 @@ class TestPullOllamaModel:
         resp = _make_stream_response(ndjson_lines)
         patcher, _ = _patch_client(resp)
         try:
-            events = [event async for event in pull_ollama_model(OLLAMA_URL, "qwen3:8b")]
+            events = [event async for event in pull_ollama_model(OLLAMA_URL, TEST_OLLAMA_MODEL_ID)]
         finally:
             patcher.stop()
 
@@ -77,7 +78,7 @@ class TestPullOllamaModel:
         resp = _make_stream_response(ndjson_lines)
         patcher, _ = _patch_client(resp)
         try:
-            events = [event async for event in pull_ollama_model(OLLAMA_URL, "qwen3:8b")]
+            events = [event async for event in pull_ollama_model(OLLAMA_URL, TEST_OLLAMA_MODEL_ID)]
         finally:
             patcher.stop()
 
@@ -90,7 +91,7 @@ class TestPullOllamaModel:
         resp = _make_stream_response(ndjson_lines)
         patcher, _ = _patch_client(resp)
         try:
-            events = [event async for event in pull_ollama_model(OLLAMA_URL, "qwen3:8b")]
+            events = [event async for event in pull_ollama_model(OLLAMA_URL, TEST_OLLAMA_MODEL_ID)]
         finally:
             patcher.stop()
 
@@ -105,7 +106,7 @@ class TestPullOllamaModel:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             client.stream.side_effect = httpx.ConnectError("refused")
 
-            events = [event async for event in pull_ollama_model(OLLAMA_URL, "qwen3:8b")]
+            events = [event async for event in pull_ollama_model(OLLAMA_URL, TEST_OLLAMA_MODEL_ID)]
 
         assert len(events) == 1
         assert "error" in events[0]
@@ -117,14 +118,14 @@ class TestPullOllamaModel:
         resp = _make_stream_response(['{"status": "success"}'])
         patcher, client = _patch_client(resp)
         try:
-            _ = [event async for event in pull_ollama_model(OLLAMA_URL, "qwen3:8b")]
+            _ = [event async for event in pull_ollama_model(OLLAMA_URL, TEST_OLLAMA_MODEL_ID)]
         finally:
             patcher.stop()
 
         client.stream.assert_called_once_with(
             "POST",
             f"{OLLAMA_URL}/api/pull",
-            json={"name": "qwen3:8b"},
+            json={"name": TEST_OLLAMA_MODEL_ID},
         )
 
     @pytest.mark.anyio
@@ -133,7 +134,7 @@ class TestPullOllamaModel:
         resp = _make_stream_response(['{"status": "success"}'])
         patcher, client = _patch_client(resp)
         try:
-            _ = [event async for event in pull_ollama_model(f"{OLLAMA_URL}/", "qwen3:8b")]
+            _ = [event async for event in pull_ollama_model(f"{OLLAMA_URL}/", TEST_OLLAMA_MODEL_ID)]
         finally:
             patcher.stop()
 
