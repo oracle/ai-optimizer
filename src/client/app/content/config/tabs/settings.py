@@ -4,7 +4,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker: ignore pname ollama vllm obaas mvnw
 
-import copy
 import io
 import json
 import logging
@@ -267,18 +266,6 @@ def _render_download_settings_section() -> None:
 #############################################################################
 # Source Code Downloads
 #############################################################################
-def _save_settings(settings):
-    """Return settings JSON after stamping the client field."""
-    data = copy.deepcopy(settings)
-    now = datetime.now()
-    saved_time = now.strftime("%d-%b-%YT%H%M").upper()
-
-    if "client_settings" in data and "client" in data["client_settings"]:
-        data["client_settings"]["client"] = saved_time
-
-    return json.dumps(data, indent=2)
-
-
 def _spring_ai_obaas(src_dir, file_name, provider, ll_config, embed_config):
     """Get the system prompt for SpringAI export"""
     client_settings = state["settings"]["client_settings"]
@@ -400,21 +387,6 @@ def _spring_ai_zip(provider, ll_config, embed_config):
     return zip_buffer
 
 
-def _langchain_mcp_zip(settings):
-    """Create LangChain MCP Zip File"""
-
-    src_dir = Path(__file__).resolve().parents[4] / "source/langchain/rag"
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        dst_dir = Path(temp_dir) / "langchain_mcp"
-        LOGGER.info("Starting langchain mcp zip processing: %s", dst_dir)
-
-        shutil.copytree(src_dir, dst_dir)
-        (dst_dir / "optimizer_settings.json").write_text(_save_settings(settings), encoding="utf-8")
-
-        return _zip_directory(dst_dir)
-
-
 def _spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
     """Check if configuration is valid for SpringAI package"""
     if not ll_model or not embed_model:
@@ -463,17 +435,14 @@ def _render_source_code_templates_section() -> None:
     ll_config, embed_config, spring_ai_conf = _get_model_configs()
     LOGGER.debug("config found: %s", spring_ai_conf)
 
-    # LangChain MCP routes models through langchain-litellm, so it works with any
-    # provider combination once both a language and an embedding model are set.
-    langchain_ok = bool(ll_config and embed_config)
     # Spring AI still only supports homogeneous Ollama or OpenAI configurations.
     spring_ai_ok = spring_ai_conf in ("ollama", "openai")
 
-    if not langchain_ok:
+    if not spring_ai_ok:
         st.markdown(
             f"""
-            Select an enabled Language and Embedding model to generate the
-            Source Code Templates.
+            Select enabled OpenAI or Ollama Language and Embedding models from
+            the same provider to generate the Source Code Templates.
             - Language Model:  **{ll_config.get("id", "Unset")}**
             - Embedding Model: **{embed_config.get("id", "Unset")}**
         """
@@ -494,22 +463,14 @@ def _render_source_code_templates_section() -> None:
         state.settings = fresh
         ll_config, embed_config, _ = _get_model_configs()
 
-        col_left, col_centre, _ = st.columns([3, 4, 3])
+        col_left, _, _ = st.columns([3, 4, 3])
         with col_left:
             st.download_button(
-                label="Download LangchainMCP",
-                data=_langchain_mcp_zip(fresh),
-                file_name="langchain_mcp.zip",
+                label="Download SpringAI",
+                data=_spring_ai_zip(spring_ai_conf, ll_config, embed_config),
+                file_name="spring_ai.zip",
                 mime="application/zip",
             )
-        with col_centre:
-            if spring_ai_ok:
-                st.download_button(
-                    label="Download SpringAI",
-                    data=_spring_ai_zip(spring_ai_conf, ll_config, embed_config),
-                    file_name="spring_ai.zip",
-                    mime="application/zip",
-                )
     finally:
         state.settings = masked_settings
 
