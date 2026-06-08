@@ -33,7 +33,7 @@ If differences are found, you can review the differences before clicking "Apply 
 
 You can download basic templates from the console to help expose the RAG chatbot defined in the chat console as an OpenAI API–compatible REST endpoint.
 
-If your configuration includes either Ollama or OpenAI as providers for both chat and embedding models, the *Download LangChain MCP* and *Download Spring AI* buttons will be displayed.
+If your configuration includes either Ollama or OpenAI as providers for both chat and embedding models, the *Download Spring AI* button will be displayed.
 
 ![SpringAI](../images/settings_spring_ai.png)
 
@@ -43,5 +43,4 @@ Mixed configurations, like Ollama for embeddings and OpenAI for chat completion 
 
 For more information, about the {{% short_app_ref %}} and  downloadable templates:
 
-* **LangchainMCP**: please view the [Advanced - Export as Langchain server]({{% relref "/advanced/source_code/langchain_mcp" %}}) documentation.
 * **SpringAI**: please view the [Advanced - SpringAI]({{% relref "/advanced/source_code/springai" %}}) documentation.

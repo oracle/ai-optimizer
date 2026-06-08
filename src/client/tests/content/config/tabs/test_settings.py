@@ -867,61 +867,6 @@ class TestRenderDownloadSettingsSection:
 
 
 # ---------------------------------------------------------------------------
-# _save_settings
-# ---------------------------------------------------------------------------
-
-
-class TestSaveSettings:
-    """Tests for the _save_settings function."""
-
-    def test_stamps_client_settings_client(self):
-        """The client_settings.client field is stamped with formatted timestamp."""
-        from client.app.content.config.tabs.settings import _save_settings
-
-        settings = {"client_settings": {"client": "OLD"}, "log_level": "INFO"}
-
-        with patch(f"{MODULE}.datetime") as mock_dt:
-            mock_dt.now.return_value.strftime.return_value = "27-FEB-2026T1430"
-            result_json = _save_settings(settings)
-
-        result = json.loads(result_json)
-        assert result["client_settings"]["client"] == "27-FEB-2026T1430"
-
-    def test_returns_valid_json(self):
-        """The return value is valid JSON."""
-        from client.app.content.config.tabs.settings import _save_settings
-
-        settings = {"client_settings": {"client": "X"}}
-        with patch(f"{MODULE}.datetime") as mock_dt:
-            mock_dt.now.return_value.strftime.return_value = "01-JAN-2026T0000"
-            result = _save_settings(settings)
-
-        json.loads(result)  # Should not raise
-
-    def test_deep_copies_input(self):
-        """Original settings dict is not modified."""
-        from client.app.content.config.tabs.settings import _save_settings
-
-        settings = {"client_settings": {"client": "ORIGINAL"}}
-        with patch(f"{MODULE}.datetime") as mock_dt:
-            mock_dt.now.return_value.strftime.return_value = "01-JAN-2026T0000"
-            _save_settings(settings)
-
-        assert settings["client_settings"]["client"] == "ORIGINAL"
-
-    def test_missing_client_settings_no_error(self):
-        """Settings without client_settings key do not cause an error."""
-        from client.app.content.config.tabs.settings import _save_settings
-
-        settings = {"log_level": "DEBUG"}
-        with patch(f"{MODULE}.datetime") as mock_dt:
-            mock_dt.now.return_value.strftime.return_value = "01-JAN-2026T0000"
-            result = _save_settings(settings)
-
-        assert json.loads(result) == {"log_level": "DEBUG"}
-
-
-# ---------------------------------------------------------------------------
 # _spring_ai_obaas
 # ---------------------------------------------------------------------------
 
@@ -1254,72 +1199,6 @@ class TestSpringAiZip:
 
 
 # ---------------------------------------------------------------------------
-# _langchain_mcp_zip
-# ---------------------------------------------------------------------------
-
-
-class TestLangchainMcpZip:
-    """Tests for the _langchain_mcp_zip function."""
-
-    def test_copies_mcp_rag_directory(self, mock_st):
-        """Copies the mcp/rag directory."""
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.Path"),
-            patch(f"{MODULE}.tempfile.TemporaryDirectory") as mock_tmpdir,
-            patch(f"{MODULE}.shutil") as mock_shutil,
-            patch(f"{MODULE}._save_settings", return_value="{}"),
-            patch(f"{MODULE}._zip_directory", return_value=io.BytesIO()),
-        ):
-            mock_tmpdir.return_value.__enter__ = MagicMock(return_value="/tmp/test")
-            mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
-            from client.app.content.config.tabs.settings import _langchain_mcp_zip
-
-            _langchain_mcp_zip({"settings": {}})
-
-        mock_shutil.copytree.assert_called_once()
-
-    def test_writes_optimizer_settings_json(self, mock_st):
-        """Writes optimizer_settings.json via _save_settings."""
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.Path"),
-            patch(f"{MODULE}.tempfile.TemporaryDirectory") as mock_tmpdir,
-            patch(f"{MODULE}.shutil"),
-            patch(f"{MODULE}._save_settings", return_value='{"saved": true}') as mock_save,
-            patch(f"{MODULE}._zip_directory", return_value=io.BytesIO()),
-        ):
-            mock_tmpdir.return_value.__enter__ = MagicMock(return_value="/tmp/test")
-            mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
-            from client.app.content.config.tabs.settings import _langchain_mcp_zip
-
-            settings = {"log_level": "INFO"}
-            _langchain_mcp_zip(settings)
-
-        mock_save.assert_called_once_with(settings)
-
-    def test_returns_zip_buffer(self, mock_st):
-        """Returns the zip buffer from _zip_directory."""
-        expected_buf = io.BytesIO(b"zipdata")
-
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.Path"),
-            patch(f"{MODULE}.tempfile.TemporaryDirectory") as mock_tmpdir,
-            patch(f"{MODULE}.shutil"),
-            patch(f"{MODULE}._save_settings", return_value="{}"),
-            patch(f"{MODULE}._zip_directory", return_value=expected_buf),
-        ):
-            mock_tmpdir.return_value.__enter__ = MagicMock(return_value="/tmp/test")
-            mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
-            from client.app.content.config.tabs.settings import _langchain_mcp_zip
-
-            result = _langchain_mcp_zip({"settings": {}})
-
-        assert result is expected_buf
-
-
-# ---------------------------------------------------------------------------
 # _spring_ai_conf_check  (pure function)
 # ---------------------------------------------------------------------------
 
@@ -1528,63 +1407,32 @@ class TestRenderSourceCodeTemplatesSection:
         assert "Select" in mock_st.markdown.call_args[0][0]
         mock_st.columns.assert_not_called()
 
-    def test_hybrid_config_shows_langchain_only(self, mock_st):
-        """A mixed-provider config still offers LangChain MCP (litellm), but not SpringAI."""
-        cols = [MagicMock(), MagicMock(), MagicMock()]
-        mock_st.columns.return_value = cols
-
+    def test_hybrid_config_hides_template_downloads(self, mock_st):
+        """A mixed-provider config does not offer source templates."""
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(
                 f"{MODULE}._get_model_configs",
                 return_value=({"provider": "openai"}, {"provider": "ollama"}, "hybrid"),
             ),
-            patch(f"{MODULE}.get_server_settings", return_value={"settings": {}}),
-            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()) as mock_lc_zip,
             patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()) as mock_spring_zip,
-            patch(f"{MODULE}.state", AttrDict({"settings": {}, "optimizer_client": "test-client"})),
         ):
             from client.app.content.config.tabs.settings import _render_source_code_templates_section
 
             _render_source_code_templates_section()
 
-        mock_lc_zip.assert_called_once()
+        mock_st.markdown.assert_called_once()
+        mock_st.columns.assert_not_called()
         mock_spring_zip.assert_not_called()
 
-    def test_non_hybrid_shows_langchain_download(self, mock_st):
-        """Non-hybrid config shows LangchainMCP download button."""
+    def test_non_hybrid_shows_spring_ai_download(self, mock_st):
+        """Non-hybrid config shows SpringAI download button."""
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(
                 f"{MODULE}._get_model_configs", return_value=({"provider": "openai"}, {"provider": "openai"}, "openai")
             ),
             patch(f"{MODULE}.get_server_settings", return_value={"settings": {}}),
-            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()) as mock_lc_zip,
-            patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()),
-            patch(f"{MODULE}.state", AttrDict({"settings": {}, "optimizer_client": "test-client"})),
-        ):
-            from client.app.content.config.tabs.settings import _render_source_code_templates_section
-
-            _render_source_code_templates_section()
-
-        # _langchain_mcp_zip was called (which means the download button path executed)
-        mock_lc_zip.assert_called_once()
-        # st.download_button was called (within col_left context manager)
-        mock_st.download_button.assert_called()
-
-    def test_hosted_vllm_hides_spring_ai_button(self, mock_st):
-        """hosted_vllm config shows LangchainMCP only, hides SpringAI."""
-        cols = [MagicMock(), MagicMock(), MagicMock()]
-        mock_st.columns.return_value = cols
-
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(
-                f"{MODULE}._get_model_configs",
-                return_value=({"provider": "hosted_vllm"}, {"provider": "hosted_vllm"}, "hosted_vllm"),
-            ),
-            patch(f"{MODULE}.get_server_settings", return_value={"settings": {}}),
-            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()),
             patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()) as mock_spring_zip,
             patch(f"{MODULE}.state", AttrDict({"settings": {}, "optimizer_client": "test-client"})),
         ):
@@ -1592,12 +1440,30 @@ class TestRenderSourceCodeTemplatesSection:
 
             _render_source_code_templates_section()
 
-        # SpringAI zip should NOT have been called
+        mock_spring_zip.assert_called_once()
+        mock_st.download_button.assert_called()
+
+    def test_hosted_vllm_hides_spring_ai_button(self, mock_st):
+        """hosted_vllm config hides SpringAI."""
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(
+                f"{MODULE}._get_model_configs",
+                return_value=({"provider": "hosted_vllm"}, {"provider": "hosted_vllm"}, "hosted_vllm"),
+            ),
+            patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()) as mock_spring_zip,
+        ):
+            from client.app.content.config.tabs.settings import _render_source_code_templates_section
+
+            _render_source_code_templates_section()
+
+        mock_st.markdown.assert_called_once()
+        mock_st.columns.assert_not_called()
         mock_spring_zip.assert_not_called()
 
     @pytest.mark.parametrize("conf_type", ["openai", "ollama"])
-    def test_openai_ollama_shows_both_download_buttons(self, mock_st, conf_type):
-        """openai/ollama configs show both download buttons."""
+    def test_openai_ollama_shows_spring_ai_download_button(self, mock_st, conf_type):
+        """openai/ollama configs show the SpringAI download button."""
         cols = [MagicMock(), MagicMock(), MagicMock()]
         mock_st.columns.return_value = cols
 
@@ -1608,7 +1474,6 @@ class TestRenderSourceCodeTemplatesSection:
                 return_value=({"provider": conf_type}, {"provider": conf_type}, conf_type),
             ),
             patch(f"{MODULE}.get_server_settings", return_value={"settings": {}}),
-            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()) as mock_lc_zip,
             patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()) as mock_spring_zip,
             patch(f"{MODULE}.state", AttrDict({"settings": {}, "optimizer_client": "test-client"})),
         ):
@@ -1616,7 +1481,6 @@ class TestRenderSourceCodeTemplatesSection:
 
             _render_source_code_templates_section()
 
-        mock_lc_zip.assert_called_once()
         mock_spring_zip.assert_called_once()
 
     def test_repeated_renders_reuse_cached_export(self, mock_st):
@@ -1632,7 +1496,6 @@ class TestRenderSourceCodeTemplatesSection:
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}._get_model_configs", return_value=configs_return),
             patch(f"{MODULE}.get_server_settings", return_value={"settings": {}}) as mock_get,
-            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()),
             patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()),
         ):
             from client.app.content.config.tabs.settings import _render_source_code_templates_section
@@ -1694,20 +1557,13 @@ class TestRenderSourceCodeTemplatesSection:
             patch(f"{MODULE}.get_server_settings", return_value=reveal_payload),
             patch(f"{MODULE}._get_model_configs", return_value=(ll_config, embed_config, "openai")),
             patch(f"{MODULE}._spring_ai_zip", return_value=io.BytesIO()) as mock_spring_zip,
-            patch(f"{MODULE}._langchain_mcp_zip", return_value=io.BytesIO()) as mock_lc_zip,
         ):
             from client.app.content.config.tabs.settings import _render_source_code_templates_section
 
             _render_source_code_templates_section()
 
-        # Render produced both download payloads.
+        # Render produced the SpringAI download payload.
         mock_spring_zip.assert_called_once()
-        mock_lc_zip.assert_called_once()
-
-        # The langchain renderer received the reveal payload directly.
-        lc_arg = mock_lc_zip.call_args[0][0]
-        assert lc_arg["database_configs"][0]["password"] == "the-db-password"
-        assert lc_arg["model_configs"][0]["api_key"] == "sk-the-key"
 
         # state.settings is back to the masked dict — the reveal projection
         # did not persist where other UI paths can read it.
