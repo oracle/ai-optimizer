@@ -378,6 +378,43 @@ class TestClientParamsOverrides:
         kwargs = mock_completion.call_args.kwargs
         assert kwargs.get("drop_params") is True
 
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_oci_openai_gpt5_drops_max_tokens(self, mock_completion):
+        """OCI OpenAI GPT-5 models reject max_tokens and LiteLLM misroutes max_completion_tokens."""
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="oci/openai.gpt-5.5", max_tokens=100)
+        llm._generate([HumanMessage(content="hi")])
+        kwargs = mock_completion.call_args.kwargs
+        assert "max_tokens" not in kwargs
+        assert "max_completion_tokens" not in kwargs
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_oci_openai_o_series_drops_max_tokens(self, mock_completion):
+        """OCI OpenAI O-series models use maxCompletionTokens, but LiteLLM's catalog may miss them."""
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="oci/openai.o1", max_tokens=100)
+        llm._generate([HumanMessage(content="hi")])
+        assert "max_tokens" not in mock_completion.call_args.kwargs
+
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_oci_openai_non_reasoning_keeps_max_tokens(self, mock_completion):
+        """The suppression is scoped to GPT-5/O-series, not every OCI OpenAI model."""
+        mock_completion.return_value = _non_streaming_response("ok")
+        llm = OracleChatLiteLLM(model="oci/openai.gpt-4.1", max_tokens=100)
+        llm._generate([HumanMessage(content="hi")])
+        assert mock_completion.call_args.kwargs.get("max_tokens") == 100
+
+    def test_oci_openai_gpt5_drops_explicit_fallback_token_kwargs(self):
+        """Fallback param merging must not reintroduce per-call token-limit kwargs."""
+        llm = OracleChatLiteLLM(model="oci/openai.gpt-5.5", max_tokens=100)
+        _, params = llm._build_non_streaming_params(
+            [HumanMessage(content="hi")],
+            None,
+            {"max_completion_tokens": 20, "max_tokens": 10},
+        )
+        assert "max_tokens" not in params
+        assert "max_completion_tokens" not in params
+
 
 class TestStreamingFallback:
     """OracleChatLiteLLM falls back to non-streaming when the provider rejects stream=True."""

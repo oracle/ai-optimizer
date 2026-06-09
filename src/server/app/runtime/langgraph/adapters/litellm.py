@@ -49,6 +49,7 @@ from server.app.runtime.ollama_tools import (
 LOGGER = logging.getLogger(__name__)
 
 _OLLAMA_NAME_MAP_KEY = "_ollama_name_map"
+_OCI_OPENAI_MAX_COMPLETION_PREFIXES = ("openai.gpt-5", "openai.o")
 
 
 def _flatten_to_text(content: Any) -> str:
@@ -75,6 +76,33 @@ def _flatten_to_text(content: Any) -> str:
                     parts.append(json.dumps(block, default=str))
         return "\n".join(parts)
     return str(content) if content is not None else ""
+
+
+def _is_oci_openai_max_completion_model(model: str) -> bool:
+    """Return True for OCI OpenAI models that reject ``max_tokens``."""
+    if not model:
+        return False
+    name = model.lower()
+    if not name.startswith("oci/"):
+        return False
+    model_id = name.split("/", 1)[1]
+    return model_id.startswith(_OCI_OPENAI_MAX_COMPLETION_PREFIXES)
+
+
+def _drop_oci_openai_unsupported_token_limits(params: Dict[str, Any], model: Optional[str] = None) -> Dict[str, Any]:
+    """Remove token-limit params LiteLLM currently mistranslates for OCI OpenAI models.
+
+    OCI OpenAI GPT-5/O-series models reject ``max_tokens`` and require
+    ``max_completion_tokens``. LiteLLM 1.87.0's OCI adapter only switches to
+    OCI ``maxCompletionTokens`` when its local model catalog marks a model as
+    reasoning-capable, and that catalog misses newer OCI OpenAI model names.
+    Passing ``max_completion_tokens`` is not a safe workaround either: the
+    upstream adapter can still translate it to legacy ``maxTokens``.
+    """
+    if _is_oci_openai_max_completion_model(str(params.get("model") or model or "")):
+        params.pop("max_tokens", None)
+        params.pop("max_completion_tokens", None)
+    return params
 
 
 def extract_response_text(content: Any) -> str:
@@ -284,6 +312,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         name_map = kwargs.pop(_OLLAMA_NAME_MAP_KEY, None)
+        kwargs = _drop_oci_openai_unsupported_token_limits(dict(kwargs), self.model)
         yielded_any = False
         try:
             for chunk in super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs):
@@ -310,6 +339,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
         name_map = kwargs.pop(_OLLAMA_NAME_MAP_KEY, None)
+        kwargs = _drop_oci_openai_unsupported_token_limits(dict(kwargs), self.model)
         yielded_any = False
         try:
             async for chunk in super()._astream(messages, stop=stop, run_manager=run_manager, **kwargs):
@@ -370,7 +400,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
         """
         message_dicts, params = self._create_message_dicts(messages, stop)
         params = {**params, **kwargs, "stream": False}
-        return message_dicts, params
+        return message_dicts, _drop_oci_openai_unsupported_token_limits(params)
 
     def _fallback_non_streaming(
         self,
@@ -406,7 +436,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
     def _client_params(self) -> Dict[str, Any]:
         """Build per-call kwargs for ``litellm.(a)completion`` without mutating module state.
 
-        Four corrections vs. ``ChatLiteLLM._client_params``:
+        Five corrections vs. ``ChatLiteLLM._client_params``:
 
         1. **No global mutation.** Upstream sets ``self.client.api_key`` /
            ``self.client.api_base`` on the litellm module. With concurrent
@@ -425,6 +455,10 @@ class OracleChatLiteLLM(ChatLiteLLM):
            a provider doesn't accept (e.g. Mistral rejects the default
            ``presence_penalty=0.0`` / ``frequency_penalty=0.0`` that
            AgentSpec's ``LanguageModelParameters`` carries through).
+        5. **OCI OpenAI token limit suppression.** Some GPT-5/O-series OCI
+           OpenAI models reject legacy token limit fields, and current LiteLLM
+           versions can mistranslate the replacement field for uncataloged
+           model names.
         """
         params = dict(self._default_params)
         params["drop_params"] = True
@@ -434,7 +468,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
             params["api_key"] = self.api_key
         if self.api_base:
             params["base_url"] = self.api_base
-        return params
+        return _drop_oci_openai_unsupported_token_limits(params)
 
     @property
     def _llm_type(self) -> str:
