@@ -25,6 +25,7 @@ def _mock_settings(**overrides):
     m = MagicMock()
     m.server_url = overrides.get("server_url", "http://localhost")
     m.server_port = overrides.get("server_port", 8000)
+    m.server_ssl = overrides.get("server_ssl", False)
     m.server_url_prefix = overrides.get("server_url_prefix", "")
     m.api_key = overrides.get("api_key", "test-key")
     return m
@@ -537,7 +538,11 @@ class TestSpawnServer:
         """Verify _spawn_server invokes subprocess.Popen with uvicorn arguments."""
         log_path = tmp_path / "test.log"
         mock_proc = MagicMock()
-        with patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen:
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
             from client.app.core.api import _spawn_server
 
             proc, log_fh = _spawn_server("8000", {"PATH": "/usr/bin"}, log_path)
@@ -547,7 +552,28 @@ class TestSpawnServer:
         mock_popen.assert_called_once()
         args = mock_popen.call_args[0][0]
         assert "uvicorn" in args
+        assert "0.0.0.0" in args
         assert "8000" in args
+
+    def test_subprocess_adds_ssl_flags(self, tmp_path):
+        """Verify _spawn_server mirrors entrypoint server SSL flags."""
+        log_path = tmp_path / "test.log"
+        mock_proc = MagicMock()
+        settings = _mock_settings(server_ssl=True)
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.ensure_ssl_cert", return_value=(tmp_path / "cert.pem", tmp_path / "key.pem")),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
+            from client.app.core.api import _spawn_server
+
+            _, log_fh = _spawn_server("8000", {"PATH": "/usr/bin"}, log_path)
+        log_fh.close()
+        args = mock_popen.call_args[0][0]
+        assert "--ssl-certfile" in args
+        assert str(tmp_path / "cert.pem") in args
+        assert "--ssl-keyfile" in args
+        assert str(tmp_path / "key.pem") in args
 
     def test_returns_tuple(self, tmp_path):
         """Verify _spawn_server returns a (process, log_file) tuple."""
@@ -596,6 +622,22 @@ class TestWaitForServerReady:
 
             assert _wait_for_server_ready(mock_proc, timeout=5) is True
         mock_get.assert_called_once_with("http://127.0.0.1:9000/v1/liveness", timeout=1.0)
+
+    def test_probes_https_when_spawned_server_uses_ssl(self):
+        """AIO_SERVER_SSL must make the local readiness probe use HTTPS."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        ok_resp = MagicMock(status_code=200)
+        settings = _mock_settings(server_ssl=True, server_port=9443)
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,
+            patch(f"{MODULE}.time.sleep"),
+        ):
+            from client.app.core.api import _wait_for_server_ready
+
+            assert _wait_for_server_ready(mock_proc, timeout=5) is True
+        mock_get.assert_called_once_with("https://127.0.0.1:9443/v1/liveness", timeout=1.0, verify=False)
 
     def test_returns_false_when_process_exits(self):
         """Verify the helper returns False when the subprocess dies before becoming ready."""

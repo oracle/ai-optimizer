@@ -57,6 +57,16 @@ class TestClientSettingsFields:
         s = self._make(server_port=9000)
         assert s.server_port == 9000
 
+    def test_server_ssl_default(self):
+        """Default server_ssl is false."""
+        s = self._make()
+        assert s.server_ssl is False
+
+    def test_server_ssl_explicit(self):
+        """Explicit server_ssl overrides the default."""
+        s = self._make(server_ssl=True)
+        assert s.server_ssl is True
+
     def test_server_url_prefix_default(self):
         """Default server_url_prefix is empty string."""
         s = self._make()

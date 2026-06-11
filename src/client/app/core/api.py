@@ -24,6 +24,7 @@ from pydantic import SecretStr
 
 from client.app.core.secrets import reveal
 from client.app.core.settings import settings
+from entrypoint import ensure_ssl_cert
 
 LOGGER = logging.getLogger(__name__)
 
@@ -49,17 +50,23 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
     """Spawn a uvicorn server subprocess and return the Popen handle and log file."""
     LOGGER.info("Writing API Server logs to: %s", log_path)
     log_fh = log_path.open("a")
+    args = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "server.app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        port,
+    ]
+
+    if settings.server_ssl:
+        cert, key = ensure_ssl_cert(_SRC_DIR, "AIO_SERVER_SSL_CERT_FILE", "AIO_SERVER_SSL_KEY_FILE")
+        args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
+
     proc = subprocess.Popen(  # keep handle open for uvicorn logging; closed in _stop_server
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "server.app.main:app",
-            "--host",
-            settings.server_address,
-            "--port",
-            port,
-        ],
+        args,
         env=env,
         stdout=log_fh,
         stderr=log_fh,
@@ -75,12 +82,15 @@ def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READ
     exits early or the timeout is reached.
     """
     url = f"{_local_server_base_url()}/liveness"
+    request_kwargs: dict[str, Any] = {"timeout": 1.0}
+    if settings.server_ssl:
+        request_kwargs["verify"] = False
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             return False
         try:
-            resp = httpx.get(url, timeout=1.0)
+            resp = httpx.get(url, **request_kwargs)
             if resp.status_code == 200:
                 return True
         except httpx.HTTPError:
@@ -148,7 +158,8 @@ def start_server() -> None:
 
 def _local_server_base_url(api_prefix: str = "/v1") -> str:
     """Return the direct URL for the locally spawned API server."""
-    return f"http://127.0.0.1:{settings.server_port}{api_prefix.rstrip('/')}"
+    scheme = "https" if settings.server_ssl else "http"
+    return f"{scheme}://127.0.0.1:{settings.server_port}{api_prefix.rstrip('/')}"
 
 
 def _stop_process(proc: subprocess.Popen) -> None:
