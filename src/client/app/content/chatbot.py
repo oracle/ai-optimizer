@@ -14,7 +14,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core import sidebar
-from client.app.core.api import _base_url, _headers
+from client.app.core.api import _base_url, _headers, _verify_for_url
 from client.app.core.helpers import extract_error_detail, load_chat_history
 
 LOGGER = logging.getLogger("content.chatbot")
@@ -146,7 +146,7 @@ async def _stream_chat(messages: list[dict], metadata: dict):
     headers = {**_headers(), "client": state.optimizer_client}
     body = {"messages": messages}
 
-    async with httpx.AsyncClient(timeout=120) as client:  # noqa: SIM117
+    async with httpx.AsyncClient(timeout=120, verify=_verify_for_url(url)) as client:  # noqa: SIM117
         async with client.stream("POST", url, json=body, headers=headers) as resp:
             resp.raise_for_status()
             buffer = ""
@@ -221,6 +221,9 @@ async def _handle_chat(user_input: str) -> None:
             st.error(extract_error_detail(exc))
         except httpx.ReadTimeout:
             st.error("Response timed out. Please try again.")
+        except httpx.HTTPError as exc:
+            LOGGER.warning("Chat stream request failed: %s", exc)
+            st.error("Unable to connect to the server. Please check that the server is running.")
         except RuntimeError as exc:
             st.error(str(exc))
 
