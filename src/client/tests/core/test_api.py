@@ -24,7 +24,7 @@ def _mock_settings(**overrides):
     """Create a mock settings object with defaults."""
     m = MagicMock()
     m.server_url = overrides.get("server_url", "http://localhost")
-    m.server_address = overrides.get("server_address", "0.0.0.0")
+    m.server_address = overrides.get("server_address", "127.0.0.1")
     m.server_port = overrides.get("server_port", 8000)
     m.server_ssl = overrides.get("server_ssl", False)
     m.server_url_prefix = overrides.get("server_url_prefix", "")
@@ -656,14 +656,14 @@ class TestSpawnServer:
         mock_popen.assert_called_once()
         args = mock_popen.call_args[0][0]
         assert "uvicorn" in args
-        assert "0.0.0.0" in args
+        assert "127.0.0.1" in args
         assert "8000" in args
 
     def test_subprocess_uses_configured_bind_address(self, tmp_path):
         """The local spawned server honors AIO_SERVER_ADDRESS/settings.server_address."""
         log_path = tmp_path / "test.log"
         mock_proc = MagicMock()
-        settings = _mock_settings(server_address="127.0.0.1")
+        settings = _mock_settings(server_address="0.0.0.0")
         with (
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
@@ -673,8 +673,7 @@ class TestSpawnServer:
             _, log_fh = _spawn_server("8000", {"PATH": "/usr/bin"}, log_path)
         log_fh.close()
         args = mock_popen.call_args[0][0]
-        assert "127.0.0.1" in args
-        assert "0.0.0.0" not in args
+        assert "0.0.0.0" in args
 
     def test_subprocess_adds_ssl_flags(self, tmp_path):
         """Verify _spawn_server mirrors entrypoint server SSL flags."""

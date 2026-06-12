@@ -85,7 +85,7 @@ Database variables configure the CORE database connection. For more details, see
 |---|---|---|
 | `AIO_SERVER_URL` | URL the client uses to reach the API Server | _(auto-detected)_ |
 | `AIO_SERVER_URL_PREFIX` | URL path prefix for the API Server (e.g. `/optimizer`) | _(none)_ |
-| `AIO_SERVER_ADDRESS` | API Server bind address. Use `0.0.0.0` to listen on all interfaces; clients should connect through `AIO_SERVER_URL`. | `0.0.0.0` |
+| `AIO_SERVER_ADDRESS` | API Server bind address. The standalone server defaults to `0.0.0.0`; client autostart defaults to `127.0.0.1`. Hosted all-in-one deployments can set `0.0.0.0` to listen on all interfaces. Clients should connect through `AIO_SERVER_URL`. | component-specific |
 | `AIO_SERVER_PORT` | API Server listen port | `8000` |
 | `AIO_SERVER_SSL` | Enable TLS for the API Server | `false` |
 | `AIO_SERVER_SSL_CERT_FILE` | Path to TLS certificate (PEM). If SSL is enabled without this, a self-signed certificate is generated. | _(none)_ |
