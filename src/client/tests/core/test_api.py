@@ -115,13 +115,40 @@ class TestBaseUrl:
         assert result == "http://myhost:9000/v1"
 
     def test_url_with_path_in_server_url(self):
-        """Verify a path in server_url is preserved in the base URL."""
+        """Verify a path in an external server_url is preserved without adding a port."""
         settings = _mock_settings(server_url="http://myhost/base")
         with patch(f"{MODULE}.settings", settings):
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://myhost:8000/base/v1"
+        assert result == "http://myhost/base/v1"
+
+    def test_external_https_url_without_port_uses_scheme_default(self):
+        """HTTPS URLs without a port must not inherit AIO_SERVER_PORT."""
+        settings = _mock_settings(server_url="https://release-ai.appoci.oraclecorp.com")
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "https://release-ai.appoci.oraclecorp.com/v1"
+
+    def test_kubernetes_service_url_without_port_uses_server_port(self):
+        """In-cluster service URLs use AIO_SERVER_PORT when the URL omits a port."""
+        settings = _mock_settings(server_url="http://optimizer-server.default.svc", server_port=8000)
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "http://optimizer-server.default.svc:8000/v1"
+
+    def test_kubernetes_cluster_local_url_without_port_uses_server_port(self):
+        """Fully-qualified Kubernetes service URLs also use AIO_SERVER_PORT."""
+        settings = _mock_settings(server_url="http://optimizer-server.default.svc.cluster.local", server_port=8000)
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "http://optimizer-server.default.svc.cluster.local:8000/v1"
 
     def test_wildcard_ipv4_url_uses_loopback_for_connect(self):
         """0.0.0.0 is a bind address, not the canonical client target."""

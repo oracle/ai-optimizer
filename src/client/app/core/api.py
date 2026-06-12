@@ -40,6 +40,8 @@ _WILDCARD_CONNECT_HOSTS = {
     "::": "::1",
     "0:0:0:0:0:0:0:0": "::1",
 }
+_LOCAL_CONNECT_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_LOCAL_BIND_HOSTS = {*_LOCAL_CONNECT_HOSTS, *_WILDCARD_CONNECT_HOSTS}
 
 
 def _connect_host(host: str | None) -> str:
@@ -57,6 +59,17 @@ def _connect_host(host: str | None) -> str:
 def _netloc(host: str, port: int | None) -> str:
     bracketed = f"[{host}]" if ":" in host and not host.startswith("[") else host
     return f"{bracketed}:{port}" if port else bracketed
+
+
+def _should_inject_server_port(parsed_hostname: str | None, connect_host: str) -> bool:
+    """Return True when AIO_SERVER_PORT should be part of the URL.
+
+    External URLs without an explicit port should keep their scheme default
+    (e.g. HTTPS -> 443). Local/all-in-one URLs and Kubernetes service DNS
+    names use the app server's configured service port.
+    """
+    host = (parsed_hostname or connect_host).strip("[]").casefold()
+    return host in _LOCAL_BIND_HOSTS or host.endswith(".svc") or host.endswith(".svc.cluster.local")
 
 
 def _server_module_available() -> bool:
@@ -209,9 +222,10 @@ def _stop_server() -> None:
 
 def _base_url(api_prefix: str = "/v1") -> str:
     parsed = urlparse(settings.server_url)
-    # Only inject the configured port when the URL doesn't already specify one
-    port = parsed.port or settings.server_port
     host = _connect_host(parsed.hostname)
+    port = parsed.port
+    if port is None and _should_inject_server_port(parsed.hostname, host):
+        port = settings.server_port
     netloc = _netloc(host, port)
     path = (parsed.path.rstrip("/") + settings.server_url_prefix + api_prefix).rstrip("/")
     return urlunparse((parsed.scheme, netloc, path, "", "", ""))
