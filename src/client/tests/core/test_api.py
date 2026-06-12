@@ -170,6 +170,33 @@ class TestBaseUrl:
 
 
 # ---------------------------------------------------------------------------
+# _verify_for_url
+# ---------------------------------------------------------------------------
+class TestVerifyForUrl:
+    """Tests for TLS verification selection."""
+
+    def test_local_https_disables_verification(self):
+        """Local self-signed HTTPS is allowed for all-in-one mode."""
+        from client.app.core.api import _verify_for_url
+
+        assert _verify_for_url("https://127.0.0.1:8000/v1") is False
+        assert _verify_for_url("https://localhost:8000/v1") is False
+        assert _verify_for_url("https://[::1]:8000/v1") is False
+
+    def test_external_https_keeps_verification(self):
+        """External HTTPS endpoints retain normal certificate verification."""
+        from client.app.core.api import _verify_for_url
+
+        assert _verify_for_url("https://release-ai.appoci.oraclecorp.com/v1") is True
+
+    def test_http_keeps_default_verification_flag(self):
+        """HTTP has no TLS to verify, but httpx accepts the default True flag."""
+        from client.app.core.api import _verify_for_url
+
+        assert _verify_for_url("http://127.0.0.1:8000/v1") is True
+
+
+# ---------------------------------------------------------------------------
 # _headers
 # ---------------------------------------------------------------------------
 class TestHeaders:
@@ -521,6 +548,37 @@ class TestGetServerSettings:
             result = get_server_settings(client="test")
         assert result == {"settings": "ok"}
 
+    def test_local_https_disables_cert_verification(self):
+        """Local HTTPS server settings requests tolerate the generated self-signed cert."""
+        resp = _resp(200, json_data={"settings": "ok"})
+        ctx, _ = _mock_client_ctx(response=resp)
+        settings = _mock_settings(server_url="https://127.0.0.1")
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.Client", return_value=ctx) as mock_cls,
+        ):
+            from client.app.core.api import get_server_settings
+
+            result = get_server_settings(client="test")
+        assert result == {"settings": "ok"}
+        assert mock_cls.call_args.kwargs["verify"] is False
+
+    def test_external_https_keeps_cert_verification(self):
+        """External HTTPS server settings requests still verify certificates."""
+        resp = _resp(200, json_data={"settings": "ok"})
+        ctx, _ = _mock_client_ctx(response=resp)
+        settings = _mock_settings(server_url="https://release-ai.appoci.oraclecorp.com")
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.Client", return_value=ctx) as mock_cls,
+        ):
+            from client.app.core.api import get_server_settings
+
+            result = get_server_settings(client="test")
+        assert result == {"settings": "ok"}
+        assert mock_cls.call_args.kwargs["verify"] is True
+
+
     def test_http_error_returns_none(self):
         """Verify get_server_settings returns None when the server is unreachable."""
         fail_resp = _resp(503, json_data={"detail": "down"})
@@ -684,7 +742,7 @@ class TestWaitForServerReady:
             from client.app.core.api import _wait_for_server_ready
 
             assert _wait_for_server_ready(mock_proc, timeout=5) is True
-        mock_get.assert_called_once_with("http://127.0.0.1:9000/v1/liveness", timeout=1.0)
+        mock_get.assert_called_once_with("http://127.0.0.1:9000/v1/liveness", timeout=1.0, verify=True)
 
     def test_probes_configured_local_bind_address(self):
         """A concrete local bind address remains the readiness target."""
@@ -700,7 +758,7 @@ class TestWaitForServerReady:
             from client.app.core.api import _wait_for_server_ready
 
             assert _wait_for_server_ready(mock_proc, timeout=5) is True
-        mock_get.assert_called_once_with("http://localhost:9000/v1/liveness", timeout=1.0)
+        mock_get.assert_called_once_with("http://localhost:9000/v1/liveness", timeout=1.0, verify=True)
 
     def test_probes_https_when_spawned_server_uses_ssl(self):
         """AIO_SERVER_SSL must make the local readiness probe use HTTPS."""

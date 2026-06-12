@@ -72,6 +72,20 @@ def _should_inject_server_port(parsed_hostname: str | None, connect_host: str) -
     return host in _LOCAL_BIND_HOSTS or host.endswith(".svc") or host.endswith(".svc.cluster.local")
 
 
+def _verify_for_url(url: str) -> bool:
+    """Return whether httpx should verify TLS certificates for *url*.
+
+    The all-in-one local server can run with an auto-generated self-signed
+    certificate. Disable verification only for loopback HTTPS targets; keep
+    normal certificate verification for every external HTTPS endpoint.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return True
+    host = (parsed.hostname or "").strip("[]").casefold()
+    return host not in _LOCAL_BIND_HOSTS
+
+
 def _server_module_available() -> bool:
     """The spawn path runs `uvicorn server.app.main:app`, which only resolves
     when the server source ships in this image. Component-specific Docker
@@ -117,9 +131,7 @@ def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READ
     exits early or the timeout is reached.
     """
     url = f"{_local_server_base_url()}/liveness"
-    request_kwargs: dict[str, Any] = {"timeout": 1.0}
-    if settings.server_ssl:
-        request_kwargs["verify"] = False
+    request_kwargs: dict[str, Any] = {"timeout": 1.0, "verify": _verify_for_url(url)}
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
@@ -253,8 +265,9 @@ def api_get(
 ) -> Any:
     """GET request to the API server. Returns parsed JSON."""
     headers = {**_headers(), **(extra_headers or {})}
-    with httpx.Client(headers=headers, timeout=timeout) as client:
-        resp = client.get(f"{_base_url(api_prefix)}/{path.lstrip('/')}", params=params)
+    base = _base_url(api_prefix)
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(base)) as client:
+        resp = client.get(f"{base}/{path.lstrip('/')}", params=params)
         resp.raise_for_status()
         return resp.json()
 
@@ -277,7 +290,7 @@ def api_post(
     """
     headers = {**_headers(), **(extra_headers or {})}
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
-    with httpx.Client(headers=headers, timeout=timeout) as client:
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(url)) as client:
         if files is not None or data is not None:
             resp = client.post(url, files=files, data=data, params=params)
         else:
@@ -297,7 +310,7 @@ def api_post_stream(
     """Streaming POST request to the API server. Yields parsed NDJSON dicts."""
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
-        httpx.Client(headers=_headers(), timeout=timeout) as client,
+        httpx.Client(headers=_headers(), timeout=timeout, verify=_verify_for_url(url)) as client,
         client.stream("POST", url, json=json_body) as resp,
     ):
         resp.raise_for_status()
@@ -322,8 +335,9 @@ def api_put(
 ) -> dict:
     """PUT request to the API server. Returns parsed JSON."""
     headers = {**_headers(), **(extra_headers or {})}
-    with httpx.Client(headers=headers, timeout=timeout) as client:
-        resp = client.put(f"{_base_url(api_prefix)}/{path.lstrip('/')}", json=json, params=params)
+    url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(url)) as client:
+        resp = client.put(url, json=json, params=params)
         resp.raise_for_status()
         if toast:
             st.toast(toast, icon="✅")
@@ -340,8 +354,9 @@ def api_patch(
 ) -> Any:
     """PATCH request to the API server. Returns parsed JSON (or None for 204)."""
     headers = {**_headers(), **(extra_headers or {})}
-    with httpx.Client(headers=headers, timeout=timeout) as client:
-        resp = client.patch(f"{_base_url(api_prefix)}/{path.lstrip('/')}", json=json)
+    url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(url)) as client:
+        resp = client.patch(url, json=json)
         resp.raise_for_status()
         if toast:
             st.toast(toast, icon="✅")
@@ -357,8 +372,9 @@ def api_delete(
 ) -> None:
     """DELETE request to the API server. Expects 204 No Content."""
     headers = {**_headers(), **(extra_headers or {})}
-    with httpx.Client(headers=headers, timeout=timeout) as client:
-        resp = client.delete(f"{_base_url(api_prefix)}/{path.lstrip('/')}")
+    url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(url)) as client:
+        resp = client.delete(url)
         resp.raise_for_status()
         if toast:
             st.toast(toast, icon="✅")
@@ -381,7 +397,7 @@ def get_server_settings(client: str, include_sensitive: bool = False) -> dict | 
     headers = _headers()
     params = {"client": client}
     try:
-        with httpx.Client(headers=headers, timeout=5) as client_settings:
+        with httpx.Client(headers=headers, timeout=5, verify=_verify_for_url(base)) as client_settings:
             resp = client_settings.get(f"{base}/settings", params=params)
             resp.raise_for_status()
             return resp.json()
@@ -396,7 +412,7 @@ def export_server_settings(client: str) -> dict | None:
     headers = {**_headers(), "X-Confirm-Export": "true"}
     params = {"client": client}
     try:
-        with httpx.Client(headers=headers, timeout=5) as client_settings:
+        with httpx.Client(headers=headers, timeout=5, verify=_verify_for_url(base)) as client_settings:
             resp = client_settings.post(f"{base}/settings/export", params=params)
             resp.raise_for_status()
             return resp.json()
