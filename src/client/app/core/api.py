@@ -35,6 +35,28 @@ _SERVER_READY_POLL_INTERVAL = 5.0
 
 
 _SRC_DIR = Path(__file__).resolve().parents[3]
+_WILDCARD_CONNECT_HOSTS = {
+    "0.0.0.0": "127.0.0.1",
+    "::": "::1",
+    "0:0:0:0:0:0:0:0": "::1",
+}
+
+
+def _connect_host(host: str | None) -> str:
+    """Return a dialable host for a bind/configured host.
+
+    Wildcard bind addresses are useful for listening, but they are not stable
+    client targets. Convert only those wildcard values to loopback; leave DNS
+    names and concrete IPs untouched so normal resolver behavior applies.
+    """
+    raw = (host or "").strip()
+    normalized = raw.strip("[]").casefold()
+    return _WILDCARD_CONNECT_HOSTS.get(normalized, raw or "127.0.0.1")
+
+
+def _netloc(host: str, port: int | None) -> str:
+    bracketed = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    return f"{bracketed}:{port}" if port else bracketed
 
 
 def _server_module_available() -> bool:
@@ -56,7 +78,7 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
         "uvicorn",
         "server.app.main:app",
         "--host",
-        "0.0.0.0",
+        settings.server_address,
         "--port",
         port,
     ]
@@ -159,7 +181,8 @@ def start_server() -> None:
 def _local_server_base_url(api_prefix: str = "/v1") -> str:
     """Return the direct URL for the locally spawned API server."""
     scheme = "https" if settings.server_ssl else "http"
-    return f"{scheme}://127.0.0.1:{settings.server_port}{api_prefix.rstrip('/')}"
+    host = _connect_host(settings.server_address)
+    return f"{scheme}://{_netloc(host, settings.server_port)}{api_prefix.rstrip('/')}"
 
 
 def _stop_process(proc: subprocess.Popen) -> None:
@@ -188,7 +211,8 @@ def _base_url(api_prefix: str = "/v1") -> str:
     parsed = urlparse(settings.server_url)
     # Only inject the configured port when the URL doesn't already specify one
     port = parsed.port or settings.server_port
-    netloc = f"{parsed.hostname}:{port}" if port else parsed.hostname
+    host = _connect_host(parsed.hostname)
+    netloc = _netloc(host, port)
     path = (parsed.path.rstrip("/") + settings.server_url_prefix + api_prefix).rstrip("/")
     return urlunparse((parsed.scheme, netloc, path, "", "", ""))
 

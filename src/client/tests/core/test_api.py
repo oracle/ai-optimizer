@@ -24,6 +24,7 @@ def _mock_settings(**overrides):
     """Create a mock settings object with defaults."""
     m = MagicMock()
     m.server_url = overrides.get("server_url", "http://localhost")
+    m.server_address = overrides.get("server_address", "0.0.0.0")
     m.server_port = overrides.get("server_port", 8000)
     m.server_ssl = overrides.get("server_ssl", False)
     m.server_url_prefix = overrides.get("server_url_prefix", "")
@@ -121,6 +122,24 @@ class TestBaseUrl:
 
             result = _base_url()
         assert result == "http://myhost:8000/base/v1"
+
+    def test_wildcard_ipv4_url_uses_loopback_for_connect(self):
+        """0.0.0.0 is a bind address, not the canonical client target."""
+        settings = _mock_settings(server_url="http://0.0.0.0")
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "http://127.0.0.1:8000/v1"
+
+    def test_wildcard_ipv6_url_uses_loopback_for_connect(self):
+        """The IPv6 wildcard bind address is converted to IPv6 loopback."""
+        settings = _mock_settings(server_url="http://[::]", server_port=9000)
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "http://[::1]:9000/v1"
 
 
 # ---------------------------------------------------------------------------
@@ -555,6 +574,23 @@ class TestSpawnServer:
         assert "0.0.0.0" in args
         assert "8000" in args
 
+    def test_subprocess_uses_configured_bind_address(self, tmp_path):
+        """The local spawned server honors AIO_SERVER_ADDRESS/settings.server_address."""
+        log_path = tmp_path / "test.log"
+        mock_proc = MagicMock()
+        settings = _mock_settings(server_address="127.0.0.1")
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
+            from client.app.core.api import _spawn_server
+
+            _, log_fh = _spawn_server("8000", {"PATH": "/usr/bin"}, log_path)
+        log_fh.close()
+        args = mock_popen.call_args[0][0]
+        assert "127.0.0.1" in args
+        assert "0.0.0.0" not in args
+
     def test_subprocess_adds_ssl_flags(self, tmp_path):
         """Verify _spawn_server mirrors entrypoint server SSL flags."""
         log_path = tmp_path / "test.log"
@@ -622,6 +658,22 @@ class TestWaitForServerReady:
 
             assert _wait_for_server_ready(mock_proc, timeout=5) is True
         mock_get.assert_called_once_with("http://127.0.0.1:9000/v1/liveness", timeout=1.0)
+
+    def test_probes_configured_local_bind_address(self):
+        """A concrete local bind address remains the readiness target."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        ok_resp = MagicMock(status_code=200)
+        settings = _mock_settings(server_address="localhost", server_port=9000)
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,
+            patch(f"{MODULE}.time.sleep"),
+        ):
+            from client.app.core.api import _wait_for_server_ready
+
+            assert _wait_for_server_ready(mock_proc, timeout=5) is True
+        mock_get.assert_called_once_with("http://localhost:9000/v1/liveness", timeout=1.0)
 
     def test_probes_https_when_spawned_server_uses_ssl(self):
         """AIO_SERVER_SSL must make the local readiness probe use HTTPS."""

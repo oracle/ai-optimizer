@@ -28,6 +28,7 @@ class ClientSettings(BaseSettings):
 
     api_key: Optional[SecretStr] = None
     server_url: str = "http://localhost"
+    server_address: str = "0.0.0.0"
     server_port: int = 8000
     server_ssl: bool = False
     server_ssl_cert_file: str = ""

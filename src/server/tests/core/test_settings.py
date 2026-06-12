@@ -63,6 +63,11 @@ def _make_model(
 class TestSettingsBaseValidators:
     """Test SettingsBase field validators."""
 
+    def test_server_address_default(self):
+        """Default server_address is the wildcard bind address."""
+        sb = SettingsBase()
+        assert sb.server_address == "0.0.0.0"
+
     def test_normalize_url_prefix_adds_leading_slash(self):
         """Bare prefix gets a leading slash."""
         sb = SettingsBase(server_url_prefix="api")

@@ -47,6 +47,16 @@ class TestClientSettingsFields:
         s = self._make(server_url="https://example.com")
         assert s.server_url == "https://example.com"
 
+    def test_server_address_default(self):
+        """Default server_address is the wildcard bind address."""
+        s = self._make()
+        assert s.server_address == "0.0.0.0"
+
+    def test_server_address_explicit(self):
+        """Explicit server_address overrides the default."""
+        s = self._make(server_address="127.0.0.1")
+        assert s.server_address == "127.0.0.1"
+
     def test_server_port_default(self):
         """Default server_port is 8000."""
         s = self._make()
