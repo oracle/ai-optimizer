@@ -757,21 +757,24 @@ class TestStartServer:
         """Verify start_server does not spawn a new process when one is already running."""
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # Still running
+        settings = _mock_settings(server_url="https://release-ai.appoci.oraclecorp.com")
         with (
             patch(f"{MODULE}._SERVER", {"process": mock_proc, "log_file": None}),
+            patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}._spawn_server") as mock_spawn,
         ):
             from client.app.core.api import start_server
 
             start_server()
         mock_spawn.assert_not_called()
+        assert settings.server_url == "http://127.0.0.1:8000"
 
     def test_starts_new_server(self):
         """Verify start_server spawns a new server process and waits for readiness."""
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # Still running
         mock_fh = MagicMock()
-        settings = _mock_settings()
+        settings = _mock_settings(server_url="https://release-ai.appoci.oraclecorp.com")
         with (
             patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
             patch(f"{MODULE}.settings", settings),
@@ -782,6 +785,7 @@ class TestStartServer:
             from client.app.core.api import start_server
 
             start_server()
+        assert settings.server_url == "http://127.0.0.1:8000"
 
     def test_skips_spawn_when_server_module_absent(self, tmp_path):
         """Component-specific images (Helm client pod, server-only image)

@@ -142,6 +142,8 @@ def start_server() -> None:
     LOGGER.info("Starting the AI Optimizer All-In-One mode...")
     proc = _SERVER["process"]
     if proc is not None and proc.poll() is None:
+        settings.server_url = _local_server_origin_url()
+        LOGGER.info("Using local API Server URL for existing subprocess: %s", settings.server_url)
         return
 
     port = str(settings.server_port)
@@ -162,6 +164,8 @@ def start_server() -> None:
 
     log_path = Path(src_dir) / f"apiserver_{port}.log"
     proc, log_fh = _spawn_server(port, env, log_path)
+    settings.server_url = _local_server_origin_url()
+    LOGGER.info("Using local API Server URL after subprocess start: %s", settings.server_url)
 
     # Track the subprocess immediately so it isn't killed on timeout — slow
     # imports (langchain, etc.) can push first-byte well past any sane wait,
@@ -193,9 +197,14 @@ def start_server() -> None:
 
 def _local_server_base_url(api_prefix: str = "/v1") -> str:
     """Return the direct URL for the locally spawned API server."""
+    return f"{_local_server_origin_url()}{api_prefix.rstrip('/')}"
+
+
+def _local_server_origin_url() -> str:
+    """Return the origin URL for the locally spawned API server."""
     scheme = "https" if settings.server_ssl else "http"
     host = _connect_host(settings.server_address)
-    return f"{scheme}://{_netloc(host, settings.server_port)}{api_prefix.rstrip('/')}"
+    return f"{scheme}://{_netloc(host, settings.server_port)}"
 
 
 def _stop_process(proc: subprocess.Popen) -> None:
@@ -376,8 +385,8 @@ def get_server_settings(client: str, include_sensitive: bool = False) -> dict | 
             resp = client_settings.get(f"{base}/settings", params=params)
             resp.raise_for_status()
             return resp.json()
-    except httpx.HTTPError:
-        LOGGER.warning("Failed to fetch server settings from %s", base)
+    except httpx.HTTPError as exc:
+        LOGGER.warning("Failed to fetch server settings from %s: %s", base, exc)
         return None
 
 
@@ -391,6 +400,6 @@ def export_server_settings(client: str) -> dict | None:
             resp = client_settings.post(f"{base}/settings/export", params=params)
             resp.raise_for_status()
             return resp.json()
-    except httpx.HTTPError:
-        LOGGER.warning("Failed to export server settings from %s", base)
+    except httpx.HTTPError as exc:
+        LOGGER.warning("Failed to export server settings from %s: %s", base, exc)
         return None
