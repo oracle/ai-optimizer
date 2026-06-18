@@ -39,6 +39,7 @@ class SettingsBase(BaseModel):
             v = f"/{v}"
         return v
 
+    server_address: str = "0.0.0.0"
     server_port: int = 8000
     server_ssl: bool = False
     server_ssl_cert_file: str = ""

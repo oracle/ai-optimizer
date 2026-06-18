@@ -125,7 +125,14 @@ def ensure_ssl_cert(script_dir: Path, cert_env: str, key_env: str) -> tuple[Path
 def start_server(script_dir: Path) -> None:
     """Launch uvicorn for the FastAPI server, with optional TLS."""
     print("Starting Optimizer Server")
-    args = ["uvicorn", "server.app.main:app", "--host", "0.0.0.0", "--port", os.environ.get("AIO_SERVER_PORT", "8000")]
+    args = [
+        "uvicorn",
+        "server.app.main:app",
+        "--host",
+        os.environ.get("AIO_SERVER_ADDRESS", "0.0.0.0"),
+        "--port",
+        os.environ.get("AIO_SERVER_PORT", "8000"),
+    ]
 
     if os.environ.get("AIO_SERVER_SSL", "false").lower() == "true":
         cert, key = ensure_ssl_cert(script_dir, "AIO_SERVER_SSL_CERT_FILE", "AIO_SERVER_SSL_KEY_FILE")

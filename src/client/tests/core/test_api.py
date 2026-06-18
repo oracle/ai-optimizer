@@ -24,7 +24,9 @@ def _mock_settings(**overrides):
     """Create a mock settings object with defaults."""
     m = MagicMock()
     m.server_url = overrides.get("server_url", "http://localhost")
+    m.server_address = overrides.get("server_address", "127.0.0.1")
     m.server_port = overrides.get("server_port", 8000)
+    m.server_ssl = overrides.get("server_ssl", False)
     m.server_url_prefix = overrides.get("server_url_prefix", "")
     m.api_key = overrides.get("api_key", "test-key")
     return m
@@ -113,13 +115,85 @@ class TestBaseUrl:
         assert result == "http://myhost:9000/v1"
 
     def test_url_with_path_in_server_url(self):
-        """Verify a path in server_url is preserved in the base URL."""
+        """Verify a path in an external server_url is preserved without adding a port."""
         settings = _mock_settings(server_url="http://myhost/base")
         with patch(f"{MODULE}.settings", settings):
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://myhost:8000/base/v1"
+        assert result == "http://myhost/base/v1"
+
+    def test_external_https_url_without_port_uses_scheme_default(self):
+        """HTTPS URLs without a port must not inherit AIO_SERVER_PORT."""
+        settings = _mock_settings(server_url="https://release-ai.appoci.oraclecorp.com")
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "https://release-ai.appoci.oraclecorp.com/v1"
+
+    def test_kubernetes_service_url_without_port_uses_server_port(self):
+        """In-cluster service URLs use AIO_SERVER_PORT when the URL omits a port."""
+        settings = _mock_settings(server_url="http://optimizer-server.default.svc", server_port=8000)
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "http://optimizer-server.default.svc:8000/v1"
+
+    def test_kubernetes_cluster_local_url_without_port_uses_server_port(self):
+        """Fully-qualified Kubernetes service URLs also use AIO_SERVER_PORT."""
+        settings = _mock_settings(server_url="http://optimizer-server.default.svc.cluster.local", server_port=8000)
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "http://optimizer-server.default.svc.cluster.local:8000/v1"
+
+    def test_wildcard_ipv4_url_uses_loopback_for_connect(self):
+        """0.0.0.0 is a bind address, not the canonical client target."""
+        settings = _mock_settings(server_url="http://0.0.0.0")
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "http://127.0.0.1:8000/v1"
+
+    def test_wildcard_ipv6_url_uses_loopback_for_connect(self):
+        """The IPv6 wildcard bind address is converted to IPv6 loopback."""
+        settings = _mock_settings(server_url="http://[::]", server_port=9000)
+        with patch(f"{MODULE}.settings", settings):
+            from client.app.core.api import _base_url
+
+            result = _base_url()
+        assert result == "http://[::1]:9000/v1"
+
+
+# ---------------------------------------------------------------------------
+# _verify_for_url
+# ---------------------------------------------------------------------------
+class TestVerifyForUrl:
+    """Tests for TLS verification selection."""
+
+    def test_local_https_disables_verification(self):
+        """Local self-signed HTTPS is allowed for all-in-one mode."""
+        from client.app.core.api import _verify_for_url
+
+        assert _verify_for_url("https://127.0.0.1:8000/v1") is False
+        assert _verify_for_url("https://localhost:8000/v1") is False
+        assert _verify_for_url("https://[::1]:8000/v1") is False
+
+    def test_external_https_keeps_verification(self):
+        """External HTTPS endpoints retain normal certificate verification."""
+        from client.app.core.api import _verify_for_url
+
+        assert _verify_for_url("https://release-ai.appoci.oraclecorp.com/v1") is True
+
+    def test_http_keeps_default_verification_flag(self):
+        """HTTP has no TLS to verify, but httpx accepts the default True flag."""
+        from client.app.core.api import _verify_for_url
+
+        assert _verify_for_url("http://127.0.0.1:8000/v1") is True
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +548,37 @@ class TestGetServerSettings:
             result = get_server_settings(client="test")
         assert result == {"settings": "ok"}
 
+    def test_local_https_disables_cert_verification(self):
+        """Local HTTPS server settings requests tolerate the generated self-signed cert."""
+        resp = _resp(200, json_data={"settings": "ok"})
+        ctx, _ = _mock_client_ctx(response=resp)
+        settings = _mock_settings(server_url="https://127.0.0.1")
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.Client", return_value=ctx) as mock_cls,
+        ):
+            from client.app.core.api import get_server_settings
+
+            result = get_server_settings(client="test")
+        assert result == {"settings": "ok"}
+        assert mock_cls.call_args.kwargs["verify"] is False
+
+    def test_external_https_keeps_cert_verification(self):
+        """External HTTPS server settings requests still verify certificates."""
+        resp = _resp(200, json_data={"settings": "ok"})
+        ctx, _ = _mock_client_ctx(response=resp)
+        settings = _mock_settings(server_url="https://release-ai.appoci.oraclecorp.com")
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.Client", return_value=ctx) as mock_cls,
+        ):
+            from client.app.core.api import get_server_settings
+
+            result = get_server_settings(client="test")
+        assert result == {"settings": "ok"}
+        assert mock_cls.call_args.kwargs["verify"] is True
+
+
     def test_http_error_returns_none(self):
         """Verify get_server_settings returns None when the server is unreachable."""
         fail_resp = _resp(503, json_data={"detail": "down"})
@@ -537,7 +642,11 @@ class TestSpawnServer:
         """Verify _spawn_server invokes subprocess.Popen with uvicorn arguments."""
         log_path = tmp_path / "test.log"
         mock_proc = MagicMock()
-        with patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen:
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
             from client.app.core.api import _spawn_server
 
             proc, log_fh = _spawn_server("8000", {"PATH": "/usr/bin"}, log_path)
@@ -547,7 +656,44 @@ class TestSpawnServer:
         mock_popen.assert_called_once()
         args = mock_popen.call_args[0][0]
         assert "uvicorn" in args
+        assert "127.0.0.1" in args
         assert "8000" in args
+
+    def test_subprocess_uses_configured_bind_address(self, tmp_path):
+        """The local spawned server honors AIO_SERVER_ADDRESS/settings.server_address."""
+        log_path = tmp_path / "test.log"
+        mock_proc = MagicMock()
+        settings = _mock_settings(server_address="0.0.0.0")
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
+            from client.app.core.api import _spawn_server
+
+            _, log_fh = _spawn_server("8000", {"PATH": "/usr/bin"}, log_path)
+        log_fh.close()
+        args = mock_popen.call_args[0][0]
+        assert "0.0.0.0" in args
+
+    def test_subprocess_adds_ssl_flags(self, tmp_path):
+        """Verify _spawn_server mirrors entrypoint server SSL flags."""
+        log_path = tmp_path / "test.log"
+        mock_proc = MagicMock()
+        settings = _mock_settings(server_ssl=True)
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.ensure_ssl_cert", return_value=(tmp_path / "cert.pem", tmp_path / "key.pem")),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
+            from client.app.core.api import _spawn_server
+
+            _, log_fh = _spawn_server("8000", {"PATH": "/usr/bin"}, log_path)
+        log_fh.close()
+        args = mock_popen.call_args[0][0]
+        assert "--ssl-certfile" in args
+        assert str(tmp_path / "cert.pem") in args
+        assert "--ssl-keyfile" in args
+        assert str(tmp_path / "key.pem") in args
 
     def test_returns_tuple(self, tmp_path):
         """Verify _spawn_server returns a (process, log_file) tuple."""
@@ -595,7 +741,39 @@ class TestWaitForServerReady:
             from client.app.core.api import _wait_for_server_ready
 
             assert _wait_for_server_ready(mock_proc, timeout=5) is True
-        mock_get.assert_called_once_with("http://127.0.0.1:9000/v1/liveness", timeout=1.0)
+        mock_get.assert_called_once_with("http://127.0.0.1:9000/v1/liveness", timeout=1.0, verify=True)
+
+    def test_probes_configured_local_bind_address(self):
+        """A concrete local bind address remains the readiness target."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        ok_resp = MagicMock(status_code=200)
+        settings = _mock_settings(server_address="localhost", server_port=9000)
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,
+            patch(f"{MODULE}.time.sleep"),
+        ):
+            from client.app.core.api import _wait_for_server_ready
+
+            assert _wait_for_server_ready(mock_proc, timeout=5) is True
+        mock_get.assert_called_once_with("http://localhost:9000/v1/liveness", timeout=1.0, verify=True)
+
+    def test_probes_https_when_spawned_server_uses_ssl(self):
+        """AIO_SERVER_SSL must make the local readiness probe use HTTPS."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        ok_resp = MagicMock(status_code=200)
+        settings = _mock_settings(server_ssl=True, server_port=9443)
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,
+            patch(f"{MODULE}.time.sleep"),
+        ):
+            from client.app.core.api import _wait_for_server_ready
+
+            assert _wait_for_server_ready(mock_proc, timeout=5) is True
+        mock_get.assert_called_once_with("https://127.0.0.1:9443/v1/liveness", timeout=1.0, verify=False)
 
     def test_returns_false_when_process_exits(self):
         """Verify the helper returns False when the subprocess dies before becoming ready."""
@@ -636,21 +814,24 @@ class TestStartServer:
         """Verify start_server does not spawn a new process when one is already running."""
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # Still running
+        settings = _mock_settings(server_url="https://release-ai.appoci.oraclecorp.com")
         with (
             patch(f"{MODULE}._SERVER", {"process": mock_proc, "log_file": None}),
+            patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}._spawn_server") as mock_spawn,
         ):
             from client.app.core.api import start_server
 
             start_server()
         mock_spawn.assert_not_called()
+        assert settings.server_url == "http://127.0.0.1:8000"
 
     def test_starts_new_server(self):
         """Verify start_server spawns a new server process and waits for readiness."""
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # Still running
         mock_fh = MagicMock()
-        settings = _mock_settings()
+        settings = _mock_settings(server_url="https://release-ai.appoci.oraclecorp.com")
         with (
             patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
             patch(f"{MODULE}.settings", settings),
@@ -661,6 +842,7 @@ class TestStartServer:
             from client.app.core.api import start_server
 
             start_server()
+        assert settings.server_url == "http://127.0.0.1:8000"
 
     def test_skips_spawn_when_server_module_absent(self, tmp_path):
         """Component-specific images (Helm client pod, server-only image)

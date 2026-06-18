@@ -302,6 +302,25 @@ class TestStreamChat:
                 result.append(chunk)
         assert result == ["Hello", " world"]
 
+    async def test_local_https_disables_certificate_verification(self):
+        """Local self-signed HTTPS streams should not verify the generated cert."""
+        state = _make_state()
+        chunks = ["data: [DONE]\n\n"]
+        client_ctx = self._setup_async_client(chunks)
+
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._base_url", return_value="https://127.0.0.1:8000/v1"),
+            patch(f"{MODULE}._headers", return_value={"X-API-Key": "k"}),
+            patch(f"{MODULE}.httpx.AsyncClient", return_value=client_ctx) as mock_client,
+        ):
+            from client.app.content.chatbot import _stream_chat
+
+            async for _ in _stream_chat([{"role": "user", "content": "hi"}], {}):
+                pass
+
+        mock_client.assert_called_once_with(timeout=120, verify=False)
+
     async def test_populates_token_usage(self):
         """Completion event populates token usage in metadata."""
         state = _make_state()
@@ -492,6 +511,26 @@ class TestHandleChat:
             await _handle_chat("test")
         mock_st.error.assert_called_once()
         assert "timed out" in mock_st.error.call_args[0][0]
+
+    async def test_http_connection_error(self, mock_st):
+        """HTTP connection errors are caught instead of surfacing a traceback."""
+        state = _make_state()
+
+        async def _mock_stream(_messages, _metadata):
+            request = httpx.Request("POST", "https://127.0.0.1:8000/v1/chat/streams")
+            raise httpx.ConnectError("certificate verify failed", request=request)
+            yield  # pragma: no cover
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._stream_chat", side_effect=_mock_stream),
+        ):
+            from client.app.content.chatbot import _handle_chat
+
+            await _handle_chat("test")
+        mock_st.error.assert_called_once()
+        assert "Unable to connect" in mock_st.error.call_args[0][0]
 
     async def test_runtime_error(self, mock_st):
         """RuntimeError is caught and displayed via st.error."""

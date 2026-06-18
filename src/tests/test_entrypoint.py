@@ -245,6 +245,7 @@ class TestStartServer:
         """start_server should call os.execvp with uvicorn and default port."""
         monkeypatch.delenv("AIO_SERVER_SSL", raising=False)
         monkeypatch.delenv("AIO_SERVER_PORT", raising=False)
+        monkeypatch.delenv("AIO_SERVER_ADDRESS", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:
@@ -283,6 +284,18 @@ class TestStartServer:
         with patch("os.execvp") as mock_exec:
             entrypoint.start_server(tmp_path)
         assert "9000" in mock_exec.call_args[0][1]
+
+    def test_custom_address(self, tmp_path, monkeypatch):
+        """start_server should use AIO_SERVER_ADDRESS when set."""
+        monkeypatch.setenv("AIO_SERVER_ADDRESS", "127.0.0.1")
+        monkeypatch.delenv("AIO_SERVER_SSL", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp") as mock_exec:
+            entrypoint.start_server(tmp_path)
+        args = mock_exec.call_args[0][1]
+        assert "127.0.0.1" in args
+        assert "0.0.0.0" not in args
 
 
 class TestStartClient:

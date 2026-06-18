@@ -24,6 +24,7 @@ from pydantic import SecretStr
 
 from client.app.core.secrets import reveal
 from client.app.core.settings import settings
+from entrypoint import ensure_ssl_cert
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +35,55 @@ _SERVER_READY_POLL_INTERVAL = 5.0
 
 
 _SRC_DIR = Path(__file__).resolve().parents[3]
+_WILDCARD_CONNECT_HOSTS = {
+    "0.0.0.0": "127.0.0.1",
+    "::": "::1",
+    "0:0:0:0:0:0:0:0": "::1",
+}
+_LOCAL_CONNECT_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_LOCAL_BIND_HOSTS = {*_LOCAL_CONNECT_HOSTS, *_WILDCARD_CONNECT_HOSTS}
+
+
+def _connect_host(host: str | None) -> str:
+    """Return a dialable host for a bind/configured host.
+
+    Wildcard bind addresses are useful for listening, but they are not stable
+    client targets. Convert only those wildcard values to loopback; leave DNS
+    names and concrete IPs untouched so normal resolver behavior applies.
+    """
+    raw = (host or "").strip()
+    normalized = raw.strip("[]").casefold()
+    return _WILDCARD_CONNECT_HOSTS.get(normalized, raw or "127.0.0.1")
+
+
+def _netloc(host: str, port: int | None) -> str:
+    bracketed = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    return f"{bracketed}:{port}" if port else bracketed
+
+
+def _should_inject_server_port(parsed_hostname: str | None, connect_host: str) -> bool:
+    """Return True when AIO_SERVER_PORT should be part of the URL.
+
+    External URLs without an explicit port should keep their scheme default
+    (e.g. HTTPS -> 443). Local/all-in-one URLs and Kubernetes service DNS
+    names use the app server's configured service port.
+    """
+    host = (parsed_hostname or connect_host).strip("[]").casefold()
+    return host in _LOCAL_BIND_HOSTS or host.endswith(".svc") or host.endswith(".svc.cluster.local")
+
+
+def _verify_for_url(url: str) -> bool:
+    """Return whether httpx should verify TLS certificates for *url*.
+
+    The all-in-one local server can run with an auto-generated self-signed
+    certificate. Disable verification only for loopback HTTPS targets; keep
+    normal certificate verification for every external HTTPS endpoint.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return True
+    host = (parsed.hostname or "").strip("[]").casefold()
+    return host not in _LOCAL_BIND_HOSTS
 
 
 def _server_module_available() -> bool:
@@ -49,17 +99,23 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
     """Spawn a uvicorn server subprocess and return the Popen handle and log file."""
     LOGGER.info("Writing API Server logs to: %s", log_path)
     log_fh = log_path.open("a")
+    args = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "server.app.main:app",
+        "--host",
+        settings.server_address,
+        "--port",
+        port,
+    ]
+
+    if settings.server_ssl:
+        cert, key = ensure_ssl_cert(_SRC_DIR, "AIO_SERVER_SSL_CERT_FILE", "AIO_SERVER_SSL_KEY_FILE")
+        args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
+
     proc = subprocess.Popen(  # keep handle open for uvicorn logging; closed in _stop_server
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "server.app.main:app",
-            "--host",
-            settings.server_address,
-            "--port",
-            port,
-        ],
+        args,
         env=env,
         stdout=log_fh,
         stderr=log_fh,
@@ -75,12 +131,13 @@ def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READ
     exits early or the timeout is reached.
     """
     url = f"{_local_server_base_url()}/liveness"
+    request_kwargs: dict[str, Any] = {"timeout": 1.0, "verify": _verify_for_url(url)}
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             return False
         try:
-            resp = httpx.get(url, timeout=1.0)
+            resp = httpx.get(url, **request_kwargs)
             if resp.status_code == 200:
                 return True
         except httpx.HTTPError:
@@ -97,6 +154,8 @@ def start_server() -> None:
     LOGGER.info("Starting the AI Optimizer All-In-One mode...")
     proc = _SERVER["process"]
     if proc is not None and proc.poll() is None:
+        settings.server_url = _local_server_origin_url()
+        LOGGER.info("Using local API Server URL for existing subprocess: %s", settings.server_url)
         return
 
     port = str(settings.server_port)
@@ -117,6 +176,8 @@ def start_server() -> None:
 
     log_path = Path(src_dir) / f"apiserver_{port}.log"
     proc, log_fh = _spawn_server(port, env, log_path)
+    settings.server_url = _local_server_origin_url()
+    LOGGER.info("Using local API Server URL after subprocess start: %s", settings.server_url)
 
     # Track the subprocess immediately so it isn't killed on timeout — slow
     # imports (langchain, etc.) can push first-byte well past any sane wait,
@@ -148,7 +209,14 @@ def start_server() -> None:
 
 def _local_server_base_url(api_prefix: str = "/v1") -> str:
     """Return the direct URL for the locally spawned API server."""
-    return f"http://127.0.0.1:{settings.server_port}{api_prefix.rstrip('/')}"
+    return f"{_local_server_origin_url()}{api_prefix.rstrip('/')}"
+
+
+def _local_server_origin_url() -> str:
+    """Return the origin URL for the locally spawned API server."""
+    scheme = "https" if settings.server_ssl else "http"
+    host = _connect_host(settings.server_address)
+    return f"{scheme}://{_netloc(host, settings.server_port)}"
 
 
 def _stop_process(proc: subprocess.Popen) -> None:
@@ -175,9 +243,11 @@ def _stop_server() -> None:
 
 def _base_url(api_prefix: str = "/v1") -> str:
     parsed = urlparse(settings.server_url)
-    # Only inject the configured port when the URL doesn't already specify one
-    port = parsed.port or settings.server_port
-    netloc = f"{parsed.hostname}:{port}" if port else parsed.hostname
+    host = _connect_host(parsed.hostname)
+    port = parsed.port
+    if port is None and _should_inject_server_port(parsed.hostname, host):
+        port = settings.server_port
+    netloc = _netloc(host, port)
     path = (parsed.path.rstrip("/") + settings.server_url_prefix + api_prefix).rstrip("/")
     return urlunparse((parsed.scheme, netloc, path, "", "", ""))
 
@@ -195,8 +265,9 @@ def api_get(
 ) -> Any:
     """GET request to the API server. Returns parsed JSON."""
     headers = {**_headers(), **(extra_headers or {})}
-    with httpx.Client(headers=headers, timeout=timeout) as client:
-        resp = client.get(f"{_base_url(api_prefix)}/{path.lstrip('/')}", params=params)
+    base = _base_url(api_prefix)
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(base)) as client:
+        resp = client.get(f"{base}/{path.lstrip('/')}", params=params)
         resp.raise_for_status()
         return resp.json()
 
@@ -219,7 +290,7 @@ def api_post(
     """
     headers = {**_headers(), **(extra_headers or {})}
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
-    with httpx.Client(headers=headers, timeout=timeout) as client:
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(url)) as client:
         if files is not None or data is not None:
             resp = client.post(url, files=files, data=data, params=params)
         else:
@@ -239,7 +310,7 @@ def api_post_stream(
     """Streaming POST request to the API server. Yields parsed NDJSON dicts."""
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
-        httpx.Client(headers=_headers(), timeout=timeout) as client,
+        httpx.Client(headers=_headers(), timeout=timeout, verify=_verify_for_url(url)) as client,
         client.stream("POST", url, json=json_body) as resp,
     ):
         resp.raise_for_status()
@@ -264,8 +335,9 @@ def api_put(
 ) -> dict:
     """PUT request to the API server. Returns parsed JSON."""
     headers = {**_headers(), **(extra_headers or {})}
-    with httpx.Client(headers=headers, timeout=timeout) as client:
-        resp = client.put(f"{_base_url(api_prefix)}/{path.lstrip('/')}", json=json, params=params)
+    url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(url)) as client:
+        resp = client.put(url, json=json, params=params)
         resp.raise_for_status()
         if toast:
             st.toast(toast, icon="✅")
@@ -282,8 +354,9 @@ def api_patch(
 ) -> Any:
     """PATCH request to the API server. Returns parsed JSON (or None for 204)."""
     headers = {**_headers(), **(extra_headers or {})}
-    with httpx.Client(headers=headers, timeout=timeout) as client:
-        resp = client.patch(f"{_base_url(api_prefix)}/{path.lstrip('/')}", json=json)
+    url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(url)) as client:
+        resp = client.patch(url, json=json)
         resp.raise_for_status()
         if toast:
             st.toast(toast, icon="✅")
@@ -299,8 +372,9 @@ def api_delete(
 ) -> None:
     """DELETE request to the API server. Expects 204 No Content."""
     headers = {**_headers(), **(extra_headers or {})}
-    with httpx.Client(headers=headers, timeout=timeout) as client:
-        resp = client.delete(f"{_base_url(api_prefix)}/{path.lstrip('/')}")
+    url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
+    with httpx.Client(headers=headers, timeout=timeout, verify=_verify_for_url(url)) as client:
+        resp = client.delete(url)
         resp.raise_for_status()
         if toast:
             st.toast(toast, icon="✅")
@@ -323,12 +397,12 @@ def get_server_settings(client: str, include_sensitive: bool = False) -> dict | 
     headers = _headers()
     params = {"client": client}
     try:
-        with httpx.Client(headers=headers, timeout=5) as client_settings:
+        with httpx.Client(headers=headers, timeout=5, verify=_verify_for_url(base)) as client_settings:
             resp = client_settings.get(f"{base}/settings", params=params)
             resp.raise_for_status()
             return resp.json()
-    except httpx.HTTPError:
-        LOGGER.warning("Failed to fetch server settings from %s", base)
+    except httpx.HTTPError as exc:
+        LOGGER.warning("Failed to fetch server settings from %s: %s", base, exc)
         return None
 
 
@@ -338,10 +412,10 @@ def export_server_settings(client: str) -> dict | None:
     headers = {**_headers(), "X-Confirm-Export": "true"}
     params = {"client": client}
     try:
-        with httpx.Client(headers=headers, timeout=5) as client_settings:
+        with httpx.Client(headers=headers, timeout=5, verify=_verify_for_url(base)) as client_settings:
             resp = client_settings.post(f"{base}/settings/export", params=params)
             resp.raise_for_status()
             return resp.json()
-    except httpx.HTTPError:
-        LOGGER.warning("Failed to export server settings from %s", base)
+    except httpx.HTTPError as exc:
+        LOGGER.warning("Failed to export server settings from %s: %s", base, exc)
         return None

@@ -47,6 +47,16 @@ class TestClientSettingsFields:
         s = self._make(server_url="https://example.com")
         assert s.server_url == "https://example.com"
 
+    def test_server_address_default(self):
+        """Default server_address is loopback for local client autostart."""
+        s = self._make()
+        assert s.server_address == "127.0.0.1"
+
+    def test_server_address_explicit(self):
+        """Explicit server_address overrides the default."""
+        s = self._make(server_address="0.0.0.0")
+        assert s.server_address == "0.0.0.0"
+
     def test_server_port_default(self):
         """Default server_port is 8000."""
         s = self._make()
@@ -56,6 +66,16 @@ class TestClientSettingsFields:
         """Explicit server_port overrides the default."""
         s = self._make(server_port=9000)
         assert s.server_port == 9000
+
+    def test_server_ssl_default(self):
+        """Default server_ssl is false."""
+        s = self._make()
+        assert s.server_ssl is False
+
+    def test_server_ssl_explicit(self):
+        """Explicit server_ssl overrides the default."""
+        s = self._make(server_ssl=True)
+        assert s.server_ssl is True
 
     def test_server_url_prefix_default(self):
         """Default server_url_prefix is empty string."""

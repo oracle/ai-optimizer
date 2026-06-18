@@ -33,6 +33,67 @@ def _make_state(extra=None):
 
 
 # ---------------------------------------------------------------------------
+# _advertised_api_base_url
+# ---------------------------------------------------------------------------
+class TestAdvertisedApiBaseUrl:
+    """Tests for the API URL displayed on the API Server page."""
+
+    def _settings(self, **overrides):
+        settings = MagicMock()
+        settings.server_url_prefix = overrides.get("server_url_prefix", "")
+        settings.server_port = overrides.get("server_port", 8000)
+        settings.server_address = overrides.get("server_address", "127.0.0.1")
+        return settings
+
+    def test_local_internal_url_uses_browser_host_for_display(self):
+        """Loopback internal URLs are converted to a browser-reachable host."""
+        settings = self._settings(server_address="0.0.0.0")
+        with (
+            patch(f"{MODULE}.client_settings", settings),
+            patch(f"{MODULE}._base_url", return_value="https://127.0.0.1:8000/v1"),
+        ):
+            from client.app.content.api_server import _advertised_api_base_url
+
+            result = _advertised_api_base_url("https://release-ai.appoci.oraclecorp.com:8501/api_server")
+        assert result == "https://release-ai.appoci.oraclecorp.com:8000/v1"
+
+    def test_loopback_bind_does_not_advertise_browser_host(self):
+        """A loopback-bound server is not externally reachable just because the UI is."""
+        settings = self._settings(server_address="127.0.0.1")
+        with (
+            patch(f"{MODULE}.client_settings", settings),
+            patch(f"{MODULE}._base_url", return_value="https://127.0.0.1:8000/v1"),
+        ):
+            from client.app.content.api_server import _advertised_api_base_url
+
+            result = _advertised_api_base_url("https://release-ai.appoci.oraclecorp.com:8501/api_server")
+        assert result == "https://127.0.0.1:8000/v1"
+
+    def test_external_internal_url_is_displayed_as_is(self):
+        """Already external API URLs do not need inference."""
+        settings = self._settings()
+        with (
+            patch(f"{MODULE}.client_settings", settings),
+            patch(f"{MODULE}._base_url", return_value="https://api.example.com/v1"),
+        ):
+            from client.app.content.api_server import _advertised_api_base_url
+
+            assert _advertised_api_base_url("https://ui.example.com:8501/api_server") == "https://api.example.com/v1"
+
+    def test_local_browser_url_keeps_internal_url(self):
+        """Local development should still display the local API URL."""
+        settings = self._settings()
+        with (
+            patch(f"{MODULE}.client_settings", settings),
+            patch(f"{MODULE}._base_url", return_value="http://127.0.0.1:8000/v1"),
+        ):
+            from client.app.content.api_server import _advertised_api_base_url
+
+            result = _advertised_api_base_url("http://localhost:8501/api_server")
+        assert result == "http://127.0.0.1:8000/v1"
+
+
+# ---------------------------------------------------------------------------
 # _copy_to_server
 # ---------------------------------------------------------------------------
 class TestCopyToServer:

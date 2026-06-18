@@ -30,6 +30,9 @@ class ClientSettings(BaseSettings):
     server_url: str = "http://localhost"
     server_address: str = "127.0.0.1"
     server_port: int = 8000
+    server_ssl: bool = False
+    server_ssl_cert_file: str = ""
+    server_ssl_key_file: str = ""
     server_url_prefix: str = ""
 
     @field_validator("server_url_prefix")
