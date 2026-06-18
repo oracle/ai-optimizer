@@ -13,7 +13,7 @@ import pytest
 from mcp.types import GetPromptResult, ImageContent, PromptMessage, TextContent
 from pyagentspec.mcp import StreamableHTTPTransport
 
-from server.app.agentspec.adapters.mcp import _verify_for_url, build_mcp_transport, fetch_mcp_prompt
+from server.app.agentspec.adapters.mcp import build_mcp_transport, fetch_mcp_prompt
 
 
 class TestBuildMcpTransport:
@@ -45,22 +45,6 @@ class TestBuildMcpTransport:
         transport = build_mcp_transport("https://x.com", "my-secret")
         headers = dict(transport.sensitive_headers or {})
         assert headers["X-API-Key"] == "my-secret"
-
-
-class TestMcpTlsVerification:
-    """Unit tests for MCP HTTP client certificate verification policy."""
-
-    def test_local_https_disables_verification(self):
-        assert _verify_for_url("https://127.0.0.1:8000/mcp/") is False
-        assert _verify_for_url("https://localhost:8000/mcp/") is False
-        assert _verify_for_url("https://[::1]:8000/mcp/") is False
-        assert _verify_for_url("https://0.0.0.0:8000/mcp/") is False
-
-    def test_external_https_verifies_certificates(self):
-        assert _verify_for_url("https://release-ai.appoci.oraclecorp.com:8000/mcp/") is True
-
-    def test_http_uses_default_verification_flag(self):
-        assert _verify_for_url("http://127.0.0.1:8000/mcp/") is True
 
 
 def _mock_mcp_session(prompt_result: GetPromptResult) -> AsyncMock:

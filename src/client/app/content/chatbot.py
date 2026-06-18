@@ -14,8 +14,9 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core import sidebar
-from client.app.core.api import _base_url, _headers, _verify_for_url
+from client.app.core.api import _base_url, _headers
 from client.app.core.helpers import extract_error_detail, load_chat_history
+from net_addressing import verify_for_url
 
 LOGGER = logging.getLogger("content.chatbot")
 
@@ -146,7 +147,7 @@ async def _stream_chat(messages: list[dict], metadata: dict):
     headers = {**_headers(), "client": state.optimizer_client}
     body = {"messages": messages}
 
-    async with httpx.AsyncClient(timeout=120, verify=_verify_for_url(url)) as client:  # noqa: SIM117
+    async with httpx.AsyncClient(timeout=120, verify=verify_for_url(url)) as client:  # noqa: SIM117
         async with client.stream("POST", url, json=body, headers=headers) as resp:
             resp.raise_for_status()
             buffer = ""

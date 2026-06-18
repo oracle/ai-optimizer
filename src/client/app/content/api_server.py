@@ -12,16 +12,14 @@ from urllib.parse import urlparse, urlunparse
 import streamlit as st
 from streamlit import session_state as state
 
-from client.app.core.api import _base_url, _netloc, api_post, get_server_settings
+from client.app.core.api import _base_url, api_post, get_server_settings
 from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
 from client.app.core.helpers import load_chat_history
 from client.app.core.secrets import reveal
 from client.app.core.settings import settings as client_settings
+from net_addressing import LOCAL_HOSTS, WILDCARD_HOSTS, netloc
 
 LOGGER = logging.getLogger("client.content.api_server")
-
-_WILDCARD_DISPLAY_HOSTS = {"0.0.0.0", "::", "0:0:0:0:0:0:0:0"}
-_LOCAL_DISPLAY_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "::", "0:0:0:0:0:0:0:0"}
 
 
 def _advertised_api_base_url(browser_url: str | None = None) -> str:
@@ -29,23 +27,22 @@ def _advertised_api_base_url(browser_url: str | None = None) -> str:
     internal_url = _base_url()
     parsed_internal = urlparse(internal_url)
     internal_host = (parsed_internal.hostname or "").strip("[]").casefold()
-    if internal_host not in _LOCAL_DISPLAY_HOSTS:
+    if internal_host not in LOCAL_HOSTS:
         return internal_url
 
     if browser_url is None:
         browser_url = getattr(st.context, "url", "")
     parsed_browser = urlparse(browser_url or "")
     browser_host = (parsed_browser.hostname or "").strip("[]")
-    if not browser_host or browser_host.casefold() in _LOCAL_DISPLAY_HOSTS:
+    if not browser_host or browser_host.casefold() in LOCAL_HOSTS:
         return internal_url
 
     bind_host = (client_settings.server_address or "").strip("[]").casefold()
-    if bind_host not in _WILDCARD_DISPLAY_HOSTS:
+    if bind_host not in WILDCARD_HOSTS:
         return internal_url
 
     port = parsed_internal.port or client_settings.server_port
-    netloc = _netloc(browser_host, port)
-    return urlunparse((parsed_internal.scheme, netloc, parsed_internal.path, "", "", ""))
+    return urlunparse((parsed_internal.scheme, netloc(browser_host, port), parsed_internal.path, "", "", ""))
 
 
 def _copy_to_server() -> None:

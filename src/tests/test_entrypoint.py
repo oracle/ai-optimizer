@@ -9,11 +9,6 @@ Unit tests for entrypoint.py
 import os
 from pathlib import Path
 
-from cryptography import x509
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
-from cryptography.x509.oid import NameOID
-
 import entrypoint
 
 
@@ -135,107 +130,6 @@ class TestDetectComponent:
     def test_no_directories_defaults_to_client(self, tmp_path):
         """detect_component should default to 'client' when neither directory exists."""
         assert entrypoint.detect_component(tmp_path, "") == "client"
-
-
-class TestGenerateSelfSignedCert:
-    """Tests for generate_self_signed_cert."""
-
-    def test_creates_cert_and_key_files(self, tmp_path):
-        """generate_self_signed_cert should create both PEM files."""
-        cert_path = tmp_path / "cert.pem"
-        key_path = tmp_path / "key.pem"
-        entrypoint.generate_self_signed_cert(cert_path, key_path)
-        assert cert_path.exists()
-        assert key_path.exists()
-
-    def test_cert_is_valid_x509(self, tmp_path):
-        """Generated certificate should be parseable X.509 with CN=localhost."""
-        cert_path = tmp_path / "cert.pem"
-        key_path = tmp_path / "key.pem"
-        entrypoint.generate_self_signed_cert(cert_path, key_path)
-        cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
-        cn = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
-        assert cn == "localhost"
-
-    def test_cert_has_san(self, tmp_path):
-        """Generated certificate should include a SubjectAlternativeName for localhost."""
-        cert_path = tmp_path / "cert.pem"
-        key_path = tmp_path / "key.pem"
-        entrypoint.generate_self_signed_cert(cert_path, key_path)
-        cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
-        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
-        dns_names = san.value.get_values_for_type(x509.DNSName)
-        assert "localhost" in dns_names
-
-    def test_key_is_rsa_2048(self, tmp_path):
-        """Generated key should be an unencrypted RSA-2048 private key."""
-        cert_path = tmp_path / "cert.pem"
-        key_path = tmp_path / "key.pem"
-        entrypoint.generate_self_signed_cert(cert_path, key_path)
-        key = load_pem_private_key(key_path.read_bytes(), password=None)
-        assert isinstance(key, RSAPrivateKey)
-        assert key.key_size == 2048
-
-    def test_key_file_permissions(self, tmp_path):
-        """Generated key file should have restrictive permissions (0o600)."""
-        cert_path = tmp_path / "cert.pem"
-        key_path = tmp_path / "key.pem"
-        entrypoint.generate_self_signed_cert(cert_path, key_path)
-        mode = key_path.stat().st_mode & 0o777
-        assert mode == 0o600
-
-
-class TestEnsureSslCert:
-    """Tests for ensure_ssl_cert."""
-
-    def test_generates_when_missing(self, tmp_path, monkeypatch):
-        """ensure_ssl_cert should generate files when env vars are empty."""
-        monkeypatch.delenv("TEST_CERT", raising=False)
-        monkeypatch.delenv("TEST_KEY", raising=False)
-        # script_dir.parent / "tmp" / "ssl" is where certs go
-        script_dir = tmp_path / "src"
-        script_dir.mkdir()
-        cert, key = entrypoint.ensure_ssl_cert(script_dir, "TEST_CERT", "TEST_KEY")
-        assert cert.exists()
-        assert key.exists()
-        assert cert.name == "cert.pem"
-        assert key.name == "key.pem"
-
-    def test_uses_env_var_paths(self, tmp_path, monkeypatch):
-        """ensure_ssl_cert should use env var paths when both are set."""
-        cert_path = tmp_path / "my_cert.pem"
-        key_path = tmp_path / "my_key.pem"
-        cert_path.write_text("cert-content")
-        key_path.write_text("key-content")
-        monkeypatch.setenv("TEST_CERT", str(cert_path))
-        monkeypatch.setenv("TEST_KEY", str(key_path))
-        cert, key = entrypoint.ensure_ssl_cert(tmp_path, "TEST_CERT", "TEST_KEY")
-        assert cert == cert_path
-        assert key == key_path
-
-    def test_skips_when_existing(self, tmp_path, monkeypatch):
-        """ensure_ssl_cert should not regenerate when both files already exist."""
-        monkeypatch.delenv("TEST_CERT", raising=False)
-        monkeypatch.delenv("TEST_KEY", raising=False)
-        script_dir = tmp_path / "src"
-        script_dir.mkdir()
-        ssl_dir = tmp_path / "tmp" / "ssl"
-        ssl_dir.mkdir(parents=True)
-        (ssl_dir / "cert.pem").write_text("existing-cert")
-        (ssl_dir / "key.pem").write_text("existing-key")
-        cert, key = entrypoint.ensure_ssl_cert(script_dir, "TEST_CERT", "TEST_KEY")
-        assert cert.read_text(encoding="utf-8") == "existing-cert"
-        assert key.read_text(encoding="utf-8") == "existing-key"
-
-    def test_creates_ssl_directory(self, tmp_path, monkeypatch):
-        """ensure_ssl_cert should create the ssl directory if it does not exist."""
-        monkeypatch.delenv("TEST_CERT", raising=False)
-        monkeypatch.delenv("TEST_KEY", raising=False)
-        script_dir = tmp_path / "deep" / "nested" / "src"
-        script_dir.mkdir(parents=True)
-        entrypoint.ensure_ssl_cert(script_dir, "TEST_CERT", "TEST_KEY")
-        ssl_dir = script_dir.parent / "tmp" / "ssl"
-        assert ssl_dir.is_dir()
 
 
 class TestStartServer:

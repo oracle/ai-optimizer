@@ -14,6 +14,7 @@ from urllib.parse import urlunparse
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
+from net_addressing import connect_host, netloc
 from server.app.api.v1.schemas.chat import (
     ChatHistoryResponse,
     ChatRequest,
@@ -35,23 +36,6 @@ LOGGER = logging.getLogger(__name__)
 
 auth = APIRouter(prefix="/chat")
 
-_WILDCARD_CONNECT_HOSTS = {
-    "0.0.0.0": "127.0.0.1",
-    "::": "::1",
-    "0:0:0:0:0:0:0:0": "::1",
-}
-
-
-def _connect_host(host: str | None) -> str:
-    raw = (host or "").strip()
-    normalized = raw.strip("[]").casefold()
-    return _WILDCARD_CONNECT_HOSTS.get(normalized, raw or "127.0.0.1")
-
-
-def _netloc(host: str, port: int | None) -> str:
-    bracketed = f"[{host}]" if ":" in host and not host.startswith("[") else host
-    return f"{bracketed}:{port}" if port else bracketed
-
 
 def _internal_mcp_url(
     *,
@@ -62,13 +46,13 @@ def _internal_mcp_url(
 ) -> str:
     """Return the server-local MCP URL used by chat tool orchestration."""
     scheme = "https" if (settings.server_ssl if server_ssl is None else server_ssl) else "http"
-    host = _connect_host(settings.server_address if server_address is None else server_address)
+    host = connect_host(settings.server_address if server_address is None else server_address)
     port = settings.server_port if server_port is None else server_port
     prefix = settings.server_url_prefix if server_url_prefix is None else server_url_prefix
     prefix = prefix.strip().rstrip("/")
     if prefix and not prefix.startswith("/"):
         prefix = f"/{prefix}"
-    return urlunparse((scheme, _netloc(host, port), f"{prefix}/mcp/", "", "", ""))
+    return urlunparse((scheme, netloc(host, port), f"{prefix}/mcp/", "", "", ""))
 
 
 _orchestrator = ChatOrchestrator(

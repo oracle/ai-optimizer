@@ -7,18 +7,15 @@ Container / CLI entrypoint — configures the environment and launches the serve
 """
 # spell-checker: ignore streamlit sslcertfile sslkeyfile
 
-import datetime
 import os
 import re
 import shutil
 import sys
 from pathlib import Path
 
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID
 from dotenv import load_dotenv
+
+from ssl_cert import ensure_ssl_cert
 
 
 def setup_pythonpath(script_dir: Path) -> None:
@@ -71,55 +68,6 @@ def detect_component(script_dir: Path, arg: str) -> str:
     if (script_dir / "server").is_dir() and not (script_dir / "client").is_dir():
         return "server"
     return "client"
-
-
-def generate_self_signed_cert(cert_path: Path, key_path: Path) -> None:
-    """Generate a self-signed RSA-2048 X.509 certificate valid for 365 days (CN=localhost)."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-
-    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
-    now = datetime.datetime.now(datetime.timezone.utc)
-
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + datetime.timedelta(days=365))
-        .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
-        .sign(key, hashes.SHA256())
-    )
-
-    key_path.write_bytes(
-        key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption(),
-        )
-    )
-    os.chmod(key_path, 0o600)
-    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-
-
-def ensure_ssl_cert(script_dir: Path, cert_env: str, key_env: str) -> tuple[Path, Path]:
-    """Return (cert_path, key_path), auto-generating a self-signed certificate if neither env var is set."""
-    cert_file = os.environ.get(cert_env, "")
-    key_file = os.environ.get(key_env, "")
-    if cert_file and key_file:
-        return Path(cert_file), Path(key_file)
-
-    ssl_dir = script_dir.parent / "tmp" / "ssl"
-    ssl_dir.mkdir(parents=True, exist_ok=True)
-    cert_path = ssl_dir / "cert.pem"
-    key_path = ssl_dir / "key.pem"
-
-    if not cert_path.exists() or not key_path.exists():
-        print("Generating self-signed SSL certificate")
-        generate_self_signed_cert(cert_path, key_path)
-
-    return cert_path, key_path
 
 
 def start_server(script_dir: Path) -> None:
