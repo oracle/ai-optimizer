@@ -38,7 +38,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
       - name: Verify app_version is 0.0.0
         working-directory: ./opentofu
@@ -105,13 +105,13 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
       - name: Run Trivy Security Scan for IaC
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
-            ghcr.io/aquasecurity/trivy:0.70.0 \
+            ghcr.io/aquasecurity/trivy:0.71.1 \
             config \
             --format sarif \
             --output /workspace/trivy-results.sarif \

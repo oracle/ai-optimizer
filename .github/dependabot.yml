@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Keep pinned GitHub Actions SHAs current across all workflows and the
+  # composite actions under .github/actions/. Dependabot reads the
+  # "# vX.Y.Z" comment beside each SHA to know what to bump to.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      # Roll all action bumps into a single PR per run instead of one per action.
+      github-actions:
+        patterns:
+          - "*"
