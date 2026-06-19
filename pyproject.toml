@@ -42,7 +42,7 @@ server = [
     "matplotlib==3.10.9",
     "oci~=2.0",
     "pyagentspec==26.1.0",
-    "pypdf==6.13.0",
+    "pypdf==6.13.3",
     "umap-learn==0.5.12"
 ]
 
