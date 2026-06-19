@@ -7,6 +7,7 @@ Unit tests for client.app.core.api
 # spell-checker: disable
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -27,6 +28,8 @@ def _mock_settings(**overrides):
     m.server_address = overrides.get("server_address", "127.0.0.1")
     m.server_port = overrides.get("server_port", 8000)
     m.server_ssl = overrides.get("server_ssl", False)
+    m.server_ssl_cert_file = overrides.get("server_ssl_cert_file", "")
+    m.server_ssl_key_file = overrides.get("server_ssl_key_file", "")
     m.server_url_prefix = overrides.get("server_url_prefix", "")
     m.api_key = overrides.get("api_key", "test-key")
     return m
@@ -167,33 +170,6 @@ class TestBaseUrl:
 
             result = _base_url()
         assert result == "http://[::1]:9000/v1"
-
-
-# ---------------------------------------------------------------------------
-# _verify_for_url
-# ---------------------------------------------------------------------------
-class TestVerifyForUrl:
-    """Tests for TLS verification selection."""
-
-    def test_local_https_disables_verification(self):
-        """Local self-signed HTTPS is allowed for all-in-one mode."""
-        from client.app.core.api import _verify_for_url
-
-        assert _verify_for_url("https://127.0.0.1:8000/v1") is False
-        assert _verify_for_url("https://localhost:8000/v1") is False
-        assert _verify_for_url("https://[::1]:8000/v1") is False
-
-    def test_external_https_keeps_verification(self):
-        """External HTTPS endpoints retain normal certificate verification."""
-        from client.app.core.api import _verify_for_url
-
-        assert _verify_for_url("https://release-ai.appoci.oraclecorp.com/v1") is True
-
-    def test_http_keeps_default_verification_flag(self):
-        """HTTP has no TLS to verify, but httpx accepts the default True flag."""
-        from client.app.core.api import _verify_for_url
-
-        assert _verify_for_url("http://127.0.0.1:8000/v1") is True
 
 
 # ---------------------------------------------------------------------------
@@ -676,13 +652,13 @@ class TestSpawnServer:
         assert "0.0.0.0" in args
 
     def test_subprocess_adds_ssl_flags(self, tmp_path):
-        """Verify _spawn_server mirrors entrypoint server SSL flags."""
+        """Verify _spawn_server adds the resolved server SSL flags."""
         log_path = tmp_path / "test.log"
         mock_proc = MagicMock()
         settings = _mock_settings(server_ssl=True)
         with (
             patch(f"{MODULE}.settings", settings),
-            patch(f"{MODULE}.ensure_ssl_cert", return_value=(tmp_path / "cert.pem", tmp_path / "key.pem")),
+            patch(f"{MODULE}.resolve_or_generate_cert", return_value=(tmp_path / "cert.pem", tmp_path / "key.pem")),
             patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
         ):
             from client.app.core.api import _spawn_server
@@ -694,6 +670,36 @@ class TestSpawnServer:
         assert str(tmp_path / "cert.pem") in args
         assert "--ssl-keyfile" in args
         assert str(tmp_path / "key.pem") in args
+
+    def test_subprocess_forwards_configured_ssl_files_to_resolver(self, tmp_path):
+        """Configured cert/key paths from settings (e.g. loaded from .env) are
+        forwarded to the resolver rather than read from os.environ."""
+        log_path = tmp_path / "test.log"
+        mock_proc = MagicMock()
+        cert_file = tmp_path / "configured.crt"
+        key_file = tmp_path / "configured.key"
+        settings = _mock_settings(
+            server_ssl=True,
+            server_ssl_cert_file=str(cert_file),
+            server_ssl_key_file=str(key_file),
+        )
+
+        def _echo(cert, key, _script_dir):
+            return Path(cert), Path(key)
+
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.resolve_or_generate_cert", side_effect=_echo) as mock_resolve,
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        ):
+            from client.app.core.api import _spawn_server
+
+            _, log_fh = _spawn_server("8000", {"PATH": "/usr/bin"}, log_path)
+        log_fh.close()
+        assert mock_resolve.call_args[0][:2] == (str(cert_file), str(key_file))
+        args = mock_popen.call_args[0][0]
+        assert str(cert_file) in args
+        assert str(key_file) in args
 
     def test_returns_tuple(self, tmp_path):
         """Verify _spawn_server returns a (process, log_file) tuple."""
