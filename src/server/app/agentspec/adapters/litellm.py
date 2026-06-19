@@ -12,13 +12,13 @@ a LiteLLM-backed LLM in portable AgentSpec YAML/JSON configurations.
 from typing import Dict, Optional, Type
 
 from pyagentspec.llms import LlmConfig
-from pyagentspec.sensitive_field import SensitiveField
 from pyagentspec.serialization.pydanticdeserializationplugin import (
     PydanticComponentDeserializationPlugin,
 )
 from pyagentspec.serialization.pydanticserializationplugin import (
     PydanticComponentSerializationPlugin,
 )
+from pyagentspec.versioning import AgentSpecVersionEnum
 from pydantic import BaseModel
 
 
@@ -29,16 +29,14 @@ class LiteLlmConfig(LlmConfig):
     component_type "LiteLlmConfig".  At load time, a runtime-specific
     plugin converts this into the engine's native LLM instance.
 
+    The connection fields (``provider``, ``model_id``, ``api_key``) are inherited
+    from :class:`LlmConfig`.  ``provider`` is required to route the model; the
+    loader enforces its presence (see runtime/langgraph/loader.py).
+
     Parameters
     ----------
-    provider:
-        LiteLLM provider prefix (e.g. "openai", "ollama", "oci").
-    model_id:
-        Model name within the provider (e.g. "gpt-5.4-mini", "qwen3:8b").
     api_base:
         Optional base URL override.
-    api_key:
-        Optional API key (prefer env vars in production).
     max_tokens:
         Maximum tokens for generation.
     frequency_penalty:
@@ -47,13 +45,17 @@ class LiteLlmConfig(LlmConfig):
         Presence penalty for generation.
     """
 
-    provider: str
-    model_id: str
     api_base: Optional[str] = None
-    api_key: SensitiveField[Optional[str]] = None
     max_tokens: Optional[int] = None
     frequency_penalty: Optional[float] = None
     presence_penalty: Optional[float] = None
+
+    def _infer_min_agentspec_version_from_configuration(self) -> AgentSpecVersionEnum:
+        # provider/model_id/api_key live on the base LlmConfig only from Agent
+        # Spec 26.1.2 onward, so this component cannot be represented faithfully
+        # by any earlier spec version.
+        min_version = super()._infer_min_agentspec_version_from_configuration()
+        return max(min_version, AgentSpecVersionEnum.v26_1_2)
 
 
 LITELLM_COMPONENT_TYPE = "LiteLlmConfig"
