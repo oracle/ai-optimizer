@@ -12,11 +12,8 @@ Provides:
 # spell-checker: ignore clienttransport langgraphconverter litellm pyagentspec serialises
 
 import logging
-import threading as _threading
 from typing import Any, Optional, cast
 
-import anyio as _anyio
-import pyagentspec.adapters.langgraph.mcp_utils as _mcp_utils
 from anyio.to_thread import run_sync
 from langgraph.prebuilt.tool_node import ToolNode
 from pyagentspec.adapters.langgraph._langgraphconverter import AgentSpecToLangGraphConverter
@@ -34,28 +31,6 @@ from server.app.models.litellm_utils import (
 from server.app.oci.registry import find_oci_profile_by_name
 from server.app.runtime.langgraph.adapters.litellm import OracleChatLiteLLM
 from server.app.runtime.ollama_tools import normalize_ollama_provider
-
-# ---------------------------------------------------------------------------
-# Monkey-patch: pyagentspec's get_execution_context() catches only
-# sniffio.AsyncLibraryNotFoundError, but anyio ≥ 4.x raises its own
-# anyio.NoEventLoopError from get_current_task().  Patch the except clause
-# so MCP tool loading works correctly inside anyio worker threads.
-# ---------------------------------------------------------------------------
-_orig_get_execution_context = _mcp_utils.get_execution_context
-
-
-def _patched_get_execution_context() -> _mcp_utils.AsyncContext:
-    try:
-        return _orig_get_execution_context()
-    except _anyio.NoEventLoopError:
-        worker_name = _threading.current_thread().name.lower()
-        if "worker" in worker_name and "anyio" in worker_name:
-            return _mcp_utils.AsyncContext.SYNC_WORKER
-        return _mcp_utils.AsyncContext.SYNC
-
-
-_mcp_utils.get_execution_context = _patched_get_execution_context
-# ---------------------------------------------------------------------------
 
 LOGGER = logging.getLogger(__name__)
 
@@ -136,12 +111,15 @@ class LiteLlmAgentSpecLoader(LangGraphAgentSpecLoader, AgentSpecToLangGraphConve
 
     def _llm_convert_to_langgraph(self, llm_config, config):
         if isinstance(llm_config, LiteLlmConfig):
+            provider = llm_config.provider
+            if provider is None:
+                raise ValueError(f"LiteLlmConfig '{llm_config.id}' is missing a provider to route the model")
             model_kwargs: dict = {}
-            if llm_config.provider == "oci":
+            if provider == "oci":
                 oci_profile = self._resolve_oci_profile()
                 if oci_profile:
                     model_kwargs.update(build_oci_litellm_params(oci_profile))
-            provider = normalize_ollama_provider(llm_config.provider)
+            provider = normalize_ollama_provider(provider)
             model_key = f"{provider}/{llm_config.model_id}"
             freq, pres = strip_unsupported_penalties(
                 model_key,
