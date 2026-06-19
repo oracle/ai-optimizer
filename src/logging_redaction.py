@@ -156,6 +156,24 @@ def _build_kv_pattern(keys: Iterable[str]) -> re.Pattern[str]:
 # Connection-string credentials: scheme://user:value@host
 _DSN_CRED = re.compile(r"(?P<pre>[a-zA-Z][\w+.-]*://[^:/\s]+:)[^@\s]+(?P<post>@)")
 
+# SQL ``IDENTIFIED BY <secret>`` (e.g. CREATE/ALTER USER or END USER DDL). The
+# secret takes one of three forms (matched in this order):
+#   1. ``VALUES '<verifier-hash>'`` — a pre-computed password hash (single-quoted
+#      literal, doubled quotes allowed). Tried first so the bare-identifier branch
+#      does not match the ``VALUES`` keyword and leave the hash exposed.
+#   2. ``"<quoted identifier>"`` — a double-quoted password.
+#   3. ``<bare identifier>`` — an unquoted password, which Oracle requires to be a
+#      valid identifier, so this matches that grammar rather than ``\S+`` (which
+#      would over-consume unrelated tokens).
+# It is not a key=value pair, so the KV pattern above does not cover it.
+_IDENTIFIED_BY = re.compile(
+    r"(?P<pre>IDENTIFIED\s+BY\s+)"
+    r"(?:VALUES\s+'(?:[^']|'')*'"
+    r'|"(?:[^"]|"")*"'
+    r"|[A-Za-z][A-Za-z0-9_$#]*)",
+    re.IGNORECASE,
+)
+
 
 class RedactingFilter(logging.Filter):
     """Replace sensitive field values in log records with ``<redacted>``.
@@ -180,6 +198,7 @@ class RedactingFilter(logging.Filter):
         # for quoted keys) so the redacted line keeps its original shape.
         text = self._kv.sub(lambda m: f"{m['q']}{m['k']}{m['q']}{m['sep']}{REDACTED}", text)
         text = _DSN_CRED.sub(lambda m: f"{m['pre']}{REDACTED}{m['post']}", text)
+        text = _IDENTIFIED_BY.sub(lambda m: f"{m['pre']}{REDACTED}", text)
         return text
 
     def filter(self, record: logging.LogRecord) -> bool:

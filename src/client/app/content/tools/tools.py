@@ -8,6 +8,7 @@ import logging
 import streamlit as st
 from streamlit import session_state as state
 
+from client.app.content.tools.tabs.deep_sec import display_deep_sec
 from client.app.content.tools.tabs.prompt_eng import display_prompt_eng
 from client.app.content.tools.tabs.split_embed import display_split_embed
 
@@ -16,7 +17,7 @@ LOGGER = logging.getLogger("content.config.tools")
 
 def main() -> None:
     """Streamlit GUI"""
-    tab_labels = ["🎤 Prompts", "📚 Split/Embed"]
+    tab_labels = ["🎤 Prompts", "📚 Split/Embed", "🔒 Deep Data Security"]
     default_tab = tab_labels[0]
     if "tools_active_tab" not in state or state.tools_active_tab not in tab_labels:
         state.tools_active_tab = default_tab
@@ -40,6 +41,8 @@ def main() -> None:
             display_prompt_eng()
         with tabs[1]:
             display_split_embed()
+        with tabs[2]:
+            display_deep_sec()
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from server.app.api.v1.endpoints import (
     agentspec,
     chat,
     databases,
+    deepsec,
     docs,
     embed,
     help_text,
@@ -76,6 +77,11 @@ router.include_router(
 router.include_router(
     embed.auth,
     tags=["Embed"],
+    dependencies=[Depends(verify_api_key)],
+)
+router.include_router(
+    deepsec.auth,
+    tags=["Deep Data Security"],
     dependencies=[Depends(verify_api_key)],
 )
 router.include_router(

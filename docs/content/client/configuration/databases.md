@@ -131,3 +131,22 @@ END;
 {{% notice style="default" title="One schema fits none..." icon="circle-info" %}}
 Creating multiple users in the same database allows developers to separate their experiments simply by changing the "Database User"
 {{% /notice %}}
+
+## Deep Data Security privileges (optional)
+
+To use the [Deep Data Security]({{% relref "/client/tools/deep_sec" %}}) tool, the database user needs the additional privileges below. They are optional: when they are absent — or when the database does not support Deep Data Security — the tool is automatically disabled in the GUI.
+
+```sql
+GRANT CREATE DATA ROLE TO "DEMO";
+GRANT DROP DATA ROLE TO "DEMO";
+GRANT CREATE END USER TO "DEMO";
+GRANT DROP END USER TO "DEMO";
+GRANT CREATE DATA GRANT TO "DEMO";
+GRANT ADMINISTER ANY DATA GRANT TO "DEMO";
+GRANT CREATE END USER CONTEXT TO "DEMO";
+GRANT CREATE END USER SECURITY CONTEXT TO "DEMO";
+-- Read access so the tool can list data roles and end users
+GRANT SELECT ON SYS.DBA_DATA_ROLES TO "DEMO";
+GRANT SELECT ON SYS.DBA_DATA_ROLE_GRANTS TO "DEMO";
+GRANT SELECT ON SYS.DBA_END_USERS TO "DEMO";
+```
