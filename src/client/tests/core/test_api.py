@@ -280,6 +280,73 @@ class TestApiGet:
 
 
 # ---------------------------------------------------------------------------
+# APIError translation
+# ---------------------------------------------------------------------------
+class TestTransportErrorTranslation:
+    """Transport/timeout errors become APIError; status errors stay httpx."""
+
+    def test_apierror_compatible_with_request_and_http_error_handlers(self):
+        """Existing ``except httpx.RequestError``/``httpx.HTTPError`` handlers must
+        keep catching it, while ``HTTPStatusError`` handlers must not."""
+        from client.app.core.api import APIError
+
+        assert issubclass(APIError, httpx.RequestError)
+        assert issubclass(APIError, httpx.HTTPError)
+        assert not issubclass(APIError, httpx.HTTPStatusError)
+
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            httpx.ReadTimeout("timed out"),
+            httpx.ConnectTimeout("slow"),
+            httpx.ConnectError("connection refused"),
+        ],
+    )
+    def test_get_wraps_transport_errors(self, exc):
+        """Each transport/timeout flavour is translated, chaining the original."""
+        ctx, _ = _mock_client_ctx(side_effect=exc)
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.Client", return_value=ctx),
+        ):
+            from client.app.core.api import APIError, api_get
+
+            with pytest.raises(APIError) as excinfo:
+                api_get("any/path")
+        assert excinfo.value.__cause__ is exc
+
+    @pytest.mark.parametrize("verb", ["api_post", "api_put", "api_patch", "api_delete"])
+    def test_all_verbs_wrap_transport_errors(self, verb):
+        """Every request helper routes through the translation layer."""
+        ctx, _ = _mock_client_ctx(side_effect=httpx.ReadTimeout("timed out"))
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.Client", return_value=ctx),
+        ):
+            import client.app.core.api as api_mod
+
+            with pytest.raises(api_mod.APIError):
+                getattr(api_mod, verb)("any/path")
+
+    def test_status_error_not_wrapped(self):
+        """HTTPStatusError must NOT be converted (callers branch on status)."""
+        error_resp = _resp(500, json_data={"detail": "fail"})
+        ctx, _ = _mock_client_ctx(response=error_resp)
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}.httpx.Client", return_value=ctx),
+        ):
+            from client.app.core.api import APIError, api_get
+
+            with pytest.raises(httpx.HTTPStatusError) as excinfo:
+                api_get("fail/path")
+        assert not isinstance(excinfo.value, APIError)
+
+
+# ---------------------------------------------------------------------------
 # api_post
 # ---------------------------------------------------------------------------
 class TestApiPost:

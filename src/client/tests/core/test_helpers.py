@@ -288,6 +288,24 @@ class TestSyncClientSetting:
         assert state["settings"]["client_settings"]["database"]["alias"] == "db1"
         mock_toast.assert_called_once()
 
+    def test_api_error_does_not_crash(self):
+        """api_put now wraps transport failures as APIError; the existing
+        ``except httpx.RequestError`` recovery path must still catch it."""
+        from client.app.core.api import APIError
+
+        state = _make_state()
+        state["settings"]["client_settings"] = {}
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.api_put", side_effect=APIError("Could not reach the API server")),
+            patch(f"{MODULE}.st.toast") as mock_toast,
+        ):
+            from client.app.core.helpers import sync_client_setting
+
+            sync_client_setting("database", "alias", "db1")
+        assert state["settings"]["client_settings"]["database"]["alias"] == "db1"
+        mock_toast.assert_called_once()
+
     def test_creates_nested_key(self):
         """Verify a nested key structure is created in client settings."""
         state = _make_state()
