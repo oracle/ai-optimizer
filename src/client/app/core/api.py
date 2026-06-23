@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore apiserver pypath
 
 import atexit
+import contextlib
 import json
 import logging
 import os
@@ -28,6 +29,45 @@ from net_addressing import connect_host, netloc, should_inject_server_port, veri
 from ssl_cert import resolve_or_generate_cert
 
 LOGGER = logging.getLogger(__name__)
+
+
+class APIError(httpx.RequestError):
+    """Raised when an API request cannot reach the server or times out.
+
+    Transport and timeout failures (connection refused, read/connect timeout,
+    network errors) are translated into this single type at the ``api`` layer so
+    callers catch one project exception instead of guessing httpx's hierarchy —
+    the gap that let a ``ReadTimeout`` escape as a raw traceback.  HTTP *status*
+    errors (4xx/5xx) are intentionally **not** wrapped; they keep propagating as
+    ``httpx.HTTPStatusError`` so callers can branch on the status code and read
+    the server's error detail.
+
+    The base is ``httpx.RequestError`` (itself a subclass of ``httpx.HTTPError``),
+    which is what httpx raises for a request that never completes — so existing
+    ``except httpx.RequestError`` *and* ``except httpx.HTTPError`` recovery paths
+    keep catching it, while ``except httpx.HTTPStatusError`` correctly does not.
+    New code should prefer ``except APIError``.  The originating exception is
+    chained via ``__cause__``.
+
+    Note: streaming (:func:`api_post_stream`) is left on raw httpx semantics —
+    long-lived streams need fine-grained ``ReadTimeout`` vs connect handling that
+    a single translated type would flatten.
+    """
+
+
+@contextlib.contextmanager
+def _translate_transport_errors(url: str):
+    """Convert httpx transport/timeout errors for *url* into :class:`APIError`.
+
+    ``httpx.HTTPStatusError`` (from ``raise_for_status``) is not a
+    ``TransportError`` subclass, so it passes through untouched.
+    """
+    try:
+        yield
+    except httpx.TransportError as exc:
+        LOGGER.warning("API request to %s failed: %s", url, exc)
+        raise APIError(f"Could not reach the API server at {url}: {exc}") from exc
+
 
 _SERVER: dict = {"process": None, "log_file": None}
 
@@ -219,8 +259,12 @@ def api_get(
     """GET request to the API server. Returns parsed JSON."""
     headers = {**_headers(), **(extra_headers or {})}
     base = _base_url(api_prefix)
-    with httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(base)) as client:
-        resp = client.get(f"{base}/{path.lstrip('/')}", params=params)
+    url = f"{base}/{path.lstrip('/')}"
+    with (
+        _translate_transport_errors(url),
+        httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(base)) as client,
+    ):
+        resp = client.get(url, params=params)
         resp.raise_for_status()
         return resp.json()
 
@@ -243,7 +287,10 @@ def api_post(
     """
     headers = {**_headers(), **(extra_headers or {})}
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
-    with httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client:
+    with (
+        _translate_transport_errors(url),
+        httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client,
+    ):
         if files is not None or data is not None:
             resp = client.post(url, files=files, data=data, params=params)
         else:
@@ -289,7 +336,10 @@ def api_put(
     """PUT request to the API server. Returns parsed JSON."""
     headers = {**_headers(), **(extra_headers or {})}
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
-    with httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client:
+    with (
+        _translate_transport_errors(url),
+        httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client,
+    ):
         resp = client.put(url, json=json, params=params)
         resp.raise_for_status()
         if toast:
@@ -308,7 +358,10 @@ def api_patch(
     """PATCH request to the API server. Returns parsed JSON (or None for 204)."""
     headers = {**_headers(), **(extra_headers or {})}
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
-    with httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client:
+    with (
+        _translate_transport_errors(url),
+        httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client,
+    ):
         resp = client.patch(url, json=json)
         resp.raise_for_status()
         if toast:
@@ -326,7 +379,10 @@ def api_delete(
     """DELETE request to the API server. Expects 204 No Content."""
     headers = {**_headers(), **(extra_headers or {})}
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
-    with httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client:
+    with (
+        _translate_transport_errors(url),
+        httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client,
+    ):
         resp = client.delete(url)
         resp.raise_for_status()
         if toast:

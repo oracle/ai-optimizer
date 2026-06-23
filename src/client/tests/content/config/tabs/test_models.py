@@ -180,6 +180,20 @@ class TestGetSupportedModels:
 
         assert result == []
 
+    def test_returns_empty_list_and_warns_on_timeout(self):
+        """A transport timeout (APIError) is caught, surfaced, and yields []."""
+        from client.app.content.config.tabs.models import _get_supported_models
+        from client.app.core.api import APIError
+
+        with (
+            patch(f"{MODULE}.api_get", side_effect=APIError("Could not reach the API server")),
+            patch(f"{MODULE}.st") as mock_st,
+        ):
+            result = _get_supported_models("ll")
+
+        assert result == []
+        mock_st.error.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # _clear_client_models

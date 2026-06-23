@@ -443,6 +443,40 @@ async def test_models_supported_filter_provider(app_client, auth_headers):
         assert all(p == "openai" for p in providers_with_ids)
 
 
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_models_supported_does_no_per_model_io(app_client, auth_headers):
+    """The supported list must be built from the static cost map, not the
+    network/auth-triggering ``get_model_info``/``get_llm_provider`` helpers
+    (iterating those blocked the endpoint past the client read timeout)."""
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("per-model litellm I/O path must not be called")
+
+    with (
+        patch("litellm.get_model_info", side_effect=_boom),
+        patch("litellm.get_llm_provider", side_effect=_boom),
+    ):
+        resp = await app_client.get("/v1/models/supported", params={"model_type": "ll"}, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    # Still populated, and entries carry the key the client UI indexes on.
+    all_ids = [entry for provider in body for entry in provider["ids"]]
+    assert all_ids
+    assert all("key" in entry for entry in all_ids)
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_models_supported_covers_embed_and_rerank(app_client, auth_headers):
+    """The static map exposes embed and rerank models, not just chat."""
+    for model_type in ("embed", "rerank"):
+        resp = await app_client.get("/v1/models/supported", params={"model_type": model_type}, headers=auth_headers)
+        assert resp.status_code == 200
+        typed = [e for prov in resp.json() for e in prov["ids"] if e.get("type") == model_type]
+        assert typed, f"no {model_type} models returned"
+
+
 class TestFindModel:
     """Cover _find_model early-return cases."""
 
