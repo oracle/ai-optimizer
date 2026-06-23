@@ -11,7 +11,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core import helpers
-from client.app.core.api import api_delete, api_get, api_post, api_put
+from client.app.core.api import APIError, api_delete, api_get, api_post, api_put
 from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
 from client.app.core.embed_status import render_active_embed_jobs
 
@@ -86,7 +86,7 @@ def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict
             state["_pending_db_select"] = new_alias
         if result.get("error"):
             st.warning(f"Saved, but connection failed: {result['error']}")
-    except httpx.TimeoutException:
+    except (httpx.TimeoutException, APIError):
         msg = "Connection attempt timed out — the database may be unreachable or starting up."
         if form_data.get("wallet_password"):
             msg += " If using a wallet, verify the wallet password is correct."

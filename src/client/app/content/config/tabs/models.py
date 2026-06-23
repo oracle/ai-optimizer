@@ -13,7 +13,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core import helpers
-from client.app.core.api import api_delete, api_get, api_post, api_post_stream, api_put
+from client.app.core.api import APIError, api_delete, api_get, api_post, api_post_stream, api_put
 from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
 
 LOGGER = logging.getLogger("client.content.config.tabs.models")
@@ -36,7 +36,7 @@ def _fetch_model(provider: str, model_id: str) -> dict | None:
     try:
         quoted_id = urllib.parse.quote(model_id, safe="")
         return api_get(f"models/{provider}/{quoted_id}", params={"include_sensitive": "true"})
-    except httpx.HTTPStatusError:
+    except (httpx.HTTPStatusError, APIError):
         return None
 
 
@@ -44,6 +44,9 @@ def _get_supported_models(model_type: str) -> list[dict[str, Any]]:
     """Get list of supported providers and models from LiteLLM."""
     try:
         return api_get("models/supported", params={"model_type": model_type})
+    except APIError as exc:
+        st.error(f"Could not load supported models: {exc}")
+        return []
     except httpx.HTTPStatusError:
         return []
 

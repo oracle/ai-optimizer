@@ -36,7 +36,7 @@ server = [
     "langchain-litellm==0.7.0",
     "langchain-mcp-adapters==0.3.0",
     "langchain-oracledb==1.5.0",
-    "litellm==v1.89.2",
+    "litellm==v1.89.3",
     "llama-index==0.14.22",
     "matplotlib==3.11.0",
     "oci~=2.0",

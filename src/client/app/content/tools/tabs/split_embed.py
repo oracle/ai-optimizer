@@ -20,7 +20,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core import helpers
-from client.app.core.api import api_get, api_patch, api_post
+from client.app.core.api import APIError, api_get, api_patch, api_post
 from client.app.core.embed_status import (
     _STAGE_LABELS,
     clear_embed_job_flag,
@@ -835,11 +835,12 @@ def _poll_embed_job(job_id: str, client_header: dict) -> dict:
                 time.sleep(_POLL_INTERVAL_SECONDS)
                 continue
             raise
-        except httpx.TransportError as ex:
+        except (httpx.TransportError, APIError) as ex:
             # No HTTP response received (timeout, connection reset,
-            # proxy error). Same retry contract as 503: the server-
-            # side job is still running, back off and retry rather
-            # than aborting the poll loop.
+            # proxy error; APIError is the api-layer translation of the
+            # same). Same retry contract as 503: the server-side job is
+            # still running, back off and retry rather than aborting the
+            # poll loop.
             consecutive_transient_failures += 1
             if consecutive_transient_failures > _MAX_CONSECUTIVE_503S:
                 # Convert the exhausted-budget transport failure into

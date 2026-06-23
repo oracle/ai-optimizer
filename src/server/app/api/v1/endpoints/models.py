@@ -53,28 +53,43 @@ async def list_models():
 
 
 def _process_model_entry(model: str, type_to_modes: dict, allowed_modes: set, provider: str) -> dict | None:
-    """Process a single model entry from litellm and return model dictionary."""
-    try:
-        details = litellm.get_model_info(model)
-        if details.get("mode") not in allowed_modes:
-            return None
-        provider_info = litellm.get_llm_provider(model)
-        api_base = provider_info[3] if len(provider_info) > 3 and provider_info[3] else None
-        if api_base is None and provider == "openai":
-            api_base = "https://api.openai.com/v1"
-        elif api_base is None and provider == "anthropic":
-            api_base = "https://api.anthropic.com/v1/"
-        model_entry = {k: v for k, v in details.items() if v is not None}
-        if api_base:
-            model_entry["api_base"] = api_base
-        model_mode = details.get("mode")
-        for type_name, modes in type_to_modes.items():
-            if model_mode in modes:
-                model_entry["type"] = type_name
-                break
-        return model_entry
-    except Exception:
+    """Build a model entry from LiteLLM's static cost map.
+
+    Reads ``litellm.model_cost`` (an in-memory dict bundled with the package)
+    rather than calling ``litellm.get_model_info``/``get_llm_provider``.  Those
+    helpers resolve the provider at call time and, for some providers (local
+    servers such as ``lemonade``, or auth-backed ones), perform live network or
+    auth I/O.  Iterating every supported model through them blocked this endpoint
+    for minutes — past the client read timeout.  The static map carries the same
+    fields the UI consumes (``mode``, ``max_input_tokens``, ``max_tokens``) with
+    no I/O.  Names in ``models_by_provider`` are the keys of ``model_cost`` and
+    ``get_model_info``'s ``key`` was just the model name, so the output shape is
+    preserved.
+    """
+    details = litellm.model_cost.get(model)
+    if details is None:
+        # No static metadata: keep the model selectable (mirrors the prior
+        # get_model_info failure fallback) with just its identifier.
         return {"key": model}
+    if details.get("mode") not in allowed_modes:
+        return None
+    model_entry = {k: v for k, v in details.items() if v is not None}
+    model_entry["key"] = model
+    # api_base is no longer resolved via get_llm_provider (that was the I/O
+    # path); only the two providers with a well-known public base are filled.
+    api_base = None
+    if provider == "openai":
+        api_base = "https://api.openai.com/v1"
+    elif provider == "anthropic":
+        api_base = "https://api.anthropic.com/v1/"
+    if api_base:
+        model_entry["api_base"] = api_base
+    model_mode = details.get("mode")
+    for type_name, modes in type_to_modes.items():
+        if model_mode in modes:
+            model_entry["type"] = type_name
+            break
+    return model_entry
 
 
 def _get_supported(
