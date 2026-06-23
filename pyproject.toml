@@ -20,7 +20,7 @@ dependencies = [
     "httpx==0.28.1",
     "oracledb~=4.0",
     "plotly==6.8.0",
-    "pydantic-settings==2.14.1"
+    "pydantic-settings==2.14.2"
 ]
 
 [project.optional-dependencies]
