@@ -141,6 +141,18 @@ async def test_import_database_creates_new(app_client, auth_headers, mock_persis
     assert new_db.pool is None
 
 
+async def test_import_database_strips_managed_by(app_client, auth_headers, mock_persist):
+    """An imported config can't masquerade as DDS-managed — managed_by is normalized to None."""
+    settings.database_configs = [DatabaseConfig(alias="CORE")]
+    payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "analytics_dsn", "managed_by": "dds:CORE"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    analytics = next(db for db in settings.database_configs if db.alias == "ANALYTICS")
+    assert analytics.managed_by is None
+
+
 async def test_import_database_updates_existing(app_client, auth_headers, mock_persist):
     """An existing database alias with changed credentials is reset to usable=False."""
     settings.database_configs = [

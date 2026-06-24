@@ -229,7 +229,7 @@ async def test_catalog_boolean_columns_preserve_false(deepsec_conn):
             "SELECT data_role, enabled_by_default FROM dba_data_roles "
             f"WHERE data_role IN ('{role_en}', '{role_dis}')",
         )
-        raw_vals = {r[0]: r[1] for r in raw}
+        raw_vals = {r[0]: r[1] for r in (raw or [])}
         assert isinstance(raw_vals[role_dis], bool), f"expected bool, got {type(raw_vals[role_dis])!r}"
         assert raw_vals[role_en] is True
         assert raw_vals[role_dis] is False

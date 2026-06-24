@@ -6,11 +6,13 @@ Unit tests for Deep Data Security DDL building and identifier validation (no dat
 """
 # spell-checker: disable
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import oracledb
 import pytest
 
+from server.app.api.v1.schemas.deepsec import DataRoleGrant
 from server.app.deepsec import database as deepsec_db
 from server.app.deepsec.database import DeepSecError, build_create_data_grant_sql
 
@@ -218,3 +220,96 @@ async def test_create_end_user_surfaces_duplicate():
     with pytest.raises(oracledb.DatabaseError):
         await deepsec_db.create_end_user(conn, "u", "pw")
     conn.commit.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_create_end_user_appends_schema_clause():
+    conn, calls = _conn_ddl_capture()
+    await deepsec_db.create_end_user(conn, "emma", "pw", "academy")
+    assert calls == ['CREATE END USER "EMMA" IDENTIFIED BY "pw" SCHEMA "ACADEMY"']
+    conn.commit.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_create_end_user_omits_schema_clause_when_absent():
+    conn, calls = _conn_ddl_capture()
+    await deepsec_db.create_end_user(conn, "emma", "pw")
+    assert "SCHEMA" not in calls[0]
+
+
+# ---------------------------------------------------------------------------
+# Data role grants (role -> end user membership)
+# ---------------------------------------------------------------------------
+
+
+def _conn_ddl_capture():
+    """Async connection mock that records the DDL passed to cursor.execute."""
+    calls: list[str] = []
+    cur = AsyncMock()
+    cur.__aenter__ = AsyncMock(return_value=cur)
+    cur.__aexit__ = AsyncMock(return_value=False)
+    cur.execute = AsyncMock(side_effect=lambda sql, *a, **k: calls.append(sql))
+    conn = AsyncMock()
+    conn.cursor = MagicMock(return_value=cur)
+    conn.commit = AsyncMock()
+    return conn, calls
+
+
+@pytest.mark.anyio
+async def test_grant_data_role_builds_and_commits():
+    conn, calls = _conn_ddl_capture()
+    await deepsec_db.grant_data_role(conn, ["employee_role", "manager_role"], "emma")
+    assert calls == ['GRANT DATA ROLE "EMPLOYEE_ROLE", "MANAGER_ROLE" TO "EMMA"']
+    conn.commit.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_grant_data_role_requires_at_least_one_role():
+    conn, calls = _conn_ddl_capture()
+    with pytest.raises(DeepSecError):
+        await deepsec_db.grant_data_role(conn, [], "emma")
+    assert calls == []
+    conn.commit.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_revoke_data_role_builds_and_commits():
+    conn, calls = _conn_ddl_capture()
+    await deepsec_db.revoke_data_role(conn, "employee_role", "emma")
+    assert calls == ['REVOKE DATA ROLE "EMPLOYEE_ROLE" FROM "EMMA"']
+    conn.commit.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_list_data_role_grants_raises_when_view_unreadable():
+    with (
+        patch.object(deepsec_db, "execute_sql", AsyncMock(return_value=None)),
+        pytest.raises(DeepSecError),
+    ):
+        await deepsec_db.list_data_role_grants(AsyncMock())
+
+
+@pytest.mark.anyio
+async def test_list_data_role_grants_maps_rows():
+    rows = [("EMPLOYEE_ROLE", "EMMA", None, None)]
+    with patch.object(deepsec_db, "execute_sql", AsyncMock(return_value=rows)):
+        out = await deepsec_db.list_data_role_grants(AsyncMock())
+    assert out == [{"data_role": "EMPLOYEE_ROLE", "grantee": "EMMA", "start_time": None, "end_time": None}]
+
+
+@pytest.mark.anyio
+async def test_list_data_role_grants_stringifies_timestamps():
+    """Non-null START_TIME/END_TIME come back as driver datetimes; they must be
+    stringified to satisfy the str | None response schema (DataRoleGrant)."""
+    rows = [("EMPLOYEE_ROLE", "EMMA", datetime(2026, 6, 1, 9, 30), datetime(2026, 12, 31, 17, 0))]
+    with patch.object(deepsec_db, "execute_sql", AsyncMock(return_value=rows)):
+        out = await deepsec_db.list_data_role_grants(AsyncMock())
+    assert out == [
+        {
+            "data_role": "EMPLOYEE_ROLE",
+            "grantee": "EMMA",
+            "start_time": "2026-06-01 09:30:00",
+            "end_time": "2026-12-31 17:00:00",
+        }
+    ]
+    DataRoleGrant.model_validate(out[0])  # would raise if a raw datetime leaked through

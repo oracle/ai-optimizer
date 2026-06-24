@@ -15,6 +15,7 @@ from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
+from server.app.database.config import DdsConnectionError
 from server.app.database.registry import discover_vector_stores
 from server.app.embed.schemas import VectorStoreConfig
 from server.app.embed.vector_store import generate_vs_metadata
@@ -125,6 +126,10 @@ async def _vs_discovery_impl(
             LOGGER.info("Filtered %d tables to %d with usable models", original_count, len(parsed_tables))
 
         return VectorStoreListResponse(parsed_tables=parsed_tables, status="success")
+    except DdsConnectionError:
+        # Propagate distinctly so callers (e.g. the retriever) surface the DDS error
+        # rather than masking it as "no vector stores"; never fall back to the owner.
+        raise
     except Exception as ex:
         LOGGER.error("Vector store discovery failed: %s", ex)
         return VectorStoreListResponse(parsed_tables=[], status="error", error=str(ex))
@@ -147,4 +152,7 @@ def register_discovery_tool():
         """List available vector storage tables in the database."""
         if ctx:
             await ctx.info(f"VS Discovery (Thread ID: {thread_id}, Filter: {filter_enabled_models})")
-        return await _vs_discovery_impl(filter_enabled_models, client=thread_id)
+        try:
+            return await _vs_discovery_impl(filter_enabled_models, client=thread_id)
+        except DdsConnectionError as ex:
+            return VectorStoreListResponse(parsed_tables=[], status="error", error=str(ex))

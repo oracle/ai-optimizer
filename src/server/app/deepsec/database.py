@@ -34,15 +34,7 @@ PRIV_CREATE_END_USER = "CREATE END USER"
 PRIV_DROP_END_USER = "DROP END USER"
 PRIV_CREATE_DATA_GRANT = "CREATE DATA GRANT"
 PRIV_ADMINISTER_ANY_DATA_GRANT = "ADMINISTER ANY DATA GRANT"
-
-REQUIRED_PRIVILEGES = (
-    PRIV_CREATE_DATA_ROLE,
-    PRIV_DROP_DATA_ROLE,
-    PRIV_CREATE_END_USER,
-    PRIV_DROP_END_USER,
-    PRIV_CREATE_DATA_GRANT,
-    PRIV_ADMINISTER_ANY_DATA_GRANT,
-)
+PRIV_GRANT_ANY_DATA_ROLE = "GRANT ANY DATA ROLE"
 
 # Supported data-grant privileges (DELETE is row-level only and takes no column list).
 _ALL_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE")
@@ -136,18 +128,19 @@ async def get_status(conn: oracledb.AsyncConnection) -> dict:
         "create_end_user": PRIV_CREATE_END_USER in held,
         "drop_end_user": PRIV_DROP_END_USER in held,
         "manage_data_grants": PRIV_CREATE_DATA_GRANT in held and PRIV_ADMINISTER_ANY_DATA_GRANT in held,
+        # GRANT/REVOKE DATA ROLE (role <-> end-user membership) both require GRANT ANY DATA ROLE.
+        "grant_data_roles": PRIV_GRANT_ANY_DATA_ROLE in held,
         # Listing roles/end users requires read access to the DBA_* views; a COUNT
         # returns a row when accessible and None (ORA-00942 swallowed) when not.
         "list_data_roles": available and await _can_read(conn, "dba_data_roles"),
         "list_end_users": available and await _can_read(conn, "dba_end_users"),
         "list_data_grants": available,  # USER_DATA_GRANTS needs no extra grant
+        "list_data_role_grants": available and await _can_read(conn, "dba_data_role_grants"),
     }
-    missing = [p for p in REQUIRED_PRIVILEGES if p not in held] if available else list(REQUIRED_PRIVILEGES)
     return {
         "available": available,
         "version": version,
         "capabilities": capabilities,
-        "missing_privileges": missing,
     }
 
 
@@ -258,14 +251,63 @@ async def list_end_users(conn: oracledb.AsyncConnection) -> list[dict]:
     ]
 
 
-async def create_end_user(conn: oracledb.AsyncConnection, name: str, password: str) -> None:
+async def create_end_user(
+    conn: oracledb.AsyncConnection, name: str, password: str, schema: Optional[str] = None
+) -> None:
     sql = f"CREATE END USER {_ident(name)} IDENTIFIED BY {_quoted_password(password)}"
+    if schema:
+        # SCHEMA associates an existing schema for name resolution (end users own no schema).
+        sql += f" SCHEMA {_ident(schema)}"
     await _exec_ddl(conn, sql)
     await conn.commit()
 
 
 async def drop_end_user(conn: oracledb.AsyncConnection, name: str) -> None:
     await _exec_ddl(conn, f"DROP END USER {_ident(name)}")
+    await conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Data role grants (data role -> end user membership)
+# ---------------------------------------------------------------------------
+# Only locally-managed data roles can be granted to end users; externally-mapped
+# roles are enabled via IAM token claims and cannot be granted here.
+
+
+async def list_data_role_grants(conn: oracledb.AsyncConnection) -> list[dict]:
+    """List data-role grants made to local end users (role <-> end-user membership)."""
+    rows = _require_readable(
+        await execute_sql(
+            conn,
+            "SELECT data_role, grantee, start_time, end_time FROM dba_data_role_grants "
+            "WHERE role_type = 'DATA ROLE' AND grantee_type = 'END USER' "
+            "ORDER BY grantee, data_role",
+        ),
+        "DBA_DATA_ROLE_GRANTS",
+    )
+    return [
+        {
+            "data_role": r[0],
+            "grantee": r[1],
+            "start_time": str(r[2]) if r[2] else None,
+            "end_time": str(r[3]) if r[3] else None,
+        }
+        for r in rows
+    ]
+
+
+async def grant_data_role(conn: oracledb.AsyncConnection, roles: list[str], grantee: str) -> None:
+    """Grant one or more locally-managed data roles to an end user."""
+    if not roles:
+        raise DeepSecError("At least one data role is required")
+    role_list = ", ".join(_ident(r) for r in roles)
+    await _exec_ddl(conn, f"GRANT DATA ROLE {role_list} TO {_ident(grantee)}")
+    await conn.commit()
+
+
+async def revoke_data_role(conn: oracledb.AsyncConnection, role: str, grantee: str) -> None:
+    """Revoke a data role from an end user."""
+    await _exec_ddl(conn, f"REVOKE DATA ROLE {_ident(role)} FROM {_ident(grantee)}")
     await conn.commit()
 
 

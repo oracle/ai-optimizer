@@ -1,16 +1,22 @@
 # Oracle AI Optimizer and Toolkit
+If you find this project useful, please consider giving it a [⭐](https://github.com/oracle/ai-optimizer/stargazers)!
 
-<!-- spell-checker:ignore streamlit, venv, setuptools -->
+<!-- spell-checker:ignore AgentSpec Docling FastAPI FAISS LangGraph LiteLLM OpenTelemetry OpenTofu pyagentspec SigNoz streamlit Uvicorn venv vLLM setuptools -->
 [![Test Suite](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/pytest.yml)
 [![Validate IaC](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/opentofu.yml)
 [![Validate Container Images](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml)
 [![Deploy Documentation](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml)
 
-## Description
-
 The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) and Natural Language to SQL (NL2SQL) capabilities. By integrating **Oracle AI Database** VectorSearch and **SQLcl** MCP, the AI Optimizer and Toolkit enables users to extend the knowledge of existing Large Language Models (LLMs) through RAG and NL2SQL.
 
-If you find this project useful, please consider giving it a [⭐](https://github.com/oracle/ai-optimizer/stargazers)!
+## Technology Stack
+
+- **Application:** Python 3.11, Streamlit client, and FastAPI/Uvicorn server.
+- **AI orchestration:** LangChain, LangGraph, LiteLLM, AgentSpec/pyagentspec, and Model Context Protocol (MCP).
+- **Oracle integration:** Oracle AI Database Vector Search, Oracle Deep Data Security, SQLcl MCP, OCI, OCI GenAI, and OCI Object Storage.
+- **RAG and evaluation:** Docling, OracleDB/LangChain vector integrations, Giskard testbed workflows, and FAISS-backed local vector workflows.
+- **Model providers and runtimes:** OCI GenAI, OpenAI-compatible APIs, OpenAI, Cohere, Perplexity, Ollama, Hugging Face, vLLM, and TGI-style hosted runtimes.
+- **Deployment and operations:** Docker/Podman, Kubernetes, Helm, OpenTofu infrastructure automation, OpenTelemetry, and SigNoz.
 
 ## AI Optimizer Features
 
@@ -20,6 +26,7 @@ If you find this project useful, please consider giving it a [⭐](https://githu
 - [Modifying System Prompts (Prompt Engineering)](https://oracle.github.io/ai-optimizer/client/tools/prompt_eng)
 - [Experimenting with **LLM** Parameters](https://oracle.github.io/ai-optimizer/client/chatbot)
 - [Testbed for auto-generated or existing Q&A datasets](https://oracle.github.io/ai-optimizer/client/testbed)
+- [Managing Oracle Deep Data Security policies](https://oracle.github.io/ai-optimizer/client/tools/deepsec)
 
 ## Getting Started
 

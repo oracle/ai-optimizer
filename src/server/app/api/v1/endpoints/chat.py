@@ -29,6 +29,7 @@ from server.app.api.v1.schemas.chat import (
 from server.app.api.v1.schemas.common import ClientId
 from server.app.core.secrets import reveal
 from server.app.core.settings import resolve_client, settings
+from server.app.database.config import DdsConnectionError
 from server.app.runtime.common import LLMConfigurationError, clean_llm_error
 from server.app.runtime.langgraph.chat import ChatOrchestrator
 
@@ -83,6 +84,8 @@ async def chat_completions(
             question=question,
             client=client,
         )
+    except DdsConnectionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except LLMConfigurationError as exc:
         raise HTTPException(
             status_code=503,
@@ -146,6 +149,10 @@ async def chat_stream(
                     yield f"data: {json.dumps(StreamErrorEvent(content=event.get('content', '')).model_dump())}\n\n"
                     yield "data: [DONE]\n\n"
                     return
+        except DdsConnectionError as exc:
+            yield f"data: {json.dumps(StreamErrorEvent(content=str(exc)).model_dump())}\n\n"
+            yield "data: [DONE]\n\n"
+            return
         except Exception as exc:
             LOGGER.error("Streaming completion failed: %s", exc)
             yield f"data: {json.dumps(StreamErrorEvent(content=clean_llm_error(exc)).model_dump())}\n\n"

@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
+from server.app.database.config import DdsConnectionError
 from server.app.mcp.prompts.registry import get_factory_text
 from server.app.runtime.common import (
     CLASSIFIER_PROMPT_NAME,
@@ -787,3 +788,34 @@ class TestHistoryFeed:
         kwargs = mock_session.execute.call_args.kwargs
         assert kwargs["history_text"] == "User: earlier\nAssistant: earlier reply\n"
         assert [m.content for m in kwargs["history_messages"]] == ["earlier", "earlier reply"]
+
+
+class TestNL2SQLDdsRouting:
+    """The NL2SQL factory routes the SQLcl connection through the DDS effective alias."""
+
+    @pytest.mark.anyio
+    async def test_session_uses_effective_alias(self):
+        """connection_name comes from resolve_effective_tool_alias(client), not the raw owner alias."""
+        orch = _make_orchestrator()
+        graph = mock_compiled_graph()
+        with (
+            patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
+            patch("server.app.runtime.langgraph.chat.resolve_effective_tool_alias", return_value="CORE::SCOUT1"),
+        ):
+            session = await orch._build_nl2sql_agent_session(mock_client_settings(), client="c1")
+        assert "connection_name: CORE::SCOUT1" in session._db_context
+
+    @pytest.mark.anyio
+    async def test_session_build_propagates_dds_error(self):
+        """An active-but-unusable DDS override raises before the agent gets a connection_name."""
+        orch = _make_orchestrator()
+        graph = mock_compiled_graph()
+        with (
+            patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
+            patch(
+                "server.app.runtime.langgraph.chat.resolve_effective_tool_alias",
+                side_effect=DdsConnectionError("unavailable"),
+            ),
+            pytest.raises(DdsConnectionError),
+        ):
+            await orch._build_nl2sql_agent_session(mock_client_settings(), client="c1")

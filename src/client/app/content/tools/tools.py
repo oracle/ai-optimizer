@@ -8,7 +8,7 @@ import logging
 import streamlit as st
 from streamlit import session_state as state
 
-from client.app.content.tools.tabs.deep_sec import display_deep_sec
+from client.app.content.tools.tabs.deepsec import display_deepsec
 from client.app.content.tools.tabs.prompt_eng import display_prompt_eng
 from client.app.content.tools.tabs.split_embed import display_split_embed
 
@@ -36,13 +36,20 @@ def main() -> None:
         )
         _remember_active_tab()
 
-        # Map tab objects to content conditionally
-        with tabs[0]:
-            display_prompt_eng()
-        with tabs[1]:
-            display_split_embed()
-        with tabs[2]:
-            display_deep_sec()
+        # Only render the active tab's body. ``st.tabs`` executes every
+        # tab body on each rerun (inactive tabs are merely CSS-hidden), so
+        # rendering all three would mount split/embed's run_every polling
+        # fragment regardless of which tab is shown — polling embed/jobs
+        # from the Prompts and Deep Data Security tabs too.
+        if state.tools_active_tab == tab_labels[0]:
+            with tabs[0]:
+                display_prompt_eng()
+        elif state.tools_active_tab == tab_labels[1]:
+            with tabs[1]:
+                display_split_embed()
+        elif state.tools_active_tab == tab_labels[2]:
+            with tabs[2]:
+                display_deepsec()
 
 
 if __name__ == "__main__":

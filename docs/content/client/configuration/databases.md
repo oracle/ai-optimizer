@@ -134,7 +134,7 @@ Creating multiple users in the same database allows developers to separate their
 
 ## Deep Data Security privileges (optional)
 
-To use the [Deep Data Security]({{% relref "/client/tools/deep_sec" %}}) tool, the database user needs the additional privileges below. They are optional: when they are absent — or when the database does not support Deep Data Security — the tool is automatically disabled in the GUI.
+To use the [Deep Data Security]({{% relref "/client/tools/deepsec" %}}) tool, the database user needs the additional privileges below. They are optional: when they are absent — or when the database does not support Deep Data Security — the tool is automatically disabled in the GUI.
 
 ```sql
 GRANT CREATE DATA ROLE TO "DEMO";

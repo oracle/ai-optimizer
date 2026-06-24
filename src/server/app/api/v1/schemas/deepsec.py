@@ -6,7 +6,7 @@ Pydantic models for the Deep Data Security API.
 """
 # spell-checker:ignore deepsec
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 
 class DeepSecCapabilities(BaseModel):
@@ -17,9 +17,11 @@ class DeepSecCapabilities(BaseModel):
     create_end_user: bool
     drop_end_user: bool
     manage_data_grants: bool
+    grant_data_roles: bool
     list_data_roles: bool
     list_end_users: bool
     list_data_grants: bool
+    list_data_role_grants: bool
 
 
 class DeepSecStatus(BaseModel):
@@ -28,7 +30,6 @@ class DeepSecStatus(BaseModel):
     available: bool = Field(description="Whether the database build includes Deep Data Security")
     version: str | None = Field(default=None, description="Database version_full")
     capabilities: DeepSecCapabilities
-    missing_privileges: list[str] = Field(default_factory=list)
 
 
 class SchemaObject(BaseModel):
@@ -63,10 +64,44 @@ class EndUser(BaseModel):
 
 
 class EndUserCreate(BaseModel):
-    """Request to create an end user."""
+    """Request to create an end user.
+
+    The end user is provisioned server-side with the same password as the
+    connected database user, so no password is accepted from the client.
+    """
 
     name: str
-    password: SecretStr
+    schema_name: str | None = Field(default=None, description="Existing schema for name resolution")
+
+
+class ConnectAsRequest(BaseModel):
+    """Designate a DDS end user for chat-time read tools to connect as."""
+
+    end_user: str = Field(description="Existing DDS end user to connect tools as")
+
+
+class ConnectAsResponse(BaseModel):
+    """The runtime-only managed connection registered for the connect-as end user."""
+
+    alias: str = Field(description="Managed database alias the chat tools will use")
+    base_alias: str = Field(description="Owner database alias this override is scoped to")
+    end_user: str
+
+
+class DataRoleGrant(BaseModel):
+    """A data role granted to an end user (row from DBA_DATA_ROLE_GRANTS)."""
+
+    data_role: str
+    grantee: str
+    start_time: str | None = None
+    end_time: str | None = None
+
+
+class DataRoleGrantCreate(BaseModel):
+    """Request to grant one or more locally-managed data roles to an end user."""
+
+    grantee: str = Field(description="Local end user to grant the data roles to")
+    roles: list[str] = Field(description="Locally-managed data roles to grant")
 
 
 class DataGrant(BaseModel):

@@ -206,6 +206,10 @@ class DatabaseConfig(DatabaseSensitive):
         default=[], description="Vector Storage (read-only)", json_schema_extra={"readOnly": True}
     )
     usable: bool = False
+    # Non-null marks a runtime-only, DDS-managed connection (value identifies the owner base,
+    # e.g. "dds:CORE"). Managed configs are never persisted/exported and are hidden from the
+    # user-facing database list/selector.
+    managed_by: Optional[str] = None
     pool: SkipJsonSchema[Annotated[Optional[oracledb.AsyncConnectionPool], Field(exclude=True)]] = None
 
     @field_validator("alias", "username", "wallet_location", "config_dir")

@@ -16,6 +16,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from server.app.api.v1.schemas.chat import TokenUsage
 from server.app.core.schemas import ClientSettings
 from server.app.core.secrets import reveal
+from server.app.database.config import resolve_effective_tool_alias
 from server.app.models.litellm_utils import build_oci_litellm_params, find_model
 from server.app.oci.registry import find_oci_profile_by_name
 from server.app.runtime.common import (
@@ -94,16 +95,23 @@ class ChatOrchestrator(BaseChatOrchestrator):
         self, cs: ClientSettings, client: str = ""
     ) -> NL2SQLGraphSession:
         """Build an NL2SQL agent session from client settings."""
+        # Resolve the effective tool alias with the real client id so a Deep Data Security
+        # 'connect as' override routes NL2SQL to the end-user connection (and raises
+        # DdsConnectionError, surfaced at the chat boundary, when it is unusable).
+        connection_name = resolve_effective_tool_alias(client) if client else cs.database.alias
         graph = await build_nl2sql_graph(cs, self._server_url, self.api_key, checkpointer=MemorySaver())
-        return NL2SQLGraphSession(graph, cs, thread_id=client)
+        return NL2SQLGraphSession(graph, cs, thread_id=client, connection_name=connection_name)
 
     async def _build_combined_session(self, cs: ClientSettings, client: str = "") -> CombinedSession:
         """Build a combined vecsearch + NL2SQL session from client settings."""
         graph = await build_vecsearch_graph(cs, self._server_url, self.api_key)
         vs_session = GraphFlowSession(graph, cs)
 
+        connection_name = resolve_effective_tool_alias(client) if client else cs.database.alias
         nl2sql_graph = await build_nl2sql_graph(cs, self._server_url, self.api_key, checkpointer=MemorySaver())
-        nl2sql_session = NL2SQLGraphSession(nl2sql_graph, cs, thread_id=client)
+        nl2sql_session = NL2SQLGraphSession(
+            nl2sql_graph, cs, thread_id=client, connection_name=connection_name
+        )
 
         ll_model = cs.ll_model
         assert ll_model.provider is not None

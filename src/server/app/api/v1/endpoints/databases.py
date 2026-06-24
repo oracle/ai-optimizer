@@ -17,7 +17,7 @@ from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_
 from server.app.core.error_detail import response_error_detail
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
-from server.app.database.config import close_pool, get_core_pool
+from server.app.database.config import _find_config_ci, clear_dds_for, close_pool, get_core_pool
 from server.app.database.registry import (
     drop_vector_store,
     init_core_database,
@@ -165,8 +165,10 @@ async def list_databases():
     catalog so the list stays consistent with ``GET /v1/databases/{alias}``
     and ``GET /v1/settings``.
     """
-    await asyncio.gather(*(refresh_db_vector_stores(cfg) for cfg in settings.database_configs))
-    return [cfg.model_dump(exclude=SENSITIVE_FIELDS) for cfg in settings.database_configs]
+    # DDS-managed connections are runtime-only and never user-facing.
+    visible = [cfg for cfg in settings.database_configs if not cfg.managed_by]
+    await asyncio.gather(*(refresh_db_vector_stores(cfg) for cfg in visible))
+    return [cfg.model_dump(exclude=SENSITIVE_FIELDS) for cfg in visible]
 
 
 @auth.get("/{alias}", response_model=DatabaseConfig, response_model_exclude_unset=True)
@@ -181,23 +183,75 @@ async def get_database(
     out-of-band ``DROP TABLE`` (or any direct catalog change) is reflected
     in the response.
     """
-    for cfg in settings.database_configs:
-        if cfg.alias.lower() == alias.lower():
-            await refresh_db_vector_stores(cfg)
-            if include_sensitive:
-                _log_sensitive_read(LOGGER, "databases", cfg.alias, request)
-                # Keep this path explicit so the configured serializer context
-                # is preserved.
-                return JSONResponse(
-                    content=cfg.model_dump(mode="json", context={REVEAL_KEY: True}),
-                )
-            return cfg.model_dump(exclude=SENSITIVE_FIELDS)
-    raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
+    # exclude_managed: DDS-managed connections are runtime-only and never user-facing — treat as
+    # not found even when the (otherwise hidden) alias is known, so they can't be fetched/revealed.
+    cfg = _find_config_ci(alias, exclude_managed=True)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
+    await refresh_db_vector_stores(cfg)
+    if include_sensitive:
+        _log_sensitive_read(LOGGER, "databases", cfg.alias, request)
+        # Keep this path explicit so the configured serializer context is preserved.
+        return JSONResponse(content=cfg.model_dump(mode="json", context={REVEAL_KEY: True}))
+    return cfg.model_dump(exclude=SENSITIVE_FIELDS)
+
+
+async def register_database(
+    cfg: DatabaseConfig,
+    *,
+    require_usable: bool = False,
+    persist: bool = True,
+    managed_by: str | None = None,
+) -> str | None:
+    """Test a database config, register it, and (optionally) persist it.
+
+    Caller must hold ``_settings_lock`` and, on success, call ``_maybe_refresh_sqlcl(cfg)``
+    after releasing the lock (the SQLcl rebuild is slow and must not run under the lock).
+
+    Returns the connection error-detail string (or ``None`` on a clean connect).
+
+    - ``require_usable=False`` (manual path): the config is registered/persisted even when
+      the connection test fails, returning the error string for the 201 body.
+    - ``require_usable=True`` (DDS path): **atomic, test-before-append.** On a failed test
+      nothing is registered and the error string is returned; on success the config is
+      appended. Pair with ``persist=False`` for runtime-only managed connections.
+    """
+    if managed_by is not None:
+        cfg.managed_by = managed_by
+
+    # Test before append: test_connection / init_core_database populate cfg.pool / cfg.usable
+    # on the object itself and do not need it registered first.
+    error = None
+    try:
+        if cfg.alias == "CORE":
+            await init_core_database(cfg)
+        else:
+            await test_connection(cfg)
+    except Exception as exc:
+        error = response_error_detail(exc, "Database connection failed.")
+
+    if require_usable and error:
+        # Atomic failure — nothing was appended; leave settings.database_configs untouched.
+        await close_pool(cfg.pool)
+        cfg.pool = None
+        return error
+
+    settings.database_configs.append(cfg)
+    if persist and not await persist_settings():
+        settings.database_configs.remove(cfg)
+        await close_pool(cfg.pool)
+        raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
+    return error
 
 
 @auth.post("", status_code=201, response_model_exclude_unset=True)
 async def create_database(body: DatabaseConfig):
     """Add a new database configuration."""
+    # managed_by marks runtime-only DDS connections and is server-owned: it is set only by
+    # /deepsec/connect-as (via register_database). Reject it on this public path so a client
+    # can't create an ordinary database that masquerades as managed (hidden + non-persisted).
+    if body.managed_by is not None:
+        raise HTTPException(status_code=422, detail="managed_by is server-owned and cannot be set")
     async with _settings_lock:
         # Normalise CORE alias to exact casing so downstream lookups match
         if body.alias.upper() == "CORE":
@@ -209,19 +263,7 @@ async def create_database(body: DatabaseConfig):
             if cfg.alias.lower() == body.alias.lower():
                 raise HTTPException(status_code=409, detail=f"Database config already exists: {body.alias}")
         _check_username_dsn_conflict(body.username, body.dsn)
-        settings.database_configs.append(body)
-        error = None
-        try:
-            if body.alias == "CORE":
-                await init_core_database(body)
-            else:
-                await test_connection(body)
-        except Exception as exc:
-            error = response_error_detail(exc, "Database connection failed.")
-        if not await persist_settings():
-            settings.database_configs.remove(body)
-            await close_pool(body.pool)
-            raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
+        error = await register_database(body)
         result = body.model_dump(exclude=SENSITIVE_FIELDS)
         if error:
             result["error"] = error
@@ -242,7 +284,8 @@ async def update_database(alias: str, body: DatabaseUpdate):
     4. Not working + new fails  → accept (200 with ``error`` field).
     """
     async with _settings_lock:
-        cfg = next((config for config in settings.database_configs if config.alias.lower() == alias.lower()), None)
+        # exclude_managed: runtime-only DDS connections are hidden — not editable via this endpoint.
+        cfg = _find_config_ci(alias, exclude_managed=True)
         if cfg is None:
             raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
 
@@ -289,6 +332,9 @@ async def update_database(alias: str, body: DatabaseUpdate):
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         # Persistence succeeded — now safe to close old pool
         await close_pool(saved[0])
+        # A base change invalidates any DDS connect-as connection derived from it
+        # (clear-and-disable; the user re-designates against the updated base).
+        await clear_dds_for(base_alias=cfg.alias)
 
         result = cfg.model_dump(exclude=SENSITIVE_FIELDS)
         if error:
@@ -303,7 +349,9 @@ async def remove_database(alias: str):
     async with _settings_lock:
         if alias.upper() == "CORE":
             raise HTTPException(status_code=403, detail="Cannot remove the CORE database")
-        cfg = next((c for c in settings.database_configs if c.alias.lower() == alias.lower()), None)
+        # exclude_managed: runtime-only DDS connections are torn down via /deepsec/connect-as
+        # (which also clears the client setting), not this endpoint.
+        cfg = _find_config_ci(alias, exclude_managed=True)
         if cfg is None:
             raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
 
@@ -315,6 +363,8 @@ async def remove_database(alias: str):
             settings.database_configs.insert(idx, cfg)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         await close_pool(cfg.pool)
+        # Tear down any DDS connect-as connection derived from this base.
+        await clear_dds_for(base_alias=cfg.alias)
     await refresh_sqlcl_proxy()
 
 
@@ -322,7 +372,8 @@ async def remove_database(alias: str):
 async def delete_vector_store(alias: str, table_name: str):
     """Drop a vector store table and remove it from the database configuration."""
     async with _settings_lock:
-        db_config = next((cfg for cfg in settings.database_configs if cfg.alias.lower() == alias.lower()), None)
+        # exclude_managed: runtime-only DDS connections are hidden — not addressable here.
+        db_config = _find_config_ci(alias, exclude_managed=True)
         if db_config is None:
             raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
 

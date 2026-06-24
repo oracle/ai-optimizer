@@ -144,6 +144,93 @@ async def test_get_database_not_found(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_get_database_managed_returns_404(app_client, auth_headers):
+    """A DDS-managed (runtime-only) connection is not fetchable even when its alias is known."""
+    settings.database_configs.append(
+        make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    )
+    resp = await app_client.get("/v1/databases/CORE::SCOUT1", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_database_managed_not_revealed_with_sensitive(app_client, auth_headers):
+    """include_sensitive must not reveal a managed connection's (copied owner) credentials."""
+    settings.database_configs.append(
+        make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    )
+    resp = await app_client.get(
+        "/v1/databases/CORE::SCOUT1", params={"include_sensitive": "true"}, headers=auth_headers
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_list_databases_excludes_managed(app_client, auth_headers):
+    """The database list never includes runtime-only managed connections."""
+    settings.database_configs.append(
+        make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    )
+    resp = await app_client.get("/v1/databases", headers=auth_headers)
+    assert resp.status_code == 200
+    assert "CORE::SCOUT1" not in [c["alias"] for c in resp.json()]
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_remove_database_rejects_managed(app_client, auth_headers):
+    """A DDS-managed alias is not removable via the database endpoint (it is hidden and is torn
+    down via /deepsec/connect-as, which also clears the client setting). Removing it here would
+    orphan the client's DDS setting, since the base-scoped cascade can't match a managed alias."""
+    managed = make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    settings.database_configs.append(managed)
+    resp = await app_client.delete("/v1/databases/CORE::SCOUT1", headers=auth_headers)
+    assert resp.status_code == 404
+    assert managed in settings.database_configs  # untouched
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_database_rejects_managed(app_client, auth_headers):
+    """A DDS-managed alias is not updatable via the database endpoint."""
+    managed = make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    settings.database_configs.append(managed)
+    resp = await app_client.put(
+        "/v1/databases/CORE::SCOUT1", json={"username": "X"}, headers=auth_headers
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_remove_real_base_still_cascades_to_managed_children(app_client, auth_headers):
+    """Removing a real base DB still tears down the managed connections derived from it
+    (the legitimate base-scoped cascade must survive the managed-alias rejection guard)."""
+    base = make_test_database_config(alias="OTHER", username="owner")
+    managed = make_test_database_config(alias="OTHER::SCOUT1", username="SCOUT1", managed_by="dds:OTHER")
+    settings.database_configs.extend([base, managed])
+    resp = await app_client.delete("/v1/databases/OTHER", headers=auth_headers)
+    assert resp.status_code == 204
+    aliases = [c.alias for c in settings.database_configs]
+    assert "OTHER" not in aliases
+    assert "OTHER::SCOUT1" not in aliases  # cascaded teardown of the managed child
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_vector_store_rejects_managed(app_client, auth_headers):
+    """A DDS-managed alias is not addressable via the vector-store delete endpoint."""
+    settings.database_configs.append(
+        make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    )
+    resp = await app_client.delete("/v1/databases/CORE::SCOUT1/vector-stores/ANY_TBL", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_get_database_case_insensitive(app_client, auth_headers):
     """Alias lookup is case-insensitive."""
     resp = await app_client.get("/v1/databases/test", headers=auth_headers)
@@ -216,6 +303,21 @@ async def test_create_database(app_client, auth_headers):
     list_resp = await app_client.get("/v1/databases", headers=auth_headers)
     aliases = [db["alias"] for db in list_resp.json()]
     assert "NEW_DB" in aliases
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_create_database_rejects_client_managed_by(app_client, auth_headers):
+    """managed_by is server-owned — a client must not be able to create a config that masquerades
+    as DDS-managed (which would be hidden from list/get/export and stripped by persist_settings)."""
+    with patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock):
+        resp = await app_client.post(
+            "/v1/databases",
+            json={"alias": "SNEAKY", "username": "u", "managed_by": "dds:CORE"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 422
+    assert "SNEAKY" not in [c.alias for c in settings.database_configs]
 
 
 @pytest.mark.unit

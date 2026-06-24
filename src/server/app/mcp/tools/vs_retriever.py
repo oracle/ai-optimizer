@@ -19,6 +19,7 @@ from langchain_oracledb import OracleVS
 
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
+from server.app.database.config import DdsConnectionError
 from server.app.mcp.prompts.registry import find_prompt
 from server.app.models.litellm_utils import LiteLlmModelSpec, find_model, get_client_embed
 from server.app.runtime.langgraph.adapters.litellm import ainvoke_text_from_spec
@@ -42,6 +43,8 @@ async def _get_available_vector_stores(client: str = "CONFIGURED") -> list[Vecto
             LOGGER.error("Discovery failed: %s", response.error)
             return []
         return response.parsed_tables
+    except DdsConnectionError:
+        raise  # surface the DDS error in the retriever instead of masking as "no stores"
     except Exception as ex:
         LOGGER.error("Failed to get available vector stores: %s", ex)
         return []
@@ -363,6 +366,11 @@ async def _vs_retrieve_impl(
         response.num_documents = len(response.documents)
         response.status = "success"
 
+    except DdsConnectionError as ex:
+        LOGGER.error("Vector search DDS connection unavailable: %s", ex)
+        response.status = "error"
+        response.error = str(ex)
+        return response
     except (AttributeError, KeyError, TypeError) as ex:
         LOGGER.error("Vector search failed: %s", ex)
         response.status = "error"

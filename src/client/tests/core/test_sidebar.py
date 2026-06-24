@@ -181,6 +181,22 @@ class TestOnToolsChange:
         mock_update.assert_called_once_with({"tools_enabled": ["Vector Search"]})
 
 
+class TestOnDdsChange:
+    """Tests for _on_dds_change (Deep Data Security tool-connection toggle)."""
+
+    def test_persists_enabled_flag(self):
+        state = _make_state()
+        state["runtime_dds_enabled"] = True
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.update_client_settings") as mock_update,
+        ):
+            from client.app.core.sidebar import _on_dds_change
+
+            _on_dds_change()
+        mock_update.assert_called_once_with({"deep_data_security": {"enabled": True}})
+
+
 class TestOnVsSubtoolChange:
     """Tests for _on_vs_subtool_change."""
 

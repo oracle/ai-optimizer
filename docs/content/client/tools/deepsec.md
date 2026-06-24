@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore relref deepsec nl2sql
 -->
 
-Oracle Deep Data Security enforces fine-grained, identity-aware authorization directly in the database. You define declarative policies — **data grants** — that control access at the row and column level for **data roles** and **end users**. Because the policies are enforced inside the database, they apply to every access path, including the AI Optimizer's [Natural Language to SQL]({{% relref "/client/chatbot" %}}) agent: once a data grant is in place, the agent's queries see exactly the data the policy allows, with no application-side enforcement.
+Oracle Deep Data Security enforces fine-grained, identity-aware authorization directly in the database. You define declarative policies, **data grants**, that control access at the row and column level for **data roles** and **end users**. Because the policies are enforced inside the database, they apply to every access path, including the AI Optimizer's [Natural Language to SQL]({{% relref "/client/chatbot" %}}) agent: once a data grant is in place, the agent's queries see exactly the data the policy allows, with no application-side enforcement.
 
 The Deep Data Security tool lets you create and manage these objects from the AI Optimizer.
 
@@ -28,11 +28,11 @@ Open the **Tools** menu and select the **Deep Data Security** tab. It is organiz
 
 ### Data Roles
 
-Create and drop **data roles** — the principals that data grants authorize. A data role can be local, or mapped to an external application role (for example, an identity-provider group).
+Create and drop **data roles**, the principals that data grants authorize. A data role can be local, or mapped to an external application role (for example, an identity-provider group).
 
 ### End Users
 
-Create and drop Deep Data Security **end users** — the identities whose access is governed by data grants.
+Create and drop Deep Data Security **end users**, the identities whose access is governed by data grants.
 
 ### Data Grants
 
@@ -44,5 +44,3 @@ Build a **data grant** that authorizes a data role against one of your tables or
 - Select the **data role** to grant to.
 
 The generated `CREATE DATA GRANT` statement is shown for review before you apply it. Existing data grants are listed and can be dropped.
-
-Because enforcement happens in the database, any data grant you create here is immediately reflected in subsequent queries — including those issued by the NL2SQL agent.

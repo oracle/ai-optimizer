@@ -23,6 +23,16 @@ from .sql import execute_sql
 
 LOGGER = logging.getLogger(__name__)
 
+
+def hide_managed_db_configs(data: dict) -> None:
+    """Strip DDS-managed (runtime-only) connections from a serialized settings ``data`` dict.
+
+    Managed configs are never persisted or returned to clients; this is the single place that
+    enforces that on a serialized ``database_configs`` payload (in-place).
+    """
+    data["database_configs"] = [c for c in data.get("database_configs", []) if not c.get("managed_by")]
+
+
 # Dedicated key for the sparse OCI GenAI delta overlay; keeps the persisted
 # payload from colliding with ``SettingsBase.oci_configs`` (which describes full
 # profiles populated from the filesystem at startup).
@@ -80,6 +90,9 @@ async def persist_settings(
         context={REVEAL_KEY: True},
         exclude={"oci_configs", "client_settings"},
     )
+    # Backstop invariant: DDS-managed connections are runtime-only. Strip them from the
+    # serialized payload so they can never be persisted, regardless of caller.
+    hide_managed_db_configs(payload)
     # Only the GenAI overlay fields are persisted (auth material lives in
     # ~/.oci/config); each entry stores *deltas* from the file+env baseline so
     # later edits to ~/.oci/config take effect on the next restart. Fields
@@ -261,7 +274,10 @@ async def persist_client_settings(client: str, cs: ClientSettings, is_current: b
         LOGGER.warning("persist_client_settings: CORE database not available — skipping")
         return True
 
-    payload = {"client_settings": cs.model_dump(mode="json", context={REVEAL_KEY: True})}
+    # deep_data_security is runtime/session-scoped — never persisted.
+    payload = {
+        "client_settings": cs.model_dump(mode="json", context={REVEAL_KEY: True}, exclude={"deep_data_security"})
+    }
 
     try:
         async with pool.acquire() as conn:
