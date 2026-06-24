@@ -61,9 +61,9 @@ end user).
    -- Assign locally-managed data roles to end users (Part 4)
    GRANT GRANT ANY DATA ROLE TO "<SCHEMA>";
    -- Read access so the tool can list data roles, role grants, and end users
-   GRANT SELECT ON SYS.DBA_DATA_ROLES TO "<SCHEMA>";
-   GRANT SELECT ON SYS.DBA_DATA_ROLE_GRANTS TO "<SCHEMA>";
-   GRANT SELECT ON SYS.DBA_END_USERS TO "<SCHEMA>";
+   GRANT SELECT ON DBA_DATA_ROLES TO "<SCHEMA>";
+   GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "<SCHEMA>";
+   GRANT SELECT ON DBA_END_USERS TO "<SCHEMA>";
    ```
 
    The tool reads what the user can do and disables any action the user is not privileged for, so granting a subset

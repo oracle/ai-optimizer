@@ -166,9 +166,9 @@ def _write_startup_scripts(temp_dir: Path) -> None:
     GRANT CREATE END USER SECURITY CONTEXT TO "{TEST_DB_CONFIG["db_username"]}";
     -- Catalog read access so the user can list data roles and end users
     -- (data grants are listable via USER_DATA_GRANTS without extra grants).
-    GRANT SELECT ON SYS.DBA_DATA_ROLES TO "{TEST_DB_CONFIG["db_username"]}";
-    GRANT SELECT ON SYS.DBA_DATA_ROLE_GRANTS TO "{TEST_DB_CONFIG["db_username"]}";
-    GRANT SELECT ON SYS.DBA_END_USERS TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT SELECT ON DBA_DATA_ROLES TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT SELECT ON DBA_END_USERS TO "{TEST_DB_CONFIG["db_username"]}";
     -- Connect-as: a standard role carrying CREATE SESSION is provisioned by the privileged user and
     -- granted to the app user WITH ADMIN OPTION; the app grants it to local data roles at creation,
     -- and end users assigned those data roles (needs GRANT ANY DATA ROLE) can then log in.
