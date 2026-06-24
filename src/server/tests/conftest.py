@@ -169,6 +169,13 @@ def _write_startup_scripts(temp_dir: Path) -> None:
     GRANT SELECT ON SYS.DBA_DATA_ROLES TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT SELECT ON SYS.DBA_DATA_ROLE_GRANTS TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT SELECT ON SYS.DBA_END_USERS TO "{TEST_DB_CONFIG["db_username"]}";
+    -- Connect-as: a standard role carrying CREATE SESSION is provisioned by the privileged user and
+    -- granted to the app user WITH ADMIN OPTION; the app grants it to local data roles at creation,
+    -- and end users assigned those data roles (needs GRANT ANY DATA ROLE) can then log in.
+    CREATE ROLE AIO_DDS_ROLE;
+    GRANT CREATE SESSION TO AIO_DDS_ROLE;
+    GRANT AIO_DDS_ROLE TO "{TEST_DB_CONFIG["db_username"]}" WITH ADMIN OPTION;
+    GRANT GRANT ANY DATA ROLE TO "{TEST_DB_CONFIG["db_username"]}";
 
     EXIT;
     """

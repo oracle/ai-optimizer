@@ -6,7 +6,7 @@ Unit tests for client.app.content.tools.tabs.deepsec
 """
 # spell-checker: disable
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -175,15 +175,15 @@ class TestPathEncoding:
 
         assert mock_del.call_args[0][0] == "deepsec/end-users/A%23B"
 
-    def test_drop_data_grant_encodes_hash(self, mock_st):
+    def test_delete_data_grant_encodes_hash(self, mock_st):
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _state()),
             patch(f"{MODULE}.api_delete") as mock_del,
         ):
-            from client.app.content.tools.tabs.deepsec import _drop_data_grant
+            from client.app.content.tools.tabs.deepsec import _delete_data_grant
 
-            _drop_data_grant("A#B")
+            assert _delete_data_grant("A#B") is True
 
         assert mock_del.call_args[0][0] == "deepsec/data-grants/A%23B"
 
@@ -250,6 +250,87 @@ class TestConnectAs:
         # Re-sync so a server-side stale teardown can't leave the sidebar showing a gone alias.
         mock_refresh.assert_called_once_with(clear_runtime=False)
 
+    def test_connect_as_sole_user_auto_establishes_once(self, mock_st):
+        """One end user, no saved override → connect-as is *established* (not just shown selected).
+
+        Streamlit never fires on_change for a default index, so the sole-user auto-selection must
+        call _set_connect_as itself; otherwise deep_data_security stays unset and the tools keep
+        using the base database user while the UI claims they connect as that end user.
+        """
+        state = _state()
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._set_connect_as", return_value=True) as mock_set,
+        ):
+            from client.app.content.tools.tabs.deepsec import _render_connect_as
+
+            _render_connect_as([{"name": "SCOUT1"}], True)
+
+        mock_set.assert_called_once_with("SCOUT1")
+        # The sole user is reflected as the selected option (options == ["— none —", "SCOUT1"]).
+        assert mock_st.selectbox.call_args.kwargs["index"] == 1
+
+    def test_connect_as_does_not_re_establish_after_clear(self, mock_st):
+        """Once auto-defaulted for this database, clearing to '— none —' must not re-establish it."""
+        state = _state()
+        state["_ds_autodefault_alias"] = "CORE"  # already auto-defaulted this database
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._set_connect_as", return_value=True) as mock_set,
+        ):
+            from client.app.content.tools.tabs.deepsec import _render_connect_as
+
+            _render_connect_as([{"name": "SCOUT1"}], True)
+
+        mock_set.assert_not_called()
+        assert mock_st.selectbox.call_args.kwargs["index"] == 0
+
+    def test_connect_as_multiple_users_no_auto_select(self, mock_st):
+        """With more than one end user there is no obvious default — leave it on '— none —'."""
+        state = _state()
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._set_connect_as", return_value=True) as mock_set,
+        ):
+            from client.app.content.tools.tabs.deepsec import _render_connect_as
+
+            _render_connect_as([{"name": "SCOUT1"}, {"name": "SCOUT2"}], True)
+
+        mock_set.assert_not_called()
+        assert mock_st.selectbox.call_args.kwargs["index"] == 0
+
+    def test_connect_as_unauthenticated_does_not_establish(self, mock_st):
+        """When the control is disabled (unauthenticated), do not establish a connection."""
+        state = _state()
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._set_connect_as", return_value=True) as mock_set,
+        ):
+            from client.app.content.tools.tabs.deepsec import _render_connect_as
+
+            _render_connect_as([{"name": "SCOUT1"}], False)
+
+        mock_set.assert_not_called()
+
+    def test_connect_as_reflects_saved_override_for_active_db(self, mock_st):
+        """A saved override belonging to the active database is reflected as the selected option."""
+        state = _state()
+        state["settings"]["client_settings"]["deep_data_security"] = {"end_user": "SCOUT1", "base_alias": "CORE"}
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+        ):
+            from client.app.content.tools.tabs.deepsec import _render_connect_as
+
+            _render_connect_as([{"name": "SCOUT1"}, {"name": "SCOUT2"}], True)
+
+        # options == ["— none —", "SCOUT1", "SCOUT2"] → SCOUT1 is index 1
+        assert mock_st.selectbox.call_args.kwargs["index"] == 1
+
     def test_clear_connect_as_deletes_and_resets(self, mock_st):
         with (
             patch(f"{MODULE}.st", mock_st),
@@ -305,22 +386,168 @@ class TestCapabilityDrivenListing:
         mock_get.assert_not_called()
         mock_st.info.assert_called()
 
-    def test_grant_builder_uses_text_input_when_roles_unknown(self, mock_st):
+    @staticmethod
+    def _cols_with_dead_buttons(widths, **_kw):
+        """st.columns side_effect whose column buttons never fire (Create/Save/Delete/Cancel)."""
+        n = widths if isinstance(widths, int) else len(widths)
+        out = []
+        for _ in range(n):
+            col = MagicMock()
+            col.button.return_value = False
+            out.append(col)
+        return out
+
+    def test_grant_dialog_uses_text_input_when_roles_unknown(self, mock_st):
         mock_st.selectbox.return_value = "T1"
         mock_st.button.return_value = False
+        mock_st.columns.side_effect = self._cols_with_dead_buttons
+
+        def _api_get(path, **_kwargs):
+            return [{"name": "T1", "type": "TABLE"}] if path == "deepsec/objects" else []
+
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _state()),
-            patch(f"{MODULE}.api_get", return_value=[]),
+            patch(f"{MODULE}.api_get", side_effect=_api_get),
         ):
-            from client.app.content.tools.tabs.deepsec import _render_grant_builder
+            from client.app.content.tools.tabs.deepsec import _data_grant_dialog
 
-            _render_grant_builder([{"name": "T1", "type": "TABLE"}], None, True)
+            # Call the underlying function (skip the @st.dialog decorator)
+            getattr(_data_grant_dialog, "__wrapped__")({"manage_data_grants": True}, True, "add", None)
 
         text_labels = [str(c.args[0]) for c in mock_st.text_input.call_args_list if c.args]
         select_labels = [str(c.args[0]) for c in mock_st.selectbox.call_args_list if c.args]
         assert any("Grant to data role" in lbl for lbl in text_labels)
         assert not any("Grant to data role" in lbl for lbl in select_labels)
+
+    def test_grant_dialog_edit_prefills_and_saves_with_or_replace(self, mock_st):
+        """Editing a grant locks the name, pre-selects its fields, and saves via CREATE OR REPLACE."""
+        # Fire only the primary "Save" button (column 0); leave Delete/Cancel inert.
+        save_col, delete_col, cancel_col = MagicMock(), MagicMock(), MagicMock()
+        save_col.button.return_value = True
+        delete_col.button.return_value = False
+        cancel_col.button.return_value = False
+        mock_st.columns.side_effect = [[save_col, delete_col, cancel_col]]
+        mock_st.selectbox.side_effect = lambda label, options, **kw: options[kw.get("index", 0)]
+        mock_st.radio.side_effect = lambda label, options, **kw: options[kw.get("index", 0)]
+        mock_st.multiselect.side_effect = lambda label, options, **kw: kw.get("default", [])
+
+        grant = {
+            "name": "G1",
+            "grantee": "ANALYST",
+            "object": "HR.EMP",
+            "object_name": "EMP",
+            "privileges": ["SELECT"],
+            "columns": ["SALARY"],
+            "all_columns_except": True,
+            "predicate": "dept = 10",
+            "uniform_columns": True,
+        }
+
+        def _api_get(path, **_kwargs):
+            if path == "deepsec/objects":
+                return [{"name": "EMP", "type": "TABLE"}]
+            return ["SALARY", "NAME"]  # columns
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", _state()),
+            patch(f"{MODULE}.api_get", side_effect=_api_get),
+            patch(f"{MODULE}.api_post") as mock_post,
+        ):
+            from client.app.content.tools.tabs.deepsec import _data_grant_dialog
+
+            getattr(_data_grant_dialog, "__wrapped__")(
+                {"manage_data_grants": True}, True, "edit", [{"name": "ANALYST"}], grant
+            )
+
+        # Name field is rendered read-only with the grant's name.
+        name_call = next(c for c in mock_st.text_input.call_args_list if c.args and "name" in str(c.args[0]).lower())
+        assert name_call.kwargs.get("value") == "G1"
+        assert name_call.kwargs.get("disabled") is True
+        # Save issued a CREATE OR REPLACE for the same grant.
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["or_replace"] is True
+        assert payload["name"] == "G1"
+        assert payload["all_columns_except"] is True
+        assert payload["object_name"] == "EMP"
+
+    def test_grant_dialog_blocks_edit_of_non_uniform_grant(self, mock_st):
+        """A grant whose columns differ per privilege can't be edited without flattening it: the
+        builder warns and disables Save (Delete is still allowed) rather than silently rewriting."""
+        save_col, delete_col, cancel_col = MagicMock(), MagicMock(), MagicMock()
+        for col in (save_col, delete_col, cancel_col):
+            col.button.return_value = False
+        mock_st.columns.side_effect = [[save_col, delete_col, cancel_col]]
+        mock_st.selectbox.side_effect = lambda label, options, **kw: options[kw.get("index", 0)] if options else None
+        mock_st.radio.side_effect = lambda label, options, **kw: options[kw.get("index", 0)]
+        mock_st.multiselect.side_effect = lambda label, options, **kw: kw.get("default", [])
+
+        grant = {
+            "name": "G1",
+            "grantee": "ANALYST",
+            "object": "HR.EMP",
+            "object_name": "EMP",
+            "privileges": ["SELECT", "UPDATE"],
+            "columns": ["SALARY", "NAME"],
+            "all_columns_except": False,
+            "predicate": "",
+            "uniform_columns": False,  # SELECT(SALARY) + UPDATE(NAME) — not representable in the builder
+        }
+
+        def _api_get(path, **_kwargs):
+            return [{"name": "EMP", "type": "TABLE"}] if path == "deepsec/objects" else ["SALARY", "NAME"]
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", _state()),
+            patch(f"{MODULE}.api_get", side_effect=_api_get),
+            patch(f"{MODULE}.api_post") as mock_post,
+        ):
+            from client.app.content.tools.tabs.deepsec import _data_grant_dialog
+
+            getattr(_data_grant_dialog, "__wrapped__")(
+                {"manage_data_grants": True}, True, "edit", [{"name": "ANALYST"}], grant
+            )
+
+        mock_st.warning.assert_called_once()
+        assert save_col.button.call_args.kwargs.get("disabled") is True
+        mock_post.assert_not_called()
+
+
+class TestGroupGrants:
+    """Collapsing USER_DATA_GRANTS rows must flag grants the simplified builder can't edit faithfully."""
+
+    def test_flags_per_privilege_column_difference(self):
+        from client.app.content.tools.tabs.deepsec import _group_grants
+
+        rows = [
+            {"name": "G", "privilege": "SELECT", "column_name": "SALARY", "object_name": "EMP"},
+            {"name": "G", "privilege": "UPDATE", "column_name": "NAME", "object_name": "EMP"},
+        ]
+        [grouped] = _group_grants(rows)
+        assert grouped["uniform_columns"] is False
+
+    def test_uniform_when_privileges_share_columns(self):
+        from client.app.content.tools.tabs.deepsec import _group_grants
+
+        rows = [
+            {"name": "G", "privilege": "SELECT", "column_name": "SALARY", "object_name": "EMP"},
+            {"name": "G", "privilege": "UPDATE", "column_name": "SALARY", "object_name": "EMP"},
+        ]
+        [grouped] = _group_grants(rows)
+        assert grouped["uniform_columns"] is True
+
+    def test_delete_privilege_does_not_break_uniformity(self):
+        """DELETE is row-level and carries no columns, so it must not count as a differing column spec."""
+        from client.app.content.tools.tabs.deepsec import _group_grants
+
+        rows = [
+            {"name": "G", "privilege": "SELECT", "column_name": "SALARY", "object_name": "EMP"},
+            {"name": "G", "privilege": "DELETE", "column_name": None, "object_name": "EMP"},
+        ]
+        [grouped] = _group_grants(rows)
+        assert grouped["uniform_columns"] is True
 
 
 class TestRoleAssignment:

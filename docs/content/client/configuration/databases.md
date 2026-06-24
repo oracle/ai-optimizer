@@ -150,3 +150,18 @@ GRANT SELECT ON SYS.DBA_DATA_ROLES TO "DEMO";
 GRANT SELECT ON SYS.DBA_DATA_ROLE_GRANTS TO "DEMO";
 GRANT SELECT ON SYS.DBA_END_USERS TO "DEMO";
 ```
+
+### Connect tools as an end user (optional)
+
+To let **Vector Search** and **NL2SQL** connect *as* a Deep Data Security end user (the **Connect tools as** control), the end user must be able to log in. An end user cannot be granted `CREATE SESSION` directly; the privilege is carried by a standard database role that flows to the end user through a data role. As a privileged user (e.g. `ADMIN`/`SYSTEM`), create that role once and let `"DEMO"` hand it out:
+
+```sql
+-- Privileged user: one standard role that carries CREATE SESSION
+CREATE ROLE AIO_DDS_ROLE;
+GRANT CREATE SESSION TO AIO_DDS_ROLE;
+-- Let the database user grant AIO_DDS_ROLE on (to data roles it creates) and assign data roles
+GRANT AIO_DDS_ROLE TO "DEMO" WITH ADMIN OPTION;
+GRANT GRANT ANY DATA ROLE TO "DEMO";
+```
+
+The tool then grants `AIO_DDS_ROLE` to each locally-managed data role it creates, so any end user assigned that data role can be connected as.

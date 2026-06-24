@@ -36,6 +36,13 @@ PRIV_CREATE_DATA_GRANT = "CREATE DATA GRANT"
 PRIV_ADMINISTER_ANY_DATA_GRANT = "ADMINISTER ANY DATA GRANT"
 PRIV_GRANT_ANY_DATA_ROLE = "GRANT ANY DATA ROLE"
 
+# Standard database role that carries CREATE SESSION. ADMIN/SYSTEM provisions it once (CREATE ROLE +
+# GRANT CREATE SESSION) and grants it to the connected user WITH ADMIN OPTION. Local data roles are
+# granted this role at creation, so end users assigned those data roles can authenticate (connect-as).
+# An end user cannot be granted CREATE SESSION (or a standard role) directly — it must arrive via a
+# data role.
+DDS_CONNECT_ROLE = "AIO_DDS_ROLE"
+
 # Supported data-grant privileges (DELETE is row-level only and takes no column list).
 _ALL_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE")
 
@@ -156,11 +163,19 @@ async def _can_read(conn: oracledb.AsyncConnection, view: str) -> bool:
 
 
 async def list_objects(conn: oracledb.AsyncConnection) -> list[dict]:
-    """List the connected user's tables and views that data grants can target."""
+    """List the connected user's tables and views that data grants can target.
+
+    Vector-index tables (``user_tables.vector_index_type`` is not null) are
+    excluded — they hold embeddings, not user-facing data, and are not valid
+    data-grant targets. Views are sourced separately from ``user_views``.
+    """
     rows = await execute_sql(
         conn,
-        "SELECT object_name, object_type FROM user_objects "
-        "WHERE object_type IN ('TABLE', 'VIEW') ORDER BY object_name",
+        "SELECT table_name AS object_name, 'TABLE' AS object_type FROM user_tables "
+        "WHERE vector_index_type IS NULL "
+        "UNION ALL "
+        "SELECT view_name, 'VIEW' FROM user_views "
+        "ORDER BY object_name",
     )
     # Drop names the validator cannot safely quote (e.g. embedded spaces), so the
     # UI never offers an object that would fail column lookup / grant creation.
@@ -224,6 +239,20 @@ async def create_data_role(conn: oracledb.AsyncConnection, name: str, mapped_to:
     if mapped_to:
         sql += f" MAPPED TO {_quoted_literal(mapped_to)}"
     await _exec_ddl(conn, sql)
+    # Give locally-managed data roles the connection role so end users assigned them can log in
+    # (connect-as). Best-effort: if AIO_DDS_ROLE isn't provisioned (connect-as not set up), the data
+    # role is still created for data-access purposes. Externally-mapped roles authenticate via IAM,
+    # so they are left untouched.
+    if not mapped_to:
+        try:
+            await _exec_ddl(conn, f"GRANT {_ident(DDS_CONNECT_ROLE)} TO {_ident(name)}")
+        except oracledb.DatabaseError as exc:
+            LOGGER.warning(
+                "Could not grant %s to data role %s (connect-as may be unavailable): %s",
+                DDS_CONNECT_ROLE,
+                name,
+                str(exc).splitlines()[0],
+            )
     await conn.commit()
 
 

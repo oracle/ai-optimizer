@@ -125,6 +125,35 @@ async def test_end_user_lifecycle(deepsec_conn):
         await _safe(conn, f"DROP END USER {eu}")
 
 
+async def test_end_user_logs_in_via_data_role_connect_role(deepsec_conn):
+    """End-to-end connect-as: a local data role carries AIO_DDS_ROLE (CREATE SESSION), so an end
+    user granted that data role can authenticate directly — exercised through the app's own
+    create_data_role / create_end_user / grant_data_role helpers."""
+    from server.tests.conftest import TEST_DB_CONFIG
+
+    conn = deepsec_conn
+    dr = f"{PREFIX}_LOGIN_DR"
+    eu = f"{PREFIX}_LOGIN_EU"
+    for s in (f"DROP END USER {eu}", f"DROP DATA ROLE {dr}"):
+        await _safe(conn, s)
+    try:
+        await deepsec_db.create_data_role(conn, dr)  # also grants AIO_DDS_ROLE to the data role
+        await deepsec_db.create_end_user(conn, eu, TEST_DB_CONFIG["db_password"])
+        await deepsec_db.grant_data_role(conn, [dr], eu)  # data role -> end user
+
+        eu_conn = await oracledb.connect_async(
+            user=eu, password=TEST_DB_CONFIG["db_password"], dsn=TEST_DB_CONFIG["db_dsn"]
+        )
+        try:
+            rows = await _exec(eu_conn, "SELECT 1 FROM DUAL")
+            assert rows and rows[0][0] == 1
+        finally:
+            await eu_conn.close()
+    finally:
+        for s in (f"DROP END USER {eu}", f"DROP DATA ROLE {dr}"):
+            await _safe(conn, s)
+
+
 async def test_data_role_listing(deepsec_conn):
     """Create a data role; confirm it lists in DBA_DATA_ROLES; drop it."""
     conn = deepsec_conn

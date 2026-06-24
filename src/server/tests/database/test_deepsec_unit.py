@@ -154,6 +154,22 @@ async def test_list_objects_filters_names_outside_validator():
 
 
 @pytest.mark.anyio
+async def test_list_objects_excludes_vector_index_tables():
+    captured = {}
+
+    async def _fake(conn, sql, binds=None):
+        captured["sql"] = sql
+        return []
+
+    with patch.object(deepsec_db, "execute_sql", side_effect=_fake):
+        await deepsec_db.list_objects(AsyncMock())
+    sql = " ".join(captured["sql"].split())
+    assert "user_tables" in sql
+    assert "vector_index_type IS NULL" in sql
+    assert "user_views" in sql
+
+
+@pytest.mark.anyio
 async def test_list_object_columns_preserves_case():
     captured = {}
 
@@ -212,6 +228,41 @@ async def test_create_data_role_surfaces_duplicate():
     with pytest.raises(oracledb.DatabaseError):
         await deepsec_db.create_data_role(conn, "r")
     conn.commit.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_create_data_role_grants_connect_role():
+    """Local data roles get AIO_DDS_ROLE so end users assigned them can authenticate (connect-as)."""
+    conn, calls = _conn_ddl_capture()
+    await deepsec_db.create_data_role(conn, "analyst")
+    assert calls == ['CREATE DATA ROLE "ANALYST"', 'GRANT "AIO_DDS_ROLE" TO "ANALYST"']
+    conn.commit.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_create_data_role_mapped_skips_connect_role():
+    """Externally-mapped roles authenticate via IAM, so they are not granted the connection role."""
+    conn, calls = _conn_ddl_capture()
+    await deepsec_db.create_data_role(conn, "ext", mapped_to="AZURE_ROLE=x")
+    assert calls == ["CREATE DATA ROLE \"EXT\" MAPPED TO 'AZURE_ROLE=x'"]
+    conn.commit.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_create_data_role_tolerates_missing_connect_role():
+    """If AIO_DDS_ROLE isn't provisioned, the data role is still created (connect-as just won't work)."""
+    conn, calls = _conn_ddl_capture()
+
+    def _capture_then_fail_grant(sql, *_a, **_k):
+        calls.append(sql)
+        if sql.startswith("GRANT"):
+            raise oracledb.DatabaseError(_OraError(1924))  # role does not exist / not granted
+
+    conn.cursor.return_value.execute = AsyncMock(side_effect=_capture_then_fail_grant)
+
+    await deepsec_db.create_data_role(conn, "analyst")  # must not raise
+    assert calls == ['CREATE DATA ROLE "ANALYST"', 'GRANT "AIO_DDS_ROLE" TO "ANALYST"']
+    conn.commit.assert_awaited_once()
 
 
 @pytest.mark.anyio

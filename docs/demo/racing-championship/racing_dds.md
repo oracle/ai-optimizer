@@ -69,6 +69,19 @@ end user).
    The tool reads what the user can do and disables any action the user is not privileged for, so granting a subset
    still works — you just see fewer enabled buttons.
 
+4. **Connection role for end-user logon (Part 5).** To connect *as* an end user, the end user must be able to log
+   in. `CREATE SESSION` cannot be granted to an end user directly; it is carried by a standard role that reaches the
+   end user through a data role. Create that role once as a DBA and let `<SCHEMA>` hand it out:
+
+   ```sql
+   CREATE ROLE AIO_DDS_ROLE;
+   GRANT CREATE SESSION TO AIO_DDS_ROLE;
+   GRANT AIO_DDS_ROLE TO "<SCHEMA>" WITH ADMIN OPTION;
+   ```
+
+   The tool grants `AIO_DDS_ROLE` to each data role it creates, so `SCOUT1` (granted the data role in Part 4) can be
+   connected as in Part 5.
+
 ---
 
 ## Part 1 — Confirm DDS is available (UI)

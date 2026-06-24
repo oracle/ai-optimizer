@@ -157,16 +157,17 @@ def _revoke_role(grantee: str, role: str) -> bool:
         return False
 
 
-def _drop_data_grant(name: str) -> None:
-    """Drop a data grant via the API (on_click handler for the data-grants table)."""
+def _delete_data_grant(name: str) -> bool:
     try:
         api_delete(
             f"deepsec/data-grants/{quote(name, safe='')}",
             extra_headers=_client_header(),
             toast="Data grant dropped.",
         )
+        return True
     except httpx.HTTPStatusError as exc:
         _error("Drop failed", exc)
+        return False
 
 
 def _set_connect_as(end_user: str) -> bool:
@@ -298,7 +299,7 @@ def _entity_dialog_actions(
     create/delete and return True on success; on Create/Save the role assignments are reconciled from
     *current* to *sel*. Cancel reruns the dialog directly.
     """
-    action_button, delete_button, cancel_button = st.columns([1.5, 7, 1.5])
+    action_button, delete_button, cancel_button = st.columns([2, 6, 2])
     if is_add and action_button.button("Create", type="primary", width="stretch", disabled=not perms["create"]):
         if not name:
             st.error(name_error)
@@ -558,15 +559,24 @@ def _on_connect_as_change() -> None:
 
 def _render_connect_as(users: list, authenticated: bool) -> None:
     """Choose which end user Vector Search / NL2SQL connect as (Deep Data Security override)."""
-    st.subheader("Connect Tools As")
-    st.caption(
-        "Select an end user for **Vector Search** and **NL2SQL** to connect as. Enable it per session "
-        "with the **Deep Data Security** checkbox in the sidebar to observe masking and row filtering in the chat."
-    )
+    st.caption("Select an end user for **Vector Search** and **NL2SQL** to connect as.")
+    db_alias = _db_alias()
     dds = state["settings"]["client_settings"].get("deep_data_security", {})
     # Only reflect the current selection when it belongs to the active database.
-    current = dds.get("end_user") if dds.get("base_alias") == _db_alias() else None
+    current = dds.get("end_user") if dds.get("base_alias") == db_alias else None
     options = [_CONNECT_AS_NONE] + [u.get("name", "") for u in users]
+
+    # With exactly one end user and no selection yet for this database, connect as that sole user
+    # automatically — *establishing* the managed connection, not merely showing it selected.
+    # Streamlit never fires on_change for a default index, so without an explicit call here the UI
+    # would claim the tools connect as the end user while they kept using the base database user.
+    # The per-database sentinel runs this once: after the user clears the selection back to
+    # "— none —" we must not immediately re-establish it on the next rerun.
+    if current is None and authenticated and len(users) == 1 and state.get("_ds_autodefault_alias") != db_alias:
+        state["_ds_autodefault_alias"] = db_alias
+        if _set_connect_as(options[1]):
+            current = options[1]
+
     index = options.index(current) if current in options else 0
     st.selectbox(
         "Connect tools as",
@@ -610,10 +620,10 @@ def _fetch_columns(obj: str | None) -> list[str]:
         return []
 
 
-def _submit_grant(name, privileges, obj, selected_cols, mode, predicate, grantee) -> None:
+def _submit_grant(name, privileges, obj, selected_cols, mode, predicate, grantee, *, or_replace: bool) -> bool:
     if not (name and privileges and obj and grantee):
         st.warning("Name, at least one privilege, an object, and a grantee are required.")
-        return
+        return False
     payload = {
         "name": name,
         "privileges": privileges,
@@ -622,58 +632,163 @@ def _submit_grant(name, privileges, obj, selected_cols, mode, predicate, grantee
         "columns": selected_cols or None,
         "all_columns_except": mode == _COL_MODE_EXCEPT,
         "predicate": predicate or None,
+        "or_replace": or_replace,
     }
     try:
         api_post(
             "deepsec/data-grants",
             json=payload,
             extra_headers=_client_header(),
-            toast="Data grant created.",
+            toast="Data grant saved." if or_replace else "Data grant created.",
         )
-        st.rerun()
+        return True
     except httpx.HTTPStatusError as exc:
-        _error("Create failed", exc)
+        _error("Save failed" if or_replace else "Create failed", exc)
+        return False
 
 
-def _render_grantee_input(roles) -> str | None:
-    """Pick the grantee data role.
+def _render_grantee_input(roles, default: str = "", key_suffix: str = "") -> str | None:
+    """Pick the grantee data role, defaulting to *default* when editing.
 
     *roles* is a list when listing is available, [] when none exist, or None when
     the user cannot list roles — in which case fall back to free-text entry so a
     known role name can still be used.
     """
     if roles is None:
-        return st.text_input("Grant to data role (name)", key="ds_grant_grantee_txt") or None
+        txt = st.text_input("Grant to data role (name)", value=default, key=f"ds_grant_grantee_txt_{key_suffix}")
+        return txt or None
     role_names = [r["name"] for r in roles]
+    # Keep the current grantee selectable on edit even if it isn't a locally-listed role.
+    if default and default not in role_names:
+        role_names = [default] + role_names
     if not role_names:
         st.info("Create a data role first to grant to.")
         return None
-    return st.selectbox("Grant to data role", role_names, key="ds_grant_grantee")
+    index = role_names.index(default) if default in role_names else 0
+    return st.selectbox("Grant to data role", role_names, index=index, key=f"ds_grant_grantee_{key_suffix}")
 
 
-def _render_grant_builder(objects: list, roles, can_manage: bool) -> None:
+def _grant_column_mode(grant: dict) -> str:
+    """Reconstruct the column radio mode from a grouped grant's columns/except flag."""
+    if not grant.get("columns"):
+        return _COL_MODE_ALL
+    return _COL_MODE_EXCEPT if grant.get("all_columns_except") else _COL_MODE_ONLY
+
+
+@st.dialog("Data Grant")
+def _data_grant_dialog(caps: dict, authenticated: bool, action: str, roles, grant: dict | None = None) -> None:
+    """Create or edit a data grant (column masking / row-level filtering) on a table or view.
+
+    Editing re-issues the grant with CREATE OR REPLACE; the grant name is its identity
+    and is read-only. *grant* is a grouped row from :func:`_group_grants` when editing.
+    """
+    is_add = action == "add"
+    grant = grant or {}
+    can_manage = bool(authenticated and caps.get("manage_data_grants"))
+    # A grant whose columns differ per privilege can't be round-tripped through the single shared
+    # column selection — saving would flatten it. Block Save in that case. Add builds a fresh grant
+    # (always uniform); edit always receives a _group_grants row, which sets uniform_columns.
+    uniform = is_add or grant["uniform_columns"]
+    # Per-grant widget keys so editing one grant never inherits another's field state.
+    key_suffix = "new" if is_add else (grant.get("name") or "").lower()
+
+    try:
+        objects = api_get("deepsec/objects", extra_headers=_client_header())
+    except httpx.HTTPStatusError as exc:
+        _error("Unable to load grant builder data", exc)
+        return
     obj_names = [o["name"] for o in objects]
-    if not obj_names:
+    if is_add and not obj_names:
         st.info("No tables or views found in the schema to grant on.")
+        if st.button("Cancel", width="stretch"):
+            st.rerun()
         return
 
-    name = st.text_input("Data grant name", key="ds_grant_name")
-    obj = st.selectbox("Object (table/view)", obj_names, key="ds_grant_obj")
+    if is_add:
+        name = st.text_input("Data grant name", key=f"ds_grant_name_{key_suffix}")
+        obj = st.selectbox("Object (table/view)", obj_names, key=f"ds_grant_obj_{key_suffix}")
+    else:
+        # Name and target object are the grant's identity — read-only when editing.
+        name = grant.get("name", "")
+        obj = grant.get("object_name") or ""
+        st.text_input("Data grant name", value=name, disabled=True, key=f"ds_grant_name_{key_suffix}")
+        st.text_input(
+            "Object (table/view)", value=grant.get("object") or obj, disabled=True, key=f"ds_grant_obj_{key_suffix}"
+        )
+    if not uniform:
+        st.warning(
+            "This grant applies different column restrictions per privilege, which this builder "
+            "cannot edit without changing its meaning. Drop and recreate it, or edit it in SQL."
+        )
     columns = _fetch_columns(obj)
-    privileges = st.multiselect("Privileges", _PRIVILEGES, default=["SELECT"], key="ds_grant_privs")
-    mode = st.radio("Columns", [_COL_MODE_ALL, _COL_MODE_ONLY, _COL_MODE_EXCEPT], horizontal=True, key="ds_grant_mode")
-    selected_cols = st.multiselect("Columns", columns, key="ds_grant_cols") if mode != _COL_MODE_ALL else []
-    predicate = st.text_area("Row predicate (optional SQL WHERE for row-level filtering)", key="ds_grant_pred")
-    grantee = _render_grantee_input(roles)
+    privileges = st.multiselect(
+        "Privileges", _PRIVILEGES, default=grant.get("privileges") or ["SELECT"], key=f"ds_grant_privs_{key_suffix}"
+    )
+    col_modes = [_COL_MODE_ALL, _COL_MODE_ONLY, _COL_MODE_EXCEPT]
+    mode = st.radio(
+        "Columns",
+        col_modes,
+        index=col_modes.index(_grant_column_mode(grant)),
+        horizontal=True,
+        key=f"ds_grant_mode_{key_suffix}",
+    )
+    selected_cols = (
+        st.multiselect(
+            "Columns",
+            columns,
+            default=[c for c in (grant.get("columns") or []) if c in columns],
+            key=f"ds_grant_cols_{key_suffix}",
+        )
+        if mode != _COL_MODE_ALL
+        else []
+    )
+    predicate = st.text_area(
+        "Row predicate (optional SQL WHERE for row-level filtering)",
+        value=grant.get("predicate") or "",
+        key=f"ds_grant_pred_{key_suffix}",
+    )
+    grantee = _render_grantee_input(roles, default=grant.get("grantee") or "", key_suffix=key_suffix)
 
     st.code(_grant_preview(name, privileges, obj, selected_cols, mode, predicate, grantee), language="sql")
-    if st.button("Create data grant", disabled=not can_manage, key="ds_grant_create"):
-        _submit_grant(name, privileges, obj, selected_cols, mode, predicate, grantee)
+
+    action_button, delete_button, cancel_button = st.columns([2, 6, 2])
+    if is_add:
+        if action_button.button(
+            "Create", type="primary", width="stretch", disabled=not can_manage, key=f"ds_grant_create_{key_suffix}"
+        ):
+            if _submit_grant(name, privileges, obj, selected_cols, mode, predicate, grantee, or_replace=False):
+                st.rerun()
+    else:
+        if action_button.button(
+            "Save",
+            type="primary",
+            width="stretch",
+            disabled=not can_manage or not uniform,
+            key=f"ds_grant_save_{key_suffix}",
+        ):
+            if _submit_grant(name, privileges, obj, selected_cols, mode, predicate, grantee, or_replace=True):
+                st.rerun()
+        if delete_button.button(
+            "Delete", type="secondary", disabled=not can_manage, key=f"ds_grant_delete_{key_suffix}"
+        ):
+            if _delete_data_grant(name):
+                st.rerun()
+    if cancel_button.button("Cancel", width="stretch"):
+        st.rerun()
 
 
 def _group_grants(grants: list) -> list[dict]:
-    """Collapse the per-column/-privilege USER_DATA_GRANTS rows into one row per grant name."""
+    """Collapse the per-column/-privilege USER_DATA_GRANTS rows into one row per grant name.
+
+    The builder applies a single column selection to every privilege, so it can only represent a
+    grant whose non-DELETE privileges share one column spec. ``uniform_columns`` records whether
+    that holds; the edit dialog blocks saving when it does not, to avoid flattening per-privilege
+    column restrictions (e.g. ``SELECT(SALARY) + UPDATE(NAME)``) into both privileges on both
+    columns.
+    """
     grouped: dict[str, dict] = {}
+    # name -> privilege -> [columns set, all_columns_except] — used only to detect non-uniform grants.
+    priv_specs: dict[str, dict[str, list]] = {}
     for g in grants:
         name = g.get("name", "")
         entry = grouped.setdefault(
@@ -682,22 +797,43 @@ def _group_grants(grants: list) -> list[dict]:
                 "name": name,
                 "grantee": g.get("grantee") or "",
                 "object": "",
+                "object_name": "",
                 "privileges": [],
                 "columns": [],
+                "all_columns_except": False,
                 "predicate": "",
+                "uniform_columns": True,
             },
         )
         owner, obj = g.get("object_owner"), g.get("object_name")
         if obj and not entry["object"]:
             entry["object"] = f"{owner}.{obj}" if owner else obj
+            entry["object_name"] = obj
         priv = g.get("privilege")
         if priv and priv not in entry["privileges"]:
             entry["privileges"].append(priv)
         col = g.get("column_name")
         if col and col not in entry["columns"]:
             entry["columns"].append(col)
+        if g.get("all_columns_except"):
+            entry["all_columns_except"] = True
         if g.get("predicate") and not entry["predicate"]:
             entry["predicate"] = g["predicate"]
+        if priv:
+            spec = priv_specs.setdefault(name, {}).setdefault(priv, [set(), False])
+            if col:
+                spec[0].add(col)
+            if g.get("all_columns_except"):
+                spec[1] = True
+    # Faithfully editable only when every non-DELETE privilege shares one (columns, except) spec.
+    # DELETE is row-level and carries no columns, so it never counts as a differing spec.
+    for name, entry in grouped.items():
+        specs = {
+            (frozenset(cols), is_except)
+            for priv, (cols, is_except) in priv_specs.get(name, {}).items()
+            if priv != "DELETE"
+        }
+        entry["uniform_columns"] = len(specs) <= 1
     return list(grouped.values())
 
 
@@ -708,9 +844,6 @@ def _render_data_grants(caps: dict, authenticated: bool, roles) -> None:
         "A data grant authorizes a data role to access specific columns (column masking) "
         "and rows (row-level filtering) of a table or view."
     )
-    drop_enabled = bool(caps.get("manage_data_grants"))
-    can_manage = bool(authenticated and drop_enabled)
-
     st.subheader("Existing Data Grants")
     try:
         grants = api_get("deepsec/data-grants", extra_headers=_client_header())
@@ -724,51 +857,43 @@ def _render_data_grants(caps: dict, authenticated: bool, roles) -> None:
             ("object", "Object"),
             ("privileges", "Privileges"),
             ("columns", "Columns"),
-            ("predicate", "Predicate"),
         ]
-        field_widths = [6, 5, 6, 5, 5, 6]
-        col_widths = ([2] + field_widths) if drop_enabled else field_widths
+        # Wider leading column so the "Edit" button isn't squeezed by the five field columns.
+        col_widths = [3, 6, 5, 6, 5, 5]
         with st.container(border=True):
-            _render_table_header(col_widths, field_specs, leading=drop_enabled)
+            _render_table_header(col_widths, field_specs, leading=True)
             for grant in _group_grants(grants):
                 name = grant["name"]
                 row_key = name.lower()
                 cols = st.columns(col_widths, vertical_alignment="center")
-                if drop_enabled:
-                    cols[0].button(
-                        "",
-                        icon="🗑️",
-                        key=f"ds_grant_drop_{row_key}",
-                        on_click=_drop_data_grant,
-                        args=[name],
-                        disabled=not can_manage,
-                        help="Drop Data Grant",
-                    )
+                cols[0].button(
+                    "Edit",
+                    key=f"ds_grant_edit_{row_key}",
+                    on_click=_data_grant_dialog,
+                    kwargs={
+                        "caps": caps,
+                        "authenticated": authenticated,
+                        "action": "edit",
+                        "roles": roles,
+                        "grant": grant,
+                    },
+                )
                 field_values = [
                     name,
                     grant["grantee"],
                     grant["object"],
                     ", ".join(grant["privileges"]),
                     ", ".join(grant["columns"]) or "All",
-                    grant["predicate"],
                 ]
-                field_cols = cols[1:] if drop_enabled else cols
-                _render_row_fields(field_cols, field_specs, field_values, "ds_grant", row_key)
-        if not drop_enabled:
-            st.info(_grant_hint("Dropping data grants", "CREATE DATA GRANT, ADMINISTER ANY DATA GRANT"))
+                _render_row_fields(cols[1:], field_specs, field_values, "ds_grant", row_key)
     else:
         st.info("No data grants defined.")
 
-    with st.expander("Create Data Grant"):
-        if drop_enabled:
-            try:
-                objects = api_get("deepsec/objects", extra_headers=_client_header())
-            except httpx.HTTPStatusError as exc:
-                _error("Unable to load grant builder data", exc)
-                return
-            _render_grant_builder(objects, roles, can_manage)
-        else:
-            st.info(_grant_hint("Creating data grants", "CREATE DATA GRANT, ADMINISTER ANY DATA GRANT"))
+    if caps.get("manage_data_grants"):
+        if st.button("Create Data Grant", type="primary", key="ds_grant_create_btn", disabled=not authenticated):
+            _data_grant_dialog(caps=caps, authenticated=authenticated, action="add", roles=roles)
+    else:
+        st.info(_grant_hint("Creating data grants", "CREATE DATA GRANT, ADMINISTER ANY DATA GRANT"))
 
 
 #####################################################

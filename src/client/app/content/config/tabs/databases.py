@@ -51,14 +51,21 @@ def _drop_vector_store(db_alias: str, table_name: str) -> None:
         st.error(f"Drop failed: {helpers.extract_error_detail(exc)}")
 
 
-def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict, db_config: dict) -> None:
-    """Process database form submission (create or update)."""
+def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict, db_config: dict) -> bool:
+    """Process database form submission (create or update).
+
+    Called inline from the click handler (not via ``on_click``) so ``form_data``
+    holds the values from the current render — including text typed but not yet
+    committed with Enter, which Streamlit commits on the click that triggers
+    this run. Returns ``True`` when the config changed and the caller should
+    rerun (to pick up ``_pending_db_select`` and refreshed values).
+    """
     if not is_new:
         changes = {k: v for k, v in form_data.items() if db_config.get(k) != v}
         if not changes and db_config.get("usable"):
             helpers.sync_client_setting("database", "alias", selected)
             st.toast("No changes detected.", icon="ℹ️")
-            return
+            return False
 
     new_alias = ""
     try:
@@ -66,7 +73,7 @@ def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict
             new_alias = alias.strip() if alias else ""
             if not new_alias:
                 st.error("Alias is required.")
-                return
+                return False
             form_data["alias"] = new_alias
             with st.spinner("Creating database configuration..."):
                 result = api_post(
@@ -85,15 +92,19 @@ def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict
         if is_new:
             state["_pending_db_select"] = new_alias
         if result.get("error"):
-            st.warning(f"Saved, but connection failed: {result['error']}")
+            # Stash for display after the rerun; st.warning here wouldn't survive it.
+            state["_db_connect_warning"] = result["error"]
+        return True
     except (httpx.TimeoutException, APIError):
         msg = "Connection attempt timed out — the database may be unreachable or starting up."
         if form_data.get("wallet_password"):
             msg += " If using a wallet, verify the wallet password is correct."
         msg += " Please try again."
         st.error(msg)
+        return False
     except httpx.HTTPStatusError as exc:
         st.error(f"Error: {helpers.extract_error_detail(exc)}")
+        return False
 
 
 def _remove_database(selected: str) -> None:
@@ -147,7 +158,9 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
     is_core = not is_new and (selected or "").upper() == "CORE"
     fields_disabled = is_core and db_config.get("usable", False)
 
-    # Use selected alias in widget keys so fields reset when selection changes
+    # Suffix widget keys with the selection and use the "runtime_" prefix so
+    # helpers.clear_runtime_state() (fired on every selection change) resets the
+    # fields and a prior — or just-created — config can't leak into a fresh form.
     key_suffix = selected or "new"
 
     # When adding a new database and CORE doesn't exist, force alias to CORE
@@ -156,6 +169,8 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
 
     # Configuration Form
     with st.container(border=True):
+        if (connect_warning := state.pop("_db_connect_warning", None)) is not None:
+            st.warning(f"Saved, but connection failed: {connect_warning}")
         if fields_disabled:
             st.info("CORE is the persistence database and cannot be modified while connected.", icon="ℹ️")
         if force_core:
@@ -164,21 +179,21 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
             "Alias:",
             value="CORE" if force_core else ("" if is_new else db_config.get("alias", "")),
             disabled=force_core or not is_new or not authenticated,
-            key=f"form_db_alias_{key_suffix}",
+            key=f"runtime_db_alias_{key_suffix}",
         )
         form_data: dict = {
             "username": st.text_input(
                 "Username:",
                 value=db_config.get("username", "") or "",
                 disabled=fields_disabled or not authenticated,
-                key=f"form_db_username_{key_suffix}",
+                key=f"runtime_db_username_{key_suffix}",
             )
             or None,
         }
         form_data["password"] = redacted_password_input(
             "Password:",
             value=db_config.get("password", "") or "",
-            key=f"form_db_password_{key_suffix}",
+            key=f"runtime_db_password_{key_suffix}",
             disabled=fields_disabled,
         ) or None
         form_data["dsn"] = (
@@ -186,14 +201,14 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
                 "DSN (Connect String):",
                 value=db_config.get("dsn", "") or "",
                 disabled=fields_disabled or not authenticated,
-                key=f"form_db_dsn_{key_suffix}",
+                key=f"runtime_db_dsn_{key_suffix}",
             )
             or None
         )
         form_data["wallet_password"] = redacted_password_input(
             "Wallet Password:",
             value=db_config.get("wallet_password", "") or "",
-            key=f"form_db_wallet_password_{key_suffix}",
+            key=f"runtime_db_wallet_password_{key_suffix}",
             disabled=fields_disabled,
         ) or None
 
@@ -204,28 +219,33 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
             else:
                 st.error("Status: Disconnected")
 
-        # Action buttons
+        # Require an alias before a new config can be created (mirrors the
+        # split_embed alias gate). Disabling here also blocks resubmitting a
+        # leaked value before the user has named the new entry.
+        create_disabled = is_new and not (alias or "").strip()
+        if create_disabled:
+            st.info("Enter an Alias to create the database configuration.", icon="⚠️")
+
+        # Action buttons. Handled inline (not via on_click) so form_data reflects
+        # the current render — text typed without pressing Enter is included.
         save_button, remove_button, _ = st.columns([2, 3, 5])
-        save_button.button(
-            "Create" if is_new else "Save",
-            disabled=fields_disabled or not authenticated,
-            type="primary",
-            width="stretch",
-            on_click=_handle_form_submit,
-            kwargs={
-                "selected": selected,
-                "is_new": is_new,
-                "alias": alias,
-                "form_data": form_data,
-                "db_config": db_config,
-            },
-        )
+        with save_button:
+            save_clicked = st.button(
+                "Create" if is_new else "Save",
+                key=f"runtime_db_save_{key_suffix}",
+                disabled=fields_disabled or not authenticated or create_disabled,
+                type="primary",
+                width="stretch",
+            )
         with remove_button:
             if not is_new and not is_core and authenticated:
                 with st.popover("⚠️ Remove Database", disabled=is_core):
                     st.warning(f"Are you sure you want to remove **{selected}**?")
                     if st.button("Confirm Remove", key="confirm_delete_db", type="primary"):
                         _remove_database(selected)
+
+    if save_clicked and _handle_form_submit(selected, is_new, alias, form_data, db_config):
+        st.rerun()
 
     return selected, is_new
 
