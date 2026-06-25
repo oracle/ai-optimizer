@@ -67,7 +67,7 @@ The [Walkthrough]({{% relref "/walkthrough" %}}) is a great way to familiarize y
 
 - Python 3.11 (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
-- Access to an Embedding and Chat Model:
+- Access to a Chat Model, and an Embedding Model for RAG:
   - API Keys for Third-Party Models
   - On-Premises Models*
 - Oracle AI Database incl. [Oracle AI Database Free](https://www.oracle.com/database/free/)
@@ -76,7 +76,7 @@ The [Walkthrough]({{% relref "/walkthrough" %}}) is a great way to familiarize y
 
 {{% notice style="code" title="What do I actually need?" icon="circle-info" %}}
 <!-- Hard-coding AI Optimizer to avoid raw HTML, this is an exception -->
-The **AI Optimizer** will start and allow interaction with language models without any database or pre-configuration. However, to persist settings across restarts and to enable features like RAG, NL2SQL and the [Testbed]({{% relref "/client/testbed" %}}), at a minimum a [database]({{% relref "/client/configuration/databases" %}}) should be configured.
+The **AI Optimizer** will start without any AI model or database configured. However, to interact with language models, configure or enable a chat model. To persist settings across restarts and to enable features like RAG, NL2SQL and the [Testbed]({{% relref "/client/testbed" %}}), at a minimum a [database]({{% relref "/client/configuration/databases" %}}) should be configured.
 {{% /notice %}}
 
 Available deployment methods:
