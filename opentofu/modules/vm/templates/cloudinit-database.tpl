@@ -71,7 +71,7 @@ write_files:
           'GRANT CREATE SESSION TO AIO_DDS_ROLE',
           'GRANT AIO_DDS_ROLE TO "$DB_USERNAME" WITH ADMIN OPTION',
           'GRANT GRANT ANY DATA ROLE TO "$DB_USERNAME"'
-        )) LOOP
+        ))) LOOP
           BEGIN
             EXECUTE IMMEDIATE g.stmt;
           EXCEPTION WHEN OTHERS THEN
