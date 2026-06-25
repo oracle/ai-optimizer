@@ -39,6 +39,14 @@ SENSITIVE_FIELDS = set(DatabaseSensitive.model_fields.keys())
 # in this schema today) should not be preserved-on-blank.
 SECRET_UPDATE_FIELDS = frozenset({"password", "wallet_password"})
 
+# Base-connection fields a DDS connect-as connection copies (see /deepsec/connect-as). A change
+# to any of these invalidates the managed connection and forces a re-designation; a change to
+# anything else (e.g. ``username``, which the managed connection does not reuse — it authenticates
+# as the end user) leaves an active override intact.
+_DDS_INVALIDATING_FIELDS = frozenset(
+    {"password", "dsn", "wallet_location", "config_dir", "wallet_password", "tcp_connect_timeout"}
+)
+
 _PERSIST_FAIL = "Failed to persist settings"
 
 
@@ -332,9 +340,11 @@ async def update_database(alias: str, body: DatabaseUpdate):
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         # Persistence succeeded — now safe to close old pool
         await close_pool(saved[0])
-        # A base change invalidates any DDS connect-as connection derived from it
-        # (clear-and-disable; the user re-designates against the updated base).
-        await clear_dds_for(base_alias=cfg.alias)
+        # Only a change to a connection field the managed connection copied invalidates an active
+        # DDS connect-as derived from this base; tear it down then (clear-and-disable, the user
+        # re-designates). An unrelated edit (e.g. username) must not silently disable the override.
+        if any(field in originals and originals[field] != getattr(cfg, field) for field in _DDS_INVALIDATING_FIELDS):
+            await clear_dds_for(base_alias=cfg.alias)
 
         result = cfg.model_dump(exclude=SENSITIVE_FIELDS)
         if error:

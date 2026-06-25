@@ -452,6 +452,42 @@ async def test_update_database_partial(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_update_database_connection_change_clears_dds(app_client, auth_headers):
+    """Changing a connection field the managed connection copied tears down any DDS connect-as."""
+    with (
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+        patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock),
+        patch("server.app.api.v1.endpoints.databases.clear_dds_for", new_callable=AsyncMock) as mock_clear,
+    ):
+        resp = await app_client.put(
+            "/v1/databases/TEST",
+            json={"dsn": "new_dsn"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    mock_clear.assert_awaited_once_with(base_alias="TEST")
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_database_non_connection_change_preserves_dds(app_client, auth_headers):
+    """Editing a non-connection field (username) must not silently disable an active connect-as."""
+    with (
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
+        patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock),
+        patch("server.app.api.v1.endpoints.databases.clear_dds_for", new_callable=AsyncMock) as mock_clear,
+    ):
+        resp = await app_client.put(
+            "/v1/databases/TEST",
+            json={"username": "updated_user"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    mock_clear.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_update_database_duplicate_credentials(app_client, auth_headers):
     """Updating to duplicate username/dsn returns 409."""
     settings.database_configs[0].username = "primary"
