@@ -10,16 +10,14 @@ spell-checker: ignore deepsec multiselect NL2SQL relref sqlplus Snetterton stand
 This runbook extends the [Racing Championship use-case](https://oracle.github.io/ai-optimizer/use-case/racing-championship/)
 with [Oracle Deep Data Security](https://oracle.github.io/ai-optimizer/client/tools/deepsec/) (DDS). You will
 add a row- and column-level access policy to the racing schema **from the AI Optimizer UI**, then confirm that the
-policy is enforced — including on the **NL2SQL** agent, which sees only the data the policy allows with no
-application-side changes.
+policy is enforced — including on the **NL2SQL** agent, which sees only the data the policy allows.
 
 It is a hands-on companion to the published docs, written to be copy-paste runnable during a demo. It does **not**
 replace the use-case; load the racing schema first, then come here.
 
-> **Why this is a good DDS demo.** The racing schema has obviously "sensitive" attributes — a driver's
-> `skill_profile` (scouting notes) and per-team data — so masking a column and filtering rows produces a visible,
-> believable before/after. Because DDS enforces inside the database, the same policy that protects a SQL query also
-> protects the chatbot's NL2SQL answers.
+> **Why this is a good DDS demo.** The racing schema has governed attributes — a driver's `skill_profile` (scouting
+> notes) and per-team data — so masking a column and filtering rows produces a visible before/after. Because DDS
+> enforces inside the database, the same policy applies to direct SQL and the chatbot's NL2SQL answers.
 
 ---
 
@@ -199,19 +197,13 @@ That difference, owner vs. end user against the *same* table, is the policy work
 
 ### 5b — Through the AI Optimizer (NL2SQL / ChatBot)
 
-This shows the headline DDS claim: the agent inherits the policy, with no prompt or app changes.
+This shows the same database policy through the agent, without changing the prompt.
 
-1. In **Configuration → Database**, select **Add New…** and create a second connection that authenticates as the end
-   user:
-   - **Alias:** `RACING_SCOUT`
-   - **Username:** `SCOUT1`
-   - **Password:** the `<SCHEMA>` password — `SCOUT1` was provisioned with the connected database user's password
-     (Part 4)
-   - **DSN:** the same database as `<SCHEMA>`
-   - Save, then select `RACING_SCOUT` as the active database.
-2. Make sure the **NL2SQL** tool is on (and, if you imported `prompts.json`, that the racing NL2SQL prompt is
+1. Keep the active database set to `<SCHEMA>`.
+2. In **Tools → Deep Data Security**, set **Connect tools as** to `SCOUT1`.
+3. Make sure the **NL2SQL** tool is on (and, if you imported `prompts.json`, that the racing NL2SQL prompt is
    active).
-3. In the **ChatBot**, ask:
+4. In the **ChatBot**, ask:
 
    ```text
    List the drivers and their skill profiles.
@@ -221,8 +213,8 @@ This shows the headline DDS claim: the agent inherits the policy, with no prompt
 
    **What to look for:** the agent's answers cover only Team 1's drivers, and skill-profile values come back empty or
    "not available" — the same masking and row filter you saw in SQL, now enforced on the agent's generated query.
-4. Switch the active database back to `<SCHEMA>` and ask the same questions. The agent now sees all teams and the
-   real skill profiles — the policy applies to the *connection*, not the application.
+5. Return to **Tools → Deep Data Security**, clear **Connect tools as**, and ask the same questions. The agent now
+   sees all teams and the real skill profiles because it is using the owner connection again.
 
 > If the agent reports it cannot find `DRIVERS` while connected as `SCOUT1`, the end user cannot resolve the owner's
 > table by an unqualified name. See *Notes & caveats* — the SQL check in 5a (which qualifies `<SCHEMA>.drivers`) is
@@ -254,8 +246,8 @@ Remove the demo objects from the UI, in dependency order (drop the grant before 
 2. **End Users** section → **Edit** next to `SCOUT1` → **Delete**.
 3. **Data Roles** section → **Edit** next to `RACING_ANALYST` → **Delete**.
 
-If you added the `RACING_SCOUT` database connection, you can remove it from **Configuration → Database**. The racing
-schema itself is untouched — DDS objects are separate from the demo tables.
+If **Connect tools as** is still set to `SCOUT1`, clear it before removing the DDS objects. The racing schema itself is
+untouched — DDS objects are separate from the demo tables.
 
 ---
 
@@ -273,12 +265,11 @@ schema itself is untouched — DDS objects are separate from the demo tables.
   name (`<SCHEMA>.drivers`); for the NL2SQL agent to use an unqualified `DRIVERS`, create a private synonym for
   `SCOUT1` (`CREATE SYNONYM ... FOR <SCHEMA>.drivers`) or keep the racing NL2SQL prompt's schema qualification.
 - **Masking representation.** Column-level `SELECT (ALL COLUMNS EXCEPT …)` returns the excluded column as NULL for the
-  grantee; row predicates remove non-matching rows entirely. Exact behavior follows Oracle AI Database 26ai.
+  grantee; row predicates remove non-matching rows entirely.
 - **Predicates are policy text.** The row predicate is free-form SQL run with the grantee's privileges and capped in
   length by the server; keep it to columns on the target object (or subqueries the grantee can read).
-- **This document has not been executed end-to-end against a live 26ai database in this repository.** The UI steps,
-  field names, and generated DDL are taken from the tool's implementation; validate the masking/row-filter output in
-  your environment (step 5a) before relying on it for a live demo.
+- **Validate the database result first.** Run the SQL check in step 5a before using this in a live demo so the
+  database version, privileges, and sample data are confirmed in your environment.
 
 ---
 

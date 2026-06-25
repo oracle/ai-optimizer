@@ -74,7 +74,7 @@ With Vector Search selected, if you have more than one Vector Store, you can eit
 
 ## NL2SQL (Natural Language to SQL)
 
-The Natural Language to SQL (NL2SQL) tool enables users to query structured data stored in Oracle AI Database 26ai by using natural language instead of SQL statements. 
+The Natural Language to SQL (NL2SQL) tool enables users to query structured data stored in Oracle AI Database by using natural language instead of SQL statements.
 
 To use this tool, the **Oracle SQLcl MCP server** must be enabled and properly configured within the {{% short_app_ref %}}. Detailed instructions are available in the official [Oracle documentation](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html):
 
@@ -96,5 +96,3 @@ The response returned by the tool will be equivalent to the result of an actual 
 By using this tool, the {{% short_app_ref %}} allows users to query structured data without writing any SQL code, simplifying data access and exploration.
 
 You can experiment freely with your own structured datasets and progressively issue more complex natural language queries to explore the full capabilities of the NL2SQL tool.
-
-

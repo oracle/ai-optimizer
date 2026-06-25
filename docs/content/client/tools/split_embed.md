@@ -38,13 +38,13 @@ Select one of the available **Embedding Models** from the list. The available op
 
 The **Chunk Size (tokens)** and the **Chunk Overlap (% of chunk size)** are automatically adjusted based on the selected embedding model.
 
-Next, select one of the supported **Distance Metrics** provided by Oracle AI Database 26ai:
+Next, select one of the supported **Distance Metrics** provided by Oracle AI Database:
 
 * COSINE
 * EUCLIDEAN_DISTANCE
 * DOT_PRODUCT
 
-To understand the meaning of these metrics, please refer to the doc [Vector Distance Metrics](https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/vector-distance-metrics.html) in the Oracle AI Database 26ai "*AI Vector Search User's Guide*".
+To understand the meaning of these metrics, see [Vector Distance Metrics](https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/vector-distance-metrics.html) in the Oracle AI Vector Search User's Guide.
 
 The **Embedding Alias** field allows you to assign a meaningful identifier to the vector store table. This is particularly useful when multiple vector stores share the same combination of embedding model, chunk size, chunk overlap, and distance metric.
 

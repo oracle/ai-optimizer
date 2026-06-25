@@ -30,7 +30,7 @@ defaults:
     shell: bash
 
 env:
-  HUGO_VERSION: 0.160.1
+  HUGO_VERSION: 0.163.3
   RELEARN_VERSION: 9.0.3
 
 # Workflow-level concurrency with separate lanes per event type:

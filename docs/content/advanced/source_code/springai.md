@@ -242,7 +242,7 @@ llama3.1:latest             a80c4f17acd5    2.0 GB    3 minutes ago
 kubectl -n ollama exec svc/ollama -- ollama run "llama3.1" "what is spring boot?"
 ```
 
-**NOTICE**: The Microservices will access to the ADB23ai on which the vector store table should be created, as done in the local desktop example shown before. To access the {{% short_app_ref %}} running on **Oracle Backend for Microservices and AI** and create the same configuration, let’s do:
+**NOTICE**: The microservices access the Autonomous Database where the vector store table should be created, as shown in the local desktop example above. To access the {{% short_app_ref %}} running on **Oracle Backend for Microservices and AI** and create the same configuration, run:
 
 * tunnel:
 
