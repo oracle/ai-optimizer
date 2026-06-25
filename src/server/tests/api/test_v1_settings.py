@@ -546,6 +546,34 @@ async def test_copy_to_server_success(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_copy_to_server_excludes_dds_override(app_client, auth_headers):
+    """POST /settings/server/copy must not carry the runtime-only DDS override into the server client."""
+    source = ClientSettings(client="SOURCE")
+    source.database.alias = "MY_DB"
+    source.deep_data_security.enabled = True
+    source.deep_data_security.end_user = "SCOUT1"
+    source.deep_data_security.alias = "DDS_MY_DB_SCOUT1"
+    source.deep_data_security.base_alias = "MY_DB"
+    _client_store["SOURCE"] = source
+
+    with patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True):
+        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+
+    assert resp.status_code == 200
+    body = resp.json()["deep_data_security"]
+    assert body["enabled"] is False
+    assert body["end_user"] is None
+    assert body["alias"] is None
+    assert body["base_alias"] is None
+    # The source's own override is untouched.
+    assert _client_store["SOURCE"].deep_data_security.enabled is True
+    server_dds = _client_store["server"].deep_data_security
+    assert server_dds.enabled is False
+    assert server_dds.alias is None
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_copy_to_server_persist_failure_rollback(app_client, auth_headers):
     """POST /settings/server/copy rollback restores original server entry on persist failure."""
     original_server = ClientSettings(client="server")

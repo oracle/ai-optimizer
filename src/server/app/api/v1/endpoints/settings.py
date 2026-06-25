@@ -23,7 +23,12 @@ from server.app.api.v1.schemas.settings import (
     SettingsResponse,
 )
 from server.app.core.etc import ensure_core_alias, migrate_legacy_settings, upsert_list_field
-from server.app.core.schemas import ClientSettings, ClientSettingsUpdate, LLModelSettings
+from server.app.core.schemas import (
+    ClientSettings,
+    ClientSettingsUpdate,
+    DeepDataSecuritySettings,
+    LLModelSettings,
+)
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
@@ -296,7 +301,9 @@ async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Copy a source client's client_settings to the SERVER client."""
     async with _settings_lock:
         source_cs = resolve_client(client)
-        server_cs = source_cs.model_copy(deep=True)
+        # deep_data_security is runtime/session-scoped — drop any active override so a
+        # source client's "connect as" alias never leaks into server/default tool routing.
+        server_cs = source_cs.model_copy(deep=True, update={"deep_data_security": DeepDataSecuritySettings()})
         server_cs.client = "server"
         old_server_cs = _client_store.get("server")
         _client_store["server"] = server_cs
