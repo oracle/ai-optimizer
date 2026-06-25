@@ -230,8 +230,50 @@ class TestConnectAs:
 
         assert mock_post.call_args[0][0] == "deepsec/connect-as"
         assert mock_post.call_args[1]["json"] == {"end_user": "SCOUT1"}
+        # No prior override → enabled carried through as the default False (selecting a user does
+        # not auto-enable; the sidebar toggle does). It must always be sent so the field-merge can
+        # restore it after a stale-reconnect resets it server-side.
         assert mock_upd.call_args[0][0] == {
-            "deep_data_security": {"end_user": "SCOUT1", "alias": "CORE::SCOUT1", "base_alias": "CORE"}
+            "deep_data_security": {
+                "enabled": False,
+                "end_user": "SCOUT1",
+                "alias": "CORE::SCOUT1",
+                "base_alias": "CORE",
+            }
+        }
+
+    def test_set_connect_as_preserves_enabled_across_stale_reconnect(self, mock_st):
+        """An already-enabled override must stay enabled after re-establishing the connection.
+
+        The server tears down a stale managed connection (resetting enabled→False) before
+        re-registering, so the field-merge must carry the prior enabled flag or chat tools
+        silently stop using DDS while the UI reports success.
+        """
+        resp = {"alias": "CORE::SCOUT1", "base_alias": "CORE", "end_user": "SCOUT1"}
+        state = _state()
+        state["settings"]["client_settings"]["deep_data_security"] = {
+            "enabled": True,
+            "end_user": "SCOUT1",
+            "alias": "CORE::SCOUT1",
+            "base_alias": "CORE",
+        }
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.api_post", return_value=resp),
+            patch(f"{MODULE}.helpers.update_client_settings") as mock_upd,
+        ):
+            from client.app.content.tools.tabs.deepsec import _set_connect_as
+
+            assert _set_connect_as("SCOUT1") is True
+
+        assert mock_upd.call_args[0][0] == {
+            "deep_data_security": {
+                "enabled": True,
+                "end_user": "SCOUT1",
+                "alias": "CORE::SCOUT1",
+                "base_alias": "CORE",
+            }
         }
 
     def test_set_connect_as_failure_resyncs_and_does_not_update(self, mock_st):

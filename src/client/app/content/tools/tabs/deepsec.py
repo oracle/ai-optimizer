@@ -190,9 +190,15 @@ def _set_connect_as(end_user: str) -> bool:
         # connect-as user whose connection no longer exists.
         helpers.refresh_settings(clear_runtime=False)
         return False
+    # Preserve the prior enabled flag. A stale re-designation tears down the old managed
+    # connection server-side (resetting enabled→False) before re-registering, so a field-merge
+    # that omitted enabled would silently disable an already-active override. The sidebar toggle
+    # remains the sole control that *changes* enabled — here we only carry it through unchanged.
+    enabled = state["settings"]["client_settings"].get("deep_data_security", {}).get("enabled", False)
     helpers.update_client_settings(
         {
             "deep_data_security": {
+                "enabled": enabled,
                 "end_user": end_user,
                 "alias": resp.get("alias"),
                 "base_alias": resp.get("base_alias"),
