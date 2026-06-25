@@ -194,6 +194,15 @@ async def dds_connect_as(
     need_refresh = False
     async with _settings_lock:
         existing = _find_config_ci(managed)
+        if existing is not None and existing.managed_by != managed_marker(base.alias):
+            # An ordinary (non-managed) connection already occupies the deterministic managed
+            # alias. Reusing it would report success for a connection resolve_effective_tool_alias
+            # later rejects (managed_by missing); re-registering would append a duplicate alias.
+            # Refuse and leave the user's connection untouched.
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot create connect-as connection: alias '{managed}' is already in use.",
+            )
         if existing is not None and existing.usable and existing.pool:
             result = ConnectAsResponse(alias=existing.alias, base_alias=base.alias, end_user=body.end_user)
         else:

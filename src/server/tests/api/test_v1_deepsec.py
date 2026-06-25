@@ -323,6 +323,35 @@ async def test_connect_as_reuses_existing_usable(app_client, auth_headers, mock_
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_connect_as_rejects_non_managed_alias_collision(app_client, auth_headers, mock_db):
+    """An ordinary (non-managed) config occupying the deterministic alias is a conflict, not a reuse.
+
+    Reusing it would report success for a connection resolve_effective_tool_alias() later rejects
+    (managed_by missing), silently breaking the sidebar toggle; re-registering would append a
+    duplicate alias. The endpoint must refuse and leave the colliding config untouched.
+    """
+    collision = DatabaseConfig(alias="CORE::SCOUT1", username="SOMEONE")  # managed_by=None (ordinary)
+    collision.pool = object()  # type: ignore[assignment]
+    collision.usable = True
+    with (
+        patch(f"{MODULE}.get_client_db_config", return_value=_base_cfg()),
+        patch(f"{MODULE}._find_config_ci", return_value=collision),
+        patch(f"{MODULE}.register_database", AsyncMock()) as mock_reg,
+        patch(f"{MODULE}.clear_dds_for", AsyncMock(return_value=set())) as mock_clear,
+        patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
+    ):
+        resp = await app_client.post(
+            "/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers
+        )
+    assert resp.status_code == 409
+    # The ordinary connection was neither reused-as-managed, torn down, nor duplicated.
+    mock_reg.assert_not_awaited()
+    mock_clear.assert_not_awaited()
+    mock_refresh.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_connect_as_requires_usable_owner(app_client, auth_headers, mock_db):
     """503 when the owner database is unavailable."""
     with patch(f"{MODULE}.get_client_db_config", return_value=None):
