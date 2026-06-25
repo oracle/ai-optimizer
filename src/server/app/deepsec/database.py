@@ -77,11 +77,6 @@ def _ident(name: str, upper: bool = True) -> str:
     return '"' + (name.upper() if upper else name) + '"'
 
 
-def _quoted_literal(value: str) -> str:
-    """Return a single-quoted SQL string literal with embedded quotes doubled."""
-    return "'" + value.replace("'", "''") + "'"
-
-
 def _quoted_password(value: str) -> str:
     """Return a password as a double-quoted (case-sensitive) identifier."""
     if not value or any(c in value for c in "\x00\n\r"):
@@ -125,9 +120,16 @@ async def get_status(conn: oracledb.AsyncConnection) -> dict:
     available = bool(feature_rows)
 
     held: set[str] = set()
+    # Listing roles/end users requires read access to the DBA_* views; a COUNT returns a row
+    # when accessible and None (ORA-00942 swallowed) when not. Only probed when the feature is
+    # present, so the flags stay False (no DBA_* queries) on a build without Deep Data Security.
+    can_list_roles = can_list_users = can_list_role_grants = False
     if available:
         priv_rows = await execute_sql(conn, "SELECT privilege FROM session_privs")
         held = {r[0] for r in (priv_rows or [])}
+        can_list_roles = await _can_read(conn, "dba_data_roles")
+        can_list_users = await _can_read(conn, "dba_end_users")
+        can_list_role_grants = await _can_read(conn, "dba_data_role_grants")
 
     capabilities = {
         "create_data_role": PRIV_CREATE_DATA_ROLE in held,
@@ -137,12 +139,10 @@ async def get_status(conn: oracledb.AsyncConnection) -> dict:
         "manage_data_grants": PRIV_CREATE_DATA_GRANT in held and PRIV_ADMINISTER_ANY_DATA_GRANT in held,
         # GRANT/REVOKE DATA ROLE (role <-> end-user membership) both require GRANT ANY DATA ROLE.
         "grant_data_roles": PRIV_GRANT_ANY_DATA_ROLE in held,
-        # Listing roles/end users requires read access to the DBA_* views; a COUNT
-        # returns a row when accessible and None (ORA-00942 swallowed) when not.
-        "list_data_roles": available and await _can_read(conn, "dba_data_roles"),
-        "list_end_users": available and await _can_read(conn, "dba_end_users"),
+        "list_data_roles": can_list_roles,
+        "list_end_users": can_list_users,
         "list_data_grants": available,  # USER_DATA_GRANTS needs no extra grant
-        "list_data_role_grants": available and await _can_read(conn, "dba_data_role_grants"),
+        "list_data_role_grants": can_list_role_grants,
     }
     return {
         "available": available,
@@ -184,12 +184,14 @@ async def list_objects(conn: oracledb.AsyncConnection) -> list[dict]:
 
 async def list_object_columns(conn: oracledb.AsyncConnection, object_name: str) -> list[str]:
     """List column names for one of the user's tables/views."""
-    # Validate, then compare against the exact (case-preserved) catalog value.
-    bare = _ident(object_name, upper=False).strip('"')
+    # Validate, then compare against the exact (case-preserved) catalog value. The name is
+    # bound as a value (not interpolated), so it needs validation but no quoting.
+    if not _is_valid_identifier(object_name):
+        raise DeepSecError(f"Invalid identifier: {object_name!r}")
     rows = await execute_sql(
         conn,
         "SELECT column_name FROM user_tab_columns WHERE table_name = :n ORDER BY column_id",
-        {"n": bare},
+        {"n": object_name},
     )
     return [r[0] for r in (rows or [])]
 
@@ -237,7 +239,7 @@ async def list_data_roles(conn: oracledb.AsyncConnection) -> list[dict]:
 async def create_data_role(conn: oracledb.AsyncConnection, name: str, mapped_to: Optional[str] = None) -> None:
     sql = f"CREATE DATA ROLE {_ident(name)}"
     if mapped_to:
-        sql += f" MAPPED TO {_quoted_literal(mapped_to)}"
+        sql += f" MAPPED TO {oracledb.enquote_literal(mapped_to)}"
     await _exec_ddl(conn, sql)
     # Give locally-managed data roles the connection role so end users assigned them can log in
     # (connect-as). Best-effort: if AIO_DDS_ROLE isn't provisioned (connect-as not set up), the data

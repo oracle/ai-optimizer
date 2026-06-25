@@ -909,7 +909,7 @@ def _render_data_grants(caps: dict, authenticated: bool, roles) -> None:
 
 def display_deepsec() -> None:
     """Streamlit GUI."""
-    db_alias = state["settings"]["client_settings"].get("database", {}).get("alias")
+    db_alias = _db_alias()
     st.header("Deep Data Security")
     st.write(
         f"Manage Oracle Deep Data Security on the **{db_alias}** database. "

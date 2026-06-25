@@ -75,6 +75,15 @@ def _is_usable(db_config: Optional[DatabaseConfig]) -> TypeGuard[DatabaseConfig]
     return db_config is not None and db_config.pool is not None and db_config.usable
 
 
+# The non-identity fields of a DatabaseConfig that define a physical connection. A DDS
+# connect-as managed connection copies exactly these from its base (overriding only the
+# identity fields ``alias``/``username``), and a change to any of them invalidates that
+# managed connection. Single-sourced here so the copy and the invalidation rule cannot drift.
+MANAGED_CONNECTION_FIELDS = frozenset(
+    {"password", "dsn", "wallet_location", "config_dir", "wallet_password", "tcp_connect_timeout"}
+)
+
+
 def _build_connect_args(db_config: DatabaseConfig) -> dict:
     """Build the oracledb connection keyword arguments from a DatabaseConfig."""
     if not has_required_credentials(db_config):

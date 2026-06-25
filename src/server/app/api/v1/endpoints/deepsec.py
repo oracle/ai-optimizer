@@ -34,6 +34,7 @@ from server.app.api.v1.schemas.deepsec import (
 from server.app.core.secrets import reveal
 from server.app.core.settings import _settings_lock, resolve_client
 from server.app.database.config import (
+    MANAGED_CONNECTION_FIELDS,
     _find_config_ci,
     clear_dds_for,
     get_client_db_config,
@@ -212,15 +213,12 @@ async def dds_connect_as(
                 # if re-registration below fails. (On success the client re-sets its selection.)
                 await clear_dds_for(alias=managed)
                 need_refresh = True  # the store still has this alias until we rebuild
+            # Copy the connection-defining fields verbatim, overriding only identity: the managed
+            # connection authenticates as the end user against the base's physical connection.
             cfg = DatabaseConfig(
                 alias=managed,
                 username=body.end_user,
-                password=base.password,
-                dsn=base.dsn,
-                wallet_location=base.wallet_location,
-                config_dir=base.config_dir,
-                wallet_password=base.wallet_password,
-                tcp_connect_timeout=base.tcp_connect_timeout,
+                **{field: getattr(base, field) for field in MANAGED_CONNECTION_FIELDS},
             )
             error = await register_database(
                 cfg, require_usable=True, persist=False, managed_by=managed_marker(base.alias)

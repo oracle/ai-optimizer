@@ -17,7 +17,13 @@ from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_
 from server.app.core.error_detail import response_error_detail
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
-from server.app.database.config import _find_config_ci, clear_dds_for, close_pool, get_core_pool
+from server.app.database.config import (
+    MANAGED_CONNECTION_FIELDS,
+    _find_config_ci,
+    clear_dds_for,
+    close_pool,
+    get_core_pool,
+)
 from server.app.database.registry import (
     drop_vector_store,
     init_core_database,
@@ -38,14 +44,6 @@ SENSITIVE_FIELDS = set(DatabaseSensitive.model_fields.keys())
 # ``SENSITIVE_FIELDS`` because non-credential response-masked fields (none
 # in this schema today) should not be preserved-on-blank.
 SECRET_UPDATE_FIELDS = frozenset({"password", "wallet_password"})
-
-# Base-connection fields a DDS connect-as connection copies (see /deepsec/connect-as). A change
-# to any of these invalidates the managed connection and forces a re-designation; a change to
-# anything else (e.g. ``username``, which the managed connection does not reuse — it authenticates
-# as the end user) leaves an active override intact.
-_DDS_INVALIDATING_FIELDS = frozenset(
-    {"password", "dsn", "wallet_location", "config_dir", "wallet_password", "tcp_connect_timeout"}
-)
 
 _PERSIST_FAIL = "Failed to persist settings"
 
@@ -343,7 +341,9 @@ async def update_database(alias: str, body: DatabaseUpdate):
         # Only a change to a connection field the managed connection copied invalidates an active
         # DDS connect-as derived from this base; tear it down then (clear-and-disable, the user
         # re-designates). An unrelated edit (e.g. username) must not silently disable the override.
-        if any(field in originals and originals[field] != getattr(cfg, field) for field in _DDS_INVALIDATING_FIELDS):
+        if any(
+            field in originals and originals[field] != getattr(cfg, field) for field in MANAGED_CONNECTION_FIELDS
+        ):
             await clear_dds_for(base_alias=cfg.alias)
 
         result = cfg.model_dump(exclude=SENSITIVE_FIELDS)
