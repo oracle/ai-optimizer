@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore selectbox healthz
+# spell-checker:ignore selectbox healthz streamable
 
 import json
 import logging
@@ -190,8 +190,8 @@ def display_mcp() -> None:
     mcp_status = get_mcp_status()
     if mcp_status.get("status") == "ok":
         st.markdown(f"""
-                    The {mcp_status["name"]} is running.
-                    **Version**: {mcp_status["version"]}
+                    The {mcp_status["name"]} Server is running.
+                    **Server Version**: {mcp_status["version"]}
                     """)
         if is_authenticated():
             with st.expander("Client Configuration"):

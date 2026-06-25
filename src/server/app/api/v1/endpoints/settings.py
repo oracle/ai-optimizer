@@ -23,7 +23,12 @@ from server.app.api.v1.schemas.settings import (
     SettingsResponse,
 )
 from server.app.core.etc import ensure_core_alias, migrate_legacy_settings, upsert_list_field
-from server.app.core.schemas import ClientSettings, ClientSettingsUpdate, LLModelSettings
+from server.app.core.schemas import (
+    ClientSettings,
+    ClientSettingsUpdate,
+    DeepDataSecuritySettings,
+    LLModelSettings,
+)
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
@@ -36,7 +41,13 @@ from server.app.core.settings import (
 )
 from server.app.database.registry import refresh_db_vector_stores
 from server.app.database.schemas import DatabaseSensitive, DatabaseUpdate
-from server.app.database.settings import delete_row, load_settings, persist_client_settings, persist_settings
+from server.app.database.settings import (
+    delete_row,
+    hide_managed_db_configs,
+    load_settings,
+    persist_client_settings,
+    persist_settings,
+)
 from server.app.mcp.prompts.registry import load_factory_prompts, reconcile_prompt_customizations, register_mcp_prompts
 from server.app.models.connectivity import check_model_reachability
 from server.app.models.litellm_utils import find_model
@@ -170,8 +181,12 @@ async def get_client_settings(
     carries its own short deadline (see ``refresh_db_vector_stores``)
     so a slow database can't stack delays or hang the response.
     """
-    await asyncio.gather(*(refresh_db_vector_stores(cfg) for cfg in settings.database_configs))
+    # DDS-managed connections are runtime-only and never user-facing — don't refresh
+    # (which would query through the governed end user) or surface them.
+    visible = [cfg for cfg in settings.database_configs if not cfg.managed_by]
+    await asyncio.gather(*(refresh_db_vector_stores(cfg) for cfg in visible))
     data = settings.model_dump(exclude=SENSITIVE_FIELDS)
+    hide_managed_db_configs(data)
     data["client_settings"] = resolve_client(client).model_dump()
     return data
 
@@ -191,7 +206,13 @@ async def export_settings(
         request.client.host if request.client else "unknown",
     )
     data = settings.model_dump(mode="json", context={REVEAL_KEY: True})
-    data["client_settings"] = resolve_client(client).model_dump(mode="json", context={REVEAL_KEY: True})
+    # DDS-managed connections are runtime-only — never exported (this payload reveals
+    # credentials, and managed configs carry a copy of the owner's password).
+    hide_managed_db_configs(data)
+    # deep_data_security is runtime/session-scoped — never exported.
+    data["client_settings"] = resolve_client(client).model_dump(
+        mode="json", context={REVEAL_KEY: True}, exclude={"deep_data_security"}
+    )
     return JSONResponse(content=data)
 
 
@@ -241,6 +262,10 @@ async def update_client_settings(body: ClientSettingsUpdate, client: Annotated[C
                 # Merge individual vector_search fields instead of replacing the whole object
                 for vs_field in body.vector_search.model_fields_set:
                     setattr(cs.vector_search, vs_field, getattr(body.vector_search, vs_field))
+            elif field == "deep_data_security" and body.deep_data_security is not None:
+                # Field-merge so a lone {enabled: ...} toggle doesn't wipe end_user/alias/base_alias.
+                for dds_field in body.deep_data_security.model_fields_set:
+                    setattr(cs.deep_data_security, dds_field, getattr(body.deep_data_security, dds_field))
             else:
                 # Note: nested objects (database, testbed, etc.) are replaced
                 # wholesale — not field-merged like ll_model / vector_search.
@@ -258,6 +283,10 @@ async def create_client_settings(client: Annotated[ClientId, Query()] = "CONFIGU
 
         persisted = await load_settings("CONFIGURED")
         data = (persisted or settings).model_dump(exclude=SENSITIVE_FIELDS)
+        # DDS-managed connections are runtime-only and never user-facing. The persisted row is
+        # already filtered (persist_settings strips them), but the in-memory `settings` fallback
+        # is not — exclude them here so a new client session can't see/select a managed alias.
+        hide_managed_db_configs(data)
 
         cs = ClientSettings(client=client)
         _apply_default_ll_model(cs)
@@ -272,7 +301,9 @@ async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Copy a source client's client_settings to the SERVER client."""
     async with _settings_lock:
         source_cs = resolve_client(client)
-        server_cs = source_cs.model_copy(deep=True)
+        # deep_data_security is runtime/session-scoped — drop any active override so a
+        # source client's "connect as" alias never leaks into server/default tool routing.
+        server_cs = source_cs.model_copy(deep=True, update={"deep_data_security": DeepDataSecuritySettings()})
         server_cs.client = "server"
         old_server_cs = _client_store.get("server")
         _client_store["server"] = server_cs
@@ -308,11 +339,22 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
 
         # --- Database configs ---
         if body.database_configs is not None:
+            # managed_by is server-owned (runtime-only DDS connections) and never exported, so a
+            # legit round-trip never carries it; normalise any client-supplied value to None so an
+            # import can never *create* a config masquerading as managed.
+            for db in body.database_configs:
+                db.managed_by = None
             core_exists = any(c.alias.upper() == "CORE" for c in settings.database_configs)
-            if core_exists:
-                importable = [db for db in body.database_configs if db.alias.upper() != "CORE"]
-            else:
-                importable = list(body.database_configs)
+            # Skip any incoming alias that collides with an existing hidden DDS-managed connection:
+            # the normalised managed_by=None is now in model_fields_set, so upserting onto the
+            # managed config would clear its server-owned marker and expose a runtime-only connect-as
+            # connection as a normal/persisted/exportable database config.
+            managed_aliases = {cfg.alias.lower() for cfg in settings.database_configs if cfg.managed_by}
+            importable = [
+                db
+                for db in body.database_configs
+                if db.alias.lower() not in managed_aliases and not (core_exists and db.alias.upper() == "CORE")
+            ]
             skipped = len(body.database_configs) - len(importable)
             pre_import_db = {cfg.alias: cfg for cfg in snapshot["db"]}
             created, updated = upsert_list_field("database_configs", importable)
@@ -436,6 +478,8 @@ async def reset_to_factory():
             del _client_store[key]
 
         data = settings.model_dump(exclude=SENSITIVE_FIELDS)
+        # DDS-managed connections are runtime-only and never user-facing.
+        hide_managed_db_configs(data)
         data["client_settings"] = settings.client_settings.model_dump()
         return data
 

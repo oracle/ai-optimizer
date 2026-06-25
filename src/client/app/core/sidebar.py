@@ -87,6 +87,11 @@ def _on_vs_param_change(field: str, widget_key: str) -> None:
     update_client_settings({"vector_search": {field: state[widget_key]}})
 
 
+def _on_dds_change() -> None:
+    """Persist the Deep Data Security tool-connection toggle (runtime/session-scoped)."""
+    update_client_settings({"deep_data_security": {"enabled": state.runtime_dds_enabled}})
+
+
 #####################################################
 # Vector Store Selection Helpers
 #####################################################
@@ -345,6 +350,23 @@ def toolkit_sidebar(show_vs_subtools: bool = True) -> None:
         key="runtime_tools",
     )
     client_settings["tools_enabled"] = state.runtime_tools
+
+    # Deep Data Security: connect chat tools as the configured end user. Shown only when a
+    # connect-as user is configured for the *currently selected* database (Tools → Deep Data
+    # Security); switching the owner database hides it until re-designated.
+    dds = client_settings.get("deep_data_security", {})
+    if db_config and db_config.get("usable") and dds.get("end_user") and dds.get("base_alias") == db_alias:
+        st.sidebar.checkbox(
+            "Deep Data Security",
+            help=(
+                f"Connect Vector Search and NL2SQL as end user '{dds['end_user']}' so data-access "
+                "policies are enforced. Does not affect Language Model only."
+            ),
+            value=dds.get("enabled", False),
+            key="runtime_dds_enabled",
+            on_change=_on_dds_change,
+        )
+        client_settings["deep_data_security"]["enabled"] = state.runtime_dds_enabled
 
     # Vector Search Sub-Tools
     if "Vector Search" in client_settings["tools_enabled"]:

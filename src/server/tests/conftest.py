@@ -153,6 +153,30 @@ def _write_startup_scripts(temp_dir: Path) -> None:
     ALTER USER "{TEST_DB_CONFIG["db_username"]}" DEFAULT ROLE ALL;
     ALTER USER "{TEST_DB_CONFIG["db_username"]}" QUOTA UNLIMITED ON USERS;
 
+    -- Deep Data Security privileges (26ai). Allows integration tests to create
+    -- data roles, end users, and data grants. Harmless on builds without the
+    -- feature (the GRANT simply errors and SQL*Plus continues).
+    GRANT CREATE DATA ROLE TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT DROP DATA ROLE TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT CREATE END USER TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT DROP END USER TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT CREATE DATA GRANT TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT ADMINISTER ANY DATA GRANT TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT CREATE END USER CONTEXT TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT CREATE END USER SECURITY CONTEXT TO "{TEST_DB_CONFIG["db_username"]}";
+    -- Catalog read access so the user can list data roles and end users
+    -- (data grants are listable via USER_DATA_GRANTS without extra grants).
+    GRANT SELECT ON DBA_DATA_ROLES TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT SELECT ON DBA_END_USERS TO "{TEST_DB_CONFIG["db_username"]}";
+    -- Connect-as: a standard role carrying CREATE SESSION is provisioned by the privileged user and
+    -- granted to the app user WITH ADMIN OPTION; the app grants it to local data roles at creation,
+    -- and end users assigned those data roles (needs GRANT ANY DATA ROLE) can then log in.
+    CREATE ROLE AIO_DDS_ROLE;
+    GRANT CREATE SESSION TO AIO_DDS_ROLE;
+    GRANT AIO_DDS_ROLE TO "{TEST_DB_CONFIG["db_username"]}" WITH ADMIN OPTION;
+    GRANT GRANT ANY DATA ROLE TO "{TEST_DB_CONFIG["db_username"]}";
+
     EXIT;
     """
 

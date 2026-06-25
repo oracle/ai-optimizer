@@ -131,3 +131,37 @@ END;
 {{% notice style="default" title="One schema fits none..." icon="circle-info" %}}
 Creating multiple users in the same database allows developers to separate their experiments simply by changing the "Database User"
 {{% /notice %}}
+
+## Deep Data Security privileges (optional)
+
+To use the [Deep Data Security]({{% relref "/client/tools/deepsec" %}}) tool, the database user needs the additional privileges below. They are optional: when they are absent — or when the database does not support Deep Data Security — the tool is automatically disabled in the GUI.
+
+```sql
+GRANT CREATE DATA ROLE TO "DEMO";
+GRANT DROP DATA ROLE TO "DEMO";
+GRANT CREATE END USER TO "DEMO";
+GRANT DROP END USER TO "DEMO";
+GRANT CREATE DATA GRANT TO "DEMO";
+GRANT CREATE END USER CONTEXT TO "DEMO";
+GRANT CREATE END USER SECURITY CONTEXT TO "DEMO";
+GRANT ADMINISTER ANY DATA GRANT TO "DEMO";
+GRANT GRANT ANY DATA ROLE TO "DEMO";
+-- Read access so the tool can list data roles and end users
+GRANT SELECT ON DBA_DATA_ROLES TO "DEMO";
+GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "DEMO";
+GRANT SELECT ON DBA_END_USERS TO "DEMO";
+```
+
+### Connect tools as an end user (optional)
+
+To let **Vector Search** and **NL2SQL** connect *as* a Deep Data Security end user (the **Connect tools as** control), the end user must be able to log in. An end user cannot be granted `CREATE SESSION` directly; the privilege is carried by a standard database role that flows to the end user through a data role. As a privileged user (e.g. `ADMIN`/`SYSTEM`), create that role once and let `"DEMO"` hand it out:
+
+```sql
+-- Privileged user: one standard role that carries CREATE SESSION
+CREATE ROLE AIO_DDS_ROLE;
+GRANT CREATE SESSION TO AIO_DDS_ROLE;
+-- Let the database user grant AIO_DDS_ROLE on (to data roles it creates) and assign data roles
+GRANT AIO_DDS_ROLE TO "DEMO" WITH ADMIN OPTION;
+```
+
+The tool then grants `AIO_DDS_ROLE` to each locally-managed data role it creates, so any end user assigned that data role can be connected as.

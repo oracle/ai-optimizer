@@ -124,17 +124,15 @@ class TestCreateDatabase:
         assert state.get("_pending_db_select") == "SPACED"
         mock_helpers.sync_client_setting.assert_called_with("database", "alias", "SPACED")
 
-    def test_connection_error_shows_warning(self, make_state, mock_st):
-        """When the API returns an error field, st.warning is called."""
-        self._run_create(
+    def test_connection_error_stashed_for_display(self, make_state, mock_st):
+        """An error field is stashed so the warning survives the post-create rerun."""
+        state, _, _ = self._run_create(
             make_state,
             mock_st,
             "BAD",
             api_result={"alias": "BAD", "usable": False, "error": "ORA-12541: TNS:no listener"},
         )
-        warning_messages = [call.args[0] for call in mock_st.warning.call_args_list]
-        assert any("ORA-12541" in m for m in warning_messages)
-        assert any("Saved, but connection failed" in m for m in warning_messages)
+        assert "ORA-12541" in (state.get("_db_connect_warning") or "")
 
     def test_no_warning_on_success(self, make_state, mock_st):
         """A successful create with no connection error does not call st.warning."""
@@ -227,6 +225,38 @@ class TestPendingDbSelect:
 
         other_calls = [call for call in mock_st.text_input.mock_calls if not call.kwargs["key"].endswith("alias_CORE")]
         assert all(call.kwargs.get("disabled") is True for call in other_calls)
+
+    def test_create_button_disabled_until_alias_entered(self, make_state):
+        """A new config's Create button stays disabled while the alias is blank."""
+        from client.app.content.config.tabs.databases import _render_databases
+
+        state = make_state(["CORE"], "CORE")  # CORE exists -> not force_core, alias not forced
+
+        mock_st = MagicMock()
+        mock_st.selectbox.return_value = "Add New..."
+        mock_st.text_input.return_value = ""  # empty alias and fields
+        mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.button.return_value = False
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers") as hlp,
+            patch(f"{MODULE}.is_authenticated", return_value=True),
+        ):
+            hlp.selectbox_index.return_value = 1
+            _render_databases({"CORE": {"alias": "CORE"}}, ["CORE"], "CORE")
+
+        save_call = next(
+            call for call in mock_st.button.mock_calls if call.kwargs.get("key", "").startswith("runtime_db_save_")
+        )
+        assert save_call.kwargs.get("disabled") is True
+
+        # Form fields must use the "runtime_" prefix so clear_runtime_state()
+        # resets them on selection change (preventing a config leaking into a
+        # fresh form). Guard the convention here.
+        field_keys = [c.kwargs["key"] for c in mock_st.text_input.mock_calls if "key" in c.kwargs]
+        assert field_keys and all(k.startswith("runtime_db_") for k in field_keys)
 
     def test_unauthenticated_omits_password_widgets(self, make_state):
         """When unauthenticated, DB password and wallet password widgets are not rendered with secrets."""
@@ -526,7 +556,7 @@ class TestFetchFallback:
         usernames = [
             call.kwargs.get("value")
             for call in mock_st.text_input.mock_calls
-            if call.kwargs.get("key", "").startswith("form_db_username")
+            if call.kwargs.get("key", "").startswith("runtime_db_username")
         ]
         assert usernames == ["user"]
 
@@ -572,15 +602,14 @@ class TestUpdateDatabase:
         state, _ = self._run_update(make_state, mock_st)
         assert "_pending_db_select" not in state
 
-    def test_connection_error_shows_warning(self, make_state, mock_st):
-        """Connection errors from the server are surfaced via st.warning."""
-        self._run_update(
+    def test_connection_error_stashed_for_display(self, make_state, mock_st):
+        """Connection errors from the server are stashed for display after the rerun."""
+        state, _ = self._run_update(
             make_state,
             mock_st,
             api_result={"alias": "MYDB", "usable": False, "error": "DPY-4026: tnsnames.ora missing"},
         )
-        warning_messages = [call.args[0] for call in mock_st.warning.call_args_list]
-        assert any("DPY-4026" in m for m in warning_messages)
+        assert "DPY-4026" in (state.get("_db_connect_warning") or "")
 
 
 # ---------------------------------------------------------------------------

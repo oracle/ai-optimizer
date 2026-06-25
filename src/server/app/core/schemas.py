@@ -63,6 +63,21 @@ class TestbedSettings(BaseModel):
     judge_model: Optional[ModelIdentity] = None
 
 
+class DeepDataSecuritySettings(BaseModel):
+    """Client Deep Data Security 'connect as' override.
+
+    Runtime/session-scoped only — never persisted or exported. When ``enabled``
+    and ``base_alias`` matches the active database, chat-time read tools (Vector
+    Search, NL2SQL) connect through the managed ``alias`` (which authenticates as
+    the DDS end user) instead of the schema owner.
+    """
+
+    enabled: bool = False
+    end_user: Optional[str] = None
+    alias: Optional[str] = None
+    base_alias: Optional[str] = None
+
+
 class ClientSettings(BaseModel):
     """Per-client session settings."""
 
@@ -73,6 +88,7 @@ class ClientSettings(BaseModel):
     tools_enabled: list[str] = []
     vector_search: VectorSearchSettings = VectorSearchSettings()
     testbed: TestbedSettings = TestbedSettings()
+    deep_data_security: DeepDataSecuritySettings = DeepDataSecuritySettings()
 
 
 class HelpItem(BaseModel):
@@ -115,3 +131,4 @@ class ClientSettingsUpdate(BaseModel):
     tools_enabled: Optional[list[str]] = None
     vector_search: Optional[VectorSearchSettings] = None
     testbed: Optional[TestbedSettings] = None
+    deep_data_security: Optional[DeepDataSecuritySettings] = None

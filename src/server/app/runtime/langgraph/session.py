@@ -254,15 +254,22 @@ class NL2SQLGraphSession(AgentGraphSession):
         graph: Any,
         client_settings: ClientSettings,
         thread_id: str = "",
+        connection_name: Optional[str] = None,
     ) -> None:
         """Initialise with a graph and client settings.
 
         *thread_id* is the per-client identifier that sqlcl_* tools use to
         scope DB operations; it is NOT the LangGraph checkpointer thread.
+
+        *connection_name* is the SQLcl saved-connection the agent should use. When
+        omitted it defaults to the client's active database alias; the factory passes
+        the Deep Data Security effective tool alias so NL2SQL runs as the configured
+        end user when the connect-as override is active.
         """
         super().__init__(graph)
 
-        connection_name = client_settings.database.alias
+        if connection_name is None:
+            connection_name = client_settings.database.alias
         ll_model = client_settings.ll_model
         model = f"{ll_model.provider}/{ll_model.id}"
 

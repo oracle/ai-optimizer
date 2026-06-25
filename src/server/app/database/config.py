@@ -9,13 +9,13 @@ import contextlib
 import logging
 import os
 import re
-from typing import Optional
+from typing import Optional, TypeGuard
 
 import oracledb
 
 from server.app.core.paths import PROJECT_ROOT
 from server.app.core.secrets import reveal
-from server.app.core.settings import resolve_client, settings
+from server.app.core.settings import _client_store, _client_store_lock, resolve_client, settings
 
 from .schemas import DatabaseConfig
 
@@ -70,6 +70,20 @@ def has_required_credentials(db_config: DatabaseConfig) -> bool:
     return all([db_config.username, db_config.password, db_config.dsn])
 
 
+def _is_usable(db_config: Optional[DatabaseConfig]) -> TypeGuard[DatabaseConfig]:
+    """Return True when *db_config* exists and has a live, usable pool (narrows None away)."""
+    return db_config is not None and db_config.pool is not None and db_config.usable
+
+
+# The non-identity fields of a DatabaseConfig that define a physical connection. A DDS
+# connect-as managed connection copies exactly these from its base (overriding only the
+# identity fields ``alias``/``username``), and a change to any of them invalidates that
+# managed connection. Single-sourced here so the copy and the invalidation rule cannot drift.
+MANAGED_CONNECTION_FIELDS = frozenset(
+    {"password", "dsn", "wallet_location", "config_dir", "wallet_password", "tcp_connect_timeout"}
+)
+
+
 def _build_connect_args(db_config: DatabaseConfig) -> dict:
     """Build the oracledb connection keyword arguments from a DatabaseConfig."""
     if not has_required_credentials(db_config):
@@ -122,9 +136,7 @@ def get_core_pool() -> Optional[oracledb.AsyncConnectionPool]:
     """Return the CORE database connection pool, or ``None`` if unavailable."""
 
     core_cfg = get_database_settings(settings.database_configs, "CORE")
-    if core_cfg is None or not core_cfg.pool or not core_cfg.usable:
-        return None
-    return core_cfg.pool
+    return core_cfg.pool if _is_usable(core_cfg) else None
 
 
 def get_client_db_config(client: str = "CONFIGURED") -> Optional[DatabaseConfig]:
@@ -136,9 +148,7 @@ def get_client_db_config(client: str = "CONFIGURED") -> Optional[DatabaseConfig]
 
     alias = resolve_client(client).database.alias
     db_config = get_database_settings(settings.database_configs, alias)
-    if db_config is None or not db_config.pool or not db_config.usable:
-        return None
-    return db_config
+    return db_config if _is_usable(db_config) else None
 
 
 def get_client_pool(client: str = "CONFIGURED") -> Optional[oracledb.AsyncConnectionPool]:
@@ -149,6 +159,149 @@ def get_client_pool(client: str = "CONFIGURED") -> Optional[oracledb.AsyncConnec
     """
     db_config = get_client_db_config(client)
     return db_config.pool if db_config else None
+
+
+# ---------------------------------------------------------------------------
+# Deep Data Security: effective connection for chat-time read tools
+# ---------------------------------------------------------------------------
+class DdsConnectionError(Exception):
+    """Raised when a Deep Data Security 'connect as' override is active but its
+    managed connection is missing/unusable.
+
+    Tool-path resolvers raise this **unchanged** — they never fall back to the
+    schema owner (which would leak full, unmasked data). It is caught only at the
+    chat/tool boundaries, which turn it into a user-facing error.
+    """
+
+
+def managed_marker(base_alias: str) -> str:
+    """The ``managed_by`` value for a DDS connect-as connection owned by *base_alias*.
+
+    Single source of the ``"dds:<base>"`` encoding (constructed at registration, matched
+    on teardown) so the format lives in one place.
+    """
+    return f"dds:{base_alias}"
+
+
+def _find_config_ci(alias: Optional[str], *, exclude_managed: bool = False) -> Optional[DatabaseConfig]:
+    """Case-insensitive lookup in ``settings.database_configs``.
+
+    With ``exclude_managed=True`` a DDS-managed (runtime-only) alias is treated as not found,
+    so the user-facing database endpoints don't act on hidden connections.
+    """
+    if not alias:
+        return None
+    for cfg in settings.database_configs:
+        if cfg.alias.lower() == alias.lower():
+            return None if exclude_managed and cfg.managed_by else cfg
+    return None
+
+
+def resolve_effective_tool_alias(client: str = "CONFIGURED") -> str:
+    """Return the database alias chat-time read tools (Vector Search, NL2SQL) should use.
+
+    Owner alias when DDS is disabled or configured for a different base; the managed
+    end-user alias when DDS is active for the current base. Raises ``DdsConnectionError``
+    when DDS is active but its managed connection is missing/unusable (never falls back
+    to the owner).
+    """
+    cs = resolve_client(client)
+    owner_alias = cs.database.alias
+    dds = cs.deep_data_security
+    if not dds.enabled or dds.base_alias != owner_alias:
+        return owner_alias
+    managed = _find_config_ci(dds.alias)
+    # The setting is client-supplied (PUT /settings field-merges deep_data_security), so the
+    # alias alone is not trusted: the resolved config must be a DDS-managed connection *owned by
+    # the current base*. This blocks a crafted/stale payload from routing tools at an ordinary
+    # connection (managed_by=None) or a managed connection of another base (dds:OTHER).
+    if managed is None or managed.managed_by != managed_marker(owner_alias) or not _is_usable(managed):
+        raise DdsConnectionError(
+            f"Deep Data Security connection unavailable for end user '{dds.end_user}'. "
+            "Re-select the connect-as user in Tools → Deep Data Security."
+        )
+    return managed.alias
+
+
+def get_tool_db_config(client: str = "CONFIGURED") -> Optional[DatabaseConfig]:
+    """Resolve the ``DatabaseConfig`` chat-time read tools should use.
+
+    Applies the DDS 'connect as' override (see ``resolve_effective_tool_alias``);
+    returns ``None`` when the owner database itself is unavailable. Raises
+    ``DdsConnectionError`` when DDS is active but its managed connection is unusable.
+    """
+    alias = resolve_effective_tool_alias(client)
+    if alias == resolve_client(client).database.alias:
+        return get_client_db_config(client)
+    # Managed alias already validated as usable by resolve_effective_tool_alias.
+    return _find_config_ci(alias)
+
+
+def get_tool_pool(client: str = "CONFIGURED") -> Optional[oracledb.AsyncConnectionPool]:
+    """Resolve the async connection pool chat-time read tools should use (DDS-aware)."""
+    db_config = get_tool_db_config(client)
+    return db_config.pool if db_config else None
+
+
+def _reset_dds(cs) -> None:
+    """Reset a ClientSettings' deep_data_security override in place."""
+    dds = cs.deep_data_security
+    dds.enabled = False
+    dds.end_user = None
+    dds.alias = None
+    dds.base_alias = None
+
+
+async def clear_dds_for(*, alias: Optional[str] = None, base_alias: Optional[str] = None) -> set[str]:
+    """Tear down DDS-managed connection(s) and clear referencing client settings.
+
+    A managed config matches when ``managed_by`` is set and it matches a provided criterion:
+    the managed ``alias`` (case-insensitive, exact) or the owning ``base_alias``
+    (``managed_by == f"dds:{base_alias}"``). There is intentionally **no** match-by-end-user:
+    DDS end users are per-database accounts, so a same-named user on another base is a
+    distinct connection and must never be swept up. Callers scope by exact ``alias`` (the
+    current client/base) or by ``base_alias`` (a whole owner DB being removed/rotated).
+
+    Closes matching pools, removes them from ``settings.database_configs``, and clears
+    ``deep_data_security`` on ``settings.client_settings`` and every per-client copy whose
+    managed alias was removed. Returns the set of removed aliases (lower-cased).
+
+    **Locking:** the caller must hold ``_settings_lock`` (asyncio.Lock is non-reentrant).
+    The client store is enumerated directly under ``_client_store_lock`` — this never calls
+    ``resolve_client`` (which would create entries). It does **not** refresh the SQLcl proxy;
+    the caller must ``await refresh_sqlcl_proxy()`` once after releasing the lock when the
+    returned set is non-empty (keeps the slow rebuild out of the lock and batches it).
+    """
+
+    def _matches(cfg: DatabaseConfig) -> bool:
+        if not cfg.managed_by:
+            return False
+        if alias and cfg.alias.lower() == alias.lower():
+            return True
+        return bool(base_alias and cfg.managed_by == managed_marker(base_alias))
+
+    removed: set[str] = set()
+    remaining: list[DatabaseConfig] = []
+    for cfg in settings.database_configs:
+        if _matches(cfg):
+            await close_pool(cfg.pool)
+            cfg.pool = None
+            removed.add(cfg.alias.lower())
+        else:
+            remaining.append(cfg)
+    if not removed:
+        return removed
+    settings.database_configs[:] = remaining
+
+    def _clear_if_orphaned(cs) -> None:
+        if cs.deep_data_security.alias and cs.deep_data_security.alias.lower() in removed:
+            _reset_dds(cs)
+
+    _clear_if_orphaned(settings.client_settings)
+    with _client_store_lock:
+        for cs in _client_store.values():
+            _clear_if_orphaned(cs)
+    return removed
 
 
 async def close_pool(pool: Optional[oracledb.AsyncConnectionPool]) -> None:

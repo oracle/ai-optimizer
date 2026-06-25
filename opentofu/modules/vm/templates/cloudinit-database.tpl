@@ -49,6 +49,37 @@ write_files:
         EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" DEFAULT ROLE ALL';
       END;
       /
+      -- Deep Data Security privileges (Oracle AI Database 26ai). Applied independently and tolerant
+      -- of failure, so provisioning continues unchanged on databases that do not support Deep Data
+      -- Security (each unsupported grant errors and is skipped). AIO_DDS_ROLE is a standard role
+      -- carrying CREATE SESSION: the app grants it to local data roles at creation, so end users
+      -- assigned those data roles can connect (connect-as). CREATE ROLE re-runs error harmlessly.
+      BEGIN
+        FOR g IN (SELECT column_value AS stmt FROM TABLE(sys.odcivarchar2list(
+          'GRANT CREATE DATA ROLE TO "$DB_USERNAME"',
+          'GRANT DROP DATA ROLE TO "$DB_USERNAME"',
+          'GRANT CREATE END USER TO "$DB_USERNAME"',
+          'GRANT DROP END USER TO "$DB_USERNAME"',
+          'GRANT CREATE DATA GRANT TO "$DB_USERNAME"',
+          'GRANT ADMINISTER ANY DATA GRANT TO "$DB_USERNAME"',
+          'GRANT CREATE END USER CONTEXT TO "$DB_USERNAME"',
+          'GRANT CREATE END USER SECURITY CONTEXT TO "$DB_USERNAME"',
+          'GRANT SELECT ON DBA_DATA_ROLES TO "$DB_USERNAME"',
+          'GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "$DB_USERNAME"',
+          'GRANT SELECT ON DBA_END_USERS TO "$DB_USERNAME"',
+          'CREATE ROLE AIO_DDS_ROLE',
+          'GRANT CREATE SESSION TO AIO_DDS_ROLE',
+          'GRANT AIO_DDS_ROLE TO "$DB_USERNAME" WITH ADMIN OPTION',
+          'GRANT GRANT ANY DATA ROLE TO "$DB_USERNAME"'
+        ))) LOOP
+          BEGIN
+            EXECUTE IMMEDIATE g.stmt;
+          EXCEPTION WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Skipping (Deep Data Security unavailable?): ' || g.stmt || ' -> ' || SQLERRM);
+          END;
+        END LOOP;
+      END;
+      /
       BEGIN
         DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
           host => '$API_SERVER_HOST',

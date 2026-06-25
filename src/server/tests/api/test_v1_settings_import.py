@@ -141,6 +141,41 @@ async def test_import_database_creates_new(app_client, auth_headers, mock_persis
     assert new_db.pool is None
 
 
+async def test_import_database_strips_managed_by(app_client, auth_headers, mock_persist):
+    """An imported config can't masquerade as DDS-managed — managed_by is normalized to None."""
+    settings.database_configs = [DatabaseConfig(alias="CORE")]
+    payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "analytics_dsn", "managed_by": "dds:CORE"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    analytics = next(db for db in settings.database_configs if db.alias == "ANALYTICS")
+    assert analytics.managed_by is None
+
+
+async def test_import_database_skips_managed_alias_collision(app_client, auth_headers, mock_persist):
+    """An import naming an existing DDS-managed alias is skipped — its server-owned marker survives.
+
+    Otherwise the normalized ``managed_by = None`` (now in model_fields_set) would clear the marker
+    via upsert, exposing a runtime-only connect-as connection as a normal/persisted/exportable config.
+    """
+    settings.database_configs = [
+        DatabaseConfig(alias="CORE"),
+        DatabaseConfig(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE", usable=True),
+    ]
+    payload = {"database_configs": [{"alias": "core::scout1", "dsn": "attacker_dsn"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["database_configs"]["updated"] == 0
+    assert data["database_configs"]["skipped"] == 1
+    managed = next(db for db in settings.database_configs if db.alias == "CORE::SCOUT1")
+    assert managed.managed_by == "dds:CORE"  # marker intact — still hidden/runtime-only
+    assert managed.dsn != "attacker_dsn"  # untouched
+
+
 async def test_import_database_updates_existing(app_client, auth_headers, mock_persist):
     """An existing database alias with changed credentials is reset to usable=False."""
     settings.database_configs = [

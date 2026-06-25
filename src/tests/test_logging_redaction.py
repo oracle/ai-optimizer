@@ -54,6 +54,51 @@ def filt() -> RedactingFilter:
     return RedactingFilter()
 
 
+class TestIdentifiedByRedaction:
+    """SQL ``... IDENTIFIED BY <secret>`` (CREATE/ALTER USER / END USER) is scrubbed."""
+
+    def test_double_quoted_password(self, filt):
+        record = _make_record('CREATE END USER "U" IDENTIFIED BY "s3cr3t!"')
+        filt.filter(record)
+        msg = record.getMessage()
+        assert "s3cr3t" not in msg
+        assert f"IDENTIFIED BY {REDACTED}" in msg
+
+    def test_bare_password(self, filt):
+        record = _make_record("ALTER USER demo IDENTIFIED BY hunter2")
+        filt.filter(record)
+        msg = record.getMessage()
+        assert "hunter2" not in msg
+        assert f"IDENTIFIED BY {REDACTED}" in msg
+
+    def test_case_insensitive(self, filt):
+        record = _make_record('create end user "U" identified by "pw-value"')
+        filt.filter(record)
+        assert "pw-value" not in record.getMessage()
+
+    def test_bare_value_stops_at_identifier_boundary(self, filt):
+        # The unquoted value matches Oracle identifier grammar (not greedy \S+),
+        # so trailing non-identifier text is preserved rather than over-redacted.
+        record = _make_record("ALTER USER demo IDENTIFIED BY hunter2; -- next")
+        filt.filter(record)
+        assert record.getMessage() == f"ALTER USER demo IDENTIFIED BY {REDACTED}; -- next"
+
+    def test_identified_by_values_hash(self, filt):
+        # The "VALUES '<verifier-hash>'" form is a password too and must be masked.
+        record = _make_record("ALTER USER u IDENTIFIED BY VALUES 'S:secret-hash'")
+        filt.filter(record)
+        msg = record.getMessage()
+        assert "secret-hash" not in msg
+        assert msg == f"ALTER USER u IDENTIFIED BY {REDACTED}"
+
+    def test_identified_by_values_hash_with_doubled_quote(self, filt):
+        record = _make_record("IDENTIFIED BY VALUES 'ab''cd' AND x")
+        filt.filter(record)
+        msg = record.getMessage()
+        assert "ab''cd" not in msg
+        assert msg == f"IDENTIFIED BY {REDACTED} AND x"
+
+
 class TestKeyValueRedaction:
     """Verify the KV pattern handles each documented input shape."""
 

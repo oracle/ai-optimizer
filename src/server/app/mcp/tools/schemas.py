@@ -12,7 +12,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from server.app.core.settings import resolve_client, settings
-from server.app.database.config import get_client_pool
+from server.app.database.config import get_tool_pool
 from server.app.embed.schemas import VectorStoreConfig
 from server.app.oci.schemas import OciProfileConfig
 
@@ -84,5 +84,10 @@ def get_oci_profile(client: str = "CONFIGURED") -> Optional[OciProfileConfig]:
 
 
 def get_database_pool(client: str = "CONFIGURED"):
-    """Resolve the async connection pool for the client's database alias."""
-    return get_client_pool(client)
+    """Resolve the async connection pool for the client's chat-time read tools.
+
+    DDS-aware: when the client's Deep Data Security 'connect as' override is active this
+    returns the managed end-user pool; it raises ``DdsConnectionError`` when the override is
+    active but its connection is unusable (never falls back to the schema owner).
+    """
+    return get_tool_pool(client)
