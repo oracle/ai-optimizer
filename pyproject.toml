@@ -63,6 +63,7 @@ otel = [
 
 # - dev: for testing/development
 dev = [
+    "bandit",
     "docker",
     "mypy",
     "types-psutil",
@@ -178,6 +179,10 @@ max-bool-expr = 6
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.bandit]
+# Run as: bandit -c pyproject.toml -r .
+exclude_dirs = [".venv", "tests", "src/tests", "src/client/tests", "src/server/tests", "build", "docs", "opentofu"]
 
 [tool.setuptools_scm]
 root = "."
