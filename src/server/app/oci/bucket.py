@@ -244,7 +244,7 @@ async def download_bucket_objects_to_dir(
                     download_object, str(temp_directory), name, bucket_name, profile,
                 )
                 results.append((name, path))
-            except Exception as ex:  # noqa: BLE001 — caller decides what to do with the failure
+            except Exception as ex:  # caller decides what to do with the failure
                 results.append((name, ex))
         return results
 

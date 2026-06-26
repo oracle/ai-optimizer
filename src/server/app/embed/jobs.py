@@ -788,7 +788,7 @@ async def _terminal_write_with_retry(
             return
         except asyncio.CancelledError:
             raise
-        except Exception as ex:  # noqa: BLE001 — bounded-retry path
+        except Exception as ex:  # bounded-retry path
             last_exc = ex
             LOGGER.warning(
                 "Embed job %s: %s terminal write attempt %d/%d failed: %s",
@@ -863,7 +863,7 @@ class JobHandle:
         progress = EmbedJobProgress(stage=stage, message=message, total_chunks=total_chunks)
         try:
             await _store_set_progress(self.job_id, progress)
-        except Exception:  # noqa: BLE001 — telemetry failure must not abort pipeline
+        except Exception:  # telemetry failure must not abort pipeline
             LOGGER.warning(
                 "Failed to write progress for embed job %s — pipeline continues",
                 self.job_id,
@@ -963,7 +963,7 @@ class EmbedJobManager:
                 # outer finally pops ``_tasks`` so the heartbeat stops
                 # covering it and the reaper takes over.
                 raise
-            except Exception:  # noqa: BLE001 — best-effort status write
+            except Exception:  # best-effort status write
                 LOGGER.exception(
                     "Failed to mark embed job %s as RUNNING; running pipeline anyway",
                     handle.job_id,
@@ -1009,7 +1009,7 @@ class EmbedJobManager:
                         handle.job_id, EmbedJobStatus.FAILED, error=detail
                     ),
                 )
-            except Exception as ex:  # noqa: BLE001 — terminal-state recorder
+            except Exception as ex:  # terminal-state recorder
                 LOGGER.exception("Embed job %s failed", handle.job_id)
                 error_msg = str(ex) or type(ex).__name__
                 await _terminal_write_with_retry(
@@ -1294,7 +1294,7 @@ async def run_heartbeat_loop(
                 LOGGER.debug("Heartbeat bumped %d owned embed-job rows", bumped)
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 — keep the loop alive across DB blips
+        except Exception:  # keep the loop alive across DB blips
             LOGGER.exception("Heartbeat loop iteration failed")
         await asyncio.sleep(interval_seconds)
 
@@ -1321,6 +1321,6 @@ async def run_reaper_loop(
                 LOGGER.debug("Evicted %d terminal embed-job rows past TTL", evicted)
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             LOGGER.exception("Reaper loop iteration failed")
         await asyncio.sleep(interval_seconds)
