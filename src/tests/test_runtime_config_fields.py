@@ -14,6 +14,7 @@ def test_runtime_field_contract():
     assert actual == {
         "model_configs": frozenset({"status"}),
         "database_configs": frozenset({"usable"}),
+        "oci_configs": frozenset({"usable"}),
     }
 
 

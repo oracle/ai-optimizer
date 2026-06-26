@@ -16,9 +16,11 @@ and every consumer stays in sync.
 RUNTIME_ONLY_FIELDS: dict[str, frozenset[str]] = {
     "model_configs": frozenset({"status"}),
     "database_configs": frozenset({"usable"}),
+    "oci_configs": frozenset({"usable"}),
 }
 
-# ``.field`` path suffixes for path-based comparison (the client settings diff).
+# ``.field`` path suffixes for path-based comparison (the client settings diff);
+# deduplicated/sorted since the same field name can repeat across sections.
 RUNTIME_FIELD_SUFFIXES: tuple[str, ...] = tuple(
-    f".{field}" for fields in RUNTIME_ONLY_FIELDS.values() for field in sorted(fields)
+    sorted({f".{field}" for fields in RUNTIME_ONLY_FIELDS.values() for field in fields})
 )

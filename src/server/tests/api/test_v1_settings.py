@@ -836,6 +836,22 @@ async def test_export_excludes_database_usable(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_export_excludes_oci_usable(app_client, auth_headers):
+    """``usable`` is runtime-determined (OCI profile reachability) and must not be carried in an export."""
+    profile = make_test_oci_profile()
+    profile.usable = True
+    settings.oci_configs = [profile]
+    headers = {**auth_headers, "X-Confirm-Export": "true"}
+    resp = await app_client.post("/v1/settings/export", headers=headers)
+    assert resp.status_code == 200
+    exported = resp.json()["oci_configs"]
+    assert exported  # sanity: a profile is present
+    for oc in exported:
+        assert "usable" not in oc
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_export_excludes_managed_configs(app_client, auth_headers):
     """Export never includes runtime-only DDS-managed connections (this payload reveals creds)."""
     from server.app.database.schemas import DatabaseConfig
