@@ -49,7 +49,19 @@ class TestModelConfig:
         assert cfg.owned_by == "aioptimizer"
         assert abs(cfg.created - now) <= 2
         assert cfg.enabled is False
-        assert cfg.usable is False
+        assert cfg.status == "unreachable"
+
+    def test_legacy_usable_field_dropped(self):
+        """``usable`` was intentionally replaced by ``status`` (breaking change) — never serialized."""
+        dumped = ModelConfig(type="ll").model_dump()
+        assert "status" in dumped
+        assert "usable" not in dumped
+
+    def test_ollama_chat_provider_normalized_to_ollama(self):
+        """``ollama_chat`` (internal alias) is stored as the canonical ``ollama``."""
+        assert ModelConfig(id="mistral", provider="ollama_chat", type="ll").provider == "ollama"
+        # Other providers are untouched.
+        assert ModelConfig(id="gpt", provider="openai", type="ll").provider == "openai"
 
     def test_type_validation_accepts_valid(self):
         """'ll', 'embed', and 'rerank' are all accepted."""

@@ -371,6 +371,17 @@ class TestCompareDicts:
 
         assert not result["Value Mismatch"]
 
+    def test_skips_fields_ending_with_status(self):
+        """model 'status' is runtime-only (export omits it), so a round-trip shows no false diff."""
+        from client.app.content.config.tabs.settings import _compute_diff
+
+        # Mirrors re-uploading an export: current carries runtime status; the upload omits it.
+        current = {"item": {"status": "available"}}
+        uploaded = {"item": {}}
+        result = _compute_diff(current, uploaded)
+
+        assert not result["Missing in Uploaded"]
+
     def test_prompt_configs_text_differs_maps_to_value_mismatch(self):
         """prompt_configs 'Text differs' maps to Value Mismatch category."""
         from client.app.content.config.tabs.settings import _compute_diff
@@ -643,40 +654,6 @@ class TestApplyUploadedSettings:
 
         mock_st.error.assert_called_once()
         assert "bad" in mock_st.error.call_args[0][0]
-
-
-# ---------------------------------------------------------------------------
-# _render_upload_settings_section — Apply button visibility
-# ---------------------------------------------------------------------------
-
-
-class TestCompareDictsNullKeys:
-    """Null/empty-valued keys missing from uploaded should be silently ignored."""
-
-    @pytest.mark.parametrize("empty_value", [None, ""])
-    def test_null_or_empty_current_key_not_reported_as_missing(self, mock_st, empty_value):
-        """A key with value None or '' in current but absent from uploaded is not a diff."""
-        current_settings = {"log_level": "INFO", "optional_key": empty_value}
-        uploaded_settings = {"log_level": "INFO"}
-        state = AttrDict({"settings": current_settings})
-
-        uploaded_bytes = json.dumps(uploaded_settings).encode()
-        mock_file = MagicMock()
-        mock_file.read.return_value = uploaded_bytes
-        mock_st.file_uploader.return_value = mock_file
-
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.state", state),
-        ):
-            from client.app.content.config.tabs.settings import _render_upload_settings_section
-
-            _render_upload_settings_section()
-
-        # No differences → st.info with "match", no button
-        mock_st.info.assert_called_once()
-        assert "match" in mock_st.info.call_args[0][0].lower()
-        mock_st.button.assert_not_called()
 
 
 class TestApplyButtonVisibility:

@@ -86,7 +86,7 @@ all = [
 # ``src/`` is the package root; the wheel ships its contents at the top
 # level (``server``, ``client``, plus the bare-name modules below) so
 # runtime imports like ``from server.app...`` resolve directly.
-py-modules = ["_version", "entrypoint", "logging_config", "logging_redaction", "net_addressing", "ssl_cert", "url_safety"]
+py-modules = ["_version", "entrypoint", "logging_config", "logging_redaction", "net_addressing", "runtime_config_fields", "url_safety"]
 
 [tool.setuptools.package-dir]
 "" = "src"

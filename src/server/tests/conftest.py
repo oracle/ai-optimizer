@@ -279,6 +279,9 @@ def make_test_oci_profile(**overrides) -> OciProfileConfig:
 def make_test_model_config(**overrides) -> ModelConfig:
     """Standard test model config used across API tests."""
     defaults = {"id": "test-model", "type": "ll", "provider": "openai", "api_key": "sk-secret-key"}
+    # ``usable`` is a computed field derived from ``status``; translate the legacy shortcut.
+    if "usable" in overrides:
+        overrides.setdefault("status", "available" if overrides.pop("usable") else "unreachable")
     return ModelConfig(**{**defaults, **overrides})
 
 

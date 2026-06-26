@@ -263,6 +263,10 @@ async def test_models_supported(app_client, auth_headers):
         assert "provider" in entry
         assert "ids" in entry
         assert isinstance(entry["ids"], list)
+    providers = {entry["provider"] for entry in body}
+    # ``ollama`` is offered; ``ollama_chat`` is an internal alias and must be hidden.
+    assert "ollama" in providers
+    assert "ollama_chat" not in providers
 
 
 @pytest.mark.unit
@@ -401,16 +405,16 @@ async def test_delete_model_persists_settings(app_client, auth_headers, mock_per
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_update_model_persist_fails_restores_usable(app_client, auth_headers, mock_persist_settings):
-    """PUT persist failure restores usable and enabled flags to pre-check state."""
+async def test_update_model_persist_fails_restores_status(app_client, auth_headers, mock_persist_settings):
+    """PUT persist failure restores status and enabled flags to pre-check state."""
     cfg = settings.model_configs[0]
-    cfg.usable = True
+    cfg.status = "available"
     cfg.enabled = True
 
     mock_persist_settings.return_value = False
 
     async def fake_check(model):
-        model.usable = False
+        model.status = "unreachable"
 
     with patch("server.app.api.v1.endpoints.models.check_single_model", side_effect=fake_check):
         resp = await app_client.put(
@@ -420,9 +424,54 @@ async def test_update_model_persist_fails_restores_usable(app_client, auth_heade
         )
 
     assert resp.status_code == 503
-    assert cfg.usable is True
+    assert cfg.status == "available"
     assert cfg.enabled is True
     assert cfg.temperature == 0.7  # user field also restored
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_model_persist_fails_restores_api_base(app_client, auth_headers, mock_persist_settings):
+    """PUT persist failure restores an api_base the probe defaulted (Ollama no-api_base path)."""
+    settings.model_configs = [ModelConfig(id="gemma3:1b", type="ll", provider="ollama", enabled=True)]
+    cfg = settings.model_configs[0]
+    assert cfg.api_base is None
+
+    mock_persist_settings.return_value = False
+
+    async def fake_check(model):
+        # Mirror check_single_model defaulting the Ollama api_base before persistence.
+        model.api_base = "http://defaulted:11434"
+        model.status = "not_pulled"
+
+    with patch("server.app.api.v1.endpoints.models.check_single_model", side_effect=fake_check):
+        resp = await app_client.put(
+            "/v1/models/ollama/gemma3:1b",
+            json={"temperature": 0.1},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 503
+    assert cfg.api_base is None  # probe-defaulted api_base rolled back, not left in memory
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_update_model_canonicalizes_ollama_chat_provider(app_client, auth_headers):
+    """A PUT cannot persist the internal ``ollama_chat`` alias; it is stored as ``ollama``."""
+    settings.model_configs = [
+        ModelConfig(id="mistral", type="ll", provider="ollama", api_base="http://x", enabled=True)
+    ]
+
+    with patch("server.app.api.v1.endpoints.models.check_single_model", new_callable=AsyncMock):
+        resp = await app_client.put(
+            "/v1/models/ollama/mistral",
+            json={"provider": "ollama_chat"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    assert settings.model_configs[0].provider == "ollama"
 
 
 # --- Supported models filter by provider ---

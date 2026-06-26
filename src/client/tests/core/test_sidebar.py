@@ -255,8 +255,8 @@ class TestUsableModelsLookup:
         """Verify only enabled and usable models are included."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "openai", "usable": True},
-            {"id": "m2", "type": "ll", "enabled": True, "provider": "oci", "usable": False},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "openai", "status": "available"},
+            {"id": "m2", "type": "ll", "enabled": True, "provider": "oci", "status": "unreachable"},
         ]
         with (
             patch(f"{MODULE}.state", state),
@@ -269,10 +269,10 @@ class TestUsableModelsLookup:
         assert "oci/m2" not in result
 
     def test_excludes_non_usable(self):
-        """Verify models with None usable status are excluded."""
+        """Verify models whose status is not 'available' are excluded."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": None},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "unreachable"},
         ]
         with (
             patch(f"{MODULE}.state", state),
@@ -554,7 +554,7 @@ class TestToolkitSidebar:
         """Verify tools are disabled when no database is configured."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
         ]
         state["settings"]["client_settings"]["tools_enabled"] = []
         state["runtime_tools"] = []
@@ -574,7 +574,7 @@ class TestToolkitSidebar:
         """Verify Vector Search is enabled when vector stores exist."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
             {"id": "e1", "type": "embed", "enabled": True, "provider": "oci"},
         ]
         state["settings"]["database_configs"] = [
@@ -604,7 +604,7 @@ class TestToolkitSidebar:
         """Verify NL2SQL is disabled when nl2sql_available is False."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
         ]
         state["settings"]["database_configs"] = [
             {"alias": "db1", "usable": True, "vector_stores": []},
@@ -627,7 +627,7 @@ class TestToolkitSidebar:
         """Verify NL2SQL is enabled when nl2sql_available is True."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
         ]
         state["settings"]["database_configs"] = [
             {"alias": "db1", "usable": True, "vector_stores": []},
@@ -650,7 +650,7 @@ class TestToolkitSidebar:
         """Verify tools without required resources are pruned from enabled list."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
         ]
         state["settings"]["client_settings"]["tools_enabled"] = ["Vector Search", "NL2SQL"]
         state["runtime_tools"] = []
@@ -687,7 +687,7 @@ class TestHistorySidebar:
         """Verify sidebar widgets are rendered when models exist."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
         ]
         state["settings"]["client_settings"]["ll_model"] = {"chat_history": True}
         with (
@@ -708,7 +708,7 @@ class TestLmSidebar:
         """Verify usable model options are returned."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "openai", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "openai", "status": "available"},
         ]
         state["settings"]["client_settings"]["ll_model"] = {"provider": "openai", "id": "m1"}
         with (
@@ -739,7 +739,7 @@ class TestLmSidebar:
         """Verify all model parameter sliders and selectbox are rendered."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
         ]
         state["settings"]["client_settings"]["ll_model"] = {"provider": "p", "id": "m1", "temperature": 0.5}
         with (
@@ -762,8 +762,8 @@ class TestLmSidebar:
         """
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "cohere.command-r-plus", "type": "ll", "enabled": True, "provider": "oci", "usable": True},
-            {"id": "meta.llama-3", "type": "ll", "enabled": True, "provider": "oci", "usable": True},
+            {"id": "cohere.command-r-plus", "type": "ll", "enabled": True, "provider": "oci", "status": "available"},
+            {"id": "meta.llama-3", "type": "ll", "enabled": True, "provider": "oci", "status": "available"},
         ]
         state["settings"]["client_settings"]["ll_model"] = {}
         with (
@@ -782,7 +782,7 @@ class TestLmSidebar:
         in the usable options — guards against a rerender loop."""
         state = _make_state()
         state["settings"]["model_configs"] = [
-            {"id": "m1", "type": "ll", "enabled": True, "provider": "openai", "usable": True},
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "openai", "status": "available"},
         ]
         state["settings"]["client_settings"]["ll_model"] = {"provider": "openai", "id": "m1"}
         with (

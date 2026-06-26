@@ -110,7 +110,7 @@ def model_config_factory_fixture() -> Iterator[Callable[..., ModelConfig]]:
             type=model_type,  # type: ignore[arg-type]
             enabled=enabled,
             api_key=SecretStr(api_key) if api_key is not None else None,
-            usable=True,
+            status="available",
         )
         settings.model_configs.append(config)
         created.append(config)

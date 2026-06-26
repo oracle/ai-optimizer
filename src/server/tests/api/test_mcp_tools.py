@@ -6,6 +6,9 @@ Tests for MCP tools endpoint.
 """
 # spell-checker: disable
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 
 pytestmark = pytest.mark.anyio
@@ -19,9 +22,36 @@ async def test_list_tools_no_auth(app_client):
 
 
 @pytest.mark.unit
-async def test_list_tools_returns_list(app_client, auth_headers):
-    """GET /mcp/tools returns a list."""
-    resp = await app_client.get("/mcp/tools", headers=auth_headers)
+async def test_list_tools_returns_registered_tool_payload(app_client, auth_headers):
+    """GET /mcp/tools returns serialized registered tool metadata."""
+
+    class FakeClient:
+        def __init__(self, mcp):
+            self.mcp = mcp
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def list_tools(self):
+            return [
+                SimpleNamespace(
+                    model_dump=lambda: {
+                        "name": "sqlcl_list-connections",
+                        "description": "List database connections.",
+                    }
+                )
+            ]
+
+    with patch("server.app.api.mcp.endpoints.tools.Client", FakeClient):
+        resp = await app_client.get("/mcp/tools", headers=auth_headers)
+
     assert resp.status_code == 200
-    body = resp.json()
-    assert isinstance(body, list)
+    assert resp.json() == [
+        {
+            "name": "sqlcl_list-connections",
+            "description": "List database connections.",
+        }
+    ]

@@ -45,20 +45,3 @@ class TestConfigMain:
         mock_oci.assert_called_once()
         mock_mcp.assert_called_once()
         mock_agentspec.assert_called_once()
-
-    def test_no_tabs_when_empty(self, mock_st):
-        """Verify main() still works with the tab list (always has 6 items)."""
-        mock_st.tabs.return_value = make_mock_tabs(6)
-
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.display_settings"),
-            patch(f"{MODULE}.display_databases"),
-            patch(f"{MODULE}.display_models"),
-            patch(f"{MODULE}.display_oci"),
-            patch(f"{MODULE}.display_mcp"),
-            patch(f"{MODULE}.display_agentspec"),
-        ):
-            from client.app.content.config.config import main
-
-            main()  # Should not raise

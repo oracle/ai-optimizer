@@ -15,6 +15,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
+from runtime_config_fields import RUNTIME_ONLY_FIELDS
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.settings import (
     ImportSectionResult,
@@ -52,6 +53,7 @@ from server.app.mcp.prompts.registry import load_factory_prompts, reconcile_prom
 from server.app.models.connectivity import check_model_reachability
 from server.app.models.litellm_utils import find_model
 from server.app.models.ollama import load_ollama_models
+from server.app.models.refresh import trigger_reachability_recheck
 from server.app.models.registry import apply_env_overrides, reset_factory_models
 from server.app.models.schemas import ModelSensitive
 from server.app.oci.schemas import (
@@ -181,6 +183,10 @@ async def get_client_settings(
     carries its own short deadline (see ``refresh_db_vector_stores``)
     so a slow database can't stack delays or hang the response.
     """
+    # Re-probe existing model endpoints in the background (throttled) so a model that was
+    # unreachable at startup recovers without blocking this response or a manual refresh.
+    # It re-probes only — never discovers — so it can't resurrect a deleted model.
+    trigger_reachability_recheck()
     # DDS-managed connections are runtime-only and never user-facing — don't refresh
     # (which would query through the governed end user) or surface them.
     visible = [cfg for cfg in settings.database_configs if not cfg.managed_by]
@@ -205,7 +211,14 @@ async def export_settings(
         client,
         request.client.host if request.client else "unknown",
     )
-    data = settings.model_dump(mode="json", context={REVEAL_KEY: True})
+    # Reachability is runtime-determined per host — never export it (RUNTIME_ONLY_FIELDS).
+    # An import re-derives it on the target (a source's status/usable may differ here).
+    # ``pool`` is already Field(exclude=True).
+    data = settings.model_dump(
+        mode="json",
+        context={REVEAL_KEY: True},
+        exclude={section: {"__all__": set(fields)} for section, fields in RUNTIME_ONLY_FIELDS.items()},
+    )
     # DDS-managed connections are runtime-only — never exported (this payload reveals
     # credentials, and managed configs carry a copy of the owner's password).
     hide_managed_db_configs(data)
@@ -375,6 +388,12 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
         # --- Model configs ---
         if body.model_configs is not None:
             created, updated = upsert_list_field("model_configs", body.model_configs)
+            # Reachability is target-local runtime state, never trusted from the payload: reset the
+            # runtime-only fields to their neutral defaults so disabled imports don't carry a stale
+            # status (the recheck below only re-derives status for enabled models).
+            for item in created + updated:
+                for field in RUNTIME_ONLY_FIELDS["model_configs"]:
+                    setattr(item, field, type(item).model_fields[field].get_default())
             result.model_configs = ImportSectionResult(created=len(created), updated=len(updated))
 
         # --- OCI configs ---
@@ -401,6 +420,12 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
         if body.log_level is not None:
             settings.log_level = body.log_level
             result.scalars = {"log_level": body.log_level}
+
+        # Reachability is runtime state, never trusted from the payload — re-determine it on
+        # this host so imported models reflect real availability (mirrors the database section
+        # resetting usable/pool above), rather than carrying the source's stale status.
+        if body.model_configs is not None or body.oci_configs is not None:
+            await check_model_reachability()
 
         # --- Persist once — rollback everything on failure ---
         if not await persist_settings(oci_user_touched=oci_touched):

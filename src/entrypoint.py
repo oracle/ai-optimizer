@@ -15,7 +15,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ssl_cert import ensure_ssl_cert
+from net_addressing import ensure_ssl_cert
 
 
 def setup_pythonpath(script_dir: Path) -> None:

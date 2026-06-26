@@ -804,6 +804,38 @@ async def test_export_uses_reveal_projection_with_confirm_header(app_client, aut
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_export_excludes_model_status(app_client, auth_headers):
+    """``status`` is runtime-determined and must not be carried in an export."""
+    model = make_test_model_config(enabled=True)
+    model.status = "available"
+    settings.model_configs = [model]
+    headers = {**auth_headers, "X-Confirm-Export": "true"}
+    resp = await app_client.post("/v1/settings/export", headers=headers)
+    assert resp.status_code == 200
+    exported = resp.json()["model_configs"]
+    assert exported  # sanity: a model is present
+    for mc in exported:
+        assert "status" not in mc
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_export_excludes_database_usable(app_client, auth_headers):
+    """``usable`` is runtime-determined (DB reachability) and must not be carried in an export."""
+    db = make_test_database_config(alias="CORE")
+    db.usable = True
+    settings.database_configs = [db]
+    headers = {**auth_headers, "X-Confirm-Export": "true"}
+    resp = await app_client.post("/v1/settings/export", headers=headers)
+    assert resp.status_code == 200
+    exported = resp.json()["database_configs"]
+    assert exported  # sanity: a database is present
+    for dc in exported:
+        assert "usable" not in dc
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_export_excludes_managed_configs(app_client, auth_headers):
     """Export never includes runtime-only DDS-managed connections (this payload reveals creds)."""
     from server.app.database.schemas import DatabaseConfig

@@ -392,11 +392,14 @@ def render_model_rows(model_type: str) -> None:
         model_id = model["id"]
         model_provider = model["provider"]
         enabled = model.get("enabled", False)
+        model_status = model.get("status", "unreachable")
+        # Enabled but not ready (e.g. an Ollama model while Ollama is down) gets a distinct marker.
+        indicator = "🔻" if enabled and model_status != "available" else helpers.bool_to_emoji(enabled)
         row = st.columns(data_col_widths, vertical_alignment="center")
         row[0].text_input(
             "Enabled",
-            value=helpers.bool_to_emoji(enabled),
-            key=f"runtime_{model_type}_{model_provider}_{model_id}_{enabled}",
+            value=indicator,
+            key=f"runtime_{model_type}_{model_provider}_{model_id}_{enabled}_{model_status}",
             label_visibility="collapsed",
             disabled=True,
         )
@@ -425,7 +428,9 @@ def render_model_rows(model_type: str) -> None:
                 "model_provider": model_provider,
             },
         )
-        if model_provider == "ollama" and not model.get("usable", False):
+        # Only offer Pull when the Ollama server is up but the model isn't pulled yet;
+        # if the server is down (unreachable) pulling would fail, so hide the button.
+        if model_provider == "ollama" and model_status == "not_pulled":
             row[4].button(
                 "Pull",
                 on_click=pull_model_dialog,
@@ -443,6 +448,10 @@ def render_model_rows(model_type: str) -> None:
 #####################################################
 def display_models() -> None:
     """Streamlit GUI"""
+    # Pick up endpoints that came online since the page was last loaded (e.g. Ollama
+    # started after the server). The server re-probes in the background; this just
+    # re-fetches the result, throttled so it isn't refetched on every rerun.
+    helpers.refresh_settings_throttled("_models_reachability_refresh")
     locked_notice()
     st.subheader("Language", divider="red")
     with st.container(border=True):

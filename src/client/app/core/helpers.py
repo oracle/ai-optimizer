@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore isin mult selectbox
 
 import logging
+import time
 from typing import Any, Optional
 
 import httpx
@@ -60,6 +61,20 @@ def refresh_settings(clear_runtime: bool = True) -> bool:
     if clear_runtime:
         clear_runtime_state()
     return True
+
+
+def refresh_settings_throttled(throttle_key: str, interval: float = 10.0) -> None:
+    """Refresh settings from the server at most once per *interval* seconds.
+
+    For pages that should reflect out-of-band server state (e.g. a model
+    becoming reachable after Ollama starts) on view, without re-fetching on
+    every Streamlit rerun. ``throttle_key`` namespaces the per-page timestamp
+    in session state.
+    """
+    now = time.monotonic()
+    if now - state.get(throttle_key, 0.0) >= interval:
+        state[throttle_key] = now
+        refresh_settings(clear_runtime=False)
 
 
 def sync_client_setting(key: str, field: str, value: str) -> None:

@@ -8,13 +8,12 @@ Ollama model discovery — queries a running Ollama server for pulled models.
 
 import json
 import logging
-import os
 from collections.abc import AsyncGenerator
 
 import httpx
 
 from server.app.core.settings import settings
-from server.app.models.connectivity import CONNECT_TIMEOUT, READ_TIMEOUT, _normalize_ollama_name
+from server.app.models.connectivity import CONNECT_TIMEOUT, READ_TIMEOUT, _normalize_ollama_name, ollama_server_url
 from server.app.models.registry import _model_key, register_model
 from server.app.models.schemas import ModelConfig
 
@@ -93,7 +92,7 @@ async def load_ollama_models() -> None:
     The server URL is read from ``AIO_ON_PREM_OLLAMA_URL`` or
     ``ON_PREM_OLLAMA_URL``.  When neither is set this function is a no-op.
     """
-    api_base = os.getenv("AIO_ON_PREM_OLLAMA_URL") or os.getenv("ON_PREM_OLLAMA_URL")
+    api_base = ollama_server_url()
     if not api_base:
         return
 
@@ -125,7 +124,7 @@ async def load_ollama_models() -> None:
         LOGGER.warning("Failed to discover Ollama models at %s: %s", api_base, exc)
         return
 
-    # Remove ollama models that are no longer pulled
+    # Remove ollama models that are no longer pulled.
     removed = [k for k in existing if k not in discovered_keys]
     if removed:
         settings.model_configs = [

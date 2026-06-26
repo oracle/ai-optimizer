@@ -156,11 +156,11 @@ def _ensure_capacity() -> None:
 
 
 def _apply_default_ll_model(cs: ClientSettings) -> None:
-    """Set ll_model to the first enabled+usable language model when unset."""
+    """Set ll_model to the first enabled+available language model when unset."""
     if cs.ll_model.provider is not None or cs.ll_model.id is not None:
         return
     for cfg in settings.model_configs:
-        if cfg.type == "ll" and cfg.enabled and cfg.usable:
+        if cfg.type == "ll" and cfg.enabled and cfg.status == "available":
             cs.ll_model.provider = cfg.provider
             cs.ll_model.id = cfg.id
             if cfg.max_input_tokens is not None:

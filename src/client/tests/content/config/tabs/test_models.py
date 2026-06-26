@@ -1167,8 +1167,8 @@ class TestRenderModelRows:
 
         assert cols[3].button.call_count == 1
 
-    def test_pull_button_rendered_for_unusable_ollama(self, make_model_state, mock_st):
-        """Ollama models with usable=False get a Pull button bound to pull_model_dialog."""
+    def test_pull_button_rendered_for_unpulled_ollama(self, make_model_state, mock_st):
+        """Ollama models whose server is up but not pulled get a Pull button bound to pull_model_dialog."""
         from client.app.content.config.tabs.models import pull_model_dialog, render_model_rows
 
         configs = [
@@ -1178,7 +1178,7 @@ class TestRenderModelRows:
                 "type": "ll",
                 "enabled": False,
                 "api_base": "http://ollama",
-                "usable": False,
+                "status": "not_pulled",
             },
         ]
         state = make_model_state(model_configs=configs)
@@ -1202,7 +1202,7 @@ class TestRenderModelRows:
         assert kwargs["kwargs"] == {"provider": "ollama", "model_id": "llama3"}
 
     def test_no_pull_button_for_usable_ollama(self, make_model_state, mock_st):
-        """Ollama models already usable do not get a Pull button."""
+        """Ollama models already available do not get a Pull button."""
         from client.app.content.config.tabs.models import render_model_rows
 
         configs = [
@@ -1212,7 +1212,38 @@ class TestRenderModelRows:
                 "type": "ll",
                 "enabled": True,
                 "api_base": "http://ollama",
-                "usable": True,
+                "status": "available",
+            },
+        ]
+        state = make_model_state(model_configs=configs)
+
+        header_cols = [MagicMock() for _ in range(5)]
+        row_cols = [MagicMock() for _ in range(5)]
+        call_sequence = iter([header_cols, row_cols])
+        mock_st.columns.side_effect = lambda widths, **kw: next(call_sequence)
+        mock_st.button.return_value = False
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers"),
+        ):
+            render_model_rows("ll")
+
+        row_cols[4].button.assert_not_called()
+
+    def test_no_pull_button_when_ollama_unreachable(self, make_model_state, mock_st):
+        """When the Ollama server is down (status unreachable), no Pull button is offered."""
+        from client.app.content.config.tabs.models import render_model_rows
+
+        configs = [
+            {
+                "id": "llama3",
+                "provider": "ollama",
+                "type": "ll",
+                "enabled": True,
+                "api_base": "http://ollama",
+                "status": "unreachable",
             },
         ]
         state = make_model_state(model_configs=configs)
@@ -1244,7 +1275,7 @@ class TestRenderModelRows:
                 "type": "ll",
                 "enabled": False,
                 "api_base": "http://ollama",
-                "usable": False,
+                "status": "not_pulled",
             },
         ]
         state = make_model_state(model_configs=configs)
@@ -1427,6 +1458,7 @@ class TestDisplayModels:
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.render_model_rows"),
+            patch(f"{MODULE}.helpers.refresh_settings_throttled"),
         ):
             display_models()
 
@@ -1444,6 +1476,7 @@ class TestDisplayModels:
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.render_model_rows") as mock_rows,
+            patch(f"{MODULE}.helpers.refresh_settings_throttled"),
         ):
             display_models()
 

@@ -23,8 +23,8 @@ LOGGER = logging.getLogger("client.core.sidebar")
 
 
 def _usable_models_lookup() -> dict[str, dict]:
-    """Return enabled LLM models that are also marked as usable."""
-    return {key: cfg for key, cfg in enabled_models_lookup("ll").items() if cfg.get("usable") is True}
+    """Return enabled LLM models that are also available for use."""
+    return {key: cfg for key, cfg in enabled_models_lookup("ll").items() if cfg.get("status") == "available"}
 
 
 def _vs_embed_key(vs: dict) -> str:

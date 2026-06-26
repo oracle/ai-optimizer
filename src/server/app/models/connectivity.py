@@ -8,6 +8,7 @@ Model endpoint reachability checks run at startup.
 
 import asyncio
 import logging
+import os
 
 import httpx
 
@@ -18,6 +19,11 @@ LOGGER = logging.getLogger(__name__)
 NO_KEY_PROVIDERS = {"ollama", "huggingface", "hosted_vllm"}
 CONNECT_TIMEOUT = 3.0
 READ_TIMEOUT = 5.0
+
+
+def ollama_server_url() -> str | None:
+    """Configured Ollama server URL, or None when no Ollama server is configured."""
+    return os.getenv("AIO_ON_PREM_OLLAMA_URL") or os.getenv("ON_PREM_OLLAMA_URL")
 
 
 def _normalize_ollama_name(name: str) -> str:
@@ -44,7 +50,7 @@ async def _apply_ollama_rules(client: httpx.AsyncClient, ollama_models: list) ->
     by_base: dict[str, list] = {}
     for model in ollama_models:
         if not model.api_base:
-            model.usable = False
+            model.status = "unreachable"
             continue
         by_base.setdefault(model.api_base, []).append(model)
 
@@ -52,17 +58,18 @@ async def _apply_ollama_rules(client: httpx.AsyncClient, ollama_models: list) ->
         available = await _fetch_ollama_models(client, api_base)
         if available is None:
             for model in models:
-                model.usable = False
+                model.status = "unreachable"
                 LOGGER.debug("Model '%s' (ollama) unreachable at %s", model.id, api_base)
             continue
 
         for model in models:
             normalized_id = _normalize_ollama_name(model.id).casefold()
             if normalized_id in available:
-                model.usable = True
+                model.status = "available"
                 LOGGER.debug("Model '%s' (ollama) available at %s", model.id, api_base)
             else:
-                model.usable = False
+                # Server is up but the model isn't pulled — the one state where Pull applies.
+                model.status = "not_pulled"
                 LOGGER.debug("Model '%s' (ollama) not pulled at %s", model.id, api_base)
 
 
@@ -82,12 +89,13 @@ def _apply_oci_rules(oci_models: list) -> None:
     has_usable_oci = any(p.usable for p in settings.oci_configs)
     for model in oci_models:
         if has_usable_oci:
-            model.usable = True
-            LOGGER.debug("Model '%s' (oci) usable via OCI profile", model.id)
+            model.status = "available"
+            LOGGER.debug("Model '%s' (oci) available via OCI profile", model.id)
         else:
-            model.usable = False
-            model.enabled = False
-            LOGGER.debug("Model '%s' (oci) disabled — no usable OCI profile", model.id)
+            # Leave ``enabled`` (user intent) alone — like every other rule — so the
+            # model recovers automatically once a usable OCI profile is added.
+            model.status = "unreachable"
+            LOGGER.debug("Model '%s' (oci) unreachable — no usable OCI profile", model.id)
 
 
 def _apply_probe_rules(to_probe: dict, results: dict) -> None:
@@ -98,27 +106,37 @@ def _apply_probe_rules(to_probe: dict, results: dict) -> None:
             provider = (model.provider or "").casefold()
             if not reachable:
                 # Rule 1
-                model.usable = False
+                model.status = "unreachable"
                 LOGGER.debug("Model '%s' (%s) unreachable at %s: %s", model.id, provider, api_base, error)
             elif model.api_key:
                 # Rule 2
-                model.usable = True
-                LOGGER.debug("Model '%s' (%s) usable (key present)", model.id, provider)
+                model.status = "available"
+                LOGGER.debug("Model '%s' (%s) available (key present)", model.id, provider)
             elif provider in NO_KEY_PROVIDERS:
                 # Rule 3
-                model.usable = True
-                LOGGER.debug("Model '%s' (%s) usable (no key required)", model.id, provider)
+                model.status = "available"
+                LOGGER.debug("Model '%s' (%s) available (no key required)", model.id, provider)
             else:
                 # Rule 4
-                model.usable = False
+                model.status = "no_key"
                 LOGGER.debug("Model '%s' (%s) reachable but no api_key", model.id, provider)
 
 
+def _log_model_summary() -> None:
+    """Log a one-line count of loaded / available / enabled models."""
+    LOGGER.info(
+        "Models Loaded: %d; Models Available: %d; Models Enabled: %d",
+        len(settings.model_configs),
+        sum(1 for m in settings.model_configs if m.status == "available"),
+        sum(1 for m in settings.model_configs if m.enabled),
+    )
+
+
 async def check_model_reachability() -> None:
-    """Verify enabled models can reach their endpoints and set ``usable``."""
+    """Verify enabled models can reach their endpoints and set ``status``."""
     enabled = [m for m in settings.model_configs if m.enabled]
     if not enabled:
-        LOGGER.info("Models Loaded: %d; Models Usable: 0; Models Enabled: 0", len(settings.model_configs))
+        _log_model_summary()
         return
 
     # --- Rule 5: OCI models without an enabled OCI profile ---
@@ -134,18 +152,13 @@ async def check_model_reachability() -> None:
     to_probe: dict[str, list] = {}  # api_base -> list of models
     for model in non_ollama:
         if not model.api_base:
-            LOGGER.debug("Model '%s' (%s) has no api_base — marking unusable", model.id, model.provider)
-            model.usable = False
+            LOGGER.debug("Model '%s' (%s) has no api_base — marking unreachable", model.id, model.provider)
+            model.status = "unreachable"
             continue
         to_probe.setdefault(model.api_base, []).append(model)
 
     if not to_probe and not ollama_models:
-        LOGGER.info(
-            "Models Loaded: %d; Models Usable: %d; Models Enabled: %d",
-            len(settings.model_configs),
-            sum(1 for m in settings.model_configs if m.usable),
-            sum(1 for m in settings.model_configs if m.enabled),
-        )
+        _log_model_summary()
         return
 
     # --- Probe unique endpoints in parallel + verify Ollama models ---
@@ -157,53 +170,51 @@ async def check_model_reachability() -> None:
 
     _apply_probe_rules(to_probe, results)
 
-    LOGGER.info(
-        "Models Loaded: %d; Models Usable: %d; Models Enabled: %d",
-        len(settings.model_configs),
-        sum(1 for m in settings.model_configs if m.usable),
-        sum(1 for m in settings.model_configs if m.enabled),
-    )
+    _log_model_summary()
 
 
 async def check_single_model(model) -> None:
-    """Probe a single model and set its ``usable`` flag.
+    """Probe a single model and set its ``status``.
 
     Called when a model is created or updated via the API so that the caller
     does not have to restart the server.
     """
     if not model.enabled:
-        model.usable = False
+        model.status = "unreachable"
         return
 
     provider = (model.provider or "").casefold()
 
-    # OCI models — delegate to existing rule
+    # OCI models — delegate to existing rule (no api_base required)
     if provider == "oci":
         _apply_oci_rules([model])
         return
 
-    # Ollama models — verify the model is actually pulled
-    if provider == "ollama":
-        if not model.api_base:
-            model.usable = False
-            return
-        async with httpx.AsyncClient(timeout=httpx.Timeout(READ_TIMEOUT, connect=CONNECT_TIMEOUT)) as client:
-            await _apply_ollama_rules(client, [model])
+    # A manually added Ollama model has no api_base; default it to the configured server
+    # so it can be probed (and offered for Pull) immediately, not only after discovery runs.
+    if provider == "ollama" and not model.api_base:
+        model.api_base = ollama_server_url()
+
+    # All other providers need an api_base to be reachable.
+    if not model.api_base:
+        model.status = "unreachable"
         return
 
-    if not model.api_base:
-        model.usable = False
+    # Ollama models — verify the model is actually pulled
+    if provider == "ollama":
+        async with httpx.AsyncClient(timeout=httpx.Timeout(READ_TIMEOUT, connect=CONNECT_TIMEOUT)) as client:
+            await _apply_ollama_rules(client, [model])
         return
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(READ_TIMEOUT, connect=CONNECT_TIMEOUT)) as client:
         reachable, error = await _probe_endpoint(client, model.api_base)
 
     if not reachable:
-        model.usable = False
+        model.status = "unreachable"
         LOGGER.debug("Model '%s' (%s) unreachable at %s: %s", model.id, provider, model.api_base, error)
     elif model.api_key or provider in NO_KEY_PROVIDERS:
-        model.usable = True
+        model.status = "available"
     else:
-        model.usable = False
+        model.status = "no_key"
 
-    LOGGER.info("Model '%s' (%s) usable=%s", model.id, provider, model.usable)
+    LOGGER.info("Model '%s' (%s) status=%s", model.id, provider, model.status)
