@@ -7,13 +7,11 @@ Endpoint for retrieving server settings.
 # spell-checker: ignore litellm
 
 import asyncio
-import json
 import logging
-from typing import Annotated, Callable, Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 
 from runtime_config_fields import RUNTIME_ONLY_FIELDS
 from server.app.api.v1.schemas.common import ClientId
@@ -23,7 +21,7 @@ from server.app.api.v1.schemas.settings import (
     SettingsImportResult,
     SettingsResponse,
 )
-from server.app.core.etc import ensure_core_alias, migrate_legacy_settings, upsert_list_field
+from server.app.core.etc import ensure_core_alias, upsert_list_field
 from server.app.core.schemas import (
     ClientSettings,
     ClientSettingsUpdate,
@@ -67,42 +65,7 @@ LOGGER = logging.getLogger(__name__)
 _DB_CONN_FIELDS = set(DatabaseUpdate.model_fields)
 
 
-class LegacyMigratingImportRoute(APIRoute):
-    """Migrate legacy settings payloads before FastAPI validates them.
-
-    Intercepts the raw request body for POST /settings/import, runs
-    ``migrate_legacy_settings`` on the parsed JSON, and replaces the request
-    body stream with the migrated bytes. The downstream handler still receives
-    a typed ``SettingsImport`` so the OpenAPI schema (and generated clients)
-    remain intact.
-    """
-
-    def get_route_handler(self) -> Callable:
-        original_handler = super().get_route_handler()
-
-        async def custom_handler(request: Request) -> Response:
-            body_bytes = await request.body()
-            if body_bytes:
-                try:
-                    parsed = json.loads(body_bytes)
-                except json.JSONDecodeError:
-                    # Let FastAPI's default handling surface the decode error.
-                    return await original_handler(request)
-                migrated = migrate_legacy_settings(parsed)
-                if migrated is not parsed:
-                    new_body = json.dumps(migrated).encode("utf-8")
-
-                    async def receive() -> dict:
-                        return {"type": "http.request", "body": new_body, "more_body": False}
-
-                    request = Request(request.scope, receive)
-            return await original_handler(request)
-
-        return custom_handler
-
-
 auth = APIRouter(prefix="/settings")
-_import_router = APIRouter(route_class=LegacyMigratingImportRoute)
 
 
 def _apply_oci_import(
@@ -329,14 +292,13 @@ async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
         return server_cs
 
 
-@_import_router.post("/import", response_model=SettingsImportResult)
+@auth.post("/import", response_model=SettingsImportResult)
 async def import_settings(body: SettingsImport, client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Import a partial or full configuration with incoming-wins semantics.
 
-    The raw body is migrated through ``migrate_legacy_settings`` by
-    :class:`LegacyMigratingImportRoute` before Pydantic validation, so payloads
-    exported from older versions (e.g. v2.0.3's ``database_configs`` entries
-    keyed by ``name``/``user``) are accepted.
+    Payloads exported from older versions (e.g. v2.0.3's ``database_configs``
+    entries keyed by ``name``/``user``) are normalised by
+    ``SettingsImport``'s ``migrate_legacy_settings`` before-validator.
     """
     async with _settings_lock:
         snapshot = {
@@ -521,9 +483,3 @@ async def delete_client_settings(client: Annotated[ClientId, Query()]):
         _client_store.pop(client)
         await delete_row(client)
         return Response(status_code=204)
-
-
-# Mount the import endpoint with the legacy-migration route class so that
-# v2.0.3-shaped payloads are normalised before Pydantic validation, while
-# keeping the typed `SettingsImport` body in the OpenAPI schema.
-auth.include_router(_import_router)

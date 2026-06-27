@@ -12,6 +12,7 @@
 - Fix every issue reported on files you touched; don't split into "pre-existing" vs "introduced."
 - Keep fixes scoped to the requested change and files touched.
 - Default to running the relevant tests, but when a change touches strings, log lines, error text, or public names, run the full suite from the root: `pytest .`
+- A real Oracle database is available for integration testing. Integration tests should use it to verify behavior whenever practical, rather than relying solely on mocks or in-memory databases.
 
 ## Comments and Documentation
 

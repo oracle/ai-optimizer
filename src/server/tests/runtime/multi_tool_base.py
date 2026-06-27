@@ -34,7 +34,7 @@ class ClassificationBase:
     @pytest.mark.anyio
     async def test_classify_vecsearch(self):
         """Verify 'vecsearch' classification."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("vecsearch")
             session = self.make_session()
             decision, _ = await session.classify("What is data redaction?")
@@ -43,7 +43,7 @@ class ClassificationBase:
     @pytest.mark.anyio
     async def test_classify_nl2sql(self):
         """Verify 'nl2sql' classification."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("nl2sql")
             session = self.make_session()
             decision, _ = await session.classify("How many tables?")
@@ -52,7 +52,7 @@ class ClassificationBase:
     @pytest.mark.anyio
     async def test_classify_both(self):
         """Verify 'both' classification."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("both")
             session = self.make_session()
             decision, _ = await session.classify("Is redo log configured correctly?")
@@ -61,7 +61,7 @@ class ClassificationBase:
     @pytest.mark.anyio
     async def test_classify_strips_whitespace_and_quotes(self):
         """Verify classification strips whitespace and quotes."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("  'nl2sql' \n")
             session = self.make_session()
             decision, _ = await session.classify("test query")
@@ -70,7 +70,7 @@ class ClassificationBase:
     @pytest.mark.anyio
     async def test_classify_defaults_to_both_on_unexpected(self):
         """Verify default to 'both' when classifier returns garbage."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("unknown_route")
             session = self.make_session()
             decision, _ = await session.classify("test query")
@@ -79,7 +79,7 @@ class ClassificationBase:
     @pytest.mark.anyio
     async def test_classify_defaults_to_both_on_error(self):
         """Verify default to 'both' when LLM call fails."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.side_effect = Exception("LLM unavailable")
             session = self.make_session()
             decision, tu = await session.classify("test query")
@@ -102,7 +102,7 @@ class RoutingBase:
     @pytest.mark.anyio
     async def test_vecsearch_route(self):
         """Verify vecsearch route calls vs_session.execute."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("vecsearch")
             session = self.make_session(vs_answer="doc result")
             result = await session.execute("What is data redaction?", thread_id="t-1")
@@ -111,7 +111,7 @@ class RoutingBase:
     @pytest.mark.anyio
     async def test_nl2sql_route(self):
         """Verify nl2sql route calls nl2sql_session.chat."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("nl2sql")
             session = self.make_session(nl2sql_answer="sql result")
             result = await session.execute("How many tables?", thread_id="t-1")
@@ -120,7 +120,7 @@ class RoutingBase:
     @pytest.mark.anyio
     async def test_both_route_calls_synthesize(self):
         """Verify 'both' route calls both sessions then synthesizes."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.side_effect = [
                 self.mock_response("both"),
                 self.mock_response("synthesized answer"),
@@ -146,7 +146,7 @@ class CredentialsBase:
     @pytest.mark.anyio
     async def test_classify_forwards_credentials(self):
         """Verify classify() passes api_key and api_base to litellm."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("vecsearch")
             session = self.make_session(api_key="sk-test-123", api_base="https://my-llm.example.com")
             await session.classify("test query")
@@ -157,7 +157,7 @@ class CredentialsBase:
     @pytest.mark.anyio
     async def test_synthesize_forwards_credentials(self):
         """Verify synthesize() passes api_key and api_base to litellm."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("synthesized")
             session = self.make_session(api_key="sk-test-456", api_base="https://api.example.com")
             await session.synthesize("query", "vs answer", "sql answer")
@@ -168,7 +168,7 @@ class CredentialsBase:
     @pytest.mark.anyio
     async def test_no_credentials_when_none(self):
         """Verify no api_key/api_base kwargs when not configured."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("vecsearch")
             session = self.make_session()
             await session.classify("test query")
@@ -192,7 +192,7 @@ class StreamingBase:
     @pytest.mark.anyio
     async def test_streaming_vecsearch_delegates_to_stream_flow(self):
         """Verify vecsearch route delegates to stream_flow callback."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("vecsearch")
             session = self.make_session(vs_answer="doc result")
             queue: asyncio.Queue = asyncio.Queue()
@@ -217,7 +217,7 @@ class StreamingBase:
     @pytest.mark.anyio
     async def test_streaming_nl2sql_delegates_to_stream_agent(self):
         """Verify nl2sql route delegates to stream_agent callback."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("nl2sql")
             session = self.make_session(nl2sql_answer="sql result")
             queue: asyncio.Queue = asyncio.Queue()
@@ -243,7 +243,7 @@ class StreamingBase:
     @pytest.mark.anyio
     async def test_streaming_both_pushes_synthesized_answer(self):
         """Verify 'both' route synthesizes and pushes answer to queue."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.side_effect = [
                 self.mock_response("both"),
                 self.mock_response("synthesized answer"),
@@ -270,7 +270,7 @@ class StreamingBase:
     @pytest.mark.anyio
     async def test_streaming_both_skips_synthesis_when_irrelevant(self):
         """Verify 'both' streaming returns only nl2sql answer when grade_relevant='no'."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("both")
             session = self.make_session_irrelevant()
             queue: asyncio.Queue = asyncio.Queue()
@@ -320,7 +320,7 @@ class MetadataBase:
     @pytest.mark.anyio
     async def test_vecsearch_propagates_vs_metadata(self):
         """Verify vs_metadata is returned when vecsearch is used."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("vecsearch")
             session = self.make_vs_metadata_session([{"id": "doc1"}])
             await session.execute("What is X?", thread_id="t-1")
@@ -331,7 +331,7 @@ class MetadataBase:
     @pytest.mark.anyio
     async def test_nl2sql_has_no_vs_metadata(self):
         """Verify no vs_metadata for nl2sql route."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = self.mock_response("nl2sql")
             session = self.make_session()
             await session.execute("How many tables?", thread_id="t-1")
@@ -340,7 +340,7 @@ class MetadataBase:
     @pytest.mark.anyio
     async def test_both_propagates_vs_metadata(self):
         """Verify vs_metadata from vecsearch is propagated for 'both' route."""
-        with patch("server.app.runtime.common.litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.side_effect = [
                 self.mock_response("both"),
                 self.mock_response("synthesized"),

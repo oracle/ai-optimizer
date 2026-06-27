@@ -5,7 +5,7 @@ This directory contains the **LangGraph** runtime implementation. The runtime lo
 ## Layout
 
 - `langgraph/` — runtime implementation (chat orchestrator, sessions, loaders, adapters).
-- `common.py` — shared base classes (`BaseChatOrchestrator`, `BaseCombinedSession`) and utilities (`HistoryStore`, `resolve_route`).
+- `common.py` — shared runtime utilities (`HistoryStore`, `resolve_route`, history/prompt/token helpers) used by the LangGraph chat orchestrator and combined session.
 - `ollama_tools.py` — Ollama tool-calling helpers used by the LangGraph adapter.
 
 ## Agentspec Dependency

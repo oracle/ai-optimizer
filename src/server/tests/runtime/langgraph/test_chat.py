@@ -482,10 +482,11 @@ class TestCombinedPromptFetch:
         graph = mock_compiled_graph()
         with (
             patch("server.app.runtime.common.fetch_prompt_with_fallback", side_effect=fake_fetch),
+            patch("server.app.runtime.langgraph.chat.fetch_prompt_with_fallback", side_effect=fake_fetch),
             patch("server.app.runtime.langgraph.chat.build_vecsearch_graph", AsyncMock(return_value=graph)),
             patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
             patch("server.app.runtime.langgraph.chat.find_model", return_value=None),
-            patch("server.app.runtime.common.LOGGER") as mock_logger,
+            patch("server.app.runtime.langgraph.chat.LOGGER") as mock_logger,
         ):
             session = await orch._build_combined_session(
                 mock_client_settings(tools_enabled=["NL2SQL", "Vector Search"])
@@ -511,10 +512,11 @@ class TestCombinedPromptFetch:
         graph = mock_compiled_graph()
         with (
             patch("server.app.runtime.common.fetch_prompt_with_fallback", side_effect=fake_fetch),
+            patch("server.app.runtime.langgraph.chat.fetch_prompt_with_fallback", side_effect=fake_fetch),
             patch("server.app.runtime.langgraph.chat.build_vecsearch_graph", AsyncMock(return_value=graph)),
             patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
             patch("server.app.runtime.langgraph.chat.find_model", return_value=None),
-            patch("server.app.runtime.common.LOGGER") as mock_logger,
+            patch("server.app.runtime.langgraph.chat.LOGGER") as mock_logger,
         ):
             session = await orch._build_combined_session(
                 mock_client_settings(tools_enabled=["NL2SQL", "Vector Search"])
@@ -542,6 +544,7 @@ class TestCombinedPromptFetch:
         graph = mock_compiled_graph()
         with (
             patch("server.app.runtime.common.fetch_prompt_with_fallback", side_effect=fake_fetch),
+            patch("server.app.runtime.langgraph.chat.fetch_prompt_with_fallback", side_effect=fake_fetch),
             patch("server.app.runtime.langgraph.chat.build_vecsearch_graph", AsyncMock(return_value=graph)),
             patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
             patch("server.app.runtime.langgraph.chat.find_model", return_value=None),
@@ -605,7 +608,7 @@ class TestCombinedSessionOciAuth:
                 "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
                 new=AsyncMock(return_value=""),
             ), patch(
-                "server.app.runtime.common.fetch_prompt_with_fallback",
+                "server.app.runtime.langgraph.chat.fetch_prompt_with_fallback",
                 new=AsyncMock(side_effect=lambda _u, _k, name: get_factory_text(name) or ""),
             ), patch(
                 "server.app.runtime.langgraph.chat.find_model",
@@ -639,7 +642,7 @@ class TestCombinedSessionOciAuth:
             "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
             new=AsyncMock(return_value=""),
         ), patch(
-            "server.app.runtime.common.fetch_prompt_with_fallback",
+            "server.app.runtime.langgraph.chat.fetch_prompt_with_fallback",
             new=AsyncMock(side_effect=lambda _u, _k, name: get_factory_text(name) or ""),
         ), patch(
             "server.app.runtime.langgraph.chat.find_model",

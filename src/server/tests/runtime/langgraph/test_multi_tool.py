@@ -28,7 +28,6 @@ from server.tests.runtime.multi_tool_base import (
 from server.tests.runtime.shared_helpers import mock_litellm_response
 
 PATCH_PATH = "server.app.runtime.langgraph.multi_tool"
-COMMON_PATH = "server.app.runtime.common"
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +280,7 @@ class TestCombinedSessionGradeRelevant:
     """Tests for skipping synthesis and suppressing vs_metadata when grade_relevant='no'."""
 
     @pytest.mark.anyio
-    @patch(f"{COMMON_PATH}.litellm.acompletion", new_callable=AsyncMock)
+    @patch("litellm.acompletion", new_callable=AsyncMock)
     async def test_both_skips_synthesis_when_irrelevant(self, mock_acompletion):
         """Verify 'both' route returns only nl2sql answer when grade_relevant='no'."""
         mock_acompletion.return_value = mock_litellm_response("both")
@@ -295,7 +294,7 @@ class TestCombinedSessionGradeRelevant:
         assert mock_acompletion.await_count == 1
 
     @pytest.mark.anyio
-    @patch(f"{COMMON_PATH}.litellm.acompletion", new_callable=AsyncMock)
+    @patch("litellm.acompletion", new_callable=AsyncMock)
     async def test_both_suppresses_vs_metadata_when_irrelevant(self, mock_acompletion):
         """Verify 'both' route has no vs_metadata when grade_relevant='no'."""
         mock_acompletion.return_value = mock_litellm_response("both")
@@ -308,7 +307,7 @@ class TestCombinedSessionGradeRelevant:
         assert session.last_metadata.vs_metadata.documents == []
 
     @pytest.mark.anyio
-    @patch(f"{COMMON_PATH}.litellm.acompletion", new_callable=AsyncMock)
+    @patch("litellm.acompletion", new_callable=AsyncMock)
     async def test_both_synthesizes_when_relevant(self, mock_acompletion):
         """Verify 'both' route synthesizes when grade_relevant='yes'."""
         mock_acompletion.side_effect = [
@@ -336,7 +335,7 @@ class TestCombinedSessionTokenUsage:
     """Tests for token usage telemetry in CombinedSession."""
 
     @pytest.mark.anyio
-    @patch(f"{COMMON_PATH}.litellm.acompletion", new_callable=AsyncMock)
+    @patch("litellm.acompletion", new_callable=AsyncMock)
     async def test_nl2sql_route_token_usage(self, mock_acompletion):
         """Verify NL2SQL route populates token_usage from graph."""
         mock_acompletion.return_value = mock_litellm_response("nl2sql")
@@ -347,7 +346,7 @@ class TestCombinedSessionTokenUsage:
         assert session.last_metadata.token_usage is None
 
     @pytest.mark.anyio
-    @patch(f"{COMMON_PATH}.litellm.acompletion", new_callable=AsyncMock)
+    @patch("litellm.acompletion", new_callable=AsyncMock)
     async def test_both_route_sums_token_usage(self, mock_acompletion):
         """Verify 'both' route sums token usage from sub-sessions."""
         from server.app.api.v1.schemas.chat import TokenUsage

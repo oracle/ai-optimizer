@@ -1740,3 +1740,41 @@ async def test_submit_registers_task_without_blocking_on_tasks_lock() -> None:
         await submission.task
     # And the entry was popped by ``_run``'s finally.
     assert submission.job_id not in pod._tasks
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_memory_job_store_is_independently_injectable() -> None:
+    """[refactor] ``MemoryJobStore`` works standalone over an injected dict/lock.
+
+    The JobStore split makes the in-memory backend a plain object with no
+    dependence on module globals or a live pool — so a test can construct one
+    directly and exercise the full create → read → terminal-write contract,
+    including the degraded-mode "missing row raises" guard.
+    """
+    from collections import OrderedDict
+
+    store = jobs_mod.MemoryJobStore(OrderedDict(), asyncio.Lock())
+    now = jobs_mod._utcnow()
+    row = jobs_mod._JobRow(
+        job_id="m1",
+        client="c",
+        owner_pod="p",
+        status=EmbedJobStatus.RUNNING,
+        target_db="CORE",
+        created=now,
+        updated=now,
+    )
+
+    await store.create(row)
+    got = await store.get("m1")
+    assert got is not None and got.status == EmbedJobStatus.RUNNING
+
+    await store.set_result("m1", _ok_result())
+    done = await store.get("m1")
+    assert done is not None and done.status == EmbedJobStatus.SUCCEEDED
+
+    # Terminal write against a row that only ever lived in CORE raises so the
+    # retry helper waits for the pool rather than dropping the write.
+    with pytest.raises(jobs_mod.EmbedJobStoreUnavailable):
+        await store.set_status("ghost", EmbedJobStatus.FAILED, "x")

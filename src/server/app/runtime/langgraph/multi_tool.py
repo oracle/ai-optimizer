@@ -17,15 +17,17 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from langchain_core.messages import AIMessage, HumanMessage
 
 from server.app.api.v1.schemas.chat import TokenUsage
+from server.app.mcp.prompts.registry import require_factory_text
 from server.app.runtime.common import (
-    COMBINED_PROMPT_NAME as PROMPT_NAME,
-)
-from server.app.runtime.common import (
-    BaseCombinedSession,
+    CLASSIFIER_PROMPT_NAME,
+    SYNTHESIS_PROMPT_NAME,
     ClassifierDecision,
     Route,
     SessionMetadata,
     _sum_token_usage,
+)
+from server.app.runtime.common import (
+    COMBINED_PROMPT_NAME as PROMPT_NAME,
 )
 from server.app.runtime.langgraph.adapters.litellm import (
     OracleChatLiteLLM,
@@ -42,7 +44,7 @@ LOGGER = logging.getLogger(__name__)
 __all__ = ["CombinedSession", "PROMPT_NAME"]
 
 
-class CombinedSession(BaseCombinedSession):
+class CombinedSession:
     """Hybrid session that routes queries to VecSearch, NL2SQL, or both."""
 
     def __init__(
@@ -57,17 +59,29 @@ class CombinedSession(BaseCombinedSession):
         classifier_prompt: Optional[str] = None,
         synthesis_template: Optional[str] = None,
     ) -> None:
-        super().__init__(
-            vs_session,
-            nl2sql_session,
-            classifier_model,
-            system_prompt,
-            api_key=api_key,
-            api_base=api_base,
-            model_kwargs=model_kwargs,
-            classifier_prompt=classifier_prompt,
-            synthesis_template=synthesis_template,
-        )
+        self.vs_session = vs_session
+        self.nl2sql_session = nl2sql_session
+        self._classifier_model = classifier_model
+        self._system_prompt = system_prompt
+        self._api_key = api_key
+        self._api_base = api_base
+        self._model_kwargs: Dict[str, Any] = dict(model_kwargs) if model_kwargs else {}
+        self._classifier_prompt = classifier_prompt or require_factory_text(CLASSIFIER_PROMPT_NAME)
+        self._synthesis_template = synthesis_template or require_factory_text(SYNTHESIS_PROMPT_NAME)
+        self.last_metadata = SessionMetadata()
+
+    async def _handle_both_results(
+        self, query: str, vs_answer: str, nl2sql_answer: str
+    ) -> tuple[str, Optional[TokenUsage]]:
+        """Post-process the 'both' route: check grade_relevant, optionally synthesize."""
+        vs_relevant = self.vs_session.last_metadata.grade_relevant
+        synth_tu = None
+        self.last_metadata = self.vs_session.last_metadata.model_copy()
+        if vs_relevant == "no":
+            answer = nl2sql_answer
+        else:
+            answer, synth_tu = await self.synthesize(query, vs_answer, nl2sql_answer)
+        return answer, synth_tu
 
     async def _ainvoke_text(
         self,

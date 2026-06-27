@@ -1951,7 +1951,7 @@ def _fake_zipinfo(name, file_size):
 @pytest.mark.unit
 def test_extract_zip_happy_path(tmp_path):
     """Valid archive: members extracted, metadata populated, bytes intact."""
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     src = _make_zip(tmp_path / "ok.zip", [("a.txt", b"hello"), ("b.txt", b"world")])
     dest = tmp_path / "out"
@@ -1971,7 +1971,7 @@ def test_extract_zip_rejects_too_many_members(tmp_path):
     """More than _ZIP_MAX_FILES members → 400 before any write."""
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _ZIP_MAX_FILES, _extract_zip
+    from server.app.embed.staging import _ZIP_MAX_FILES, _extract_zip
 
     src = _make_zip(tmp_path / "many.zip", [("seed.txt", b"x")])
     dest = tmp_path / "out"
@@ -1994,7 +1994,7 @@ def test_extract_zip_rejects_oversize_total(tmp_path):
     """Sum of declared file_size > _ZIP_MAX_TOTAL_BYTES → 400."""
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _ZIP_MAX_TOTAL_BYTES, _extract_zip
+    from server.app.embed.staging import _ZIP_MAX_TOTAL_BYTES, _extract_zip
 
     src = _make_zip(tmp_path / "total.zip", [("seed.txt", b"x")])
     dest = tmp_path / "out"
@@ -2018,7 +2018,7 @@ def test_extract_zip_rejects_oversize_single_file(tmp_path):
     """Declared per-file size > _ZIP_MAX_FILE_BYTES → 400."""
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _ZIP_MAX_FILE_BYTES, _extract_zip
+    from server.app.embed.staging import _ZIP_MAX_FILE_BYTES, _extract_zip
 
     src = _make_zip(tmp_path / "single.zip", [("seed.txt", b"x")])
     dest = tmp_path / "out"
@@ -2040,7 +2040,7 @@ def test_extract_zip_rejects_oversize_single_file(tmp_path):
 @pytest.mark.parametrize("bad_ext", [".zip", ".gz", ".tar", ".bz2", ".xz", ".7z", ".rar"])
 def test_extract_zip_skips_nested_archives(tmp_path, bad_ext):
     """Nested-archive members are silently skipped, not extracted."""
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     src = _make_zip(
         tmp_path / "nested.zip",
@@ -2116,7 +2116,7 @@ def test_extract_zip_translates_constructor_errors_to_400(tmp_path, exc_to_raise
     """
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     src = tmp_path / "archive.zip"
     src.write_bytes(b"any-bytes")  # content irrelevant — constructor is mocked
@@ -2161,7 +2161,7 @@ def test_extract_zip_translates_member_open_errors_to_400(tmp_path, exc_to_raise
     """
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     src = _make_zip(tmp_path / "archive.zip", [("a.txt", b"hi")])
     dest = tmp_path / "dest"
@@ -2225,7 +2225,7 @@ def test_extract_zip_translates_decompressor_read_errors_to_400(tmp_path, exc_fa
     """
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     del exc_id  # parametrize id only — exc is built fresh per case
 
@@ -2256,7 +2256,7 @@ def test_extract_zip_target_write_oserror_remains_500(tmp_path):
     """
     from pathlib import Path
 
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     src = _make_zip(tmp_path / "archive.zip", [("a.txt", b"hello")])
     dest = tmp_path / "dest"
@@ -2286,7 +2286,7 @@ def test_extract_zip_translates_infolist_error_to_400(tmp_path):
     """A corrupt central directory (BadZipFile from infolist) surfaces as 400."""
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     src = _make_zip(tmp_path / "archive.zip", [("a.txt", b"hi")])
     dest = tmp_path / "dest"
@@ -2313,7 +2313,7 @@ def test_extract_zip_handles_member_named_like_backup_prefix(tmp_path):
     already holds `foo.txt`, both members must land with their archive
     bytes intact.
     """
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     dest = tmp_path / "dest"
     dest.mkdir()
@@ -2400,7 +2400,7 @@ def test_extract_zip_rejects_directory_collision_in_dest(tmp_path):
     a 409 matches the open("wb") behaviour (IsADirectoryError) and
     protects concurrent split_embed work_dirs.
     """
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     dest = tmp_path / "dest"
     dest.mkdir()
@@ -2825,7 +2825,7 @@ def test_extract_zip_restores_overwritten_destination_on_promotion_failure(tmp_p
     restored on any mid-promotion OSError.
     """
     from server.app.api.v1.endpoints import embed as embed_mod
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     dest = tmp_path / "dest"
     dest.mkdir()
@@ -2873,7 +2873,7 @@ def test_extract_zip_returns_500_on_promotion_failure(tmp_path):
     import zipfile as _zf
 
     from server.app.api.v1.endpoints import embed as embed_mod
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     del _zf  # linting — imported for the side-effect of ensuring the module is loaded
     src = _make_zip(tmp_path / "archive.zip", [("a.txt", b"hi"), ("b.txt", b"bye")])
@@ -2942,7 +2942,7 @@ def test_extract_zip_overwrites_preexisting_file_on_success(tmp_path):
     pre-existing `report.txt` in *dest* rather than creating a duplicate
     or leaving the old content.
     """
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     dest = tmp_path / "shared"
     dest.mkdir()
@@ -3001,7 +3001,7 @@ def test_extract_zip_preserves_preexisting_file_on_failure(tmp_path):
     """
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     dest = tmp_path / "shared"
     dest.mkdir()
@@ -3050,7 +3050,7 @@ def test_extract_zip_rolls_back_on_mid_member_failure(tmp_path):
     """
     import zipfile as _zf
 
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     src = _make_zip(
         tmp_path / "archive.zip",
@@ -3090,7 +3090,7 @@ def test_extract_zip_raises_400_for_non_zip_input(tmp_path):
     BadZipFile and return success even though extraction never happened
     (and could leave artefacts behind under other failure modes).
     """
-    from server.app.api.v1.endpoints.embed import _extract_zip
+    from server.app.embed.staging import _extract_zip
 
     src = tmp_path / "notazip.zip"
     src.write_bytes(b"this is not a zip file")
