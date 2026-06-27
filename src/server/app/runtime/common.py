@@ -147,21 +147,6 @@ async def fetch_prompt_for_route(route: Route, server_url: str, api_key: str) ->
 # ---------------------------------------------------------------------------
 
 
-def extract_response_usage(response: Any) -> Optional[TokenUsage]:
-    """Extract token usage from a litellm response, or None."""
-    usage = getattr(response, "usage", None)
-    if usage is None:
-        return None
-    prompt = getattr(usage, "prompt_tokens", 0) or 0
-    completion = getattr(usage, "completion_tokens", 0) or 0
-    total = getattr(usage, "total_tokens", 0) or 0
-    return TokenUsage(
-        prompt_tokens=prompt,
-        completion_tokens=completion,
-        total_tokens=total or (prompt + completion),
-    )
-
-
 def _sum_token_usage(*usages: Optional[TokenUsage]) -> Optional[TokenUsage]:
     """Sum multiple TokenUsage objects into one."""
     total = TokenUsage()

@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
+from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.error_detail import response_error_detail
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
@@ -44,8 +45,6 @@ SENSITIVE_FIELDS = set(DatabaseSensitive.model_fields.keys())
 # ``SENSITIVE_FIELDS`` because non-credential response-masked fields (none
 # in this schema today) should not be preserved-on-blank.
 SECRET_UPDATE_FIELDS = frozenset({"password", "wallet_password"})
-
-_PERSIST_FAIL = "Failed to persist settings"
 
 
 def _sqlcl_relevant(cfg: DatabaseConfig) -> bool:

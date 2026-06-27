@@ -6,17 +6,12 @@ Pydantic models for AI model configuration.
 """
 # spell-checker: ignore aioptimizer ollama qwen rerank
 
-import re
 import time
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, computed_field, field_validator
 
 from server.app.core.secrets import SecretField
-
-# Pattern to extract parameter count from model names (e.g., "llama3.2:1b" -> 1.0)
-_PARAM_PATTERN = re.compile(r"(\d+(?:\.\d+)?)[bB](?![a-zA-Z])")
-_SMALL_MODEL_THRESHOLD_B = 7
 
 # Runtime readiness of a model, set by the reachability checks — the single source of truth
 # for availability. Replaces the legacy ``usable`` bool, which was intentionally dropped from
@@ -124,15 +119,9 @@ class ModelConfig(LanguageModelParameters, EmbeddingModelParameters, ModelSensit
     @property
     def small_model(self) -> bool:
         """True when the model has < 7B parameters (detected from model name)."""
-        if not self.id:
-            return False
-        match = _PARAM_PATTERN.search(self.id)
-        if match:
-            try:
-                return float(match.group(1)) < _SMALL_MODEL_THRESHOLD_B
-            except ValueError:
-                pass
-        return False
+        from server.app.models.litellm_utils import is_small_model  # noqa: PLC0415 — avoids circular import
+
+        return is_small_model(self.id)
 
 
 class ModelUpdate(ModelSensitive):

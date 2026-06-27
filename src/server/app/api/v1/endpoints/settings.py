@@ -21,6 +21,7 @@ from server.app.api.v1.schemas.settings import (
     SettingsImportResult,
     SettingsResponse,
 )
+from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.etc import ensure_core_alias, upsert_list_field
 from server.app.core.schemas import (
     ClientSettings,
@@ -63,6 +64,9 @@ from server.app.oci.schemas import (
 
 LOGGER = logging.getLogger(__name__)
 _DB_CONN_FIELDS = set(DatabaseUpdate.model_fields)
+# Nested client-settings objects that are field-merged on PUT (a partial payload patches
+# individual sub-fields). All other nested objects are replaced wholesale.
+_FIELD_MERGE_FIELDS = ("ll_model", "vector_search", "deep_data_security")
 
 
 auth = APIRouter(prefix="/settings")
@@ -124,8 +128,6 @@ def _restore_prompts(saved: dict[str, str]) -> None:
         pc.text = saved.get(pc.name, pc.text)
     register_mcp_prompts()
 
-
-_PERSIST_FAIL = "Failed to persist settings"
 
 SENSITIVE_FIELDS = {
     "database_configs": {"__all__": set(DatabaseSensitive.model_fields.keys())},
@@ -230,22 +232,15 @@ async def update_client_settings(body: ClientSettingsUpdate, client: Annotated[C
         if body.ll_model is not None:
             _reconcile_ll_model_tokens(cs.ll_model, body.ll_model)
         for field in body.model_fields_set:
-            if field == "ll_model" and body.ll_model is not None:
-                # Merge individual ll_model fields instead of replacing the whole object
-                for ll_field in body.ll_model.model_fields_set:
-                    setattr(cs.ll_model, ll_field, getattr(body.ll_model, ll_field))
-            elif field == "vector_search" and body.vector_search is not None:
-                # Merge individual vector_search fields instead of replacing the whole object
-                for vs_field in body.vector_search.model_fields_set:
-                    setattr(cs.vector_search, vs_field, getattr(body.vector_search, vs_field))
-            elif field == "deep_data_security" and body.deep_data_security is not None:
-                # Field-merge so a lone {enabled: ...} toggle doesn't wipe end_user/alias/base_alias.
-                for dds_field in body.deep_data_security.model_fields_set:
-                    setattr(cs.deep_data_security, dds_field, getattr(body.deep_data_security, dds_field))
+            incoming = getattr(body, field)
+            # Field-merge ll_model / vector_search / deep_data_security so a partial payload
+            # (e.g. a lone {enabled: ...} DDS toggle) patches sub-fields without wiping their
+            # siblings. Everything else is always sent in full and replaced wholesale.
+            if field in _FIELD_MERGE_FIELDS and incoming is not None:
+                target = getattr(cs, field)
+                for sub_field in incoming.model_fields_set:
+                    setattr(target, sub_field, getattr(incoming, sub_field))
             else:
-                # Note: nested objects (database, testbed, etc.) are replaced
-                # wholesale — not field-merged like ll_model / vector_search.
-                # This is intentional: those objects are always sent in full.
                 setattr(cs, field, getattr(body, field))
         return cs
 

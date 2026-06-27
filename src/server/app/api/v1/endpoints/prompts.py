@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 
 from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.prompts import PromptResponse, PromptUpdate
+from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
 from server.app.mcp.prompts.registry import (
@@ -20,8 +21,6 @@ from server.app.mcp.prompts.registry import (
 )
 
 auth = APIRouter(prefix="/prompts")
-
-_PERSIST_FAIL = "Failed to persist settings"
 
 
 @auth.put("/{name}", response_model=PromptResponse)

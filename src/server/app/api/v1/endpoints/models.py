@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
+from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
@@ -30,8 +31,6 @@ auth = APIRouter(prefix="/models")
 SENSITIVE_FIELDS = set(ModelSensitive.model_fields.keys())
 # Fields where a blank submission means "preserve existing".
 SECRET_UPDATE_FIELDS = frozenset({"api_key"})
-
-_PERSIST_FAIL = "Failed to persist settings"
 
 
 def _find_model(provider: str | None, model_id: str | None) -> ModelConfig | None:

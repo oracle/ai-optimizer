@@ -9,7 +9,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 import oci.identity
 import oci.object_storage
@@ -86,29 +86,36 @@ def get_buckets(compartment_id: str, profile: OciProfileConfig) -> list[str]:
     return bucket_names
 
 
-def get_bucket_object_names(bucket_name: str, profile: OciProfileConfig) -> list[str]:
-    """Retrieve every object name from a bucket, aggregated across pages.
+def _list_all_bucket_objects(bucket_name: str, profile: OciProfileConfig, *, fields: Optional[str] = None) -> list:
+    """Return every object in a bucket, aggregated across all pages.
 
-    ``list_objects`` returns one OCI page per call and the default page
-    size truncates large buckets — the single-call
-    ``/v1/embed/oci/store`` endpoint with ``objects`` omitted promises
-    to embed every supported object in the bucket, so the listing must
-    walk all pages.
+    ``list_objects`` returns one OCI page per call and the default page size
+    truncates large buckets, so callers that must see every object (whole-bucket
+    embed, refresh change-detection) walk all pages. Returns an empty list when
+    the bucket is missing or the response carries no data; ``fields`` selects the
+    per-object attributes to populate (omit for name-only listings).
     """
     client = init_client(oci.object_storage.ObjectStorageClient, profile)
-
+    kwargs = {"namespace_name": profile.namespace, "bucket_name": bucket_name}
+    if fields:
+        kwargs["fields"] = fields
     try:
-        response = oci.pagination.list_call_get_all_results(
-            client.list_objects,
-            namespace_name=profile.namespace,
-            bucket_name=bucket_name,
-        )
-        if response is None or response.data is None:
-            return []
-        return [obj.name for obj in response.data.objects]
+        response = oci.pagination.list_call_get_all_results(client.list_objects, **kwargs)
     except oci.exceptions.ServiceError:
         LOGGER.debug("Bucket %s not found.", bucket_name)
         return []
+    if response is None or response.data is None:
+        return []
+    return response.data.objects
+
+
+def get_bucket_object_names(bucket_name: str, profile: OciProfileConfig) -> list[str]:
+    """Retrieve every object name from a bucket, aggregated across pages.
+
+    Backs the single-call ``/v1/embed/oci/store`` endpoint (with ``objects``
+    omitted), which promises to embed every supported object in the bucket.
+    """
+    return [obj.name for obj in _list_all_bucket_objects(bucket_name, profile)]
 
 
 def flatten_bucket_key(key: str) -> str:
@@ -119,44 +126,24 @@ def flatten_bucket_key(key: str) -> str:
 def get_bucket_objects_with_metadata(bucket_name: str, profile: OciProfileConfig) -> list[dict]:
     """Retrieve every bucket object with metadata, aggregated across pages.
 
-    ``list_objects`` returns one OCI page per call and the default page
-    size truncates large buckets. ``/v1/embed/refresh`` relies on this
-    listing to detect new and modified objects, so dropping later
-    pages would treat them as if they had never existed for
-    change-detection purposes.
-
-    Returns a list of dicts with keys: name, size, etag, time_modified, md5, extension.
-    Only objects with supported file extensions are included.
+    Backs ``/v1/embed/refresh`` change-detection. Returns a list of dicts with
+    keys: name, size, etag, time_modified, md5, extension. Only objects with
+    supported file extensions are included.
     """
-    client = init_client(oci.object_storage.ObjectStorageClient, profile)
-
     objects_metadata: list[dict] = []
-    try:
-        response = oci.pagination.list_call_get_all_results(
-            client.list_objects,
-            namespace_name=profile.namespace,
-            bucket_name=bucket_name,
-            fields="name,size,etag,timeModified,md5",
-        )
-        if response is None or response.data is None:
-            return objects_metadata
-        objects = response.data.objects
-
-        for obj in objects:
-            _, ext = os.path.splitext(obj.name.lower())
-            if ext in SUPPORTED_EXTENSIONS:
-                objects_metadata.append(
-                    {
-                        "name": obj.name,
-                        "size": obj.size,
-                        "etag": obj.etag,
-                        "time_modified": obj.time_modified.isoformat() if obj.time_modified else None,
-                        "md5": obj.md5,
-                        "extension": ext[1:],
-                    }
-                )
-    except oci.exceptions.ServiceError:
-        LOGGER.debug("Bucket %s not found.", bucket_name)
+    for obj in _list_all_bucket_objects(bucket_name, profile, fields="name,size,etag,timeModified,md5"):
+        _, ext = os.path.splitext(obj.name.lower())
+        if ext in SUPPORTED_EXTENSIONS:
+            objects_metadata.append(
+                {
+                    "name": obj.name,
+                    "size": obj.size,
+                    "etag": obj.etag,
+                    "time_modified": obj.time_modified.isoformat() if obj.time_modified else None,
+                    "md5": obj.md5,
+                    "extension": ext[1:],
+                }
+            )
 
     LOGGER.info("Retrieved %d objects with metadata from bucket %s", len(objects_metadata), bucket_name)
     return objects_metadata

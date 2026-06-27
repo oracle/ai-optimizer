@@ -62,6 +62,31 @@ DELETE FROM aio_settings WHERE client = :client
 """
 
 
+async def _upsert_settings_row(
+    pool: oracledb.AsyncConnectionPool, client: str, payload: dict, is_current: bool, *, label: str
+) -> bool:
+    """Upsert *payload* into aio_settings for *client*.
+
+    Returns ``True`` on success, ``False`` when the write fails. *label* prefixes the
+    log lines so callers stay distinguishable. Assumes *pool* is non-None (callers
+    handle the unavailable-CORE best-effort case before calling).
+    """
+    try:
+        async with pool.acquire() as conn:
+            await execute_sql(
+                conn,
+                _UPSERT_SQL,
+                {"client": client, "settings": payload, "is_current": 1 if is_current else 0},
+                input_sizes={"settings": oracledb.DB_TYPE_JSON},
+            )
+            await conn.commit()
+        LOGGER.info("%s persisted to aio_settings (client=%s)", label, client)
+        return True
+    except Exception as exc:
+        LOGGER.error("%s: failed to persist for client=%s: %s", label, client, exc)
+        return False
+
+
 async def persist_settings(
     client: str = "CONFIGURED",
     is_current: bool = True,
@@ -138,20 +163,7 @@ async def persist_settings(
             oci_entries.append(entry)
     payload[_OCI_OVERLAY_KEY] = oci_entries
 
-    try:
-        async with pool.acquire() as conn:
-            await execute_sql(
-                conn,
-                _UPSERT_SQL,
-                {"client": client, "settings": payload, "is_current": 1 if is_current else 0},
-                input_sizes={"settings": oracledb.DB_TYPE_JSON},
-            )
-            await conn.commit()
-        LOGGER.info("Settings persisted to aio_settings (client=%s)", client)
-        return True
-    except Exception as exc:
-        LOGGER.error("persist_settings: Failed to persist to database: %s", exc)
-        return False
+    return await _upsert_settings_row(pool, client, payload, is_current, label="Settings")
 
 
 async def _load_raw_settings(client: str, *, op: str) -> Optional[dict]:
@@ -279,20 +291,7 @@ async def persist_client_settings(client: str, cs: ClientSettings, is_current: b
         "client_settings": cs.model_dump(mode="json", context={REVEAL_KEY: True}, exclude={"deep_data_security"})
     }
 
-    try:
-        async with pool.acquire() as conn:
-            await execute_sql(
-                conn,
-                _UPSERT_SQL,
-                {"client": client, "settings": payload, "is_current": 1 if is_current else 0},
-                input_sizes={"settings": oracledb.DB_TYPE_JSON},
-            )
-            await conn.commit()
-        LOGGER.info("Client settings persisted to aio_settings (client=%s)", client)
-        return True
-    except Exception as exc:
-        LOGGER.error("persist_client_settings: Failed to persist for client=%s: %s", client, exc)
-        return False
+    return await _upsert_settings_row(pool, client, payload, is_current, label="Client settings")
 
 
 async def delete_row(client: str) -> None:

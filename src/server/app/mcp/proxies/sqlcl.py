@@ -28,7 +28,6 @@ from server.app.core.mcp import mcp
 from server.app.core.paths import PROJECT_ROOT
 from server.app.core.secrets import reveal
 from server.app.core.settings import settings
-from server.app.database.config import has_required_credentials
 
 LOGGER = logging.getLogger(__name__)
 
@@ -375,7 +374,7 @@ async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | 
         # local can flow into ``_create_connection_store`` without a second
         # None-check at the call site.
         db_password = reveal(db.password)
-        if not has_required_credentials(db) or not db.username or not db_password or not db.dsn:
+        if not db.username or not db_password or not db.dsn:
             continue
 
         config_dir = db.config_dir or tns_admin
