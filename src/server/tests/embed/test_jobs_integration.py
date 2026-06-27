@@ -25,42 +25,18 @@ from server.app.api.v1.schemas.embed import (
     ProcessedFileInfo,
     SkippedFileInfo,
 )
-from server.app.database.config import close_pool, create_pool
-from server.app.database.objects import SCHEMA_DDL
 from server.app.database.sql import execute_sql
 from server.app.embed import jobs as jobs_mod
-from server.tests.conftest import make_core_db_config
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
 
 @pytest.fixture
-async def core_pool(oracle_db_container, monkeypatch):
-    """A live CORE pool wired into ``jobs.get_core_pool``; schema empty.
-
-    Pointing ``jobs.get_core_pool`` at a real pool drives every ``_store_*``
-    down its DB branch (and the pinned-pool resolution falls back to it),
-    so the tests exercise the production SQL without the settings/usable
-    registration dance.
-    """
-    cfg = make_core_db_config()
-    pool = await create_pool(cfg)
-
-    async with pool.acquire() as conn:
-        conn.autocommit = True
-        for ddl in SCHEMA_DDL:
-            await execute_sql(conn, ddl)
-        await execute_sql(conn, "DELETE FROM aio_embed_jobs")
-        conn.autocommit = False
-
-    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: pool)
-    jobs_mod._PINNED_POOLS.clear()
-    jobs_mod._LocalFallback.allowed = False
-    try:
-        yield pool
-    finally:
-        jobs_mod._PINNED_POOLS.clear()
-        await close_pool(pool)
+async def core_pool(embed_core_pool):
+    """A live CORE pool wired into ``jobs.get_core_pool`` (see the shared
+    ``embed_core_pool`` fixture in conftest). Aliased here so these tests can
+    take ``core_pool`` and assert against the pinned pool object."""
+    yield embed_core_pool
 
 
 def _make_row(

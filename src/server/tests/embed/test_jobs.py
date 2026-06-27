@@ -2,12 +2,15 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Unit tests for the EmbedJobManager / jobs_store layer.
+Tests for the EmbedJobManager / jobs_store layer, driven against a real
+Oracle container.
 
 These cover the multi-replica visibility (P1) and crash-recovery (P3)
 review concerns at the layer where they are easiest to isolate from
 the FastAPI endpoint plumbing — a separate replica simulation here is
-just a second manager instance pointing at the same backing store.
+just a second manager instance pointing at the same backing store (the
+CORE database). Mock-pool tests patch ``jobs.get_core_pool`` over the
+container pool to drive specific error paths.
 """
 
 import asyncio
@@ -24,6 +27,8 @@ from server.app.api.v1.schemas.embed import (
 )
 from server.app.embed import jobs as jobs_mod
 
+pytestmark = [pytest.mark.db, pytest.mark.integration]
+
 
 def _ok_result(total_chunks: int = 0) -> EmbedProcessingResult:
     return EmbedProcessingResult(
@@ -38,13 +43,9 @@ async def _prime_heartbeat(pod: jobs_mod.EmbedJobManager) -> None:
     """Open the reaper's warmup gate by seeding the timestamps directly.
 
     ``reap_stale`` skips its sweep until ``_is_heartbeat_warm`` returns
-    True — which requires two recent on-schedule timestamps AND that
-    the most recent one corresponds to a real CORE round-trip. In
-    unit tests ``get_core_pool()`` returns None so ``heartbeat_owned``
-    deliberately does not advance the timestamps (production: that
-    refusal is what stops an idle replica from warming the gate
-    during a CORE outage). Tests that need to exercise the reaper
-    seed the timestamps directly to bypass that production guard.
+    True — which requires two recent on-schedule timestamps. Driving two
+    real heartbeats would be slow and timing-dependent, so tests that need
+    to exercise the reaper seed the timestamps directly to open the gate.
     """
     now = datetime.datetime.now(datetime.timezone.utc)
     pod._previous_heartbeat_at = now - datetime.timedelta(seconds=10)
@@ -52,24 +53,22 @@ async def _prime_heartbeat(pod: jobs_mod.EmbedJobManager) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolated_store():
-    """Reset the in-memory fallback store so tests don't bleed state."""
-    jobs_mod.reset_embed_job_manager()
-    jobs_mod.reset_local_jobs_store()
+async def _core_store(embed_core_pool):
+    """Drive every test against the shared CORE container pool (see conftest).
+
+    Tests that need a missing/failing/recording pool patch
+    ``jobs.get_core_pool`` over this default.
+    """
     yield
-    jobs_mod.reset_embed_job_manager()
-    jobs_mod.reset_local_jobs_store()
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_jobs_visible_across_replicas() -> None:
     """A job submitted on one manager instance is visible from another.
 
     P1: when ``server.replicaCount > 1``, polls can land on any pod.
     Two manager instances simulate two pods; both must see the same
-    job state because they share the backing store (CORE database in
-    production; in-memory fallback in tests).
+    job state because they share the backing store (the CORE database).
     """
     pod_a = jobs_mod.EmbedJobManager(pod_id="pod-a")
     pod_b = jobs_mod.EmbedJobManager(pod_id="pod-b")
@@ -80,7 +79,7 @@ async def test_jobs_visible_across_replicas() -> None:
     async def _quick_pipeline(_handle: jobs_mod.JobHandle) -> EmbedProcessingResult:
         return _ok_result(total_chunks=1)
 
-    submission = await pod_a.submit(client="x", coro_factory=_quick_pipeline)
+    submission = await pod_a.submit(client="x", coro_factory=_quick_pipeline, target_db="CORE")
 
     # Pod B can read the row even before the task runs.
     info_via_b = await pod_b.get(client="x", job_id=submission.job_id)
@@ -97,7 +96,6 @@ async def test_jobs_visible_across_replicas() -> None:
     assert info_via_b.result.total_chunks == 1
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_jobs_remain_scoped_per_client_across_replicas() -> None:
     """The cross-pod read still enforces the per-client scope check."""
@@ -107,7 +105,7 @@ async def test_jobs_remain_scoped_per_client_across_replicas() -> None:
     async def _noop(_handle: jobs_mod.JobHandle) -> EmbedProcessingResult:
         return _ok_result()
 
-    submission = await pod_a.submit(client="alice", coro_factory=_noop)
+    submission = await pod_a.submit(client="alice", coro_factory=_noop, target_db="CORE")
     await submission.task
 
     # A pod that handles a request from a different client must NOT
@@ -119,7 +117,6 @@ async def test_jobs_remain_scoped_per_client_across_replicas() -> None:
     assert bob_list == []
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_orphaned_job_reaped_after_heartbeat_stale() -> None:
     """A non-terminal job whose heartbeat went stale is marked failed.
@@ -137,6 +134,7 @@ async def test_orphaned_job_reaped_after_heartbeat_stale() -> None:
 
     long_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=10)
     orphan = jobs_mod._JobRow(
+        target_db="CORE",
         job_id="job-from-dead-pod",
         client="x",
         owner_pod="pod-dead",
@@ -165,7 +163,6 @@ async def test_orphaned_job_reaped_after_heartbeat_stale() -> None:
     assert "heartbeat" in (info.error or "").lower() or "orphan" in (info.error or "").lower()
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_heartbeat_keeps_owned_job_alive() -> None:
     """A pod that is still alive bumps its rows so they aren't reaped."""
@@ -179,7 +176,7 @@ async def test_heartbeat_keeps_owned_job_alive() -> None:
         await blocker
         return _ok_result()
 
-    submission = await pod.submit(client="x", coro_factory=_hang)
+    submission = await pod.submit(client="x", coro_factory=_hang, target_db="CORE")
     await started.wait()
 
     # Backdate the row so it WOULD be reaped...
@@ -204,7 +201,6 @@ async def test_heartbeat_keeps_owned_job_alive() -> None:
         await submission.task
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_progress_writes_propagate_across_replicas() -> None:
     """Stage progress reported on one pod is observable from another."""
@@ -222,7 +218,7 @@ async def test_progress_writes_propagate_across_replicas() -> None:
         progress_seen.set()
         return _ok_result(total_chunks=42)
 
-    submission = await pod_a.submit(client="x", coro_factory=_emit_progress)
+    submission = await pod_a.submit(client="x", coro_factory=_emit_progress, target_db="CORE")
     await progress_seen.wait()
 
     # Pod B reads progress mid-flight via the shared store.
@@ -235,7 +231,6 @@ async def test_progress_writes_propagate_across_replicas() -> None:
     await submission.task
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_submission_failure_propagates_through_pipeline() -> None:
     """Submission cleanup contract: ``cancel_local`` returns False once a job is terminal."""
@@ -244,7 +239,7 @@ async def test_submission_failure_propagates_through_pipeline() -> None:
     async def _quick(_handle: jobs_mod.JobHandle) -> EmbedProcessingResult:
         return _ok_result()
 
-    submission = await pod.submit(client="x", coro_factory=_quick)
+    submission = await pod.submit(client="x", coro_factory=_quick, target_db="CORE")
     await submission.task
 
     # Once the task is done the manager has already dropped its handle,
@@ -252,7 +247,6 @@ async def test_submission_failure_propagates_through_pipeline() -> None:
     assert await pod.cancel_local(submission.job_id) is False
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_running_write_failure_does_not_strand_pipeline() -> None:
     """If marking a job RUNNING fails, the pipeline still runs and cleans up.
@@ -284,7 +278,7 @@ async def test_running_write_failure_does_not_strand_pipeline() -> None:
     from unittest.mock import patch as _patch
 
     with _patch.object(jobs_mod, "_store_set_status", _flaky_set_status):
-        submission = await pod.submit(client="x", coro_factory=_pipeline)
+        submission = await pod.submit(client="x", coro_factory=_pipeline, target_db="CORE")
         await submission.task
 
     # Pipeline body must have run despite the RUNNING-write failure.
@@ -300,7 +294,6 @@ async def test_running_write_failure_does_not_strand_pipeline() -> None:
     assert info.result.total_chunks == 7
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_transient_success_write_failure_is_retried() -> None:
     """A transient blip on the success terminal write must not lose the job.
@@ -337,7 +330,7 @@ async def test_transient_success_write_failure_is_retried() -> None:
         _patch.object(jobs_mod, "_store_set_result", _flaky_set_result),
         _patch.object(jobs_mod.asyncio, "sleep", _no_sleep),
     ):
-        submission = await pod.submit(client="x", coro_factory=_success_pipeline)
+        submission = await pod.submit(client="x", coro_factory=_success_pipeline, target_db="CORE")
         await submission.task
 
     info = await pod.get(client="x", job_id=submission.job_id)
@@ -351,7 +344,6 @@ async def test_transient_success_write_failure_is_retried() -> None:
     assert attempts["n"] >= 3, "retry should have occurred at least twice before success"
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_persistent_terminal_write_failure_pops_local_tasks() -> None:
     """A persistent terminal-write failure still releases the local task slot.
@@ -378,7 +370,7 @@ async def test_persistent_terminal_write_failure_pops_local_tasks() -> None:
         _patch.object(jobs_mod, "_store_set_result", _always_fails_set_result),
         _patch.object(jobs_mod.asyncio, "sleep", _no_sleep),
     ):
-        submission = await pod.submit(client="x", coro_factory=_success_pipeline)
+        submission = await pod.submit(client="x", coro_factory=_success_pipeline, target_db="CORE")
         await submission.task
 
     # Even after all retries failed, the local tasks map must be clean
@@ -386,7 +378,6 @@ async def test_persistent_terminal_write_failure_pops_local_tasks() -> None:
     assert submission.job_id not in pod._tasks
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_cancellation_propagates_promptly_through_async_await() -> None:
     """[P1] Cancellation must propagate into the pipeline rather than
@@ -417,7 +408,7 @@ async def test_cancellation_propagates_promptly_through_async_await() -> None:
         return _ok_result()
 
     pod = jobs_mod.EmbedJobManager(pod_id="pod-1")
-    submission = await pod.submit(client="x", coro_factory=_hangs_on_async)
+    submission = await pod.submit(client="x", coro_factory=_hangs_on_async, target_db="CORE")
 
     # Yield enough turns for the inner task to actually park on
     # ``await blocker``.
@@ -445,7 +436,6 @@ async def test_cancellation_propagates_promptly_through_async_await() -> None:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_cancellation_during_running_write_pops_local_tasks() -> None:
     """P2: cancellation while awaiting the initial RUNNING write must still cleanup.
@@ -481,7 +471,7 @@ async def test_cancellation_during_running_write_pops_local_tasks() -> None:
     from unittest.mock import patch as _patch
 
     with _patch.object(jobs_mod, "_store_set_status", _slow_running_write):
-        submission = await pod.submit(client="x", coro_factory=_pipeline_should_not_run)
+        submission = await pod.submit(client="x", coro_factory=_pipeline_should_not_run, target_db="CORE")
         await cancel_during_running.wait()
         submission.task.cancel()
         with contextlib.suppress(BaseException):
@@ -493,7 +483,6 @@ async def test_cancellation_during_running_write_pops_local_tasks() -> None:
     assert submission.job_id not in pod._tasks
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_reaper_skips_until_two_consecutive_heartbeats() -> None:
     """P2: post-CORE-outage races must not let the reaper kill live jobs.
@@ -523,6 +512,7 @@ async def test_reaper_skips_until_two_consecutive_heartbeats() -> None:
     # prevents reaping at all.
     long_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=10)
     target = jobs_mod._JobRow(
+        target_db="CORE",
         job_id="job-warmup",
         client="x",
         owner_pod=pod.pod_id,
@@ -659,26 +649,23 @@ def _make_pool_with_failing_cursor(execute_side_effect: BaseException):
     return pool
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_create_raises_in_production_mode_when_pool_missing(monkeypatch) -> None:
-    """P2: production submissions must not silently fall back to _LOCAL_STORE.
+    """P2: a submission with no CORE pool must raise, never accept silently.
 
     The endpoint guards CORE availability with ``_require_core_pool``
     before calling ``manager.submit``, but there is a TOCTOU window:
     if the pool is cleared between the guard and ``_store_create``,
-    the in-memory fallback path silently accepts the job. The 202
-    that results would be invisible to other replicas and to this
-    same pod after CORE recovers — breaking the cross-replica
-    polling contract. Production must raise so the endpoint surfaces
-    the documented retry-able 503 instead.
+    accepting the job would make the resulting 202 invisible to other
+    replicas and to this same pod after CORE recovers — breaking the
+    cross-replica polling contract. ``_store_create`` must raise so the
+    endpoint surfaces the documented retry-able 503 instead.
     """
-    # Disable the fallback (simulating production, where the test
-    # autouse fixture's call to ``reset_local_jobs_store`` would
-    # never run).
-    monkeypatch.setattr(jobs_mod._LocalFallback, "allowed", False)
+    # CORE pool gone (cleared between the endpoint guard and the store call).
+    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: None)
 
     row = jobs_mod._JobRow(
+        target_db="CORE",
         job_id="prod-job-1",
         client="x",
         owner_pod="pod-1",
@@ -694,43 +681,39 @@ async def test_store_create_raises_in_production_mode_when_pool_missing(monkeypa
         await jobs_mod._store_create(row)
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_get_raises_in_production_mode_when_pool_missing(monkeypatch) -> None:
     """P2: TOCTOU race — pool cleared after endpoint guard must surface 503.
 
     The endpoint calls ``_require_core_pool`` up front, but if the
     pool is cleared between that check and ``_store_get`` (config
-    reload, transient outage), the in-memory fallback would silently
-    return ``None`` for a job that exists in CORE — making the
-    endpoint return 404. Polling clients treat 404 as terminal and
-    stop polling for a job that's still running. Production must
-    surface ``EmbedJobStoreUnavailable`` so the endpoint converts to
-    503 (the documented retry-able status).
+    reload, transient outage), returning ``None`` for a job that exists
+    in CORE would make the endpoint return 404. Polling clients treat
+    404 as terminal and stop polling for a job that's still running.
+    ``_store_get`` must surface ``EmbedJobStoreUnavailable`` so the
+    endpoint converts to 503 (the documented retry-able status).
     """
-    monkeypatch.setattr(jobs_mod._LocalFallback, "allowed", False)
+    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: None)
 
     with pytest.raises(jobs_mod.EmbedJobStoreUnavailable):
         await jobs_mod._store_get("any-job-id")
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_list_for_client_raises_in_production_mode_when_pool_missing(
     monkeypatch,
 ) -> None:
-    """P2: same TOCTOU concern as ``_store_get`` — empty fallback list
-    would imply 'this client has no jobs' even though jobs may exist
-    in CORE that we just can't reach. Surface ``EmbedJobStoreUnavailable``
-    so the endpoint returns 503.
+    """P2: same TOCTOU concern as ``_store_get`` — an empty list would
+    imply 'this client has no jobs' even though jobs may exist in CORE
+    that we just can't reach. Surface ``EmbedJobStoreUnavailable`` so
+    the endpoint returns 503.
     """
-    monkeypatch.setattr(jobs_mod._LocalFallback, "allowed", False)
+    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: None)
 
     with pytest.raises(jobs_mod.EmbedJobStoreUnavailable):
         await jobs_mod._store_list_for_client("any-client")
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_get_raises_on_missing_table() -> None:
     """P2: a missing job table on read must propagate, not look like 'no row'.
@@ -756,7 +739,6 @@ async def test_store_get_raises_on_missing_table() -> None:
         await jobs_mod._store_get("any-job-id")
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_list_for_client_raises_on_missing_table() -> None:
     """Same swallow hazard applies to GET /v1/embed/jobs.
@@ -779,7 +761,6 @@ async def test_store_list_for_client_raises_on_missing_table() -> None:
         await jobs_mod._store_list_for_client("any-client")
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_list_for_client_active_only_filters_terminal_rows() -> None:
     """P2: the polling status panel needs to skip terminal-job blobs.
@@ -799,6 +780,7 @@ async def test_store_list_for_client_active_only_filters_terminal_rows() -> None
 
     def _row(job_id: str, status: EmbedJobStatus) -> jobs_mod._JobRow:
         return jobs_mod._JobRow(
+            target_db="CORE",
             job_id=job_id,
             client="x",
             owner_pod="pod-1",
@@ -829,7 +811,6 @@ async def test_store_list_for_client_active_only_filters_terminal_rows() -> None
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_manager_list_for_client_forwards_active_only() -> None:
     """The endpoint passes ``active_only`` through the manager — verify the
@@ -839,6 +820,7 @@ async def test_manager_list_for_client_forwards_active_only() -> None:
 
     await jobs_mod._store_create(
         jobs_mod._JobRow(
+            target_db="CORE",
             job_id="active",
             client="x",
             owner_pod="pod-1",
@@ -852,6 +834,7 @@ async def test_manager_list_for_client_forwards_active_only() -> None:
     )
     await jobs_mod._store_create(
         jobs_mod._JobRow(
+            target_db="CORE",
             job_id="done",
             client="x",
             owner_pod="pod-1",
@@ -868,7 +851,6 @@ async def test_manager_list_for_client_forwards_active_only() -> None:
     assert {r.job_id for r in await pod.list_for_client("x", active_only=True)} == {"active"}
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_set_result_raises_on_missing_table() -> None:
     """P2: a terminal SUCCESS write must propagate a missing-table error.
@@ -895,7 +877,6 @@ async def test_store_set_result_raises_on_missing_table() -> None:
         await jobs_mod._store_set_result("any-job-id", _ok_result(total_chunks=1))
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_set_status_raises_on_missing_table() -> None:
     """Same swallow hazard applies to the FAILED terminal write path."""
@@ -916,7 +897,6 @@ async def test_store_set_status_raises_on_missing_table() -> None:
         )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_store_create_raises_on_missing_table() -> None:
     """P2: a missing ``aio_embed_jobs`` table must surface, not be acknowledged.
@@ -936,6 +916,7 @@ async def test_store_create_raises_on_missing_table() -> None:
     )
 
     row = jobs_mod._JobRow(
+        target_db="CORE",
         job_id="missing-table-job",
         client="x",
         owner_pod="pod-1",
@@ -954,38 +935,32 @@ async def test_store_create_raises_on_missing_table() -> None:
         await jobs_mod._store_create(row)
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
-async def test_pool_less_heartbeat_does_not_warm_gate() -> None:
+async def test_pool_less_heartbeat_does_not_warm_gate(monkeypatch) -> None:
     """P2: when CORE is unreachable, heartbeats must not advance warmup.
 
-    Pre-fix, ``heartbeat_owned`` calls ``_store_heartbeat_active``;
-    that helper falls back to ``_LOCAL_STORE`` when ``get_core_pool``
-    returns ``None`` and returns a count even though no DB row was
-    refreshed. The manager unconditionally records timestamps after
-    the call, so an idle replica stays warm throughout a CORE outage
-    and the moment CORE returns its reaper marks live jobs owned by
-    other replicas ``failed`` before any owner heartbeat catches up.
-    The fallback path must signal "no CORE round-trip" so the
-    manager skips advancing the timestamps.
+    ``heartbeat_owned`` calls ``_store_heartbeat_active``, which performs
+    no CORE round-trip when the pool is gone and reports ``hit_core=False``.
+    The manager must then skip advancing its warmup timestamps — otherwise
+    an idle replica stays warm throughout a CORE outage and the moment CORE
+    returns its reaper marks live jobs owned by other replicas ``failed``
+    before any owner heartbeat catches up.
     """
     pod = jobs_mod.EmbedJobManager(pod_id="pod-1")
-    # Submit a job so the local task map is non-empty; the heartbeat
-    # call now has owned ids to look up but pool is None.
+    # Submit a job (real pool) so the local task map is non-empty, then drop
+    # CORE so the subsequent heartbeat has owned ids but no pool to reach.
     blocker: asyncio.Future = asyncio.Future()
 
     async def _hang(_handle: jobs_mod.JobHandle) -> EmbedProcessingResult:
         await blocker
         return _ok_result()
 
-    submission = await pod.submit(client="x", coro_factory=_hang)
+    submission = await pod.submit(client="x", coro_factory=_hang, target_db="CORE")
 
+    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: None)
     bumped = await pod.heartbeat_owned()
-    # The local fallback bumped the row (it's in _LOCAL_STORE because
-    # _store_create wrote there with pool=None).
-    assert bumped >= 1
-    # Critical: timestamps must remain unset because no CORE round-trip
-    # actually validated that CORE is healthy.
+    # No CORE round-trip: nothing bumped and no warmup advance.
+    assert bumped == 0
     assert pod._last_heartbeat_at is None
     assert pod._previous_heartbeat_at is None
 
@@ -995,7 +970,6 @@ async def test_pool_less_heartbeat_does_not_warm_gate() -> None:
         await submission.task
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_warmup_gate_closes_when_last_heartbeat_is_stale() -> None:
     """P1: a "warm" gate must not stay warm forever.
@@ -1026,7 +1000,6 @@ async def test_warmup_gate_closes_when_last_heartbeat_is_stale() -> None:
     assert reaped == 0
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_idle_heartbeat_requires_core_roundtrip() -> None:
     """P1: idle replicas must NOT stay warm during a CORE outage.
@@ -1075,32 +1048,28 @@ async def test_idle_heartbeat_requires_core_roundtrip() -> None:
     assert pod._previous_heartbeat_at is None
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
-async def test_terminal_writes_raise_when_db_row_missing_and_pool_gone() -> None:
+async def test_terminal_writes_raise_when_db_row_missing_and_pool_gone(monkeypatch) -> None:
     """Reviewer P2: a DB-backed job must not lose terminal state on a CORE drop.
 
     Scenario: ``_store_create`` ran with a real pool and inserted into
     ``aio_embed_jobs``. The pool is then taken away (config reload,
     transient outage). When the pipeline finishes and calls
-    ``_store_set_result`` (or ``_store_set_status``) with pool=None,
-    the in-memory fallback finds nothing — the row was DB-only.
-    Returning silently would let ``_terminal_write_with_retry`` treat
+    ``_store_set_result`` (or ``_store_set_status``) with no pool,
+    returning silently would let ``_terminal_write_with_retry`` treat
     the write as successful, ``_run`` would pop ``_tasks``, the
     heartbeat would stop covering the row, and the reaper would
     eventually mark a fully populated vector store as failed. The
-    fallback must raise so the retry helper waits for the pool to
-    come back instead.
+    terminal writers must raise so the retry helper waits for the pool
+    to come back instead.
     """
-    # No row anywhere — pool is None (test mode) AND _LOCAL_STORE empty.
-    # This is exactly the shape the reviewer described: a row that was
-    # written via the DB path but cannot be located via the fallback.
-    with pytest.raises(Exception):
+    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: None)
+    with pytest.raises(jobs_mod.EmbedJobStoreUnavailable):
         await jobs_mod._store_set_result(
             "missing-id",
             _ok_result(),
         )
-    with pytest.raises(Exception):
+    with pytest.raises(jobs_mod.EmbedJobStoreUnavailable):
         await jobs_mod._store_set_status(
             "missing-id",
             EmbedJobStatus.FAILED,
@@ -1108,32 +1077,6 @@ async def test_terminal_writes_raise_when_db_row_missing_and_pool_gone() -> None
         )
 
 
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_terminal_write_silently_succeeds_when_row_exists_in_local_store() -> None:
-    """Existing tests rely on the fallback when both create and update see pool=None.
-
-    Pin the regression boundary: when the row IS in ``_LOCAL_STORE``,
-    the fallback path must continue to apply the update (no raise).
-    Otherwise every test in test_jobs.py that exercises the in-memory
-    path would break the moment we add the new raise.
-    """
-    pod = jobs_mod.EmbedJobManager(pod_id="pod-1")
-
-    async def _quick(_handle: jobs_mod.JobHandle) -> EmbedProcessingResult:
-        return _ok_result(total_chunks=3)
-
-    submission = await pod.submit(client="x", coro_factory=_quick)
-    await submission.task
-
-    info = await pod.get(client="x", job_id=submission.job_id)
-    assert info is not None
-    assert info.status == EmbedJobStatus.SUCCEEDED
-    assert info.result is not None
-    assert info.result.total_chunks == 3
-
-
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_progress_write_failure_does_not_abort_pipeline() -> None:
     """A transient CORE blip on a progress write must not fail the job.
@@ -1170,7 +1113,7 @@ async def test_progress_write_failure_does_not_abort_pipeline() -> None:
     from unittest.mock import patch as _patch
 
     with _patch.object(jobs_mod, "_store_set_progress", _flaky_progress):
-        submission = await pod.submit(client="x", coro_factory=_emits_progress)
+        submission = await pod.submit(client="x", coro_factory=_emits_progress, target_db="CORE")
         await submission.task
 
     assert pipeline_finished.is_set(), "pipeline must continue past a failed progress write"
@@ -1183,7 +1126,6 @@ async def test_progress_write_failure_does_not_abort_pipeline() -> None:
     assert info.result.total_chunks == 5
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_terminal_state_not_overwritten_after_reap() -> None:
     """A reaper-set terminal state must survive the original task's success write.
@@ -1207,7 +1149,7 @@ async def test_terminal_state_not_overwritten_after_reap() -> None:
         await blocker.wait()
         return _ok_result(total_chunks=99)
 
-    submission = await pod_runner.submit(client="x", coro_factory=_hangs_then_succeeds)
+    submission = await pod_runner.submit(client="x", coro_factory=_hangs_then_succeeds, target_db="CORE")
 
     # Simulate a heartbeat outage: backdate the row past the reap
     # threshold while the pipeline is still running.
@@ -1237,7 +1179,6 @@ async def test_terminal_state_not_overwritten_after_reap() -> None:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_terminal_failure_state_not_overwritten_after_reap() -> None:
     """The status-write guard also covers the failed-pipeline path.
@@ -1256,7 +1197,7 @@ async def test_terminal_failure_state_not_overwritten_after_reap() -> None:
         await blocker.wait()
         raise RuntimeError("late pipeline failure")
 
-    submission = await pod_runner.submit(client="x", coro_factory=_hangs_then_raises)
+    submission = await pod_runner.submit(client="x", coro_factory=_hangs_then_raises, target_db="CORE")
 
     await jobs_mod._test_force_updated(
         submission.job_id,
@@ -1282,7 +1223,6 @@ async def test_terminal_failure_state_not_overwritten_after_reap() -> None:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_heartbeat_skips_rows_without_local_task() -> None:
     """Heartbeat must not refresh rows whose local task has exited.
@@ -1299,6 +1239,7 @@ async def test_heartbeat_skips_rows_without_local_task() -> None:
     # whose task already exited but never reached a terminal write.
     long_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=10)
     orphan = jobs_mod._JobRow(
+        target_db="CORE",
         job_id="orphan-1",
         client="x",
         owner_pod=pod.pod_id,
@@ -1331,7 +1272,6 @@ async def test_heartbeat_skips_rows_without_local_task() -> None:
     assert info.status == EmbedJobStatus.FAILED
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_jobs_pinned_to_submitting_core_pool_after_rotation(monkeypatch) -> None:
     """[P2] Reads/writes for an in-flight job stay tied to the CORE that accepted it.
@@ -1368,6 +1308,7 @@ async def test_jobs_pinned_to_submitting_core_pool_after_rotation(monkeypatch) -
 
     # Phase 1: insert via pool_a.
     row = jobs_mod._JobRow(
+        target_db="CORE",
         job_id=job_id, client="x", owner_pod="pod-a",
         status=EmbedJobStatus.QUEUED, progress=None, result=None, error=None,
         created=now, updated=now,
@@ -1396,7 +1337,6 @@ async def test_jobs_pinned_to_submitting_core_pool_after_rotation(monkeypatch) -
     pool_b.acquire.assert_not_called()
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_terminal_write_after_core_rotation_uses_submitting_pool(monkeypatch) -> None:
     """[P2] Terminal status writes route through the pinned CORE.
@@ -1419,6 +1359,7 @@ async def test_terminal_write_after_core_rotation_uses_submitting_pool(monkeypat
 
     # Phase 1: insert via pool_a (submitting CORE).
     row = jobs_mod._JobRow(
+        target_db="CORE",
         job_id=job_id, client="x", owner_pod="pod-a",
         status=EmbedJobStatus.QUEUED, progress=None, result=None, error=None,
         created=now, updated=now,
@@ -1440,8 +1381,8 @@ async def test_terminal_write_after_core_rotation_uses_submitting_pool(monkeypat
     pool_b.acquire.assert_not_called()
 
 
-@pytest.mark.unit
-def test_update_result_sql_does_not_redundantly_clear_error() -> None:
+@pytest.mark.anyio
+async def test_update_result_sql_does_not_redundantly_clear_error() -> None:
     """[P1] ``_UPDATE_RESULT_SQL`` must not assign ``error`` alongside the result.
 
     Reviewer concern: the success path UPDATE included ``error = NULL``
@@ -1464,7 +1405,6 @@ def test_update_result_sql_does_not_redundantly_clear_error() -> None:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_returns_select_count() -> None:
     """The CORE-rotation guard's count helper returns the SELECT result."""
@@ -1478,7 +1418,6 @@ async def test_count_active_embed_jobs_returns_select_count() -> None:
     assert n == 7
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_treats_missing_table_as_zero() -> None:
     """A fresh CORE without ``aio_embed_jobs`` must report zero, not raise.
@@ -1496,7 +1435,6 @@ async def test_count_active_embed_jobs_treats_missing_table_as_zero() -> None:
     assert await jobs_mod.count_active_embed_jobs(pool) == 0
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_propagates_other_db_errors() -> None:
     """Non-ORA-00942 database errors must propagate so the caller can decide."""
@@ -1508,7 +1446,6 @@ async def test_count_active_embed_jobs_propagates_other_db_errors() -> None:
         await jobs_mod.count_active_embed_jobs(pool)
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_for_alias_filters_by_target_db() -> None:
     """[P2] Non-CORE rotation guard counts only jobs targeting *that* alias.
@@ -1539,7 +1476,6 @@ async def test_count_active_embed_jobs_for_alias_filters_by_target_db() -> None:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_includes_recent_terminal_rows() -> None:
     """[P2] Rotation guard must keep terminal rows readable across CORE rotation.
@@ -1581,7 +1517,6 @@ async def test_count_active_embed_jobs_includes_recent_terminal_rows() -> None:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_for_alias_excludes_terminal_rows() -> None:
     """[P2] The per-alias guard must NOT count terminal rows.
@@ -1638,7 +1573,6 @@ async def test_count_active_embed_jobs_for_alias_excludes_terminal_rows() -> Non
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_for_alias_treats_missing_table_as_zero() -> None:
     """[P2] A fresh CORE without ``aio_embed_jobs`` must report zero
@@ -1653,7 +1587,6 @@ async def test_count_active_embed_jobs_for_alias_treats_missing_table_as_zero() 
     assert await jobs_mod.count_active_embed_jobs_for_alias(pool, "MYDB") == 0
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_pinned_pool_released_after_terminal_write(monkeypatch) -> None:
     """The per-job pool pin is dropped once the row reaches a terminal
@@ -1668,6 +1601,7 @@ async def test_pinned_pool_released_after_terminal_write(monkeypatch) -> None:
     monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: pool_a)
 
     row = jobs_mod._JobRow(
+        target_db="CORE",
         job_id=job_id, client="x", owner_pod="pod-a",
         status=EmbedJobStatus.QUEUED, progress=None, result=None, error=None,
         created=now, updated=now,
@@ -1681,7 +1615,6 @@ async def test_pinned_pool_released_after_terminal_write(monkeypatch) -> None:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.anyio
 async def test_submit_registers_task_without_blocking_on_tasks_lock() -> None:
     """[P2] ``submit`` must not introduce a cancellable await between
@@ -1720,7 +1653,7 @@ async def test_submit_registers_task_without_blocking_on_tasks_lock() -> None:
         # ``TimeoutError`` and fails the test instead of hanging
         # the suite.
         submission = await asyncio.wait_for(
-            pod.submit(client="x", coro_factory=_hang),
+            pod.submit(client="x", coro_factory=_hang, target_db="CORE"),
             timeout=1.0,
         )
         # And the task must already be visible in ``_tasks`` by the
@@ -1740,41 +1673,3 @@ async def test_submit_registers_task_without_blocking_on_tasks_lock() -> None:
         await submission.task
     # And the entry was popped by ``_run``'s finally.
     assert submission.job_id not in pod._tasks
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_memory_job_store_is_independently_injectable() -> None:
-    """[refactor] ``MemoryJobStore`` works standalone over an injected dict/lock.
-
-    The JobStore split makes the in-memory backend a plain object with no
-    dependence on module globals or a live pool — so a test can construct one
-    directly and exercise the full create → read → terminal-write contract,
-    including the degraded-mode "missing row raises" guard.
-    """
-    from collections import OrderedDict
-
-    store = jobs_mod.MemoryJobStore(OrderedDict(), asyncio.Lock())
-    now = jobs_mod._utcnow()
-    row = jobs_mod._JobRow(
-        job_id="m1",
-        client="c",
-        owner_pod="p",
-        status=EmbedJobStatus.RUNNING,
-        target_db="CORE",
-        created=now,
-        updated=now,
-    )
-
-    await store.create(row)
-    got = await store.get("m1")
-    assert got is not None and got.status == EmbedJobStatus.RUNNING
-
-    await store.set_result("m1", _ok_result())
-    done = await store.get("m1")
-    assert done is not None and done.status == EmbedJobStatus.SUCCEEDED
-
-    # Terminal write against a row that only ever lived in CORE raises so the
-    # retry helper waits for the pool rather than dropping the write.
-    with pytest.raises(jobs_mod.EmbedJobStoreUnavailable):
-        await store.set_status("ghost", EmbedJobStatus.FAILED, "x")

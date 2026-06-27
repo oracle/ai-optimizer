@@ -13,7 +13,7 @@ heartbeat / reaper machinery; the persisted state lives in CORE
 (``aio_embed_jobs``) so any replica can serve a GET regardless of
 which pod accepted the POST.
 
-Three correctness invariants this module is responsible for:
+Two correctness invariants this module is responsible for:
 
 1. **Cross-replica visibility (P1).** Status reads always go through
    the shared store, never through a per-pod cache that another pod
@@ -24,11 +24,6 @@ Three correctness invariants this module is responsible for:
    pod crashed mid-pipeline (the work directory is an emptyDir volume
    so a crashed pipeline cannot meaningfully be resumed elsewhere —
    failing it is the only correct outcome).
-3. **Test ergonomics.** When CORE is unavailable (``get_core_pool()``
-   returns None) the store falls back to a process-local dict so unit
-   tests do not need a live database. Production deployments without
-   CORE are already rejected at endpoint level, so this fallback is
-   only ever exercised by tests.
 """
 
 import asyncio
@@ -38,7 +33,6 @@ import datetime
 import json
 import logging
 import uuid
-from collections import OrderedDict
 from typing import Awaitable, Callable, Optional
 
 import oracledb
@@ -133,12 +127,8 @@ class JobSubmission:
 
 
 # ---------------------------------------------------------------------------
-# In-memory fallback store (test ergonomics + degraded mode safety net)
+# Per-job CORE pool pin
 # ---------------------------------------------------------------------------
-
-
-_LOCAL_STORE: OrderedDict[str, _JobRow] = OrderedDict()
-_LOCAL_LOCK = asyncio.Lock()
 
 
 # Per-job CORE pool pin. Populated by ``_store_create`` when the
@@ -176,58 +166,17 @@ def _resolve_pool_for_job(job_id: str) -> Optional[oracledb.AsyncConnectionPool]
     return get_core_pool()
 
 
-class _LocalFallback:
-    """Toggle for the in-memory fallback path.
-
-    Production code never flips this — the endpoint guards CORE
-    availability up front, and a transient ``pool=None`` inside
-    ``_store_create`` means the user's submission would otherwise
-    live only in this pod's memory and break the cross-replica
-    polling contract. ``reset_local_jobs_store`` flips it for tests
-    so the pool-less unit tests in ``test_jobs.py`` keep functioning
-    without a real Oracle. Class attribute rather than a module-level
-    ``global`` so the toggle's mutation does not trip Pylint PLW0603.
-    """
-
-    allowed: bool = False
-
-
-def reset_local_jobs_store() -> None:
-    """Drop the in-memory fallback. Tests only.
-
-    Calling this also enables the fallback path: only test code
-    invokes this function, so production submissions never reach
-    the fallback even if CORE briefly goes None between the
-    endpoint's availability guard and ``_store_create``.
-    """
-    _LocalFallback.allowed = True
-    _LOCAL_STORE.clear()
-    _PINNED_POOLS.clear()
-
-
-def _require_store_or_local(detail: str) -> None:
-    """Gate the in-memory fallback for correctness-critical store ops.
-
-    The store has two CORE-unavailable policies, and the split is
-    deliberate:
-
-    * Correctness-critical single-job ops (``_store_create`` /
-      ``_store_get`` / ``_store_list_for_client``, and the terminal
-      writers via their own row-presence check) must NOT silently
-      consult ``_LOCAL_STORE`` — production never writes to it, so doing
-      so would report a real, persisted job as absent and break the
-      cross-replica polling contract. They call this guard, which raises
-      :class:`EmbedJobStoreUnavailable` unless the fallback is explicitly
-      enabled (``reset_local_jobs_store``, tests only); the endpoint then
-      returns a retry-able 503.
-    * Best-effort maintenance ops (``_store_set_progress``,
-      ``_store_heartbeat_active``, ``_store_reap_stale``,
-      ``_store_delete_ttl``) deliberately do NOT call this — when CORE is
-      gone they degrade to no-ops against the empty ``_LOCAL_STORE``
-      rather than crash the background loops that drive them.
-    """
-    if not _LocalFallback.allowed:
-        raise EmbedJobStoreUnavailable(detail)
+# The store has two CORE-unavailable policies, and the split is deliberate:
+#
+# * Correctness-critical single-job ops (``_store_create`` / ``_store_get`` /
+#   ``_store_list_for_client`` and the terminal writers) raise
+#   :class:`EmbedJobStoreUnavailable` when CORE is gone — reporting a real,
+#   persisted job as absent would break the cross-replica polling contract.
+#   The endpoint turns that into a retry-able 503.
+# * Best-effort maintenance ops (``_store_set_progress``,
+#   ``_store_heartbeat_active``, ``_store_reap_stale``, ``_store_delete_ttl``)
+#   degrade to no-ops when CORE is gone rather than crash the background loops
+#   that drive them.
 
 
 # ---------------------------------------------------------------------------
@@ -365,15 +314,13 @@ DELETE FROM aio_embed_jobs
 
 
 # ---------------------------------------------------------------------------
-# Persisted-row inflation + the two store backends.
+# Persisted-row inflation + the CORE-backed store.
 #
 # ``OracleJobStore`` holds the CORE-backed implementation of every store
-# operation; ``MemoryJobStore`` the process-local one. The ``_store_*``
-# dispatchers below pick a backend per call from live pool availability
-# (and own the per-job pool pin), so the manager keeps calling stable
-# ``_store_*`` entry points and never sees a backend choice. Both backends
-# expose the same observable contract, so tests exercise the same surface
-# as production.
+# operation. The ``_store_*`` dispatchers below resolve the pool per call
+# (live vs per-job pinned), own the per-job pool pin, and raise / no-op when
+# CORE is unavailable, so the manager keeps calling stable ``_store_*`` entry
+# points and never sees the pool resolution.
 # ---------------------------------------------------------------------------
 
 
@@ -426,18 +373,14 @@ async def _read_lob_safe_rows(cursor) -> list[tuple]:
     return out
 
 
-_ACTIVE_STATUSES_FOR_FILTER = frozenset({EmbedJobStatus.QUEUED, EmbedJobStatus.RUNNING})
-
-
 class EmbedJobStoreUnavailable(RuntimeError):
     """Raised when a terminal write cannot reach the persisted row.
 
     The job was originally inserted while CORE was up, but the pool is
-    now ``None`` (config reload, transient outage). Falling back to
-    ``_LOCAL_STORE`` would silently drop the terminal state because the
-    row was never replicated there. ``_terminal_write_with_retry``
-    catches this as a transient failure and re-attempts; if CORE comes
-    back, the next attempt goes through the DB path normally.
+    now ``None`` (config reload, transient outage), so the terminal state
+    cannot be persisted. ``_terminal_write_with_retry`` catches this as a
+    transient failure and re-attempts; if CORE comes back, the next
+    attempt goes through the DB path normally.
     """
 
 
@@ -460,8 +403,7 @@ class OracleJobStore:
     Holds the DB implementation of every store operation. Pool
     resolution (live vs per-job pinned) and the ``_PINNED_POOLS``
     lifecycle are the dispatcher's job (the ``_store_*`` functions), so
-    these methods assume *pool* is usable and never consult the
-    in-memory fallback.
+    these methods assume *pool* is usable.
     """
 
     def __init__(self, pool: oracledb.AsyncConnectionPool) -> None:
@@ -593,149 +535,20 @@ class OracleJobStore:
         return count or 0
 
 
-class MemoryJobStore:
-    """Process-local job store for tests and CORE-unavailable degraded mode.
-
-    Wraps a shared ``OrderedDict`` + lock. The dispatcher routes here
-    whenever the CORE pool is ``None`` — gated by ``_require_store_or_local``
-    for correctness-critical creates/reads, unconditionally for the
-    best-effort maintenance ops. The terminal writers raise when the row
-    is absent (it lives only in CORE, which we cannot reach) rather than
-    drop the write silently.
-    """
-
-    def __init__(self, rows: "OrderedDict[str, _JobRow]", lock: asyncio.Lock) -> None:
-        self._rows = rows
-        self._lock = lock
-
-    async def create(self, row: _JobRow) -> None:
-        async with self._lock:
-            self._rows[row.job_id] = row
-
-    async def get(self, job_id: str) -> Optional[_JobRow]:
-        async with self._lock:
-            return self._rows.get(job_id)
-
-    async def list_for_client(self, client: str, active_only: bool = False) -> list[_JobRow]:
-        async with self._lock:
-            rows = [r for r in self._rows.values() if r.client == client]
-            if active_only:
-                rows = [r for r in rows if r.status in _ACTIVE_STATUSES_FOR_FILTER]
-            return rows
-
-    async def set_progress(self, job_id: str, progress: EmbedJobProgress) -> None:
-        async with self._lock:
-            row = self._rows.get(job_id)
-            if row is None:
-                return
-            row.progress = progress
-            row.updated = _utcnow()
-
-    def _row_for_terminal_write(self, job_id: str, detail: str) -> Optional[_JobRow]:
-        """Return the row to terminally write, or None if it is already final.
-
-        Raises :class:`EmbedJobStoreUnavailable` when the row is absent — it
-        lives only in CORE which we cannot reach, so the retry helper must wait
-        for the pool rather than drop the write. Mirrors the SQL guard:
-        terminal rows are final, signalled by a ``None`` return. Call while
-        holding ``self._lock``.
-        """
-        row = self._rows.get(job_id)
-        if row is None:
-            raise EmbedJobStoreUnavailable(detail)
-        if row.status not in (EmbedJobStatus.QUEUED, EmbedJobStatus.RUNNING):
-            return None
-        return row
-
-    async def set_status(self, job_id: str, status: EmbedJobStatus, error: Optional[str]) -> None:
-        async with self._lock:
-            row = self._row_for_terminal_write(
-                job_id, f"CORE pool unavailable while updating status for embed job {job_id}"
-            )
-            if row is None:
-                return
-            row.status = status
-            row.error = error
-            row.updated = _utcnow()
-
-    async def set_result(self, job_id: str, result: EmbedProcessingResult) -> None:
-        async with self._lock:
-            row = self._row_for_terminal_write(
-                job_id, f"CORE pool unavailable while writing result for embed job {job_id}"
-            )
-            if row is None:
-                return
-            row.status = EmbedJobStatus.SUCCEEDED
-            row.result = result
-            row.error = None
-            row.updated = _utcnow()
-
-    async def heartbeat_active(self, owner_pod: str, job_ids: list[str]) -> tuple[int, bool]:
-        # In-memory path never validates CORE health, so ``hit_core`` is
-        # always False — tests that rely on the warmup gate seed timestamps
-        # directly via ``_prime_heartbeat`` instead.
-        if not job_ids:
-            return 0, False
-        bumped = 0
-        active = set(job_ids)
-        async with self._lock:
-            now = _utcnow()
-            for row in self._rows.values():
-                if (
-                    row.owner_pod == owner_pod
-                    and row.job_id in active
-                    and row.status in (EmbedJobStatus.QUEUED, EmbedJobStatus.RUNNING)
-                ):
-                    row.updated = now
-                    bumped += 1
-        return bumped, False
-
-    async def reap_stale(self, threshold_seconds: int, error: str) -> int:
-        reaped = 0
-        async with self._lock:
-            cutoff = _utcnow() - datetime.timedelta(seconds=threshold_seconds)
-            for row in self._rows.values():
-                if row.status in (EmbedJobStatus.QUEUED, EmbedJobStatus.RUNNING) and row.updated < cutoff:
-                    row.status = EmbedJobStatus.FAILED
-                    row.error = error
-                    row.updated = _utcnow()
-                    reaped += 1
-        return reaped
-
-    async def delete_ttl(self, ttl_seconds: int) -> int:
-        async with self._lock:
-            cutoff = _utcnow() - datetime.timedelta(seconds=ttl_seconds)
-            stale = [
-                jid
-                for jid, row in self._rows.items()
-                if row.status in (EmbedJobStatus.SUCCEEDED, EmbedJobStatus.FAILED)
-                and row.updated < cutoff
-            ]
-            for jid in stale:
-                self._rows.pop(jid, None)
-        return len(stale)
-
-
-# Singleton memory backend over the module-level fallback dict/lock.
-# Reset (and gated on) via ``reset_local_jobs_store`` / ``_LocalFallback``.
-_MEMORY_STORE = MemoryJobStore(_LOCAL_STORE, _LOCAL_LOCK)
-
-
 # ---------------------------------------------------------------------------
-# ``_store_*`` dispatchers — pick the backend per call from live pool
-# availability and own the per-job ``_PINNED_POOLS`` lifecycle. The manager
-# and JobHandle call only these.
+# ``_store_*`` dispatchers — resolve the pool per call (live vs per-job
+# pinned), own the per-job ``_PINNED_POOLS`` lifecycle, and raise / no-op when
+# CORE is unavailable. The manager and JobHandle call only these.
 # ---------------------------------------------------------------------------
 
 
 async def _store_create(row: _JobRow) -> None:
     pool = get_core_pool()
     if pool is None:
-        # CORE was cleared between the endpoint's availability guard and
-        # this call; raise in production (see ``_require_store_or_local``).
-        _require_store_or_local("Job state store is unavailable for this operation.")
-        await _MEMORY_STORE.create(row)
-        return
+        # CORE was cleared between the endpoint's availability guard and this
+        # call; raise so the endpoint returns a retry-able 503 rather than
+        # accepting a submission that was never persisted.
+        raise EmbedJobStoreUnavailable("Job state store is unavailable for this operation.")
     await OracleJobStore(pool).create(row)
     # Pin the pool that accepted the INSERT so subsequent reads / writes
     # for this ``job_id`` route back here even if ``/v1/databases/CORE`` is
@@ -753,45 +566,43 @@ async def _store_get(job_id: str) -> Optional[_JobRow]:
     if pool is None:
         # Reporting a persisted job as 404 would make polling clients
         # (which only retry on 503) stop polling a still-running job.
-        _require_store_or_local(
+        raise EmbedJobStoreUnavailable(
             f"Job state store is unavailable for this operation (job {job_id})."
         )
-        return await _MEMORY_STORE.get(job_id)
     return await OracleJobStore(pool).get(job_id)
 
 
 async def _store_list_for_client(client: str, active_only: bool = False) -> list[_JobRow]:
     pool = get_core_pool()
     if pool is None:
-        # An empty in-memory list would imply "this client has no jobs"
-        # even though jobs may exist in CORE we just can't reach.
-        _require_store_or_local(
+        # An empty list would imply "this client has no jobs" even though
+        # jobs may exist in CORE we just can't reach.
+        raise EmbedJobStoreUnavailable(
             f"Job state store is unavailable for this operation (client {client})."
         )
-        return await _MEMORY_STORE.list_for_client(client, active_only)
     return await OracleJobStore(pool).list_for_client(client, active_only)
 
 
 async def _store_set_progress(job_id: str, progress: EmbedJobProgress) -> None:
     # Route through the per-job pin so progress writes target the CORE that
-    # holds the row, not a rotated-in replacement. Best-effort: degrades to
-    # a memory no-op when the pool is gone.
+    # holds the row, not a rotated-in replacement. Best-effort: a progress
+    # update is transient, so drop it silently when the pool is gone.
     pool = _resolve_pool_for_job(job_id)
     if pool is None:
-        await _MEMORY_STORE.set_progress(job_id, progress)
         return
     await OracleJobStore(pool).set_progress(job_id, progress)
 
 
 async def _store_set_status(job_id: str, status: EmbedJobStatus, error: Optional[str]) -> None:
     # Route through the per-job pin so terminal writes target the CORE that
-    # holds the row. The memory backend raises if the row is absent (lives
-    # only in CORE) so the retry helper waits for the pool to return.
+    # holds the row. Raise when the pool is gone so ``_terminal_write_with_retry``
+    # waits for CORE to return rather than dropping the terminal state.
     pool = _resolve_pool_for_job(job_id)
     if pool is None:
-        await _MEMORY_STORE.set_status(job_id, status, error)
-    else:
-        await OracleJobStore(pool).set_status(job_id, status, error)
+        raise EmbedJobStoreUnavailable(
+            f"CORE pool unavailable while updating status for embed job {job_id}"
+        )
+    await OracleJobStore(pool).set_status(job_id, status, error)
     # Drop the per-job pin once the row reaches a terminal state so a
     # long-lived pod does not accumulate references to replaced pools.
     if status in (EmbedJobStatus.SUCCEEDED, EmbedJobStatus.FAILED):
@@ -799,13 +610,14 @@ async def _store_set_status(job_id: str, status: EmbedJobStatus, error: Optional
 
 
 async def _store_set_result(job_id: str, result: EmbedProcessingResult) -> None:
-    # See ``_store_set_status`` for the per-job pin rationale. Always
-    # transitions to SUCCEEDED, so always drop the pin afterwards.
+    # See ``_store_set_status`` for the per-job pin and raise-on-unavailable
+    # rationale. Always transitions to SUCCEEDED, so always drop the pin.
     pool = _resolve_pool_for_job(job_id)
     if pool is None:
-        await _MEMORY_STORE.set_result(job_id, result)
-    else:
-        await OracleJobStore(pool).set_result(job_id, result)
+        raise EmbedJobStoreUnavailable(
+            f"CORE pool unavailable while writing result for embed job {job_id}"
+        )
+    await OracleJobStore(pool).set_result(job_id, result)
     _PINNED_POOLS.pop(job_id, None)
 
 
@@ -819,27 +631,34 @@ async def _store_heartbeat_active(owner_pod: str, job_ids: list[str]) -> tuple[i
 
     Returns ``(bumped, hit_core)``. ``hit_core`` is True only when a CORE
     round-trip was actually performed; the manager uses it to decide
-    whether to advance its warmup-gate timestamps.
+    whether to advance its warmup-gate timestamps. Best-effort: when CORE
+    is gone, no round-trip happens and ``hit_core`` is False.
     """
     pool = get_core_pool()
     if pool is None:
-        return await _MEMORY_STORE.heartbeat_active(owner_pod, job_ids)
+        return 0, False
     return await OracleJobStore(pool).heartbeat_active(owner_pod, job_ids)
 
 
 async def _store_reap_stale(threshold_seconds: int, error: str) -> int:
-    """Mark non-terminal rows older than *threshold_seconds* as failed."""
+    """Mark non-terminal rows older than *threshold_seconds* as failed.
+
+    Best-effort: a no-op (0) when CORE is unavailable.
+    """
     pool = get_core_pool()
     if pool is None:
-        return await _MEMORY_STORE.reap_stale(threshold_seconds, error)
+        return 0
     return await OracleJobStore(pool).reap_stale(threshold_seconds, error)
 
 
 async def _store_delete_ttl(ttl_seconds: int) -> int:
-    """Delete terminal rows older than *ttl_seconds* — bounded retention."""
+    """Delete terminal rows older than *ttl_seconds* — bounded retention.
+
+    Best-effort: a no-op (0) when CORE is unavailable.
+    """
     pool = get_core_pool()
     if pool is None:
-        return await _MEMORY_STORE.delete_ttl(ttl_seconds)
+        return 0
     return await OracleJobStore(pool).delete_ttl(ttl_seconds)
 
 
@@ -910,12 +729,7 @@ async def _terminal_write_with_retry(
 async def _test_force_updated(job_id: str, when: datetime.datetime) -> None:
     """Set the ``updated`` timestamp on *job_id* directly. Tests only."""
     pool = get_core_pool()
-    if pool is None:
-        async with _LOCAL_LOCK:
-            row = _LOCAL_STORE.get(job_id)
-            if row is not None:
-                row.updated = when
-        return
+    assert pool is not None, "_test_force_updated requires a live CORE pool"
     async with pool.acquire() as conn:
         await execute_sql(
             conn,

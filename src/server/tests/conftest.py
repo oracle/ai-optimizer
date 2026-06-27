@@ -337,6 +337,44 @@ async def async_oracle_connection(oracle_db_container):
         await conn.close()
 
 
+@pytest.fixture
+async def embed_core_pool(oracle_db_container, monkeypatch):
+    """A live CORE pool wired into ``jobs.get_core_pool`` with an empty
+    ``aio_embed_jobs`` table.
+
+    Drives the embed job store against real Oracle: every ``_store_*`` call
+    routes through this pool, and the pinned-pool resolution falls back to it.
+    Tests that mock ``EmbedJobManager`` methods bypass the store and ignore it.
+    Returns the pool so callers can assert against it (e.g. pool pinning).
+
+    The schema DDL runs per test (it is idempotent ``CREATE ... IF NOT EXISTS``)
+    so the table self-heals for tests that follow one which drops it.
+    """
+    from server.app.database.config import close_pool, create_pool  # noqa: PLC0415
+    from server.app.database.objects import SCHEMA_DDL  # noqa: PLC0415
+    from server.app.database.sql import execute_sql  # noqa: PLC0415
+    from server.app.embed import jobs as jobs_mod  # noqa: PLC0415
+
+    del oracle_db_container
+    pool = await create_pool(make_core_db_config())
+    async with pool.acquire() as conn:
+        conn.autocommit = True
+        for ddl in SCHEMA_DDL:
+            await execute_sql(conn, ddl)
+        await execute_sql(conn, "DELETE FROM aio_embed_jobs")
+        conn.autocommit = False
+
+    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: pool)
+    jobs_mod.reset_embed_job_manager()
+    jobs_mod._PINNED_POOLS.clear()
+    try:
+        yield pool
+    finally:
+        jobs_mod.reset_embed_job_manager()
+        jobs_mod._PINNED_POOLS.clear()
+        await close_pool(pool)
+
+
 # ---------------------------------------------------------------------------
 # AgentSpec constants
 # ---------------------------------------------------------------------------
