@@ -137,8 +137,14 @@ class TestLoadOllamaModels:
         assert settings.model_configs[0].id == "llama3.2:1b"
 
     @pytest.mark.anyio
-    async def test_removes_models_no_longer_pulled(self, monkeypatch):
-        """Ollama models no longer on server are removed."""
+    async def test_keeps_configured_models_not_currently_pulled(self, monkeypatch):
+        """A configured Ollama model absent from the pulled set is kept, not removed.
+
+        Such a model is surfaced as ``not_pulled`` with a Pull button by the
+        connectivity probe, so discovery must leave it in place. Regression: it
+        used to be deleted, wiping models a user had added to pull later on the
+        next restart where the server was reachable.
+        """
         settings.model_configs = [
             ModelConfig(id="old-model", type="ll", provider="ollama", api_base=OLLAMA_URL, enabled=True),
         ]
@@ -152,8 +158,37 @@ class TestLoadOllamaModels:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await load_ollama_models()
 
-        assert len(settings.model_configs) == 1
-        assert settings.model_configs[0].id == TEST_OLLAMA_MODEL_ID
+        ids = {m.id for m in settings.model_configs}
+        assert "old-model" in ids  # configured-but-unpulled model preserved
+        assert TEST_OLLAMA_MODEL_ID in ids  # freshly discovered model added
+        assert len(settings.model_configs) == 2
+
+    @pytest.mark.anyio
+    async def test_existing_latest_id_matches_discovered_without_duplicating(self, monkeypatch):
+        """A saved ``foo:latest`` config matches the pulled ``foo:latest``.
+
+        Discovery normalizes the pulled name to ``foo``; the existing row must be
+        indexed by the same normalized key so it is updated in place rather than
+        leaving the original row and appending a second ``foo`` (which would be the
+        same model per find_model and show duplicate UI rows).
+        """
+        settings.model_configs = [
+            ModelConfig(id="mistral:latest", type="ll", provider="ollama", api_base="http://old:11434", enabled=True),
+        ]
+        monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
+        with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(
+                return_value=_mock_client(
+                    {"models": [{"name": "mistral:latest", "details": {"families": ["llama"]}}]}
+                )
+            )
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await load_ollama_models()
+
+        assert len(settings.model_configs) == 1  # no second 'mistral' row appended
+        model = settings.model_configs[0]
+        assert model.id == "mistral:latest"  # original row preserved, not replaced
+        assert model.api_base == OLLAMA_URL  # api_base refreshed to current server
 
     @pytest.mark.anyio
     async def test_preserves_persisted_settings(self, monkeypatch):

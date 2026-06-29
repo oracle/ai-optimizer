@@ -546,6 +546,26 @@ def test_upsert_model_composite_key_case_insensitive():
     assert settings.model_configs[0].provider == "OpenAI"
 
 
+def test_upsert_model_folds_ollama_latest_tag():
+    """Importing an Ollama id updates the existing ':latest' variant in place.
+
+    ``mistral`` and ``mistral:latest`` are the same model (see find_model), so
+    importing one must update the persisted other rather than seat a second,
+    ambiguous row.
+    """
+    settings.model_configs = [ModelConfig(id="mistral:latest", type="ll", provider="ollama")]
+    incoming = [ModelConfig.model_validate({"id": "mistral", "type": "ll", "provider": "ollama", "enabled": True})]
+
+    created, updated = upsert_list_field("model_configs", incoming)
+
+    assert len(created) == 0
+    assert len(updated) == 1
+    assert len(settings.model_configs) == 1
+    # Existing row updated in place; its original id is preserved.
+    assert settings.model_configs[0].id == "mistral:latest"
+    assert settings.model_configs[0].enabled is True
+
+
 # ---------------------------------------------------------------------------
 # ensure_core_alias
 # ---------------------------------------------------------------------------

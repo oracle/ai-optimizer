@@ -55,12 +55,10 @@ async def _register_discovered_model(
     api_base: str,
     entry: dict,
     existing: dict[tuple[str, str], ModelConfig],
-    discovered_keys: set[tuple[str, str]],
 ) -> None:
     """Register a single discovered Ollama model, preserving existing overrides."""
     name = _normalize_ollama_name(entry["name"])
     key = _model_key(name, "ollama")
-    discovered_keys.add(key)
 
     if key in existing:
         existing[key].api_base = api_base
@@ -108,34 +106,28 @@ async def load_ollama_models() -> None:
             resp.raise_for_status()
             data = resp.json()
 
-            # Index persisted ollama configs so we can preserve user overrides
+            # Index persisted ollama configs so we can preserve user overrides.
+            # Key by the *normalized* id (':latest' stripped) to match how
+            # discovered names are keyed below — otherwise a saved/imported
+            # ``foo:latest`` row would miss the discovered ``foo`` and get a
+            # duplicate appended instead of being updated in place.
             existing: dict[tuple[str, str], ModelConfig] = {}
             for m in settings.model_configs:
                 if m.id and m.provider and m.provider.casefold() == "ollama":
-                    existing[_model_key(m.id, m.provider)] = m
+                    existing[_model_key(_normalize_ollama_name(m.id), m.provider)] = m
 
-            # Register discovered models
-            discovered_keys: set[tuple[str, str]] = set()
+            # Register discovered models. A configured Ollama model that is not
+            # in the pulled set is deliberately left in place: the connectivity
+            # probe marks it ``not_pulled`` and the UI offers a Pull button, so
+            # discovery must not delete it (doing so wiped models a user added to
+            # pull later, on the next restart where the server was reachable).
             models = data.get("models", [])
             for entry in models:
-                await _register_discovered_model(client, api_base, entry, existing, discovered_keys)
+                await _register_discovered_model(client, api_base, entry, existing)
 
     except (httpx.HTTPError, ValueError) as exc:
         LOGGER.warning("Failed to discover Ollama models at %s: %s", api_base, exc)
         return
-
-    # Remove ollama models that are no longer pulled.
-    removed = [k for k in existing if k not in discovered_keys]
-    if removed:
-        settings.model_configs = [
-            m
-            for m in settings.model_configs
-            if not m.id
-            or not m.provider
-            or m.provider.casefold() != "ollama"
-            or _model_key(m.id, m.provider) in discovered_keys
-        ]
-        LOGGER.info("Removed %d Ollama model(s) no longer pulled", len(removed))
 
     LOGGER.info("Discovered %d Ollama model(s) at %s", len(models), api_base)
 

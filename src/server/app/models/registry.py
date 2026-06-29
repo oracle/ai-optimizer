@@ -11,6 +11,7 @@ import os
 from server.app.core.secrets import coerce_secret_str
 from server.app.core.settings import settings
 
+from .connectivity import canonical_model_id
 from .defaults import ENV_OVERRIDES, FACTORY_MODELS
 from .schemas import ModelConfig
 
@@ -24,6 +25,35 @@ LOGGER = logging.getLogger(__name__)
 def _model_key(model_id: str, provider: str) -> tuple[str, str]:
     """Return the composite unique key for a model config."""
     return (model_id.casefold(), provider.casefold())
+
+
+def dedupe_model_configs(configs: list[ModelConfig]) -> list[ModelConfig]:
+    """Drop duplicate ``(provider, id)`` model configs, keeping the first seen.
+
+    ``(provider, id)`` is a model's unique identity. Every write path
+    (``register_model``, the create/update endpoints, settings import) already
+    enforces this, but settings *restored* from persisted state can still carry
+    duplicates written by older code, and the restore assigns that list
+    verbatim. Routing the loaded list through this keeps the live
+    ``model_configs`` unique (and the next persist rewrites the cleaned list).
+    Entries missing id/provider are left untouched.
+    """
+    seen: set[tuple[str, str]] = set()
+    deduped: list[ModelConfig] = []
+    dropped = 0
+    for model in configs:
+        if model.id and model.provider:
+            # canonical_model_id folds Ollama ':latest' so 'foo' and 'foo:latest'
+            # dedupe as one model, matching find_model.
+            key = _model_key(canonical_model_id(model.provider, model.id), model.provider)
+            if key in seen:
+                dropped += 1
+                continue
+            seen.add(key)
+        deduped.append(model)
+    if dropped:
+        LOGGER.warning("Dropped %d duplicate model config(s) on load", dropped)
+    return deduped
 
 
 def register_model(model: ModelConfig) -> None:

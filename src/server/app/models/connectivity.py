@@ -31,6 +31,24 @@ def _normalize_ollama_name(name: str) -> str:
     return name[: -len(":latest")] if name.endswith(":latest") else name
 
 
+# Providers whose model ids carry an Ollama-style ``':latest'`` tag.
+_OLLAMA_PROVIDERS = {"ollama", "ollama_chat"}
+
+
+def canonical_model_id(provider: str | None, model_id: str | None) -> str:
+    """Return the identity-normalized model id.
+
+    For Ollama the ``':latest'`` tag is folded out so ``foo`` and ``foo:latest``
+    resolve to one model — the same rule ``find_model`` applies on lookup. Used by
+    the registry dedupe and the settings import/merge identity so every path agrees
+    on what counts as the same model.
+    """
+    model_id = model_id or ""
+    if (provider or "").casefold() in _OLLAMA_PROVIDERS:
+        return _normalize_ollama_name(model_id)
+    return model_id
+
+
 async def _fetch_ollama_models(client: httpx.AsyncClient, api_base: str) -> set[str] | None:
     """Return the set of model names available on an Ollama server, or *None* on failure."""
     try:
