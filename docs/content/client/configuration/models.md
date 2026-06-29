@@ -15,19 +15,17 @@ At a minimum, a _Language Model_ must be configured in the {{% short_app_ref %}}
 
 There is an extensive list of different model providers available to choose from.
 
-{{% notice style="code" title="Too Small to Handle" icon="fire" %}}
+{{% notice style="code" title="Too Small to Handle" icon="circle-info" %}}
 Some older and small _Language Models_ may not have native function/tool calling support for NL2SQL and RAG, which may result in unexpected results.
 {{% /notice %}}
 
 ## Configuration
 
-The models can either be configured using environment variables or through the {{% short_app_ref %}} interface. To configure models through environment variables, please read the [Additional Information](#additional-information) about the specific model you would like to configure.
+The models can either be configured using environment variables or through the {{% short_app_ref %}} interface. To configure models through environment variables, please read the [Additional Information](#additional-information) about the specific model provider you would like to configure.
 
-To configure an LLM or embedding model from the {{% short_app_ref %}}, navigate to _Configuration_ page and _Models_ tab:
+To configure a _Language Models_ or _Embedding Models_, from the {{% short_app_ref %}}, navigate to _Configuration_ page and _Models_ tab:
 
 ![Model Config](../images/models_config.png)
-
-Here you can add and/or configure both Large _Language Models_ and _Embedding Models_. 
 
 ### Add/Edit/Delete
 
@@ -35,7 +33,13 @@ Set the Provider, API Key, and Provider URL as required.  For _Language Models_ 
 
 ![Model Add/Edit](../images/models_add.png)
 
-Most models ship pre-configured but **disabled**.  When editing a model, tick the **Enabled** checkbox to activate it.  Note that enabling a model is necessary but not always sufficient for it to appear in selection lists—the {{% short_app_ref %}} only offers models that are both enabled and reachable (a valid Provider URL, and an API Key where one is required).  To remove a model, use the **Delete** button while editing it; any settings that referenced it are cleared automatically.
+Most models ship pre-configured but **disabled**. When editing a model, tick the **Enabled** checkbox to activate it.
+
+{{% notice style="code" title="More than meets the eye" icon="circle-info" %}}
+Enabling a model is necessary but not always sufficient for it to appear in selection lists. The {{% short_app_ref %}} only offers models that are both enabled and reachable (a valid Provider URL, and an API Key where one is required).
+{{% /notice %}}
+
+To remove a model, use the **Delete** button while editing it; any settings that referenced it are cleared automatically.
 
 #### Provider
 
@@ -85,10 +89,10 @@ Examples of CPU-friendly model choices include:
 
 When a selected model name includes a parameter count below 7B, such as `llama3.2:1b` or `gemma3:1b`, the {{% short_app_ref %}} automatically:
 
-1. **Disables Document Grading** - Skips the extra LLM call to grade document relevance
-2. **Disables Query Rephrasing** - Skips the extra LLM call to rephrase user queries
+1. **Disables Document Grading** - Skips the extra call to grade document relevance
+2. **Disables Query Rephrasing** - Skips the extra call to rephrase user queries
 
-For Vector Search queries that would otherwise use both features, these optimizations can reduce the number of LLM calls from 3 to 1 per query, significantly improving response times on CPU systems.
+For Vector Search queries that would otherwise use both features, these optimizations can reduce the number of _Language Model_ calls from 3 to 1 per query, significantly improving response times.
 
 ### Manual Control
 
@@ -108,6 +112,7 @@ You can manually enable or disable these features using the **Document Grading**
 
 {{< tabs "uniqueid" >}}
 {{% tab title="OCI GenAI" %}}
+
 # OCI GenAI
 
 [OCI GenAI](https://docs.oracle.com/en-us/iaas/Content/generative-ai/home.htm) is a fully managed service in Oracle Cloud Infrastructure (OCI) for seamlessly integrating versatile language models into a wide range of use cases, including writing assistance, summarization, analysis, and chat.
@@ -130,7 +135,7 @@ genai_region=<OCI GenAI Region>
 {{% tab title="Ollama" %}}
 # Ollama
 
-[Ollama](https://ollama.com/) is an open-source project that simplifies the running of LLMs and Embedding Models On-Premises.
+[Ollama](https://ollama.com/) is an open-source project that simplifies the running of _Language Models_ and _Embedding Models_ On-Premises.
 
 When configuring an Ollama model in the {{% short_app_ref %}}, set the `Provider URL` (e.g `http://127.0.0.1:11434`) and leave the API Key blank. Substitute the IP Address with the IP of where Ollama is running.
 
@@ -140,9 +145,11 @@ Ollama models can be enabled via environment variables. See [Model Overrides](/e
 
 ## Pulling Models
 
-You don't have to drop to the command line to make a model available. A **Pull** button appears next to any Ollama model on the _Models_ tab that isn't currently usable—most often because it hasn't been pulled to the Ollama server yet, though an unreachable Ollama server can also be the cause. Click it and the {{% short_app_ref %}} downloads the model from the Ollama registry through your configured Ollama server, streaming the download progress as it goes.
+You don't have to drop to the command line to make an Ollama model available. A **Pull** button appears next to any Ollama model on the _Models_ tab that hasn't been pulled to the Ollama server yet.
 
-Once the pull finishes, the model is validated against the server and is ready to use.
+![Ollama Pull](../images/ollama_pull.png)
+
+Click the "Pull" button and the {{% short_app_ref %}} downloads the model from the Ollama registry.
 
 ## Quick-start
 
