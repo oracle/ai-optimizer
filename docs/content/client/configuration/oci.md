@@ -31,7 +31,7 @@ To configure OCI access from the {{% short_app_ref %}}, navigate to _Configurati
 
 Provide the values obtained by [generating an API Key](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm#two).
 
-OCI GenAI Services can also be configured on this page, once OCI access has been confirmed.
+OCI GenAI Services can also be configured on this page, once OCI access has been confirmed.  See [Loading OCI GenAI Models](#loading-oci-genai-models).
 
 ---
 
@@ -76,3 +76,16 @@ The following authentication types are supported via the `AIO_OCI_CLI_AUTH` vari
 | `resource_principal` | Resource Principals signer | OCI Functions and other resource-principal-enabled services |
 | `oke_workload_identity` | OKE workload identity resource principal | Pods running on Oracle Kubernetes Engine |
 | `security_token` | Security token from file with private key | OCI Cloud Shell and token-based authentication |
+
+---
+
+## Loading OCI GenAI Models
+
+The [OCI Generative AI service](https://docs.oracle.com/en-us/iaas/Content/generative-ai/home.htm) provides Private Cloud Large Language and Embedding models.  Unlike other providers, these models are not added one at a time—the {{% short_app_ref %}} loads them for you.
+
+There are two ways the models get loaded:
+
+- **From the interface:** On the [OCI](#interface) tab—once OCI access is usable—enter the **GenAI Compartment OCID**, click **Check for OCI GenAI Models**, choose a **Region**, then click **Enable Region Models**.  The {{% short_app_ref %}} queries the OCI GenAI service for that region, then registers and enables every chat and embedding model it offers.
+- **At startup:** When a usable OCI profile already has a GenAI Compartment OCID and Region persisted—from a previous configuration, a [config file](#config-file), or [environment variables](#environment-variables)—the {{% short_app_ref %}} loads that region's models automatically.
+
+Either way, the models appear on the _Models_ tab.  Changing the configured Region clears the previously loaded OCI models; the new region's models are loaded the next time you run **Enable Region Models** or at the next startup.
