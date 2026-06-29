@@ -1167,6 +1167,55 @@ class TestRenderModelRows:
 
         assert cols[3].button.call_count == 1
 
+    def test_duplicate_model_configs_do_not_collide_on_keys(self, make_model_state, mock_st):
+        """Duplicate entries must still produce unique widget keys.
+
+        Regression: two identical ``ll/ollama/mistral:latest`` rows (e.g. stale
+        persisted state) generated the same Streamlit key and crashed the whole
+        config page with StreamlitDuplicateElementKey. Every row's widgets must
+        carry a per-row tiebreaker so the page renders instead.
+        """
+        from client.app.content.config.tabs.models import render_model_rows
+
+        dup = {
+            "id": "mistral:latest",
+            "provider": "ollama",
+            "type": "ll",
+            "enabled": True,
+            "api_base": "http://ollama",
+            "status": "unreachable",
+        }
+        state = make_model_state(model_configs=[dict(dup), dict(dup)])
+
+        seen_keys: set = set()
+
+        def _register(*_args, key=None, **_kw):
+            # Mimic Streamlit's contract: a reused key is a hard error.
+            if key is not None:
+                assert key not in seen_keys, f"duplicate widget key: {key}"
+                seen_keys.add(key)
+            return False
+
+        def _cols(widths, **_kw):
+            cs = [MagicMock() for _ in range(len(widths))]
+            for col in cs:
+                col.text_input.side_effect = _register
+                col.button.side_effect = _register
+            return cs
+
+        mock_st.columns.side_effect = _cols
+        mock_st.button.side_effect = _register
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers"),
+        ):
+            render_model_rows("ll")  # must not raise
+
+        # Both duplicate rows rendered: 3 text_inputs each, all keys distinct.
+        assert len(seen_keys) >= 6
+
     def test_pull_button_rendered_for_unpulled_ollama(self, make_model_state, mock_st):
         """Ollama models whose server is up but not pulled get a Pull button bound to pull_model_dialog."""
         from client.app.content.config.tabs.models import pull_model_dialog, render_model_rows
