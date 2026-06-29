@@ -91,7 +91,7 @@ _COMPLETION_CASES = [
 
 
 @pytest.mark.parametrize("label,call_kwargs,stream", _COMPLETION_CASES, ids=[c[0] for c in _COMPLETION_CASES])
-def test_openai_lineup_accepts(label, call_kwargs, stream, openai_ll_models, live_oci_litellm_kwargs):
+async def test_openai_lineup_accepts(label, call_kwargs, stream, openai_ll_models, live_oci_litellm_kwargs):
     """OCI accepts the parameter combination for each discovered OpenAI-family model.
 
     Per-model outcome is accumulated into a single ``pytest.fail`` so that one

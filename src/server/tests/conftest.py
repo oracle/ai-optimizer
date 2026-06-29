@@ -74,13 +74,6 @@ from server.app.main import app
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
 
-
-@pytest.fixture
-def anyio_backend():
-    """Force asyncio backend globally to avoid trio dependency."""
-    return "asyncio"
-
-
 # ---------------------------------------------------------------------------
 # Oracle container and constants
 # ---------------------------------------------------------------------------
