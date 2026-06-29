@@ -169,9 +169,15 @@ async def test_terminal_state_is_final(core_pool):
 
 
 async def test_heartbeat_active_bumps_updated(core_pool):
-    """Heartbeat refreshes ``updated`` for owned, non-terminal rows."""
+    """Heartbeat refreshes ``updated`` for owned, non-terminal rows.
+
+    The heartbeat writes ``updated = SYSTIMESTAMP`` (the *DB server* clock),
+    while ``old`` below is a *host* clock value. To keep the assertion robust
+    when the container clock and the host clock disagree, ``old`` sits days in
+    the past — far enough that no realistic skew can invert the comparison.
+    """
     await jobs_mod._store_create(_make_row("it-hb", owner_pod="pod-1"))
-    old = jobs_mod._utcnow() - datetime.timedelta(hours=1)
+    old = jobs_mod._utcnow() - datetime.timedelta(days=2)
     await jobs_mod._test_force_updated("it-hb", old)
 
     bumped, hit_core = await jobs_mod._store_heartbeat_active("pod-1", ["it-hb"])
@@ -185,7 +191,10 @@ async def test_heartbeat_active_bumps_updated(core_pool):
 async def test_reap_stale_marks_failed(core_pool):
     """A stale running row is reaped to failed with the supplied error."""
     await jobs_mod._store_create(_make_row("it-reap"))
-    await jobs_mod._test_force_updated("it-reap", jobs_mod._utcnow() - datetime.timedelta(hours=1))
+    # Forced ``updated`` (host clock) vs the reaper's SYSTIMESTAMP predicate
+    # (DB clock): keep the staleness gap days-wide so host/container clock
+    # skew can't push the row back inside the threshold window.
+    await jobs_mod._test_force_updated("it-reap", jobs_mod._utcnow() - datetime.timedelta(days=2))
 
     reaped = await jobs_mod._store_reap_stale(threshold_seconds=60, error="stale")
     assert reaped >= 1
@@ -203,7 +212,9 @@ async def test_delete_ttl_removes_old_terminal_rows(core_pool):
         "it-ttl",
         EmbedProcessingResult(message="done", total_chunks=1, processed_files=[], skipped_files=[]),
     )
-    await jobs_mod._test_force_updated("it-ttl", jobs_mod._utcnow() - datetime.timedelta(hours=2))
+    # Days-wide gap (host clock) keeps the TTL delete robust against
+    # host/container clock skew vs the SYSTIMESTAMP retention predicate.
+    await jobs_mod._test_force_updated("it-ttl", jobs_mod._utcnow() - datetime.timedelta(days=2))
 
     deleted = await jobs_mod._store_delete_ttl(ttl_seconds=60)
     assert deleted >= 1
