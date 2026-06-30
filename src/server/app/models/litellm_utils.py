@@ -162,7 +162,7 @@ class LiteLlmModelSpec:
     provider:
         Raw provider string (e.g. "openai", "ollama", "oci").
     model_id:
-        Model name within the provider (e.g. "gpt-5.4-mini", "qwen3:8b").
+        Model name within the provider (e.g. "gpt-5.4-mini", "qwen3:4b").
     temperature, top_p, max_tokens, frequency_penalty, presence_penalty:
         Caller-provided overrides.  When ``None``, the value from the
         matching ``ModelConfig`` in settings is used as the default.

@@ -70,6 +70,16 @@ FACTORY_MODELS: list[dict] = [
         'max_input_tokens': 16384,
     },
     {
+        'id': 'qwen3:4b',
+        'enabled': False,
+        'type': 'll',
+        'provider': 'ollama',
+        'api_key': '',
+        'api_base': 'http://localhost:11434',
+        'max_tokens': 32768,
+        'max_input_tokens': 40960,
+    },
+    {
         'id': 'thenlper/gte-base',
         'enabled': False,
         'type': 'embed',
@@ -108,5 +118,14 @@ FACTORY_MODELS: list[dict] = [
         'api_key': '',
         'max_chunk_size': 8192,
     },
+    {
+        'id': 'mxbai-embed-large',
+        'enabled': False,
+        'type': 'embed',
+        'provider': 'ollama',
+        'api_base': 'http://localhost:11434',
+        'api_key': '',
+        'max_chunk_size': 512,
+    }
 ]
 # fmt: on
