@@ -41,7 +41,7 @@ from server.app.mcp.proxies.sqlcl import close_sqlcl_proxy, register_sqlcl_proxy
 from server.app.mcp.tools.registry import register_mcp_tools
 from server.app.models.connectivity import check_model_reachability
 from server.app.models.ollama import load_ollama_models
-from server.app.models.registry import apply_env_overrides, load_default_models
+from server.app.models.registry import apply_env_overrides, dedupe_model_configs, load_default_models
 from server.app.oci.registry import load_oci_profiles
 from server.app.otel import init_telemetry, instrument_fastapi
 
@@ -66,7 +66,10 @@ async def _apply_configured_overlay(protected: set[str]) -> None:
         ensure_core_alias(settings.database_configs, settings.client_settings, _client_store)
         has_models = "model_configs" in source.model_fields_set if from_file else bool(source.model_configs)
         if has_models:
-            settings.model_configs = source.model_configs
+            # Restored settings can carry duplicate (provider, id) entries written
+            # by older code; the assignment below would otherwise persist them and
+            # surface as duplicate rows in the UI. Dedupe so the invariant holds.
+            settings.model_configs = dedupe_model_configs(source.model_configs)
             if not from_file:
                 apply_env_overrides()
         if source.prompt_configs:

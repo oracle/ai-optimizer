@@ -12,7 +12,13 @@ from pydantic import SecretStr
 from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 from server.app.models.defaults import FACTORY_MODELS
-from server.app.models.registry import _model_key, apply_env_overrides, load_default_models, register_model
+from server.app.models.registry import (
+    _model_key,
+    apply_env_overrides,
+    dedupe_model_configs,
+    load_default_models,
+    register_model,
+)
 from server.app.models.schemas import ModelConfig
 from server.tests.constants import TEST_OPENAI_MODEL_ID, TEST_OPENAI_MODEL_ID_MIXEDCASE
 
@@ -178,3 +184,52 @@ class TestApplyEnvOverrides:
         apply_env_overrides()
         assert reveal(cfg1.api_key) == "sk-shared"
         assert reveal(cfg2.api_key) == "sk-shared"
+
+
+# ---------------------------------------------------------------------------
+# dedupe_model_configs
+# ---------------------------------------------------------------------------
+
+
+class TestDedupeModelConfigs:
+    """Tests for dedupe_model_configs (restore-time invariant enforcement)."""
+
+    def test_drops_duplicate_provider_id_keeping_first(self):
+        """Two entries with the same (provider, id) collapse to the first."""
+        first = ModelConfig(id="mistral:latest", type="ll", provider="ollama", api_base="http://a")
+        dup = ModelConfig(id="mistral:latest", type="ll", provider="ollama", api_base="http://b")
+        other = ModelConfig(id="llama3", type="ll", provider="ollama")
+
+        result = dedupe_model_configs([first, dup, other])
+
+        assert result == [first, other]
+        assert result[0].api_base == "http://a"
+
+    def test_dedupe_is_case_insensitive(self):
+        """Identity matches case-insensitively, mirroring _model_key."""
+        a = ModelConfig(id="GPT-5-Mini", type="ll", provider="OpenAI")
+        b = ModelConfig(id="gpt-5-mini", type="ll", provider="openai")
+
+        assert dedupe_model_configs([a, b]) == [a]
+
+    def test_dedupe_folds_ollama_latest(self):
+        """Ollama 'foo' and 'foo:latest' are the same model and collapse to one."""
+        bare = ModelConfig(id="mistral", type="ll", provider="ollama")
+        latest = ModelConfig(id="mistral:latest", type="ll", provider="ollama")
+
+        assert dedupe_model_configs([bare, latest]) == [bare]
+        # Order-independent: ':latest' first also folds.
+        assert dedupe_model_configs([latest, bare]) == [latest]
+
+    def test_distinct_models_are_preserved_in_order(self):
+        """Non-duplicate entries pass through unchanged, order preserved."""
+        configs = [
+            ModelConfig(id="gpt-5-mini", type="ll", provider="openai"),
+            ModelConfig(id="mistral", type="ll", provider="ollama"),
+            ModelConfig(id="llama3", type="ll", provider="ollama"),
+        ]
+        assert dedupe_model_configs(configs) == configs
+
+    def test_empty_list(self):
+        """An empty list yields an empty list."""
+        assert dedupe_model_configs([]) == []

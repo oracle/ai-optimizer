@@ -493,6 +493,39 @@ class TestRule6OllamaModels:
         assert settings.model_configs[1].enabled is True
 
     @pytest.mark.anyio
+    async def test_bulk_recheck_defaults_ollama_api_base(self, monkeypatch):
+        """An Ollama config with no api_base defaults to the configured server.
+
+        Mirrors ``check_single_model`` so an imported/loaded config (whose URL
+        discovery couldn't populate while Ollama was down) recovers on a later
+        bulk recheck once the server comes online — instead of being pinned
+        ``unreachable`` forever.
+        """
+        monkeypatch.setenv("AIO_ON_PREM_OLLAMA_URL", "http://localhost:11434")
+        settings.model_configs = [
+            ModelConfig(id=TEST_OLLAMA_MODEL_ID, type="ll", provider="ollama", enabled=True),  # no api_base
+        ]
+        with patch("server.app.models.connectivity.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=_ollama_mock_client())
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await check_model_reachability()
+
+        assert settings.model_configs[0].api_base == "http://localhost:11434"  # defaulted from env
+        assert settings.model_configs[0].status == "available"
+
+    @pytest.mark.anyio
+    async def test_bulk_recheck_no_ollama_server_marks_unreachable(self, monkeypatch):
+        """With no Ollama server configured, a no-api_base config is unreachable."""
+        monkeypatch.delenv("AIO_ON_PREM_OLLAMA_URL", raising=False)
+        monkeypatch.delenv("ON_PREM_OLLAMA_URL", raising=False)
+        settings.model_configs = [
+            ModelConfig(id=TEST_OLLAMA_MODEL_ID, type="ll", provider="ollama", enabled=True),  # no api_base
+        ]
+        await check_model_reachability()
+
+        assert settings.model_configs[0].status == "unreachable"
+
+    @pytest.mark.anyio
     async def test_check_single_model_ollama_available(self):
         """check_single_model verifies ollama model via /api/tags."""
         model = ModelConfig(
