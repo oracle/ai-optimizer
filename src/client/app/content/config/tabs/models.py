@@ -5,7 +5,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore selectbox litellm ollama
 
 import logging
-import time
 import urllib.parse
 from typing import Any, Literal
 
@@ -451,88 +450,14 @@ def render_model_rows(model_type: str) -> None:
 
 
 #####################################################
-# Reachability follow-up
-#####################################################
-# The server re-probes unreachable endpoints in the background (throttled) and only
-# serializes the result on a *later* fetch, so the initial page load shows stale status.
-# While a model is unreachable, refetch on a short timer so a recovery (e.g. Ollama
-# started after the server) becomes visible without a user interaction — bounded so a
-# persistently-down endpoint doesn't refetch forever.
-_REACHABILITY_REFRESH_KEY = "_models_reachability_refresh"
-_RECOVERY_DEADLINE_KEY = "_models_recovery_deadline"
-_RECOVERY_PENDING_KEY = "_models_recovery_pending"  # identities the live window covers
-_RECOVERY_POLL_INTERVAL = 3.0  # seconds between follow-up refetches
-_RECOVERY_POLL_WINDOW = 25.0  # > server recheck throttle (20s) so one recheck can land
-
-
-def _unreachable_identities() -> frozenset[str]:
-    """``provider/id`` of every enabled model currently ``unreachable`` — the one status
-    the background recheck can flip to available once its endpoint comes online."""
-    models = state.get("settings", {}).get("model_configs") or []
-    return frozenset(
-        f"{m.get('provider')}/{m.get('id')}"
-        for m in models
-        if m.get("enabled") and m.get("status") == "unreachable"
-    )
-
-
-def _reachability_poll_interval(now: float) -> float | None:
-    """Manage the bounded follow-up window and return the fragment ``run_every``.
-
-    Returns the poll interval while a recovery is pending and the window is open,
-    else ``None`` (polling off). A fresh window is armed whenever the *set* of
-    unreachable models changes — first sight, a newly-unreachable model, or a
-    replacement — so a new outage always gets its own bounded window even if a
-    previous one already elapsed. Once the window elapses with the set unchanged
-    the deadline is *retained* (a persistent, unchanged outage is polled once, not
-    re-armed); the window state is cleared only when nothing is unreachable.
-    """
-    pending = _unreachable_identities()
-    if not pending:
-        state.pop(_RECOVERY_DEADLINE_KEY, None)
-        state.pop(_RECOVERY_PENDING_KEY, None)
-        return None
-    if pending != state.get(_RECOVERY_PENDING_KEY):
-        # The unreachable set changed — treat it as a new outage and (re-)arm the window.
-        state[_RECOVERY_PENDING_KEY] = pending
-        state[_RECOVERY_DEADLINE_KEY] = now + _RECOVERY_POLL_WINDOW
-    if now >= state[_RECOVERY_DEADLINE_KEY]:
-        return None
-    return _RECOVERY_POLL_INTERVAL
-
-
-def _reachability_follow_up() -> None:
-    """Refetch settings on a short timer so a background recheck that landed after the
-    initial page fetch becomes visible without the user having to interact."""
-    interval = _reachability_poll_interval(time.monotonic())
-    if interval is None:
-        # Nothing pending (or the bounded window has elapsed). Don't invoke the fragment
-        # at all: its body unconditionally reruns once polling is inactive, which on a
-        # healthy page would loop the whole app on every render.
-        return
-
-    @st.fragment(run_every=interval)
-    def _poll() -> None:
-        helpers.refresh_settings(clear_runtime=False)
-        if _reachability_poll_interval(time.monotonic()) is None:
-            # Recovery landed (or window elapsed): a full rerun re-renders the rows with
-            # the fresh status; the next render sees interval=None and stops the fragment.
-            st.rerun()
-
-    _poll()
-
-
-#####################################################
 # MAIN
 #####################################################
 def display_models() -> None:
     """Streamlit GUI"""
     # Pick up endpoints that came online since the page was last loaded (e.g. Ollama
-    # started after the server). The server re-probes in the background; this re-fetches
-    # the result (throttled so it isn't refetched on every rerun) and, while anything is
-    # still unreachable, schedules a bounded follow-up fetch to catch the landed recheck.
-    helpers.refresh_settings_throttled(_REACHABILITY_REFRESH_KEY)
-    _reachability_follow_up()
+    # started after the server). The server re-probes in the background; this just
+    # re-fetches the result, throttled so it isn't refetched on every rerun.
+    helpers.refresh_settings_throttled("_models_reachability_refresh")
     locked_notice()
     st.subheader("Language", divider="red")
     with st.container(border=True):
