@@ -1506,6 +1506,7 @@ class TestDisplayModels:
 
         with (
             patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", AttrDict({"settings": {"model_configs": []}})),
             patch(f"{MODULE}.render_model_rows"),
             patch(f"{MODULE}.helpers.refresh_settings_throttled"),
         ):
@@ -1524,6 +1525,7 @@ class TestDisplayModels:
 
         with (
             patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", AttrDict({"settings": {"model_configs": []}})),
             patch(f"{MODULE}.render_model_rows") as mock_rows,
             patch(f"{MODULE}.helpers.refresh_settings_throttled"),
         ):
@@ -1532,3 +1534,217 @@ class TestDisplayModels:
         calls = [c.args[0] for c in mock_rows.call_args_list]
         assert "ll" in calls
         assert "embed" in calls
+
+
+# ---------------------------------------------------------------------------
+# reachability follow-up
+# ---------------------------------------------------------------------------
+
+
+class TestReachabilityFollowUp:
+    """The bounded follow-up that refetches until a recovery lands or the window elapses."""
+
+    def _state(
+        self, status: str | None, *, enabled: bool = True, deadline=None, provider="ollama", model_id="m1"
+    ) -> AttrDict:
+        configs = [{"provider": provider, "id": model_id, "status": status, "enabled": enabled}] if status else []
+        s = AttrDict({"settings": {"model_configs": configs}})
+        if deadline is not None:
+            # An armed window also records which identities it covers; seed both so the
+            # "existing window" cases reflect a consistent already-armed state.
+            s["_models_recovery_deadline"] = deadline
+            s["_models_recovery_pending"] = frozenset(
+                f"{m['provider']}/{m['id']}" for m in configs if m["enabled"] and m["status"] == "unreachable"
+            )
+        return s
+
+    def _passthrough_st(self) -> MagicMock:
+        """A mock ``st`` whose ``@st.fragment`` runs the decorated body inline, so a
+        test actually exercises the real fragment closure (not a MagicMock stand-in)."""
+        m = MagicMock()
+        m.fragment.return_value = lambda fn: fn  # decorator → return the body unchanged
+        return m
+
+    def test_no_polling_when_all_reachable(self):
+        """An all-available page does not arm the follow-up timer."""
+        from client.app.content.config.tabs import models
+
+        state = self._state("available")
+        with patch(f"{MODULE}.state", state):
+            assert models._reachability_poll_interval(now=100.0) is None
+        assert "_models_recovery_deadline" not in state
+        assert "_models_recovery_pending" not in state
+
+    def test_arms_window_and_polls_while_unreachable(self):
+        """An unreachable model arms the window and returns the poll interval."""
+        from client.app.content.config.tabs import models
+
+        state = self._state("unreachable")
+        with patch(f"{MODULE}.state", state):
+            interval = models._reachability_poll_interval(now=100.0)
+        assert interval == models._RECOVERY_POLL_INTERVAL
+        assert state["_models_recovery_deadline"] == 100.0 + models._RECOVERY_POLL_WINDOW
+        assert state["_models_recovery_pending"] == frozenset({"ollama/m1"})
+
+    def test_keeps_existing_deadline_on_later_poll(self):
+        """A second poll within the window keeps the original deadline (no extension)."""
+        from client.app.content.config.tabs import models
+
+        deadline = 100.0 + models._RECOVERY_POLL_WINDOW
+        state = self._state("unreachable", deadline=deadline)
+        with patch(f"{MODULE}.state", state):
+            interval = models._reachability_poll_interval(now=110.0)
+        assert interval == models._RECOVERY_POLL_INTERVAL
+        assert state["_models_recovery_deadline"] == deadline
+
+    def test_stops_polling_after_window_elapses(self):
+        """Past the deadline, polling stops even if the model is still unreachable —
+        and the expired deadline is preserved so the window is not re-armed (P2)."""
+        from client.app.content.config.tabs import models
+
+        deadline = 100.0 + models._RECOVERY_POLL_WINDOW
+        state = self._state("unreachable", deadline=deadline)
+        with patch(f"{MODULE}.state", state):
+            assert models._reachability_poll_interval(now=deadline + 1) is None
+            # A later render must still see "expired", not re-arm a fresh window.
+            assert models._reachability_poll_interval(now=deadline + 100) is None
+        assert state["_models_recovery_deadline"] == deadline
+
+    def test_disarms_when_model_recovers(self):
+        """Once nothing is unreachable, polling stops and the deadline is cleared."""
+        from client.app.content.config.tabs import models
+
+        deadline = 100.0 + models._RECOVERY_POLL_WINDOW
+        state = self._state("available", deadline=deadline)
+        with patch(f"{MODULE}.state", state):
+            assert models._reachability_poll_interval(now=110.0) is None
+        assert "_models_recovery_deadline" not in state
+        assert "_models_recovery_pending" not in state
+
+    def test_changed_unreachable_set_rearms_expired_window(self):
+        """A *different* unreachable model after the window elapsed re-arms a fresh
+        window: the bound is per-outage (tracked by identity), not session-wide (P2)."""
+        from client.app.content.config.tabs import models
+
+        elapsed = 100.0 + models._RECOVERY_POLL_WINDOW
+        # Window already armed + elapsed for model 'a'; now 'b' is the unreachable one
+        # (replacement) without any intermediate all-reachable render to clear state.
+        state = AttrDict(
+            {
+                "settings": {
+                    "model_configs": [{"provider": "ollama", "id": "b", "status": "unreachable", "enabled": True}]
+                },
+                "_models_recovery_deadline": elapsed,
+                "_models_recovery_pending": frozenset({"ollama/a"}),
+            }
+        )
+        now = elapsed + 100  # well past 'a's window
+        with patch(f"{MODULE}.state", state):
+            interval = models._reachability_poll_interval(now=now)
+        assert interval == models._RECOVERY_POLL_INTERVAL
+        assert state["_models_recovery_pending"] == frozenset({"ollama/b"})
+        assert state["_models_recovery_deadline"] == now + models._RECOVERY_POLL_WINDOW
+
+    def test_additional_unreachable_model_rearms_expired_window(self):
+        """A model going unreachable on top of an already-elapsed outage re-arms the
+        window (now covering both), so the newcomer's recovery is fetched (P2)."""
+        from client.app.content.config.tabs import models
+
+        elapsed = 100.0 + models._RECOVERY_POLL_WINDOW
+        state = AttrDict(
+            {
+                "settings": {
+                    "model_configs": [
+                        {"provider": "ollama", "id": "a", "status": "unreachable", "enabled": True},
+                        {"provider": "openai", "id": "b", "status": "unreachable", "enabled": True},
+                    ]
+                },
+                "_models_recovery_deadline": elapsed,
+                "_models_recovery_pending": frozenset({"ollama/a"}),  # only 'a' covered before
+            }
+        )
+        now = elapsed + 100
+        with patch(f"{MODULE}.state", state):
+            interval = models._reachability_poll_interval(now=now)
+        assert interval == models._RECOVERY_POLL_INTERVAL
+        assert state["_models_recovery_pending"] == frozenset({"ollama/a", "openai/b"})
+        assert state["_models_recovery_deadline"] == now + models._RECOVERY_POLL_WINDOW
+
+    def test_disabled_unreachable_model_does_not_poll(self):
+        """A disabled model is not a pending recovery — it never arms the timer."""
+        from client.app.content.config.tabs import models
+
+        state = self._state("unreachable", enabled=False)
+        with patch(f"{MODULE}.state", state):
+            assert models._reachability_poll_interval(now=100.0) is None
+
+    def test_follow_up_inactive_does_not_refetch_or_rerun(self):
+        """A healthy page must not refetch or rerun: invoking the fragment body while
+        polling is inactive would loop the whole app (P1)."""
+        from client.app.content.config.tabs import models
+
+        st_mock = self._passthrough_st()
+        state = self._state("available")
+        with (
+            patch(f"{MODULE}.st", st_mock),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers.refresh_settings") as mock_refresh,
+        ):
+            models._reachability_follow_up()
+
+        mock_refresh.assert_not_called()
+        st_mock.rerun.assert_not_called()
+
+    def test_follow_up_active_refetches_without_rerun(self):
+        """While still unreachable inside the window, the body refetches but does not
+        rerun (it waits for the next timer tick)."""
+        from client.app.content.config.tabs import models
+
+        st_mock = self._passthrough_st()
+        state = self._state("unreachable")
+        with (
+            patch(f"{MODULE}.st", st_mock),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers.refresh_settings") as mock_refresh,
+        ):
+            models._reachability_follow_up()
+
+        mock_refresh.assert_called_once_with(clear_runtime=False)
+        st_mock.rerun.assert_not_called()
+
+    def test_follow_up_reruns_once_recovery_lands(self):
+        """When the refetch clears the unreachable status, the body does a full rerun
+        to re-render the rows and disarm polling."""
+        from client.app.content.config.tabs import models
+
+        st_mock = self._passthrough_st()
+        state = self._state("unreachable")
+
+        def _recover(**_kw):
+            state["settings"]["model_configs"][0]["status"] = "available"
+
+        with (
+            patch(f"{MODULE}.st", st_mock),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers.refresh_settings", side_effect=_recover),
+        ):
+            models._reachability_follow_up()
+
+        st_mock.rerun.assert_called_once()
+
+    def test_display_models_arms_fragment_when_unreachable(self, mock_st):
+        """display_models defines the follow-up fragment with run_every set while unreachable."""
+        from client.app.content.config.tabs import models
+
+        mock_st.container.return_value.__enter__ = MagicMock()
+        mock_st.container.return_value.__exit__ = MagicMock(return_value=False)
+        state = self._state("unreachable")
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.render_model_rows"),
+            patch(f"{MODULE}.helpers.refresh_settings_throttled"),
+        ):
+            models.display_models()
+
+        assert mock_st.fragment.call_args.kwargs["run_every"] == models._RECOVERY_POLL_INTERVAL

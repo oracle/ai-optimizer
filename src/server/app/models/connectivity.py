@@ -67,6 +67,12 @@ async def _apply_ollama_rules(client: httpx.AsyncClient, ollama_models: list) ->
     """Rule 6: Only enable Ollama models that are actually pulled."""
     by_base: dict[str, list] = {}
     for model in ollama_models:
+        # A config with no api_base (e.g. imported, or loaded while Ollama was down so
+        # discovery couldn't populate it) defaults to the configured server — mirroring
+        # check_single_model — so a later recheck recovers it once Ollama comes online,
+        # instead of being pinned unreachable forever.
+        if not model.api_base:
+            model.api_base = ollama_server_url()
         if not model.api_base:
             model.status = "unreachable"
             continue
