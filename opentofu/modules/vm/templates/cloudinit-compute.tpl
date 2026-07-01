@@ -115,7 +115,7 @@ write_files:
       # Install Models
       if ${install_ollama}; then
         echo "Pulling Ollama Models"
-        ollama pull qwen3:8b > /dev/null 2>&1
+        ollama pull llama3.2:3b > /dev/null 2>&1
         ollama pull mxbai-embed-large > /dev/null 2>&1
       fi
 

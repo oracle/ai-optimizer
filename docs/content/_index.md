@@ -10,25 +10,49 @@ keywords = 'oracle optimizer toolkit microservices development genai rag'
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker:ignore streamlit genai relref venv
+spell-checker:ignore streamlit genai relref venv giskard deepsec docling
 -->
 
-The {{% full_app_ref %}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**) combined with Retrieval-Augmented Generation (**RAG**) capabilities. By integrating Oracle Database AI VectorSearch and SQLcl MCP, the {{% short_app_ref %}} enables users to enhance existing Large Language Models (**LLM**s) through **RAG** and Natural Language to SQL (**NL2SQL**). This method significantly improves the performance and accuracy of AI models, helping to avoid common issues such as knowledge cutoff and hallucinations.
+The {{% full_app_ref %}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**).
 
-- **GenAI**: Powers the generation of text, images, or other data based on prompts using pre-trained **LLM**s.
-- **RAG**: Augments **LLM**s knowledge by retrieving relevant, unstructured data.
-- **NL2SQL**: Enhances **LLM**s by retrieving relevant, real-time structured data allowing models to provide up-to-date and accurate responses.
-- **Vector Database**: A database, including Oracle AI Database, that can natively store and manage vector embeddings and handle the unstructured data they describe, such as documents, images, video, or audio.
+By integrating [*Oracle AI Database*](https://www.oracle.com/database/) [Vector Search](https://www.oracle.com/database/ai-vector-search/) and [SQLcl MCP](https://www.oracle.com/database/sqldeveloper/technologies/sqlcl/) with familiar Open Source Software (**OSS**), the {{% short_app_ref %}} enables users to enhance existing Language Models through Retrieval Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**). 
+
+This method significantly improves the accuracy of AI models, helping to avoid common issues such as knowledge cut-off and hallucinations.
+
+<div class="home-integrations">
+  <div class="home-integrations__image">
+    <img src="integrations.png" alt="AI Optimizer integrations">
+  </div>
+  <div class="home-integrations__list">
+    <strong class="home-integrations__heading">
+      Familiar OSS components<sup>*</sup>
+    </strong>
+    <ul>
+      <li><a href="https://github.com/fastapi/fastapi">FastAPI</a> (REST API)</li>
+      <li><a href="https://github.com/jlowin/fastmcp">FastMCP</a> (tools)</li>
+      <li><a href="https://github.com/langchain-ai/langgraph">LangGraph</a> + <a href="https://github.com/oracle/agent-spec">AgentSpec</a> (orchestration)</li>
+      <li><a href="https://github.com/docling-project/docling">Docling</a> (parsing)</li>
+      <li><a href="https://github.com/open-telemetry/opentelemetry-python">OpenTelemetry</a> (observability)</li>
+      <li><a href="https://github.com/BerriAI/litellm">LiteLLM</a> (models)</li>
+      <li><a href="https://github.com/Giskard-AI/giskard">Giskard</a> (evaluation)</li>
+    </ul>
+  </div>
+</div>
+<p class="home-integrations__note">
+   * Project names and logos are shown for identification purposes only. Unless expressly stated, their use does not imply affiliation with, sponsorship by, or endorsement by Oracle or the respective project owners.
+</p>
 
 ## Features
 
-- [Configuring Embedding and Chat Models]({{% relref "/client/configuration/models" %}})
-- [Splitting and Embedding Documentation]({{% relref "/client/tools/split_embed" %}})
-- [Modifying System Prompts (Prompt Engineering)]({{% relref "/client/tools/prompt_eng" %}})
-- [Experimenting with **LLM** Parameters]({{% relref "/client/chatbot" %}})
-- [Testbed for auto-generated or existing Q&A datasets]({{% relref "/client/testbed" %}})
+The {{% short_app_ref %}} brings together the capabilities you need to build, test, and refine GenAI solutions on the **Oracle AI Database**:
 
-The {{% short_app_ref %}} streamlines the entire workflow from prototyping to production, making it easier to create and deploy RAG-powered GenAI solutions using the **Oracle Database**.
+- [Configuring **Embedding** and **Language** Models]({{% relref "/client/configuration/models" %}})
+- [Experimenting with **Language Model** Parameters]({{% relref "/client/chatbot" %}})
+- [Splitting and **Embedding** Documentation]({{% relref "/client/tools/split_embed" %}})
+- [Modifying System **Prompts** (Prompt Engineering)]({{% relref "/client/tools/prompt_eng" %}})
+- [Enforcing **Deep Data Security**]({{% relref "/client/tools/deepsec" %}})
+- [**Testbed** for auto-generated or existing Q&A datasets]({{% relref "/client/testbed" %}})
+
 
 # Getting Started
 
@@ -43,17 +67,22 @@ The [Walkthrough]({{% relref "/walkthrough" %}}) is a great way to familiarize y
 
 - Python 3.11 (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
-- Access to an Embedding and Chat Model:
+- Access to a Chat Model, and an Embedding Model for RAG:
   - API Keys for Third-Party Models
   - On-Premises Models*
-- Oracle AI Database incl. Oracle AI Database Free (for RAG and persisting settings)
+- Oracle AI Database incl. [Oracle AI Database Free](https://www.oracle.com/database/free/)
 
 ~\*Oracle recommends running On-Premises Models on hardware with GPUs. For more information, please review the [{{% short_app_ref %}}]({{% relref "/client" %}}) documentation.~
 
 {{% notice style="code" title="What do I actually need?" icon="circle-info" %}}
 <!-- Hard-coding AI Optimizer to avoid raw HTML, this is an exception -->
-The **AI Optimizer** will start and allow interaction with language models without any database or pre-configuration. However, to persist settings across restarts and to enable features like RAG, NL2SQL and the [Testbed]({{% relref "/client/testbed" %}}), at a minimum a [database]({{% relref "/client/configuration/databases" %}}) should be configured.
+The **AI Optimizer** will start without any AI model or database configured. However, to interact with language models, configure or enable a chat model. To persist settings across restarts and to enable features like RAG, NL2SQL and the [Testbed]({{% relref "/client/testbed" %}}), at a minimum a [database]({{% relref "/client/configuration/databases" %}}) should be configured.
 {{% /notice %}}
+
+Available deployment methods:
+- [Bare-Metal Installation](#bare-metal-installation)
+- [Container Installation](#container-installation)
+- [Oracle Cloud Infrastructure](#oracle-cloud-infrastructure)
 
 ### Bare-Metal Installation
 
@@ -136,7 +165,13 @@ To run the application in a container, download the latest release:
 
 1. [Configure]({{% relref "/client/configuration" %}}) the {{% short_app_ref %}}.
 
-### Advanced Installation
+### Oracle Cloud Infrastructure
 
-The {{% short_app_ref %}} is designed to operate within a Microservices Architecture, leveraging Microservices Infrastructure like Kubernetes.
-Review [{{% short_app_ref %}}]({{% relref "/client" %}}) components and the additional [Oracle Kubernetes Engine]({{% relref "/advanced/iac#oracle-kubernetes-engine" %}}) documentation for more information.
+The {{% short_app_ref %}} can easily be deployed using Infrastructure as Code (**IaC**) into Oracle Cloud Infrastructure (**OCI**).
+
+**OCI** deployment options include:
+- An [Always-Free](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm) Installation
+- Simple Virtual Machine Installation
+- Advanced Oracle Kubernetes Engine
+
+To get started, review the [IaC]({{% relref "/advanced/iac" %}}) documentation.

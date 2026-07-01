@@ -78,6 +78,17 @@ async def core_pool(oracle_db_container):
         await close_pool(pool)
 
 
+@pytest.fixture
+def no_core_pool():
+    """Configure the settings store with no available CORE database."""
+    saved_configs = list(settings.database_configs)
+    settings.database_configs = []
+    try:
+        yield
+    finally:
+        settings.database_configs = saved_configs
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -131,19 +142,10 @@ async def test_persist_settings_upsert_updates(core_pool):
         settings.log_level = original_level
 
 
-async def test_persist_settings_no_pool_is_noop(core_pool):
+async def test_persist_settings_no_pool_is_noop(no_core_pool):
     """When the pool is removed, persist_settings() is a graceful no-op."""
-    saved_pool = core_pool.pool
-    saved_usable = core_pool.usable
-    core_pool.pool = None
-    core_pool.usable = False
-
-    try:
-        # Should not raise
-        await persist_settings()
-    finally:
-        core_pool.pool = saved_pool
-        core_pool.usable = saved_usable
+    del no_core_pool
+    await persist_settings()
 
 
 async def test_persist_settings_factory_row(core_pool):
@@ -186,9 +188,7 @@ async def test_persist_settings_stores_real_secret_values(core_pool):
 
     sentinel = "SENTINEL_MODEL_KEY_ROUNDTRIP"
     saved_models = settings.model_configs[:]
-    settings.model_configs = [
-        ModelConfig(type="ll", provider="openai", id="test-model", api_key=SecretStr(sentinel))
-    ]
+    settings.model_configs = [ModelConfig(type="ll", provider="openai", id="test-model", api_key=SecretStr(sentinel))]
     try:
         await persist_settings()
         rows = await _read_aio_settings(core_pool)
@@ -239,19 +239,11 @@ async def test_load_settings_empty_table(core_pool):
     assert result is None
 
 
-async def test_load_settings_no_pool_returns_none(core_pool):
+async def test_load_settings_no_pool_returns_none(no_core_pool):
     """load_settings() returns None when CORE pool is unavailable."""
-    saved_pool = core_pool.pool
-    saved_usable = core_pool.usable
-    core_pool.pool = None
-    core_pool.usable = False
-
-    try:
-        result = await load_settings()
-        assert result is None
-    finally:
-        core_pool.pool = saved_pool
-        core_pool.usable = saved_usable
+    del no_core_pool
+    result = await load_settings()
+    assert result is None
 
 
 async def test_load_client_settings_round_trip(core_pool):
@@ -293,18 +285,10 @@ async def test_row_exists_false(core_pool):
     assert await row_exists("CONFIGURED") is False
 
 
-async def test_row_exists_no_pool(core_pool):
+async def test_row_exists_no_pool(no_core_pool):
     """row_exists() returns False when CORE pool is unavailable."""
-    saved_pool = core_pool.pool
-    saved_usable = core_pool.usable
-    core_pool.pool = None
-    core_pool.usable = False
-
-    try:
-        assert await row_exists("CONFIGURED") is False
-    finally:
-        core_pool.pool = saved_pool
-        core_pool.usable = saved_usable
+    del no_core_pool
+    assert await row_exists("CONFIGURED") is False
 
 
 # ---------------------------------------------------------------------------
@@ -339,33 +323,17 @@ async def test_load_client_settings_empty_table(core_pool):
     assert result is None
 
 
-async def test_load_client_settings_no_pool(core_pool):
+async def test_load_client_settings_no_pool(no_core_pool):
     """load_client_settings() returns None when CORE pool is unavailable."""
-    saved_pool = core_pool.pool
-    saved_usable = core_pool.usable
-    core_pool.pool = None
-    core_pool.usable = False
-
-    try:
-        result = await load_client_settings()
-        assert result is None
-    finally:
-        core_pool.pool = saved_pool
-        core_pool.usable = saved_usable
+    del no_core_pool
+    result = await load_client_settings()
+    assert result is None
 
 
-async def test_delete_row_no_pool(core_pool):
+async def test_delete_row_no_pool(no_core_pool):
     """delete_row() is a graceful no-op when CORE pool is unavailable."""
-    saved_pool = core_pool.pool
-    saved_usable = core_pool.usable
-    core_pool.pool = None
-    core_pool.usable = False
-
-    try:
-        await delete_row("CONFIGURED")  # Should not raise
-    finally:
-        core_pool.pool = saved_pool
-        core_pool.usable = saved_usable
+    del no_core_pool
+    await delete_row("CONFIGURED")
 
 
 # ---------------------------------------------------------------------------
@@ -479,9 +447,7 @@ async def test_persist_then_load_oci_overlay_round_trips_explicit_clear(core_poo
     try:
         await persist_settings()
         overlay = await load_oci_genai_overlay()
-        assert overlay == {
-            "default": {"genai_compartment_id": None, "genai_region": None}
-        }
+        assert overlay == {"default": {"genai_compartment_id": None, "genai_region": None}}
     finally:
         settings.oci_configs = saved_oci
         oci_registry._source_baseline = saved_baseline
@@ -567,9 +533,7 @@ async def test_persist_touched_clear_with_baseline_none_removes_override(core_po
     from server.app.oci.schemas import OciProfileConfig
 
     saved_oci = settings.oci_configs[:]
-    oci_registry._source_baseline.update(
-        {"default": {"genai_compartment_id": None, "genai_region": None}}
-    )
+    oci_registry._source_baseline.update({"default": {"genai_compartment_id": None, "genai_region": None}})
     settings.oci_configs = [
         OciProfileConfig(
             auth_profile="DEFAULT",
@@ -875,16 +839,8 @@ async def test_load_oci_genai_overlay_preserves_omitted_fields(core_pool):
         settings.oci_configs = saved_oci
 
 
-async def test_load_oci_genai_overlay_no_pool(core_pool):
+async def test_load_oci_genai_overlay_no_pool(no_core_pool):
     """load_oci_genai_overlay() returns an empty dict when the pool is unavailable."""
-    saved_pool = core_pool.pool
-    saved_usable = core_pool.usable
-    core_pool.pool = None
-    core_pool.usable = False
-
-    try:
-        result = await load_oci_genai_overlay()
-        assert result == {}
-    finally:
-        core_pool.pool = saved_pool
-        core_pool.usable = saved_usable
+    del no_core_pool
+    result = await load_oci_genai_overlay()
+    assert result == {}

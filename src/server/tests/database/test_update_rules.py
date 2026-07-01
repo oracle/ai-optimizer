@@ -45,9 +45,8 @@ async def usable_config(configure_db_env):
 
 
 @pytest.fixture
-async def unusable_config(configure_db_env):
+async def unusable_config():
     """A non-CORE DatabaseConfig that has never been connected."""
-    del configure_db_env
     cfg = DatabaseConfig(alias="INTEG", username="BADUSER", password=SecretStr("badpw"), dsn="//localhost:9999/NOPE")
     original = settings.database_configs[:]
     settings.database_configs.append(cfg)

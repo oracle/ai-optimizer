@@ -12,6 +12,7 @@ conversion) is owned by ``langchain_litellm.ChatLiteLLM`` and tested there.
 from typing import Any, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import litellm
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGenerationChunk
@@ -20,6 +21,7 @@ from langchain_core.runnables import RunnableBinding
 from server.app.runtime.langgraph.adapters.litellm import (
     OracleChatLiteLLM,
     _flatten_to_text,
+    ainvoke_text_from_spec,
     chat_model_from_spec,
     usage_metadata_to_token_usage,
 )
@@ -130,6 +132,80 @@ class TestChatModelFromSpec:
         llm = chat_model_from_spec(spec)
         assert "frequency_penalty" not in llm.model_kwargs
         assert "presence_penalty" not in llm.model_kwargs
+
+    def test_reasoning_effort_routed_through_model_kwargs(self):
+        # Capability selection happens before construction; this verifies that a
+        # supported value reaches LiteLLM unchanged.
+        llm = chat_model_from_spec(self._spec(), reasoning_effort="none")
+        assert llm.model_kwargs.get("reasoning_effort") == "none"
+
+    def test_omits_reasoning_effort_by_default(self):
+        llm = chat_model_from_spec(self._spec())
+        assert "reasoning_effort" not in llm.model_kwargs
+
+
+class TestAinvokeTextFromSpecReasoning:
+    """``disable_reasoning`` is how rephrase/grade keep deterministic utility calls
+    fast by disabling or minimizing the selected model's reasoning trace."""
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("model_key", ["openai/o1", "openai/o3"])
+    @patch("server.app.runtime.langgraph.adapters.litellm.chat_model_from_spec")
+    async def test_disable_reasoning_omits_unsupported_none(self, mock_factory, model_key):
+        mock_factory.return_value.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
+        spec = MagicMock(model_key=model_key)
+        spec.model_key = model_key
+        await ainvoke_text_from_spec(spec, "prompt", disable_reasoning=True)
+        assert mock_factory.call_args.kwargs["reasoning_effort"] is None
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("model_key", ["openai/gpt-5.4-mini", "ollama_chat/qwen3:4b"])
+    @patch("server.app.runtime.langgraph.adapters.litellm.chat_model_from_spec")
+    async def test_disable_reasoning_passes_none_when_supported(self, mock_factory, model_key):
+        mock_factory.return_value.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
+        spec = MagicMock(model_key=model_key)
+        spec.model_key = model_key
+        await ainvoke_text_from_spec(spec, "prompt", disable_reasoning=True)
+        assert mock_factory.call_args.kwargs["reasoning_effort"] == "none"
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.chat_model_from_spec")
+    async def test_gpt_oss_uses_lowest_supported_reasoning_effort(self, mock_factory):
+        mock_factory.return_value.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
+        spec = MagicMock(model_key="ollama_chat/gpt-oss:20b")
+        spec.model_key = "ollama_chat/gpt-oss:20b"
+
+        await ainvoke_text_from_spec(spec, "prompt", disable_reasoning=True)
+
+        reasoning_effort = mock_factory.call_args.kwargs["reasoning_effort"]
+        assert reasoning_effort == "low"
+        assert (
+            litellm.get_optional_params(
+                model="gpt-oss:20b",
+                custom_llm_provider="ollama_chat",
+                reasoning_effort=reasoning_effort,
+                drop_params=True,
+            )["think"]
+            == "low"
+        )
+
+    @pytest.mark.anyio
+    async def test_disable_reasoning_uses_litellm_mock_completion(self):
+        spec = TestChatModelFromSpec._spec(
+            model_key="openai/o3",
+            oci_params={"mock_response": "mocked utility response"},
+        )
+
+        result = await ainvoke_text_from_spec(spec, "prompt", disable_reasoning=True)
+
+        assert result == "mocked utility response"
+
+    @pytest.mark.anyio
+    @patch("server.app.runtime.langgraph.adapters.litellm.chat_model_from_spec")
+    async def test_default_leaves_reasoning_unset(self, mock_factory):
+        mock_factory.return_value.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
+        await ainvoke_text_from_spec(MagicMock(), "prompt")
+        assert mock_factory.call_args.kwargs["reasoning_effort"] is None
 
 
 class TestReasoningContentFlattening:

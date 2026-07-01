@@ -66,7 +66,7 @@ class ModelIdentity(BaseModel):
     """Model identity fields reused by client settings."""
 
     provider: Optional[str] = Field(default=None, examples=["openai", "anthropic", "ollama"])
-    id: Optional[str] = Field(default=None, examples=["gpt-5.4-mini", "sonnet", "qwen3:8b"])
+    id: Optional[str] = Field(default=None, examples=["gpt-5.4-mini", "sonnet", "llama3.2:3b"])
 
     @field_validator("provider")
     @classmethod

@@ -57,6 +57,63 @@ div.box, div.box code .copy-to-clipboard {
     margin-left: 1em;
 }
 
+.home-integrations {
+    display: grid;
+    align-items: center;
+    grid-template-columns: minmax(0, 420px) max-content;
+    justify-content: center;
+    gap: 2rem;
+    margin: 1.5rem 0;
+}
+
+.home-integrations__image {
+    min-width: 0;
+}
+
+.home-integrations__image img {
+    height: auto;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: left center;
+}
+
+.home-integrations__list {
+    max-width: max-content;
+}
+
+.home-integrations__heading {
+    display: block;
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.home-integrations__list ul {
+    margin: 0;
+}
+
+.home-integrations__list li {
+    margin-bottom: .75rem;
+}
+
+.home-integrations__list li:last-child {
+    margin-bottom: 0;
+}
+
+.home-integrations__note {
+    font-size: .8rem;
+    line-height: 1.4;
+    margin: 1rem 0 0;
+    opacity: .75;
+}
+
+@media (max-width: 768px) {
+    .home-integrations {
+        align-items: flex-start;
+        grid-template-columns: 1fr;
+        justify-content: start;
+    }
+}
+
 #R-logo-powered-by .powered-by {
     font-family: "MontserratAlt1-Light",sans-serif
 }

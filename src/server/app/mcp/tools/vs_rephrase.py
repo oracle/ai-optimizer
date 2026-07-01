@@ -27,6 +27,10 @@ LOGGER = logging.getLogger(__name__)
 
 MIN_CHAT_HISTORY_FOR_REPHRASE = 2
 
+# A rephrase is a single reworded question; cap the output so a verbose or slow
+# model can't run the call to the tool timeout. Generous for any real rephrase.
+REPHRASE_MAX_TOKENS = 128
+
 
 async def _perform_rephrase(
     question: str,
@@ -50,7 +54,9 @@ async def _perform_rephrase(
         question=question,
     )
 
-    text = await ainvoke_text_from_spec(spec, formatted_prompt)
+    text = await ainvoke_text_from_spec(
+        spec, formatted_prompt, max_tokens=REPHRASE_MAX_TOKENS, disable_reasoning=True
+    )
     return text or question
 
 
@@ -145,7 +151,7 @@ def register_rephrase_tool():
         title="Question Rephrase",
         tags={"vector-search", "optimizer"},
         annotations={"readOnlyHint": True, "openWorldHint": True},
-        timeout=30.0,
+        timeout=60.0,
     )
     async def rephrase(
         thread_id: str,

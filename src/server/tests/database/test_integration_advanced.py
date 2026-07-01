@@ -108,6 +108,7 @@ class TestDropVectorStore:
         await drop_vector_store(conn, table)
         await conn.commit()
 
+
 # ---------------------------------------------------------------------------
 # Cascade deletes (FK ON DELETE CASCADE)
 # ---------------------------------------------------------------------------
@@ -371,9 +372,8 @@ class TestConcurrentAccess:
 class TestConnectionTimeout:
     """Tests for connection timeout and error handling."""
 
-    async def test_pool_acquire_with_bad_dsn_raises(self, configure_db_env):
+    async def test_pool_acquire_with_bad_dsn_raises(self):
         """Acquiring from a pool with refused DSN raises on connect."""
-        del configure_db_env
         # Use localhost with a port that is not listening — gives an immediate
         # connection-refused instead of a black-hole timeout.
         cfg = make_core_db_config(dsn="//localhost:19999/NONEXIST")

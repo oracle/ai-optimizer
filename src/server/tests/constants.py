@@ -16,7 +16,7 @@ TEST_OPENAI_MODEL_ID_MIXEDCASE = TEST_OPENAI_MODEL_ID.swapcase()
 TEST_OPENAI_EMBED_ID = "text-embedding-3-small"
 TEST_OPENAI_EMBED_KEY = f"openai/{TEST_OPENAI_EMBED_ID}"
 
-TEST_OLLAMA_MODEL_ID = "qwen3:8b"
+TEST_OLLAMA_MODEL_ID = "llama3.2:3b"
 TEST_OLLAMA_MODEL_KEY = f"ollama/{TEST_OLLAMA_MODEL_ID}"
 # The key after LiteLLM normalizes an Ollama chat model (ollama -> ollama_chat).
 TEST_OLLAMA_CHAT_KEY = f"ollama_chat/{TEST_OLLAMA_MODEL_ID}"

@@ -39,7 +39,7 @@ async def _grade_documents_with_llm(question: str, documents_str: str, spec: Lit
     grade_template = prompt_cfg.text
     formatted_prompt = grade_template.format(question=question, documents=documents_str)
 
-    relevant = (await ainvoke_text_from_spec(spec, formatted_prompt)).lower()
+    relevant = (await ainvoke_text_from_spec(spec, formatted_prompt, disable_reasoning=True)).lower()
     LOGGER.info("Grading completed. Relevant: %s", relevant)
 
     if "yes" in relevant:

@@ -15,7 +15,7 @@ This walkthrough will guide you through a basic installation of the {{% full_app
 
 By the end of the walkthrough you will be familiar with:
 
-- Configuring a Large Language Model (**LLM**)
+- Configuring a Language Model
 - Configuring an Embedding Model
 - Configuring the Vector Storage
 - Splitting, Embedding, and Storing vectors
@@ -27,13 +27,13 @@ What you'll need for the walkthrough:
 - Access to an environment where you can run container images (Podman or Docker).
 - 100G of free disk space.
 - 12G of usable memory.
-- Sufficient GPU/CPU resources to run the **LLM**, embedding model, and database (see below).
+- Sufficient GPU/CPU resources to run the language model, embedding model, and database (see below).
 
 {{% notice style="code" title="Performance: A Word of Caution" icon="fire" %}}
 The performance will vary depending on the infrastructure.
 
-**LLM**s and Embedding Models are designed to use GPUs, but this walkthrough _can work_ on machines with just CPUs; albeit _much_ slower!
-When testing the **LLM**, if you don't get a response in a couple of minutes; your hardware is not sufficient to continue with the walkthrough.
+Language and Embedding Models are designed to use GPUs, but this walkthrough _can work_ on machines with just CPUs; albeit _much_ slower!
+When testing the Language Model, if you don't get a response in a couple of minutes; your hardware is not sufficient to continue with the walkthrough.
 {{% /notice %}}
 
 ## Installation
@@ -42,49 +42,55 @@ When testing the **LLM**, if you don't get a response in a couple of minutes; yo
 
 You will run four container images to establish the "Infrastructure":
 
-- On-Premises **LLM** - qwen3:8b
+- On-Premises Language Model - llama3.2:3b
 - On-Premises Embedding Model - mxbai-embed-large
 - Vector Storage - Oracle AI Database Free
 - The {{% short_app_ref %}}
 
-### LLM - qwen3:8b
+### Language Model - llama3.2:3b
 
-To enable the _ChatBot_ functionality, access to a **LLM** is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _qwen3:8b_ **LLM**.
+To enable the _ChatBot_ functionality, access to a Language Model is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _llama3.2:3b_ model.
 
 1. Start the *Ollama* container:
 
    {{< tabs "llm" >}}
-   {{% tab title="Linux/MacOS (x86)" %}}
-   The Container Runtime is native:
+   {{% tab title="Linux" %}}
+   The Container Runtime is native. The command below makes all configured GPUs available; omit `--gpus=all` when running with CPUs only.
 
    ```bash
    podman run -d --gpus=all -v ollama:$HOME/.ollama -p 11434:11434 --name ollama docker.io/ollama/ollama
    ```
    {{% /tab %}}
-   {{% tab title="MacOS (Silicon)" %}}
-   The Container Runtime is backed by a virtual machine. For optimal performance, especially to utilize the Metal GPU, configure the VM with at least **12G of memory** and **100G of disk space**, using the **LibKrun provider** type.
+   {{% tab title="macOS (Intel)" %}}
+   The Container Runtime is backed by a virtual machine. Configure the VM with at least **12G of memory** and **100G of disk space**. The Ollama container will use the CPUs assigned to the VM.
+
+   ```bash
+   podman run -d -e OLLAMA_NUM_PARALLEL=1 -v ollama:$HOME/.ollama -p 11434:11434 --name ollama docker.io/ollama/ollama
+   ```
+   {{% /tab %}}
+   {{% tab title="macOS (Apple silicon)" %}}
+   The Container Runtime is backed by a virtual machine. Configure the VM with at least **12G of memory** and **100G of disk space**. The LibKrun provider can expose the Apple Metal GPU to compatible container workloads, but does not by itself enable GPU acceleration for Ollama. The command below uses the CPUs assigned to the VM.
 
    ```bash
    podman run -d -e OLLAMA_NUM_PARALLEL=1 -v ollama:$HOME/.ollama -p 11434:11434 --name ollama docker.io/ollama/ollama
    ```
    {{% /tab %}}
    {{% tab title="Windows" %}}
-   The Container Runtime is backed by a virtual machine. For optimal performance, especially to utilize the Metal GPU, configure the VM with at least **12G of memory** and **100G of disk space**, using the **LibKrun provider** type.
+   The Container Runtime is backed by a virtual machine using WSL2 or Hyper-V. Configure the VM with at least **12G of memory** and **100G of disk space**. GPU acceleration with an NVIDIA GPU requires WSL2, a compatible driver, and the NVIDIA Container Toolkit configured in the Podman machine. The command below is a CPU-safe default.
 
    ```bash
-   podman run -d --gpus=all -v ollama:$HOME/.ollama -p 11434:11434 --name ollama docker.io/ollama/ollama
+   podman run -d -e OLLAMA_NUM_PARALLEL=1 -v ollama:$HOME/.ollama -p 11434:11434 --name ollama docker.io/ollama/ollama
    ```
-
    {{% /tab %}}
    {{< /tabs >}}
 
-1. Pull the **LLM** into the container:
+1. Pull the Language Model into the container:
 
    ```bash
-   podman exec -it ollama ollama pull qwen3:8b
+   podman exec -it ollama ollama pull llama3.2:3b
    ```
 
-1. Test the **LLM**:
+1. Test the Language Model:
 
    {{% notice style="code" title="Performance: Fail Fast..." icon="circle-info" %}}
    Unfortunately, if the below `curl` does not respond within 5-10 minutes, the rest of the walkthrough will be unbearable.
@@ -93,7 +99,7 @@ To enable the _ChatBot_ functionality, access to a **LLM** is required. The walk
 
    ```bash
    curl http://127.0.0.1:11434/api/generate -d '{
-   "model": "qwen3:8b",
+   "model": "llama3.2:3b",
    "prompt": "Why is the sky blue?",
    "stream": false
    }'
@@ -111,7 +117,7 @@ To enable the **RAG** functionality, access to an embedding model is required. T
 
 ### The AI Optimizer
 
-The {{% short_app_ref %}} provides an easy to use front-end for experimenting with **LLM** parameters and **RAG**.
+The {{% short_app_ref %}} provides an easy to use front-end for experimenting with Language Model parameters and **RAG**.
 
 1. Download and Unzip the [latest release](https://github.com/oracle/ai-optimizer/releases/latest) of the {{% short_app_ref %}}:
 
@@ -144,14 +150,14 @@ The {{% short_app_ref %}} provides an easy to use front-end for experimenting wi
 
 ### Vector Storage - Oracle AI Database Free
 
-AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The {{% short_app_ref %}} uses these capabilities to provide more accurate and relevant **LLM** responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
+AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The {{% short_app_ref %}} uses these capabilities to provide more accurate and relevant Language Model responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
 
 To start the Oracle AI Database Free:
 
 1. Start the container:
 
    ```bash
-   podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest
+   podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest-lite
    ```
 
 1. Alter the `vector_memory_size` parameter and create a [new database user]({{% relref "/client/configuration/databases#database-user" %}}):
@@ -165,6 +171,7 @@ To start the Oracle AI Database Free:
 
    alter session set container=FREEPDB1;
 
+   CREATE TABLESPACE USERS DATAFILE 'users.dbf' SIZE 1G;
    CREATE USER "WALKTHROUGH" IDENTIFIED BY OrA_41_OpTIMIZER
        DEFAULT TABLESPACE "USERS"
        TEMPORARY TABLESPACE "TEMP";
@@ -198,6 +205,8 @@ As the container is running in a VM, a port-forward is required from the localho
 ```bash
 podman machine ssh -- -N -L 8501:localhost:8501
 ```
+
+This command does not return as it holds the tunnel open. Leave it running in its own terminal for the duration of the walkthrough, and open a new terminal for the remaining commands.
 {{% /tab %}}
 {{< /tabs >}}
 
@@ -208,15 +217,15 @@ In a web browser, navigate to `http://localhost:8501`:
 
 Notice that there are no language models configured to use. Let's start the configuration.
 
-### Configure the LLM
+### Configure the Language Model
 
-To configure the On-Premises **LLM**, navigate to the _Configuration_ screen and _Models_ tab:
+To configure the On-Premises Language Model, navigate to the _Configuration_ screen and _Models_ tab:
 
-1. Enable the `qwen3:8b` model that you pulled earlier by clicking the _Edit_ button
-![Configure LLM](images/models_edit.png)
+1. Enable the `llama3.2:3b` model that you pulled earlier by clicking the _Edit_ button
+![Configure Language Model](images/models_edit.png)
 1. Tick the _Enabled_ checkbox, leave all other settings as-is, and _Save_
-![Enable LLM](images/models_enable_llm.png)
-{{% icon star %}} More information about configuring **LLM**s can be found in the [Model Configuration]({{% relref "/client/configuration/models" %}}) documentation.
+![Enable Language Model](images/models_enable_llm.png)
+{{% icon star %}} More information about configuring Language Models can be found in the [Model Configuration]({{% relref "/client/configuration/models" %}}) documentation.
 
 #### Say "Hello?"
 
@@ -224,11 +233,11 @@ Navigate to the _ChatBot_ screen:
 
 ![Say Hello?](images/chatbot_say_hello.png)
 
-The error about language models will have disappeared, but there are new warnings the database. You'll take care of that in the next steps.
+The error about language models will have disappeared, but there is a new warnings about the database. You'll take care of that in the next steps.
 
-The `Chat model:` will have been pre-set to the only enabled **LLM** (_ollama/qwen3:8b_) and a dialog box to interact with the **LLM** will be ready for input.
+The `Chat model:` will have been pre-set to the only enabled Language Model and a dialog box to interact with the Language Model will be ready for input.
 
-Feel free to play around with the different **LLM** Parameters, hovering over the {{% icon circle-question %}} icons to get more information on what they do.
+Feel free to play around with the different Language Model Parameters, hovering over the {{% icon circle-question %}} icons to get more information on what they do.
 
 You'll come back to the _ChatBot_ later to experiment further.
 
@@ -237,7 +246,7 @@ You'll come back to the _ChatBot_ later to experiment further.
 To configure the On-Premises Embedding Model, navigate back to the _Configuration_ screen and _Models_ tab:
 
 1. Enable the `mxbai-embed-large` Embedding Model following the same process as you did for the Language Model.
-![Configure Embedding Model](images/models_enable_embed.png)
+![Configure Embedding Model](images/models_edit_embed.png)
 
 {{% icon star %}}  More information about configuring embedding models can be found in the [Model Configuration]({{% relref "/client/configuration/models" %}}) documentation.
 
@@ -318,18 +327,17 @@ Responses may vary, but generally the _ChatBot_'s response will be inaccurate, i
 - Not understanding that there is a Oracle AI Database release. This is known as **knowledge-cutoff**.
 - Suggestions of requiring unrelated software. These are **hallucinations**.
 
-Now select "Vector Search" in the Toolkit options and simply ask: `Are you sure?`
+Now select "Vector Search" in the Toolkit options, enable "Prompt Rephrase", and simply ask: `Are you sure?`
 
 ![Enable RAG](images/chatbot_vs_enable.png)
 
 {{% notice style="code" title="Performance: Host Overload..." icon="circle-info" %}}
-With **RAG** enabled, all the services (**LLM**/Embedding Models and Database) are being utilized simultaneously:
+With **RAG** enabled, all the services (Language/Embedding Models and Database) are being utilized simultaneously:
 
-- The **LLM** is rephrasing "Are you sure?" into a query that takes into account the conversation history and context
+- The Language Model is rephrasing "Are you sure?" into a query that takes into account the conversation history and context
 - The embedding model is being used to convert the rephrased query into vectors for a similarity search
 - The database is being queried for documentation chunks similar to the rephrased query (AI Vector Search)
-- The **LLM** is grading the relevancy of the documents retrieved against the query
-- The **LLM** is completing its response using the documents from the database (if the documents are relevant)
+- The Language Model is completing its response using the documents from the database (if the documents are relevant)
 
 Depending on your hardware, this may cause the response to be **_significantly_** delayed.
 {{% /notice %}}
@@ -341,7 +349,7 @@ Under "Vector Search Details" you should see the PDF source, the vector store ta
 
 ## What's Next?
 
-You should now have a solid foundation in utilizing the {{% short_app_ref %}}.
+You should now have a solid foundation using the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Try a full Use Case" icon="circle-info" %}}
 The [Racing Championship use-case]({{% relref "/use-case/racing-championship" %}}) walks the same {{% short_app_ref %}} through an end-to-end demo that shows the progressive value of **NL2SQL**, **Vector Search**, and combined-mode grounding against a synthetic racing championship dataset. See all [Use Cases]({{% relref "/use-case" %}}) for more.
@@ -350,8 +358,8 @@ The [Racing Championship use-case]({{% relref "/use-case/racing-championship" %}
 To take your experiments further, consider exploring:
 
 - Turn On/Off/Clear history
-- Experiment with different Large Language Models (LLMs) and Embedding Models
-- Tweak LLM parameters, including Temperature and Penalties, to fine-tune model performance
+- Experiment with different Language Models and Embedding Models
+- Tweak Language Model parameters, including Temperature and Penalties, to fine-tune model performance
 - Investigate various strategies for splitting and embedding text data, such as adjusting chunk-sizes, overlaps, and distance metrics
 
 ## Clean Up
