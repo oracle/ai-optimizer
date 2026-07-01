@@ -461,7 +461,7 @@ stable and distinct per configuration.
 {{/* ******************************************
 Compose the server's `.env.{AIO_ENV}` content as a dotenv string
 (`KEY=value` per line, terminated with `\n`). Chart-derived
-`AIO_*` / `OCI_CLI_*` / `ON_PREM_*` settings flow through the
+`AIO_*` settings flow through the
 Secret-mounted file rather than as pod env entries. Operator-supplied
 `server.envSecret.content` overrides chart defaults via mergeOverwrite.
 *********************************************** */}}
@@ -478,12 +478,12 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 {{- end -}}
 {{- with .Values.server.ociConfig -}}
 {{- if (default false .oke) -}}
-{{- $_ = set $out "OCI_CLI_REGION" .region -}}
-{{- $_ = set $out "OCI_CLI_AUTH" "oke_workload_identity" -}}
+{{- $_ = set $out "AIO_OCI_CLI_REGION" .region -}}
+{{- $_ = set $out "AIO_OCI_CLI_AUTH" "oke_workload_identity" -}}
 {{- end -}}
 {{- end -}}
 {{- if .Values.ollama.enabled -}}
-{{- $_ = set $out "ON_PREM_OLLAMA_URL" (include "ai-optimizer.ollama.serviceUrl" .) -}}
+{{- $_ = set $out "AIO_ON_PREM_OLLAMA_URL" (include "ai-optimizer.ollama.serviceUrl" .) -}}
 {{- end -}}
 {{- with .Values.server.envSecret -}}{{- with .content -}}
 {{- $_ = mergeOverwrite $out . -}}
@@ -553,17 +553,17 @@ Database Privileged Secret Name
 Environment to include Database Authentication
 *********************************************** */}}
 {{- define "ai-optimizer.server.database.authn" -}}
-- name: DB_USERNAME
+- name: AIO_DB_USERNAME
   valueFrom:
     secretKeyRef:
         name: {{ include "ai-optimizer.server.databaseSecret" . }}
         key: {{ default "username" .Values.server.database.authn.usernameKey }}
-- name: DB_PASSWORD
+- name: AIO_DB_PASSWORD
   valueFrom:
     secretKeyRef:
         name: {{ include "ai-optimizer.server.databaseSecret" . }}
         key: {{ default "password" .Values.server.database.authn.passwordKey }}
-- name: DB_DSN
+- name: AIO_DB_DSN
   valueFrom:
     secretKeyRef:
         name: {{ include "ai-optimizer.server.databaseSecret" . }}

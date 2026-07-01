@@ -140,7 +140,7 @@ genai_region=<OCI GenAI Region>
 When configuring an Ollama model in the {{% short_app_ref %}}, set the `Provider URL` (e.g `http://127.0.0.1:11434`) and leave the API Key blank. Substitute the IP Address with the IP of where Ollama is running.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-Ollama models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+Ollama models can be enabled via environment variables. See [Model Overrides]({{% relref "/env_config#model-overrides" %}}) configuration.
 {{% /notice %}}
 
 ## Pulling Models
@@ -230,7 +230,7 @@ Example of running thenlper/gte-base in a container:
 **WARNING:** Cohere is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-Cohere models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+Cohere models can be enabled via environment variables. See [Model Overrides]({{% relref "/env_config#model-overrides" %}}) configuration.
 {{% /notice %}}
 {{% /tab %}}
 {{% tab title="OpenAI" %}}
@@ -241,7 +241,7 @@ Cohere models can be enabled via environment variables. See [Model Overrides](/e
 **WARNING:** OpenAI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-OpenAI models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+OpenAI models can be enabled via environment variables. See [Model Overrides]({{% relref "/env_config#model-overrides" %}}) configuration.
 {{% /notice %}}
 
 {{% /tab %}}
@@ -259,7 +259,7 @@ Many "AI Runners" provide OpenAI-compatible APIs. These can be configured with L
 **WARNING:** Perplexity AI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-Perplexity models can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+Perplexity models can be enabled via environment variables. See [Model Overrides]({{% relref "/env_config#model-overrides" %}}) configuration.
 {{% /notice %}}
 {{% /tab %}}
 {{< /tabs >}}

@@ -41,7 +41,7 @@ At startup, the {{% short_app_ref %}}:
 
 ### SQLcl Home Directory
 
-By default, the SQLcl connection store is created in a temporary directory. To override this location, set the `AIO_SQLCL_HOME` or `SQLCL_HOME` environment variable:
+By default, the SQLcl connection store is created in a temporary directory. To override this location, set [`AIO_SQLCL_HOME`]({{% relref "/env_config#nl2sql" %}}):
 
 ```bash
 export AIO_SQLCL_HOME=/path/to/sqlcl/home

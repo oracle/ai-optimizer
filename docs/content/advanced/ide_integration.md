@@ -34,7 +34,7 @@ Any IDE or coding agent that supports MCP can connect directly to the {{% short_
 5. Install **Oracle SQLcl** if you want NL2SQL tools.
 6. Start the API Server — see [API Server]({{% relref "client/api_server" %}}).
 
-If `AIO_API_KEY` was not set before startup, retrieve the generated key from the [API Server]({{% relref "client/api_server" %}}) page or via [Configuration]({{% relref "env_config" %}}).
+If `AIO_API_KEY` was not set before startup, retrieve the generated key from the [API Server]({{% relref "client/api_server" %}}) page or review [Environment Variables]({{% relref "env_config" %}}).
 
 Verify the server before connecting an IDE:
 

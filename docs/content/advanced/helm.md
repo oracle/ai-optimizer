@@ -215,7 +215,7 @@ client:
     sourceBucketName: my-corpus-bucket
 ```
 
-The compartment is the anchor — `sourceBucketName` alone has no effect. See [Environment Configuration](/env_config/) for the matching `AIO_OCI_SOURCE_BUCKET_*` variables and the runtime fallback rules.
+The compartment is the anchor — `sourceBucketName` alone has no effect. See [Environment Variables]({{% relref "/env_config#oci-object-storage-source-lock" %}}) for the matching `AIO_OCI_SOURCE_BUCKET_*` variables and runtime behavior.
 
 ## Observability
 
@@ -259,7 +259,7 @@ server:
       AIO_GENAI_REGION: us-chicago-1
 ```
 
-Pod environment variables rendered by the chart take precedence over `.env` content. See [Configuration](/env_config/) for application variables.
+Pod environment variables rendered by the chart take precedence over `.env` content. See [Environment Variables]({{% relref "/env_config" %}}) for application variables.
 
 ## Optional Components
 

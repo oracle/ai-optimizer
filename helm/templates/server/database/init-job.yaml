@@ -6,7 +6,7 @@ Database Initialization Job
 
 OTHER mode is included on purpose when the operator supplies privileged
 credentials: the init.sh script's `needsPrivAuth` branch already handles
-bring-your-own databases via `connect $PRIV_USERNAME/$PRIV_PASSWORD@$DB_DSN`.
+bring-your-own databases via `connect $PRIV_USERNAME/$PRIV_PASSWORD@$AIO_DB_DSN`.
 The earlier blanket OTHER exclusion left chart-managed auth Secrets
 pointing at an AI_OPTIMIZER user that was never created on the external
 database. Gating is centralised in `shouldRunInit` so the ConfigMap and
@@ -55,7 +55,7 @@ spec:
           - |
             set -e
             {{- include "ai-optimizer.shellWaitFunc" . | nindent 12 }}
-            wait_until "database (${DB_DSN})" 360 10 sh /opt/oracle/scripts/startup/init.sh
+            wait_until "database (${AIO_DB_DSN})" 360 10 sh /opt/oracle/scripts/startup/init.sh
         volumeMounts:
         - name: db-init-scripts
           mountPath: /opt/oracle/scripts/startup

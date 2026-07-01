@@ -108,7 +108,7 @@ write_files:
       python3.11 -m venv .venv
       source .venv/bin/activate
       pip3.11 install --upgrade pip wheel setuptools uv
-      pip3 install docling==2.107.0 --extra-index-url https://download.pytorch.org/whl/cpu
+      pip3 install docling==2.108.0 --extra-index-url https://download.pytorch.org/whl/cpu
       uv pip install -e ".[all]" &
       INSTALL_PID=$!
 

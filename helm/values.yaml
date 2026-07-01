@@ -372,14 +372,14 @@ server:
       #   value: "4096"
 
   # -- Environment configuration mounted as a Secret at /app/src/.env.{global.env}.
-  # The chart always creates this Secret with the AIO_*, OCI_CLI_*, and
-  # ON_PREM_* settings derived from chart values (server URL prefix,
+  # The chart always creates this Secret with the AIO_* settings derived
+  # from chart values (server URL prefix,
   # max clients, SSL, OKE workload identity, Ollama URL). Pod env keeps
   # only AIO_ENV (bootstrap) and secretKeyRef bindings (AIO_API_KEY,
-  # DB_*, model API keys). pydantic-settings reads the file directly,
+  # AIO_DB_*, model API keys). pydantic-settings reads the file directly,
   # and load_dotenv(override=False) means pod env still wins where set.
   #
-  # Use this block to add operator overrides — extra AIO_* / OCI_CLI_*
+  # Use this block to add operator overrides — extra AIO_* or integration
   # entries get merged into the chart-managed Secret (operator values
   # override chart defaults). To bring your own pre-built Secret with
   # .env content, set 'secretName' and the chart skips its own render.

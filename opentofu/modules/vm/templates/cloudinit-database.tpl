@@ -14,16 +14,16 @@ write_files:
     content: |
       export API_SERVER_HOST=$(hostname -f)
       export DB_DBA_USER='${db_dba_user}'
-      export DB_USERNAME='AI_OPTIMIZER'
-      export DB_PASSWORD='${db_password}'
-      export DB_DSN='${db_service}'
+      export AIO_DB_USERNAME='AI_OPTIMIZER'
+      export AIO_DB_PASSWORD='${db_password}'
+      export AIO_DB_DSN='${db_service}'
 
       echo "Starting Database Configuration"
       sql /nolog <<EOF
       WHENEVER SQLERROR EXIT 1
       WHENEVER OSERROR EXIT 1
       set cloudconfig /app/tns_admin/wallet.zip
-      connect $DB_DBA_USER/$DB_PASSWORD@$DB_DSN
+      connect $DB_DBA_USER/$AIO_DB_PASSWORD@$AIO_DB_DSN
       DECLARE
         l_conn_user VARCHAR2(255);
         l_user      VARCHAR2(255);
@@ -33,20 +33,20 @@ write_files:
       BEGIN
         BEGIN
             SELECT user INTO l_conn_user FROM DUAL;
-            SELECT username INTO l_user FROM DBA_USERS WHERE USERNAME='$DB_USERNAME';
+            SELECT username INTO l_user FROM DBA_USERS WHERE USERNAME='$AIO_DB_USERNAME';
         EXCEPTION WHEN no_data_found THEN
-            EXECUTE IMMEDIATE 'CREATE USER "$DB_USERNAME" IDENTIFIED BY "$DB_PASSWORD"';
+            EXECUTE IMMEDIATE 'CREATE USER "$AIO_DB_USERNAME" IDENTIFIED BY "$AIO_DB_PASSWORD"';
         END;
-        SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = '$DB_USERNAME';
-        EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" QUOTA UNLIMITED ON ' || l_tblspace;
-        EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "$DB_USERNAME"';
+        SELECT default_tablespace INTO l_tblspace FROM dba_users WHERE username = '$AIO_DB_USERNAME';
+        EXECUTE IMMEDIATE 'ALTER USER "$AIO_DB_USERNAME" QUOTA UNLIMITED ON ' || l_tblspace;
+        EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO "$AIO_DB_USERNAME"';
         BEGIN
-          EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_AI TO "$DB_USERNAME"';
-          EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO "$DB_USERNAME"';
+          EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_AI TO "$AIO_DB_USERNAME"';
+          EXECUTE IMMEDIATE 'GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO "$AIO_DB_USERNAME"';
         EXCEPTION WHEN package_missing THEN
           DBMS_OUTPUT.PUT_LINE('DBMS_CLOUD Packages do not exist, skipping grants.');
         END;
-        EXECUTE IMMEDIATE 'ALTER USER "$DB_USERNAME" DEFAULT ROLE ALL';
+        EXECUTE IMMEDIATE 'ALTER USER "$AIO_DB_USERNAME" DEFAULT ROLE ALL';
       END;
       /
       -- Deep Data Security privileges (Oracle AI Database 26ai). Applied independently and tolerant
@@ -56,21 +56,21 @@ write_files:
       -- assigned those data roles can connect (connect-as). CREATE ROLE re-runs error harmlessly.
       BEGIN
         FOR g IN (SELECT column_value AS stmt FROM TABLE(sys.odcivarchar2list(
-          'GRANT CREATE DATA ROLE TO "$DB_USERNAME"',
-          'GRANT DROP DATA ROLE TO "$DB_USERNAME"',
-          'GRANT CREATE END USER TO "$DB_USERNAME"',
-          'GRANT DROP END USER TO "$DB_USERNAME"',
-          'GRANT CREATE DATA GRANT TO "$DB_USERNAME"',
-          'GRANT ADMINISTER ANY DATA GRANT TO "$DB_USERNAME"',
-          'GRANT CREATE END USER CONTEXT TO "$DB_USERNAME"',
-          'GRANT CREATE END USER SECURITY CONTEXT TO "$DB_USERNAME"',
-          'GRANT SELECT ON DBA_DATA_ROLES TO "$DB_USERNAME"',
-          'GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "$DB_USERNAME"',
-          'GRANT SELECT ON DBA_END_USERS TO "$DB_USERNAME"',
+          'GRANT CREATE DATA ROLE TO "$AIO_DB_USERNAME"',
+          'GRANT DROP DATA ROLE TO "$AIO_DB_USERNAME"',
+          'GRANT CREATE END USER TO "$AIO_DB_USERNAME"',
+          'GRANT DROP END USER TO "$AIO_DB_USERNAME"',
+          'GRANT CREATE DATA GRANT TO "$AIO_DB_USERNAME"',
+          'GRANT ADMINISTER ANY DATA GRANT TO "$AIO_DB_USERNAME"',
+          'GRANT CREATE END USER CONTEXT TO "$AIO_DB_USERNAME"',
+          'GRANT CREATE END USER SECURITY CONTEXT TO "$AIO_DB_USERNAME"',
+          'GRANT SELECT ON DBA_DATA_ROLES TO "$AIO_DB_USERNAME"',
+          'GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "$AIO_DB_USERNAME"',
+          'GRANT SELECT ON DBA_END_USERS TO "$AIO_DB_USERNAME"',
           'CREATE ROLE AIO_DDS_ROLE',
           'GRANT CREATE SESSION TO AIO_DDS_ROLE',
-          'GRANT AIO_DDS_ROLE TO "$DB_USERNAME" WITH ADMIN OPTION',
-          'GRANT GRANT ANY DATA ROLE TO "$DB_USERNAME"'
+          'GRANT AIO_DDS_ROLE TO "$AIO_DB_USERNAME" WITH ADMIN OPTION',
+          'GRANT GRANT ANY DATA ROLE TO "$AIO_DB_USERNAME"'
         ))) LOOP
           BEGIN
             EXECUTE IMMEDIATE g.stmt;
@@ -85,7 +85,7 @@ write_files:
           host => '$API_SERVER_HOST',
           ace  => xs\$ace_type(
             privilege_list => xs\$name_list('http', 'connect', 'resolve'),
-            principal_name => '$DB_USERNAME',
+            principal_name => '$AIO_DB_USERNAME',
             principal_type => xs_acl.ptype_db
           )
         );

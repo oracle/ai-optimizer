@@ -51,7 +51,7 @@ The default differs by endpoint.  Chat and history requests (which read the `cli
 
 ### Session capacity
 
-The server caches client sessions in memory up to `AIO_MAX_CLIENTS` (default `64`).  Beyond that limit, the least-recently-used session is evicted (protected clients are never evicted).  An evicted client is not lost permanently — its next request simply re-creates a session from the configured defaults.  Raise `AIO_MAX_CLIENTS` if you expect many simultaneous users.  See [Configuration]({{% relref "env_config" %}}).
+The server caches client sessions in memory up to the configured [`AIO_MAX_CLIENTS`]({{% relref "/env_config#server" %}}) limit. Beyond that limit, the least-recently-used session is evicted (protected clients are never evicted). An evicted client is not lost permanently — its next request simply re-creates a session from the configured defaults. Raise the limit if you expect many simultaneous users.
 
 ## What Is Shared vs. Isolated
 
@@ -102,14 +102,10 @@ The [Racing Championship]({{% relref "use-case/racing-championship" %}}) use-cas
 
 Because the catalog is shared, any GUI user can, by default, change configuration that affects everyone — adding or deleting databases, editing models, resetting settings, or exporting configuration that contains secrets.  For shared or multi-user deployments, set a **shared password** to gate those controls.
 
-Set `AIO_CLIENT_PASSWORD` to enable the gate:
-
-| Variable | Description | Default |
-|---|---|---|
-| `AIO_CLIENT_PASSWORD` | Shared password that gates configuration and shared-state controls in the GUI client.  When unset, the gate is disabled and all controls are accessible. | _(unset — gate off)_ |
+Set [`AIO_CLIENT_PASSWORD`]({{% relref "/env_config#client" %}}) to enable the gate. When it is unset, the gate is disabled and all controls are accessible.
 
 {{% notice style="note" %}}
-This is a **GUI-only** access check.  It does **not** replace or affect API Server authentication — external clients still authenticate with `AIO_API_KEY`.  See [Configuration]({{% relref "env_config" %}}).
+This is a **GUI-only** access check. It does **not** replace or affect API Server authentication — external clients still authenticate with `AIO_API_KEY`. See [Environment Variables]({{% relref "env_config" %}}).
 {{% /notice %}}
 
 ### What the gate covers
@@ -139,6 +135,6 @@ The password is *shared* — a single secret distributed to the people allowed t
 - [Racing Championship]({{% relref "use-case/racing-championship" %}}) — a multi-user use-case
 - [API Server]({{% relref "client/api_server" %}})
 - [IDE Integration]({{% relref "advanced/ide_integration" %}})
-- [Configuration]({{% relref "env_config" %}})
+- [Environment Variables]({{% relref "env_config" %}})
 - [TLS]({{% relref "advanced/tls" %}})
 - [API Examples]({{% relref "advanced/api_examples" %}})

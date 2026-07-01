@@ -26,7 +26,7 @@ COPY pyproject.toml /app/pyproject.toml
 # Generate requirements and install deps only (cached layer)
 # Avoid re-installing packages when only the source changes
 RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir uv && \
-    ${VIRTUAL_ENV}/bin/pip install --no-cache-dir docling==2.107.0 --extra-index-url https://download.pytorch.org/whl/cpu && \
+    ${VIRTUAL_ENV}/bin/pip install --no-cache-dir docling==2.108.0 --extra-index-url https://download.pytorch.org/whl/cpu && \
     ${VIRTUAL_ENV}/bin/uv pip compile /app/pyproject.toml --extra all \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         --index-strategy unsafe-best-match \

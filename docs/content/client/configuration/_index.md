@@ -11,7 +11,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 The {{% full_app_ref %}} can be used immediately to interact with language models without any pre-configuration. To enable full functionality, including RAG and settings persistence, you will need to configure a database, models, and optionally Oracle Cloud Infrastructure (OCI).
 
-Configuration can be done through the GUI, [environment files](/env_config/), or a combination of both. After you configure the {{% short_app_ref %}}, you can export the settings and import them into another deployment or restore them after a restart.
+Configuration can be done through the GUI, [environment files]({{% relref "/env_config" %}}), or a combination of both. After you configure the {{% short_app_ref %}}, you can export the settings and import them into another deployment or restore them after a restart.
 
 ## 🤖 Model Configuration
 

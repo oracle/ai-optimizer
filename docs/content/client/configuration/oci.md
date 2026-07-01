@@ -61,7 +61,7 @@ podman run -v ~/.oci:/app/.oci -p 8501:8501 -it --rm ai-optimizer-aio
 
 ### Environment Variables
 
-OCI can also be configured using environment variables. See the [OCI CLI Overrides](/env_config/#oci-cli-overrides) and [OCI GenAI](/env_config/#oci-genai) sections of the Configuration page for available variables and usage.
+OCI can also be configured using environment variables. See [OCI CLI Overrides]({{% relref "/env_config#oci-cli-overrides" %}}) and [OCI GenAI]({{% relref "/env_config#oci-genai" %}}) under Environment Variables.
 
 ---
 

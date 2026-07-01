@@ -37,7 +37,8 @@ enableRobotsTXT = true
   LongName = "Oracle AI Optimizer and Toolkit"
   ShortName = "AI Optimizer"
   GitHubRepo = "https://github.com/oracle/ai-optimizer"
-  
+  urlExternalCheck = true
+
 [menu]
   [[menu.shortcuts]]
     identifier = 'ds'

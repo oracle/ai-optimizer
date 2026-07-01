@@ -20,7 +20,7 @@ There are three options for each component:
 
 ## Server
 
-The server TLS environment variables are documented in the [Server](/env_config/#server) section of the Configuration page.
+The server TLS environment variables are documented under [Server]({{% relref "/env_config#server" %}}) in Environment Variables.
 
 ### Self-Signed Certificate (Quick Start)
 
@@ -96,7 +96,7 @@ server:
 
 ## Client
 
-The client TLS environment variables are documented in the [Client](/env_config/#client) section of the Configuration page.
+The client TLS environment variables are documented under [Client]({{% relref "/env_config#client" %}}) in Environment Variables.
 
 ### Self-Signed Certificate (Quick Start)
 

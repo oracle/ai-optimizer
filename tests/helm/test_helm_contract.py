@@ -338,6 +338,99 @@ def _client_env(deployment: dict, name: str) -> dict | None:
     return next((e for e in env if e["name"] == name), None)
 
 
+def _server_env_content(docs: list[dict]) -> str:
+    """Return the chart-managed server dotenv content."""
+    for doc in docs:
+        if (
+            doc.get("kind") == "Secret"
+            and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+            and doc.get("stringData")
+        ):
+            return next(iter(doc["stringData"].values()))
+    raise AssertionError("chart-managed server environment Secret not found")
+
+
+class TestApplicationEnvironmentNames:
+    """Chart-generated application settings use the AIO_ namespace."""
+
+    _COOKIE = "client.cookieSecret=cccccccccccccccccccccccccccccccc"
+
+    def test_database_and_model_secret_bindings_use_aio_names(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.type=OTHER",
+            "server.database.other.dsn=mydbhost.example.com:1521/MYSERVICE",
+            "server.database.authn.secretName=database-credentials",
+            "server.models.openai.secretName=openai-credentials",
+            "server.models.perplexity.secretName=perplexity-credentials",
+            "server.models.cohere.secretName=cohere-credentials",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        deployment = _server_deployment(_docs(result.stdout))
+        env_names = {entry["name"] for entry in deployment["spec"]["template"]["spec"]["containers"][0]["env"]}
+
+        assert {
+            "AIO_DB_USERNAME",
+            "AIO_DB_PASSWORD",
+            "AIO_DB_DSN",
+            "AIO_OPENAI_API_KEY",
+            "AIO_PPLX_API_KEY",
+            "AIO_COHERE_API_KEY",
+        } <= env_names
+        assert {
+            "DB_USERNAME",
+            "DB_PASSWORD",
+            "DB_DSN",
+            "OPENAI_API_KEY",
+            "PPLX_API_KEY",
+            "COHERE_API_KEY",
+        }.isdisjoint(env_names)
+
+    def test_adb_wallet_binding_uses_aio_name(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.type=ADB-S",
+            "server.database.oci.ocid=ocid1.autonomousdatabase.oc1..test",
+            "server.database.adb.serviceName=mydb_low",
+            "server.database.adb.skipCrdCheck=true",
+            "server.database.username=admin",
+            "server.database.password=wallet-password",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        deployment = _server_deployment(_docs(result.stdout))
+        env_names = {entry["name"] for entry in deployment["spec"]["template"]["spec"]["containers"][0]["env"]}
+
+        assert "AIO_DB_WALLET_PASSWORD" in env_names
+        assert "DB_WALLET_PASSWORD" not in env_names
+
+    def test_chart_managed_env_file_uses_aio_names(self):
+        result = _render(
+            self._COOKIE,
+            "server.ociConfig.oke=true",
+            "server.ociConfig.region=us-ashburn-1",
+            "ollama.enabled=true",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        content = _server_env_content(_docs(result.stdout))
+
+        assert "AIO_OCI_CLI_REGION=us-ashburn-1" in content
+        assert "AIO_OCI_CLI_AUTH=oke_workload_identity" in content
+        assert "AIO_ON_PREM_OLLAMA_URL=" in content
+        assert re.search(r"(?m)^(OCI_CLI_REGION|OCI_CLI_AUTH|ON_PREM_OLLAMA_URL)=", content) is None
+
+    def test_database_provisioning_uses_aio_names(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=database/free",
+            "server.database.image.tag=1.0.0",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+
+        assert all(name in result.stdout for name in ("AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN"))
+        assert re.search(r"(?<!AIO_)\bDB_(USERNAME|PASSWORD|DSN)\b", result.stdout) is None
+
+
 def _docs_for_required_defaults() -> list[dict]:
     result = _render("client.cookieSecret=cccccccccccccccccccccccccccccccc")
     assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
@@ -585,9 +678,7 @@ class TestNotesUninstallDeletesOnlyChartManagedSecrets:
             f"expected exactly one chart-managed delete hint (auth only); got: {delete_lines}"
         )
         assert "byo-priv" not in delete_lines[0], "operator-owned priv name leaked into delete hint"
-        assert "-db-authn" in delete_lines[0], (
-            f"expected the chart-managed authn Secret suffix; got: {delete_lines[0]}"
-        )
+        assert "-db-authn" in delete_lines[0], f"expected the chart-managed authn Secret suffix; got: {delete_lines[0]}"
 
     def test_defaults_emit_both_chart_managed_deletes(self):
         notes = self._notes(
@@ -681,9 +772,7 @@ class TestSigNozAutoEndpointHttpProtocol:
         for var in ("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"):
             ep = _server_env(deployment, var)
             assert ep is not None, f"expected {var} to be set"
-            assert "/v1/" not in ep["value"], (
-                f"gRPC endpoint {var} must not include a signal path; got {ep['value']!r}"
-            )
+            assert "/v1/" not in ep["value"], f"gRPC endpoint {var} must not include a signal path; got {ep['value']!r}"
 
     def test_grpc_port_override_respected(self):
         """If the operator overrides signoz.otelCollector.ports.otlp.servicePort,
@@ -724,9 +813,7 @@ class TestSigNozAutoEndpointHttpProtocol:
             *_SIGNOZ_OTEL_BASE,
             "signoz.otelCollector.ports.otlp.enabled=false",
         )
-        assert result.returncode != 0, (
-            "helm template should fail when the auto endpoint would point at a disabled port"
-        )
+        assert result.returncode != 0, "helm template should fail when the auto endpoint would point at a disabled port"
 
     def test_null_grpc_enabled_fails_fast(self):
         """The SigNoz subchart treats `enabled=null` as disabled (its own
@@ -1021,9 +1108,7 @@ class TestSigNozSetupJobGating:
         otherwise an operator using the object form gets root provisioning
         but no setup Job, and the bundled dashboards/alerts never load."""
         values_file = tmp_path / "object-form.yaml"
-        values_file.write_text(
-            'signoz:\n  signoz:\n    env:\n      SIGNOZ_USER_ROOT_ENABLED:\n        value: "true"\n'
-        )
+        values_file.write_text('signoz:\n  signoz:\n    env:\n      SIGNOZ_USER_ROOT_ENABLED:\n        value: "true"\n')
         result = _render_raw(
             *_set_args(*_SIGNOZ_OTEL_BASE),
             "-f",
@@ -1606,9 +1691,7 @@ class TestClientOciSourceBucketEnv:
     def test_bucket_only_renders_bucket_env_faithfully(self):
         """The chart does not enforce compartment-as-anchor; an orphan
         bucketName still gets injected. The client ignores it at runtime."""
-        deployment = self._deployment(
-            _render(self._COOKIE, f"client.oci.sourceBucketName={self._BUCKET_NAME}")
-        )
+        deployment = self._deployment(_render(self._COOKIE, f"client.oci.sourceBucketName={self._BUCKET_NAME}"))
         entry = _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME")
         assert entry is not None and entry["value"] == self._BUCKET_NAME
         assert _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID") is None

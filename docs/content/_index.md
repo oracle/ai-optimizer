@@ -119,7 +119,7 @@ To run the application on bare-metal, download the latest release:
    cp src/.env.example src/.env.dev
    ```
 
-   Edit `src/.env.dev` as needed. See [Environment Configuration]({{% relref "/env_config" %}}) for details.
+   Edit `src/.env.dev` as needed. See [Environment Variables]({{% relref "/env_config" %}}) for details.
 
 1. Start the application:
 

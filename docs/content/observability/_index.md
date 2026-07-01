@@ -101,12 +101,12 @@ Log export to OTLP only activates when the OTLP trace exporter is active. With `
 {{% /notice %}}
 
 {{% notice style="code" title="Log export is opt-in" icon="triangle-exclamation" %}}
-Application log export to OTLP is **disabled by default**, even when tracing is configured. Enable it with `AIO_OTEL_LOGS_ENABLED=true` only for backends intended to retain application logs.
+Application log export to OTLP is **disabled by default**, even when tracing is configured. Enable it with [`AIO_OTEL_LOGS_ENABLED=true`]({{% relref "/env_config#observability" %}}) only for backends intended to retain application logs.
 
 Span attribute visibility is controlled separately through the OpenInference settings below.
 {{% /notice %}}
 
-## Environment Variable Reference
+## Environment Variables
 
 The {{% short_app_ref %}} honors the standard [OpenTelemetry SDK environment variables](https://opentelemetry.io/docs/languages/sdk-configuration/). The most relevant ones for operators:
 
@@ -128,7 +128,6 @@ The {{% short_app_ref %}} honors the standard [OpenTelemetry SDK environment var
 | Variable | Description | Default |
 |---|---|---|
 | `OTEL_TRACES_EXPORTER` | Comma-separated list. Supported values: `otlp`, `console`, `none`. Unsupported values are ignored. | `otlp` |
-| `AIO_OTEL_LOGS_ENABLED` | Application log export to OTLP — opt-in. See callout below before enabling. | `false` |
 | `OTEL_LOGS_EXPORTER` | Set to `none` to disable log export when `AIO_OTEL_LOGS_ENABLED=true` is in effect. | `otlp` |
 
 ### Resource attributes
