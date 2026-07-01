@@ -37,8 +37,8 @@ FACTORY_MODELS: list[dict] = [
         'provider': 'openai',
         'api_key': '',
         'api_base': 'https://api.openai.com/v1',
-        'max_tokens': 16384,
-        'max_input_tokens': 128000,
+        'max_tokens': 128000,
+        'max_input_tokens': 400000,
     },
     {
         'id': 'sonar',
@@ -47,7 +47,7 @@ FACTORY_MODELS: list[dict] = [
         'provider': 'perplexity',
         'api_key': '',
         'api_base': 'https://api.perplexity.ai',
-        'max_tokens': 8000,
+        'max_tokens': 128000,
         'max_input_tokens': 128000,
     },
     {
@@ -57,6 +57,7 @@ FACTORY_MODELS: list[dict] = [
         'provider': 'huggingface',
         'api_key': '',
         'api_base': 'http://localhost:1234/v1',
+        'max_tokens': 16384,
         'max_input_tokens': 16384,
     },
     {
@@ -66,8 +67,8 @@ FACTORY_MODELS: list[dict] = [
         'provider': 'hosted_vllm',
         'api_key': '',
         'api_base': 'http://localhost:8000/v1',
-        'max_tokens': 2048,
-        'max_input_tokens': 16384,
+        'max_tokens': 131072,
+        'max_input_tokens': 131072,
     },
     {
         'id': 'llama3.2:3b',
@@ -76,8 +77,8 @@ FACTORY_MODELS: list[dict] = [
         'provider': 'ollama',
         'api_key': '',
         'api_base': 'http://localhost:11434',
-        'max_tokens': 32768,
-        'max_input_tokens': 40960,
+        'max_tokens': 131072,
+        'max_input_tokens': 131072,
     },
     {
         'id': 'thenlper/gte-base',
@@ -95,7 +96,7 @@ FACTORY_MODELS: list[dict] = [
         'provider': 'openai',
         'api_base': 'https://api.openai.com/v1',
         'api_key': '',
-        'max_chunk_size': 1536,
+        'max_chunk_size': 8192,
     },
     {
         'id': 'embed-english-light-v3.0',
