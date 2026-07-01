@@ -6,7 +6,7 @@ Unit tests for client.app.core.sidebar
 """
 # spell-checker: disable
 
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pandas as pd
 import pytest
@@ -600,6 +600,110 @@ class TestToolkitSidebar:
             toolkit_sidebar()
         assert state.tool_box["Vector Search"]["enabled"] is True
 
+    def test_small_model_auto_disables_vector_search_subtools(self, mock_st):
+        """Verify Vector Search sub-tools are auto-disabled for a newly selected small model."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {
+                "id": "llama3.2:1b",
+                "type": "ll",
+                "enabled": True,
+                "provider": "ollama",
+                "status": "available",
+                "small_model": True,
+            },
+            {"id": "e1", "type": "embed", "enabled": True, "provider": "oci"},
+        ]
+        state["settings"]["database_configs"] = [
+            {
+                "alias": "db1",
+                "usable": True,
+                "vector_stores": [{"embedding_model": {"provider": "oci", "id": "e1"}}],
+            },
+        ]
+        client_settings = state["settings"]["client_settings"]
+        client_settings["database"] = {"alias": "db1"}
+        client_settings["ll_model"] = {"provider": "ollama", "id": "llama3.2:1b"}
+        client_settings["tools_enabled"] = ["Vector Search"]
+        client_settings["vector_search"] = {"discovery": True, "rephrase": True, "grade": True}
+        state["runtime_tools"] = ["Vector Search"]
+        state["runtime_vs_discovery"] = True
+        state["runtime_vs_rephrase"] = True
+        state["runtime_vs_grade"] = True
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.update_client_settings") as mock_update,
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import toolkit_sidebar
+
+            toolkit_sidebar()
+
+        assert client_settings["vector_search"] == {"discovery": False, "rephrase": False, "grade": False}
+        assert state["runtime_vs_discovery"] is False
+        assert state["runtime_vs_rephrase"] is False
+        assert state["runtime_vs_grade"] is False
+        mock_update.assert_called_once_with({"vector_search": {"discovery": False, "rephrase": False, "grade": False}})
+        mock_st.sidebar.info.assert_called_once_with("CPU Mode: Additional tools auto-disabled")
+
+    def test_small_model_finishes_cpu_optimization_after_testbed(self, mock_st):
+        """Verify Chatbot disables controls that were unavailable on Testbed."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {
+                "id": "llama3.2:1b",
+                "type": "ll",
+                "enabled": True,
+                "provider": "ollama",
+                "status": "available",
+                "small_model": True,
+            },
+            {"id": "e1", "type": "embed", "enabled": True, "provider": "oci"},
+        ]
+        state["settings"]["database_configs"] = [
+            {
+                "alias": "db1",
+                "usable": True,
+                "vector_stores": [{"embedding_model": {"provider": "oci", "id": "e1"}}],
+            },
+        ]
+        client_settings = state["settings"]["client_settings"]
+        client_settings["database"] = {"alias": "db1"}
+        client_settings["ll_model"] = {"provider": "ollama", "id": "llama3.2:1b"}
+        client_settings["tools_enabled"] = ["Vector Search"]
+        client_settings["vector_search"] = {"discovery": True, "rephrase": True, "grade": True}
+        state["runtime_tools"] = ["Vector Search"]
+        state["runtime_vs_discovery"] = True
+        state["runtime_vs_rephrase"] = True
+        state["runtime_vs_grade"] = True
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.update_client_settings") as mock_update,
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import toolkit_sidebar
+
+            toolkit_sidebar(show_vs_subtools=False)
+            assert client_settings["vector_search"] == {"discovery": False, "rephrase": True, "grade": True}
+
+            toolkit_sidebar(show_vs_subtools=True)
+            assert client_settings["vector_search"] == {"discovery": False, "rephrase": False, "grade": False}
+
+            client_settings["vector_search"].update({"rephrase": True, "grade": True})
+            state["runtime_vs_rephrase"] = True
+            state["runtime_vs_grade"] = True
+            toolkit_sidebar(show_vs_subtools=True)
+
+        assert client_settings["vector_search"] == {"discovery": False, "rephrase": True, "grade": True}
+        assert mock_update.call_args_list == [
+            call({"vector_search": {"discovery": False}}),
+            call({"vector_search": {"rephrase": False, "grade": False}}),
+        ]
+
     def test_nl2sql_disabled_when_proxy_unavailable(self, mock_st):
         """Verify NL2SQL is disabled when nl2sql_available is False."""
         state = _make_state()
@@ -974,46 +1078,17 @@ class TestIsSmallModel:
 class TestRenderVsSubtools:
     """Tests for _render_vs_subtools."""
 
-    def test_small_model_auto_disables_rephrase_grade(self, mock_st):
-        """Verify rephrase and grade are auto-disabled for small models."""
+    def test_large_model_does_not_warn(self, mock_st):
+        """Verify rephrase and grade render without a small-model warning."""
         state = _make_state()
-        state["settings"]["model_configs"] = [
-            {"id": "llama3.2:1b", "type": "ll", "provider": "ollama", "small_model": True},
-        ]
-        state["settings"]["client_settings"]["ll_model"] = {"provider": "ollama", "id": "llama3.2:1b"}
         vs_settings = {"rephrase": True, "grade": True}
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
-            patch(f"{MODULE}.update_client_settings") as mock_update,
-            patch(f"{HELPERS}.state", state),
         ):
             from client.app.core.sidebar import _render_vs_subtools
 
-            _render_vs_subtools(vs_settings, state["settings"]["client_settings"])
-        assert vs_settings["rephrase"] is False
-        assert vs_settings["grade"] is False
-        mock_update.assert_called_once_with({"vector_search": {"rephrase": False, "grade": False}})
-        mock_st.sidebar.info.assert_called_once()
-
-    def test_large_model_keeps_rephrase_grade(self, mock_st):
-        """Verify rephrase and grade are unchanged for large models."""
-        state = _make_state()
-        state["settings"]["model_configs"] = [
-            {"id": "llama3:70b", "type": "ll", "provider": "ollama", "small_model": False},
-        ]
-        state["settings"]["client_settings"]["ll_model"] = {"provider": "ollama", "id": "llama3:70b"}
-        vs_settings = {"rephrase": True, "grade": True}
-        with (
-            patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.state", state),
-            patch(f"{MODULE}.update_client_settings") as mock_update,
-            patch(f"{HELPERS}.state", state),
-        ):
-            from client.app.core.sidebar import _render_vs_subtools
-
-            _render_vs_subtools(vs_settings, state["settings"]["client_settings"])
+            _render_vs_subtools(vs_settings, small_model=False)
         assert vs_settings["rephrase"] is True
         assert vs_settings["grade"] is True
-        mock_update.assert_not_called()
-        mock_st.sidebar.info.assert_not_called()
+        mock_st.sidebar.warning.assert_not_called()

@@ -41,13 +41,13 @@ def _sample_client_settings() -> ClientSettings:
     """Build showcase ClientSettings using an LL model from settings.
 
     Prefers an enabled LL model, otherwise uses any configured LL model so the
-    spec still serializes for inspection. Falls back to an ollama/qwen3:4b
+    spec still serializes for inspection. Falls back to an ollama/llama3.2:3b
     placeholder only when no LL model config exists at all.
     """
     ll_models = [c for c in settings.model_configs if c.type == "ll" and c.provider and c.id]
     chosen = next((c for c in ll_models if c.enabled), ll_models[0] if ll_models else None)
     provider = chosen.provider if chosen else "ollama"
-    model_id = chosen.id if chosen else "qwen3:4b"
+    model_id = chosen.id if chosen else "llama3.2:3b"
     return ClientSettings(
         ll_model=LLModelSettings(
             provider=provider,

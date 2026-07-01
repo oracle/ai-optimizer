@@ -9,9 +9,9 @@
 
 ## Testing and Linting
 
+- Never run the project's full test suite.  If additional confidence would normally come from a full suite run, recommend that the user perform it after reviewing the changes.
 - Fix every issue reported on files you touched; don't split into "pre-existing" vs "introduced."
 - Keep fixes scoped to the requested change and files touched.
-- Default to running the relevant tests, but when a change touches strings, log lines, error text, or public names, run the full suite from the root: `pytest .`
 - A real Oracle database is available for integration testing. Integration tests should use it to verify behavior whenever practical, rather than relying solely on mocks or in-memory databases.
 - Async tests use AnyIO (`anyio_mode = "auto"`), while `pytest-asyncio` remains in `strict` mode. Never introduce a second async event-loop owner (for example, `asyncio_mode = "auto"`, `@pytest.mark.asyncio`, or an AnyIO async-marking hook). Never let a synchronous test depend on an async fixture; make such tests `async def` instead.
 

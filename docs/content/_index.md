@@ -44,7 +44,7 @@ This method significantly improves the accuracy of AI models, helping to avoid c
 
 ## Features
 
-The {{% short_app_ref %}} streamlines the entire workflow from prototyping to production, making it easier to create and deploy GenAI solutions using the **Oracle AI Database**.
+The {{% short_app_ref %}} brings together the capabilities you need to build, test, and refine GenAI solutions on the **Oracle AI Database**:
 
 - [Configuring **Embedding** and **Language** Models]({{% relref "/client/configuration/models" %}})
 - [Experimenting with **Language Model** Parameters]({{% relref "/client/chatbot" %}})

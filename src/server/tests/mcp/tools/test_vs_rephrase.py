@@ -137,6 +137,28 @@ async def test_perform_rephrase_missing_prompt(monkeypatch: pytest.MonkeyPatch):
     assert result == "Question?"
 
 
+async def test_perform_rephrase_caps_output_and_disables_reasoning(monkeypatch: pytest.MonkeyPatch):
+    """Rephrase must bound output tokens (so a slow/verbose model can't run to the
+    tool timeout) and disable reasoning for this deterministic utility call."""
+    prompt_config_factory_text = "Prompt: {prompt}\nHistory: {history}\nQuestion: {question}"
+    monkeypatch.setattr(
+        "server.app.mcp.tools.vs_rephrase.find_prompt",
+        lambda _: MagicMock(text=prompt_config_factory_text),
+    )
+    captured: dict = {}
+
+    async def _capture(*_args, **kwargs) -> str:
+        captured.update(kwargs)
+        return "Rephrased"
+
+    monkeypatch.setattr("server.app.mcp.tools.vs_rephrase.ainvoke_text_from_spec", _capture)
+
+    await vs_rephrase._perform_rephrase("Question?", ["one", "two"], "ctx", _DUMMY_SPEC)
+
+    assert captured["max_tokens"] == vs_rephrase.REPHRASE_MAX_TOKENS
+    assert captured["disable_reasoning"] is True
+
+
 async def test_register_rephrase_tool(monkeypatch: pytest.MonkeyPatch):
     """Registered rephrase tool should call implementation and log info."""
 

@@ -68,6 +68,7 @@ Third-Party cloud models, such as [OpenAI](https://openai.com/api/) and [Perplex
 
 On-Premises models, such as those from [Ollama](https://ollama.com/) or [HuggingFace](https://huggingface.co/) usually do not require API Keys. These values can be left blank.
 
+---
 
 ## CPU Optimization
 
@@ -85,21 +86,18 @@ Examples of CPU-friendly model choices include:
 | `llama3.2:3b` | 3B | 2048 | Balanced performance/quality |
 | `gemma3:1b` | 1B | 2048 | Lightweight, efficient |
 
-### Automatic Optimization
+### Vector Search Optimization
 
-When a selected model name includes a parameter count below 7B, such as `llama3.2:1b` or `gemma3:1b`, the {{% short_app_ref %}} automatically:
+When a selected model name includes a parameter count below 7B, such as `llama3.2:1b` or `gemma3:1b`, the {{% short_app_ref %}} automatically disables these Vector Search
+features:
 
-1. **Disables Document Grading** - Skips the extra call to grade document relevance
-2. **Disables Query Rephrasing** - Skips the extra call to rephrase user queries
+- **Store Discovery**: Uses the Language Model to select the most appropriate Vector Store. When disabled, you must select the Vector Store manually if more than one is
+available.
+- **Document Grading**: Evaluates retrieved documents for relevance before they are used.
+- **Prompt Rephrase**: Rephrases queries using the conversation context to improve retrieval.
 
-For Vector Search queries that would otherwise use both features, these optimizations can reduce the number of _Language Model_ calls from 3 to 1 per query, significantly improving response times.
-
-### Manual Control
-
-You can manually enable or disable these features using the **Document Grading** and **Prompt Rephrase** checkboxes in the Vector Search sidebar, regardless of model size.
-
-- **Document Grading**: When enabled, retrieved documents are evaluated for relevance before being used
-- **Prompt Rephrase**: When enabled, user queries are rephrased based on conversation context for better retrieval
+Disabling these features reduces the number of Language Model calls and can significantly improve response times. You can manually enable or disable each feature using the
+checkboxes in the Vector Search sidebar, regardless of model size.
 
 ### Performance Tips
 
@@ -107,6 +105,8 @@ You can manually enable or disable these features using the **Document Grading**
 2. **Reduce Top K**: Lower the number of retrieved documents (e.g., Top K = 3-5)
 3. **Lower Max Tokens**: Reduce maximum output tokens to speed up generation
 4. **Temperature 0**: Use temperature 0 for deterministic, faster responses
+
+---
 
 ## Additional Information
 
@@ -153,7 +153,7 @@ Click the "Pull" button and the {{% short_app_ref %}} downloads the model from t
 
 ## Quick-start
 
-Example of running qwen3:8b on a Linux host:
+Example of running llama3.2:3b on a Linux host:
 
 1. Install Ollama:
 
@@ -161,10 +161,10 @@ Example of running qwen3:8b on a Linux host:
 sudo curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-1. Pull the qwen3:8b model:
+1. Pull the llama3.2:3b model:
 
 ```shell
-ollama pull qwen3:8b
+ollama pull llama3.2:3b
 ```
 
 1. Start Ollama

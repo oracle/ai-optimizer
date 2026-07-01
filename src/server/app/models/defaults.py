@@ -70,7 +70,7 @@ FACTORY_MODELS: list[dict] = [
         'max_input_tokens': 16384,
     },
     {
-        'id': 'qwen3:4b',
+        'id': 'llama3.2:3b',
         'enabled': False,
         'type': 'll',
         'provider': 'ollama',

@@ -105,7 +105,7 @@ ollama:
   models:
     enabled: true
     modelPullList:
-      - qwen3:4b
+      - llama3.2:3b
       - mxbai-embed-large
   resources:
     limits:

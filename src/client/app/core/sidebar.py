@@ -247,24 +247,12 @@ def _is_small_model(client_settings: dict) -> bool:
     return cfg.get("small_model", False)
 
 
-def _render_vs_subtools(vs_settings: dict, client_settings: dict) -> None:
-    """Render Vector Search sub-tool checkboxes (rephrase, grade) with CPU mode logic."""
-    # CPU mode detection for small models
-    model_id = client_settings.get("ll_model", {}).get("id", "")
-    small_model = _is_small_model(client_settings)
+def _render_vs_subtools(vs_settings: dict, small_model: bool) -> None:
+    """Render Vector Search sub-tool checkboxes (rephrase, grade).
 
-    previous_model = state.get("_previous_ll_model_for_cpu")
-    model_changed = previous_model != model_id
-    state["_previous_ll_model_for_cpu"] = model_id
-
-    if small_model:
-        st.sidebar.info("CPU Mode: Rephrase/Grading auto-disabled")
-        if model_changed:
-            LOGGER.info("Small model detected (%s), auto-disabling grade and rephrase", model_id)
-            vs_settings["rephrase"] = False
-            vs_settings["grade"] = False
-            update_client_settings({"vector_search": {"rephrase": False, "grade": False}})
-
+    CPU-mode detection and auto-disable are handled by the caller (toolkit_sidebar) so they also
+    cover Store Discovery; here we only render the checkboxes and the re-enable warning.
+    """
     st.sidebar.checkbox(
         "Prompt Rephrase",
         help=state.optimizer_help.get("vector_search_rephrase", ""),
@@ -282,6 +270,33 @@ def _render_vs_subtools(vs_settings: dict, client_settings: dict) -> None:
 
     if small_model and (vs_settings.get("rephrase") or vs_settings.get("grade")):
         st.sidebar.warning("Enabling on small models increases response time")
+
+
+def _apply_cpu_optimization(client_settings: dict, vs_settings: dict, show_vs_subtools: bool) -> bool:
+    """Disable newly available Vector Search controls once for each small model."""
+    small_model = _is_small_model(client_settings)
+    model_id = client_settings.get("ll_model", {}).get("id", "")
+    model_changed = state.get("_previous_ll_model_for_cpu") != model_id
+    processed_controls = set(state.get("_cpu_optimized_controls", ())) if not model_changed else set()
+    state["_previous_ll_model_for_cpu"] = model_id
+    available_controls = {"discovery"}
+    if show_vs_subtools:
+        available_controls.update({"rephrase", "grade"})
+
+    if small_model:
+        st.sidebar.info("CPU Mode: Additional tools auto-disabled")
+        controls_to_disable = available_controls - processed_controls
+        if controls_to_disable:
+            LOGGER.info("Small model detected (%s)", model_id)
+            disabled = {key: False for key in ("discovery", "rephrase", "grade") if key in controls_to_disable}
+            vs_settings.update(disabled)
+            for key in disabled:
+                widget_key = f"runtime_vs_{key}"
+                if widget_key in state:
+                    state[widget_key] = False
+            update_client_settings({"vector_search": disabled})
+    state["_cpu_optimized_controls"] = processed_controls | available_controls
+    return small_model
 
 
 def _check_vector_search_availability(db_config: dict) -> None:
@@ -371,6 +386,11 @@ def toolkit_sidebar(show_vs_subtools: bool = True) -> None:
     # Vector Search Sub-Tools
     if "Vector Search" in client_settings["tools_enabled"]:
         vs_settings = client_settings.get("vector_search", {})
+
+        # Testbed does not expose rephrase or grading, so process each control when it first becomes
+        # available. After that, reruns preserve any manual re-enablement for the selected model.
+        small_model = _apply_cpu_optimization(client_settings, vs_settings, show_vs_subtools)
+
         st.sidebar.checkbox(
             "Store Discovery",
             help=state.optimizer_help.get("vector_search_discovery", ""),
@@ -379,7 +399,7 @@ def toolkit_sidebar(show_vs_subtools: bool = True) -> None:
             on_change=_on_vs_subtool_change,
         )
         if show_vs_subtools:
-            _render_vs_subtools(vs_settings, client_settings)
+            _render_vs_subtools(vs_settings, small_model)
 
 
 def history_sidebar() -> None:

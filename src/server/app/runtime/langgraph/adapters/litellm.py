@@ -25,6 +25,7 @@ import json
 import logging
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Type, Union
 
+import litellm
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import agenerate_from_stream, generate_from_stream
@@ -480,11 +481,16 @@ def chat_model_from_spec(
     *,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> OracleChatLiteLLM:
     """Build an :class:`OracleChatLiteLLM` from a resolved :class:`LiteLlmModelSpec`.
 
     *temperature* / *max_tokens* override the spec's values for a single call
     (e.g. classifier needs ``temperature=0.0`` regardless of the user setting).
+    *reasoning_effort* is LiteLLM's unified reasoning knob. A value of ``"none"``
+    disables reasoning only for models whose provider supports that effort level.
+    Callers must omit unsupported values because ``drop_params=True`` validates
+    parameter names, not model-specific values.
     OCI auth params + frequency/presence penalties flow through ``model_kwargs``.
     """
     model_kwargs: Dict[str, Any] = dict(spec.oci_params)
@@ -492,6 +498,8 @@ def chat_model_from_spec(
         model_kwargs["frequency_penalty"] = spec.frequency_penalty
     if spec.presence_penalty is not None:
         model_kwargs["presence_penalty"] = spec.presence_penalty
+    if reasoning_effort is not None:
+        model_kwargs["reasoning_effort"] = reasoning_effort
     return OracleChatLiteLLM(
         model=spec.model_key,
         api_key=spec.api_key,
@@ -503,20 +511,46 @@ def chat_model_from_spec(
     )
 
 
+def _utility_reasoning_effort(model_key: str) -> Optional[str]:
+    """Return the lowest supported reasoning effort for a utility call."""
+    provider = model_key.partition("/")[0].lower()
+    if provider in {"ollama", "ollama_chat"}:
+        model_id = model_key.partition("/")[2].lower()
+        if model_id.startswith("gpt-oss"):
+            return "low"
+        return "none"
+
+    try:
+        model_info = litellm.get_model_info(model_key)
+    except Exception:
+        return None
+    return "none" if model_info.get("supports_none_reasoning_effort") is True else None
+
+
 async def ainvoke_text_from_spec(
     spec: LiteLlmModelSpec,
     prompt: str,
     *,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    disable_reasoning: bool = False,
 ) -> str:
     """Single-prompt LLM completion via a ``LiteLlmModelSpec``-derived model.
 
     Callers receive plain text with reasoning/non-text blocks stripped.
     Used by the MCP tools (rephrase, grade, retriever) to consolidate the
     ``chat_model_from_spec → ainvoke → extract_response_text`` pattern.
+
+    Set *disable_reasoning* for deterministic utility calls (rephrase, grade).
+    Reasoning is disabled when supported, reduced to the lowest supported
+    effort for models that cannot disable it, or otherwise left unset.
     """
-    llm = chat_model_from_spec(spec, temperature=temperature, max_tokens=max_tokens)
+    llm = chat_model_from_spec(
+        spec,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        reasoning_effort=_utility_reasoning_effort(spec.model_key) if disable_reasoning else None,
+    )
     result = await llm.ainvoke([HumanMessage(content=prompt)])
     return extract_response_text(result.content)
 

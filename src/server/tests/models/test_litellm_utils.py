@@ -700,7 +700,7 @@ class TestExtractParameterCount:
 
     def test_8b_model(self):
         """extract_parameter_count should extract 8B from model name."""
-        assert extract_parameter_count("qwen3:8b:8b") == 8.0
+        assert extract_parameter_count("llama3.1:8b") == 8.0
 
     def test_70b_model(self):
         """extract_parameter_count should extract 70B from model name."""
@@ -756,7 +756,7 @@ class TestIsSmallModel:
 
     def test_8b_is_not_small(self):
         """is_small_model should return False for 8B models."""
-        assert is_small_model("qwen3:8b:8b") is False
+        assert is_small_model("llama3.1:8b") is False
 
     def test_70b_is_not_small(self):
         """is_small_model should return False for 70B models."""
@@ -777,7 +777,7 @@ class TestIsSmallModel:
     def test_with_provider_prefix(self):
         """is_small_model should work with provider/model format."""
         assert is_small_model("ollama/llama3.2:1b") is True
-        assert is_small_model("ollama/qwen3:8b:8b") is False
+        assert is_small_model("ollama/llama3.1:8b") is False
 
     def test_gemma_1b(self):
         """is_small_model should detect gemma 1b as small."""

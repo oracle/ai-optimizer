@@ -331,7 +331,7 @@ Same structure as server autoscaling (see above).
 | `ollama.image.repository` | Ollama image | `docker.io/ollama/ollama` |
 | `ollama.image.tag` | Ollama image tag | `0.23.1` |
 | `ollama.models.enabled` | Auto-pull models on startup | `true` |
-| `ollama.models.modelPullList` | List of models to pull | `[qwen3:4b, mxbai-embed-large]` |
+| `ollama.models.modelPullList` | List of models to pull | `[llama3.2:3b, mxbai-embed-large]` |
 | `ollama.resources` | Resource requests/limits (GPU support) | `{}` |
 
 **Note**: For GPU support, set:

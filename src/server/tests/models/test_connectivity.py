@@ -485,7 +485,7 @@ class TestRule6OllamaModels:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        # qwen3:8b is available
+        # llama3.2:3b is available
         assert settings.model_configs[0].status == "available"
         assert settings.model_configs[0].enabled is True
         # phi4-mini is NOT in tags
