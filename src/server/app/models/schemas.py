@@ -73,6 +73,11 @@ class ModelIdentity(BaseModel):
     def _canonical_provider(cls, value: Optional[str]) -> Optional[str]:
         return canonicalize_provider(value)
 
+    @field_validator("provider")
+    @classmethod
+    def _canonical_provider(cls, value: Optional[str]) -> Optional[str]:
+        return canonicalize_provider(value)
+
     @classmethod
     def from_key(cls, model_key: str) -> "ModelIdentity":
         """Parse a ``provider/id`` string into a :class:`ModelIdentity`.
