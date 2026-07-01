@@ -6,17 +6,30 @@ Pydantic models for AI model configuration.
 """
 # spell-checker: ignore aioptimizer ollama qwen rerank
 
-import re
 import time
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 from server.app.core.secrets import SecretField
 
-# Pattern to extract parameter count from model names (e.g., "llama3.2:1b" -> 1.0)
-_PARAM_PATTERN = re.compile(r"(\d+(?:\.\d+)?)[bB](?![a-zA-Z])")
-_SMALL_MODEL_THRESHOLD_B = 7
+# Runtime readiness of a model, set by the reachability checks — the single source of truth
+# for availability. Replaces the legacy ``usable`` bool, which was intentionally dropped from
+# the API (consumers should read ``status``). ``not_pulled`` is Ollama-specific (server up,
+# model absent) and is the only non-available state where pulling makes sense.
+ModelStatus = Literal["available", "unreachable", "not_pulled", "no_key"]
+
+
+def canonicalize_provider(value: Optional[str]) -> Optional[str]:
+    """Store ``ollama_chat`` as the canonical ``ollama``.
+
+    ``ollama_chat`` is an internal LiteLLM alias the runtime applies to ``ollama``
+    LLM calls; configs (including imported ones and update payloads) are always
+    stored as ``ollama`` so discovery, reachability, and the Pull flow apply.
+    """
+    if value and value.casefold() == "ollama_chat":
+        return "ollama"
+    return value
 
 
 class LanguageModelParameters(BaseModel):
@@ -54,6 +67,11 @@ class ModelIdentity(BaseModel):
 
     provider: Optional[str] = Field(default=None, examples=["openai", "anthropic", "ollama"])
     id: Optional[str] = Field(default=None, examples=["gpt-5.4-mini", "sonnet", "qwen3:8b"])
+
+    @field_validator("provider")
+    @classmethod
+    def _canonical_provider(cls, value: Optional[str]) -> Optional[str]:
+        return canonicalize_provider(value)
 
     @classmethod
     def from_key(cls, model_key: str) -> "ModelIdentity":
@@ -95,21 +113,15 @@ class ModelConfig(LanguageModelParameters, EmbeddingModelParameters, ModelSensit
     type: Literal["ll", "embed", "rerank"] = Field(...)
     api_base: Optional[str] = None
     enabled: Optional[bool] = False
-    usable: bool = False
+    status: ModelStatus = "unreachable"
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def small_model(self) -> bool:
         """True when the model has < 7B parameters (detected from model name)."""
-        if not self.id:
-            return False
-        match = _PARAM_PATTERN.search(self.id)
-        if match:
-            try:
-                return float(match.group(1)) < _SMALL_MODEL_THRESHOLD_B
-            except ValueError:
-                pass
-        return False
+        from server.app.models.litellm_utils import is_small_model  # noqa: PLC0415 — avoids circular import
+
+        return is_small_model(self.id)
 
 
 class ModelUpdate(ModelSensitive):
@@ -138,3 +150,8 @@ class ModelUpdate(ModelSensitive):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_chunk_size: Optional[int] = None
+
+    @field_validator("provider")
+    @classmethod
+    def _canonical_provider(cls, value: Optional[str]) -> Optional[str]:
+        return canonicalize_provider(value)

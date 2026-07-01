@@ -41,7 +41,7 @@ def _find_embedding_model_config(embedding_model: Optional[ModelIdentity]):
 def _is_model_usable(embedding_model: Optional[ModelIdentity]) -> bool:
     """Check if an embedding model is enabled and its endpoint is reachable."""
     mc = _find_embedding_model_config(embedding_model)
-    return mc is not None and mc.usable
+    return mc is not None and mc.status == "available"
 
 
 async def _vs_discovery_impl(

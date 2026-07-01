@@ -86,7 +86,7 @@ all = [
 # ``src/`` is the package root; the wheel ships its contents at the top
 # level (``server``, ``client``, plus the bare-name modules below) so
 # runtime imports like ``from server.app...`` resolve directly.
-py-modules = ["_version", "entrypoint", "logging_config", "logging_redaction", "net_addressing", "ssl_cert", "url_safety"]
+py-modules = ["_version", "entrypoint", "logging_config", "logging_redaction", "net_addressing", "runtime_config_fields", "url_safety"]
 
 [tool.setuptools.package-dir]
 "" = "src"
@@ -99,8 +99,13 @@ include = ["server*", "client*"]
 [tool.pytest.ini_options]
 pythonpath = ["src", "tests"]
 addopts = "--import-mode=importlib"
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+# anyio is the single async-test backend (see the root conftest.py). ``anyio_mode =
+# auto`` makes anyio claim every coroutine test and its async fixtures at collection
+# time, with no per-test marker. pytest-asyncio stays installed but pinned to
+# ``strict`` so it only ever acts on the (unused) ``@pytest.mark.asyncio`` marker,
+# never auto-claiming async tests/fixtures and racing anyio for the event loop.
+anyio_mode = "auto"
+asyncio_mode = "strict"
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::RuntimeWarning:litellm",

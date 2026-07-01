@@ -25,8 +25,7 @@ from pydantic import SecretStr
 
 from client.app.core.secrets import reveal
 from client.app.core.settings import settings
-from net_addressing import connect_host, netloc, should_inject_server_port, verify_for_url
-from ssl_cert import resolve_or_generate_cert
+from net_addressing import connect_host, netloc, resolve_or_generate_cert, should_inject_server_port, verify_for_url
 
 LOGGER = logging.getLogger(__name__)
 

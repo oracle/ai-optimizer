@@ -50,7 +50,7 @@ def _make_model(
         id=model_id,
         type=model_type,
         enabled=enabled,
-        usable=usable,
+        status="available" if usable else "unreachable",
         **kwargs,
     )
 

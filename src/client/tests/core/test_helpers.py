@@ -237,6 +237,27 @@ class TestRefreshSettings:
             assert refresh_settings() is False
 
 
+class TestRefreshSettingsThrottled:
+    """Tests for refresh_settings_throttled."""
+
+    def test_refreshes_when_stale_and_skips_within_interval(self):
+        """First view refreshes; a view within the interval is skipped; a later view refreshes again."""
+        state = _make_state()
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.refresh_settings") as mock_refresh,
+            patch(f"{MODULE}.time.monotonic", side_effect=[100.0, 105.0, 200.0]),
+        ):
+            from client.app.core.helpers import refresh_settings_throttled
+
+            refresh_settings_throttled("k", interval=30)  # t=100, stale -> refresh
+            refresh_settings_throttled("k", interval=30)  # t=105, within 30s -> skip
+            refresh_settings_throttled("k", interval=30)  # t=200, stale -> refresh
+
+        assert mock_refresh.call_count == 2
+        mock_refresh.assert_called_with(clear_runtime=False)
+
+
 # ---------------------------------------------------------------------------
 # sync_client_setting
 # ---------------------------------------------------------------------------

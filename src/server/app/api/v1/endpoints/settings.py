@@ -7,14 +7,13 @@ Endpoint for retrieving server settings.
 # spell-checker: ignore litellm
 
 import asyncio
-import json
 import logging
-from typing import Annotated, Callable, Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 
+from runtime_config_fields import RUNTIME_ONLY_FIELDS
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.settings import (
     ImportSectionResult,
@@ -22,7 +21,8 @@ from server.app.api.v1.schemas.settings import (
     SettingsImportResult,
     SettingsResponse,
 )
-from server.app.core.etc import ensure_core_alias, migrate_legacy_settings, upsert_list_field
+from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
+from server.app.core.etc import ensure_core_alias, upsert_list_field
 from server.app.core.schemas import (
     ClientSettings,
     ClientSettingsUpdate,
@@ -52,6 +52,7 @@ from server.app.mcp.prompts.registry import load_factory_prompts, reconcile_prom
 from server.app.models.connectivity import check_model_reachability
 from server.app.models.litellm_utils import find_model
 from server.app.models.ollama import load_ollama_models
+from server.app.models.refresh import trigger_reachability_recheck
 from server.app.models.registry import apply_env_overrides, reset_factory_models
 from server.app.models.schemas import ModelSensitive
 from server.app.oci.schemas import (
@@ -63,44 +64,12 @@ from server.app.oci.schemas import (
 
 LOGGER = logging.getLogger(__name__)
 _DB_CONN_FIELDS = set(DatabaseUpdate.model_fields)
-
-
-class LegacyMigratingImportRoute(APIRoute):
-    """Migrate legacy settings payloads before FastAPI validates them.
-
-    Intercepts the raw request body for POST /settings/import, runs
-    ``migrate_legacy_settings`` on the parsed JSON, and replaces the request
-    body stream with the migrated bytes. The downstream handler still receives
-    a typed ``SettingsImport`` so the OpenAPI schema (and generated clients)
-    remain intact.
-    """
-
-    def get_route_handler(self) -> Callable:
-        original_handler = super().get_route_handler()
-
-        async def custom_handler(request: Request) -> Response:
-            body_bytes = await request.body()
-            if body_bytes:
-                try:
-                    parsed = json.loads(body_bytes)
-                except json.JSONDecodeError:
-                    # Let FastAPI's default handling surface the decode error.
-                    return await original_handler(request)
-                migrated = migrate_legacy_settings(parsed)
-                if migrated is not parsed:
-                    new_body = json.dumps(migrated).encode("utf-8")
-
-                    async def receive() -> dict:
-                        return {"type": "http.request", "body": new_body, "more_body": False}
-
-                    request = Request(request.scope, receive)
-            return await original_handler(request)
-
-        return custom_handler
+# Nested client-settings objects that are field-merged on PUT (a partial payload patches
+# individual sub-fields). All other nested objects are replaced wholesale.
+_FIELD_MERGE_FIELDS = ("ll_model", "vector_search", "deep_data_security")
 
 
 auth = APIRouter(prefix="/settings")
-_import_router = APIRouter(route_class=LegacyMigratingImportRoute)
 
 
 def _apply_oci_import(
@@ -160,8 +129,6 @@ def _restore_prompts(saved: dict[str, str]) -> None:
     register_mcp_prompts()
 
 
-_PERSIST_FAIL = "Failed to persist settings"
-
 SENSITIVE_FIELDS = {
     "database_configs": {"__all__": set(DatabaseSensitive.model_fields.keys())},
     "model_configs": {"__all__": set(ModelSensitive.model_fields.keys())},
@@ -181,6 +148,10 @@ async def get_client_settings(
     carries its own short deadline (see ``refresh_db_vector_stores``)
     so a slow database can't stack delays or hang the response.
     """
+    # Re-probe existing model endpoints in the background (throttled) so a model that was
+    # unreachable at startup recovers without blocking this response or a manual refresh.
+    # It re-probes only — never discovers — so it can't resurrect a deleted model.
+    trigger_reachability_recheck()
     # DDS-managed connections are runtime-only and never user-facing — don't refresh
     # (which would query through the governed end user) or surface them.
     visible = [cfg for cfg in settings.database_configs if not cfg.managed_by]
@@ -205,7 +176,14 @@ async def export_settings(
         client,
         request.client.host if request.client else "unknown",
     )
-    data = settings.model_dump(mode="json", context={REVEAL_KEY: True})
+    # Reachability is runtime-determined per host — never export it (RUNTIME_ONLY_FIELDS).
+    # An import re-derives it on the target (a source's status/usable may differ here).
+    # ``pool`` is already Field(exclude=True).
+    data = settings.model_dump(
+        mode="json",
+        context={REVEAL_KEY: True},
+        exclude={section: {"__all__": set(fields)} for section, fields in RUNTIME_ONLY_FIELDS.items()},
+    )
     # DDS-managed connections are runtime-only — never exported (this payload reveals
     # credentials, and managed configs carry a copy of the owner's password).
     hide_managed_db_configs(data)
@@ -254,22 +232,15 @@ async def update_client_settings(body: ClientSettingsUpdate, client: Annotated[C
         if body.ll_model is not None:
             _reconcile_ll_model_tokens(cs.ll_model, body.ll_model)
         for field in body.model_fields_set:
-            if field == "ll_model" and body.ll_model is not None:
-                # Merge individual ll_model fields instead of replacing the whole object
-                for ll_field in body.ll_model.model_fields_set:
-                    setattr(cs.ll_model, ll_field, getattr(body.ll_model, ll_field))
-            elif field == "vector_search" and body.vector_search is not None:
-                # Merge individual vector_search fields instead of replacing the whole object
-                for vs_field in body.vector_search.model_fields_set:
-                    setattr(cs.vector_search, vs_field, getattr(body.vector_search, vs_field))
-            elif field == "deep_data_security" and body.deep_data_security is not None:
-                # Field-merge so a lone {enabled: ...} toggle doesn't wipe end_user/alias/base_alias.
-                for dds_field in body.deep_data_security.model_fields_set:
-                    setattr(cs.deep_data_security, dds_field, getattr(body.deep_data_security, dds_field))
+            incoming = getattr(body, field)
+            # Field-merge ll_model / vector_search / deep_data_security so a partial payload
+            # (e.g. a lone {enabled: ...} DDS toggle) patches sub-fields without wiping their
+            # siblings. Everything else is always sent in full and replaced wholesale.
+            if field in _FIELD_MERGE_FIELDS and incoming is not None:
+                target = getattr(cs, field)
+                for sub_field in incoming.model_fields_set:
+                    setattr(target, sub_field, getattr(incoming, sub_field))
             else:
-                # Note: nested objects (database, testbed, etc.) are replaced
-                # wholesale — not field-merged like ll_model / vector_search.
-                # This is intentional: those objects are always sent in full.
                 setattr(cs, field, getattr(body, field))
         return cs
 
@@ -316,14 +287,13 @@ async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
         return server_cs
 
 
-@_import_router.post("/import", response_model=SettingsImportResult)
+@auth.post("/import", response_model=SettingsImportResult)
 async def import_settings(body: SettingsImport, client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Import a partial or full configuration with incoming-wins semantics.
 
-    The raw body is migrated through ``migrate_legacy_settings`` by
-    :class:`LegacyMigratingImportRoute` before Pydantic validation, so payloads
-    exported from older versions (e.g. v2.0.3's ``database_configs`` entries
-    keyed by ``name``/``user``) are accepted.
+    Payloads exported from older versions (e.g. v2.0.3's ``database_configs``
+    entries keyed by ``name``/``user``) are normalised by
+    ``SettingsImport``'s ``migrate_legacy_settings`` before-validator.
     """
     async with _settings_lock:
         snapshot = {
@@ -375,6 +345,12 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
         # --- Model configs ---
         if body.model_configs is not None:
             created, updated = upsert_list_field("model_configs", body.model_configs)
+            # Reachability is target-local runtime state, never trusted from the payload: reset the
+            # runtime-only fields to their neutral defaults so disabled imports don't carry a stale
+            # status (the recheck below only re-derives status for enabled models).
+            for item in created + updated:
+                for field in RUNTIME_ONLY_FIELDS["model_configs"]:
+                    setattr(item, field, type(item).model_fields[field].get_default())
             result.model_configs = ImportSectionResult(created=len(created), updated=len(updated))
 
         # --- OCI configs ---
@@ -401,6 +377,12 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
         if body.log_level is not None:
             settings.log_level = body.log_level
             result.scalars = {"log_level": body.log_level}
+
+        # Reachability is runtime state, never trusted from the payload — re-determine it on
+        # this host so imported models reflect real availability (mirrors the database section
+        # resetting usable/pool above), rather than carrying the source's stale status.
+        if body.model_configs is not None or body.oci_configs is not None:
+            await check_model_reachability()
 
         # --- Persist once — rollback everything on failure ---
         if not await persist_settings(oci_user_touched=oci_touched):
@@ -496,9 +478,3 @@ async def delete_client_settings(client: Annotated[ClientId, Query()]):
         _client_store.pop(client)
         await delete_row(client)
         return Response(status_code=204)
-
-
-# Mount the import endpoint with the legacy-migration route class so that
-# v2.0.3-shaped payloads are normalised before Pydantic validation, while
-# keeping the typed `SettingsImport` body in the OpenAPI schema.
-auth.include_router(_import_router)

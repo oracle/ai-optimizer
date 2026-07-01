@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.api.v1.schemas.common import ClientId
 from server.app.core.client_locks import _client_lock
+from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory
 from server.app.core.secrets import REVEAL_KEY
@@ -43,8 +44,6 @@ SENSITIVE_FIELDS = set(OciSensitive.model_fields.keys())
 # ``security_token_file`` (path) are response-masked but are not credential
 # values and must remain clearable via PUT.
 SECRET_UPDATE_FIELDS = frozenset({"key_content", "pass_phrase"})
-
-_PERSIST_FAIL = "Failed to persist settings"
 
 
 @auth.get("", response_model=list[OciProfileConfig], response_model_exclude_unset=True)

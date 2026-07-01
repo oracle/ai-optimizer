@@ -45,7 +45,7 @@ def test_is_model_usable_false_when_unreachable(model_config_factory) -> None:
         model_type="embed",
         enabled=True,
     )
-    mc.usable = False
+    mc.status = "unreachable"
 
     assert vs_discovery._is_model_usable(ModelIdentity(provider="ollama", id="nomic-embed")) is False
 
@@ -58,7 +58,7 @@ def test_is_model_usable_true_when_reachable(model_config_factory) -> None:
         model_type="embed",
         enabled=True,
     )
-    # Factory defaults usable=True
+    # Factory defaults status="available"
 
     assert vs_discovery._is_model_usable(ModelIdentity(provider="openai", id="text-embed")) is True
 

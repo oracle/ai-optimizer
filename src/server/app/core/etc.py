@@ -13,6 +13,7 @@ from typing import Optional, Union
 
 from server.app.core.paths import PROJECT_ROOT
 from server.app.core.settings import SettingsBase, settings
+from server.app.models.connectivity import canonical_model_id
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,11 +30,24 @@ _LIST_FIELD_KEYS: dict[str, _IdentitySpec] = {
 }
 
 
+def _field_key(item: object, field: str) -> str:
+    """Case-folded identity value for one *field* of *item*.
+
+    The model ``id`` is canonicalized first so an Ollama ``foo`` and ``foo:latest``
+    share an identity (matching ``find_model`` and the registry dedupe) — otherwise
+    importing one while the other is persisted would seat a second, ambiguous row.
+    """
+    value = getattr(item, field) or ""
+    if field == "id":
+        value = canonical_model_id(getattr(item, "provider", ""), value)
+    return value.lower()
+
+
 def _extract_key(item: object, identity_spec: _IdentitySpec) -> Union[str, tuple[str, ...]]:
     """Return a hashable, case-folded identity key for *item*."""
     if isinstance(identity_spec, str):
-        return getattr(item, identity_spec).lower()
-    return tuple(getattr(item, field).lower() for field in identity_spec)
+        return _field_key(item, identity_spec)
+    return tuple(_field_key(item, field) for field in identity_spec)
 
 
 def _identity_fields(identity_spec: _IdentitySpec) -> frozenset[str]:

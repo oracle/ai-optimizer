@@ -119,7 +119,7 @@ class TestRule1Unreachable:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        assert settings.model_configs[0].usable is False
+        assert settings.model_configs[0].status == "unreachable"
         assert settings.model_configs[0].enabled is True  # enabled unchanged
 
 
@@ -146,7 +146,7 @@ class TestRule2ReachableWithKey:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        assert settings.model_configs[0].usable is True
+        assert settings.model_configs[0].status == "available"
 
 
 class TestRule3NoKeyAllowedProvider:
@@ -168,7 +168,7 @@ class TestRule3NoKeyAllowedProvider:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        assert settings.model_configs[0].usable is True
+        assert settings.model_configs[0].status == "available"
 
 
 class TestRule4NoKeyOtherProvider:
@@ -189,15 +189,15 @@ class TestRule4NoKeyOtherProvider:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        assert settings.model_configs[0].usable is False
+        assert settings.model_configs[0].status == "no_key"
 
 
 class TestRule5OciModels:
-    """Rule 5: OCI models without an enabled OCI profile → usable=False, enabled=False."""
+    """Rule 5: OCI models without a usable OCI profile → status="unreachable"; enabled left as-is."""
 
     @pytest.mark.anyio
     async def test_oci_no_usable_profile(self):
-        """OCI model without a usable profile is disabled and unusable."""
+        """OCI model without a usable profile is unreachable but stays enabled (user intent)."""
         settings.model_configs = [
             ModelConfig(id="cohere.command-r", type="ll", provider="oci", enabled=True),
         ]
@@ -205,8 +205,8 @@ class TestRule5OciModels:
             OciProfileConfig(auth_profile="DEFAULT", usable=False),
         ]
         await check_model_reachability()
-        assert settings.model_configs[0].usable is False
-        assert settings.model_configs[0].enabled is False
+        assert settings.model_configs[0].status == "unreachable"
+        assert settings.model_configs[0].enabled is True
 
     @pytest.mark.anyio
     async def test_oci_with_usable_profile(self):
@@ -218,19 +218,19 @@ class TestRule5OciModels:
             OciProfileConfig(auth_profile="DEFAULT", usable=True),
         ]
         await check_model_reachability()
-        assert settings.model_configs[0].usable is True
+        assert settings.model_configs[0].status == "available"
         assert settings.model_configs[0].enabled is True
 
     @pytest.mark.anyio
     async def test_oci_no_profiles_at_all(self):
-        """OCI model with no OCI profiles is disabled and unusable."""
+        """OCI model with no OCI profiles is unreachable but stays enabled (user intent)."""
         settings.model_configs = [
             ModelConfig(id="cohere.command-r", type="ll", provider="oci", enabled=True),
         ]
         settings.oci_configs = []
         await check_model_reachability()
-        assert settings.model_configs[0].usable is False
-        assert settings.model_configs[0].enabled is False
+        assert settings.model_configs[0].status == "unreachable"
+        assert settings.model_configs[0].enabled is True
 
 
 # ---------------------------------------------------------------------------
@@ -271,8 +271,8 @@ class TestDeduplication:
 
         # HEAD called once despite two models sharing the URL
         assert mock_client.head.call_count == 1
-        assert settings.model_configs[0].usable is True
-        assert settings.model_configs[1].usable is True
+        assert settings.model_configs[0].status == "available"
+        assert settings.model_configs[1].status == "available"
 
 
 class TestDisabledModelsSkipped:
@@ -298,7 +298,7 @@ class TestDisabledModelsSkipped:
             await check_model_reachability()
 
         mock_client.head.assert_not_called()
-        assert settings.model_configs[0].usable is False
+        assert settings.model_configs[0].status == "unreachable"
 
 
 class TestNoApiBase:
@@ -317,7 +317,7 @@ class TestNoApiBase:
             await check_model_reachability()
 
         mock_client.head.assert_not_called()
-        assert settings.model_configs[0].usable is False
+        assert settings.model_configs[0].status == "unreachable"
 
 
 class TestNoEnabledModels:
@@ -397,7 +397,7 @@ class TestRule6OllamaModels:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        assert settings.model_configs[0].usable is True
+        assert settings.model_configs[0].status == "available"
         assert settings.model_configs[0].enabled is True
 
     @pytest.mark.anyio
@@ -417,7 +417,7 @@ class TestRule6OllamaModels:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        assert settings.model_configs[0].usable is False
+        assert settings.model_configs[0].status == "not_pulled"
         assert settings.model_configs[0].enabled is True
 
     @pytest.mark.anyio
@@ -439,7 +439,7 @@ class TestRule6OllamaModels:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        assert settings.model_configs[0].usable is False
+        assert settings.model_configs[0].status == "unreachable"
         assert settings.model_configs[0].enabled is True
 
     @pytest.mark.anyio
@@ -459,7 +459,7 @@ class TestRule6OllamaModels:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_model_reachability()
 
-        assert settings.model_configs[0].usable is True
+        assert settings.model_configs[0].status == "available"
 
     @pytest.mark.anyio
     async def test_mixed_available_and_missing(self):
@@ -486,11 +486,44 @@ class TestRule6OllamaModels:
             await check_model_reachability()
 
         # qwen3:8b is available
-        assert settings.model_configs[0].usable is True
+        assert settings.model_configs[0].status == "available"
         assert settings.model_configs[0].enabled is True
         # phi4-mini is NOT in tags
-        assert settings.model_configs[1].usable is False
+        assert settings.model_configs[1].status == "not_pulled"
         assert settings.model_configs[1].enabled is True
+
+    @pytest.mark.anyio
+    async def test_bulk_recheck_defaults_ollama_api_base(self, monkeypatch):
+        """An Ollama config with no api_base defaults to the configured server.
+
+        Mirrors ``check_single_model`` so an imported/loaded config (whose URL
+        discovery couldn't populate while Ollama was down) recovers on a later
+        bulk recheck once the server comes online — instead of being pinned
+        ``unreachable`` forever.
+        """
+        monkeypatch.setenv("AIO_ON_PREM_OLLAMA_URL", "http://localhost:11434")
+        settings.model_configs = [
+            ModelConfig(id=TEST_OLLAMA_MODEL_ID, type="ll", provider="ollama", enabled=True),  # no api_base
+        ]
+        with patch("server.app.models.connectivity.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=_ollama_mock_client())
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await check_model_reachability()
+
+        assert settings.model_configs[0].api_base == "http://localhost:11434"  # defaulted from env
+        assert settings.model_configs[0].status == "available"
+
+    @pytest.mark.anyio
+    async def test_bulk_recheck_no_ollama_server_marks_unreachable(self, monkeypatch):
+        """With no Ollama server configured, a no-api_base config is unreachable."""
+        monkeypatch.delenv("AIO_ON_PREM_OLLAMA_URL", raising=False)
+        monkeypatch.delenv("ON_PREM_OLLAMA_URL", raising=False)
+        settings.model_configs = [
+            ModelConfig(id=TEST_OLLAMA_MODEL_ID, type="ll", provider="ollama", enabled=True),  # no api_base
+        ]
+        await check_model_reachability()
+
+        assert settings.model_configs[0].status == "unreachable"
 
     @pytest.mark.anyio
     async def test_check_single_model_ollama_available(self):
@@ -507,7 +540,7 @@ class TestRule6OllamaModels:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_single_model(model)
 
-        assert model.usable is True
+        assert model.status == "available"
 
     @pytest.mark.anyio
     async def test_check_single_model_ollama_not_pulled(self):
@@ -524,5 +557,27 @@ class TestRule6OllamaModels:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await check_single_model(model)
 
-        assert model.usable is False
+        assert model.status == "not_pulled"
         assert model.enabled is True
+
+    @pytest.mark.anyio
+    async def test_check_single_model_defaults_ollama_api_base(self, monkeypatch):
+        """A manually added Ollama model with no api_base defaults to the configured server."""
+        monkeypatch.setenv("AIO_ON_PREM_OLLAMA_URL", "http://localhost:11434")
+        model = ModelConfig(id="gemma3:1b", type="ll", provider="ollama", enabled=True)  # no api_base
+        with patch("server.app.models.connectivity.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=_ollama_mock_client())
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await check_single_model(model)
+
+        assert model.api_base == "http://localhost:11434"  # defaulted from env
+        assert model.status == "not_pulled"  # server up, model absent -> Pull offered
+
+    @pytest.mark.anyio
+    async def test_check_single_model_ollama_no_server_configured(self, monkeypatch):
+        """With no Ollama server configured, a no-api_base model is simply unreachable."""
+        monkeypatch.delenv("AIO_ON_PREM_OLLAMA_URL", raising=False)
+        monkeypatch.delenv("ON_PREM_OLLAMA_URL", raising=False)
+        model = ModelConfig(id="gemma3:1b", type="ll", provider="ollama", enabled=True)
+        await check_single_model(model)
+        assert model.status == "unreachable"

@@ -8,3 +8,6 @@ App-wide constants (leaf module — no app-level imports).
 SUPPORTED_EXTENSIONS = frozenset(
     {".pdf", ".html", ".md", ".txt", ".csv", ".png", ".jpg", ".jpeg", ".docx", ".pptx", ".xlsx"}
 )
+
+# Shared 503 detail used by settings-mutating endpoints when a CORE write fails.
+PERSIST_FAIL_DETAIL = "Failed to persist settings"

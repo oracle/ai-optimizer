@@ -10,6 +10,8 @@
 **/temp/**
 **/etc/*.json
 **/uv.lock
+coverage-*.xml
+test-results-*.xml
 
 # ##############################################################################
 # # Environment (PyVen, IDE, etc.)

@@ -8,6 +8,7 @@ Tests for POST /v1/settings/import endpoint.
 
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from server.app.api.v1.endpoints.settings import _client_store
@@ -105,6 +106,69 @@ async def test_import_model_creates_new(app_client, auth_headers, mock_persist):
     assert data["model_configs"]["created"] == 1
     assert data["model_configs"]["updated"] == 0
     assert any(m.id == "new-model" for m in settings.model_configs)
+
+
+async def test_import_model_canonicalizes_ollama_chat(app_client, auth_headers, mock_persist):
+    """An imported ``ollama_chat`` config is stored under the canonical ``ollama`` provider."""
+    settings.model_configs = []
+    payload = {"model_configs": [{"id": "mistral", "type": "ll", "provider": "ollama_chat"}]}
+
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    providers = {m.provider for m in settings.model_configs}
+    assert providers == {"ollama"}
+    assert "ollama_chat" not in providers
+
+
+async def test_import_models_redetermines_status(app_client, auth_headers, mock_persist):
+    """Imported ``status`` is runtime state: re-determined on the target, not trusted from the payload."""
+    settings.model_configs = []
+    payload = {
+        "model_configs": [
+            {
+                "id": "m1",
+                "type": "ll",
+                "provider": "openai",
+                "enabled": True,
+                "api_base": "http://dead:1234",
+                "api_key": "sk-x",
+                "status": "available",  # stale source-side runtime state
+            }
+        ]
+    }
+    with patch("server.app.models.connectivity.httpx.AsyncClient") as mock_cls:
+        probe = AsyncMock()
+        probe.head.side_effect = httpx.ConnectError("refused")
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=probe)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    m = next(x for x in settings.model_configs if x.id == "m1")
+    assert m.status == "unreachable"  # re-probed on this host, not the imported "available"
+
+
+async def test_import_disabled_model_resets_status(app_client, auth_headers, mock_persist):
+    """A disabled import's stale status is reset, not trusted — the recheck skips disabled models."""
+    settings.model_configs = []
+    payload = {
+        "model_configs": [
+            {
+                "id": "m1",
+                "type": "ll",
+                "provider": "openai",
+                "enabled": False,
+                "api_base": "http://x",
+                "status": "available",  # stale source-side runtime state
+            }
+        ]
+    }
+    resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 200
+    m = next(x for x in settings.model_configs if x.id == "m1")
+    assert m.status == "unreachable"  # reset to the neutral default, not the imported "available"
 
 
 async def test_import_model_updates_existing(app_client, auth_headers, mock_persist):

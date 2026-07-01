@@ -388,36 +388,45 @@ def render_model_rows(model_type: str) -> None:
     header_cols[3].markdown("&#x200B;")
     header_cols[4].markdown("&#x200B;")
 
-    for model in models:
+    # A model is uniquely identified by (provider, id), so the composite below is
+    # normally unique per row. Carry the list index as a tiebreaker anyway: if
+    # model_configs ever holds a duplicate (e.g. stale persisted state), Streamlit
+    # requires unique widget keys and would otherwise raise DuplicateElementKey and
+    # take down the whole page instead of just rendering the redundant row.
+    for idx, model in enumerate(models):
         model_id = model["id"]
         model_provider = model["provider"]
         enabled = model.get("enabled", False)
+        model_status = model.get("status", "unreachable")
+        row_key = f"runtime_{model_type}_{model_provider}_{model_id}_{idx}"
+        # Enabled but not ready (e.g. an Ollama model while Ollama is down) gets a distinct marker.
+        indicator = "🔻" if enabled and model_status != "available" else helpers.bool_to_emoji(enabled)
         row = st.columns(data_col_widths, vertical_alignment="center")
         row[0].text_input(
             "Enabled",
-            value=helpers.bool_to_emoji(enabled),
-            key=f"runtime_{model_type}_{model_provider}_{model_id}_{enabled}",
+            value=indicator,
+            key=f"{row_key}_{enabled}_{model_status}",
             label_visibility="collapsed",
             disabled=True,
         )
         row[1].text_input(
             "Model",
             value=f"{model_provider}/{model_id}",
-            key=f"runtime_{model_type}_{model_provider}_{model_id}",
+            key=row_key,
             label_visibility="collapsed",
             disabled=True,
         )
         row[2].text_input(
             "Server",
             value=model.get("api_base", ""),
-            key=f"runtime_{model_type}_{model_provider}_{model_id}_api_base",
+            key=f"{row_key}_api_base",
             label_visibility="collapsed",
             disabled=True,
         )
         row[3].button(
             "Edit",
             on_click=edit_model,
-            key=f"runtime_{model_type}_{model_provider}_{model_id}_edit",
+            key=f"{row_key}_edit",
             kwargs={
                 "model_type": model_type,
                 "action": "edit",
@@ -425,11 +434,13 @@ def render_model_rows(model_type: str) -> None:
                 "model_provider": model_provider,
             },
         )
-        if model_provider == "ollama" and not model.get("usable", False):
+        # Only offer Pull when the Ollama server is up but the model isn't pulled yet;
+        # if the server is down (unreachable) pulling would fail, so hide the button.
+        if model_provider == "ollama" and model_status == "not_pulled":
             row[4].button(
                 "Pull",
                 on_click=pull_model_dialog,
-                key=f"runtime_{model_type}_{model_provider}_{model_id}_pull",
+                key=f"{row_key}_pull",
                 kwargs={"provider": model_provider, "model_id": model_id},
                 disabled=not is_authenticated(),
             )
@@ -443,6 +454,10 @@ def render_model_rows(model_type: str) -> None:
 #####################################################
 def display_models() -> None:
     """Streamlit GUI"""
+    # Pick up endpoints that came online since the page was last loaded (e.g. Ollama
+    # started after the server). The server re-probes in the background; this just
+    # re-fetches the result, throttled so it isn't refetched on every rerun.
+    helpers.refresh_settings_throttled("_models_reachability_refresh")
     locked_notice()
     st.subheader("Language", divider="red")
     with st.container(border=True):

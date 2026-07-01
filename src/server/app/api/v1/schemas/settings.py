@@ -5,10 +5,11 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Response models for settings endpoint.
 """
 
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
+from server.app.core.etc import migrate_legacy_settings
 from server.app.core.schemas import ClientSettings
 from server.app.core.settings import SettingsBase
 from server.app.database.schemas import DatabaseConfig
@@ -62,6 +63,14 @@ class SettingsImport(BaseModel):
     oci_configs: Optional[list[OciProfileConfig]] = None
     prompt_configs: Optional[list[PromptConfig]] = None
     client_settings: Optional[ClientSettings] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy(cls, data: Any) -> Any:
+        """Normalise pre-2.1 payloads (database_configs name/user renames)
+        before field validation. ``migrate_legacy_settings`` no-ops on
+        already-current or non-dict input."""
+        return migrate_legacy_settings(data)
 
 
 class ImportSectionResult(BaseModel):

@@ -58,7 +58,7 @@ def _litellm_id(model_id: str) -> str:
     return f"oci/{model_id}"
 
 
-def test_litellm_embedding_accepts(cohere_embed_models, live_oci_litellm_kwargs):
+async def test_litellm_embedding_accepts(cohere_embed_models, live_oci_litellm_kwargs):
     """OCI accepts an embedding request for each discovered Cohere model.
 
     Per-model outcome is accumulated into a single ``pytest.fail`` so one
@@ -84,7 +84,7 @@ def test_litellm_embedding_accepts(cohere_embed_models, live_oci_litellm_kwargs)
         pytest.fail("litellm.embedding rejected for: " + "; ".join(failures))
 
 
-def test_litellm_embeddings_wrapper_embeds_documents_and_query(cohere_embed_models, live_oci_litellm_kwargs):
+async def test_litellm_embeddings_wrapper_embeds_documents_and_query(cohere_embed_models, live_oci_litellm_kwargs):
     """The server-side LiteLLMEmbeddings wrapper drives OCI end-to-end.
 
     Uses the first discovered Cohere model; the per-model acceptance matrix
@@ -105,7 +105,7 @@ def test_litellm_embeddings_wrapper_embeds_documents_and_query(cohere_embed_mode
     assert len(query_vector) == len(doc_vectors[0])
 
 
-def test_litellm_embeddings_wrapper_chunks_inputs_against_oci(
+async def test_litellm_embeddings_wrapper_chunks_inputs_against_oci(
     cohere_embed_models, live_oci_litellm_kwargs
 ):
     """End-to-end: 100 inputs through the wrapper chunk to ≤96 per OCI call.

@@ -22,6 +22,7 @@ from streamlit import session_state as state
 from client.app.core import helpers
 from client.app.core.api import api_post, get_server_settings
 from client.app.core.auth import is_authenticated, locked_notice
+from runtime_config_fields import RUNTIME_FIELD_SUFFIXES
 
 LOGGER = logging.getLogger("client.content.config.tabs.settings")
 
@@ -136,7 +137,9 @@ def _compare_dicts(current: dict, uploaded: dict, path: str, differences: dict) 
     all_keys = sorted(set(current) | set(uploaded))
     for key in all_keys:
         full_path = f"{path}.{key}" if path else key
-        if full_path == "client_settings.client" or full_path.endswith((".created", ".usable")):
+        # ``.created`` is a timestamp; RUNTIME_FIELD_SUFFIXES are runtime reachability state
+        # (omitted from exports), so neither should produce a diff on a round-trip.
+        if full_path == "client_settings.client" or full_path.endswith((".created", *RUNTIME_FIELD_SUFFIXES)):
             continue
 
         current_value = current.get(key)

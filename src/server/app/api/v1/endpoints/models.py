@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
+from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
 from server.app.database.settings import persist_settings
@@ -30,8 +31,6 @@ auth = APIRouter(prefix="/models")
 SENSITIVE_FIELDS = set(ModelSensitive.model_fields.keys())
 # Fields where a blank submission means "preserve existing".
 SECRET_UPDATE_FIELDS = frozenset({"api_key"})
-
-_PERSIST_FAIL = "Failed to persist settings"
 
 
 def _find_model(provider: str | None, model_id: str | None) -> ModelConfig | None:
@@ -101,9 +100,15 @@ def _get_supported(
     all_modes = {"chat", "completion", "embedding", "responses", "rerank"}
     allowed_modes = type_to_modes.get(model_type, all_modes) if model_type else all_modes
     skip_providers = {"ollama", "ollama_chat", "github_copilot", "chatgpt"}
+    # ``ollama_chat`` is an internal LiteLLM alias, not a user-facing provider: configs are
+    # stored as ``ollama`` and the runtime normalizes ``ollama`` -> ``ollama_chat`` for LLM
+    # calls (embeddings stay ``ollama``). Don't offer it as a separate, selectable provider.
+    hidden_providers = {"ollama_chat"}
     result: list[SupportedProviderIds] = []
     providers: list[str] = [getattr(p, "value", p) for p in litellm.provider_list]
     for provider in sorted(providers):
+        if provider in hidden_providers:
+            continue
         if model_provider and provider != model_provider:
             continue
         ids = []
@@ -204,16 +209,20 @@ async def update_model(provider: str, model_id: str, body: ModelUpdate):
             if existing is not None and existing is not cfg:
                 raise HTTPException(status_code=409, detail=f"Model config already exists: {new_provider}/{new_id}")
         originals = {field: getattr(cfg, field) for field in updates}
-        saved_usable = cfg.usable
+        saved_status = cfg.status
         saved_enabled = cfg.enabled
+        # check_single_model may mutate api_base (e.g. defaulting an Ollama server URL);
+        # capture it so a persist failure leaves no probe-side change in memory.
+        saved_api_base = cfg.api_base
         for field, value in updates.items():
             setattr(cfg, field, value)
         await check_single_model(cfg)
         if not await persist_settings():
             for field, value in originals.items():
                 setattr(cfg, field, value)
-            cfg.usable = saved_usable
+            cfg.status = saved_status
             cfg.enabled = saved_enabled
+            cfg.api_base = saved_api_base
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         return cfg.model_dump(exclude=SENSITIVE_FIELDS)
 
