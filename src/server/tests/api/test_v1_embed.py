@@ -311,7 +311,6 @@ async def test_comment_vs(app_client, auth_headers):
 # ---------------------------------------------------------------------------
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_sql_store(app_client, auth_headers):
     """Successfully stores SQL query results."""
@@ -335,7 +334,6 @@ async def test_sql_store(app_client, auth_headers):
     assert "result.csv" in resp.json()[0]
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_sql_store_with_db_alias(app_client, auth_headers, mock_client_db):
     """Successfully stores SQL query results using an explicit db_alias."""
@@ -364,7 +362,6 @@ async def test_sql_store_with_db_alias(app_client, auth_headers, mock_client_db)
     assert "result.csv" in resp.json()[0]
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_sql_store_acquires_client_lock(app_client, auth_headers):
     """[P2] /embed/sql/store must serialise on _client_lock so a
@@ -423,7 +420,6 @@ async def test_sql_store_acquires_client_lock(app_client, auth_headers):
     )
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_web_store_acquires_client_lock(app_client, auth_headers):
     """[P2] /embed/web/store must serialise on _client_lock — same race
@@ -673,7 +669,6 @@ async def test_oci_download_objects_acquires_client_lock(app_client, auth_header
     )
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_sql_store_invalid_db_alias(app_client, auth_headers):
     """Returns 503 when db_alias refers to an unavailable database."""
@@ -689,7 +684,6 @@ async def test_sql_store_invalid_db_alias(app_client, auth_headers):
     assert resp.status_code == 503
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_sql_store_failure(app_client, auth_headers):
     """Returns 400 when SQL query fails."""
@@ -717,7 +711,6 @@ async def test_sql_store_failure(app_client, auth_headers):
 # ---------------------------------------------------------------------------
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_local_store(app_client, auth_headers):
     """Successfully stores an uploaded file."""
@@ -749,7 +742,6 @@ async def test_local_store(app_client, auth_headers):
         ("subdir/../sibling.sh", "sibling.sh"),
     ],
 )
-@job_store_test
 async def test_local_store_uses_upload_basename(app_client, auth_headers, path_like_name, expected_basename):
     """Uploads with path-like filenames must land inside temp_directory only.
 
@@ -792,7 +784,6 @@ async def test_local_store_uses_upload_basename(app_client, auth_headers, path_l
 # ---------------------------------------------------------------------------
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_split_embed_no_files(app_client, auth_headers):
     """Empty corpus is a synchronous 404 — file claiming runs in the handler.
@@ -1119,7 +1110,6 @@ async def test_embed_oci_store_lists_bucket_when_objects_omitted(app_client, aut
     assert sorted(captured_names[0]) == ["data.csv", "notes.md", "report.pdf"]
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_embed_oci_store_invalid_auth_profile(app_client, auth_headers):
     """Unknown auth_profile is rejected synchronously with 404 — no job is created."""
@@ -1136,7 +1126,6 @@ async def test_embed_oci_store_invalid_auth_profile(app_client, auth_headers):
     assert "OCI profile" in resp.json()["detail"]
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_embed_oci_store_empty_bucket_returns_404(app_client, auth_headers):
     """Bucket with no supported objects → 404; no job is scheduled."""
@@ -1427,7 +1416,6 @@ async def test_embed_oci_store_retryable_submit_does_not_restore_to_shared(app_c
         )
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_embed_oci_store_failure_preserves_staged_sql(app_client, auth_headers):
     """[P2] Failed /v1/embed/oci/store must NOT delete staged SQL scratch files.
@@ -1475,7 +1463,6 @@ async def test_embed_oci_store_failure_preserves_staged_sql(app_client, auth_hea
         )
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_embed_oci_store_missing_required_fields(app_client, auth_headers):
     """Missing embedding_model / distance_strategy → 400 (same guard as POST /embed/)."""
@@ -1508,7 +1495,6 @@ async def test_embed_oci_store_missing_required_fields(app_client, auth_headers)
 # ---------------------------------------------------------------------------
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_refresh_no_changes(app_client, auth_headers):
     """Returns success with no-changes message."""
@@ -1558,7 +1544,6 @@ async def test_refresh_no_changes(app_client, auth_headers):
     assert body["total_chunks_in_store"] == 50
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_refresh_uses_request_auth_profile(app_client, auth_headers):
     """Refresh endpoint uses auth_profile from the request body, not the client default."""
@@ -1616,7 +1601,6 @@ async def test_refresh_uses_request_auth_profile(app_client, auth_headers):
     mock_get_objects.assert_called_once_with("my-bucket", custom_profile)
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_refresh_invalid_auth_profile(app_client, auth_headers):
     """Returns 404 when requested auth_profile does not exist."""
@@ -1638,7 +1622,6 @@ async def test_refresh_invalid_auth_profile(app_client, auth_headers):
     assert "NONEXISTENT" in resp.json()["detail"]
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_refresh_not_found(app_client, auth_headers):
     """Returns 400 when vector store alias not found."""
@@ -1750,7 +1733,6 @@ async def test_split_embed_concurrent_no_interference(app_client, auth_headers):
             assert terminal["status"] == "succeeded"
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_split_embed_race_restores_files(app_client, auth_headers):
     """Files already moved into work_dir are restored to shared_dir on race collision."""
@@ -1839,7 +1821,6 @@ async def test_drop_vs_db_unavailable(app_client, auth_headers):
 # ---------------------------------------------------------------------------
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_web_store_pdf_streaming(app_client, auth_headers):
     """PDF download streams chunks to disk instead of buffering."""
@@ -2027,7 +2008,6 @@ def test_extract_zip_skips_nested_archives(tmp_path, bad_ext):
     assert set(metadata) == {"good.txt"}
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_local_store_rolls_back_batch_when_later_zip_fails(app_client, auth_headers):
     """Mixed batch: earlier uploads are discarded when a later ZIP fails.
@@ -2298,7 +2278,6 @@ def test_extract_zip_handles_member_named_like_backup_prefix(tmp_path):
     assert set(metadata) == {"foo.txt", ".backup_foo.txt"}
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_local_store_locks_before_creating_staging_dir(app_client, auth_headers):
     """The per-client lock must be acquired *before* the staging directory exists.
@@ -2382,7 +2361,6 @@ def test_extract_zip_rejects_directory_collision_in_dest(tmp_path):
     assert (dest / "a.txt" / "live-work-file").read_bytes() == b"sentinel"
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_local_store_rejects_directory_collision(app_client, auth_headers):
     """An upload whose basename collides with a pre-existing directory is rejected."""
@@ -2558,7 +2536,6 @@ async def test_client_lock_normalizes_key():
     assert entry_a is entry_subdir_a
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_local_store_acquires_per_client_lock(app_client, auth_headers):
     """`store_local_file` must take the per-client promotion lock.
@@ -2600,7 +2577,6 @@ async def test_local_store_acquires_per_client_lock(app_client, auth_headers):
     assert "lock-client-a" in locks_acquired
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
     """`split_embed` must take the same per-client promotion lock as store_local_file.
@@ -2616,6 +2592,7 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
 
     locks_acquired: list[str] = []
     real_client_lock = embed_mod._client_lock
+    submit_mock = AsyncMock(side_effect=HTTPException(status_code=404, detail="Stop after claiming files"))
 
     @asynccontextmanager
     async def recording_client_lock(client):
@@ -2631,11 +2608,8 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
         def _fake_get_temp(_client, _function, *, unique=False):
             return tmp_path / "work_unique" if unique else tmp_path
 
-        # The lock now wraps the synchronous claim phase in the request
-        # handler, so the test no longer needs to mock the heavy pipeline
-        # stages — it can simply observe that the lock fired before the
-        # POST returned (status doesn't matter for this assertion; we
-        # arrange a 404 by leaving the work pipeline stages unmocked).
+        # Stop after the synchronous claim phase. This test only verifies
+        # lock acquisition and must not submit a real background embed job.
         with (
             patch(
                 "server.app.api.v1.endpoints.embed.get_temp_directory",
@@ -2643,6 +2617,7 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
             ),
             patch("server.app.api.v1.endpoints.embed.get_oci_profile", return_value=MagicMock()),
             patch.object(embed_mod, "_client_lock", recording_client_lock),
+            patch.object(embed_mod, "_submit_split_embed_under_lock", submit_mock),
         ):
             (tmp_path / "work_unique").mkdir()
             resp = await app_client.post(
@@ -2657,9 +2632,9 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
             )
     del resp  # status irrelevant — this test only pins the lock acquisition
     assert "lock-client-b" in locks_acquired
+    submit_mock.assert_awaited_once()
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_local_store_promotes_metadata_last(app_client, auth_headers):
     """`.file_metadata.json` is the final move into temp_directory.
@@ -2711,7 +2686,6 @@ async def test_local_store_promotes_metadata_last(app_client, auth_headers):
     assert move_order[-1] == ".file_metadata.json", f"metadata must promote last; got order={move_order}"
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_local_store_restores_overwritten_file_on_promotion_failure(app_client, auth_headers):
     """Pre-existing files in temp_directory are byte-identical after a rollback.
@@ -2861,7 +2835,6 @@ def test_extract_zip_returns_500_on_promotion_failure(tmp_path):
     assert [p for p in dest.iterdir() if p.is_file()] == []
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_local_store_rejects_corrupt_zip(app_client, auth_headers):
     """POST /v1/embed/local/store surfaces corrupt ZIP uploads as 400.
@@ -3161,7 +3134,6 @@ async def test_split_embed_runtime_error_returns_fallback_detail(app_client, aut
         assert token not in error
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_refresh_value_error_returns_fallback_detail(app_client, auth_headers):
     """The refresh path returns the configured fallback detail."""
@@ -3186,7 +3158,6 @@ async def test_refresh_value_error_returns_fallback_detail(app_client, auth_head
         assert token not in detail
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_refresh_bucket_value_error_returns_fallback_detail(app_client, auth_headers):
     """The bucket refresh path returns the configured fallback detail."""
@@ -4138,7 +4109,6 @@ async def test_split_embed_post_submit_cancellation_cancels_task(app_client, aut
         )
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_split_embed_pre_claim_503_drops_sql_scratch_files(app_client, auth_headers):
     """[P2] A pre-claim 503 must sweep ``_sqlsrc_*.csv`` from shared.
@@ -4322,7 +4292,6 @@ async def test_split_embed_503_does_not_restore_sql_generated_csv(app_client, au
         )
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_split_embed_restores_files_when_locked_db_snapshot_raises_503(app_client, auth_headers):
     """[P2] A 503 from the under-lock DB re-snapshot must NOT discard the corpus.
@@ -5647,7 +5616,6 @@ async def test_list_jobs_returns_503_when_core_read_times_out(app_client, auth_h
     assert "unavailable" in resp.json()["detail"].lower()
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_get_job_returns_503_when_core_unavailable(app_client, auth_headers):
     """GET /v1/embed/jobs/{id} surfaces a 503 when CORE is unavailable.
@@ -5671,7 +5639,6 @@ async def test_get_job_returns_503_when_core_unavailable(app_client, auth_header
     assert "unavailable" in resp.json()["detail"].lower()
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_list_jobs_returns_503_when_core_unavailable(app_client, auth_headers):
     """GET /v1/embed/jobs surfaces a 503 when CORE is unavailable.
@@ -5689,7 +5656,6 @@ async def test_list_jobs_returns_503_when_core_unavailable(app_client, auth_head
     assert "unavailable" in resp.json()["detail"].lower()
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_split_embed_requires_core_database(app_client, auth_headers):
     """POST /v1/embed/ must refuse submissions when CORE is unavailable.
@@ -5831,7 +5797,6 @@ async def test_split_embed_records_target_db_alias_on_job_row(app_client, auth_h
     )
 
 
-@job_store_test
 @pytest.mark.anyio
 async def test_split_embed_db_unavailable_returns_503_synchronously(app_client, auth_headers):
     """Database precondition failures still surface synchronously, not as a job."""
