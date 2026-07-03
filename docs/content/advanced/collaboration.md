@@ -105,7 +105,7 @@ Because the catalog is shared, any GUI user can, by default, change configuratio
 Set [`AIO_CLIENT_PASSWORD`]({{% relref "/configuration#client" %}}) to enable the gate. When it is unset, the gate is disabled and all controls are accessible.
 
 {{% notice style="note" %}}
-This is a **GUI-only** access check. It does **not** replace or affect API Server authentication — external clients still authenticate with `AIO_API_KEY`. See [Environment Variables]({{% relref "env_config" %}}).
+This is a **GUI-only** access check. It does **not** replace or affect API Server authentication — external clients still authenticate with `AIO_API_KEY`. See [Environment Variables]({{% relref "configuration" %}}).
 {{% /notice %}}
 
 ### What the gate covers
@@ -135,6 +135,6 @@ The password is *shared* — a single secret distributed to the people allowed t
 - [Racing Championship]({{% relref "use-case/racing-championship" %}}) — a multi-user use-case
 - [API Server]({{% relref "client/api_server" %}})
 - [IDE Integration]({{% relref "advanced/ide_integration" %}})
-- [Environment Variables]({{% relref "env_config" %}})
+- [Environment Variables]({{% relref "configuration" %}})
 - [TLS]({{% relref "advanced/tls" %}})
 - [API Examples]({{% relref "advanced/api_examples" %}})
