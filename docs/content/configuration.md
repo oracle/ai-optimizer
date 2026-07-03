@@ -10,13 +10,21 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore genai vllm pplx relref
 -->
 
-The {{% full_app_ref %}} requires some configuration to take full advantage of the AI capabilities in Oracle AI Database. Most settings can be configured through the [application interface]({{% relref "/client/configuration" %}}).
+The {{% full_app_ref %}} requires some configuration to take full advantage of the AI capabilities in **Oracle AI Database**. Most settings can be configured through the [application interface]({{% relref "/client/configuration" %}}).
 
 However, you can use environment variables to reduce how much needs to be configured manually and to enable features such as observability.
 
 ## Getting Started
 
-To create an environment file, copy the example:
+You can configure the application from the shell by exporting variables before startup. For example:
+
+```bash
+export AIO_DB_USERNAME=demo
+export AIO_DB_PASSWORD=replace-with-your-password
+export AIO_DB_DSN=localhost:1521/FREEPDB1
+```
+
+For a reusable, local configuration, an `.env.*` file is a better alternative. It keeps related settings together and avoids exporting them again in every shell session. Create one by copying the provided example:
 
 ```bash
 cp src/.env.example src/.env.dev
@@ -52,9 +60,9 @@ flowchart TD
 
 ## Environment Variables
 
-When the {{% short_app_ref %}} starts, environment variables are read from the process environment or from a `.env.{AIO_ENV}` file in the `src/` directory, as outlined above. Variables already present in the process environment are not overwritten by values in the environment file.
+When the {{% short_app_ref %}} starts, environment variables are read from the process environment or from a `.env.{AIO_ENV}` file in the `src/` directory, as outlined above. In a POSIX shell, use `export` so that the application inherits the variables; shell-local variables are not part of the child process environment. Variables already present in the process environment are not overwritten by values in the environment file.
 
-When using an environment file, you can set `AIO_ENV` before startup to select the file; it defaults to `dev`. This allows you to easily switch between different configurations.
+To select an environment file, export `AIO_ENV` before startup. For example, `export AIO_ENV=prd` loads `src/.env.prd`. If `AIO_ENV` is unset, it defaults to `dev`.
 
 | `AIO_ENV` value | File loaded |
 |---|---|
@@ -70,7 +78,7 @@ The variables below are specific to the {{% short_app_ref %}} and use the `AIO_`
 
 | Variable | Description | Default |
 |---|---|---|
-| `AIO_ENV` | Selects the `src/.env.{AIO_ENV}` file and labels the deployment environment. Set it before startup. | `dev` |
+| `AIO_ENV` | Selects the `src/.env.{AIO_ENV}` file and labels the deployment environment. Export it before startup. | `dev` |
 | `AIO_LOG_LEVEL` | Python logging level | `INFO` |
 
 ### Authentication
