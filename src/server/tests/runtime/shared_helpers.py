@@ -7,6 +7,7 @@ Shared mock factories and helpers used by runtime tests.
 # spell-checker: disable
 
 import asyncio
+import json
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
@@ -41,13 +42,13 @@ def temporary_oci_configs(
         settings.client_settings.oci.auth_profile = saved_auth
 
 
-def ollama_available() -> bool:
-    """Return True if ollama is reachable at the default endpoint."""
+def ollama_available(model_id: str = TEST_OLLAMA_MODEL_ID) -> bool:
+    """Return True if Ollama is reachable and has *model_id* available."""
     try:
-        with urllib.request.urlopen("http://127.0.0.1:11434", timeout=2):
-            pass
-        return True
-    except (urllib.error.URLError, OSError):
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=2) as response:
+            payload = json.load(response)
+        return any(model.get("name") == model_id for model in payload.get("models", []))
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, AttributeError):
         return False
 
 
