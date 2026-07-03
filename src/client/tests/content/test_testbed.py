@@ -10,6 +10,7 @@ import sys
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from client.tests.conftest import AttrDict, make_http_error
@@ -148,7 +149,7 @@ def _ensure_testbed_loaded():
             "text_input",
             "text_area",
             "download_button",
-            "plotly_chart",
+            "pyplot",
             "dataframe",
             "markdown",
         ):
@@ -665,6 +666,9 @@ class TestEvaluationReport:
             self._call(mock_st, report=SAMPLE_REPORT)
         mock_get.assert_not_called()
         mock_st.subheader.assert_any_call("Evaluation Settings")
+        figure = mock_st.pyplot.call_args.args[0]
+        assert figure.axes[0].texts[-1].get_text() == "85%"
+        assert mock_st.pyplot.call_args.kwargs == {"width": "stretch"}
 
     def test_no_report_shows_error(self):
         """Shows error when neither eid nor report provided."""
@@ -728,6 +732,35 @@ class TestEvaluationReport:
         with patch(f"{MODULE}.api_get"):
             self._call(mock_st, report=report)
         # No assertion beyond "no exception raised"
+
+    def test_string_correctness_is_rendered_as_percentage(self):
+        """Numeric strings are converted before percentage calculation."""
+        mock_st = MagicMock()
+        report = _deep_copy_report()
+        report["correctness"] = "0"
+        report["correct_by_topic"] = [{"topic": "T1", "correctness": "0"}]
+
+        self._call(mock_st, report=report)
+
+        figure = mock_st.pyplot.call_args.args[0]
+        topic_frame = next(
+            call.args[0]
+            for call in mock_st.dataframe.call_args_list
+            if isinstance(call.args[0], pd.DataFrame) and "Correctness %" in call.args[0].columns
+        )
+        assert figure.axes[0].texts[-1].get_text() == "0%"
+        assert topic_frame.loc[0, "Correctness %"] == 0
+
+
+@pytest.mark.parametrize(("value", "expected"), [(-1, "0%"), (85.4, "85%"), (101, "100%")])
+def test_create_gauge_clamps_percentage(value, expected):
+    """Gauge values are constrained to the displayed percentage range."""
+    from client.app.content.testbed import _create_gauge
+
+    figure = _create_gauge(value)
+
+    assert figure.axes[0].texts[-1].get_text() == expected
+    assert len(figure.axes[0].patches) == 4
 
 
 def _deep_copy_report():

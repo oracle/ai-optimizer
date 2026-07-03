@@ -2,10 +2,11 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore mult selectbox testset testsets valueformat subtools
+# spell-checker:ignore mult selectbox testset testsets subtools
 
 import json
 import logging
+import math
 import random
 import string
 from io import BytesIO
@@ -13,8 +14,9 @@ from typing import Optional
 
 import httpx
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
+from matplotlib.figure import Figure
+from matplotlib.patches import Circle, Wedge
 from streamlit import session_state as state
 
 from client.app.core import sidebar
@@ -180,30 +182,64 @@ def _qa_update_gui(qa_testset: list) -> None:
     st.text_input("Metadata:", dataframe.loc[idx, "metadata"], disabled=True)
 
 
+def _create_gauge(value: float) -> Figure:
+    """Create a correctness gauge for a percentage value."""
+    gauge_value = min(max(value, 0.0), 100.0)
+    figure = Figure(figsize=(8, 4), layout="constrained")
+    axis = figure.subplots()
+
+    for lower, upper, color in (
+        (0, 75, "#d62728"),
+        (75, 90, "#ffd700"),
+        (90, 100, "#2ca02c"),
+    ):
+        axis.add_patch(
+            Wedge(
+                (0, 0),
+                1,
+                180 - upper * 1.8,
+                180 - lower * 1.8,
+                width=0.28,
+                facecolor=color,
+                edgecolor="white",
+                linewidth=2,
+            )
+        )
+
+    needle_angle = math.radians(180 - gauge_value * 1.8)
+    axis.plot(
+        [0, 0.78 * math.cos(needle_angle)],
+        [0, 0.78 * math.sin(needle_angle)],
+        color="#1f77b4",
+        linewidth=4,
+        solid_capstyle="round",
+        zorder=4,
+    )
+    axis.add_patch(Circle((0, 0), 0.055, color="#1f77b4", zorder=5))
+
+    for tick in (0, 75, 90, 100):
+        tick_angle = math.radians(180 - tick * 1.8)
+        axis.text(
+            1.12 * math.cos(tick_angle),
+            1.12 * math.sin(tick_angle),
+            str(tick),
+            ha="center",
+            va="center",
+            fontsize=10,
+        )
+
+    axis.text(0, 1.3, "Overall Correctness Score", ha="center", va="center", fontsize=20)
+    axis.text(0, -0.18, f"{gauge_value:.0f}%", ha="center", va="center", fontsize=24, fontweight="bold")
+    axis.set_xlim(-1.25, 1.25)
+    axis.set_ylim(-0.35, 1.42)
+    axis.set_aspect("equal")
+    axis.axis("off")
+    return figure
+
+
 @st.dialog("Evaluation Report", width="large")
 def _evaluation_report(eid: Optional[str] = None, report: Optional[dict] = None) -> None:
     """Display evaluation report dialog."""
-
-    def _create_gauge(value):
-        # Use a small floor so Plotly renders the needle visibly.
-        gauge_value = max(0.1, value) if value < 1 else value
-        return go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=gauge_value,
-                title={"text": "Overall Correctness Score", "font": {"size": 42}},
-                number={"suffix": "%", "valueformat": ".0f"},
-                gauge={
-                    "axis": {"range": [0, 100]},
-                    "bar": {"color": "blue"},
-                    "steps": [
-                        {"range": [0, 75], "color": "red"},
-                        {"range": [75, 90], "color": "yellow"},
-                        {"range": [90, 100], "color": "green"},
-                    ],
-                },
-            )
-        )
 
     # Get the Report
     if eid:
@@ -246,13 +282,13 @@ def _evaluation_report(eid: Optional[str] = None, report: Optional[dict] = None)
         st.markdown("**Evaluated without Vector Search**")
 
     # Gauge
-    st.plotly_chart(_create_gauge(report["correctness"] * 100))
+    st.pyplot(_create_gauge(float(report["correctness"]) * 100), width="stretch")
 
     # Correctness by Topic
     st.subheader("Correctness By Topic")
     by_topic = pd.DataFrame(report["correct_by_topic"])
     if not by_topic.empty:
-        by_topic["correctness"] = by_topic["correctness"] * 100
+        by_topic["correctness"] = pd.to_numeric(by_topic["correctness"], errors="coerce") * 100
         by_topic.rename(columns={"correctness": "Correctness %"}, inplace=True)
     st.dataframe(by_topic)
 
