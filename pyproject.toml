@@ -19,7 +19,7 @@ dependencies = [
     "langchain==1.3.11",
     "httpx==0.28.1",
     "oracledb~=4.0",
-    "plotly==6.8.0",
+    "matplotlib==3.11.0",
     "pydantic-settings==2.14.2"
 ]
 
@@ -38,7 +38,6 @@ server = [
     "langchain-oracledb==1.5.0",
     "litellm==v1.89.4",
     "llama-index==0.14.23",
-    "matplotlib==3.11.0",
     "oci~=2.0",
     "pyagentspec==26.1.2",
     "pypdf==6.14.2",
@@ -125,7 +124,10 @@ norecursedirs = ["tmp", "build"]
 pythonVersion = "3.11"
 extraPaths = ["src"]
 exclude = [
+    "**/.*",
     "**/.venv",
+    "**/__pycache__",
+    "**/node_modules", 
     "build",
     "src/client/source",
     "tmp/"
