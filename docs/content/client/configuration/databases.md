@@ -58,7 +58,7 @@ Once all fields are set, click the `Create` or `Save` button.
 
 ### Environment Variables
 
-The database can also be configured using environment variables. See [Database]({{% relref "/env_config#database" %}}) under Environment Variables.
+The database can also be configured using environment variables. See [Database]({{% relref "/configuration#database" %}}) under Environment Variables.
 
 --- 
 

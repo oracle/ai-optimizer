@@ -113,13 +113,13 @@ To run the application on bare-metal, download the latest release:
    uv pip install -e ".[all]"
    ```
 
-1. _(Optional)_ Create an [environment file]({{% relref "/env_config" %}}) to pre-configure the application:
+1. _(Optional)_ Create an [environment file]({{% relref "/configuration" %}}) to pre-configure the application:
 
    ```bash
    cp src/.env.example src/.env.dev
    ```
 
-   Edit `src/.env.dev` as needed. See [Environment Variables]({{% relref "/env_config" %}}) for details.
+   Edit `src/.env.dev` as needed. See [Environment Variables]({{% relref "/configuration" %}}) for details.
 
 1. Start the application:
 

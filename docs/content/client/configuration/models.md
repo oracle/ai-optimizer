@@ -122,7 +122,7 @@ Please follow the [Getting Started](https://docs.oracle.com/en-us/iaas/Content/g
 OCI GenAI models are not added one at a time.  Instead, the {{% short_app_ref %}} loads the chat and embedding models available in your configured Region—either interactively from the [OCI](oci#interface) tab, or automatically at startup when a usable profile already has a GenAI Compartment OCID and Region persisted.  See [Loading OCI GenAI Models](oci#loading-oci-genai-models) for details.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-The GenAI Compartment OCID and Region can be supplied via environment variables. See [OCI GenAI](/env_config/#oci-genai) configuration.
+The GenAI Compartment OCID and Region can be supplied via environment variables. See [OCI GenAI](/configuration/#oci-genai) configuration.
 
 Alternatively, you can specify the following in the `~/.oci/config` configfile under the appropriate OCI profile:
 ```shell
@@ -140,7 +140,7 @@ genai_region=<OCI GenAI Region>
 When configuring an Ollama model in the {{% short_app_ref %}}, set the `Provider URL` (e.g `http://127.0.0.1:11434`) and leave the API Key blank. Substitute the IP Address with the IP of where Ollama is running.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-Ollama models can be enabled via environment variables. See [Model Overrides]({{% relref "/env_config#model-overrides" %}}) configuration.
+Ollama models can be enabled via environment variables. See [Model Overrides]({{% relref "/configuration#model-overrides" %}}) configuration.
 {{% /notice %}}
 
 ## Pulling Models
@@ -182,7 +182,7 @@ For more information and instructions on running Ollama on other platforms, plea
 [HuggingFace](https://huggingface.co/) is a platform where the machine learning community collaborates on models, datasets, and applications. In the {{% short_app_ref %}}, the built-in HuggingFace embedding configuration is intended for a Hugging Face Text Embeddings Inference (TEI) endpoint.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-The built-in HuggingFace TEI configuration can be enabled via environment variables. See [Model Overrides](/env_config/#model-overrides) configuration.
+The built-in HuggingFace TEI configuration can be enabled via environment variables. See [Model Overrides](/configuration/#model-overrides) configuration.
 {{% /notice %}}
 
 ## Quick-start
@@ -230,7 +230,7 @@ Example of running thenlper/gte-base in a container:
 **WARNING:** Cohere is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-Cohere models can be enabled via environment variables. See [Model Overrides]({{% relref "/env_config#model-overrides" %}}) configuration.
+Cohere models can be enabled via environment variables. See [Model Overrides]({{% relref "/configuration#model-overrides" %}}) configuration.
 {{% /notice %}}
 {{% /tab %}}
 {{% tab title="OpenAI" %}}
@@ -241,7 +241,7 @@ Cohere models can be enabled via environment variables. See [Model Overrides]({{
 **WARNING:** OpenAI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-OpenAI models can be enabled via environment variables. See [Model Overrides]({{% relref "/env_config#model-overrides" %}}) configuration.
+OpenAI models can be enabled via environment variables. See [Model Overrides]({{% relref "/configuration#model-overrides" %}}) configuration.
 {{% /notice %}}
 
 {{% /tab %}}
@@ -259,7 +259,7 @@ Many "AI Runners" provide OpenAI-compatible APIs. These can be configured with L
 **WARNING:** Perplexity AI is a cloud model and you should familiarize yourself with their Privacy Policies if using it to experiment with private, sensitive data in the {{% short_app_ref %}}.
 
 {{% notice style="code" title="Skip the GUI!" icon="circle-info" %}}
-Perplexity models can be enabled via environment variables. See [Model Overrides]({{% relref "/env_config#model-overrides" %}}) configuration.
+Perplexity models can be enabled via environment variables. See [Model Overrides]({{% relref "/configuration#model-overrides" %}}) configuration.
 {{% /notice %}}
 {{% /tab %}}
 {{< /tabs >}}
