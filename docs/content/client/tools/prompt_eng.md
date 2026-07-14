@@ -6,60 +6,89 @@ weight = 10
 <!--
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+spell-checker: ignore NL2SQL
 -->
 
-Prompts are a set of instructions given to the language model to guide the response.  They are used to set the context or define the kind of response you are expecting.  The {{% full_app_ref %}} provides both [System](#system-prompt) and [Context](#context-prompt) example prompts and allows you to modify these prompts to your needs.
+Prompts provide instructions and templates that guide the language model and the tools used by the {{% full_app_ref %}}. The application includes prompts for ordinary chat, Vector Search, Natural Language to SQL (NL2SQL), combined tool use, and Testbed evaluation.
 
-{{% icon star %}} The provided example prompts work for *most* models but they may not work the same way across all models.  Different models may interpret or respond to the instructions in various ways requiring you to modify the example prompts per-model.
+The runtime selects the appropriate chat prompt automatically from the tools enabled in the [Chatbot]({{% relref "/client/chatbot" %}}) configuration.
 
-The select "Current" prompt is what will be used while interacting with the language model and will be displayed within the [ChatBot](../chatbot) input bar:
-
-![Chatbot Input](../images/chatbot_input_bar.png)
-
-## System Prompt
-
-The *System* prompt is typically used to guide the model on how to interpret input, what style or tone to use, or what kind of response is expected. *System* prompts help establish the parameters within which the language model operates, shaping its output beyond just answering direct user queries.  
-
-The *System* prompt for non-RAG and RAG will normally provide different instructions to the model to guide its use of the retrieved documents.  You can select which prompt to use and modify the provided examples as required.
-
-![System Prompt](../images/prompt_eng_system.png)
-
-{{% notice style="code" title="Auto Switcher-oo" icon="circle-info" %}}
-When enabling or disabling Vector Search, the *System* prompt will automatically switch between the **Basic Example** and **Vector Search Example**.  When the *System* prompt has been set to **Custom**, this auto-switching will be disabled.
+{{% notice style="default" title="Model behavior" icon="circle-info" %}}
+The provided prompts work with a range of models, but different models may interpret the same instructions differently. Review the results after changing a prompt and adjust its instructions for the models you use.
 {{% /notice %}}
 
-#### Examples of how the *System* prompt can be used:
+## Prompt Usage
 
-##### Set the Tone/Style
+The {{% short_app_ref %}} provides the following prompts out-of-the-box:
 
-- Respond in a formal tone,
-- Respond as if you were a pirate.
-- Be friendly and casual in your answers.
+### LLM Only
 
-##### Influence the behavior/role
+| Prompt | Usage |
+| --- | --- |
+| **Basic Prompt** | Provides the system instructions for ordinary conversation when neither Vector Search nor NL2SQL is enabled. The factory prompt gives the model a general friendly and helpful assistant role without directing it to call tools. |
+{class="prompt-usage-table"}
 
-- Act like a professional teacher
-- Pretend you are a counselor helping someone with stress
+### Vector Search
 
-##### Guide the context
+| Prompt | Usage |
+| --- | --- |
+| **Vector Search Tools Prompt** | Provides the system instructions when only Vector Search is enabled. It directs the model to retrieve supporting content and answer from the retrieved documentation rather than relying on outside knowledge. |
+| **Contextualize Prompt** | Defines how a follow-up question is converted into a standalone retrieval query. It uses relevant conversation history to resolve references such as `it`, `this`, or `that`, while removing conversational wording that does not help the search. |
+| **Vector Search Rephrase Prompt** | Rewrites follow-up questions into standalone retrieval queries when query rephrasing and chat history are enabled. It combines the Contextualize Prompt with the conversation history and current question. If there is insufficient history, the original question is used. The resulting query is shown under **Vector Search Details → Search Query**.<hr>**Example:** After discussing hybrid vector indexes, `Can you give me more details?` can be rewritten as `More details about hybrid vector indexes`. |
+| **Smart Vector Storage Prompt** | Selects which vector stores to search when vector store discovery is enabled. It compares the question with store names, aliases, and descriptions, then returns the most relevant table names. |
+| **Vector Search Grading Prompt** | Evaluates whether retrieved documents are relevant when result grading is enabled. It returns a `yes` or `no` decision that determines whether the retrieved content should be used. |
+{class="prompt-usage-table"}
 
-- Only provide technical details about the topic
-- Explain this concept as if the user is a beginner
+### NL2SQL
 
-##### Specify the output format
+| Prompt | Usage |
+| --- | --- |
+| **NL2SQL Tools Prompt** | Provides the system instructions when only NL2SQL is enabled. It directs the model to use the SQLcl MCP tools for read-only database access, call only the tool required by the request, and return the result without repeating the tool call. |
+{class="prompt-usage-table"}
 
-- Give answers in bullet-point lists
-- Restrict your response to three sentences or less
+### Combined
 
----
-## Context Prompt
+| Prompt | Usage |
+| --- | --- |
+| **Default Tools Prompt** | Provides the main system instructions when both Vector Search and NL2SQL are enabled. It guides the model to use database access for current values, complete datasets, and calculations; document retrieval for concepts and procedures; and both for comparisons with documented guidance. |
+| **Combined Session Classifier Prompt** | Classifies each question before tool execution. It returns `nl2sql` for questions about database values or calculations, `vecsearch` for knowledge and guidance, or `both` when database results must be compared with retrieved documentation. |
+| **Combined Session Synthesis Prompt** | Provides the template used when the classifier returns `both`. It combines the original question, system instructions, database result, and document-search result into one response. |
+{class="prompt-usage-table"}
 
-The *Context* prompt is used when Vector Search is enabled.  It is used in a "private conversation" with the model, prior to retrieval, to re-phrase the user input.  
+The **Testbed Judge Prompt** is independent of the chat routes. It compares a Testbed response with the expected answer and returns a structured correctness decision based on semantic equivalence rather than exact wording.
 
-![Context Prompt](../images/prompt_eng_context.png)
+## Edit a Prompt
 
-As an example to the importance of the *Context* prompt, if the previous interactions with the model included Oracle documentation topics about vector indexes and the user asks: "Can you give me more details?"; the Vector Search retrieval process should not search for similar vectors for "Can you give me more details?".  Instead, the user input should be re-phrased and a vector search should be performed on a more contextual relevant phrase, such as: "More details on creating and altering hybrid vector indexes in Oracle Database."
+Open the **Tools** menu and select the **Prompts** tab. Select a prompt by title to view its description and current system instructions.
 
-When Vector Search is enabled, you will see what was generated and used for the vector search in the **Notes:** section under the **References:**
+![Prompt selection list](../images/prompt_eng.png)
 
-![System Prompt](../images/chatbot_rephrase.png)
+- Edit **System Instructions** and select **Save Instructions** to persist the change.
+- Select **Reset Instructions** to restore the selected prompt to its factory text.
+
+![Editing and saving prompt instructions](../images/prompt_eng_save.png)
+
+Saved changes are applied to subsequent chat and tool operations.
+
+{{% notice style="code" title="Fra-GEE-leh! It must be Italian!" icon="circle-info" %}}
+Some prompts are runtime templates rather than plain instructions. Placeholders such as `{question}`, `{history}`, `{documents}`, and `{system_prompt}` are replaced with values during processing.
+
+Preserve the existing placeholders and their brace format when editing a template. Removing a required placeholder or adding an unsupported placeholder can prevent that prompt from being rendered. Structurally invalid combined classifier or synthesis prompts fall back to their factory text at runtime.
+{{% /notice %}}
+
+## Bulk Prompt Operations
+
+Bulk prompt operations make prompt experiments repeatable and portable. Downloading the current prompt set creates a checkpoint that you can reload later to reproduce an experiment, compare variations, or continue from a known configuration.
+
+The exported JSON file can also be shared with another developer. They can import the recognized prompts into another {{% short_app_ref %}} instance and experiment with the same prompt set without copying each prompt manually. The export contains prompt configurations only; it does not include model, database, or other application settings.
+
+![Prompt Bulk Operations](../images/prompt_eng_bulk.png)
+
+The **Bulk Prompt Operations** section provides the following actions:
+
+- **Download Prompts** exports the current prompt configurations to a JSON file.
+- Enable **Upload**, select a previously exported JSON file, and select **Upload Prompts** to import recognized prompt configurations. Unchanged or unrecognized entries are skipped.
+- **Reset All Prompts** restores every prompt to a known factory baseline.
+
+Reset and import operations are persisted in the same way as individual prompt edits.

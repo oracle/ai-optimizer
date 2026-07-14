@@ -18,6 +18,7 @@
 ## Comments and Documentation
 
 - Documentation is in docs/content and should be updated when features are introduced or changed.
+- Ground documentation and operational guidance in the repository's current implementation. Before describing installation, runtime, environment, container, or subprocess behavior, inspect the relevant source, Dockerfiles, entrypoints, and configuration. Use external documentation only to verify facts about external tools.
 - This repo is public; use neutral language and describe *behavior*, not the bug/vulnerability being fixed.
 - Stay version neutral, for example refer to "Oracle AI Database" with no version numbers (not 23ai/26ai). Exception: a feature that genuinely requires a specific minimum version may state it.
 - Do not run pytest when only documentation changes.

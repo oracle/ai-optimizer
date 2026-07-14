@@ -71,14 +71,14 @@ FACTORY_MODELS: list[dict] = [
         'max_input_tokens': 131072,
     },
     {
-        'id': 'llama3.2:3b',
+        'id': 'qwen3:8b',
         'enabled': False,
         'type': 'll',
         'provider': 'ollama',
         'api_key': '',
         'api_base': 'http://localhost:11434',
-        'max_tokens': 131072,
-        'max_input_tokens': 131072,
+        'max_tokens': 16384,
+        'max_input_tokens': 40960,
     },
     {
         'id': 'thenlper/gte-base',

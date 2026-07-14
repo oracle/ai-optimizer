@@ -37,7 +37,7 @@ def extract_parameter_count(model_id: Optional[str]) -> Optional[float]:
     """Extract parameter count from model name.
 
     Parses model identifiers to find parameter counts indicated by patterns
-    like '1b', '3B', '7b', etc.
+    like '1b', '4b', '7b', etc.
 
     Returns:
         Parameter count in billions as a float, or None if not found.
@@ -162,7 +162,7 @@ class LiteLlmModelSpec:
     provider:
         Raw provider string (e.g. "openai", "ollama", "oci").
     model_id:
-        Model name within the provider (e.g. "gpt-5.4-mini", "llama3.2:3b").
+        Model name within the provider (e.g. "gpt-5.4-mini", "qwen3:8b").
     temperature, top_p, max_tokens, frequency_penalty, presence_penalty:
         Caller-provided overrides.  When ``None``, the value from the
         matching ``ModelConfig`` in settings is used as the default.

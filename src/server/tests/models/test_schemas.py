@@ -105,35 +105,17 @@ class TestModelConfig:
 
     # -- small_model computed field ------------------------------------------
 
-    def test_small_model_true_for_1b(self):
-        """small_model is True for models with < 7B parameters."""
-        cfg = ModelConfig(type="ll", id="llama3.2:1b")
-        assert cfg.small_model is True
-
-    def test_small_model_true_for_3b(self):
-        """small_model is True for 3B models."""
-        cfg = ModelConfig(type="ll", id="llama3.2:3b")
-        assert cfg.small_model is True
-
-    def test_small_model_false_for_7b(self):
-        """small_model is False at the 7B threshold."""
-        cfg = ModelConfig(type="ll", id="gemma-7b")
-        assert cfg.small_model is False
-
-    def test_small_model_false_for_70b(self):
-        """small_model is False for large models."""
-        cfg = ModelConfig(type="ll", id="llama3:70b")
-        assert cfg.small_model is False
-
-    def test_small_model_false_for_no_param_count(self):
-        """small_model is False when no parameter count is detectable."""
-        cfg = ModelConfig(type="ll", id=TEST_OPENAI_MODEL_ID)
-        assert cfg.small_model is False
-
-    def test_small_model_false_for_none_id(self):
-        """small_model is False when id is None."""
-        cfg = ModelConfig(type="ll")
-        assert cfg.small_model is False
+    @pytest.mark.parametrize(
+        ("model_id", "expected"),
+        [
+            ("llama3.2:1b", True),
+            ("gemma-7b", False),
+        ],
+    )
+    def test_small_model_delegates_to_model_classifier(self, model_id, expected):
+        """small_model exposes the classifier result for a configured model."""
+        cfg = ModelConfig(type="ll", id=model_id)
+        assert cfg.small_model is expected
 
     def test_small_model_in_serialization(self):
         """small_model appears in model_dump output."""

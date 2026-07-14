@@ -32,6 +32,19 @@ MIN_CHAT_HISTORY_FOR_REPHRASE = 2
 REPHRASE_MAX_TOKENS = 128
 
 
+def _single_line_query_or_original(response: str, question: str) -> str:
+    """Accept only a non-empty single-line query from the rephrase model.
+
+    Rephrase output becomes the direct input to retrieval. Treat prose or
+    deliberation that spans multiple lines as an invalid result rather than
+    searching it as if it were a query.
+    """
+    candidate = response.strip()
+    if not candidate or "\n" in candidate or "\r" in candidate:
+        return question
+    return candidate
+
+
 async def _perform_rephrase(
     question: str,
     chat_history: Union[list[str], str],
@@ -54,10 +67,8 @@ async def _perform_rephrase(
         question=question,
     )
 
-    text = await ainvoke_text_from_spec(
-        spec, formatted_prompt, max_tokens=REPHRASE_MAX_TOKENS, disable_reasoning=True
-    )
-    return text or question
+    text = await ainvoke_text_from_spec(spec, formatted_prompt, max_tokens=REPHRASE_MAX_TOKENS, disable_reasoning=True)
+    return _single_line_query_or_original(text, question)
 
 
 async def _vs_rephrase_impl(

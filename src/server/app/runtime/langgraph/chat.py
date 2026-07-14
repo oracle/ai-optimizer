@@ -9,12 +9,13 @@ LangGraph chat orchestration — routing, session management, memory, and stream
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Any, AsyncGenerator, Callable, Dict, Optional, Union
+from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, Optional, Union
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
+from server.app.agentspec.adapters.mcp import connect_sqlcl_database
+from server.app.api.v1.schemas.chat import SqlMetadata, TokenUsage, VsMetadata
 from server.app.core.schemas import ClientSettings
 from server.app.core.secrets import reveal
 from server.app.database.config import resolve_effective_tool_alias
@@ -142,6 +143,24 @@ class ChatOrchestrator:
                 )
         return out
 
+    def _build_nl2sql_database_connector(
+        self, connection_name: str, model: str, thread_id: str
+    ) -> Optional[Callable[[], Awaitable[None]]]:
+        """Create a per-session connector for the configured SQLcl database."""
+        if not connection_name:
+            return None
+
+        async def _connect() -> None:
+            await connect_sqlcl_database(
+                self._server_url,
+                self.api_key,
+                connection_name,
+                model,
+                thread_id=thread_id,
+            )
+
+        return _connect
+
     def _keys_for_client(self, client: str) -> list:
         """Return cache keys whose first element is *client*."""
         return [k for k in self._session_cache if k[0] == client]
@@ -190,8 +209,19 @@ class ChatOrchestrator:
         # 'connect as' override routes NL2SQL to the end-user connection (and raises
         # DdsConnectionError, surfaced at the chat boundary, when it is unusable).
         connection_name = resolve_effective_tool_alias(client) if client else cs.database.alias
+        ll_model = cs.ll_model
+        assert ll_model.provider is not None
+        assert ll_model.id is not None
+        model = f"{ll_model.provider}/{ll_model.id}"
+        connect_database = self._build_nl2sql_database_connector(connection_name, model, client)
         graph = await build_nl2sql_graph(cs, self._server_url, self.api_key, checkpointer=MemorySaver())
-        return NL2SQLGraphSession(graph, cs, thread_id=client, connection_name=connection_name)
+        return NL2SQLGraphSession(
+            graph,
+            cs,
+            thread_id=client,
+            connection_name=connection_name,
+            connect_database=connect_database,
+        )
 
     async def _build_combined_session(self, cs: ClientSettings, client: str = "") -> CombinedSession:
         """Build a combined vecsearch + NL2SQL session from client settings."""
@@ -199,9 +229,18 @@ class ChatOrchestrator:
         vs_session = GraphFlowSession(graph, cs)
 
         connection_name = resolve_effective_tool_alias(client) if client else cs.database.alias
+        ll_model = cs.ll_model
+        assert ll_model.provider is not None
+        assert ll_model.id is not None
+        model = f"{ll_model.provider}/{ll_model.id}"
+        connect_database = self._build_nl2sql_database_connector(connection_name, model, client)
         nl2sql_graph = await build_nl2sql_graph(cs, self._server_url, self.api_key, checkpointer=MemorySaver())
         nl2sql_session = NL2SQLGraphSession(
-            nl2sql_graph, cs, thread_id=client, connection_name=connection_name
+            nl2sql_graph,
+            cs,
+            thread_id=client,
+            connection_name=connection_name,
+            connect_database=connect_database,
         )
 
         ll_model = cs.ll_model
@@ -356,21 +395,39 @@ class ChatOrchestrator:
             answer = await session.execute(question, thread_id=client, history_text=self._history_text(client, cs))
 
         vs_metadata = None
+        sql_metadata = None
         token_usage = None
         if isinstance(session, (CombinedSession, GraphFlowSession)):
             vs_metadata = session.last_metadata.vs_metadata
+            sql_metadata = session.last_metadata.sql_metadata
             token_usage = session.last_metadata.token_usage
         elif isinstance(session, AgentGraphSession):
+            sql_metadata = session.last_metadata.sql_metadata
             token_usage = session.last_metadata.token_usage
         vs_meta_dict = vs_metadata.model_dump(exclude_none=True) if vs_metadata else None
+        sql_meta_dict = sql_metadata.model_dump(exclude_none=True) if sql_metadata else None
         tu_dict = token_usage.model_dump() if token_usage else None
-        extras = {k: v for k, v in [("vs_metadata", vs_meta_dict), ("token_usage", tu_dict)] if v}
+        extras = {
+            k: v
+            for k, v in [
+                ("vs_metadata", vs_meta_dict),
+                ("sql_metadata", sql_meta_dict),
+                ("token_usage", tu_dict),
+            ]
+            if v
+        }
 
         history_enabled = cs.ll_model.chat_history
         self.history.append(client, "user", question, history_enabled=history_enabled)
         self.history.append(client, "assistant", answer, history_enabled=history_enabled, **extras)
 
-        return {"result": answer, "route": route, "vs_metadata": vs_metadata, "token_usage": token_usage}
+        return {
+            "result": answer,
+            "route": route,
+            "vs_metadata": vs_metadata,
+            "sql_metadata": sql_metadata,
+            "token_usage": token_usage,
+        }
 
     # -- execute_chat_stream (streaming) ----------------------------------
 
@@ -492,20 +549,34 @@ class ChatOrchestrator:
         """
         answer = "".join(collected)
         vs_metadata: Optional[VsMetadata] = None
+        sql_metadata: Optional[SqlMetadata] = None
         if isinstance(session, (CombinedSession, GraphFlowSession)):
             vs_metadata = session.last_metadata.vs_metadata
+            sql_metadata = session.last_metadata.sql_metadata
+        elif isinstance(session, AgentGraphSession):
+            sql_metadata = session.last_metadata.sql_metadata
         if isinstance(session, AgentGraphSession) and not isinstance(session, NL2SQLGraphSession):
             token_usage = self._get_agent_token_usage(session) or token_usage
         if answer:
             # Convert to dicts for HistoryStore (consumed by chat/history endpoint)
             vs_meta_dict = vs_metadata.model_dump(exclude_none=True) if vs_metadata else None
+            sql_meta_dict = sql_metadata.model_dump(exclude_none=True) if sql_metadata else None
             tu_dict = token_usage.model_dump() if token_usage else None
-            extras = {k: v for k, v in [("vs_metadata", vs_meta_dict), ("token_usage", tu_dict)] if v}
+            extras = {
+                k: v
+                for k, v in [
+                    ("vs_metadata", vs_meta_dict),
+                    ("sql_metadata", sql_meta_dict),
+                    ("token_usage", tu_dict),
+                ]
+                if v
+            }
             self.history.append(client, "user", question, history_enabled=history_enabled)
             self.history.append(client, "assistant", answer, history_enabled=history_enabled, **extras)
         # Return dict for streaming event — endpoint consumes via event.get()
         vs_meta_dict = vs_metadata.model_dump(exclude_none=True) if vs_metadata else None
-        return {"type": "_meta", "route": route, "vs_metadata": vs_meta_dict}
+        sql_meta_dict = sql_metadata.model_dump(exclude_none=True) if sql_metadata else None
+        return {"type": "_meta", "route": route, "vs_metadata": vs_meta_dict, "sql_metadata": sql_meta_dict}
 
     async def execute_chat_stream(
         self,

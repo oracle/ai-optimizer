@@ -128,11 +128,12 @@ class TestConfigureLogging:
 
     def test_uvicorn_loggers_configured(self):
         """configure_logging should configure uvicorn loggers."""
-        logging_config.configure_logging()
+        logging_config.configure_logging(log_level="DEBUG")
 
         for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
             LOGGER = logging.getLogger(name)
             assert LOGGER.propagate is False
+            assert LOGGER.level == logging.INFO
 
     def test_pil_logger_configured(self):
         """configure_logging should configure PIL LOGGER."""
@@ -148,6 +149,15 @@ class TestConfigureLogging:
 
         LOGGER = logging.getLogger("streamlit")
         assert LOGGER.propagate is False
+
+    def test_litellm_logger_uses_application_configuration(self):
+        """configure_logging should prevent duplicate LiteLLM output."""
+        logging_config.configure_logging(log_level="DEBUG")
+
+        LOGGER = logging.getLogger("LiteLLM")
+        assert LOGGER.level == logging.INFO
+        assert LOGGER.propagate is False
+        assert LOGGER.handlers == logging.getLogger().handlers
 
     def test_transformers_helper_keeps_error_threshold(self, monkeypatch):
         """Transformers helper should not lower configured verbosity."""

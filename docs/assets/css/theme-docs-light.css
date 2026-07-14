@@ -106,6 +106,16 @@ div.box, div.box code .copy-to-clipboard {
     opacity: .75;
 }
 
+.prompt-usage-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.prompt-usage-table th:first-child,
+.prompt-usage-table td:first-child {
+    width: 32%;
+}
+
 @media (max-width: 768px) {
     .home-integrations {
         align-items: flex-start;

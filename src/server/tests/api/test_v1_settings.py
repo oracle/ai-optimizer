@@ -751,6 +751,19 @@ class TestReconcileLlModelTokens:
         assert incoming.max_tokens == 8192
 
     @pytest.mark.unit
+    def test_first_model_selection_adopts_model_default_max_tokens(self):
+        """Selecting the first model does not treat the schema default as customized."""
+        from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens
+
+        new_cfg = self._make_model_config(max_input_tokens=40960, max_tokens=16384)
+        current = self._make_ll_model(max_tokens=4096)
+        incoming = self._make_ll_model(provider="ollama", id="qwen3:8b")
+        with patch(f"{SETTINGS_MODULE}.find_model", return_value=new_cfg):
+            _reconcile_ll_model_tokens(current, incoming)
+        assert incoming.max_input_tokens == 40960
+        assert incoming.max_tokens == 16384
+
+    @pytest.mark.unit
     def test_caps_customized_max_tokens(self):
         """When user customized max_tokens and it exceeds new max_input_tokens, cap it."""
         from server.app.api.v1.endpoints.settings import _reconcile_ll_model_tokens

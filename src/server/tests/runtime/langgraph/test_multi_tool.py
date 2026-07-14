@@ -6,11 +6,14 @@ Tests for the LangGraph CombinedSession (hybrid Python-level routing).
 """
 # spell-checker: disable
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
 
+from server.app.api.v1.schemas.chat import SqlMetadata
+from server.app.runtime.common import SessionMetadata
 from server.app.runtime.langgraph.multi_tool import CombinedSession
 from server.app.runtime.langgraph.session import (
     GraphFlowSession,
@@ -269,6 +272,63 @@ class TestCombinedSessionStreaming(_LangGraphMixin, StreamingBase):
 
 class TestCombinedSessionMetadata(_LangGraphMixin, MetadataBase):
     """Tests for vs_metadata propagation."""
+
+    @pytest.mark.anyio
+    @patch("litellm.acompletion", new_callable=AsyncMock)
+    async def test_both_route_preserves_sql_metadata(self, mock_acompletion):
+        """Combined responses retain SQL details from the NL2SQL branch."""
+        mock_acompletion.side_effect = [
+            mock_litellm_response("both"),
+            mock_litellm_response("synthesized answer"),
+        ]
+        session = _make_combined_session()
+        original_chat = session.nl2sql_session.chat
+
+        async def chat_with_sql_metadata(*args, **kwargs):
+            answer = await original_chat(*args, **kwargs)
+            session.nl2sql_session.last_metadata = SessionMetadata(
+                sql_metadata=SqlMetadata(executed_sql=["SELECT 1 FROM dual"])
+            )
+            return answer
+
+        session.nl2sql_session.chat = chat_with_sql_metadata
+
+        await session.execute("Is redo log right?", thread_id="t-1")
+
+        assert session.last_metadata.sql_metadata == SqlMetadata(executed_sql=["SELECT 1 FROM dual"])
+
+    @pytest.mark.anyio
+    @patch("litellm.acompletion", new_callable=AsyncMock)
+    async def test_streaming_both_route_preserves_sql_metadata(self, mock_acompletion):
+        """Streaming combined responses retain SQL details from the NL2SQL branch."""
+        mock_acompletion.side_effect = [
+            mock_litellm_response("both"),
+            mock_litellm_response("synthesized answer"),
+        ]
+        session = _make_combined_session()
+        original_chat = session.nl2sql_session.chat
+
+        async def chat_with_sql_metadata(*args, **kwargs):
+            answer = await original_chat(*args, **kwargs)
+            session.nl2sql_session.last_metadata = SessionMetadata(
+                sql_metadata=SqlMetadata(executed_sql=["SELECT 1 FROM dual"])
+            )
+            return answer
+
+        session.nl2sql_session.chat = chat_with_sql_metadata
+        queue: asyncio.Queue = asyncio.Queue()
+
+        await session.execute_streaming(
+            "Is redo log right?",
+            "t-1",
+            "",
+            [],
+            queue,
+            stream_flow=AsyncMock(),
+            stream_agent=AsyncMock(),
+        )
+
+        assert session.last_metadata.sql_metadata == SqlMetadata(executed_sql=["SELECT 1 FROM dual"])
 
 
 # ---------------------------------------------------------------------------

@@ -30,6 +30,12 @@ class VsMetadata(BaseModel):
     context_input: Optional[str] = None
 
 
+class SqlMetadata(BaseModel):
+    """SQL execution metadata returned with chat responses."""
+
+    executed_sql: list[str] = []
+
+
 # ---------------------------------------------------------------------------
 # Chat request / response
 # ---------------------------------------------------------------------------
@@ -68,6 +74,7 @@ class ChatResponse(BaseModel):
     content: str
     route: Optional[str] = None
     vs_metadata: Optional[VsMetadata] = None
+    sql_metadata: Optional[SqlMetadata] = None
     token_usage: Optional[TokenUsage] = None
 
 
@@ -104,6 +111,7 @@ class StreamCompletionEvent(BaseModel):
     content: str
     route: Optional[str] = None
     vs_metadata: Optional[VsMetadata] = None
+    sql_metadata: Optional[SqlMetadata] = None
     token_usage: Optional[TokenUsage] = None
 
 

@@ -116,6 +116,7 @@ def _resolve_dbtools_home() -> Path:
 
 _DBTOOLS_HOME = _resolve_dbtools_home()
 
+
 # Live state for the mounted SQLcl proxy. register_sqlcl_proxy() populates this
 # at startup; refresh_sqlcl_proxy() tears it down and rebuilds it when the
 # database configuration changes so the SQLcl daemon re-reads the connection store.
@@ -300,6 +301,51 @@ async def _create_connection_store(
         LOGGER.error("Timed out creating connection store for: %s", alias)
 
 
+async def ensure_sqlcl_saved_connection(alias: str) -> bool:
+    """Ensure *alias* exists in SQLcl's saved-connection store.
+
+    Returns ``True`` when the alias was recreated, ``False`` when it could not
+    be recreated from the live application settings.
+    """
+    if not alias:
+        return False
+
+    async with _refresh_lock:
+        db_config = next((cfg for cfg in settings.database_configs if cfg.alias.lower() == alias.lower()), None)
+        if db_config is None:
+            LOGGER.warning("SQLcl saved connection cannot be recreated: alias %s is not configured", alias)
+            return False
+
+        db_password = reveal(db_config.password)
+        if not db_config.username or not db_password or not db_config.dsn:
+            LOGGER.warning("SQLcl saved connection cannot be recreated: alias %s is missing credentials", alias)
+            return False
+
+        sqlcl_binary = shutil.which("sql")
+        if not sqlcl_binary:
+            LOGGER.warning("SQLcl saved connection cannot be recreated: sql binary not found")
+            return False
+
+        tns_admin = os.environ.get("TNS_ADMIN") or str(_CORE_TNS_ADMIN)
+        env_vars = os.environ.copy()
+        env_vars["TNS_ADMIN"] = db_config.config_dir or tns_admin
+
+        await _create_connection_store(
+            sqlcl_binary=sqlcl_binary,
+            alias=db_config.alias,
+            username=db_config.username,
+            password=db_password,
+            dsn=db_config.dsn,
+            env=env_vars,
+            dbtools_home=_DBTOOLS_HOME,
+        )
+        if not await _refresh_sqlcl_proxy_unlocked():
+            LOGGER.error("SQLcl saved connection was recreated but the proxy could not be refreshed")
+            return False
+        LOGGER.info("Recreated SQLcl saved connection for alias %s", db_config.alias)
+        return True
+
+
 async def _mount_sqlcl_proxy(
     sqlcl_binary: str, dbtools_home: Path, env_vars: dict
 ) -> tuple[StdioTransport, Provider] | None:
@@ -350,7 +396,7 @@ async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | 
     """
     sqlcl_binary = shutil.which("sql")
     if not sqlcl_binary:
-        LOGGER.warning("Not enabling SQLcl MCP server, sqlcl not found in PATH.")
+        LOGGER.warning("Not enabling SQLcl MCP server, sql not found in PATH.")
         return None
 
     # Resolve TNS_ADMIN
@@ -431,17 +477,22 @@ async def refresh_sqlcl_proxy() -> bool:
     ``settings.nl2sql_available`` reflects the outcome so the UI stays honest.
     """
     async with _refresh_lock:
-        await _teardown_active_unlocked()
-        try:
-            result = await _register_sqlcl_proxy_unlocked()
-        except Exception as ex:
-            LOGGER.error("SQLcl proxy refresh failed: %s", ex)
-            result = None
+        return await _refresh_sqlcl_proxy_unlocked()
 
-        if result is not None:
-            _state.transport, _state.provider = result
-        settings.nl2sql_available = _state.transport is not None
-        return _state.transport is not None
+
+async def _refresh_sqlcl_proxy_unlocked() -> bool:
+    """Refresh the SQLcl MCP proxy while the caller holds ``_refresh_lock``."""
+    await _teardown_active_unlocked()
+    try:
+        result = await _register_sqlcl_proxy_unlocked()
+    except Exception as ex:
+        LOGGER.error("SQLcl proxy refresh failed: %s", ex)
+        result = None
+
+    if result is not None:
+        _state.transport, _state.provider = result
+    settings.nl2sql_available = _state.transport is not None
+    return _state.transport is not None
 
 
 async def _close_transport(transport: StdioTransport | None) -> None:

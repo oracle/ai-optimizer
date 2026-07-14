@@ -62,6 +62,28 @@ async def test_vs_rephrase_success(
     assert response.rephrased_prompt == "New question"
 
 
+async def test_vs_rephrase_rejects_multiline_model_response(
+    configure_ll_model,
+    prompt_config_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a single-line query may be used as a vector-search input."""
+    configure_ll_model(provider="openai", model_id="gpt-rephrase")
+    prompt_config_factory("optimizer_vs-rephrase", "Prompt: {prompt}\nHistory: {history}\nQuestion: {question}")
+    prompt_config_factory("optimizer_context-default", "Context prompt")
+    _patch_llm_with_response(
+        monkeypatch,
+        "I will use the conversation history to resolve the identity.\nWhat did Driver 11's coach say to improve?",
+    )
+
+    response = await vs_rephrase._vs_rephrase_impl(
+        "What did my coach say I should improve?", ["User: I am Driver 11", "Assistant: Welcome"]
+    )
+
+    assert response.was_rephrased is False
+    assert response.rephrased_prompt == "What did my coach say I should improve?"
+
+
 async def test_vs_rephrase_string_history_without_label_space(
     configure_ll_model,
     prompt_config_factory,

@@ -7,22 +7,23 @@ Tests for the MCP adapter: transport construction and prompt fetching.
 # spell-checker: disable
 
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from mcp.types import GetPromptResult, ImageContent, PromptMessage, TextContent
 from pyagentspec.mcp import StreamableHTTPTransport
 
-from server.app.agentspec.adapters.mcp import build_mcp_transport, fetch_mcp_prompt
+from server.app.agentspec.adapters.mcp import build_mcp_transport, connect_sqlcl_database, fetch_mcp_prompt
 
 
 class TestBuildMcpTransport:
     """Unit tests for build_mcp_transport."""
 
     def test_transport_url(self):
-        """Verify the URL is passed verbatim."""
+        """Verify the transport uses the canonical trailing-slash URL."""
         transport = build_mcp_transport("https://mcp.example.com/endpoint", "key")
-        assert transport.url == "https://mcp.example.com/endpoint"
+        assert transport.url == "https://mcp.example.com/endpoint/"
 
     def test_transport_name(self):
         """Verify transport name is fixed to 'mcp-transport'."""
@@ -178,3 +179,148 @@ class TestFetchMcpPrompt:
             ConnectionError, match="refused"
         ):
             await fetch_mcp_prompt(self.server_url, self.api_key, "p")
+
+
+class TestConnectSqlclDatabase:
+    """Unit tests for connect_sqlcl_database."""
+
+    server_url: str
+    api_key: str
+
+    def setup_method(self):
+        """Set up shared MCP configuration used by each test."""
+        self.server_url = "https://mcp.example.com"
+        self.api_key = "test-key"
+
+    @pytest.mark.anyio
+    async def test_connects_when_saved_connection_exists(self):
+        """A working saved connection calls sqlcl_connect once."""
+        session = AsyncMock()
+        session.initialize = AsyncMock()
+        session.call_tool = AsyncMock(return_value=SimpleNamespace(isError=False, content=[]))
+        p1, p2 = _patch_mcp_context(session)
+
+        with p1, p2:
+            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/qwen3:8b")
+
+        session.call_tool.assert_awaited_once_with(
+            "sqlcl_connect",
+            {"connection_name": "CORE", "model": "ollama/qwen3:8b"},
+        )
+
+    @pytest.mark.anyio
+    async def test_passes_thread_id_when_provided(self):
+        """thread_id should be forwarded to SQLcl connect when provided."""
+        session = AsyncMock()
+        session.initialize = AsyncMock()
+        session.call_tool = AsyncMock(return_value=SimpleNamespace(isError=False, content=[]))
+        p1, p2 = _patch_mcp_context(session)
+
+        with p1, p2:
+            await connect_sqlcl_database(
+                self.server_url,
+                self.api_key,
+                "CORE",
+                "ollama/qwen3:8b",
+                thread_id="client-1",
+            )
+
+        session.call_tool.assert_awaited_once_with(
+            "sqlcl_connect",
+            {"connection_name": "CORE", "model": "ollama/qwen3:8b", "thread_id": "client-1"},
+        )
+
+    @pytest.mark.anyio
+    async def test_rehydrates_missing_saved_connection_then_retries(self):
+        """A missing SQLcl saved connection is rebuilt once, then retried."""
+        missing = SimpleNamespace(
+            isError=True,
+            content=[{"text": "Error calling tool 'connect': Connection not found: CORE"}],
+            structuredContent=None,
+        )
+        success = SimpleNamespace(isError=False, content=[])
+        session = AsyncMock()
+        session.initialize = AsyncMock()
+        session.call_tool = AsyncMock(side_effect=[missing, success])
+        p1, p2 = _patch_mcp_context(session)
+
+        with (
+            p1,
+            p2,
+            patch(
+                "server.app.agentspec.adapters.mcp.ensure_sqlcl_saved_connection",
+                AsyncMock(return_value=True),
+            ) as ensure_patch,
+        ):
+            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/qwen3:8b")
+
+        assert session.call_tool.await_count == 2
+        ensure_patch.assert_awaited_once_with("CORE")
+
+    @pytest.mark.anyio
+    async def test_retry_preserves_thread_id_when_rehydrating(self):
+        """The retry path should use the same thread_id-scoped SQLcl connection."""
+        missing = SimpleNamespace(
+            isError=True,
+            content=[{"text": "Error calling tool 'connect': Connection not found: CORE"}],
+            structuredContent=None,
+        )
+        success = SimpleNamespace(isError=False, content=[])
+        session = AsyncMock()
+        session.initialize = AsyncMock()
+        session.call_tool = AsyncMock(side_effect=[missing, success])
+        p1, p2 = _patch_mcp_context(session)
+
+        with (
+            p1,
+            p2,
+            patch(
+                "server.app.agentspec.adapters.mcp.ensure_sqlcl_saved_connection",
+                AsyncMock(return_value=True),
+            ),
+        ):
+            await connect_sqlcl_database(
+                self.server_url,
+                self.api_key,
+                "CORE",
+                "ollama/qwen3:8b",
+                thread_id="client-1",
+            )
+
+        assert session.call_tool.await_args_list == [
+            call(
+                "sqlcl_connect",
+                {"connection_name": "CORE", "model": "ollama/qwen3:8b", "thread_id": "client-1"},
+            ),
+            call(
+                "sqlcl_connect",
+                {"connection_name": "CORE", "model": "ollama/qwen3:8b", "thread_id": "client-1"},
+            ),
+        ]
+
+    @pytest.mark.anyio
+    async def test_raises_original_error_when_rehydrate_fails(self):
+        """If the app cannot recreate the saved connection, the connect error propagates."""
+        missing = SimpleNamespace(
+            isError=True,
+            content=[{"text": "Error calling tool 'connect': Connection not found: CORE"}],
+            structuredContent=None,
+        )
+        session = AsyncMock()
+        session.initialize = AsyncMock()
+        session.call_tool = AsyncMock(return_value=missing)
+        p1, p2 = _patch_mcp_context(session)
+
+        with (
+            p1,
+            p2,
+            patch(
+                "server.app.agentspec.adapters.mcp.ensure_sqlcl_saved_connection",
+                AsyncMock(return_value=False),
+            ) as ensure_patch,
+            pytest.raises(RuntimeError, match="Connection not found: CORE"),
+        ):
+            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/qwen3:8b")
+
+        session.call_tool.assert_awaited_once()
+        ensure_patch.assert_awaited_once_with("CORE")

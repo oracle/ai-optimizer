@@ -443,12 +443,6 @@ INSERT INTO race_results (
   penalties
 )
 WITH team_form AS (
-  -- Per-team strength multiplier, computed once per reset. Drivers on a
-  -- high-form team get smaller ORDER BY values below and so tend to qualify
-  -- and finish higher across all 5 pre-finale rounds. Range 0.5..1.5 lifts
-  -- the spread between strongest and weakest pre-finale team to ~80 pts,
-  -- enough that any team can plausibly win the championship combined with
-  -- the late Round 6 insert.
   SELECT /*+ MATERIALIZE */
     team_id,
     0.5 + DBMS_RANDOM.VALUE AS form_factor
@@ -493,9 +487,6 @@ candidates AS (
     AND r.race_id < 6
 ),
 scored AS (
-  -- MATERIALIZE so incident_score / lap_offset are evaluated once per row;
-  -- otherwise the inlined CTE recomputes DBMS_RANDOM at each CASE branch
-  -- and the status / penalties columns can disagree on the same row.
   SELECT /*+ MATERIALIZE */
     race_id,
     driver_id,
@@ -648,9 +639,6 @@ SELECT
   1 + ilap_pick,
   'Synthetic steward note generated from timing, telemetry and pit wall observations'
 FROM (
-  -- MATERIALIZE so each random pick (itype/severity/ilap) is evaluated once
-  -- per row; otherwise the inlined subquery recomputes DBMS_RANDOM at each
-  -- CASE branch and severity could disagree across the WHEN tests.
   SELECT /*+ MATERIALIZE */
     rr.race_id,
     rr.driver_id,

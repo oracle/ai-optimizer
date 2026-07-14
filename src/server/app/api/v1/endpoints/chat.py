@@ -19,6 +19,7 @@ from server.app.api.v1.schemas.chat import (
     ChatHistoryResponse,
     ChatRequest,
     ChatResponse,
+    SqlMetadata,
     StreamChunkEvent,
     StreamCompletionEvent,
     StreamErrorEvent,
@@ -104,6 +105,7 @@ async def chat_completions(
         content=content,
         route=result.get("route"),
         vs_metadata=result.get("vs_metadata"),
+        sql_metadata=result.get("sql_metadata"),
         token_usage=result.get("token_usage"),
     )
 
@@ -123,6 +125,7 @@ async def chat_stream(
         collected = []
         route = None
         vs_metadata = None
+        sql_metadata = None
         token_usage = None
         try:
             async for event in _orchestrator.execute_chat_stream(
@@ -137,6 +140,7 @@ async def chat_stream(
                 elif etype == "_meta":
                     route = event.get("route")
                     vs_metadata = event.get("vs_metadata")
+                    sql_metadata = event.get("sql_metadata")
                 elif etype == "_token_usage":
                     token_usage = TokenUsage(
                         prompt_tokens=event.get("prompt_tokens", 0),
@@ -162,10 +166,12 @@ async def chat_stream(
         full_content = "".join(collected)
 
         vs_metadata_obj = VsMetadata.model_validate(vs_metadata) if vs_metadata else None
+        sql_metadata_obj = SqlMetadata.model_validate(sql_metadata) if sql_metadata else None
         completion = StreamCompletionEvent(
             content=full_content,
             route=route,
             vs_metadata=vs_metadata_obj,
+            sql_metadata=sql_metadata_obj,
             token_usage=token_usage,
         )
         yield f"data: {json.dumps(completion.model_dump(exclude_none=True), default=str)}\n\n"

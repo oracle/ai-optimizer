@@ -84,7 +84,12 @@ async def test_streams_happy_path(app_client, auth_headers, monkeypatch):
     async def fake_stream(*_args, **_kwargs) -> AsyncGenerator[Dict[str, Any], None]:
         yield {"type": "stream", "content": "Hello"}
         yield {"type": "stream", "content": " world"}
-        yield {"type": "_meta", "route": "llm_only", "vs_metadata": {"documents": [{"page_content": "docs"}]}}
+        yield {
+            "type": "_meta",
+            "route": "llm_only",
+            "vs_metadata": {"documents": [{"page_content": "docs"}]},
+            "sql_metadata": {"executed_sql": ["SELECT * FROM drivers"]},
+        }
         yield {
             "type": "_token_usage",
             "prompt_tokens": 12,
@@ -118,6 +123,7 @@ async def test_streams_happy_path(app_client, auth_headers, monkeypatch):
     assert completion["content"] == "Hello world"
     assert completion["route"] == "llm_only"
     assert completion["vs_metadata"] == {"documents": [{"page_content": "docs"}]}
+    assert completion["sql_metadata"] == {"executed_sql": ["SELECT * FROM drivers"]}
     assert completion["token_usage"] == {
         "prompt_tokens": 12,
         "completion_tokens": 8,

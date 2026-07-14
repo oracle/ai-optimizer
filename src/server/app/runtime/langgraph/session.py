@@ -10,18 +10,34 @@ import asyncio
 import logging
 import uuid
 from functools import reduce
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.messages.ai import add_usage
 
-from server.app.api.v1.schemas.chat import TokenUsage
+from server.app.api.v1.schemas.chat import SqlMetadata, TokenUsage
 from server.app.core.schemas import ClientSettings
 from server.app.runtime.common import SessionMetadata, parse_grade_relevant, parse_vs_metadata
 from server.app.runtime.langgraph.adapters.litellm import extract_response_text
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _extract_sql_metadata(messages: List[Any]) -> Optional[SqlMetadata]:
+    """Collect executed SQL statements from agent tool calls."""
+    sql_tool_names = {"sqlcl_sql_run", "sqlcl_run-sql"}
+    executed_sql: list[str] = []
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        for tool_call in msg.tool_calls:
+            if tool_call.get("name") not in sql_tool_names:
+                continue
+            sql = tool_call.get("args", {}).get("sql")
+            if isinstance(sql, str) and sql:
+                executed_sql.append(sql)
+    return SqlMetadata(executed_sql=executed_sql) if executed_sql else None
 
 
 def _chunk_text(chunk: Any) -> str:
@@ -230,6 +246,7 @@ class AgentGraphSession:
                     LOGGER.debug("Could not clear checkpoint for thread %s", thread_id)
 
         messages = (result or {}).get("messages", [])
+        self.last_metadata.sql_metadata = _extract_sql_metadata(messages)
         answer = ""
         for msg in reversed(messages):
             if isinstance(msg, AIMessage) and not msg.tool_calls:
@@ -255,6 +272,7 @@ class NL2SQLGraphSession(AgentGraphSession):
         client_settings: ClientSettings,
         thread_id: str = "",
         connection_name: Optional[str] = None,
+        connect_database: Optional[Callable[[], Awaitable[None]]] = None,
     ) -> None:
         """Initialise with a graph and client settings.
 
@@ -267,6 +285,7 @@ class NL2SQLGraphSession(AgentGraphSession):
         end user when the connect-as override is active.
         """
         super().__init__(graph)
+        self._connect_database = connect_database
 
         if connection_name is None:
             connection_name = client_settings.database.alias
@@ -282,6 +301,11 @@ class NL2SQLGraphSession(AgentGraphSession):
 
         self._db_context = context
 
+    async def _ensure_database_connection(self) -> None:
+        """Connect to the configured database before each NL2SQL turn."""
+        if self._connect_database is not None:
+            await self._connect_database()
+
     async def chat(
         self,
         message: str,
@@ -294,5 +318,6 @@ class NL2SQLGraphSession(AgentGraphSession):
         only on the current user message, where the LLM needs it for the
         sqlcl_* tool call it's about to make.
         """
+        await self._ensure_database_connection()
         augmented = self._db_context + "\n" + message
         return await super().chat(augmented, history_messages=history_messages, queue=queue)

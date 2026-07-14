@@ -42,14 +42,14 @@ When testing the Language Model, if you don't get a response in a couple of minu
 
 You will run four container images to establish the "Infrastructure":
 
-- On-Premises Language Model - llama3.2:3b
+- On-Premises Language Model - qwen3:8b
 - On-Premises Embedding Model - mxbai-embed-large
 - Vector Storage - Oracle AI Database Free
 - The {{% short_app_ref %}}
 
-### Language Model - llama3.2:3b
+### Language Model - qwen3:8b
 
-To enable the _ChatBot_ functionality, access to a Language Model is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _llama3.2:3b_ model.
+To enable the _ChatBot_ functionality, access to a Language Model is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _qwen3:8b_ model.
 
 1. Start the *Ollama* container:
 
@@ -87,7 +87,7 @@ To enable the _ChatBot_ functionality, access to a Language Model is required. T
 1. Pull the Language Model into the container:
 
    ```bash
-   podman exec -it ollama ollama pull llama3.2:3b
+   podman exec -it ollama ollama pull qwen3:8b
    ```
 
 1. Test the Language Model:
@@ -99,7 +99,7 @@ To enable the _ChatBot_ functionality, access to a Language Model is required. T
 
    ```bash
    curl http://127.0.0.1:11434/api/generate -d '{
-   "model": "llama3.2:3b",
+   "model": "qwen3:8b",
    "prompt": "Why is the sky blue?",
    "stream": false
    }'
@@ -221,7 +221,7 @@ Notice that there are no language models configured to use. Let's start the conf
 
 To configure the On-Premises Language Model, navigate to the _Configuration_ screen and _Models_ tab:
 
-1. Enable the `llama3.2:3b` model that you pulled earlier by clicking the _Edit_ button
+1. Enable the `qwen3:8b` model that you pulled earlier by clicking the _Edit_ button
 ![Configure Language Model](images/models_edit.png)
 1. Tick the _Enabled_ checkbox, leave all other settings as-is, and _Save_
 ![Enable Language Model](images/models_enable_llm.png)

@@ -77,6 +77,7 @@ class CombinedSession:
         vs_relevant = self.vs_session.last_metadata.grade_relevant
         synth_tu = None
         self.last_metadata = self.vs_session.last_metadata.model_copy()
+        self.last_metadata.sql_metadata = self.nl2sql_session.last_metadata.sql_metadata
         if vs_relevant == "no":
             answer = nl2sql_answer
         else:
@@ -158,6 +159,7 @@ class CombinedSession:
         elif route == ClassifierDecision.NL2SQL:
             answer = await self.nl2sql_session.chat(query, history_messages=history_messages)
             self.last_metadata.grade_relevant = "yes"
+            self.last_metadata.sql_metadata = self.nl2sql_session.last_metadata.sql_metadata
             combined_tu = _sum_token_usage(self.nl2sql_session.last_metadata.token_usage, classifier_tu)
             if combined_tu:
                 self.last_metadata.token_usage = combined_tu
@@ -200,6 +202,8 @@ class CombinedSession:
             self.last_metadata = self.vs_session.last_metadata.model_copy()
         elif route == ClassifierDecision.NL2SQL:
             await stream_agent(self.nl2sql_session, history_messages, query, queue)
+            self.last_metadata.grade_relevant = "yes"
+            self.last_metadata.sql_metadata = self.nl2sql_session.last_metadata.sql_metadata
         else:
             # Synthesis requires both branches' answers, so we can't stream tokens
             # before the synthesis. Run the branches in parallel and emit the

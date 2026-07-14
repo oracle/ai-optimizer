@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from pydantic import BaseModel
 
 from server.app.agentspec.adapters.mcp import fetch_mcp_prompt
-from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
+from server.app.api.v1.schemas.chat import SqlMetadata, TokenUsage, VsMetadata
 from server.app.core.schemas import TOOL_NL2SQL, TOOL_VECSEARCH
 from server.app.mcp.prompts.registry import require_factory_text
 
@@ -235,6 +235,7 @@ class SessionMetadata(BaseModel):
     """Typed metadata produced by a session execution."""
 
     vs_metadata: Optional[VsMetadata] = None
+    sql_metadata: Optional[SqlMetadata] = None
     token_usage: Optional[TokenUsage] = None
     grade_relevant: str = "yes"
 

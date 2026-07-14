@@ -50,13 +50,21 @@ class TestBuildNl2sqlAgentspec:
         assert len(agent.toolboxes) == 1
         assert isinstance(agent.toolboxes[0], MCPToolBox)
 
+    def test_toolbox_uses_unrestricted_discovery(self):
+        """Verify the toolbox discovers every tool exposed by the MCP server."""
+        agent = build_nl2sql_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SERVER_URL, MOCK_API_KEY, MOCK_SYSTEM_PROMPT)
+        toolbox = agent.toolboxes[0]
+        assert isinstance(toolbox, MCPToolBox)
+        assert toolbox.tool_filter is None
+        assert not toolbox.metadata
+
     def test_toolbox_transport(self):
         """Verify the MCPToolBox uses a StreamableHTTPTransport with the correct URL."""
         agent = build_nl2sql_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SERVER_URL, MOCK_API_KEY, MOCK_SYSTEM_PROMPT)
         toolbox = agent.toolboxes[0]
         assert isinstance(toolbox, MCPToolBox)
         assert isinstance(toolbox.client_transport, StreamableHTTPTransport)
-        assert toolbox.client_transport.url == MOCK_SERVER_URL
+        assert toolbox.client_transport.url == MOCK_SERVER_URL + "/"
 
     def test_toolbox_transport_api_key(self):
         """Verify the MCPToolBox transport has the API key in sensitive_headers."""

@@ -211,7 +211,10 @@ def _reconcile_ll_model_tokens(current: LLModelSettings, incoming: LLModelSettin
     # 2. Determine if user customized max_tokens
     old_cfg = find_model(old_key[0], old_key[1], enabled_only=False) if old_key[0] and old_key[1] else None
     old_default_max = old_cfg.max_tokens if old_cfg else None
-    user_customized = current.max_tokens != old_default_max
+    # A client with no selected model only has the schema fallback (4096), not a
+    # user override. Adopt the selected model's configured default on first use.
+    has_previous_model = bool(current.provider and current.id)
+    user_customized = has_previous_model and current.max_tokens != old_default_max
 
     if user_customized:
         # Keep user's max_tokens but cap at new model's max_input_tokens

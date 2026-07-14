@@ -686,9 +686,9 @@ class TestExtractParameterCount:
         """extract_parameter_count should extract 1B from simple model name."""
         assert extract_parameter_count("llama3.2:1b") == 1.0
 
-    def test_simple_3b_model(self):
-        """extract_parameter_count should extract 3B from model name."""
-        assert extract_parameter_count("llama3.2:3b") == 3.0
+    def test_simple_8b_model(self):
+        """extract_parameter_count should extract 8B from model name."""
+        assert extract_parameter_count("qwen3:8b") == 8.0
 
     def test_uppercase_b(self):
         """extract_parameter_count should handle uppercase B."""
@@ -743,8 +743,8 @@ class TestIsSmallModel:
         assert is_small_model("llama3.2:1b") is True
 
     def test_3b_is_small(self):
-        """is_small_model should return True for 3B models."""
-        assert is_small_model("llama3.2:3b") is True
+        """is_small_model should return True for 4B models."""
+        assert is_small_model("qwen3:8b") is False
 
     def test_3_8b_is_small(self):
         """is_small_model should return True for 3.8B models."""

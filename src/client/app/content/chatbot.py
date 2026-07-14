@@ -137,6 +137,17 @@ def show_vector_search_refs(vs_metadata: dict) -> None:
             st.markdown(f"**Search Query:** {_extract_search_query(vs_metadata['context_input'])}")
 
 
+def show_sql_details(sql_metadata: dict) -> None:
+    """Display executed SQL statements for NL2SQL responses."""
+    executed_sql = [sql for sql in sql_metadata.get("executed_sql", []) if sql]
+    if not executed_sql:
+        return
+
+    with st.expander("SQL Details", expanded=False):
+        for sql in executed_sql:
+            st.markdown("```sql\n" + sql + "\n```")
+
+
 async def _stream_chat(messages: list[dict], metadata: dict):
     """Async generator that streams SSE chunks from the chat/streams endpoint.
 
@@ -175,6 +186,9 @@ async def _stream_chat(messages: list[dict], metadata: dict):
                             vs_metadata = data.get("vs_metadata")
                             if vs_metadata:
                                 metadata["vs_metadata"] = vs_metadata
+                            sql_metadata = data.get("sql_metadata")
+                            if sql_metadata:
+                                metadata["sql_metadata"] = sql_metadata
                         if data.get("type") == "stream":
                             yield data.get("content", "")
 
@@ -218,6 +232,9 @@ async def _handle_chat(user_input: str) -> None:
             resp_vs_meta = metadata.get("vs_metadata")
             if resp_vs_meta:
                 show_vector_search_refs(resp_vs_meta)
+            resp_sql_meta = metadata.get("sql_metadata")
+            if resp_sql_meta:
+                show_sql_details(resp_sql_meta)
         except httpx.HTTPStatusError as exc:
             st.error(extract_error_detail(exc))
         except httpx.ReadTimeout:
@@ -263,6 +280,9 @@ for msg in chat_messages:
         vs_meta = msg.get("vs_metadata")
         if vs_meta:
             show_vector_search_refs(vs_meta)
+        sql_meta = msg.get("sql_metadata")
+        if sql_meta:
+            show_sql_details(sql_meta)
 
 if prompt := st.chat_input("Ask a question...", disabled=not model_options):
     with st.chat_message("user"):

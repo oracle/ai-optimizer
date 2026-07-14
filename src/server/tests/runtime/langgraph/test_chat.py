@@ -9,8 +9,9 @@ Tests for LangGraph ChatOrchestrator.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from langchain_core.messages import AIMessage
 
-from server.app.api.v1.schemas.chat import TokenUsage, VsMetadata
+from server.app.api.v1.schemas.chat import SqlMetadata, TokenUsage, VsMetadata
 from server.app.database.config import DdsConnectionError
 from server.app.mcp.prompts.registry import get_factory_text
 from server.app.runtime.common import (
@@ -320,6 +321,21 @@ class TestExecuteChat(_LangGraphChatMixin, ExecuteChatBase):
 
         assert result["result"] == "sql result"
         assert result["route"] == "nl2sql"
+
+    @pytest.mark.anyio
+    async def test_nl2sql_route_returns_sql_metadata(self):
+        """NL2SQL responses should carry executed SQL metadata."""
+        orch = _make_orchestrator(tools_enabled=["NL2SQL"])
+        mock_session = MagicMock(spec=AgentGraphSession)
+        mock_session.chat = AsyncMock(return_value="sql result")
+        mock_session.last_metadata = SessionMetadata(
+            sql_metadata=SqlMetadata(executed_sql=["SELECT * FROM drivers"]),
+        )
+
+        with patch.object(orch, "_build_session", new_callable=AsyncMock, return_value=mock_session):
+            result = await orch.execute_chat("show drivers", "test_client")
+
+        assert result["sql_metadata"] == SqlMetadata(executed_sql=["SELECT * FROM drivers"])
 
     @pytest.mark.anyio
     async def test_vecsearch_route(self):
@@ -807,6 +823,42 @@ class TestNL2SQLDdsRouting:
         ):
             session = await orch._build_nl2sql_agent_session(mock_client_settings(), client="c1")
         assert "connection_name: CORE::SCOUT1" in session._db_context
+
+    @pytest.mark.anyio
+    async def test_session_connects_configured_database_before_chat(self):
+        """The orchestrator must wire the configured database connect step into NL2SQL sessions."""
+        orch = _make_orchestrator()
+        graph = mock_compiled_graph(result={"messages": [AIMessage(content="sql result")]})
+        events: list[str] = []
+
+        async def fake_connect(server_url, api_key, connection_name, model, thread_id=None):
+            events.append("connect")
+
+        async def fake_ainvoke(*_args, **_kwargs):
+            events.append("graph")
+            return {"messages": [AIMessage(content="sql result")]}
+
+        graph.ainvoke = AsyncMock(side_effect=fake_ainvoke)
+
+        with (
+            patch("server.app.runtime.langgraph.chat.build_nl2sql_graph", AsyncMock(return_value=graph)),
+            patch(
+                "server.app.runtime.langgraph.chat.connect_sqlcl_database",
+                side_effect=fake_connect,
+            ) as connect_patch,
+        ):
+            session = await orch._build_nl2sql_agent_session(mock_client_settings(), client="c1")
+            result = await session.chat("How many tables?")
+
+        assert result == "sql result"
+        assert events == ["connect", "graph"]
+        connect_patch.assert_awaited_once_with(
+            "http://127.0.0.1:8000/mcp",
+            "test-key",
+            "CORE",
+            TEST_OLLAMA_MODEL_KEY,
+            thread_id="c1",
+        )
 
     @pytest.mark.anyio
     async def test_session_build_propagates_dds_error(self):

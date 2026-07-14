@@ -103,9 +103,7 @@ class TestApplyConfiguredOverlay:
         """When no CORE exists, the first DB is promoted to CORE and clients are synced."""
         settings.database_configs = []
         settings.client_settings.database.alias = "DEFAULT"
-        source = SettingsBase.model_validate(
-            {"database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}]}
-        )
+        source = SettingsBase.model_validate({"database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}]})
 
         with (
             patch(f"{MODULE}.load_config_file", return_value=source),
@@ -124,9 +122,7 @@ class TestApplyConfiguredOverlay:
     async def test_overlay_no_promotion_when_core_exists(self):
         """When CORE already exists, the source DB alias is not changed."""
         settings.database_configs = [DatabaseConfig(alias="CORE")]
-        source = SettingsBase.model_validate(
-            {"database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}]}
-        )
+        source = SettingsBase.model_validate({"database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}]})
 
         with (
             patch(f"{MODULE}.load_config_file", return_value=source),
@@ -145,9 +141,7 @@ class TestApplyConfiguredOverlay:
     async def test_overlay_normalizes_lowercase_core(self):
         """A lowercase 'core' alias from config file is normalized to exact 'CORE'."""
         settings.database_configs = []
-        source = SettingsBase.model_validate(
-            {"database_configs": [{"alias": "core", "dsn": "//host/svc"}]}
-        )
+        source = SettingsBase.model_validate({"database_configs": [{"alias": "core", "dsn": "//host/svc"}]})
 
         with (
             patch(f"{MODULE}.load_config_file", return_value=source),
@@ -238,9 +232,7 @@ class TestLifespan:
                 pass
 
         oci_idx = call_order.index("load_oci_profiles")
-        configured_persists = [
-            i for i, evt in enumerate(call_order) if evt == "persist_settings:CONFIGURED"
-        ]
+        configured_persists = [i for i, evt in enumerate(call_order) if evt == "persist_settings:CONFIGURED"]
         assert configured_persists, "lifespan must persist CONFIGURED"
         assert all(i > oci_idx for i in configured_persists), (
             f"CONFIGURED persist must run after load_oci_profiles; got {call_order}"

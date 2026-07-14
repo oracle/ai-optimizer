@@ -368,6 +368,28 @@ class TestStreamChat:
                 pass
         assert "vs_metadata" in metadata
 
+    async def test_populates_sql_metadata(self):
+        """Completion event with sql_metadata populates metadata dict."""
+        state = _make_state()
+        chunks = [
+            ('data: {"type": "completion", "sql_metadata": {"executed_sql": ["SELECT * FROM drivers"]}}\n\n'),
+            "data: [DONE]\n\n",
+        ]
+        client_ctx = self._setup_async_client(chunks)
+
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._base_url", return_value="http://test/v1"),
+            patch(f"{MODULE}._headers", return_value={}),
+            patch(f"{MODULE}.httpx.AsyncClient", return_value=client_ctx),
+        ):
+            from client.app.content.chatbot import _stream_chat
+
+            metadata: dict = {}
+            async for _ in _stream_chat([], metadata):
+                pass
+        assert metadata["sql_metadata"]["executed_sql"] == ["SELECT * FROM drivers"]
+
     async def test_error_type_raises(self):
         """Error-type SSE event raises RuntimeError."""
         state = _make_state()
@@ -474,6 +496,25 @@ class TestHandleChat:
 
             await _handle_chat("test")
         mock_refs.assert_called_once()
+
+    async def test_sql_metadata_rendered(self, mock_st):
+        """SQL metadata is rendered when present."""
+        state = _make_state()
+
+        async def _mock_stream(_messages, metadata):
+            metadata["sql_metadata"] = {"executed_sql": ["SELECT * FROM drivers"]}
+            yield "answer"
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._stream_chat", side_effect=_mock_stream),
+            patch(f"{MODULE}.show_sql_details") as mock_sql,
+        ):
+            from client.app.content.chatbot import _handle_chat
+
+            await _handle_chat("test")
+        mock_sql.assert_called_once_with({"executed_sql": ["SELECT * FROM drivers"]})
 
     async def test_http_status_error(self, mock_st):
         """HTTP status error is caught and displayed via st.error."""

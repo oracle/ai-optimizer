@@ -28,10 +28,7 @@ This use-case is a synthetic Racing Simulator Championship. You'll play the role
 You'll need:
 
 - A configured {{% short_app_ref %}} from the [Walkthrough]({{% relref "/walkthrough" %}}), or any equivalent install where you have an enabled chat model, an enabled embedding model, and a [database connection]({{% relref "/client/configuration/databases" %}}).
-- A chat model with solid tool use. The demo has been tuned against:
-  - OpenAI `gpt-5.4-mini` + `text-embedding-3-small`
-  - OCI `cohere.command-r-plus` + `cohere.embed-english-v3.0`
-  - As an on-premises fallback, Ollama `llama3.1:8b` + `mxbai-embed-large`. The first three steps work well; combined-mode in Step 4 is weaker on small local models.
+- A chat model with solid tool use. The demo has been tuned against the on-premises models used in the [Walkthrough]({{% relref "/walkthrough" %}}): [Ollama](https://ollama.com/) `qwen3:8b` with `mxbai-embed-large`.
 - An Oracle AI Database connection with rights to create tables and views (the `DB_DEVELOPER_ROLE` granted in the Walkthrough is sufficient).
 - The [SQLcl MCP Server]({{% relref "/client/configuration/mcp/#sqlcl-mcp-server-nl2sql" %}}) configured for **NL2SQL**, pointed at the same database.
 
@@ -50,12 +47,16 @@ If you extracted the source tarball during the Walkthrough, you already have the
 
 ### 1. Load the schema
 
-Connect to your Oracle AI Database as the user the {{% short_app_ref %}} is configured to use, and run `schema.sql`. The Walkthrough runs the database in a container that can't see your local checkout, so copy the demo files into the container first, then load the script from inside it:
+Connect to your Oracle AI Database as the user the {{% short_app_ref %}} is configured to use, and run `schema.sql`. 
+
+If you are using the database created during the [Walkthrough]({{% relref "/walkthrough" %}}), it runs in a container that can't see your local checkout, so copy the demo files into the container first and then load the script from inside it:
 
 ```bash
 podman cp docs/demo/racing-championship ai-optimizer-db:/tmp/racing-championship
-podman exec -it ai-optimizer-db sqlplus 'WALKTHROUGH/OrA_41_OpTIMIZER@FREEPDB1'
+podman exec -it ai-optimizer-db sqlplus '<AIO_DB_USERNAME>/<AIO_DB_PASSWORD>@<AIO_DB_DSN>'
 ```
+
+Where `AIO_DB_USERNAME`, `AIO_DB_PASSWORD`, and `AIO_DB_DSN` are the database authentication and connection string values.
 
 ```sql
 @/tmp/racing-championship/schema.sql
@@ -78,39 +79,51 @@ WHERE d.driver_code = 'Driver001';
 
 ### 3. Import the prompts
 
-In the {{% short_app_ref %}}, navigate to **Tools → 🎤 Prompts** and import `prompts.json`. This installs:
+In the {{% short_app_ref %}}, navigate to **Tools → 🎤 Prompts** and "Upload" `docs/demo/racing-championship/prompts.json`. 
 
+This installs:
 - A motorsport-analyst system prompt
-- An **NL2SQL** prompt that knows the demo schema and refuses to invent Round 6 results
+- An **NL2SQL** prompt
 - A **Vector Search** prompt that grounds answers in the retrieved driver documents
 - A combined-mode classifier and synthesis prompt that routes structured vs. narrative asks
 
 See [Prompt Engineering]({{% relref "/client/tools/prompt_eng" %}}) for more on managing prompts.
 
-### 4. Pick your driver number
+### 4. Enable Models
 
-Open the **ChatBot** and pick a driver number `<N>` between 1 and 100. The prompts below use `<N>`.  
+Enable the Language and Embedding Models (if not already).  In the {{% short_app_ref %}}, navigate to **Configuration → 🤖 Models**. 
 
-Replace `<N>` with your number (for example, `Driver 7`). A few prompts also use `<M>` for any other driver you want to compare against, so pick a second number for those.
+The demo has been tuned against the on-premises models used in the [Walkthrough]({{% relref "/walkthrough" %}}): [Ollama](https://ollama.com/) `qwen3:8b` with `mxbai-embed-large`. Other Language Models may work, especially larger ones, but may require some prompt engineering.
+
+See [Model Configuration]({{% relref "/client/configuration/models" %}}) for more on configuring models.
+
+
+### 5. Decide your Driver Number
+
+Decide on a driver number `<N>` between 1 and 100. Replace prompts below that use `<N>` with the number you have chosen (for example, `Driver 7`).  
+
+A few prompts also use `<M>` for any other driver you want to compare against.
 
 ## Demo Flow
 
 ### Step 1: LLM-only
 
-**Settings:** _Vector Search_ **off**, _NL2SQL_ **off**.
+{{% notice style="code" title="Settings" icon="flag-checkered" %}}
+_Vector Search_ **off**, _NL2SQL_ **off**
+{{% /notice %}}
 
 Introduce yourself:
 ```text
 I am Driver <N>
 ```
 
-Ask:
+#### Ask:
 ```text
 What is my driving style?
 
-What team am I on?
-
 How many championship points do I have?
+
+What team am I on?
 ```
 
 **What to look for:** the model either refuses, hedges, or makes up an answer. It has no idea who Driver `<N>` is in this championship.
@@ -126,7 +139,7 @@ The [_History and Context_]({{% relref "/client/chatbot#history-and-context" %}}
 - **On**: the whole context window is sent to the model.
 - **Off**: only your latest message is sent.
 
-**Try it both ways.** Turn _History and Context_ **off** and ask:
+**Try it both ways.** Turn _History and Context_ **off** and #### Ask:
 
 ```text
 What driver am I?
@@ -147,28 +160,37 @@ The model answers from what it sees in that window, which is why the response is
 
 ### Step 2: Add NL2SQL
 
-**Settings:** _Vector Search_ **off**, _NL2SQL_ **on**.
+{{% notice style="code" title="Settings" icon="flag-checkered" %}}
+_Vector Search_ **off**, _NL2SQL_ **on**
+{{% /notice %}}
 
-Ask:
+Ask again (ensure _History and Context_ is **on**):
+```text
+What team am I on?
+```
+
+Compare the answer the model gave without NL2SQL with the new answer.  The response is now grounded with data from the **Oracle AI Database**!
+
+Follow-up with some additional questions:
 ```text
 What is my driving style, vehicle setup, and team?
-
-How many points do I have before the finale?
-
-What was my best finish, and my fastest lap?
 
 Compare Driver <M> with me on total points, best finish, average lap time, and incidents.
 
 Which team is leading before Round 6?
+
+Summarize my driver briefing.
 ```
 
-**What to look for:** the agent calls SQLcl and queries `drivers`, `race_results`, and the `driver_standings` / `team_standings` views, returning exact numbers for your driver and the championship through Round 5.
+**What to look for:** the agent calls SQLcl and queries `drivers`, `race_results`, and the `driver_standings` / `team_standings` views, returning exact numbers for your driver and the championship through Round 5. For `Summarize my driver briefing.`, with only _NL2SQL_ enabled, it should say that the structured database does not have that information.
 
 > These answers come from the live database in real time, not a nightly extract or a stale dashboard. But notice what it can't answer yet: anything about coaching, debriefs, or Round 6 before the final insert.
 
 ### Step 3: Add Vector Search
 
-**Settings:** _Vector Search_ **on**, _NL2SQL_ **off**.
+{{% notice style="code" title="Settings" icon="flag-checkered" %}}
+_Vector Search_ **on**, _NL2SQL_ **off**
+{{% /notice %}}
 
 Before asking, embed your driver document into a vector store. In **Tools → 📚 Split/Embed**:
 
@@ -179,7 +201,16 @@ Before asking, embed your driver document into a vector store. In **Tools → �
 
 If multiple people are running the use-case together, embed all the relevant driver docs into the same store in one pass.
 
-Ask:
+#### Ask:
+
+{{% notice style="code" title="Say What?" icon="face-surprise" %}}
+If using a small model, or on a CPU, you can try to enable "Prompt Rephrase".  
+
+If the model cannot cope with rephrasing, disable it and change each query to include your driver #, for example:
+
+**I am Driver `<N>`**; Summarize my driver briefing.
+{{% /notice %}}
+
 ```text
 Summarize my driver briefing.
 
@@ -198,9 +229,11 @@ Give me three practical focus areas for my next simulator session.
 
 ### Step 4: Both Together
 
-**Settings:** _Vector Search_ **on**, _NL2SQL_ **on**.
+{{% notice style="code" title="Settings" icon="flag-checkered" %}}
+_Vector Search_ **on**, _NL2SQL_ **on**
+{{% /notice %}} 
 
-Ask:
+#### Ask:
 ```text
 Use my database results and my documents to summarize my season so far.
 
@@ -217,7 +250,9 @@ Compare Driver <N> with Driver <M> using both database results and driver notes.
 
 ### Final Reveal: Who Won the Championship?
 
-**Settings:** _Vector Search_ **on**, _NL2SQL_ **on** (Vector Search can be off for this step).
+{{% notice style="code" title="Settings" icon="flag-checkered" %}}
+_Vector Search_ **on**, _NL2SQL_ **on**
+{{% /notice %}} 
 
 Before this step, ask the model who won the championship. With no Round 6 results loaded, the prompt instructs the model to say the finale has not been recorded yet and to refuse to name a winner.
 
@@ -229,7 +264,7 @@ Now load the Round 6 team points. As the same database user, run the script copi
 
 This inserts the final Round 6 team points into `team_race_points` and makes them visible through `championship_team_standings`.
 
-Ask:
+#### Ask:
 
 ```text
 Using the database championship standings, which team won the championship? Show the pre-finale points, the Round 6 points, and the final total.
@@ -280,7 +315,7 @@ Variations on each step, organized by what they demonstrate.
 - **Step 2 returns empty results or asks for column names:** confirm `prompts.json` was imported. The racing-tuned `optimizer_nl2sql-tools-default` prompt includes the demo schema and tells the agent to run SQL directly. Re-import if Step 2 is flaky.
 - **Step 2 invents Round 6 results or a champion:** the model is over-reaching. The racing **NL2SQL** prompt explicitly forbids this, so re-import `prompts.json` and try again.
 - **Step 3 says "no relevant sources":** the vector store is empty for that driver, or the embedding model differs from the one used at retrieval time. Re-embed the participant's `corpus/driver_<NNN>.md` using the same model selected in **Configuration → Models**.
-- **Step 4 answers from only one tool:** the classifier picked one path. Re-phrase to make the dual-source nature explicit (`...using both my database results and my documents...`). On the Ollama fallback, this is more common, since local models have weaker tool use.
+- **Step 4 answers from only one tool:** the classifier picked one path. Re-phrase to make the dual-source nature explicit (`...using both my database results and my documents...`). This is more common with smaller local models because they have weaker tool use.
 - **Final Reveal names the wrong champion or refuses:** confirm `finale_insert.sql` ran and that `championship_team_standings` returns non-zero `round6_points` for each team.
 - **Driver identifier ambiguity** (e.g. `Driver 1` matches multiple rows): switch to the padded code (`Driver001`). The racing prompt tells the model to normalize, but smaller models slip.
 

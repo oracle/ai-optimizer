@@ -292,7 +292,7 @@ async def test_register_sqlcl_proxy_missing_binary(monkeypatch, caplog):
 
     await sqlcl.register_sqlcl_proxy()
 
-    assert "sqlcl not found" in caplog.text
+    assert "sql not found" in caplog.text
 
 
 async def test_register_sqlcl_proxy_no_capabilities(monkeypatch, caplog):
@@ -442,6 +442,56 @@ async def test_register_sqlcl_proxy_store_error(monkeypatch, caplog):
         sqlcl._state.provider = None
 
     assert "store failed" in caplog.text
+
+
+async def test_ensure_sqlcl_saved_connection_recreates_alias(monkeypatch):
+    """ensure_sqlcl_saved_connection recreates one saved alias from live settings."""
+    sqlcl_binary = "/usr/bin/sql"
+    monkeypatch.setattr(sqlcl.shutil, "which", lambda name: sqlcl_binary)
+    create_mock = AsyncMock()
+    refresh_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(sqlcl, "_create_connection_store", create_mock)
+    monkeypatch.setattr(sqlcl, "_refresh_sqlcl_proxy_unlocked", refresh_mock)
+
+    settings.database_configs = [
+        DatabaseConfig(
+            alias="CORE",
+            username="scott",
+            password=SecretStr("tiger"),
+            dsn="db",
+            config_dir="/tmp/custom",
+        )
+    ]
+    monkeypatch.setenv("TNS_ADMIN", "/env/tns")
+
+    ok = await sqlcl.ensure_sqlcl_saved_connection("CORE")
+
+    assert ok is True
+    create_mock.assert_awaited_once()
+    await_args = create_mock.await_args
+    assert await_args is not None
+    call = await_args.kwargs
+    assert call["sqlcl_binary"] == sqlcl_binary
+    assert call["alias"] == "CORE"
+    assert call["username"] == "scott"
+    assert call["password"] == "tiger"
+    assert call["dsn"] == "db"
+    assert call["env"]["TNS_ADMIN"] == "/tmp/custom"
+    assert call["dbtools_home"] == sqlcl._DBTOOLS_HOME
+    refresh_mock.assert_awaited_once()
+
+
+async def test_ensure_sqlcl_saved_connection_returns_false_when_alias_unknown(monkeypatch):
+    """ensure_sqlcl_saved_connection is a no-op when the alias is not configured."""
+    monkeypatch.setattr(sqlcl.shutil, "which", lambda name: "/usr/bin/sql")
+    create_mock = AsyncMock()
+    monkeypatch.setattr(sqlcl, "_create_connection_store", create_mock)
+    settings.database_configs = []
+
+    ok = await sqlcl.ensure_sqlcl_saved_connection("CORE")
+
+    assert ok is False
+    create_mock.assert_not_called()
 
 
 async def test_register_sqlcl_proxy_creation_failure(monkeypatch, caplog):

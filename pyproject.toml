@@ -37,7 +37,7 @@ server = [
     "langchain-mcp-adapters==0.3.0",
     "langchain-oracledb==1.5.0",
     "litellm==v1.90.2",
-    "llama-index==0.14.23",
+    "llama-index-core==0.14.23",
     "oci~=2.0",
     "pyagentspec==26.1.2",
     "pypdf==6.14.2",

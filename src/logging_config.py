@@ -117,17 +117,22 @@ def configure_logging(log_level: str | None = None) -> None:
                 },
                 "uvicorn": {
                     "handlers": ["console"],
-                    "level": level,
+                    "level": "INFO",
                     "propagate": False,
                 },
                 "uvicorn.error": {
                     "handlers": ["console"],
-                    "level": level,
+                    "level": "INFO",
                     "propagate": False,
                 },
                 "uvicorn.access": {
                     "handlers": ["console"],
-                    "level": level,
+                    "level": "INFO",
+                    "propagate": False,
+                },
+                "LiteLLM": {
+                    "handlers": ["console"],
+                    "level": "INFO",
                     "propagate": False,
                 },
                 "py.warnings": {

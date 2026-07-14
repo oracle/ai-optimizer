@@ -8,13 +8,14 @@ Tests for the LangGraph session classes.
 
 import asyncio
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
-from server.app.api.v1.schemas.chat import TokenUsage
+from server.app.api.v1.schemas.chat import SqlMetadata, TokenUsage
 from server.app.runtime.common import SessionMetadata, _sum_token_usage, parse_grade_relevant
 from server.app.runtime.langgraph.session import (
     AgentGraphSession,
@@ -577,6 +578,66 @@ class TestAgentGraphSession:
         )
 
     @pytest.mark.anyio
+    async def test_chat_extracts_sql_metadata_from_tool_calls(self):
+        """SQL tool calls should be exposed in session metadata for downstream responses."""
+        graph = mock_compiled_graph(
+            result={
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": "sqlcl_sql_run",
+                                "args": {"sql": "SELECT team_name FROM teams WHERE team_id = 10"},
+                                "id": "call_1",
+                                "type": "tool_call",
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="[{\"TEAM_NAME\": \"Team 10\"}]", tool_call_id="call_1"),
+                    AIMessage(content="You are on Team 10."),
+                ]
+            }
+        )
+        session = AgentGraphSession(graph)
+
+        await session.chat("Which team am I on?")
+
+        assert session.last_metadata.sql_metadata == SqlMetadata(
+            executed_sql=["SELECT team_name FROM teams WHERE team_id = 10"]
+        )
+
+    @pytest.mark.anyio
+    async def test_chat_extracts_sql_metadata_from_hyphenated_tool_name(self):
+        """Hyphenated MCP tool names should still populate executed SQL metadata."""
+        graph = mock_compiled_graph(
+            result={
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": "sqlcl_run-sql",
+                                "args": {"sql": "SELECT team_name FROM teams WHERE team_id = 10"},
+                                "id": "call_1",
+                                "type": "tool_call",
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="[{\"TEAM_NAME\": \"Team 10\"}]", tool_call_id="call_1"),
+                    AIMessage(content="You are on Team 10."),
+                ]
+            }
+        )
+        session = AgentGraphSession(graph)
+
+        await session.chat("Which team am I on?")
+
+        assert session.last_metadata.sql_metadata == SqlMetadata(
+            executed_sql=["SELECT team_name FROM teams WHERE team_id = 10"]
+        )
+
+    @pytest.mark.anyio
     async def test_chat_streaming_forwards_chunks_to_queue(self):
         """When a queue is supplied, chat drives ``astream_events`` and forwards chunks."""
         graph = mock_compiled_graph(
@@ -616,6 +677,36 @@ class TestAgentGraphSession:
 
 class TestNL2SQLGraphSession:
     """Tests for NL2SQLGraphSession."""
+
+    @pytest.mark.anyio
+    async def test_connects_database_before_turn(self):
+        """The configured database connection must be established before chat starts."""
+        events: list[str] = []
+
+        async def connect_database():
+            events.append("connect")
+
+        graph = mock_compiled_graph(
+            result={
+                "messages": [AIMessage(content="sql result")],
+            }
+        )
+
+        async def fake_ainvoke(*_args, **_kwargs):
+            events.append("graph")
+            return {"messages": [AIMessage(content="sql result")]}
+
+        graph.ainvoke = AsyncMock(side_effect=fake_ainvoke)
+
+        session = NL2SQLGraphSession(
+            graph,
+            SAMPLE_CLIENT_SETTINGS,
+            thread_id="t-1",
+            connect_database=connect_database,
+        )
+        await session.chat("How many tables?")
+
+        assert events == ["connect", "graph"]
 
     @pytest.mark.anyio
     async def test_db_context_prepended(self):
