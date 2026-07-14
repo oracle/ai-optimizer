@@ -67,9 +67,7 @@ class TestInlineUtilities:
             side_effect=ValueError("URL cannot be used for this import."),
         ):
             split_embed._is_url_accessible.clear()
-            ok, msg = split_embed._is_url_accessible(
-                "http://169.254.169.254/", restricted=True
-            )
+            ok, msg = split_embed._is_url_accessible("http://169.254.169.254/", restricted=True)
 
         assert ok is False
         assert msg == "URL cannot be used for this import."
@@ -97,9 +95,7 @@ class TestInlineUtilities:
             patch.object(split_embed.httpx, "Client", return_value=mock_client),
         ):
             split_embed._is_url_accessible.clear()
-            ok, msg = split_embed._is_url_accessible(
-                "http://start.example.com/", restricted=True
-            )
+            ok, msg = split_embed._is_url_accessible("http://start.example.com/", restricted=True)
 
         assert ok is True
         assert msg == ""
@@ -134,9 +130,7 @@ class TestInlineUtilities:
             patch.object(split_embed.httpx, "Client", return_value=mock_client),
         ):
             split_embed._is_url_accessible.clear()
-            ok, msg = split_embed._is_url_accessible(
-                "http://start.example.com/", restricted=True
-            )
+            ok, msg = split_embed._is_url_accessible("http://start.example.com/", restricted=True)
 
         assert ok is False
         assert msg == "URL cannot be used for this import."
@@ -199,9 +193,7 @@ class TestInlineUtilities:
             patch.object(split_embed.httpx, "Client", return_value=mock_client),
         ):
             split_embed._is_url_accessible.clear()
-            ok, msg = split_embed._is_url_accessible(
-                "http://start.example.com/", restricted=True
-            )
+            ok, msg = split_embed._is_url_accessible("http://start.example.com/", restricted=True)
 
         assert ok is False
         assert "not accessible" in msg.lower() or msg == "URL cannot be used for this import."
@@ -297,6 +289,19 @@ class TestInlineUtilities:
         assert payload["alias"] == "test"
         assert payload["distance_strategy"] == "COSINE"
         assert "model_key" not in payload
+
+    def test_build_embed_payload_includes_filename_grouping(self):
+        """Filename-grouped mode is sent to the embed API."""
+        from client.app.content.tools.tabs.split_embed import _build_embed_payload
+
+        payload = _build_embed_payload(
+            {
+                "model_key": "oci/embed-v1",
+                "split_by_filename": True,
+            }
+        )
+
+        assert payload["split_by_filename"] is True
 
 
 class TestFileSourceData:
@@ -593,8 +598,7 @@ class TestPollEmbedJob:
         # gets actionable context, not a generic 503.
         detail = excinfo.value.response.json().get("detail", "")
         assert "ReadTimeout" in detail or "transport" in detail.lower(), (
-            f"transport-exhaust 503 detail should mention the underlying "
-            f"failure; got {detail!r}"
+            f"transport-exhaust 503 detail should mention the underlying failure; got {detail!r}"
         )
         # Original transport error preserved for diagnostic logging.
         assert isinstance(excinfo.value.__cause__, httpx.TransportError)
@@ -657,8 +661,7 @@ class TestPollEmbedJob:
             result = mod._process_populate_request(embed_config, source_data, rate_limit=0)
 
         assert mark_calls == ["j1"], (
-            f"mark_embed_job_started must be called exactly once with the "
-            f"accepted job_id; got {mark_calls!r}"
+            f"mark_embed_job_started must be called exactly once with the accepted job_id; got {mark_calls!r}"
         )
         # Returned tuple lets the caller pass the id to the success
         # handler without round-tripping through session state.
@@ -683,9 +686,7 @@ class TestPollEmbedJob:
             ),
             patch.object(mod, "st", mock_st),
         ):
-            mod._handle_refresh_success(
-                {"new_files": 1, "updated_files": 0, "total_chunks_in_store": 5}
-            )
+            mod._handle_refresh_success({"new_files": 1, "updated_files": 0, "total_chunks_in_store": 5})
         assert clear_calls == [], (
             "_handle_refresh_success must not touch the seen set — the "
             "refresh path doesn't add anything to it, so clearing only "
@@ -712,7 +713,9 @@ class TestPollEmbedJob:
         with (
             patch.object(mod, "st", mock_st),
             patch.object(
-                mod, "_render_population_button", return_value=(True, False),
+                mod,
+                "_render_population_button",
+                return_value=(True, False),
             ),
             patch.object(mod, "_process_populate_request", side_effect=_failing_populate),
             patch.object(
@@ -751,7 +754,9 @@ class TestPollEmbedJob:
         with (
             patch.object(mod, "st", mock_st),
             patch.object(
-                mod, "_render_population_button", return_value=(True, False),
+                mod,
+                "_render_population_button",
+                return_value=(True, False),
             ),
             patch.object(mod, "_process_populate_request", side_effect=_failing_populate),
             patch.object(
@@ -786,7 +791,9 @@ class TestPollEmbedJob:
         with (
             patch.object(mod, "st", mock_st),
             patch.object(
-                mod, "_render_population_button", return_value=(True, False),
+                mod,
+                "_render_population_button",
+                return_value=(True, False),
             ),
             patch.object(mod, "_process_populate_request", side_effect=_early_failing_populate),
             patch.object(
@@ -819,7 +826,7 @@ class TestPollEmbedJob:
             patch.object(
                 mod.helpers,
                 "refresh_settings",
-                side_effect=lambda *a, **k: (order.append("refresh") or True),  # noqa: ARG005
+                side_effect=lambda *a, **k: order.append("refresh") or True,  # noqa: ARG005
             ),
             patch.object(
                 mod,
@@ -920,9 +927,7 @@ class TestPollEmbedJob:
             mod._process_populate_request(embed_config, source_data, rate_limit=0)
 
         # Find the embed/ acceptance call and inspect its timeout.
-        embed_calls = [
-            kwargs for path, kwargs in captured_calls if path == "embed/"
-        ]
+        embed_calls = [kwargs for path, kwargs in captured_calls if path == "embed/"]
         assert embed_calls, "_process_populate_request did not POST embed/"
         accepted_timeout = embed_calls[0].get("timeout")
         assert accepted_timeout is not None and accepted_timeout >= 120, (
@@ -986,21 +991,21 @@ class TestPollEmbedJob:
         """
         mod, captured_calls, embed_config = oci_populate_env
         source_data = mod.FileSourceData(
-            file_source="OCI", oci_bucket="docs", oci_all_files=True,
+            file_source="OCI",
+            oci_bucket="docs",
+            oci_all_files=True,
         )
         mod._process_populate_request(embed_config, source_data, rate_limit=0)
 
         paths = [path for path, _ in captured_calls]
         assert paths == ["embed/oci/store"], (
-            f"OCI bucket-wide mode must POST only to embed/oci/store, "
-            f"not the legacy two-step path; got {paths!r}"
+            f"OCI bucket-wide mode must POST only to embed/oci/store, not the legacy two-step path; got {paths!r}"
         )
         body = captured_calls[0][1]["json"]
         assert body["bucket_name"] == "docs"
         assert body["auth_profile"] == "DEFAULT"
         assert "objects" not in body, (
-            "Bucket-wide mode must omit ``objects`` so the server embeds "
-            "every supported file; got: " + repr(body)
+            "Bucket-wide mode must omit ``objects`` so the server embeds every supported file; got: " + repr(body)
         )
 
     def test_oci_single_endpoint_uses_long_acceptance_timeout(self, oci_populate_env):
@@ -1014,13 +1019,13 @@ class TestPollEmbedJob:
         """
         mod, captured_calls, embed_config = oci_populate_env
         source_data = mod.FileSourceData(
-            file_source="OCI", oci_bucket="docs", oci_all_files=True,
+            file_source="OCI",
+            oci_bucket="docs",
+            oci_all_files=True,
         )
         mod._process_populate_request(embed_config, source_data, rate_limit=0)
 
-        oci_calls = [
-            kwargs for path, kwargs in captured_calls if path == "embed/oci/store"
-        ]
+        oci_calls = [kwargs for path, kwargs in captured_calls if path == "embed/oci/store"]
         assert oci_calls, "_process_populate_request did not POST embed/oci/store"
         accepted_timeout = oci_calls[0].get("timeout")
         # Floor chosen to outlast a realistic large-bucket download
@@ -1063,8 +1068,7 @@ class TestPollEmbedJob:
             f"embed; got POST(s): {captured_calls!r}"
         )
         assert result == (None, {}), (
-            f"Expected the same (None, {{}}) early-return contract used "
-            f"for the None DataFrame case; got {result!r}"
+            f"Expected the same (None, {{}}) early-return contract used for the None DataFrame case; got {result!r}"
         )
 
     def test_oci_selected_files_routes_to_single_endpoint_with_objects(self, oci_populate_env):
@@ -1073,9 +1077,7 @@ class TestPollEmbedJob:
         excluded so the server does not embed unwanted bucket contents.
         """
         mod, captured_calls, embed_config = oci_populate_env
-        df = pd.DataFrame(
-            {"File": ["keep.pdf", "skip.pdf", "also-keep.txt"], "Process": [True, False, True]}
-        )
+        df = pd.DataFrame({"File": ["keep.pdf", "skip.pdf", "also-keep.txt"], "Process": [True, False, True]})
         source_data = mod.FileSourceData(
             file_source="OCI",
             oci_bucket="docs",
@@ -1118,8 +1120,7 @@ class TestPollEmbedJob:
         # would still fail the contract because each new stage must
         # be visible to the user.
         assert mock_toast.call_count >= 3, (
-            f"expected progress toast for each stage change; "
-            f"st.toast was called {mock_toast.call_count} time(s)"
+            f"expected progress toast for each stage change; st.toast was called {mock_toast.call_count} time(s)"
         )
         # Sanity-check the rendered text includes the user-facing
         # stage labels rather than raw stage codes.
@@ -1127,9 +1128,7 @@ class TestPollEmbedJob:
         assert any("Parsing" in r or "Parsing & chunking" in r for r in rendered_calls), (
             f"splitting-stage toast missing or unrendered: {rendered_calls}"
         )
-        assert any("Embedding" in r for r in rendered_calls), (
-            f"embedding-stage toast missing: {rendered_calls}"
-        )
+        assert any("Embedding" in r for r in rendered_calls), f"embedding-stage toast missing: {rendered_calls}"
 
 
 class TestActiveEmbedJobsPanelWiring:
@@ -1198,9 +1197,7 @@ class TestActiveEmbedJobsPanelWiring:
             display_split_embed()
         # Panel renders AFTER the populate section so users see it
         # below "Populate Vector Store".
-        assert call_order == ["load_kb", "populate", "panel"], (
-            f"panel must follow populate section; got {call_order}"
-        )
+        assert call_order == ["load_kb", "populate", "panel"], f"panel must follow populate section; got {call_order}"
         mock_render.assert_called_once_with(refresh_on_idle=True, hide_when_idle=True)
 
 
@@ -1244,16 +1241,12 @@ class TestOciSourceLockMatrix:
         """
         from client.app.content.tools.tabs import split_embed
 
-        monkeypatch.setattr(
-            split_embed.client_settings, "oci_source_bucket_compartment_id", compartment_env
-        )
+        monkeypatch.setattr(split_embed.client_settings, "oci_source_bucket_compartment_id", compartment_env)
         monkeypatch.setattr(split_embed.client_settings, "oci_source_bucket_name", bucket_env)
 
         compartments = compartments if compartments is not None else self._compartments()
         bucket_list_for_pinned = (
-            bucket_list_for_pinned
-            if bucket_list_for_pinned is not None
-            else [self.PINNED_BUCKET, self.OTHER_BUCKET]
+            bucket_list_for_pinned if bucket_list_for_pinned is not None else [self.PINNED_BUCKET, self.OTHER_BUCKET]
         )
 
         # Only the pinned compartment returns the configured bucket list, so

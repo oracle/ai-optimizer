@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 from pydantic import SecretStr
 
-from server.app.embed.schemas import VectorStoreConfig
+from server.app.embed.schemas import DoclingDocumentChunk, VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
 from server.tests.api.conftest import _create_mock_pool
 from server.tests.constants import TEST_OPENAI_EMBED_ID
@@ -36,6 +36,68 @@ def job_store_test(func):
     func = pytest.mark.integration(func)
     func = pytest.mark.usefixtures("embed_core_pool")(func)
     return func
+
+
+@pytest.mark.unit
+def test_group_chunks_by_filename_alias_combines_matching_source_names():
+    """Files from different paths with one name populate the same store."""
+    from server.app.api.v1.endpoints.embed import group_chunks_by_filename_alias
+
+    chunks = [
+        DoclingDocumentChunk("first", {"source": "/job/a_release_notes.pdf"}, "first"),
+        DoclingDocumentChunk("second", {"source": "/job/b_release_notes.pdf"}, "second"),
+        DoclingDocumentChunk("guide", {"source": "/job/install_guide.pdf"}, "guide"),
+    ]
+
+    grouped = group_chunks_by_filename_alias(
+        chunks,
+        {
+            "a_release_notes.pdf": "release_notes",
+            "b_release_notes.pdf": "release_notes",
+        },
+    )
+
+    assert list(grouped) == ["INSTALL_GUIDE", "RELEASE_NOTES"]
+    assert [chunk.id for chunk in grouped["RELEASE_NOTES"]] == ["first", "second"]
+
+
+@pytest.mark.unit
+def test_group_chunks_by_filename_alias_disambiguates_normalized_collisions():
+    """Distinct filename stems must not target one normalized table name."""
+    from server.app.api.v1.endpoints.embed import group_chunks_by_filename_alias
+
+    chunks = [
+        DoclingDocumentChunk("hyphen", {"source": "/job/hyphen.pdf"}, "hyphen"),
+        DoclingDocumentChunk("underscore", {"source": "/job/underscore.pdf"}, "underscore"),
+    ]
+
+    grouped = group_chunks_by_filename_alias(
+        chunks,
+        {
+            "hyphen.pdf": "release-notes",
+            "underscore.pdf": "release_notes",
+        },
+    )
+
+    assert len(grouped) == 2
+    assert "RELEASE_NOTES" in grouped
+    assert all(len(alias) <= 20 for alias in grouped)
+    assert all(alias.startswith("RELEASE_NOTES") for alias in grouped)
+
+
+@pytest.mark.unit
+def test_group_chunks_by_filename_alias_bounds_long_aliases():
+    """Filename-derived aliases must fit the existing alias-length limit."""
+    from server.app.api.v1.endpoints.embed import group_chunks_by_filename_alias
+
+    long_stem = "release_notes_" * 10
+    chunks = [DoclingDocumentChunk("content", {"source": "/job/long.pdf"}, "long")]
+
+    grouped = group_chunks_by_filename_alias(chunks, {"long.pdf": long_stem})
+
+    alias = next(iter(grouped))
+    assert len(alias) <= 20
+    assert alias.startswith("RELEASE_NOTES")
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +968,63 @@ async def test_split_embed_success(app_client, auth_headers):
     assert terminal["status"] == "succeeded"
     assert terminal["result"]["total_chunks"] == 1
     assert terminal["result"]["processed_files"] == [{"filename": "test.txt", "chunks": 1}]
+
+
+@pytest.mark.anyio
+async def test_filename_grouped_pipeline_finalizes_completed_store_before_later_failure(mock_client_db, tmp_path):
+    """A later store failure must not leave an earlier store without metadata."""
+    from server.app.api.v1.endpoints import embed as embed_module
+    from server.app.embed.jobs import JobFailure
+
+    _conn, _pool, db_config = mock_client_db
+    handle = MagicMock()
+    handle.set_progress = AsyncMock()
+    request = VectorStoreConfig(
+        embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
+        chunk_size=1000,
+        chunk_overlap=100,
+        distance_strategy=DistanceStrategy.COSINE,
+        split_by_filename=True,
+    )
+    chunks = [
+        DoclingDocumentChunk("a", {"source": "/work/a.pdf"}, "a"),
+        DoclingDocumentChunk("b", {"source": "/work/b.pdf"}, "b"),
+    ]
+
+    async def _populate(*, vector_store, **_kwargs):
+        if vector_store.alias == "B":
+            raise RuntimeError("second store failed")
+
+    with (
+        patch.object(embed_module, "get_oci_profile", return_value=MagicMock()),
+        patch.object(embed_module, "get_client_embed", return_value=MagicMock()),
+        patch.object(
+            embed_module,
+            "load_and_split_documents",
+            return_value=(
+                chunks,
+                [],
+                {"processed_files": [], "skipped_files": [], "total_chunks": 2},
+            ),
+        ),
+        patch.object(embed_module, "populate_vs", side_effect=_populate),
+        patch.object(embed_module, "update_vs_comment", new_callable=AsyncMock) as update_comment,
+        pytest.raises(JobFailure),
+    ):
+        await embed_module._run_split_embed_pipeline(
+            handle,
+            request,
+            0,
+            "client",
+            tmp_path,
+            [],
+            None,
+            db_config,
+        )
+
+    assert update_comment.await_count == 1
+    assert update_comment.await_args is not None
+    assert update_comment.await_args.args[1].alias == "A"
 
 
 # ---------------------------------------------------------------------------

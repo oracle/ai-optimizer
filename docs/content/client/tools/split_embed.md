@@ -48,6 +48,8 @@ To understand the meaning of these metrics, see [Vector Distance Metrics](https:
 
 The **Embedding Alias** field allows you to assign a meaningful identifier to the vector store table. This is particularly useful when multiple vector stores share the same combination of embedding model, chunk size, chunk overlap, and distance metric.
 
+When you select more than one local file or OCI object while creating a vector store, you can instead choose **Create one vector store per filename**. The filename without its extension becomes a normalized vector store alias. Files with the same filename from different source paths are added to the same vector store, following the normal append behavior. For example, `a/release_notes.pdf` and `b/release_notes.pdf` both populate the `RELEASE_NOTES` vector store. Long names are compacted, and names that normalize to the same alias are given distinct suffixes.
+
 The **Description** field allows you to provide additional information about the content stored in the vector store. This description is especially useful when using AutoRAG, as it helps the LLM select the most relevant vector store for a given user query.
 
 ### Load and Split Documents

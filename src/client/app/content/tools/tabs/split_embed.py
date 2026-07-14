@@ -125,9 +125,7 @@ def _validate_new_alias(alias: str) -> bool:
     if not alias:
         return True
     if not re.match(r"^[A-Za-z][A-Za-z0-9_]*$", alias):
-        st.error(
-            "Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores."
-        )
+        st.error("Invalid Alias! It must start with a letter and only contain alphanumeric characters and underscores.")
         return True
     return False
 
@@ -148,6 +146,7 @@ def _build_embed_payload(embed_config: dict) -> dict:
             "distance_strategy": embed_config.get("distance_strategy"),
             "index_type": embed_config.get("index_type"),
             "parsing_mode": embed_config.get("parsing_mode", "fast"),
+            "split_by_filename": embed_config.get("split_by_filename", False),
         }
     )
 
@@ -505,6 +504,29 @@ def _render_load_kb_section(file_sources: list, oci_setup: dict | None) -> FileS
     return data
 
 
+def _render_filename_grouping_option(
+    source_data: FileSourceData | None, create_new_vs: bool, embed_config: dict
+) -> None:
+    """Offer filename-grouped stores only for an explicit multi-file selection."""
+    selected_count = 0
+    if source_data is None:
+        return
+    elif source_data.file_source == "Local":
+        selected_count = len(state.get("runtime_local_file_uploader") or [])
+    elif source_data.file_source == "OCI" and source_data.oci_files_selected is not None:
+        selected_count = int(source_data.oci_files_selected["Process"].sum())
+
+    if create_new_vs and selected_count > 1:
+        embed_config["split_by_filename"] = st.toggle(
+            "Create one vector store per filename",
+            value=False,
+            key="selected_split_by_filename",
+            help="Files with the same filename are added to the same vector store.",
+        )
+    else:
+        embed_config["split_by_filename"] = False
+
+
 def _display_file_list_expander(file_list_response: dict) -> None:
     """Display the file list expander with embedded files information."""
     total_files = file_list_response["total_files"]
@@ -550,7 +572,9 @@ def _display_file_list_expander(file_list_response: dict) -> None:
             st.info("No files found in this vector store.")
 
 
-def _render_populate_vs_section(embed_config: dict, create_new_vs: bool) -> int | None:
+def _render_populate_vs_section(
+    embed_config: dict, create_new_vs: bool, source_data: FileSourceData | None
+) -> int | None:
     """Render vector store configuration section.
 
     Mutates embed_config in-place to set alias, description, and vector_store.
@@ -566,14 +590,21 @@ def _render_populate_vs_section(embed_config: dict, create_new_vs: bool) -> int 
 
     if create_new_vs:
         embed_config["vector_store"] = None
-        embed_config["alias"] = st.text_input(
-            "Vector Store Alias:",
-            max_chars=20,
-            help=state.optimizer_help.get("embed_alias", ""),
-            key="selected_embed_alias",
-            placeholder="Enter a name for the new vector store",
-        )
-        if embed_config["alias"] and not _validate_new_alias(embed_config["alias"]):
+        _render_filename_grouping_option(source_data, create_new_vs, embed_config)
+        if not embed_config.get("split_by_filename"):
+            embed_config["alias"] = st.text_input(
+                "Vector Store Alias:",
+                max_chars=20,
+                help=state.optimizer_help.get("embed_alias", ""),
+                key="selected_embed_alias",
+                placeholder="Enter a name for the new vector store",
+            )
+        else:
+            embed_config["alias"] = None
+            st.caption("Vector store aliases will be derived from the filenames.")
+        if embed_config.get("split_by_filename"):
+            vs_table = "One vector store per filename"
+        elif embed_config["alias"] and not _validate_new_alias(embed_config["alias"]):
             vs_table = _generate_vs_table_name(
                 alias=embed_config["alias"],
                 model_key=embed_config.get("model_key", ""),
@@ -626,7 +657,7 @@ def _render_populate_vs_section(embed_config: dict, create_new_vs: bool) -> int 
         )
         should_fetch_files = bool(vs_table)
 
-    if vs_table:
+    if vs_table and not embed_config.get("split_by_filename"):
         st.markdown(f"##### **Vector Store:** `{vs_table}`")
         if should_fetch_files:
             try:
@@ -924,7 +955,7 @@ def _render_population_button(
     """Render the appropriate button and return click states."""
     is_source_valid = source_data.is_valid()
 
-    if not embed_config.get("alias") and create_new_vs:
+    if not embed_config.get("alias") and create_new_vs and not embed_config.get("split_by_filename"):
         st.info("Please provide a Vector Store Alias.", icon="⚠️")
 
     refresh_clicked = False
@@ -958,7 +989,9 @@ def _render_population_button(
                 help="Refresh vector store with new/modified files from OCI bucket",
             )
         else:
-            state.running = not (is_source_valid and embed_config.get("vector_store"))
+            state.running = not (
+                is_source_valid and (embed_config.get("vector_store") or embed_config.get("split_by_filename"))
+            )
             populate_clicked = st.button(
                 "Populate Vector Store",
                 type="primary",
@@ -1157,7 +1190,7 @@ def display_split_embed() -> None:
 
     source_data = _render_load_kb_section(file_sources, oci_setup)
 
-    rate_limit = _render_populate_vs_section(embed_config, create_new_vs)
+    rate_limit = _render_populate_vs_section(embed_config, create_new_vs, source_data)
 
     if embed_config:
         _handle_vector_store_population(embed_config, source_data, rate_limit, create_new_vs)

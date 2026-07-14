@@ -10,9 +10,11 @@ Embed endpoints — file storage, document splitting, vector store population, a
 import asyncio
 import contextlib
 import datetime
+import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 from enum import Enum
@@ -84,12 +86,58 @@ from server.app.oci.bucket import (
     detect_changed_objects,
     download_bucket_objects_to_dir,
     filter_supported_object_names,
+    flatten_bucket_key,
     get_bucket_object_names,
     get_bucket_objects_with_metadata,
 )
 from url_safety import SafeAsyncClient, validate_structural
 
 LOGGER = logging.getLogger(__name__)
+
+_FILENAME_ALIAS_MAX_LENGTH = 20
+_FILENAME_ALIAS_HASH_LENGTH = 6
+
+
+def _compact_filename_alias(alias: str, source_alias: str) -> str:
+    """Return a normalized filename alias within the established UI limit."""
+    normalized = re.sub(r"\W", "_", alias).upper().strip("_") or "FILE"
+    if not normalized[0].isalpha():
+        normalized = f"FILE_{normalized}"
+    if len(normalized) <= _FILENAME_ALIAS_MAX_LENGTH:
+        return normalized
+    suffix = hashlib.sha256(source_alias.encode()).hexdigest()[:_FILENAME_ALIAS_HASH_LENGTH]
+    prefix_length = _FILENAME_ALIAS_MAX_LENGTH - _FILENAME_ALIAS_HASH_LENGTH - 1
+    return f"{normalized[:prefix_length]}_{suffix}"
+
+
+def group_chunks_by_filename_alias(chunks, file_aliases: dict[str, str] | None = None) -> dict[str, list]:
+    """Group chunks by their source filename's configured alias.
+
+    OCI staging flattens object keys to collision-safe local filenames.  The
+    optional map restores the original filename stem as the vector-store alias,
+    allowing ``a/release_notes.pdf`` and ``b/release_notes.pdf`` to share the
+    ``RELEASE_NOTES`` store while retaining distinct staged files.
+    """
+    by_source_alias: dict[str, list] = {}
+    for chunk in chunks:
+        source = str(chunk.metadata.get("source", ""))
+        local_name = os.path.basename(source)
+        source_alias = (file_aliases or {}).get(local_name) or Path(local_name).stem
+        by_source_alias.setdefault(source_alias, []).append(chunk)
+
+    grouped: dict[str, list] = {}
+    for source_alias in sorted(by_source_alias):
+        base_alias = _compact_filename_alias(source_alias, source_alias)
+        alias = base_alias
+        collision_number = 0
+        while alias in grouped:
+            suffix_source = f"{source_alias}:{collision_number}"
+            suffix = hashlib.sha256(suffix_source.encode()).hexdigest()[:_FILENAME_ALIAS_HASH_LENGTH]
+            prefix_length = _FILENAME_ALIAS_MAX_LENGTH - _FILENAME_ALIAS_HASH_LENGTH - 1
+            alias = f"{base_alias[:prefix_length]}_{suffix}"
+            collision_number += 1
+        grouped[alias] = by_source_alias[source_alias]
+    return grouped
 
 
 _WEB_FETCH_TIMEOUT = 60.0  # seconds
@@ -178,9 +226,7 @@ async def _cleanup_failed_submission(
     if submission is not None:
         _tear_down_post_submit_request(submission, work_dir)
     elif can_restore:
-        await _restore_claimed_files_to_shared_under_lock(
-            client, work_dir, get_temp_directory(client, "embedding")
-        )
+        await _restore_claimed_files_to_shared_under_lock(client, work_dir, get_temp_directory(client, "embedding"))
     else:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -555,7 +601,9 @@ async def embed_oci_store(
         object_names = list(request.objects)
     else:
         bucket_objects = await asyncio.to_thread(
-            get_bucket_object_names, request.bucket_name, profile,
+            get_bucket_object_names,
+            request.bucket_name,
+            profile,
         )
         object_names = filter_supported_object_names(bucket_objects)
 
@@ -570,7 +618,10 @@ async def embed_oci_store(
     async with _client_lock(client):
         try:
             downloaded, failures = await download_bucket_objects_to_dir(
-                work_dir, profile, request.bucket_name, object_names,
+                work_dir,
+                profile,
+                request.bucket_name,
+                object_names,
             )
             # Reject partial corpora: the response is 202 + job_id, so
             # a caller can't otherwise notice that some requested
@@ -582,8 +633,7 @@ async def embed_oci_store(
                 raise HTTPException(
                     status_code=502,
                     detail=(
-                        f"Failed to download {len(failures)} object(s) from bucket "
-                        f"{request.bucket_name}: {failed_keys}"
+                        f"Failed to download {len(failures)} object(s) from bucket {request.bucket_name}: {failed_keys}"
                     ),
                 )
         except BaseException:
@@ -597,9 +647,15 @@ async def embed_oci_store(
         # list directly would feed the same on-disk path to
         # ``load_and_split_documents`` twice.
         files = sorted({work_dir / name for name in downloaded})
+        file_aliases = {flatten_bucket_key(object_name): Path(object_name).stem for object_name in object_names}
         return await _submit_split_embed_under_lock(
-            request, rate_limit, client, work_dir, files,
+            request,
+            rate_limit,
+            client,
+            work_dir,
+            files,
             source=_CorpusSource.PER_REQUEST,
+            file_aliases=file_aliases,
         )
 
 
@@ -617,6 +673,7 @@ async def _run_split_embed_pipeline(
     files: list[Path],
     file_metadata: Optional[dict],
     db_config,
+    file_aliases: dict[str, str] | None = None,
 ) -> EmbedProcessingResult:
     """Background body of the split-and-embed pipeline.
 
@@ -674,39 +731,48 @@ async def _run_split_embed_pipeline(
             parsing_mode=request.parsing_mode or "fast",
         )
 
-        # Generate the vector store table name and comment
-        request.vector_store, comment_json = generate_vs_metadata(
-            embedding_model=embedding_model,
-            chunk_size=request.chunk_size or 0,
-            chunk_overlap=request.chunk_overlap or 0,
-            distance_strategy=distance_strategy,
-            index_type=request.index_type or "HNSW",
-            alias=request.alias,
-            description=request.description,
-        )
-        request.index_type = request.index_type or "HNSW"
-
         await handle.set_progress(
             EmbedJobStage.EMBEDDING,
             message="Embedding chunks and writing to the vector store.",
             total_chunks=processing_results.get("total_chunks"),
         )
-        await populate_vs(
-            db_config=db_config,
-            vector_store=request,
-            embed_client=get_client_embed(embedding_model, oci_profile),
-            input_data=split_docos,
-            rate_limit=rate_limit,
+        stores = (
+            group_chunks_by_filename_alias(split_docos, file_aliases)
+            if request.split_by_filename
+            else {request.alias or "": split_docos}
         )
+        embed_client = get_client_embed(embedding_model, oci_profile)
+        for alias, chunks in stores.items():
+            vector_store = request.model_copy(deep=True)
+            vector_store.alias = alias or None
+            vector_store.index_type = vector_store.index_type or "HNSW"
+            vector_store.vector_store, comment_json = generate_vs_metadata(
+                embedding_model=embedding_model,
+                chunk_size=vector_store.chunk_size or 0,
+                chunk_overlap=vector_store.chunk_overlap or 0,
+                distance_strategy=distance_strategy,
+                index_type=vector_store.index_type,
+                alias=vector_store.alias,
+                description=vector_store.description,
+            )
+            await populate_vs(
+                db_config=db_config,
+                vector_store=vector_store,
+                embed_client=embed_client,
+                input_data=chunks,
+                rate_limit=rate_limit,
+            )
+            # Persist metadata before the next store starts. If a later store
+            # fails, this completed table remains discoverable.
+            async with pool.acquire() as conn:
+                await update_vs_comment(conn, vector_store, comment_json)
 
         await handle.set_progress(
             EmbedJobStage.FINALIZING,
-            message="Updating vector store metadata.",
+            message="Refreshing vector store catalog.",
             total_chunks=processing_results.get("total_chunks"),
         )
-        # Update the comment on the vector store table
         async with pool.acquire() as conn:
-            await update_vs_comment(conn, request, comment_json)
             # Re-discover after creation so the cache reflects current state.
             live_stores = await discover_vector_stores(conn)
         refreshed = list(live_stores)
@@ -833,6 +899,7 @@ async def _submit_split_embed_under_lock(
     files: list[Path],
     *,
     source: _CorpusSource = _CorpusSource.SHARED_STAGING,
+    file_aliases: dict[str, str] | None = None,
 ) -> EmbedJobAccepted:
     """Submit the embed job for *files* already populated in *work_dir*.
 
@@ -893,6 +960,7 @@ async def _submit_split_embed_under_lock(
                     files,
                     file_metadata,
                     db_config,
+                    file_aliases,
                 )
 
             submission = await manager.submit(
@@ -909,7 +977,10 @@ async def _submit_split_embed_under_lock(
         # which case we discard the corpus rather than restoring it
         # to shared staging.
         await _cleanup_failed_submission(
-            submission, work_dir, client, can_restore=restorable,
+            submission,
+            work_dir,
+            client,
+            can_restore=restorable,
         )
         LOGGER.warning("CORE submission failed for embed job: %s", ex)
         raise HTTPException(status_code=503, detail=_CORE_UNAVAILABLE_DETAIL) from ex
@@ -918,7 +989,9 @@ async def _submit_split_embed_under_lock(
         # restores the DB, client retries with the same corpus); 4xx
         # are not. Same private-work_dir caveat as above.
         await _cleanup_failed_submission(
-            submission, work_dir, client,
+            submission,
+            work_dir,
+            client,
             can_restore=restorable and ex.status_code == 503,
         )
         raise
@@ -990,7 +1063,11 @@ async def split_embed(
             client,
         )
         return await _submit_split_embed_under_lock(
-            request, rate_limit, client, work_dir, files,
+            request,
+            rate_limit,
+            client,
+            work_dir,
+            files,
         )
 
 
@@ -1004,9 +1081,7 @@ async def split_embed(
 # ---------------------------------------------------------------------------
 
 
-_CORE_UNAVAILABLE_DETAIL = (
-    "Embed job status is temporarily unavailable; please retry shortly."
-)
+_CORE_UNAVAILABLE_DETAIL = "Embed job status is temporarily unavailable; please retry shortly."
 
 
 def _require_core_pool() -> None:

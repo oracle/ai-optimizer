@@ -76,3 +76,7 @@ class VectorStoreConfig(BaseModel):
     distance_strategy: Optional[DistanceStrategy] = Field(default=None, description="Distance Strategy")
     index_type: Optional[IndexTypes] = Field(default=None, description="Vector Index")
     parsing_mode: Optional[ParsingMode] = Field(default="fast", description="Document parsing mode")
+    split_by_filename: bool = Field(
+        default=False,
+        description="Create or populate one vector store per filename alias",
+    )
