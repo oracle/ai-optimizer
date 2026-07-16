@@ -39,7 +39,7 @@ To apply governed access to Vector Search or NL2SQL, follow this sequence:
 2. Create an [**end user**](#end-users) and assign the data role to it.
    ![DDS - Create Data User](../images/dds_create_data_user.png)
 
-3. Select the end user in **Connect tools as**.
+3. If more than one end user exists, select the end user in **Connect tools as**.
    ![DDS - Select Data User](../images/dds_select_data_user.png)
 
 4. Create a [**data grant**](#data-grants) for that role, specifying the tables or views, privileges, and any column or row restrictions.
@@ -56,7 +56,7 @@ Create and drop **data roles**, the principals that data grants authorize. A dat
 
 Create and drop Deep Data Security **end users**, the identities whose access is governed by data grants. The schema selected for an end user controls how unqualified object names are resolved and defaults to the connected database user's schema.
 
-Use **Connect tools as** to select the end user that Vector Search and NL2SQL will use for the active database. Enable **Deep Data Security** in the Chatbot sidebar to use that connection. This lets you preview how those tools behave for a governed identity while keeping the AI Optimizer configuration connected as the database user that manages the objects. This selection applies only to the active database and can be cleared.
+Use **Connect tools as** to select the end user that Vector Search and NL2SQL will use for the active database. When exactly one end user exists, the application selects it automatically when you first use a database chat tool. Enable **Deep Data Security** in the Chatbot sidebar to use that connection. This lets you preview how those tools behave for a governed identity while keeping the AI Optimizer configuration connected as the database user that manages the objects. This selection applies only to the active database and can be cleared.
 
 ### Data Grants
 
