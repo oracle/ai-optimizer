@@ -41,12 +41,12 @@ Provide the following input:
 - **Alias**: A unique identifier for the database configuration (automatically set to `CORE` for the first database)
 - **Username**: The pre-created [database username](#database-user) where the embeddings will be stored
 - **Password**: The password for the **Username**
-- **DSN (Connect String)**: The full connection string or [TNS Alias](#using-a-wallettns_admin-directory) for the Database. 
-    This is normally in the form of 
+- **DSN (Connect String)**: The full connection string or [TNS Alias](#using-a-wallettns_admin-directory) for the Database.
+    This is normally in the form of
     `
     (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=<hostname>)(PORT=<port>))(CONNECT_DATA=(SERVICE_NAME=<serviceName>)))
-    ` 
-    or 
+    `
+    or
     `
     //<hostname>:<port>/<serviceName>
     `
@@ -60,7 +60,7 @@ Once all fields are set, click the `Create` or `Save` button.
 
 The database can also be configured using environment variables. See [Database]({{% relref "/configuration#database" %}}) under Environment Variables.
 
---- 
+---
 
 ## Using a Wallet/TNS_ADMIN Directory
 
@@ -77,7 +77,7 @@ For bare-metal installations, set the `TNS_ADMIN` environment variable to the lo
 
 ### Container
 
-When starting the container, volume mount the configuration file to `/app/tns_admin` for it to be used.  
+When starting the container, volume mount the configuration file to `/app/tns_admin` for it to be used.
 
 For example:
 ```bash
@@ -88,9 +88,9 @@ podman run -v $TNS_ADMIN:/app/tns_admin -p 8501:8501 -it --rm ai-optimizer-aio
 
 ## Database User
 
-For both **RAG** and **NL2SQL** the {{% short_app_ref %}} will need to authenticate to an Oracle AI Database.  AI agents will use this user to retrieve data, 
-so it’s important to *carefully consider* the level of access granted to it. 
-At a minimum, a non-privileged user with a *non-SYSTEM tablespace* should be used for this purpose.    
+For both **RAG** and **NL2SQL** the {{% short_app_ref %}} will need to authenticate to an Oracle AI Database.  AI agents will use this user to retrieve data,
+so it’s important to *carefully consider* the level of access granted to it.
+At a minimum, a non-privileged user with a *non-SYSTEM tablespace* should be used for this purpose.
 
 Use the below syntax as an __example__ of creating a new user with least privileges (change the value of `c_user_password`):
 
@@ -132,7 +132,7 @@ END;
 Creating multiple users in the same database allows developers to separate their experiments simply by changing the "Database User"
 {{% /notice %}}
 
-## Deep Data Security privileges (optional)
+## Deep Data Security Privileges
 
 To use the [Deep Data Security]({{% relref "/client/tools/deepsec" %}}) tool, the database user needs the additional privileges below. They are optional: when they are absent — or when the database does not support Deep Data Security — the tool is automatically disabled in the GUI.
 
@@ -151,8 +151,6 @@ GRANT SELECT ON DBA_DATA_ROLES TO "DEMO";
 GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "DEMO";
 GRANT SELECT ON DBA_END_USERS TO "DEMO";
 ```
-
-### Connect tools as an end user (optional)
 
 To let **Vector Search** and **NL2SQL** connect *as* a Deep Data Security end user (the **Connect tools as** control), the end user must be able to log in. An end user cannot be granted `CREATE SESSION` directly; the privilege is carried by a standard database role that flows to the end user through a data role. As a privileged user (e.g. `ADMIN`/`SYSTEM`), create that role once and let `"DEMO"` hand it out:
 

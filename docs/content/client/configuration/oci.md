@@ -13,7 +13,7 @@ spell-checker: ignore genai ocid
 Oracle Cloud Infrastructure (OCI) can _optionally_ be configured to enable additional {{% short_app_ref %}} functionality including:
 
 - Document Source for Splitting and Embedding from [Object Storage](https://docs.oracle.com/en-us/iaas/Content/Object/Concepts/objectstorageoverview.htm)
-- Private Cloud Large Language and Embedding models from [OCI Generative AI service](https://docs.oracle.com/en-us/iaas/Content/generative-ai/home.htm)
+- Private Cloud Language and Embedding models from [OCI Generative AI service](https://docs.oracle.com/en-us/iaas/Content/generative-ai/home.htm)
 
 ## Configuration
 
@@ -81,11 +81,13 @@ The following authentication types are supported via the `AIO_OCI_CLI_AUTH` vari
 
 ## Loading OCI GenAI Models
 
-The [OCI Generative AI service](https://docs.oracle.com/en-us/iaas/Content/generative-ai/home.htm) provides Private Cloud Large Language and Embedding models.  Unlike other providers, these models are not added one at a time—the {{% short_app_ref %}} loads them for you.
+The [OCI Generative AI service](https://docs.oracle.com/en-us/iaas/Content/generative-ai/home.htm) provides Private Cloud Language and Embedding models.  If you subscribe to the OCI GenAI service, you can load the available models directly into the {{% short_app_ref %}}.
 
 There are two ways the models get loaded:
 
 - **From the interface:** On the [OCI](#interface) tab—once OCI access is usable—enter the **GenAI Compartment OCID**, click **Check for OCI GenAI Models**, choose a **Region**, then click **Enable Region Models**.  The {{% short_app_ref %}} queries the OCI GenAI service for that region, then registers and enables every chat and embedding model it offers.
+![OCI GenAI](../images/oci_genai.png)
+
 - **At startup:** When a usable OCI profile already has a GenAI Compartment OCID and Region persisted—from a previous configuration, a [config file](#config-file), or [environment variables](#environment-variables)—the {{% short_app_ref %}} loads that region's models automatically.
 
 Either way, the models appear on the _Models_ tab.  Changing the configured Region clears the previously loaded OCI models; the new region's models are loaded the next time you run **Enable Region Models** or at the next startup.
