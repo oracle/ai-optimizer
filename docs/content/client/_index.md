@@ -52,14 +52,15 @@ You can develop and replace the provided client with any REST capable client.
 
 {{% notice style="code" title="Reduced capabilities" icon="circle-info" %}}
 <!-- Hard-coding AI Optimizer to avoid raw HTML, this is an exception -->
-The **AI Optimizer** can be used to interact with language models without having the database configured, but additional functionality such as RAG, will not be available without the database.
+The **AI Optimizer** can be used to interact with language models without having the database configured, but additional functionality such as RAG and NL2SQL, will not be available without the database.
 {{% /notice %}}
 
-Oracle AI Database provides:
+The Oracle AI Database provides:
 
-- the Vector Store for split and embedded documents used for Retrieval Augmented Generation (RAG).
-- storage for the [Testbed]({{% relref "/client/testbed" %}}) Q&A Test Sets and Evaluations
-- storage of {{% short_app_ref %}} settings and configuration
+- Vector Stores for embedded documents used for Retrieval Augmented Generation (RAG).
+- Structured Data used for Natural Language to SQL (NL2SQL).
+- storage for the [Testbed]({{% relref "/client/testbed" %}}) Q&A Test Sets and Evaluations.
+- storage of {{% short_app_ref %}} settings and configuration.
 
 ## Document Source
 

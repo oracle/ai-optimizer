@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore ollama relref varchar
 -->
 
-The first phase in building a RAG chatbot based on vector search is document splitting and embedding. During this phase, source documents are divided into chunks, vector embeddings are generated for each chunk, and the resulting embeddings are stored in a vector store. At query time, relevant chunks are retrieved using vector distance search and injected into the Large Language Model (LLM) context to produce grounded answers based on the provided information.
+The first phase in building a Retrieval Augmented Generation (RAG) chatbot based on Vector Search is document splitting and embedding. During this phase, source documents are divided into chunks, vector embeddings are generated for each chunk, and the resulting embeddings are stored in a Vector Store. At query time, relevant chunks are retrieved using vector distance search and injected into the Large Language Model (LLM) context to produce grounded answers based on the provided information.
 
 You can choose from multiple embedding models provided by external services such as Cohere, OpenAI, and Perplexity, or use local models running on a self-managed GPU compute node. Running local models, for example via Ollama or Hugging Face, avoids sharing data with external services that are outside your administrative control.
 
@@ -22,15 +22,18 @@ To perform document splitting and embedding, open the Tools menu and select the 
 
 The **Create New Vector Store** option allows you to create a new vector store table and populate it with embeddings generated from one or more data sources. When this option is enabled, the Load and Split Documents section of the Split/Embed form lets you select documents in formats such as TXT, PDF, or HTML.
 
+![Load Knowledge Base](../images/load_knowledge_base.png)
+
 Documents can be sourced from:
 
 * **Oracle Cloud Infrastructure (OCI) Object Storage**, allowing you to browse and select multiple documents;
 * **Local files**, enabling the upload of multiple documents from the client machine;
-* **Web URLs**, for loading a single TXT, PDF, or HTML document from a specified address.
-
-![Embed](../images/embed.png)
+* **Web URLs**, for loading a single TXT, PDF, or HTML document from a specified address;
+* **SQL**, embedding existing structured data to enable querying on semantic meaning.
 
 Populating the vector store creates a table in the Oracle Database that contains the generated embeddings. You can create multiple vector stores from the same set of documents to experiment with different chunk sizes, distance metrics, or embedding models, and evaluate them independently.
+
+![Populate Knowledge Base](../images/populate.png)
 
 ### Embedding Configuration
 
@@ -48,7 +51,7 @@ To understand the meaning of these metrics, see [Vector Distance Metrics](https:
 
 The **Embedding Alias** field allows you to assign a meaningful identifier to the vector store table. This is particularly useful when multiple vector stores share the same combination of embedding model, chunk size, chunk overlap, and distance metric.
 
-The **Description** field allows you to provide additional information about the content stored in the vector store. This description is especially useful when using AutoRAG, as it helps the LLM select the most relevant vector store for a given user query.
+The **Description** field allows you to provide additional information about the content stored in the vector store. This description is especially useful when using _Store Discovery_, as it helps the LLM select the most relevant vector store for a given user query.
 
 ### Load and Split Documents
 

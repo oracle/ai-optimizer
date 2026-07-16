@@ -9,7 +9,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 The {{% full_app_ref %}} provides a Chatbot to experiment with different Language settings and Embeddings.  It allows you to manually find the optimal configuration for your AI project before launching it into Production. 
 
-There are a number of configurations you can experiment with to explore AI and RAG capabilities to understand their behavior without requiring deep technical knowledge.
+There are a number of configurations you can experiment with to explore AI, RAG, and NL2SQL capabilities to understand their behavior without requiring deep technical knowledge.
 
 ## History and Context
 
@@ -45,7 +45,7 @@ For more details on the parameters, ask the Chatbot or review [Concepts for Gene
 
 ## Toolkit
 
-The {{% short_app_ref %}} provides tools to augment Large Language Models with your proprietary data using different tools, such as Retrieval Augmented Generation (**RAG**), including:
+The {{% short_app_ref %}} provides tools to augment Large Language Models with your proprietary data using different tools, including:
 * [Vector Search](#vector-search) for Unstructured Data
 * [NL2SQL](#nl2sql-natural-language-to-sql) for interacting with your structured data using natural language
 
@@ -54,7 +54,7 @@ The {{% short_app_ref %}} provides tools to augment Large Language Models with y
 
 ## Vector Search
 
-Once you've created embeddings using [Split/Embed]({{% relref "/client/tools/split_embed" %}}), the Vector Search tool will be available. After selecting Vector Search, three additional options will pop up:
+Once you've created embeddings using [Split/Embed]({{% relref "/client/tools/split_embed" %}}), the Vector Search tool will be available. After selecting Vector Search, three additional options will be available:
 * **Store Discovery**: Dynamically discover Vector Stores for use in Retrieval Augmented Generation.
 * **Prompt Rephrase**: Rephrase the user prompt, based on context and history, for a more meaningful Vector Search.
 * **Document Grading**: Grade the results from a Vector Search to determine their relevancy. 
@@ -62,15 +62,14 @@ Once you've created embeddings using [Split/Embed]({{% relref "/client/tools/spl
 
 ![Vector Search Options](images/vector_search_options.png)
 
-If you have more than one [Vector Store](#vector-store) you can either use the Store Discovery option or disable it. If you decide to disable the Store Discovery option, you will need to select the Vector Store you want to work with.
+### Vector Store
+
+With Vector Search selected, if you have more than one Vector Store, you can either select Store Discovery, or you can disable it and choose which specific Vector Store will be used for searching.  To choose a different Vector Store, click the "Reset" button to open up the available options.
 
 ![Chatbot Vector Search](images/chatbot_vs.png)
 
  Choose the type of Search you want performed and the additional parameters associated with that search.
 
-### Vector Store
-
-With Vector Search selected, if you have more than one Vector Store, you can either select Store Discovery and enable AutoRAG, or you can disable it and choose which specific Vector Store will be used for searching, otherwise it will default to the only one available.  To choose a different Vector Store, click the "Reset" button to open up the available options.
 
 ## NL2SQL (Natural Language to SQL)
 

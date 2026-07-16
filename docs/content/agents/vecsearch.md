@@ -29,7 +29,7 @@ flowchart TD
 - The system prompt is fetched from the MCP server (`optimizer_vs-tools-default`). If unavailable, a default instruction is used.
 - `build_vecsearch_flow` creates a portable AgentSpec Flow with conditional nodes based on the user's vector search settings (rephrase, discovery, grade).
 - **Rephrase** (`optimizer_vs_rephrase`) rewrites the user question using conversation history to improve retrieval quality.
-- **Discovery** (`optimizer_vs_discovery`) lists available vector stores when AutoRAG is enabled, allowing the LLM to select the most relevant store.
+- **Discovery** (`optimizer_vs_discovery`) lists available vector stores when Store Discovery is enabled, allowing the LLM to select the most relevant store.
 - **Retriever** (`optimizer_vs_retriever`) performs the core vector similarity search and always runs.
 - **Grade** (`optimizer_vs_grade`) filters retrieved documents for relevance before answer generation.
 - The final LLM node generates the answer using the system prompt and the retrieved (or graded) documents.

@@ -73,7 +73,7 @@ At this point, if you have generated or are using an existing Test Dataset, you 
 
 ![Evaluation](images/evaluation.png)
 
-The upper section of the configuration menu is related to the LLM to be used for chat generation, and includes the most relevant hyper-parameters to use in the request. You can choose to enable the **Store Discovery** tool to perform AutoRAG, or disable it and manually select a specific Vector Store for the evaluation.
+The upper section of the configuration menu is related to the LLM to be used for chat generation, and includes the most relevant hyper-parameters to use in the request. You can choose to enable the **Store Discovery** tool, or disable it and manually select a specific Vector Store for the evaluation.
 
 If you decide to target a specific Vector Store, it can be selected from the dropdown menu in the lower part of the left-hand side. Apart from the **Embedding Model**, **Chunk Size**, **Chunk Overlap** and **Distance Strategy**, that are fixed and determined during the **Split/Embed** process, these parameters can be adjusted:
 
@@ -103,6 +103,8 @@ The list of **Failures**, **Correctness by each Q&A**, as well as a **Report**, 
 ### Previous Evaluations
 
 All evaluation results are persisted in the database. When viewing a Test Set that has been previously evaluated, a **Previous Evaluations** dropdown is displayed, allowing you to select and review any past evaluation report. This makes it easy to compare results across different configurations or repeated runs.
+
+![Previous Evaluations](images/previous_evaluations.png)
 
 {{% notice style="tip" title="Score Variability" %}}
 Because the evaluation uses your configured hyper-parameters (including temperature), scores may vary slightly between runs. This is expected behavior and reflects the natural variability of your production configuration. Running multiple evaluations and comparing results provides a more reliable assessment of your RAG configuration's effectiveness.

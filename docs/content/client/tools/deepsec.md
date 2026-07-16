@@ -14,13 +14,15 @@ Oracle Deep Data Security enforces fine-grained, identity-aware authorization di
 
 The Deep Data Security tool lets you create and manage these objects from the AI Optimizer.
 
+![Deep Data Security](../images/dds.png)
+
 {{% notice style="default" title="Requires Oracle AI Database 26ai" icon="circle-info" %}}
 Deep Data Security is available in Oracle AI Database 26ai. When the connected database does not support it, the **Deep Data Security** tab detects this and is automatically disabled.
 {{% /notice %}}
 
 ## Prerequisites
 
-The configured database user needs the Deep Data Security privileges described in the [Database Configuration]({{% relref "/client/configuration/databases" %}}) documentation. The tool reads the user's privileges and enables only the actions that are permitted; anything the user is not privileged to do is disabled.
+The configured database user needs the Deep Data Security privileges described in the [Database Configuration]({{% relref "/client/configuration/databases/#deep-data-security-privileges-optional" %}}) documentation. The tool reads the user's privileges and enables only the actions that are permitted; anything the user is not privileged to do is disabled.
 
 ## Using the tool
 

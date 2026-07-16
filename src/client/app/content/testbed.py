@@ -185,7 +185,7 @@ def _qa_update_gui(qa_testset: list) -> None:
 def _create_gauge(value: float) -> Figure:
     """Create a correctness gauge for a percentage value."""
     gauge_value = min(max(value, 0.0), 100.0)
-    figure = Figure(figsize=(8, 4), layout="constrained")
+    figure = Figure(figsize=(5, 2.5), layout="constrained")
     axis = figure.subplots()
 
     for lower, upper, color in (
@@ -282,7 +282,8 @@ def _evaluation_report(eid: Optional[str] = None, report: Optional[dict] = None)
         st.markdown("**Evaluated without Vector Search**")
 
     # Gauge
-    st.pyplot(_create_gauge(float(report["correctness"]) * 100), width="stretch")
+    _, gauge_column, _ = st.columns([1, 2, 1])
+    gauge_column.pyplot(_create_gauge(float(report["correctness"]) * 100), width="stretch")
 
     # Correctness by Topic
     st.subheader("Correctness By Topic")
