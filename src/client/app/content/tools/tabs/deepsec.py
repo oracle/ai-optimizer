@@ -182,6 +182,9 @@ def _set_connect_as(end_user: str) -> bool:
             json={"end_user": end_user},
             extra_headers=_client_header(),
             toast=f"Chat tools will connect as {end_user}.",
+            # Registering the managed connection also rebuilds SQLcl's connection store.
+            # That setup can exceed the normal UI request timeout on a local database.
+            timeout=60,
         )
     except httpx.HTTPStatusError as exc:
         _error("Connect-as failed", exc)

@@ -769,6 +769,82 @@ class TestToolkitSidebar:
         # Both tools should be pruned since no DB configured
         assert state["settings"]["client_settings"]["tools_enabled"] == []
 
+    def test_hides_deep_data_security_for_language_model_only(self, mock_st):
+        """Verify Deep Data Security is hidden when no chat tools are selected."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
+        ]
+        state["settings"]["database_configs"] = [
+            {"alias": "db1", "usable": True, "vector_stores": []},
+        ]
+        client_settings = state["settings"]["client_settings"]
+        client_settings["database"] = {"alias": "db1"}
+        client_settings["tools_enabled"] = []
+        client_settings["deep_data_security"] = {
+            "base_alias": "db1",
+            "enabled": True,
+            "end_user": "SCOUT1",
+        }
+        state["runtime_tools"] = []
+        state["runtime_dds_enabled"] = True
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import toolkit_sidebar
+
+            toolkit_sidebar()
+
+        assert all(call.args[0] != "Deep Data Security" for call in mock_st.sidebar.checkbox.call_args_list)
+
+    def test_auto_configures_single_dds_end_user_for_selected_chat_tool(self, mock_st):
+        """A single DDS end user is ready before the user visits the Tools page."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
+        ]
+        state["settings"]["database_configs"] = [
+            {"alias": "db1", "usable": True, "vector_stores": []},
+        ]
+        client_settings = state["settings"]["client_settings"]
+        client_settings["database"] = {"alias": "db1"}
+        client_settings["tools_enabled"] = ["NL2SQL"]
+        state["runtime_tools"] = ["NL2SQL"]
+        state["runtime_dds_enabled"] = False
+
+        def _update_settings(payload):
+            client_settings["deep_data_security"] = payload["deep_data_security"]
+            return client_settings
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+            patch(f"{MODULE}.is_authenticated", return_value=True, create=True),
+            patch(f"{MODULE}.api_get", return_value=[{"name": "SCOUT1"}], create=True) as mock_get,
+            patch(
+                f"{MODULE}.api_post",
+                return_value={"alias": "DB1::SCOUT1", "base_alias": "db1", "end_user": "SCOUT1"},
+                create=True,
+            ) as mock_post,
+            patch(f"{MODULE}.update_client_settings", side_effect=_update_settings),
+        ):
+            from client.app.core.sidebar import toolkit_sidebar
+
+            toolkit_sidebar()
+
+        mock_get.assert_called_once_with("deepsec/end-users", extra_headers={"client": "test-client"})
+        mock_post.assert_called_once_with(
+            "deepsec/connect-as",
+            json={"end_user": "SCOUT1"},
+            extra_headers={"client": "test-client"},
+            timeout=60,
+        )
+        assert any(call.args[0] == "Deep Data Security" for call in mock_st.sidebar.checkbox.call_args_list)
+
 
 class TestHistorySidebar:
     """Tests for history_sidebar."""

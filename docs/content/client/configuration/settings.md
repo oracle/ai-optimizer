@@ -16,7 +16,22 @@ To view and download the {{% short_app_ref %}} configuration, navigate to the _C
 
 ![Download Settings](../images/settings_download.png)
 
-{{< icon "triangle-exclamation" >}} Settings contain sensitive information such as database passwords and API Keys.  By default, these settings will not be exported and will have to be re-entered after uploading the settings in a new instance of the {{% short_app_ref %}}.  If you have a secure way to store the settings and would like to export the sensitive data, tick the "Include Sensitive Settings" box.
+{{% notice style="warning" title="Shh... Secrets Inside!" icon="triangle-exclamation" %}}
+Settings contain sensitive information such as database passwords and API Keys.  By default, these settings will not be exported and will have to be re-entered after uploading the settings in a new instance of the {{% short_app_ref %}}.  
+
+If you have a secure way to store the settings and would like to export the sensitive data, tick the "Include Sensitive Settings" box.
+{{% /notice %}}
+
+### Factory Reset
+
+To reset the {{% short_app_ref %}} settings back to the delivered "factory" state, you can use the "Factory Reset" button.
+
+Factory Reset performs the following:
+  - Rebuilds model settings from the factory model list, then reapplies environment overrides and discovers Ollama models.
+  - Restores factory prompt configurations and re-registers MCP prompts.
+  - Resets protected client settings to defaults and removes non-protected/ephemeral client sessions.
+  - Preserves infrastructure configuration: database and OCI configurations are not reset.
+  - Persists the reset into the databases.
 
 ## Upload
 

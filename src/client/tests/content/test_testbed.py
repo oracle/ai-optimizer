@@ -648,6 +648,8 @@ class TestEvaluationReport:
     def _call(self, mock_st, **kwargs):
         from client.app.content.testbed import _evaluation_report
 
+        if isinstance(mock_st.columns.return_value, MagicMock):
+            mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
         with patch(f"{MODULE}.st", mock_st):
             fn = getattr(_evaluation_report, "__wrapped__", _evaluation_report)
             fn(**kwargs)
@@ -662,13 +664,18 @@ class TestEvaluationReport:
     def test_renders_with_provided_report(self):
         """Uses provided report dict without calling api_get."""
         mock_st = MagicMock()
+        gauge_columns = [MagicMock(), MagicMock(), MagicMock()]
+        mock_st.columns.return_value = gauge_columns
         with patch(f"{MODULE}.api_get") as mock_get:
             self._call(mock_st, report=SAMPLE_REPORT)
         mock_get.assert_not_called()
         mock_st.subheader.assert_any_call("Evaluation Settings")
-        figure = mock_st.pyplot.call_args.args[0]
+        mock_st.columns.assert_called_once_with([1, 2, 1])
+        gauge_plot = gauge_columns[1].pyplot
+        figure = gauge_plot.call_args.args[0]
         assert figure.axes[0].texts[-1].get_text() == "85%"
-        assert mock_st.pyplot.call_args.kwargs == {"width": "stretch"}
+        assert figure.get_size_inches().tolist() == [5.0, 2.5]
+        assert gauge_plot.call_args.kwargs == {"width": "stretch"}
 
     def test_no_report_shows_error(self):
         """Shows error when neither eid nor report provided."""
@@ -742,7 +749,7 @@ class TestEvaluationReport:
 
         self._call(mock_st, report=report)
 
-        figure = mock_st.pyplot.call_args.args[0]
+        figure = mock_st.columns.return_value[1].pyplot.call_args.args[0]
         topic_frame = next(
             call.args[0]
             for call in mock_st.dataframe.call_args_list

@@ -7,11 +7,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import contextlib
 import logging
 
+import httpx
 import pandas as pd
 import streamlit as st
 from streamlit import session_state as state
 
-from client.app.core.api import api_patch
+from client.app.core.api import api_get, api_patch, api_post
+from client.app.core.auth import is_authenticated
 from client.app.core.helpers import (
     enabled_models_lookup,
     selectbox_index,
@@ -90,6 +92,52 @@ def _on_vs_param_change(field: str, widget_key: str) -> None:
 def _on_dds_change() -> None:
     """Persist the Deep Data Security tool-connection toggle (runtime/session-scoped)."""
     update_client_settings({"deep_data_security": {"enabled": state.runtime_dds_enabled}})
+
+
+def _auto_configure_single_dds_end_user(client_settings: dict, db_alias: str) -> None:
+    """Configure the sole DDS end user for the active database once per session."""
+    dds = client_settings.get("deep_data_security", {})
+    if (
+        not client_settings.get("tools_enabled")
+        or dds.get("base_alias") == db_alias
+        or state.get("_ds_autodefault_alias") == db_alias
+    ):
+        return
+
+    state["_ds_autodefault_alias"] = db_alias
+    if not is_authenticated():
+        return
+
+    try:
+        users = api_get("deepsec/end-users", extra_headers={"client": state.optimizer_client})
+    except httpx.HTTPError as exc:
+        LOGGER.debug("Unable to list Deep Data Security end users: %s", exc)
+        return
+    if len(users) != 1 or not (end_user := users[0].get("name")):
+        return
+
+    try:
+        response = api_post(
+            "deepsec/connect-as",
+            json={"end_user": end_user},
+            extra_headers={"client": state.optimizer_client},
+            timeout=60,
+        )
+    except httpx.HTTPError as exc:
+        LOGGER.debug("Unable to configure Deep Data Security connect-as: %s", exc)
+        return
+
+    enabled = dds.get("enabled", False)
+    update_client_settings(
+        {
+            "deep_data_security": {
+                "enabled": enabled,
+                "end_user": end_user,
+                "alias": response.get("alias"),
+                "base_alias": response.get("base_alias"),
+            }
+        }
+    )
 
 
 #####################################################
@@ -366,11 +414,20 @@ def toolkit_sidebar(show_vs_subtools: bool = True) -> None:
     )
     client_settings["tools_enabled"] = state.runtime_tools
 
+    _auto_configure_single_dds_end_user(client_settings, db_alias)
+    client_settings = state["settings"]["client_settings"]
+
     # Deep Data Security: connect chat tools as the configured end user. Shown only when a
     # connect-as user is configured for the *currently selected* database (Tools → Deep Data
     # Security); switching the owner database hides it until re-designated.
     dds = client_settings.get("deep_data_security", {})
-    if db_config and db_config.get("usable") and dds.get("end_user") and dds.get("base_alias") == db_alias:
+    if (
+        client_settings["tools_enabled"]
+        and db_config
+        and db_config.get("usable")
+        and dds.get("end_user")
+        and dds.get("base_alias") == db_alias
+    ):
         st.sidebar.checkbox(
             "Deep Data Security",
             help=(
