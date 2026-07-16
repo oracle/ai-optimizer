@@ -370,7 +370,13 @@ def toolkit_sidebar(show_vs_subtools: bool = True) -> None:
     # connect-as user is configured for the *currently selected* database (Tools → Deep Data
     # Security); switching the owner database hides it until re-designated.
     dds = client_settings.get("deep_data_security", {})
-    if db_config and db_config.get("usable") and dds.get("end_user") and dds.get("base_alias") == db_alias:
+    if (
+        client_settings["tools_enabled"]
+        and db_config
+        and db_config.get("usable")
+        and dds.get("end_user")
+        and dds.get("base_alias") == db_alias
+    ):
         st.sidebar.checkbox(
             "Deep Data Security",
             help=(

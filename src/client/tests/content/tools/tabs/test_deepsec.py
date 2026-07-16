@@ -230,6 +230,7 @@ class TestConnectAs:
 
         assert mock_post.call_args[0][0] == "deepsec/connect-as"
         assert mock_post.call_args[1]["json"] == {"end_user": "SCOUT1"}
+        assert mock_post.call_args[1]["timeout"] == 60
         # No prior override → enabled carried through as the default False (selecting a user does
         # not auto-enable; the sidebar toggle does). It must always be sent so the field-merge can
         # restore it after a stale-reconnect resets it server-side.

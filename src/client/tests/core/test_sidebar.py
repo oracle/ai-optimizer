@@ -769,6 +769,37 @@ class TestToolkitSidebar:
         # Both tools should be pruned since no DB configured
         assert state["settings"]["client_settings"]["tools_enabled"] == []
 
+    def test_hides_deep_data_security_for_language_model_only(self, mock_st):
+        """Verify Deep Data Security is hidden when no chat tools are selected."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "m1", "type": "ll", "enabled": True, "provider": "p", "status": "available"},
+        ]
+        state["settings"]["database_configs"] = [
+            {"alias": "db1", "usable": True, "vector_stores": []},
+        ]
+        client_settings = state["settings"]["client_settings"]
+        client_settings["database"] = {"alias": "db1"}
+        client_settings["tools_enabled"] = []
+        client_settings["deep_data_security"] = {
+            "base_alias": "db1",
+            "enabled": True,
+            "end_user": "SCOUT1",
+        }
+        state["runtime_tools"] = []
+        state["runtime_dds_enabled"] = True
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{HELPERS}.state", state),
+        ):
+            from client.app.core.sidebar import toolkit_sidebar
+
+            toolkit_sidebar()
+
+        assert all(call.args[0] != "Deep Data Security" for call in mock_st.sidebar.checkbox.call_args_list)
+
 
 class TestHistorySidebar:
     """Tests for history_sidebar."""
