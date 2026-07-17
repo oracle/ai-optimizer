@@ -201,11 +201,11 @@ class TestConnectSqlclDatabase:
         p1, p2 = _patch_mcp_context(session)
 
         with p1, p2:
-            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/qwen3:8b")
+            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/granite4.1:8b")
 
         session.call_tool.assert_awaited_once_with(
             "sqlcl_connect",
-            {"connection_name": "CORE", "model": "ollama/qwen3:8b"},
+            {"connection_name": "CORE", "model": "ollama/granite4.1:8b"},
         )
 
     @pytest.mark.anyio
@@ -221,13 +221,13 @@ class TestConnectSqlclDatabase:
                 self.server_url,
                 self.api_key,
                 "CORE",
-                "ollama/qwen3:8b",
+                "ollama/granite4.1:8b",
                 thread_id="client-1",
             )
 
         session.call_tool.assert_awaited_once_with(
             "sqlcl_connect",
-            {"connection_name": "CORE", "model": "ollama/qwen3:8b", "thread_id": "client-1"},
+            {"connection_name": "CORE", "model": "ollama/granite4.1:8b", "thread_id": "client-1"},
         )
 
     @pytest.mark.anyio
@@ -252,7 +252,7 @@ class TestConnectSqlclDatabase:
                 AsyncMock(return_value=True),
             ) as ensure_patch,
         ):
-            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/qwen3:8b")
+            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/granite4.1:8b")
 
         assert session.call_tool.await_count == 2
         ensure_patch.assert_awaited_once_with("CORE")
@@ -283,18 +283,18 @@ class TestConnectSqlclDatabase:
                 self.server_url,
                 self.api_key,
                 "CORE",
-                "ollama/qwen3:8b",
+                "ollama/granite4.1:8b",
                 thread_id="client-1",
             )
 
         assert session.call_tool.await_args_list == [
             call(
                 "sqlcl_connect",
-                {"connection_name": "CORE", "model": "ollama/qwen3:8b", "thread_id": "client-1"},
+                {"connection_name": "CORE", "model": "ollama/granite4.1:8b", "thread_id": "client-1"},
             ),
             call(
                 "sqlcl_connect",
-                {"connection_name": "CORE", "model": "ollama/qwen3:8b", "thread_id": "client-1"},
+                {"connection_name": "CORE", "model": "ollama/granite4.1:8b", "thread_id": "client-1"},
             ),
         ]
 
@@ -320,7 +320,7 @@ class TestConnectSqlclDatabase:
             ) as ensure_patch,
             pytest.raises(RuntimeError, match="Connection not found: CORE"),
         ):
-            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/qwen3:8b")
+            await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/granite4.1:8b")
 
         session.call_tool.assert_awaited_once()
         ensure_patch.assert_awaited_once_with("CORE")

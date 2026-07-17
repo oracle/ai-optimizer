@@ -159,7 +159,7 @@ class TestAinvokeTextFromSpecReasoning:
         assert mock_factory.call_args.kwargs["reasoning_effort"] is None
 
     @pytest.mark.anyio
-    @pytest.mark.parametrize("model_key", ["openai/gpt-5.4-mini", "ollama_chat/qwen3:8b"])
+    @pytest.mark.parametrize("model_key", ["openai/gpt-5.4-mini", "ollama_chat/granite4.1:8b"])
     @patch("server.app.runtime.langgraph.adapters.litellm.chat_model_from_spec")
     async def test_disable_reasoning_passes_none_when_supported(self, mock_factory, model_key):
         mock_factory.return_value.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))

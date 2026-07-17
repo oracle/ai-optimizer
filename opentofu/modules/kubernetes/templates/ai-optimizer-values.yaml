@@ -105,7 +105,7 @@ ollama:
   models:
     enabled: true
     modelPullList:
-      - qwen3:8b
+      - granite4.1:8b
       - mxbai-embed-large
   resources:
     limits:

@@ -722,7 +722,7 @@ ollama:
     enabled: true
     # -- List of models to automatically pull
     modelPullList:
-      - qwen3:8b
+      - granite4.1:8b
       - mxbai-embed-large
 
   # livenessProbe: defines settings for the liveness probe.

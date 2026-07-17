@@ -28,7 +28,7 @@ This use-case is a synthetic Racing Simulator Championship. You'll play the role
 You'll need:
 
 - A configured {{% short_app_ref %}} from the [Walkthrough]({{% relref "/walkthrough" %}}), or any equivalent install where you have an enabled chat model, an enabled embedding model, and a [database connection]({{% relref "/client/configuration/databases" %}}).
-- A chat model with solid tool use. The demo has been tuned against the on-premises models used in the [Walkthrough]({{% relref "/walkthrough" %}}): [Ollama](https://ollama.com/) `qwen3:8b` with `mxbai-embed-large`.
+- A chat model with solid tool use. The demo has been tuned against the on-premises models used in the [Walkthrough]({{% relref "/walkthrough" %}}): [Ollama](https://ollama.com/) `granite4.1:8b` with `mxbai-embed-large`.
 - An Oracle AI Database connection with rights to create tables and views (the `DB_DEVELOPER_ROLE` granted in the Walkthrough is sufficient).
 - The [SQLcl MCP Server]({{% relref "/client/configuration/mcp/#sqlcl-mcp-server-nl2sql" %}}) configured for **NL2SQL**, pointed at the same database.
 
@@ -93,7 +93,7 @@ See [Prompt Engineering]({{% relref "/client/tools/prompt_eng" %}}) for more on 
 
 Enable the Language and Embedding Models (if not already).  In the {{% short_app_ref %}}, navigate to **Configuration → 🤖 Models**. 
 
-The demo has been tuned against the on-premises models used in the [Walkthrough]({{% relref "/walkthrough" %}}): [Ollama](https://ollama.com/) `qwen3:8b` with `mxbai-embed-large`. Other Language Models may work, especially larger ones, but may require some prompt engineering.
+The demo has been tuned against the on-premises models used in the [Walkthrough]({{% relref "/walkthrough" %}}): [Ollama](https://ollama.com/) `granite4.1:8b` with `mxbai-embed-large`. Other Language Models may work, especially larger ones, but may require some prompt engineering.
 
 See [Model Configuration]({{% relref "/client/configuration/models" %}}) for more on configuring models.
 

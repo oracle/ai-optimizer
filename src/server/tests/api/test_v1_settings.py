@@ -757,7 +757,7 @@ class TestReconcileLlModelTokens:
 
         new_cfg = self._make_model_config(max_input_tokens=40960, max_tokens=16384)
         current = self._make_ll_model(max_tokens=4096)
-        incoming = self._make_ll_model(provider="ollama", id="qwen3:8b")
+        incoming = self._make_ll_model(provider="ollama", id="granite4.1:8b")
         with patch(f"{SETTINGS_MODULE}.find_model", return_value=new_cfg):
             _reconcile_ll_model_tokens(current, incoming)
         assert incoming.max_input_tokens == 40960

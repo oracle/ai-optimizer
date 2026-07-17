@@ -83,7 +83,7 @@ Examples of CPU-friendly model choices include:
 | Model | Parameters | Max Tokens | Use Case |
 |-------|-----------|------------|----------|
 | `llama3.2:1b` | 1B | 2048 | Fast responses, simple Q&A |
-| `qwen3:8b` | 8B | 2048 | Balanced performance/quality |
+| `granite4.1:8b` | 8B | 2048 | Balanced performance/quality |
 | `gemma3:1b` | 1B | 2048 | Lightweight, efficient |
 
 ### Vector Search Optimization
@@ -153,7 +153,7 @@ Click the "Pull" button and the {{% short_app_ref %}} downloads the model from t
 
 ## Quick-start
 
-Example of running qwen3:8b on a Linux host:
+Example of running granite4.1:8b on a Linux host:
 
 1. Install Ollama:
 
@@ -161,10 +161,10 @@ Example of running qwen3:8b on a Linux host:
 sudo curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-1. Pull the qwen3:8b model:
+1. Pull the granite4.1:8b model:
 
 ```shell
-ollama pull qwen3:8b
+ollama pull granite4.1:8b
 ```
 
 1. Start Ollama

@@ -688,7 +688,7 @@ class TestExtractParameterCount:
 
     def test_simple_8b_model(self):
         """extract_parameter_count should extract 8B from model name."""
-        assert extract_parameter_count("qwen3:8b") == 8.0
+        assert extract_parameter_count("granite4.1:8b") == 8.0
 
     def test_uppercase_b(self):
         """extract_parameter_count should handle uppercase B."""
@@ -744,7 +744,7 @@ class TestIsSmallModel:
 
     def test_3b_is_small(self):
         """is_small_model should return True for 4B models."""
-        assert is_small_model("qwen3:8b") is False
+        assert is_small_model("granite4.1:8b") is False
 
     def test_3_8b_is_small(self):
         """is_small_model should return True for 3.8B models."""
