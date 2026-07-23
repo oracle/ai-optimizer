@@ -63,10 +63,9 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 export PATH="$(brew --prefix)/Caskroom/sqlcl/$(brew list --versions --cask sqlcl | awk '{print $2}')/sqlcl/bin:$PATH"
 ```
 
-Open a new terminal, activate the project environment, and verify the installation:
+Open a new terminal and verify the installation:
 
 ```bash
-source .venv/bin/activate
 java -version
 sql -version
 ```

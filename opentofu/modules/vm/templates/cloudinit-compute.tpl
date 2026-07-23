@@ -34,6 +34,11 @@ write_files:
       Environment="TNS_ADMIN=/app/tns_admin"
       Environment="VIRTUAL_ENV=/app/.venv"
       Environment="PATH=/app/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+      Environment="TEMP=/app/tmp"
+      Environment="NUMBA_CACHE_DIR=/app/tmp"
+      Environment="MPLCONFIGDIR=/app/tmp"
+      Environment="TIKTOKEN_CACHE_DIR=/app/tmp"
+      Environment="NLTK_DATA=/app/tmp"
       Restart=on-failure
 
       [Install]
@@ -70,8 +75,9 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/env bash
-      mkdir -p /app
-      chown oracleai:oracleai /app
+      pip3 install --no-cache-dir uv
+      install -d -m 0700 -o oracleai -g oracleai \
+        /app /app/tmp /app/tns_admin /app/runtime/.oci /app/.uv
       if ${install_ollama}; then
         curl -fsSL https://ollama.com/install.sh | sh
         systemctl enable ollama
@@ -102,14 +108,14 @@ write_files:
             | tar -xz -C /tmp/src-archive
           mv /tmp/src-archive/*/src /app/src
           mv /tmp/src-archive/*/pyproject.toml /app/pyproject.toml
+          mv /tmp/src-archive/*/uv.lock /app/uv.lock
+          mv /tmp/src-archive/*/.python-version /app/.python-version
           rm -rf /tmp/src-archive
       fi
       cd /app
-      python3.11 -m venv .venv
-      source .venv/bin/activate
-      pip3.11 install --upgrade pip wheel setuptools uv
-      pip3 install docling==2.108.0 --extra-index-url https://download.pytorch.org/whl/cpu
-      uv pip install -e ".[all]" &
+      export UV_PYTHON_INSTALL_DIR=/app/.uv/python
+      export UV_LINK_MODE=copy
+      uv sync --locked --extra all &
       INSTALL_PID=$!
 
       # Install Models
@@ -146,7 +152,7 @@ write_files:
       chmod 640 /app/src/.env.vm
 
 runcmd:
-  - /tmp/install_packages.sh policycoreutils-python-utils python3.11 jdk-26-headless sqlcl zstd mesa-libGL
+  - /tmp/install_packages.sh policycoreutils-python-utils python3-pip java-21-openjdk-headless sqlcl zstd mesa-libGL
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
   - semanage fcontext -a -t bin_t "/app(/.*)?"

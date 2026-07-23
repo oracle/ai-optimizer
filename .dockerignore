@@ -5,9 +5,11 @@
 ## Ignore everything
 **
 
-## Keep the src directory and pyproject.toml file
+## Keep the src directory and uv files
 !src/
 !pyproject.toml
+!uv.lock
+!.python-version
 
 ## Inside src, ignore specific things
 src/**/Dockerfile*

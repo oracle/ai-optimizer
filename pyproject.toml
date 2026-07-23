@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 name = "ai-optimizer"
 dynamic = ["version"]
 description = "Oracle AI Optimizer and Toolkit"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 license =  "UPL-1.0"
 authors = [
     {name = "Oracle", email = "obaas_ww@oracle.com"}
@@ -28,8 +28,7 @@ dependencies = [
 # - server: server side only
 server = [
     "bokeh==3.9.1",
-    "docling==2.108.0",          # When bumping docling, also update Dockerfiles and opentofu cloudinit-compute.tpl
-    "evaluate==0.4.6",
+    "docling==2.108.0",
     "faiss-cpu==1.14.3",
     "fastmcp==3.4.2",
     "giskard==2.19.1",
@@ -39,9 +38,11 @@ server = [
     "litellm==v1.90.2",
     "llama-index-core==0.14.23",
     "oci~=2.0",
+    "oracleagentmemory>=26.6.0",
     "pyagentspec==26.1.2",
     "pypdf==6.14.2",
-    "umap-learn==0.5.12"
+    "umap-learn==0.5.12",                      
+    "torch", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
 ]
 
 # - client: client side only
@@ -60,7 +61,15 @@ otel = [
     "openinference-instrumentation-langchain==0.1.66"
 ]
 
-# - dev: for testing/development
+# - all: all-in-one installation (server (langgraph) + client)
+all = [
+    "ai-optimizer[server]",
+    "ai-optimizer[client]",
+    "ai-optimizer[otel]",
+]
+
+[dependency-groups]
+# Development-only tooling. Install explicitly with `uv sync --group dev`.
 dev = [
     "bandit",
     "docker",
@@ -75,12 +84,25 @@ dev = [
     "yamllint"
 ]
 
-# - all: all-in-one installation (server (langgraph) + client)
-all = [
-    "ai-optimizer[server]",
-    "ai-optimizer[client]",
-    "ai-optimizer[otel]",
+[tool.uv]
+# Application installs should not include development tooling.
+default-groups = []
+# Ensure packages without source distributions are installable on every supported platform.
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.setuptools]
 # ``src/`` is the package root; the wheel ships its contents at the top
@@ -121,7 +143,7 @@ markers = [
 norecursedirs = ["tmp", "build"]
 
 [tool.pyright]
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 extraPaths = ["src"]
 exclude = [
     "**/.*",
@@ -135,7 +157,7 @@ exclude = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 src = ["src"]
 extend-exclude = ["**/wip/**", "src/client/mcp", "docs/themes/relearn", "docs/public", "docs/static/demoware", "docs/demo"]
 
