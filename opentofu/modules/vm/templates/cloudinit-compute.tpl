@@ -152,7 +152,7 @@ write_files:
       chmod 640 /app/src/.env.vm
 
 runcmd:
-  - /tmp/install_packages.sh policycoreutils-python-utils python3-pip java-21-openjdk-headless sqlcl zstd mesa-libGL
+  - /tmp/install_packages.sh policycoreutils-python-utils python3-pip jdk-26-headless sqlcl zstd mesa-libGL
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
   - semanage fcontext -a -t bin_t "/app(/.*)?"

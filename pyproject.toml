@@ -41,8 +41,9 @@ server = [
     "oracleagentmemory>=26.6.0",
     "pyagentspec==26.1.2",
     "pypdf==6.14.2",
-    "umap-learn==0.5.12",                      
+    "umap-learn==0.5.12",
     "torch", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
+    "evaluate>=0.4.6",
 ]
 
 # - client: client side only
