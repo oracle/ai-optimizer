@@ -12,10 +12,18 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+    - name: Restore uv cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        enable-cache: true
-        cache-dependency-glob: uv.lock
+        path: ~/.cache/uv
+        key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+
+    - name: Install uv
+      shell: bash
+      run: |
+        curl --fail --location --silent --show-error https://astral.sh/uv/install.sh |
+          env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
+        echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
 
     - name: Sync project dependencies
       shell: bash
