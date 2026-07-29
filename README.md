@@ -11,7 +11,7 @@ The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a stream
 
 ## Technology Stack
 
-- **Application:** Python 3.11, Streamlit client, and FastAPI/Uvicorn server.
+- **Application:** Python 3.12, Streamlit client, and FastAPI/Uvicorn server.
 - **AI orchestration:** LangChain, LangGraph, LiteLLM, AgentSpec/pyagentspec, and Model Context Protocol (MCP).
 - **Oracle integration:** Oracle AI Database Vector Search, Oracle Deep Data Security, SQLcl MCP, OCI, OCI GenAI, and OCI Object Storage.
 - **RAG and evaluation:** Docling, OracleDB/LangChain vector integrations, Giskard testbed workflows, and FAISS-backed local vector workflows.
@@ -37,7 +37,7 @@ For more information, including more details on **Setup and Configuration** plea
 ### Prerequisites
 
 - Oracle AI Database incl. [Oracle AI Database Free](https://www.oracle.com/database/free/)
-- Python 3.11 (for running Bare-Metal)
+- [uv](https://docs.astral.sh/uv/) (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
 - Access to an Embedding and Chat Model:
   - API Keys for Third-Party Models
@@ -49,18 +49,10 @@ For more information, including more details on **Setup and Configuration** plea
 
 To run the application on bare-metal; download the [source](https://github.com/oracle/ai-optimizer):
 
-1. Create and activate a Python Virtual Environment:
+1. Create the project environment and install the application:
 
    ```bash
-   python3.11 -m venv .venv --copies
-   source .venv/bin/activate
-   pip3.11 install --upgrade pip wheel setuptools uv
-   ```
-
-1. Install the Python modules:
-
-   ```bash
-   uv pip install -e ".[all]"
+   uv sync --all-extras
    ```
 
 1. Configure Settings:
@@ -75,7 +67,7 @@ To run the application on bare-metal; download the [source](https://github.com/o
 1. Start Streamlit:
 
    ```bash
-   src/entrypoint.py client
+   uv run python src/entrypoint.py client
    ```
 
 1. Navigate to `http://localhost:8501`.

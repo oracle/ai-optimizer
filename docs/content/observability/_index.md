@@ -48,7 +48,7 @@ The Streamlit **Client** is not instrumented; it is a thin REST client whose wor
 The OpenTelemetry packages live in an optional dependency group. They are not installed by default.
 
 ```bash
-pip install -e ".[server,otel]"
+uv sync --extra server --extra otel
 ```
 
 For container builds, include `otel` in the extras passed to your install step.
@@ -224,7 +224,7 @@ If `enabled: true` is set without an endpoint (and without `tracesExporter: cons
 
 | Symptom | Likely Cause | Remedy |
 |---|---|---|
-| No `OTel telemetry initialized` log line at startup | The `[otel]` extra is not installed, OR no exporter is configured | Re-run `pip install -e ".[server,otel]"`; set `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_TRACES_EXPORTER=console` |
+| No `OTel telemetry initialized` log line at startup | The `[otel]` extra is not installed, OR no exporter is configured | Re-run `uv sync --extra server --extra otel`; set `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_TRACES_EXPORTER=console` |
 | Log line appears, but no traces in backend | gRPC TLS handshake failing against a plaintext collector | Set `OTEL_EXPORTER_OTLP_INSECURE=true`, or switch to `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` with a `http://` URL |
 | `OTLP grpc exporter requested but not installed` warning | The `opentelemetry-exporter-otlp` package is missing or partially installed | Reinstall with the `[otel]` extra |
 | Operator-set `OTEL_RESOURCE_ATTRIBUTES` value not visible on spans | Confused with a comma-delimited list — use commas, not spaces or semicolons | `OTEL_RESOURCE_ATTRIBUTES=k1=v1,k2=v2` |

@@ -8,34 +8,30 @@
 ##################################################
 FROM container-registry.oracle.com/os/oraclelinux:9-slim AS base
 
-RUN microdnf --nodocs -y install python3.11 && \
-    microdnf clean all
-
 ##################################################
 # Stage 2: Builder — venv + Python dependencies
 ##################################################
 FROM base AS builder
-ENV VIRTUAL_ENV=/app/.venv
 
-RUN microdnf --nodocs -y install python3.11-pip && \
-    python3.11 -m venv --symlinks --upgrade-deps $VIRTUAL_ENV && \
-    microdnf -y remove python3.11-pip && microdnf clean all
+ENV VIRTUAL_ENV=/app/.venv \
+    UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_LINK_MODE=copy
 
-COPY pyproject.toml /app/pyproject.toml
+# pip is only the bootstrap mechanism for uv.
+RUN microdnf --nodocs -y install python3-pip && \
+    pip3 install --no-cache-dir uv && \
+    microdnf remove -y python3-pip && \
+    microdnf clean all
 
-# Generate requirements and install deps only (cached layer)
-# Avoid re-installing packages when only the source changes
-RUN ${VIRTUAL_ENV}/bin/pip install --no-cache-dir uv && \
-    ${VIRTUAL_ENV}/bin/uv pip compile /app/pyproject.toml --extra client -o /tmp/requirements.txt && \
-    ${VIRTUAL_ENV}/bin/uv pip install -r /tmp/requirements.txt
+# Cache third-party dependencies independently of source changes.
+COPY pyproject.toml uv.lock .python-version /app/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv --project /app sync --locked --no-install-project --extra client
 
-# Copy source and install project (deps already installed, so this is fast)
+# Install this project after its source is available.
 COPY src /app/src
-RUN ${VIRTUAL_ENV}/bin/uv pip install "/app[client]" && \
-    # Remove build-only tools from venv (keep setuptools for pkg_resources)
-    ${VIRTUAL_ENV}/bin/pip uninstall -y pip uv && \
-    rm -rf ${VIRTUAL_ENV}/lib/python3.11/site-packages/pip* \
-           ${VIRTUAL_ENV}/lib/python3.11/site-packages/uv-*.dist-info
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv --project /app sync --locked --extra client
 
 ##################################################
 # Stage 3: Runtime
@@ -48,14 +44,15 @@ ENV RUNUSER=oracleai \
     MPLCONFIGDIR=/app/tmp \
     AIO_CLIENT_ADDRESS=0.0.0.0
 
-# Runtime: runuser and app dirs (python3.11 already in base)
+# Runtime: runuser and app dirs
 RUN groupadd -g 10001 $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
     for dir in $TEMP; do \
         install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
     done
 
-# Copy clean venv from builder (no pip/uv/wheel)
+# The venv's interpreter links to uv-managed Python, so copy both.
+COPY --from=builder /opt/uv/python /opt/uv/python
 COPY --from=builder --chown=$RUNUSER:$RUNUSER $VIRTUAL_ENV $VIRTUAL_ENV
 
 # Single source copy into the final image
