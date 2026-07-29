@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 name = "ai-optimizer"
 dynamic = ["version"]
 description = "Oracle AI Optimizer and Toolkit"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.15"
 license =  "UPL-1.0"
 authors = [
     {name = "Oracle", email = "obaas_ww@oracle.com"}
@@ -39,7 +39,6 @@ server = [
     "litellm==v1.90.2",
     "llama-index-core==0.14.23",
     "oci~=2.0",
-    "oracleagentmemory>=26.6.0",
     "pyagentspec==26.1.2",
     "pypdf==6.14.2",
     "umap-learn==0.5.12",
@@ -93,7 +92,6 @@ default-groups = []
 required-environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
     "sys_platform == 'linux' and platform_machine == 'aarch64'",
-    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
     "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
