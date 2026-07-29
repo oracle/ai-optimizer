@@ -86,6 +86,8 @@ Available deployment methods:
 
 ### Bare-Metal Installation
 
+The server and all-in-one installations support Python 3.11 and 3.12 on Linux (x86_64 and ARM64), Windows (AMD64), and macOS on Apple silicon.
+
 To run the application on bare-metal, download the latest release:
 {{% latest_release %}}
 

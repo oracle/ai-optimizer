@@ -99,8 +99,9 @@ jobs:
       fail-fast: false
       matrix:
         variant: ${{ fromJSON(needs.detect-changes.outputs.python-variants) }}
+        python-version: ["3.11", "3.12"]
 
-    name: check-${{ matrix.variant }}
+    name: check-${{ matrix.variant }}-python-${{ matrix.python-version }}
 
     steps:
       - name: Checkout Code
@@ -109,6 +110,7 @@ jobs:
       - name: Setup Python + uv
         uses: ./.github/actions/setup-python-uv
         with:
+          python-version: ${{ matrix.python-version }}
           extras: ${{ matrix.variant == 'server' && 'server,otel' || matrix.variant }}
 
       - name: Run yamllint
