@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title>Build with Familiar Tools</title>
+  <desc>Minimal illustration showing open source tools connected to Oracle AI Database.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7f9fc"/>
+      <stop offset="100%" stop-color="#eef3f9"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8fb8ff"/>
+      <stop offset="100%" stop-color="#5f8cff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#1f2a44" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="800" rx="48" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="390" y="210" width="420" height="260" rx="34" fill="#ffffff"/>
+    <rect x="425" y="245" width="350" height="190" rx="24" fill="#f5f8fc" stroke="#dbe5f2" stroke-width="2"/>
+    <rect x="460" y="282" width="280" height="20" rx="10" fill="#dbe5f2"/>
+    <rect x="460" y="322" width="200" height="20" rx="10" fill="#dbe5f2"/>
+    <rect x="460" y="362" width="240" height="20" rx="10" fill="#dbe5f2"/>
+  </g>
+
+  <g>
+    <rect x="150" y="200" width="180" height="92" rx="24" fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+    <rect x="150" y="324" width="180" height="92" rx="24" fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+    <rect x="150" y="448" width="180" height="92" rx="24" fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+
+    <rect x="870" y="200" width="180" height="92" rx="24" fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+    <rect x="870" y="324" width="180" height="92" rx="24" fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+    <rect x="870" y="448" width="180" height="92" rx="24" fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+
+    <circle cx="240" cy="246" r="18" fill="url(#accent)"/>
+    <circle cx="240" cy="370" r="18" fill="url(#accent)"/>
+    <circle cx="240" cy="494" r="18" fill="url(#accent)"/>
+    <circle cx="960" cy="246" r="18" fill="url(#accent)"/>
+    <circle cx="960" cy="370" r="18" fill="url(#accent)"/>
+    <circle cx="960" cy="494" r="18" fill="url(#accent)"/>
+
+    <path d="M330 246H390" stroke="#8ca3bf" stroke-width="8" stroke-linecap="round"/>
+    <path d="M330 370H390" stroke="#8ca3bf" stroke-width="8" stroke-linecap="round"/>
+    <path d="M330 494H390" stroke="#8ca3bf" stroke-width="8" stroke-linecap="round"/>
+    <path d="M810 246H870" stroke="#8ca3bf" stroke-width="8" stroke-linecap="round"/>
+    <path d="M810 370H870" stroke="#8ca3bf" stroke-width="8" stroke-linecap="round"/>
+    <path d="M810 494H870" stroke="#8ca3bf" stroke-width="8" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(472 520)">
+    <rect x="0" y="0" width="256" height="62" rx="18" fill="#1f2a44"/>
+    <text x="128" y="39" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="24" fill="#ffffff">Oracle AI Database</text>
+  </g>
+
+  <g transform="translate(176 222)">
+    <path d="M26 0L31 16L48 16L34 26L39 42L26 32L13 42L18 26L4 16L21 16Z" fill="#5f8cff"/>
+    <path d="M18 12H62" stroke="#1f2a44" stroke-width="6" stroke-linecap="round"/>
+    <path d="M18 30H54" stroke="#1f2a44" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(896 222)">
+    <circle cx="28" cy="20" r="18" fill="#5f8cff"/>
+    <rect x="58" y="10" width="46" height="20" rx="10" fill="#1f2a44"/>
+    <rect x="58" y="34" width="74" height="10" rx="5" fill="#8ca3bf"/>
+  </g>
+
+  <g transform="translate(176 470)">
+    <circle cx="28" cy="20" r="18" fill="#5f8cff"/>
+    <rect x="58" y="10" width="66" height="20" rx="10" fill="#1f2a44"/>
+    <rect x="58" y="34" width="54" height="10" rx="5" fill="#8ca3bf"/>
+  </g>
+</svg>

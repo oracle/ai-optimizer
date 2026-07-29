@@ -1,0 +1,45 @@
+---
+title: Home
+hide_title: true
+sidebar_position: 1
+---
+
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**).
+
+By integrating [*Oracle AI Database*](https://www.oracle.com/database/) [Vector Search](https://www.oracle.com/database/ai-vector-search/) and [SQLcl MCP](https://www.oracle.com/database/sqldeveloper/technologies/sqlcl/) with familiar Open Source Software (**OSS**), the **AI Optimizer** enables users to enhance existing Language Models through Retrieval Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**).
+
+This method significantly improves the accuracy of AI models, helping to avoid common issues such as knowledge cut-off and hallucinations.
+
+<div className="home-integrations">
+  <div className="home-integrations__image">
+    ![AI Optimizer Integrations](/img/integrations.png)
+  </div>
+  <div className="home-integrations__list">
+    <strong className="home-integrations__heading">
+      Familiar OSS components<sup>*</sup>
+    </strong>
+    <ul>
+      <li><a href="https://github.com/fastapi/fastapi">FastAPI</a> (REST API)</li>
+      <li><a href="https://github.com/jlowin/fastmcp">FastMCP</a> (tools)</li>
+      <li><a href="https://github.com/langchain-ai/langgraph">LangGraph</a> + <a href="https://github.com/oracle/agent-spec">AgentSpec</a> (orchestration)</li>
+      <li><a href="https://github.com/docling-project/docling">Docling</a> (parsing)</li>
+      <li><a href="https://github.com/open-telemetry/opentelemetry-python">OpenTelemetry</a> (observability)</li>
+      <li><a href="https://github.com/BerriAI/litellm">LiteLLM</a> (models)</li>
+      <li><a href="https://github.com/Giskard-AI/giskard">Giskard</a> (evaluation)</li>
+    </ul>
+  </div>
+</div>
+<div className="home-integrations__note">
+   * Project names and logos are shown for identification purposes only. Unless expressly stated, their use does not imply affiliation with, sponsorship by, or endorsement by Oracle or the respective project owners.
+</div>
+
+## Features
+
+The **AI Optimizer** brings together the capabilities you need to build, test, and refine GenAI solutions on the **Oracle AI Database**:
+
+- [Configuring **Embedding** and **Language** Models](./client/configuration/models)
+- [Experimenting with **Language Model** Parameters](./client/chatbot)
+- [Splitting and **Embedding** Documentation](./client/tools/split_embed)
+- [Modifying System **Prompts** (Prompt Engineering)](./client/tools/prompt_eng)
+- [Enforcing **Deep Data Security**](./client/tools/deepsec)
+- [**Testbed** for auto-generated or existing Q&A datasets](./client/testbed)

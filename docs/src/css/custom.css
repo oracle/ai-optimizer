@@ -1,0 +1,271 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+@font-face {
+  font-family: 'MontserratAlt1-Light';
+  src: url('/fonts/MontserratAlt1-Light.woff2') format('woff2'),
+    url('/fonts/MontserratAlt1-Light.woff') format('woff');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 300;
+}
+
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-color-primary: #c74634;
+  --ifm-color-primary-dark: #b13f2f;
+  --ifm-color-primary-darker: #a63b2c;
+  --ifm-color-primary-darkest: #893125;
+  --ifm-color-primary-light: #cf5c4c;
+  --ifm-color-primary-lighter: #d66d60;
+  --ifm-color-primary-lightest: #e29b93;
+  --ifm-code-font-size: 95%;
+  --ifm-heading-font-family: 'MontserratAlt1-Light', sans-serif;
+  --ifm-heading-font-weight: 300;
+  --ifm-link-color: #c74634;
+  --ifm-link-hover-color: #a33728;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+.footer__github-buttons {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-bottom: 0.25rem;
+}
+
+.navbar__version-dropdown {
+  display: none;
+}
+
+html.plugin-docs .navbar__version-dropdown {
+  display: block;
+}
+
+.navbar__github-link {
+  align-items: center;
+  display: inline-flex;
+}
+
+.navbar__github-link svg {
+  fill: currentColor;
+  height: 1.25rem;
+  width: 1.25rem;
+}
+
+.sr-only {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.footer.footer--dark {
+  background-color: #c74634;
+  padding: 0.4rem 0;
+}
+
+.navbar__title {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  font-family: 'MontserratAlt1-Light', sans-serif;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.navbar__title-powered-by {
+  align-items: center;
+  display: flex;
+  font-size: 0.65em;
+  font-style: italic;
+  gap: 0.25em;
+  margin-top: 0.25rem;
+}
+
+.navbar__title-powered-by img {
+  height: 0.85em;
+  width: auto;
+}
+
+.navbar__brand:hover {
+  color: var(--ifm-navbar-link-color);
+  text-decoration: none;
+}
+
+.theme-doc-markdown > header > h1 {
+  text-align: center;
+}
+
+.doc-sidebar-item--visited > .menu__link::after {
+  color: var(--ifm-link-color);
+  content: '✓';
+  font-weight: var(--ifm-font-weight-bold);
+  margin-left: auto;
+}
+
+.doc-sidebar-history {
+  padding: 0.5rem;
+}
+
+.doc-sidebar-history__clear {
+  color: var(--ifm-link-color);
+  font-size: 0.8rem;
+  width: 100%;
+}
+
+.doc-sidebar-history__clear:hover:not(:disabled) {
+  color: var(--ifm-link-hover-color);
+  text-decoration: underline;
+}
+
+.doc-sidebar-history__clear:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.home-integrations {
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(0, 420px) max-content;
+  justify-content: center;
+  gap: 2rem;
+  margin: 1.5rem 0;
+}
+
+.home-integrations__image {
+  min-width: 0;
+}
+
+.home-integrations__image img {
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.home-integrations__list {
+  max-width: max-content;
+}
+
+.home-integrations__heading {
+  display: block;
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.home-integrations__list ul {
+  margin: 0;
+}
+
+.home-integrations__list li {
+  margin-bottom: 0.75rem;
+}
+
+.home-integrations__list li:last-child {
+  margin-bottom: 0;
+}
+
+.home-integrations__note {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin: 1rem 0 0;
+  opacity: 0.75;
+}
+
+.doc-feedback {
+  border-top: 1px solid var(--ifm-toc-border-color);
+  font-size: 0.8rem;
+  font-family: 'MontserratAlt1-Light', sans-serif;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  text-align: center;
+}
+
+.doc-feedback h2 {
+  font-size: 1.85em;
+}
+
+.pagination-nav {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: space-between;
+}
+
+.pagination-nav__link {
+  /* border: 0; */
+  height: auto;
+  padding: 1rem;
+}
+
+.pagination-nav__link--next {
+  margin-left: auto;
+}
+
+.pagination-nav__sublabel,
+.pagination-nav__label {
+  display: inline;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.pagination-nav__sublabel {
+  color: inherit;
+  margin: 0;
+}
+
+.pagination-nav__sublabel::after {
+  content: ': ';
+}
+
+.pagination-nav__link--prev .pagination-nav__sublabel::before {
+  content: '← ';
+}
+
+.pagination-nav__label::before,
+.pagination-nav__label::after {
+  content: none;
+}
+
+.pagination-nav__link--next .pagination-nav__label::after {
+  content: ' →';
+}
+
+@media (max-width: 768px) {
+  .home-integrations {
+    align-items: flex-start;
+    grid-template-columns: 1fr;
+    justify-content: start;
+  }
+
+  .pagination-nav {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pagination-nav__link--next {
+    margin-left: 0;
+  }
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: #ff6955;
+  --ifm-color-primary-dark: #f15f4d;
+  --ifm-color-primary-darker: #e85a48;
+  --ifm-color-primary-darkest: #c64c3d;
+  --ifm-color-primary-light: #ff7d6c;
+  --ifm-color-primary-lighter: #ff8e7f;
+  --ifm-color-primary-lightest: #ffb5aa;
+  --ifm-link-color: #ff6955;
+  --ifm-link-hover-color: #ff8676;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
