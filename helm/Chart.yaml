@@ -33,6 +33,6 @@ annotations:
 # SubCharts
 dependencies:
   - name: signoz
-    version: "~0.122.0"
+    version: "~0.134.0"
     repository: https://charts.signoz.io
     condition: signoz.enabled
