@@ -20,7 +20,7 @@ locals {
     Local Terraform cannot reach the K8s API through the current NSG rules.
 
     Solutions:
-      1. Set api_endpoint_allowed_cidrs to your source CIDR, typically your public IP as /32
+      1. Set k8s_api_endpoint_allowed_cidrs to your source CIDR, typically your public IP as /32
       2. Set run_cfgmgt = false and manually apply Helm from a bastion host with VCN access
       3. Use Oracle Resource Manager (ORM) for deployment (has private endpoint access)
 

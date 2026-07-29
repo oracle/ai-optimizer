@@ -126,4 +126,4 @@ runcmd:
   - /tmp/install_packages.sh policycoreutils-python-utils python39-oci-cli jdk-26-headless sqlcl
   - su - oracleai -c '/tmp/db_setup.sh'
   - su - oracleai -c '/tmp/db_priv_sql.sh'
-  - rm /tmp/db_setup.sh /tmp/db_priv_sql.sh /tmp/install_packages.sh
+  - rm /tmp/db_setup.sh /tmp/db_priv_sql.sh

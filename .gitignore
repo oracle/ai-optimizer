@@ -9,7 +9,6 @@
 **/tmp/**
 **/temp/**
 **/etc/*.json
-**/uv.lock
 coverage-*.xml
 test-results-*.xml
 

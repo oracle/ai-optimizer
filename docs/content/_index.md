@@ -10,7 +10,7 @@ keywords = 'oracle optimizer toolkit microservices development genai rag'
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-spell-checker:ignore streamlit genai relref venv giskard deepsec docling
+spell-checker:ignore streamlit genai relref giskard deepsec docling
 -->
 
 The {{% full_app_ref %}} provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**).
@@ -65,7 +65,7 @@ The [Walkthrough]({{% relref "/walkthrough" %}}) is a great way to familiarize y
 
 ## Prerequisites
 
-- Python 3.11 (for running Bare-Metal)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for running Bare-Metal)
 - Container Runtime e.g. docker/podman (for running in a Container)
 - Access to a Chat Model, and an Embedding Model for RAG:
   - API Keys for Third-Party Models
@@ -98,19 +98,10 @@ To run the application on bare-metal, download the latest release:
    cd ai-optimizer
    ```
 
-1. Create and activate a Python Virtual Environment:
+1. Create the project environment and install the application:
 
    ```bash
-   cd ai-optimizer
-   python3.11 -m venv .venv
-   source .venv/bin/activate
-   pip3.11 install --upgrade pip wheel uv
-   ```
-
-1. Install the Python modules:
-
-   ```bash
-   uv pip install -e ".[all]"
+   uv sync --all-extras
    ```
 
 1. _(Optional)_ Create an [environment file]({{% relref "/configuration" %}}) to pre-configure the application:
@@ -124,7 +115,7 @@ To run the application on bare-metal, download the latest release:
 1. Start the application:
 
    ```bash
-   python src/entrypoint.py client
+   uv run python src/entrypoint.py client
    ```
 
 1. Navigate to `http://localhost:8501`.

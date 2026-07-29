@@ -840,6 +840,11 @@ class EmbedJobManager:
         # (``_tasks_lock`` only guards multi-step iteration elsewhere).
         task = asyncio.create_task(self._run(handle, coro_factory))
         self._tasks[job_id] = task
+        # A task cancelled before its first event-loop turn never enters
+        # ``_run`` and therefore cannot reach its ``finally`` cleanup.
+        # The callback closes that registration path as well as the normal
+        # completion path; the pop is intentionally idempotent.
+        task.add_done_callback(lambda _task: self._tasks.pop(job_id, None))
         return JobSubmission(job_id=job_id, status=row.status, task=task)
 
     async def _run(
@@ -932,8 +937,11 @@ class EmbedJobManager:
                     lambda: _store_set_result(handle.job_id, result),
                 )
         finally:
-            async with self._tasks_lock:
-                self._tasks.pop(handle.job_id, None)
+            # A single dict mutation is atomic in single-threaded asyncio.
+            # Avoid awaiting the lock during cancellation cleanup: a second
+            # cancellation while waiting for it would otherwise leave the
+            # completed task registered indefinitely.
+            self._tasks.pop(handle.job_id, None)
 
     def discard_local_task(self, job_id: str) -> None:
         """Drop the per-pod task entry for *job_id* if present.

@@ -123,6 +123,8 @@ spec:
                   | tar -xz -C /tmp/src-archive
                 mv /tmp/src-archive/*/src /workspace/src
                 mv /tmp/src-archive/*/pyproject.toml /workspace/pyproject.toml
+                mv /tmp/src-archive/*/uv.lock /workspace/uv.lock
+                mv /tmp/src-archive/*/.python-version /workspace/.python-version
                 rm -rf /tmp/src-archive
               fi
           securityContext:
