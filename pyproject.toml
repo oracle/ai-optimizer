@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 name = "ai-optimizer"
 dynamic = ["version"]
 description = "Oracle AI Optimizer and Toolkit"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.11,<3.13"
 license =  "UPL-1.0"
 authors = [
     {name = "Oracle", email = "obaas_ww@oracle.com"}

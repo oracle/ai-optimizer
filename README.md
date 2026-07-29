@@ -11,7 +11,7 @@ The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a stream
 
 ## Technology Stack
 
-- **Application:** Python 3.11 through 3.14, Streamlit client, and FastAPI/Uvicorn server.
+- **Application:** Python 3.11 or 3.12, Streamlit client, and FastAPI/Uvicorn server.
 - **AI orchestration:** LangChain, LangGraph, LiteLLM, AgentSpec/pyagentspec, and Model Context Protocol (MCP).
 - **Oracle integration:** Oracle AI Database Vector Search, Oracle Deep Data Security, SQLcl MCP, OCI, OCI GenAI, and OCI Object Storage.
 - **RAG and evaluation:** Docling, OracleDB/LangChain vector integrations, Giskard testbed workflows, and FAISS-backed local vector workflows.
