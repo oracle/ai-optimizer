@@ -1,35 +1,50 @@
-# Website
+# AI Optimizer Documentation
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+This site is built with [Docusaurus](https://docusaurus.io/). Documentation source files are in `content/`.
 
 ## Local Development
+
+From this directory, run:
 
 ```bash
 npm run start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+The development server reloads when documentation or site assets change.
 
-## Build
+## Documentation Images
 
-```bash
-npm run build
+Organize images by ownership rather than placing every image in `static/img`.
+
+- Use `static/img/` for site-wide branding and user-interface assets, such as the logo, favicon, and social card.
+- Use a section's `assets/` directory for images owned by that section.
+- Use `content/assets/` only for documentation images shared by unrelated sections.
+
+For example:
+
+```text
+content/
+  client/
+    chatbot.mdx
+    assets/
+      chatbot/
+        history-and-context.png
+  advanced/
+    iac.md
+    assets/
+      iac/
+        architecture.png
+  assets/
+    architecture/
+      shared-diagram.png
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+Reference section-owned images with a relative Markdown path:
 
-## Deployment
-
-Using SSH:
-
-```bash
-USE_SSH=true npm run deploy
+```md
+![History and context settings](./assets/chatbot/history-and-context.png)
 ```
 
-Not using SSH:
+Use lowercase, hyphenated, descriptive filenames. Provide meaningful alternative text for each image, and avoid page-number or otherwise opaque names.
 
-```bash
-GIT_USER=<Your GitHub username> npm run deploy
-```
-
-If you are using GitHub Pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+See the [Docusaurus asset documentation](https://docusaurus.io/docs/markdown-features/assets) for additional image and asset options.

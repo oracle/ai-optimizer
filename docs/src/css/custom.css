@@ -30,13 +30,13 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
-.footer__github-buttons {
+.doc-sidebar-github-buttons {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: center;
-  margin-bottom: 0.25rem;
+  padding: 0 0.5rem 0.5rem;
 }
 
 .navbar__version-dropdown {

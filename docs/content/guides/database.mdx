@@ -1,0 +1,111 @@
+---
+title: Oracle AI Database
+sidebar_position: 5
+---
+
+The [**Oracle AI Database**](https://www.oracle.com/database/) sits at the core of the **AI Optimizer**. It is used for application persistence (settings, test sets, evaluations), storing embeddings for **Vector Search** and querying structured data via **NL2SQL**.
+
+
+
+
+## Using a Wallet/TNS_ADMIN Directory
+
+For mTLS database connectivity, or to use a TNS alias instead of a full connect string, use the contents of a `TNS_ADMIN` directory.
+
+:::info[Great things come from unzipped files]
+
+If using an ADB-S wallet, unzip its contents into the `TNS_ADMIN` directory. The `.zip` file is not recognized.
+
+:::
+
+### Bare-Metal
+
+For bare-metal installations, set the `TNS_ADMIN` environment variable to the location of your unzipped wallet files before starting the **AI Optimizer**.
+
+### Container
+
+When starting the container, mount the `TNS_ADMIN` directory at `/app/tns_admin`.
+
+For example:
+
+```bash
+podman run -v $TNS_ADMIN:/app/tns_admin -p 8501:8501 -it --rm localhost/ai-optimizer-aio:latest
+```
+
+## Database User
+
+For both **RAG** and **NL2SQL**, the **AI Optimizer** needs to authenticate to an Oracle AI Database. AI agents use this user to retrieve data, so carefully consider the access granted to it. At a minimum, use a non-privileged user with a non-`SYSTEM` tablespace.
+
+Use the following as an example of creating a least-privileged user. Change the value of `c_user_password`:
+
+```sql
+DECLARE
+    c_user_name     CONSTANT VARCHAR2(30) := 'DEMO';
+    c_user_password dba_users.password%TYPE := 'MYSUPERSECRET';
+    v_default_perm  database_properties.property_value%TYPE;
+    v_default_temp  database_properties.property_value%TYPE;
+    v_sql           VARCHAR2(500);
+BEGIN
+    SELECT property_value
+    INTO v_default_perm
+    FROM database_properties
+    WHERE property_name = 'DEFAULT_PERMANENT_TABLESPACE';
+
+    SELECT property_value
+    INTO v_default_temp
+    FROM database_properties
+    WHERE property_name = 'DEFAULT_TEMP_TABLESPACE';
+
+    v_sql := 'CREATE USER ' || DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) ||
+            ' IDENTIFIED BY "' || c_user_password || '" ' ||
+            'DEFAULT TABLESPACE ' || v_default_perm || ' ' ||
+            'TEMPORARY TABLESPACE ' || v_default_temp;
+    EXECUTE IMMEDIATE v_sql;
+
+    EXECUTE IMMEDIATE 'GRANT DB_DEVELOPER_ROLE TO ' ||
+        DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE);
+    EXECUTE IMMEDIATE 'ALTER USER ' ||
+        DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) || ' DEFAULT ROLE ALL';
+    EXECUTE IMMEDIATE 'ALTER USER ' ||
+        DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) || ' QUOTA UNLIMITED ON DATA';
+END;
+/
+```
+
+:::tip[One schema fits none...]
+
+Creating multiple users in the same database allows developers to separate their experiments by changing the Database User.
+
+:::
+
+## Deep Data Security Privileges
+
+To use the Deep Data Security tool, the database user needs the additional privileges below. They are optional: when they are absent—or when the database does not support Deep Data Security—the tool is automatically disabled in the GUI.
+
+```sql
+GRANT CREATE DATA ROLE TO "DEMO";
+GRANT DROP DATA ROLE TO "DEMO";
+GRANT CREATE END USER TO "DEMO";
+GRANT DROP END USER TO "DEMO";
+GRANT CREATE DATA GRANT TO "DEMO";
+GRANT CREATE END USER CONTEXT TO "DEMO";
+GRANT CREATE END USER SECURITY CONTEXT TO "DEMO";
+GRANT ADMINISTER ANY DATA GRANT TO "DEMO";
+GRANT GRANT ANY DATA ROLE TO "DEMO";
+-- Read access so the tool can list data roles and end users
+GRANT SELECT ON DBA_DATA_ROLES TO "DEMO";
+GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "DEMO";
+GRANT SELECT ON DBA_END_USERS TO "DEMO";
+```
+
+To let **Vector Search** and **NL2SQL** connect *as* a Deep Data Security end user (the **Connect tools as** control), the end user must be able to log in. An end user cannot be granted `CREATE SESSION` directly; the privilege is carried by a standard database role that flows to the end user through a data role. As a privileged user (for example, `ADMIN` or `SYSTEM`), create that role once and let `"DEMO"` grant it:
+
+```sql
+-- Privileged user: one standard role that carries CREATE SESSION
+CREATE ROLE AIO_DDS_ROLE;
+GRANT CREATE SESSION TO AIO_DDS_ROLE;
+-- Let the database user grant AIO_DDS_ROLE to data roles it creates and assign data roles
+GRANT AIO_DDS_ROLE TO "DEMO" WITH ADMIN OPTION;
+```
+
+The tool grants `AIO_DDS_ROLE` to each locally managed data role it creates, so any end user assigned that data role can be connected as.

@@ -1,10 +1,11 @@
 ---
 title: Quick Start
-sidebar_position: 1
+sidebar_position: 5
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import LocalContainer from './_assets/partials/local-container.mdx';
 
 The **AI Optimizer** can be installed on a developer's desktop, an on-premises data center, or a cloud environment. It can be run either on bare-metal, within a container, or in a Kubernetes cluster using a Helm chart.
 
@@ -50,7 +51,7 @@ Available deployment options:
 
 The server and all-in-one installations support Python 3.11 and 3.12.
 
-To run the application on bare-metal, download the latest release: [TAR.GZ archive](https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz)
+To run the **AI Optimizer** on bare-metal, download the latest release: [TAR.GZ archive](https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz)
 
 1. Extract the release in a new directory. For example:
 
@@ -88,58 +89,16 @@ To run the application on bare-metal, download the latest release: [TAR.GZ archi
 ---
 ### Container Installation
 
-:::tip[Same... but different!]
 
-The commands in this section work in a macOS/Linux shell or PowerShell. The documentation will reference `podman` commands. If applicable to your environment, `podman` can be substituted with `docker`.
 
-If you are using `docker`, consider aliasing the `podman` command for convenience:
+To run the **AI Optimizer** in a container:
 
-<Tabs>
-<TabItem value="macos-linux" label="macOS or Linux">
+<LocalContainer />
 
-```bash
-alias podman=docker
-```
-
-</TabItem>
-<TabItem value="powershell" label="PowerShell">
-
-```powershell
-Set-Alias podman docker
-```
-
-</TabItem>
-</Tabs>
-
-:::
-
-To run the application in a container, download the latest release: [TAR.GZ archive](https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz)
-
-1. Extract the release in a new directory.  For example:
+3. Start the Container:
 
    ```bash
-   mkdir ai-optimizer
-   tar zxf ai-optimizer-src.tar.gz -C ai-optimizer
-
-   cd ai-optimizer
-   ```
-
-1. Build the *ai-optimizer-aio* image.
-
-    :::note
-
-    macOS Silicon users may need to specify `--arch amd64`
-
-    :::
-
-   ```bash
-   podman build -f src/Dockerfile -t ai-optimizer-aio .
-   ```
-
-1. Start the Container:
-
-   ```bash
-   podman run -p 8501:8501 -it --rm ai-optimizer-aio
+   podman run -p 8501:8501 -it --rm localhost/ai-optimizer-aio:latest
    ```
 
 1. Navigate to `http://localhost:8501`.

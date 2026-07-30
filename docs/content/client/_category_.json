@@ -1,6 +1,6 @@
 {
-  "label": "Client",
-  "position": 3,
+  "label": "AI Optimizer Client",
+  "position": 15,
   "link": {
     "type": "doc",
     "id": "intro"

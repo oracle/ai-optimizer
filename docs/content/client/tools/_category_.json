@@ -1,6 +1,6 @@
 {
-  "label": "Advanced",
-  "position": 20,
+  "label": "Tools",
+  "position": 4,
   "link": {
     "type": "doc",
     "id": "intro"
