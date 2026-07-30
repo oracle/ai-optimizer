@@ -105,6 +105,14 @@ html.plugin-docs .navbar__version-dropdown {
   text-align: center;
 }
 
+.theme-admonition > div:first-child {
+  font-family: var(--ifm-font-family-base);
+}
+
+.theme-admonition {
+  font-size: 0.8rem;
+}
+
 .doc-sidebar-item--visited > .menu__link::after {
   color: var(--ifm-link-color);
   content: '✓';
@@ -172,13 +180,6 @@ html.plugin-docs .navbar__version-dropdown {
 
 .home-integrations__list li:last-child {
   margin-bottom: 0;
-}
-
-.home-integrations__note {
-  font-size: 0.8rem;
-  line-height: 1.4;
-  margin: 1rem 0 0;
-  opacity: 0.75;
 }
 
 .doc-feedback {

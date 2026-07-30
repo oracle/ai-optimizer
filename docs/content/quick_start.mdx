@@ -1,5 +1,164 @@
 ---
 title: Quick Start
-hide_title: true
 sidebar_position: 1
 ---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+The **AI Optimizer** can be installed on a developer's desktop, an on-premises data center, or a cloud environment. It can be run either on bare-metal, within a container, or in a Kubernetes cluster using a Helm chart.
+
+:::note[Prefer a Step-by-Step?]
+
+The [Walkthrough](./walkthrough) is a great way to install and familiarize yourself with the **AI Optimizer** and its features in a containerized, development environment.
+
+:::
+
+
+## Prerequisites
+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for running bare-metal)
+- A container runtime, such as Docker or Podman (for running in a container)
+- Access to a chat model and an embedding model for RAG:
+  - API Keys for Third-Party Models
+  - On-Premises Models<sup>*</sup>
+- Oracle AI Database incl. [Oracle AI Database Free](https://www.oracle.com/database/free/)
+
+<sub>*Oracle recommends running on-premises models on hardware with GPUs.</sub>
+
+
+:::info[What do I actually need?]
+
+The **AI Optimizer** will start without any AI model or database configured.  However:
+
+- To interact with language models, you will need to configure and enable a chat model.
+- To persist settings across restarts and to enable features like RAG, NL2SQL and the [Testbed](./client/testbed), a [database](./client/configuration/databases) is required.
+
+:::
+
+
+## Deployment Options
+
+Available deployment options:
+- [Bare-Metal Installation](#bare-metal-installation)
+- [Container Installation](#container-installation)
+- [Oracle Cloud Infrastructure](#oracle-cloud-infrastructure)
+- [Kubernetes](#kubernetes)
+
+---
+### Bare-Metal Installation
+
+The server and all-in-one installations support Python 3.11 and 3.12.
+
+To run the application on bare-metal, download the latest release: [TAR.GZ archive](https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz)
+
+1. Extract the release in a new directory. For example:
+
+   ```bash
+   mkdir ai-optimizer
+   tar zxf ai-optimizer-src.tar.gz -C ai-optimizer
+
+   cd ai-optimizer
+   ```
+
+1. Create the project environment and install the application:
+
+   ```bash
+   uv sync --all-extras
+   ```
+
+1. _(Optional)_ Create an [environment file](./env_vars) to pre-configure the application:
+
+   ```bash
+   cp src/.env.example src/.env.dev
+   ```
+
+   Edit `src/.env.dev` as needed. See [Environment Variables](./env_vars) for details.
+
+1. Start the application:
+
+   ```bash
+   uv run python src/entrypoint.py client
+   ```
+
+1. Navigate to `http://localhost:8501`.
+
+1. [Configure](./client/configuration/intro) the **AI Optimizer**.
+
+---
+### Container Installation
+
+:::tip[Same... but different!]
+
+The commands in this section work in a macOS/Linux shell or PowerShell. The documentation will reference `podman` commands. If applicable to your environment, `podman` can be substituted with `docker`.
+
+If you are using `docker`, consider aliasing the `podman` command for convenience:
+
+<Tabs>
+<TabItem value="macos-linux" label="macOS or Linux">
+
+```bash
+alias podman=docker
+```
+
+</TabItem>
+<TabItem value="powershell" label="PowerShell">
+
+```powershell
+Set-Alias podman docker
+```
+
+</TabItem>
+</Tabs>
+
+:::
+
+To run the application in a container, download the latest release: [TAR.GZ archive](https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz)
+
+1. Extract the release in a new directory.  For example:
+
+   ```bash
+   mkdir ai-optimizer
+   tar zxf ai-optimizer-src.tar.gz -C ai-optimizer
+
+   cd ai-optimizer
+   ```
+
+1. Build the *ai-optimizer-aio* image.
+
+    :::note
+
+    macOS Silicon users may need to specify `--arch amd64`
+
+    :::
+
+   ```bash
+   podman build -f src/Dockerfile -t ai-optimizer-aio .
+   ```
+
+1. Start the Container:
+
+   ```bash
+   podman run -p 8501:8501 -it --rm ai-optimizer-aio
+   ```
+
+1. Navigate to `http://localhost:8501`.
+
+1. [Configure](./client/configuration/intro) the **AI Optimizer**.
+
+---
+### Oracle Cloud Infrastructure
+
+The **AI Optimizer** can easily be deployed using Infrastructure as Code (**IaC**) into Oracle Cloud Infrastructure (**OCI**).
+
+**OCI** deployment options include:
+- An [Always-Free](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm) Installation
+- Simple Virtual Machine Installation
+- Advanced Oracle Kubernetes Engine
+
+To get started, review the [IaC](./advanced/iac) documentation.
+
+---
+### Kubernetes
+
+The **AI Optimizer** can be deployed into a Kubernetes cluster using a Helm chart. For more information, see the [Kubernetes](./advanced/kubernetes) documentation.
