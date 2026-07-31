@@ -50,12 +50,25 @@ class TestBuildNl2sqlAgentspec:
         assert len(agent.toolboxes) == 1
         assert isinstance(agent.toolboxes[0], MCPToolBox)
 
-    def test_toolbox_uses_unrestricted_discovery(self):
-        """Verify the toolbox discovers every tool exposed by the MCP server."""
+    def test_toolbox_limits_discovery_to_nl2sql_tools(self):
+        """Verify the toolbox exposes only tools required by NL2SQL."""
         agent = build_nl2sql_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SERVER_URL, MOCK_API_KEY, MOCK_SYSTEM_PROMPT)
         toolbox = agent.toolboxes[0]
         assert isinstance(toolbox, MCPToolBox)
-        assert toolbox.tool_filter is None
+        assert toolbox.tool_filter == [
+            "sqlcl_connect",
+            "sqlcl_schema_information",
+            "sqlcl_sql_run",
+            "sqlcl_request_status",
+        ]
+        assert not {
+            "optimizer_vs_discovery",
+            "sqlcl_annotation_generate",
+            "sqlcl_connections_list",
+            "sqlcl_disconnect",
+            "sqlcl_skills_sync",
+            "sqlcl_sqlcl_run",
+        }.intersection(toolbox.tool_filter)
         assert not toolbox.metadata
 
     def test_toolbox_transport(self):

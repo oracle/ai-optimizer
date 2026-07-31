@@ -16,8 +16,9 @@ flowchart TD
     agent --> reply["Return natural language answer"]
 ```
 
-- NL2SQL uses an **Agent** with dynamic MCP tool discovery — it autonomously decides which structured database tools to call using the ReAct pattern, rather than following a fixed pipeline.
-- `build_nl2sql_agentspec` creates a portable AgentSpec Agent with an `MCPToolBox` that discovers available structured database tools at runtime.
+- NL2SQL uses an **Agent** that autonomously selects from its fixed SQLcl connection, schema, query, and request-status tools using the ReAct pattern, rather than following a fixed pipeline.
+- `build_nl2sql_agentspec` creates a portable AgentSpec Agent with an `MCPToolBox` restricted to `sqlcl_connect`, `sqlcl_schema_information`, `sqlcl_sql_run`, and `sqlcl_request_status`.
 - The session augments the agent's system prompt with the configured database connection name, model, and thread ID so the LLM passes them to the SQL execution tool calls.
 - The system prompt is fetched from the MCP server (`optimizer_nl2sql-tools-default`). If unavailable, a default instruction is used.
 - Requires a configured structured database connection.
+- SQLcl restrict level `4` is the default, but database privileges are enforced by the configured connection account. Use a dedicated least-privilege read account for NL2SQL.

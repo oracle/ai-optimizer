@@ -36,7 +36,7 @@ Agent and flow definitions live in the `agentspec/` package. This layer uses onl
 
 Builder functions create the AgentSpec definitions:
 - `build_llm_only_agentspec()` — pure LLM conversation agent (no tools)
-- `build_nl2sql_agentspec()` — NL2SQL agent with dynamic MCP tool discovery
+- `build_nl2sql_agentspec()` — NL2SQL agent with a restricted SQLcl MCP tool inventory
 - `build_vecsearch_flow()` — RAG pipeline flow with conditional nodes
 
 Each builder takes the user's client settings (model provider, model ID, temperature, etc.) and constructs a complete AgentSpec definition.
@@ -80,7 +80,7 @@ Available specs:
 | Name | Type | Description |
 |------|------|-------------|
 | `llm_only` | Agent | LLM-only conversational agent (no tools) |
-| `nl2sql_agent` | Agent | NL2SQL agent with dynamic MCP tool discovery |
+| `nl2sql_agent` | Agent | NL2SQL agent with a restricted SQLcl MCP tool inventory |
 | `vecsearch_flow` | Flow | RAG pipeline: rephrase → retrieve → grade → answer |
 
 ### Loading a Spec in Your Application

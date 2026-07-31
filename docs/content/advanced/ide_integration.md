@@ -95,7 +95,14 @@ curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/prompts
 | `optimizer_vs_grade` | Grade document relevance |
 | `optimizer_vs_rephrase` | Rephrase queries using conversation history |
 
-SQLcl tools (`sqlcl_*`) are registered automatically when SQLcl is available and a database is configured.  They provide read-only database access: schema inspection, SQL execution, and session metadata.
+SQLcl tools (`sqlcl_*`) are registered automatically when SQLcl is available and a database is configured. They execute through SQLcl on the API server. The registered inventory depends on the installed SQLcl release and restrict level:
+
+- Schema and connection tools inspect schemas or manage the selected connection.
+- Query tools can run standard SQL and PL/SQL; database privileges determine whether a statement is permitted.
+- SQLcl-command tools can run SQLcl commands. At the default restrict level `4`, SQLcl refuses host, script, spool, and configuration-changing commands.
+- Annotation and skills-synchronization tools can read or update SQLcl-managed metadata when they are exposed by the configured SQLcl server.
+
+Use a dedicated least-privilege database account for NL2SQL access. Prompts, tool descriptions, and the client interface do not enforce database authorization.
 
 ## OpenAI-Style Compatibility
 

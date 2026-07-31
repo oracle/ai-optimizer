@@ -80,8 +80,10 @@ At startup, the {{% short_app_ref %}}:
 
 1. Discovers the `sql` binary on the system path
 2. Creates connection store entries for each configured database
-3. Launches SQLcl as a child process using stdio transport
+3. Launches SQLcl as a child process on the API server using stdio transport
 4. Mounts the SQLcl MCP server as a proxy, making NL2SQL tools available alongside the built-in tools
+
+SQLcl commands therefore execute on the API server, not on the external MCP client's workstation. The external client sends MCP requests to the API server; it does not run the `sql` binary itself.
 
 ### SQLcl Home Directory
 
@@ -90,6 +92,18 @@ By default, the SQLcl connection store is created in a temporary directory. To o
 ```bash
 export AIO_SQLCL_HOME=/path/to/sqlcl/home
 ```
+
+The API server always starts SQLcl with `-R` followed by the resolved `AIO_SQLCL_MCP_LEVEL` value. When the operator does not set the variable, the effective restrict level is `4`, SQLcl's most restrictive level. It blocks host commands, scripts, and configuration-changing SQLcl commands.
+
+An operator can set [`AIO_SQLCL_MCP_LEVEL`]({{% relref "/configuration#nl2sql" %}}) to an integer from `0` to `4` before starting the API server. Lower levels enable additional SQLcl capabilities; use them only for a specific operational need. Other values prevent the application from starting:
+
+```bash
+export AIO_SQLCL_MCP_LEVEL=4
+```
+
+The restrict level does not grant or remove Oracle Database privileges. Configure every NL2SQL saved connection with a dedicated, least-privilege database account. See [Database User]({{% relref "/client/configuration/databases#database-user" %}}).
+
+The API key authorizes an external MCP client to invoke the tools published by this API server, including SQLcl proxy tools when they are registered. Keep the key only with users and systems authorized to perform those server-side operations.
 
 {{% notice style="code" title="SQLcl Not Found?" icon="circle-info" %}}
 If SQLcl is not installed or the `sql` binary is not on the system path, the NL2SQL functionality will be unavailable. The {{% short_app_ref %}} will log a warning and continue without it.

@@ -19,7 +19,7 @@ The {{% short_app_ref %}} provides three built-in AgentSpec definitions:
 | Name | Type | Description |
 |------|------|-------------|
 | `llm_only` | Agent | LLM-only conversational agent with no tools |
-| `nl2sql_agent` | Agent | NL2SQL agent with dynamic MCP tool discovery |
+| `nl2sql_agent` | Agent | NL2SQL agent with a restricted SQLcl MCP tool inventory |
 | `vecsearch_flow` | Flow | RAG pipeline: rephrase, retrieve, grade, answer |
 
 ## Viewing Specifications
