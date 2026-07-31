@@ -6,6 +6,7 @@ sidebar_position: 10
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import LocalContainer from './_assets/partials/local-container.mdx';
+import OracleAiDatabaseFree from './_assets/partials/oracle-ai-database-free.mdx';
 
 This walkthrough will guide you through a basic installation of the **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**). It will allow you to experiment with GenAI, using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**) with the Oracle AI Database at the core.
 
@@ -121,26 +122,18 @@ The **AI Optimizer** provides an easy-to-use front-end for experimenting with La
 
 AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The **AI Optimizer** uses these capabilities to provide more accurate and relevant Language Model responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
 
-To start the Oracle AI Database Free:
+<OracleAiDatabaseFree />
 
-1. Start the container:
-
-   ```bash
-   podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest-lite
-   ```
-
-1. Alter the `vector_memory_size` parameter and create a [new database user](./client/configuration/databases#database-user):
+1. Create a [database user](./guides/database#database-user) for the walkthrough:
 
    ```bash
    podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
    ```
 
    ```sql
-   alter system set vector_memory_size=512M scope=spfile;
-
    alter session set container=FREEPDB1;
 
-   CREATE TABLESPACE USERS DATAFILE 'users.dbf' SIZE 1G;
+   CREATE TABLESPACE IF NOT EXISTS USERS DATAFILE '/opt/oracle/oradata/FREE/FREEPDB1/users_01.dbf' SIZE 100M;
    CREATE USER "WALKTHROUGH" IDENTIFIED BY OrA_41_OpTIMIZER
        DEFAULT TABLESPACE "USERS"
        TEMPORARY TABLESPACE "TEMP";
@@ -152,12 +145,6 @@ To start the Oracle AI Database Free:
    GRANT CREATE SESSION TO AIO_DDS_ROLE;
    GRANT AIO_DDS_ROLE TO "WALKTHROUGH" WITH ADMIN OPTION;
    EXIT;
-   ```
-
-1. Bounce the database for the `vector_memory_size` to take effect:
-
-   ```bash
-   podman container restart ai-optimizer-db
    ```
 
 ## Configuration

@@ -3,7 +3,17 @@ title: Oracle AI Database
 sidebar_position: 5
 ---
 
+import OracleAiDatabaseFree from '../_assets/partials/oracle-ai-database-free.mdx';
+
 The [**Oracle AI Database**](https://www.oracle.com/database/) sits at the core of the **AI Optimizer**. It is used for application persistence (settings, test sets, evaluations), storing embeddings for **Vector Search** and querying structured data via **NL2SQL**.
+
+## Run Oracle AI Database Free Locally
+
+Provisioning an on-premises database or an Oracle Cloud database is outside the scope of this guide. For a local development environment, you can run Oracle AI Database Free in a container.
+
+<OracleAiDatabaseFree />
+
+After the database is ready, create a database user as described in [Database User](#database-user). When configuring the **AI Optimizer** on the same host, use `//localhost:1521/FREEPDB1` as the connect string.
 
 
 
@@ -36,6 +46,16 @@ podman run -v $TNS_ADMIN:/app/tns_admin -p 8501:8501 -it --rm localhost/ai-optim
 
 For both **RAG** and **NL2SQL**, the **AI Optimizer** needs to authenticate to an Oracle AI Database. AI agents use this user to retrieve data, so carefully consider the access granted to it. At a minimum, use a non-privileged user with a non-`SYSTEM` tablespace.
 
+For Oracle AI Database Free running in a container, connect as a privileged user and select the pluggable database:
+
+```bash
+podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
+```
+
+```sql
+ALTER SESSION SET CONTAINER=FREEPDB1;
+```
+
 Use the following as an example of creating a least-privileged user. Change the value of `c_user_password`:
 
 ```sql
@@ -67,9 +87,11 @@ BEGIN
     EXECUTE IMMEDIATE 'ALTER USER ' ||
         DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) || ' DEFAULT ROLE ALL';
     EXECUTE IMMEDIATE 'ALTER USER ' ||
-        DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) || ' QUOTA UNLIMITED ON DATA';
+        DBMS_ASSERT.ENQUOTE_NAME(c_user_name, FALSE) || ' QUOTA UNLIMITED ON ' ||
+        DBMS_ASSERT.ENQUOTE_NAME(v_default_perm, FALSE);
 END;
 /
+EXIT;
 ```
 
 :::tip[One schema fits none...]
