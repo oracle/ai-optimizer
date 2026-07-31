@@ -44,7 +44,7 @@ The {{% short_app_ref %}} provides the following prompts out-of-the-box:
 
 | Prompt | Usage |
 | --- | --- |
-| **NL2SQL Tools Prompt** | Provides the system instructions when only NL2SQL is enabled. It directs the model to use the SQLcl MCP tools for read-only database access, call only the tool required by the request, and return the result without repeating the tool call. |
+| **NL2SQL Tools Prompt** | Provides the system instructions when only NL2SQL is enabled. It requests that the model use SQLcl tools for read-only queries, call only the tool required by the request, and return the result without repeating the tool call. This is not an enforcement boundary: database access is enforced by the configured connection account, not by the prompt. |
 {class="prompt-usage-table"}
 
 ### Combined

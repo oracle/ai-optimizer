@@ -177,6 +177,7 @@ These settings provide API keys or service URLs and enable matching built-in mod
 | Variable | Description | Default |
 |---|---|---|
 | `AIO_SQLCL_HOME` | Overrides the SQLcl connection-store directory | _(temporary directory)_ |
+| `AIO_SQLCL_MCP_LEVEL` | SQLcl MCP access level; integer from `0` to `4` | `4` |
 
 ### Observability
 

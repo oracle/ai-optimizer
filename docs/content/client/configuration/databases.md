@@ -132,6 +132,14 @@ END;
 Creating multiple users in the same database allows developers to separate their experiments simply by changing the "Database User"
 {{% /notice %}}
 
+### NL2SQL Access
+
+NL2SQL executes under the database account configured for its saved SQLcl connection. Use a dedicated account with only the permissions needed to query the required objects, rather than an application owner or administrative account. For example, grant `CREATE SESSION` and `SELECT` on the specific tables or views that NL2SQL should access.
+
+SQLcl restrict level `4`, the default for `AIO_SQLCL_MCP_LEVEL`, blocks host commands, scripts, and configuration-changing SQLcl commands. It does not limit SQL statements that the connected database account is authorized to run. Prompts, MCP tool selection, and AgentSpec `human_in_the_loop` likewise do not enforce database authorization.
+
+The built-in NL2SQL path requests read-only behavior, but its SQL tool can submit DML, DDL, and PL/SQL when the configured account has those privileges. Do not configure a write-capable account for NL2SQL unless such operations are intended. Supporting destructive operations requires a separately designed approval interruption that is enforced and tested end-to-end, as well as an appropriately privileged database account.
+
 ## Deep Data Security Privileges
 
 To use the [Deep Data Security]({{% relref "/client/tools/deepsec" %}}) tool, the database user needs the additional privileges below. They are optional: when they are absent — or when the database does not support Deep Data Security — the tool is automatically disabled in the GUI.

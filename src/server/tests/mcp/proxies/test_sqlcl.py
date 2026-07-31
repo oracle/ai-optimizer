@@ -295,6 +295,23 @@ async def test_register_sqlcl_proxy_missing_binary(monkeypatch, caplog):
     assert "sql not found" in caplog.text
 
 
+@pytest.mark.parametrize("level", ["-1", "5", "not-an-integer"])
+async def test_register_sqlcl_proxy_rejects_invalid_mcp_level(monkeypatch, level):
+    """An invalid SQLcl MCP level fails closed before SQLcl discovery."""
+    monkeypatch.setenv("AIO_SQLCL_MCP_LEVEL", level)
+    clear_mock = MagicMock()
+    monkeypatch.setattr(sqlcl, "_clear_connection_store", clear_mock)
+
+    def _unexpected_sqlcl_lookup(name):
+        raise AssertionError(f"SQLcl lookup must not occur for invalid level: {name}")
+
+    monkeypatch.setattr(sqlcl.shutil, "which", _unexpected_sqlcl_lookup)
+
+    with pytest.raises(ValueError, match="AIO_SQLCL_MCP_LEVEL"):
+        await sqlcl.register_sqlcl_proxy()
+    clear_mock.assert_not_called()
+
+
 async def test_register_sqlcl_proxy_no_capabilities(monkeypatch, caplog):
     """register_sqlcl_proxy aborts proxy mount if backend exposes no capabilities."""
     caplog.set_level("WARNING")
@@ -351,7 +368,8 @@ async def test_register_sqlcl_proxy_success(monkeypatch):
     monkeypatch.setattr(sqlcl, "Namespace", namespace_mock)
     monkeypatch.setattr(sqlcl, "_verify_backend", verify_mock)
     monkeypatch.setattr(sqlcl, "_clear_connection_store", clear_mock)
-    monkeypatch.setattr(sqlcl, "_preflight_check", AsyncMock(return_value=True))
+    preflight_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(sqlcl, "_preflight_check", preflight_mock)
 
     # Reset module state and avoid touching the real MCP singleton's providers list
     sqlcl._state.transport = None
@@ -389,12 +407,21 @@ async def test_register_sqlcl_proxy_success(monkeypatch):
     assert call["alias"] == "CORE"
     assert call["env"]["TNS_ADMIN"] == "/tmp/custom"
 
-    # Proxy mounted with -home flag
+    # The verified and mounted processes must use the same canonical arguments.
     assert transport_mock.call_count == 1
     transport_args = transport_mock.call_args
     args_list = transport_args.kwargs.get("args", transport_args[1].get("args", []))
+    transport_env = transport_args.kwargs.get("env", transport_args[1].get("env", {}))
+    preflight_call = preflight_mock.await_args
+    assert preflight_call is not None
+    preflight_args = preflight_call.args[1]
+    preflight_env = preflight_call.args[2]
+    assert args_list is preflight_args
+    assert transport_env is preflight_env
+    assert args_list[args_list.index("-R") + 1] == "4"
     assert "-home" in args_list
     assert str(sqlcl._DBTOOLS_HOME) in args_list
+    assert preflight_env["AIO_SQLCL_MCP_LEVEL"] == "4"
 
     client_mock.assert_called_once_with(transport_mock.return_value)
     factory_mock.assert_called_once_with(client_mock.return_value)

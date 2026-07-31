@@ -12,6 +12,8 @@ spell-checker: ignore pydantic fastmcp agentspec pyagentspec
 
 The {{% short_app_ref %}} exposes an [MCP](https://modelcontextprotocol.io/) server built on [FastMCP](https://gofastmcp.com/).  All registered tools are available over the MCP protocol at the `/mcp` endpoint and through the REST API at `/mcp/tools`.
 
+An external client that presents a valid `X-API-Key` can invoke the tools registered on the API server. When SQLcl is registered, its process and commands run on the API server, not the client's workstation. SQLcl restrict level `4` is the default; an operator can configure a lower level with `AIO_SQLCL_MCP_LEVEL` when additional SQLcl capabilities are required. See [MCP Server]({{% relref "/client/configuration/mcp" %}}).
+
 Developers can add custom tools by dropping a Python file into the tools package — no other files need to be edited.
 
 ## Quick Example
@@ -133,7 +135,9 @@ With this approach the tool is available immediately after registration — no a
 
 The {{% short_app_ref %}} uses [AgentSpec]({{% relref "agents" %}}) to define agents and flows as portable configurations.  There are two ways to bind MCP tools to an agent:
 
-**MCPToolBox** — Connects to the MCP server and discovers *all* available tools at runtime.  The built-in NL2SQL Agent uses this pattern.  Any custom tool registered on the server is automatically available without code changes.
+**MCPToolBox** — Connects to the MCP server and discovers tools at runtime. It can use a `tool_filter` to expose only named tools. The built-in NL2SQL Agent uses a filter for its connection, schema, query, and request-status tools; custom toolboxes can omit the filter to discover all available tools.
+
+The built-in NL2SQL agent is therefore not the same surface as an external MCP client. External clients can use all tools registered by the API server and permitted by the SQLcl restrict level, while the built-in agent receives only `sqlcl_connect`, `sqlcl_schema_information`, `sqlcl_sql_run`, and `sqlcl_request_status`.
 
 **MCPTool** — References a single tool by name with explicit inputs and outputs, wired into a flow graph.  The built-in VecSearch Flow uses this pattern.  Adding a tool requires modifying the flow definition.
 

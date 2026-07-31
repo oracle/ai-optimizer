@@ -15,6 +15,14 @@ The {{% full_app_ref %}} exposes a built-in [Model Context Protocol](https://mod
 
 The recommended way to configure a client is to copy the generated JSON from the **MCP Configuration** page or request the client-specific configuration from the API Server.
 
+## Authority and Execution Location
+
+The `X-API-Key` authorizes the holder to invoke the tools published by the API server. Treat it as authority for those server-side operations, and provide it only to users and systems permitted to use them.
+
+When SQLcl is configured, the API server launches the `sql` process and executes SQLcl commands locally on that server. The external MCP client sends requests over HTTP; SQLcl does not execute on the client's workstation. SQLcl uses restrict level `4` by default. Operators can lower the level with `AIO_SQLCL_MCP_LEVEL` when a specific operational requirement needs additional SQLcl commands; see [MCP Server]({{% relref "/client/configuration/mcp" %}}).
+
+The external MCP surface includes every registered Optimizer and SQLcl proxy tool allowed by the configured server. This is distinct from the built-in NL2SQL agent, which is limited to `sqlcl_connect`, `sqlcl_schema_information`, `sqlcl_sql_run`, and `sqlcl_request_status`.
+
 ## Prerequisites
 
 1. Start the {{% short_app_ref %}} API Server.

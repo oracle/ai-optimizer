@@ -36,6 +36,7 @@ _DBTOOLS_TEMPLATE = PROJECT_ROOT / "server" / "etc" / "dbtools"
 _CONN_STORE_TIMEOUT = 30  # seconds
 _PREFLIGHT_TIMEOUT = 5  # seconds — long enough for SQLcl to start, short enough not to delay startup
 _VERIFY_TIMEOUT = 30  # seconds — cap how long we wait for SQLcl to enumerate capabilities
+_SQLCL_MCP_LEVEL_ENV = "AIO_SQLCL_MCP_LEVEL"
 
 # Maps JSON Schema type names to (target_python_type, converter) pairs.
 _TYPE_COERCIONS: dict[str, tuple[type, type]] = {
@@ -112,6 +113,19 @@ def _resolve_dbtools_home() -> Path:
     if override:
         return Path(override).expanduser().resolve()
     return Path(tempfile.gettempdir()) / "ai-optimizer" / "sqlcl"
+
+
+def _sqlcl_mcp_level() -> str:
+    """Return the validated SQLcl MCP access level for the child environment."""
+    raw_level = os.environ.get(_SQLCL_MCP_LEVEL_ENV, "4")
+    try:
+        level = int(raw_level)
+    except ValueError as exc:
+        raise ValueError(f"{_SQLCL_MCP_LEVEL_ENV} must be an integer from 0 to 4; got {raw_level!r}") from exc
+
+    if not 0 <= level <= 4:
+        raise ValueError(f"{_SQLCL_MCP_LEVEL_ENV} must be an integer from 0 to 4; got {raw_level!r}")
+    return str(level)
 
 
 _DBTOOLS_HOME = _resolve_dbtools_home()
@@ -347,7 +361,7 @@ async def ensure_sqlcl_saved_connection(alias: str) -> bool:
 
 
 async def _mount_sqlcl_proxy(
-    sqlcl_binary: str, dbtools_home: Path, env_vars: dict
+    sqlcl_binary: str, mcp_args: list[str], env_vars: dict[str, str]
 ) -> tuple[StdioTransport, Provider] | None:
     """Create an MCP transport, verify the backend, and mount the SQLcl proxy.
 
@@ -360,7 +374,7 @@ async def _mount_sqlcl_proxy(
         LOGGER.debug("SQLcl proxy: creating StdioTransport")
         transport = StdioTransport(
             command=sqlcl_binary,
-            args=["-mcp", "-daemon=start", "-thin", "-noupdates", "-home", str(dbtools_home)],
+            args=mcp_args,
             env=env_vars,
             log_file=Path(os.devnull),
         )
@@ -394,6 +408,8 @@ async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | 
     Caller must hold ``_refresh_lock``.  Returns ``(transport, mounted_provider)``
     on success.
     """
+    sqlcl_mcp_level = _sqlcl_mcp_level()
+
     sqlcl_binary = shutil.which("sql")
     if not sqlcl_binary:
         LOGGER.warning("Not enabling SQLcl MCP server, sql not found in PATH.")
@@ -404,6 +420,7 @@ async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | 
 
     env_vars = os.environ.copy()
     env_vars["TNS_ADMIN"] = tns_admin
+    env_vars[_SQLCL_MCP_LEVEL_ENV] = sqlcl_mcp_level
 
     dbtools_home = _DBTOOLS_HOME
 
@@ -441,13 +458,22 @@ async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | 
 
     # 2b. Preflight — verify SQLcl -mcp can actually start
     LOGGER.debug("SQLcl proxy: starting preflight check")
-    mcp_args = ["-mcp", "-daemon=start", "-thin", "-noupdates", "-home", str(dbtools_home)]
+    mcp_args = [
+        "-mcp",
+        "-R",
+        sqlcl_mcp_level,
+        "-daemon=start",
+        "-thin",
+        "-noupdates",
+        "-home",
+        str(dbtools_home),
+    ]
     if not await _preflight_check(sqlcl_binary, mcp_args, env_vars):
         return None
     LOGGER.debug("SQLcl proxy: preflight passed")
 
     # 3. Mount the SQLcl MCP proxy (reads the same -home store)
-    return await _mount_sqlcl_proxy(sqlcl_binary, dbtools_home, env_vars)
+    return await _mount_sqlcl_proxy(sqlcl_binary, mcp_args, env_vars)
 
 
 async def _teardown_active_unlocked() -> None:
