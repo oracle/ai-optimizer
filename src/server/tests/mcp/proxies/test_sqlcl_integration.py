@@ -58,6 +58,8 @@ async def test_sqlcl_run_advertises_write_capabilities(tmp_path):
     try:
         async with Client(transport) as client:
             tools = {tool.name: tool for tool in await client.list_tools()}
-        assert "DML, DDL statements, and PL/SQL blocks" in tools["sqlcl_run"].description
+        description = tools["sqlcl_run"].description
+        assert description is not None
+        assert "DML, DDL statements, and PL/SQL blocks" in description
     finally:
         await transport.close()

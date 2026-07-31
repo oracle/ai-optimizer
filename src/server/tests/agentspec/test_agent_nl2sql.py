@@ -61,6 +61,7 @@ class TestBuildNl2sqlAgentspec:
             "sqlcl_sql_run",
             "sqlcl_request_status",
         ]
+        assert toolbox.tool_filter is not None
         assert not {
             "optimizer_vs_discovery",
             "sqlcl_annotation_generate",
