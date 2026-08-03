@@ -34,6 +34,23 @@ This method significantly improves the accuracy of AI models, helping to avoid c
    *Project names and logos are shown for identification purposes only. Unless expressly stated, their use does not imply affiliation with, sponsorship by, or endorsement by Oracle or the respective project owners.
 </sub>
 
+## Architecture
+
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) consists of an API Server ([**AI Optimizer Server**](./server/intro)) and an _optional_ web-based GUI ([**AI Optimizer Client**](./client/intro)) component. Both the API Server and GUI can run directly on a developer workstation, in on-premises infrastructure, or in cloud environments.
+
+![Architecture Overview](_assets/images/arch_overview.png)
+
+Depending on the capabilities you plan to use, you may also need the following components, which are not delivered with the **AI Optimizer**. These can be local, on premises, or cloud-hosted:
+
+- [Oracle AI Database](guides/database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free)
+- Access to at least one [Large Language Model](guides/ai-models#language-models) (for completions)
+- Access to at least one [Embedding Model](guides/ai-models#embedding-models) (for Retrieval Augmented Generation)
+- (Optional) Access to an [SQLcl **MCP Server**-enabled](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) instance
+
+:::tip[Cloud Native]
+The **AI Optimizer** supports Kubernetes deployments using a Helm chart. For deployment guidance, see the [Kubernetes guide](advanced-guides/kubernetes).
+:::
+
 ## Features
 
 The **AI Optimizer** brings together the capabilities you need to build, test, and refine GenAI solutions on the **Oracle AI Database**:

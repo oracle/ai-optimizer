@@ -1,0 +1,15 @@
+---
+title: AI Optimizer Server
+hide_title: true
+sidebar_position: 1
+---
+
+The workhorse of the **AI Optimizer** is the API Server, referred to as the **AI Optimizer Server**.  By default, the **AI Optimizer Server** will start on port 8000
+
+:::note[All the docs]
+The **AI Optimizer Server** API documentation can be accessed at `http://<IP Address>:<Port>/v1/docs` of a running instance.  To view the API documentation, you will need to obtain the API key.
+:::
+
+![API Server](../_assets/images/fastapi_docs.png)
+
+Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://www.uvicorn.org/), the **AI Optimizer Server** acts as an intermediary between the REST-capable clients, AI Models, and the Oracle Database.
