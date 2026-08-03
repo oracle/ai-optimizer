@@ -7,6 +7,7 @@ This site is built with [Docusaurus](https://docusaurus.io/). Documentation sour
 From this directory, run:
 
 ```bash
+npm ci
 npm run start
 ```
 
