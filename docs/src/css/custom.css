@@ -182,6 +182,19 @@ html.plugin-docs .navbar__version-dropdown {
   margin-bottom: 0;
 }
 
+.doc-media-row {
+  align-items: start;
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(16rem, 40%) 1fr;
+  margin: 1.5rem 0;
+}
+
+.doc-media-row img {
+  height: auto;
+  max-width: 100%;
+}
+
 .doc-feedback {
   border-top: 1px solid var(--ifm-toc-border-color);
   font-size: 0.8rem;
@@ -245,6 +258,10 @@ html.plugin-docs .navbar__version-dropdown {
     align-items: flex-start;
     grid-template-columns: 1fr;
     justify-content: start;
+  }
+
+  .doc-media-row {
+    grid-template-columns: 1fr;
   }
 
   .pagination-nav {

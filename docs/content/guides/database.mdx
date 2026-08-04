@@ -7,7 +7,7 @@ import OracleAiDatabaseFree from '../_assets/partials/oracle-ai-database-free.md
 
 The [**Oracle AI Database**](https://www.oracle.com/database/) sits at the core of the **AI Optimizer**. It is used for application persistence (settings, test sets, evaluations), storing embeddings for **Vector Search** and querying structured data via **NL2SQL**.
 
-![Database](../_assets/images/vscode_sqldeveloper.png)
+![Database](../_assets/images/vscode_vstore_table.png)
 
 :::note[Reduced capabilities]
 The **AI Optimizer** can be used to interact with language models without having the database configured, but additional functionality such as RAG and NL2SQL, will not be available without the database.
@@ -52,7 +52,7 @@ podman run -v $TNS_ADMIN:/app/tns_admin -p 8501:8501 -it --rm localhost/ai-optim
 
 ## Database User
 
-For both **RAG** and **NL2SQL**, the **AI Optimizer** needs to authenticate to an Oracle AI Database. AI agents use this user to retrieve data, so carefully consider the access granted to it. At a minimum, use a non-privileged user with a non-`SYSTEM` tablespace.
+For both **RAG** and **NL2SQL**, the **AI Optimizer** needs to authenticate to an Oracle AI Database. AI agents use this user to retrieve data, so carefully consider the access granted to it. Use a non-privileged user with a non-`SYSTEM` tablespace.
 
 For Oracle AI Database Free running in a container, connect as a privileged user and select the pluggable database:
 
@@ -64,7 +64,7 @@ podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
 ALTER SESSION SET CONTAINER=FREEPDB1;
 ```
 
-Use the following as an example of creating a least-privileged user. Change the value of `c_user_password`:
+Use the following local-development example to create a database user. It grants `DB_DEVELOPER_ROLE` and an unlimited quota on the default permanent tablespace. For other environments, grant only the privileges and quota required for the intended use. Change the value of `c_user_password`:
 
 ```sql
 DECLARE
@@ -110,7 +110,7 @@ Creating multiple users in the same database allows developers to separate their
 
 ## Deep Data Security Privileges
 
-To use the Deep Data Security tool, the database user needs the additional privileges below. They are optional: when they are absent—or when the database does not support Deep Data Security—the tool is automatically disabled in the GUI.
+To use all Deep Data Security management actions, the database user needs the additional privileges below. They are optional. If the database does not support Deep Data Security, the GUI displays an availability warning. If the database user lacks a privilege, the corresponding management action is unavailable.
 
 ```sql
 GRANT CREATE DATA ROLE TO "DEMO";
