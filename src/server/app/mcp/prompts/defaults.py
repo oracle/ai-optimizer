@@ -189,7 +189,8 @@ FACTORY_PROMPTS: list[dict] = [
         'description': (
             'Prompt for grading relevance of retrieved documents.'
             ' Used by the vector search grading tool to assess whether retrieved documents'
-            ' are relevant to the user\'s question.'
+            ' are relevant to the user\'s question. Returns yes or no; the result determines whether'
+            ' the retrieved content is used.'
         ),
         'tags': ['source', 'optimizer'],
         'text': _clean("""
@@ -209,8 +210,10 @@ FACTORY_PROMPTS: list[dict] = [
         'title': 'Vector Search Rephrase Prompt',
         'description': (
             'Prompt for rephrasing user query with conversation history context.'
-            ' Used by the vector search rephrase tool to contextualize the user\'s query'
-            ' based on conversation history before performing retrieval.'
+            ' Used when query rephrasing and chat history are enabled to combine the Contextualize'
+            ' Prompt, conversation history, and current question before retrieval. If history is'
+            ' insufficient, the original question is used. The result is shown in Vector Search'
+            ' Details under Search Query.'
         ),
         'tags': ['source', 'optimizer'],
         'text': _clean("""
