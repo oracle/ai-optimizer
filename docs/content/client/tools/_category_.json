@@ -1,8 +1,4 @@
 {
   "label": "Tools",
-  "position": 20,
-  "link": {
-    "type": "doc",
-    "id": "intro"
-  }
+  "position": 20
 }

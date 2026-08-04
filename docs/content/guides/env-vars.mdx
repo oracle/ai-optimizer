@@ -2,3 +2,33 @@
 title: Environment Variables
 sidebar_position: 0
 ---
+
+## Getting Started
+
+
+### Client
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_CLIENT_ADDRESS` | Client listen address | `localhost` |
+| `AIO_CLIENT_URL_PREFIX` | URL path prefix for the Client | _(none)_ |
+| `AIO_CLIENT_PORT` | Client listen port | `8501` |
+| `AIO_CLIENT_COOKIE_SECRET` | Signing key for the client's XSRF cookies. Multi-replica deployments must provide the same value to every replica. | _(none)_ |
+| `AIO_CLIENT_PASSWORD` | Shared password gating configuration and shared-state controls in the GUI client. This does not replace API Server authentication. See [Collaboration & Multi-User](../guides/access-control). | _(none)_ |
+| `AIO_CLIENT_SSL` | Enables TLS for the Client | `false` |
+| `AIO_CLIENT_SSL_CERT_FILE` | Path to a TLS certificate in PEM format | _(none)_ |
+| `AIO_CLIENT_SSL_KEY_FILE` | Path to a TLS private key in PEM format | _(none)_ |
+
+### Server
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_SERVER_URL` | URL the client uses to reach the API Server | _(auto-detected)_ |
+| `AIO_SERVER_URL_PREFIX` | URL path prefix for the API Server, such as `/optimizer` | _(none)_ |
+| `AIO_SERVER_ADDRESS` | API Server bind address. The standalone server uses `0.0.0.0`; client autostart uses `127.0.0.1`. Clients should connect through `AIO_SERVER_URL`. | component-specific |
+| `AIO_SERVER_PORT` | API Server listen port | `8000` |
+| `AIO_SERVER_SSL` | Enables TLS for the API Server | `false` |
+| `AIO_SERVER_SSL_CERT_FILE` | Path to a TLS certificate in PEM format. When TLS is enabled without a certificate, a self-signed certificate is generated. | _(none)_ |
+| `AIO_SERVER_SSL_KEY_FILE` | Path to the TLS private key in PEM format | _(none)_ |
+| `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the API Server to become ready at startup | `180` |
+| `AIO_MAX_CLIENTS` | Maximum number of distinct client sessions cached in memory | `64` |

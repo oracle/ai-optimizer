@@ -4,12 +4,66 @@ hide_title: true
 sidebar_position: 1
 ---
 
-The workhorse of the **AI Optimizer** is the API Server, referred to as the **AI Optimizer Server**.  By default, the **AI Optimizer Server** will start on port 8000
+The workhorse of the **AI Optimizer** is the API Server, referred to as the **AI Optimizer Server**. By default, the **AI Optimizer Server** starts on port 8000.
 
 :::note[All the docs]
-The **AI Optimizer Server** API documentation can be accessed at `http://<IP Address>:<Port>/v1/docs` of a running instance.  To view the API documentation, you will need to obtain the API key.
+The **AI Optimizer Server** API documentation is available at `http://<IP Address>:<Port>/v1/docs` for a running instance. Enter the API key to view and use the documented endpoints.
 :::
 
 ![API Server](../_assets/images/fastapi_docs.png)
 
-Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://www.uvicorn.org/), the **AI Optimizer Server** acts as an intermediary between the REST-capable clients, AI Models, and the Oracle Database.
+Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://www.uvicorn.org/), the **AI Optimizer Server** acts as an intermediary between REST-capable clients, AI models, and the Oracle AI Database.
+
+## Calling the API
+
+Authenticated API requests send the API key in the `X-API-Key` header. In a standalone deployment, set `AIO_API_KEY` before starting the server and distribute the key through your normal secret-management process.
+
+## Client IDs
+
+A client ID selects the settings and conversation history for an API session. It does not authenticate a client or provide access isolation. For those boundaries, see [Access Control](../guides/access-control#client-ids-and-access).
+
+- The **AI Optimizer GUI client** generates a fresh, random ID (a UUID) for each browser session. You can see the current value under **☰ → About** in the GUI.
+- **IDE and MCP clients** connect as the `server` client by default. See [IDE Integration](../advanced-guides/ide-integration) for how to copy your GUI settings to that client.
+- **External applications** choose their own ID. Send it in the `client` header on chat requests or the `client` query parameter on settings requests.
+
+When a chat request omits the `client` header, it uses the `server` client. You can review and copy settings to this client from the [API Server](../client/api_server) page in the **AI Optimizer** GUI client. Settings requests that omit `?client=...` operate on `CONFIGURED`.
+
+For example, two external applications can use separate client IDs:
+
+```bash
+# Two external applications using separate sessions
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "X-API-Key: $AIO_API_KEY" -H "client: team-a" \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello"}]}'
+
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "X-API-Key: $AIO_API_KEY" -H "client: team-b" \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+A client ID can contain 1-255 printable ASCII characters. Path separators (`/`, `\`) and the bare components `.` and `..` are rejected. When the server receives a new ID, it creates a session using the configured defaults.
+
+### Reserved client IDs
+
+| Client ID | Purpose |
+|-----------|---------|
+| `CONFIGURED` | The default settings template. New clients start with these settings, and **settings** requests that omit `?client=...` operate on it directly. |
+| `server` | The session used for **chat** requests that omit the `client` header. It is the default identity for external and IDE clients. |
+| `FACTORY` | Built-in factory defaults. |
+
+These three are protected and are never evicted from the in-memory store.
+
+### Session capacity
+
+The server keeps client settings in memory up to the configured [`AIO_MAX_CLIENTS`](../guides/env-vars#server) limit. When it reaches the limit, it removes the least recently used settings. Protected clients are never removed.
+
+The next request for an evicted client creates settings from the configured defaults. Conversation history is stored separately in memory and is lost when the server restarts. Raise the limit if you expect many simultaneous clients.
+
+### Example: the Racing Championship use-case
+
+The [Racing Championship](../use-cases/racing) use-case shows how clients can use separate sessions with the same API Server:
+
+- Each GUI session has a distinct client ID and plays a different driver. Its `I am Driver <N>` turn, conversation history, and tool selections stay with that session.
+- All clients use the configured resources on the same server. When several clients run the use case together, they can embed the relevant driver documents in one pass and use the same document collection from separate sessions.

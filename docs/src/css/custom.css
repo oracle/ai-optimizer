@@ -105,6 +105,12 @@ html.plugin-docs .navbar__version-dropdown {
   text-align: center;
 }
 
+/* Keep lead-in text visually connected to its following top-level list. */
+.theme-doc-markdown > p:has(+ ul),
+.theme-doc-markdown > p:has(+ ol) {
+  margin-bottom: 0.1rem;
+}
+
 .theme-admonition > div:first-child {
   font-family: var(--ifm-font-family-base);
 }
