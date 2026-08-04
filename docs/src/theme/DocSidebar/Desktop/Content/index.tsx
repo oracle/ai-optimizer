@@ -5,9 +5,7 @@ import {useVisitedDocs} from '@site/src/components/VisitedDocs';
 import DocSidebarDesktopContent from '@theme-original/DocSidebar/Desktop/Content';
 import type {Props} from '@theme/DocSidebar/Desktop/Content';
 
-export default function DocSidebarDesktopContentWrapper(
-  props: Props,
-): ReactNode {
+export default function DocSidebarDesktopContentWrapper(props: Props): ReactNode {
   const {clearVisitedDocs, hasVisitedDocs} = useVisitedDocs();
 
   return (
@@ -18,7 +16,8 @@ export default function DocSidebarDesktopContentWrapper(
           className="clean-btn doc-sidebar-history__clear"
           disabled={!hasVisitedDocs}
           onClick={clearVisitedDocs}
-          type="button">
+          type="button"
+        >
           ♽ Clear History
         </button>
       </div>

@@ -18,10 +18,7 @@ export default function NavbarLogo(): ReactNode {
   const oracleLogo = useBaseUrl('/img/oracle_logo.png');
 
   return (
-    <Link
-      className="navbar__brand"
-      to={logoLink}
-      {...(logo?.target && {target: logo.target})}>
+    <Link className="navbar__brand" to={logoLink} {...(logo?.target && {target: logo.target})}>
       {logo && (
         <div className="navbar__logo">
           <ThemedImage

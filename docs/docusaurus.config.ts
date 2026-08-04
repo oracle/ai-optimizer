@@ -29,8 +29,7 @@ const config: Config = {
 
   markdown: {
     hooks: {
-      onBrokenMarkdownImages:
-        process.env.NODE_ENV === 'production' ? 'throw' : 'warn',
+      onBrokenMarkdownImages: process.env.NODE_ENV === 'production' ? 'throw' : 'warn',
     },
   },
 
@@ -105,8 +104,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      copyright:
-        `Universal Permissive License © 2024, ${new Date().getFullYear()} Oracle and/or its affiliates.`,
+      copyright: `Universal Permissive License © 2024, ${new Date().getFullYear()} Oracle and/or its affiliates.`,
     },
     prism: {
       theme: prismThemes.github,

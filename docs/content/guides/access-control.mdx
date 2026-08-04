@@ -23,7 +23,6 @@ These are configured once on the server and are available to every client:
 - **Prompt** configurations
 - The **API Server key** (`AIO_API_KEY`)
 
-
 When a client adds a database or enables a model, every client can use it.
 
 ### Isolated per client
@@ -46,7 +45,9 @@ A client ID selects the client-specific settings and conversation history descri
 
 Any client with the API key can use any client ID, including `server`. A client that knows or guesses another client ID can read that session's conversation history and submit requests using its settings.
 
-Use client IDs to separate conversation context and client settings only. To isolate untrusted tenants, run separate deployments with different API keys.
+:::tip
+Use client IDs to separate conversation context and client settings. To isolate untrusted tenants, run separate deployments of the **AI Optimizer** with different API keys.
+:::
 
 For request details and client-ID behavior, see [AI Optimizer Server](../server/intro#client-ids).
 
@@ -54,7 +55,11 @@ For request details and client-ID behavior, see [AI Optimizer Server](../server/
 
 Because the configuration is shared, GUI controls can change settings that affect every client including: adding or deleting databases, editing models, resetting settings, and exporting configuration that contains secrets.
 
-For shared or multi-client deployments, set a **shared password** to protect these controls using the [`AIO_CLIENT_PASSWORD`](../guides/env-vars#client) environment variable to enable the gate. When it is unset, the gate is disabled and all controls are accessible.
+For shared or multi-client deployments, set a **shared password** to protect these controls using the [`AIO_CLIENT_PASSWORD`](../guides/env-vars#client) environment variable to enable the gate.
+
+When the password is set, the gate is enabled and protected controls are read-only until a user signs in.
+
+When it is unset, the gate is disabled and all controls are accessible.
 
 :::note
 This check applies only to the GUI. It does not replace or affect API Server authentication. External clients still authenticate with `AIO_API_KEY`. See [Environment Variables](../guides/env-vars).
@@ -76,8 +81,12 @@ Personal workspace pages, including **ChatBot**, **Tools**, and **Testbed**, sta
 
 When the password is configured, a **🔐 Sign-in** entry appears in the sidebar. Select it, or the inline **Sign in** link next to a protected control, to open the password dialog. Enter the shared password and press **Enter**.
 
+![Access Control](../_assets/images/access-control-signin.png)
+
 Authentication applies to one browser session. Signing in unlocks protected controls for that session only, and other browser sessions are unaffected. Once signed in, the entry becomes **🔓 Sign-out**, which clears that session's authenticated state.
 
+![Access Control](../_assets/images/access-control-signout.png)
+
 :::warning
-The password is *shared*. It protects shared controls, but does not identify the browser session that supplies it.
+The password is _shared_. It protects shared controls, but does not identify the browser session that supplies it.
 :::

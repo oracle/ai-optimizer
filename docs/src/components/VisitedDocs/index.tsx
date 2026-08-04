@@ -19,9 +19,7 @@ type VisitedDocsContextValue = {
   hasVisitedDocs: boolean;
 };
 
-const VisitedDocsContext = createContext<VisitedDocsContextValue | undefined>(
-  undefined,
-);
+const VisitedDocsContext = createContext<VisitedDocsContextValue | undefined>(undefined);
 
 function normalizePath(path: string, baseUrl: string): string {
   const pathname = new URL(path, 'https://docs.example').pathname;
@@ -36,9 +34,7 @@ function normalizePath(path: string, baseUrl: string): string {
 
 function readVisitedDocs(): Set<string> {
   try {
-    const storedPaths: unknown = JSON.parse(
-      window.localStorage.getItem(storageKey) ?? '[]',
-    );
+    const storedPaths: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? '[]');
     return new Set(
       Array.isArray(storedPaths)
         ? storedPaths.filter((path): path is string => typeof path === 'string')
@@ -69,8 +65,7 @@ export function VisitedDocsProvider({children}: {children: ReactNode}): ReactNod
   const value = useMemo(
     () => ({
       clearVisitedDocs,
-      hasVisitedDoc: (href: string) =>
-        visitedDocs.has(normalizePath(href, baseUrl)),
+      hasVisitedDoc: (href: string) => visitedDocs.has(normalizePath(href, baseUrl)),
       hasVisitedDocs: visitedDocs.size > 0,
     }),
     [baseUrl, clearVisitedDocs, visitedDocs],

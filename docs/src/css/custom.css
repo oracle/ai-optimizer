@@ -6,7 +6,8 @@
 
 @font-face {
   font-family: 'MontserratAlt1-Light';
-  src: url('/fonts/MontserratAlt1-Light.woff2') format('woff2'),
+  src:
+    url('/fonts/MontserratAlt1-Light.woff2') format('woff2'),
     url('/fonts/MontserratAlt1-Light.woff') format('woff');
   font-display: swap;
   font-style: normal;

@@ -10,7 +10,7 @@ The workhorse of the **AI Optimizer** is the API Server, referred to as the **AI
 The **AI Optimizer Server** API documentation is available at `http://<IP Address>:<Port>/v1/docs` for a running instance. Enter the API key to view and use the documented endpoints.
 :::
 
-![API Server](../_assets/images/fastapi_docs.png)
+![API Server](../_assets/images/fastapi-docs.png)
 
 Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://www.uvicorn.org/), the **AI Optimizer Server** acts as an intermediary between REST-capable clients, AI models, and the Oracle AI Database.
 
@@ -47,11 +47,11 @@ A client ID can contain 1-255 printable ASCII characters. Path separators (`/`, 
 
 ### Reserved client IDs
 
-| Client ID | Purpose |
-|-----------|---------|
+| Client ID    | Purpose                                                                                                                                         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CONFIGURED` | The default settings template. New clients start with these settings, and **settings** requests that omit `?client=...` operate on it directly. |
-| `server` | The session used for **chat** requests that omit the `client` header. It is the default identity for external and IDE clients. |
-| `FACTORY` | Built-in factory defaults. |
+| `server`     | The session used for **chat** requests that omit the `client` header. It is the default identity for external and IDE clients.                  |
+| `FACTORY`    | Built-in factory defaults.                                                                                                                      |
 
 These three are protected and are never evicted from the in-memory store.
 

@@ -1,61 +1,67 @@
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-1. Start the container:
+1.  Start the container:
 
-   ```bash
-   podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest-lite
-   ```
+    ```bash
+    podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest-lite
+    ```
 
-1. Wait until the database is ready:
+1.  Wait until the database is ready:
 
+{/* prettier-ignore */}
    <Tabs>
    <TabItem value="macos-linux" label="Linux/macOS">
 
-   ```bash
-   until podman logs ai-optimizer-db 2>&1 | grep -q 'DATABASE IS READY TO USE!'; do sleep 5; done
-   ```
+    ```bash
+    until podman logs ai-optimizer-db 2>&1 | grep -q 'DATABASE IS READY TO USE!'; do sleep 5; done
+    ```
 
+{/* prettier-ignore */}
    </TabItem>
    <TabItem value="powershell" label="PowerShell">
 
-   ```powershell
-   while (-not (podman logs ai-optimizer-db 2>&1 | Select-String -Quiet 'DATABASE IS READY TO USE!')) { Start-Sleep -Seconds 5 }
-   ```
+    ```powershell
+    while (-not (podman logs ai-optimizer-db 2>&1 | Select-String -Quiet 'DATABASE IS READY TO USE!')) { Start-Sleep -Seconds 5 }
+    ```
 
+{/* prettier-ignore */}
    </TabItem>
    </Tabs>
 
-1. Set `vector_memory_size`:
+1.  Set `vector_memory_size`:
 
-   ```bash
-   podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
-   ```
+    ```bash
+    podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
+    ```
 
-   ```sql
-   ALTER SYSTEM SET vector_memory_size=512M SCOPE=spfile;
-   EXIT;
-   ```
+    ```sql
+    ALTER SYSTEM SET vector_memory_size=512M SCOPE=spfile;
+    EXIT;
+    ```
 
-1. Restart the database and wait for a new ready message:
+1.  Restart the database and wait for a new ready message:
 
-   <Tabs>
-   <TabItem value="macos-linux" label="Linux/macOS">
+          <Tabs>
 
-   ```bash
-   ready_lines=$(podman logs ai-optimizer-db 2>&1 | grep -c 'DATABASE IS READY TO USE!' || true)
-   podman container restart ai-optimizer-db
-   until [ "$(podman logs ai-optimizer-db 2>&1 | grep -c 'DATABASE IS READY TO USE!')" -gt "$ready_lines" ]; do sleep 5; done
-   ```
+    <TabItem value="macos-linux" label="Linux/macOS">
 
-   </TabItem>
-   <TabItem value="powershell" label="PowerShell">
+    ```bash
+    ready_lines=$(podman logs ai-optimizer-db 2>&1 | grep -c 'DATABASE IS READY TO USE!' || true)
+    podman container restart ai-optimizer-db
+    until [ "$(podman logs ai-optimizer-db 2>&1 | grep -c 'DATABASE IS READY TO USE!')" -gt "$ready_lines" ]; do sleep 5; done
+    ```
 
-   ```powershell
-   $readyLines = @(podman logs ai-optimizer-db 2>&1 | Select-String 'DATABASE IS READY TO USE!').Count
-   podman container restart ai-optimizer-db
-   while (@(podman logs ai-optimizer-db 2>&1 | Select-String 'DATABASE IS READY TO USE!').Count -le $readyLines) { Start-Sleep -Seconds 5 }
-   ```
+          </TabItem>
 
-   </TabItem>
-   </Tabs>
+    <TabItem value="powershell" label="PowerShell">
+
+    ```powershell
+    $readyLines = @(podman logs ai-optimizer-db 2>&1 | Select-String 'DATABASE IS READY TO USE!').Count
+    podman container restart ai-optimizer-db
+    while (@(podman logs ai-optimizer-db 2>&1 | Select-String 'DATABASE IS READY TO USE!').Count -le $readyLines) { Start-Sleep -Seconds 5 }
+    ```
+
+          </TabItem>
+
+    </Tabs>

@@ -20,9 +20,7 @@ function HomepageHeader() {
         </Heading>
         <p className="hero__subtitle">{siteConfig.tagline}</p>
         <div className={styles.buttons}>
-          <Link
-            className="button button--secondary button--lg"
-            to={introDoc?.path ?? '/docs/v0.0.0/intro'}>
+          <Link className="button button--secondary button--lg" to={introDoc?.path ?? '/docs/v0.0.0/intro'}>
             View Documentation
           </Link>
         </div>
@@ -37,7 +35,8 @@ export default function Home(): ReactNode {
     <Layout
       wrapperClassName={styles.homePage}
       title={`${siteConfig.title}`}
-      description="Description will go into a meta tag in <head />">
+      description="Description will go into a meta tag in <head />"
+    >
       <HomepageHeader />
       <main>
         <HomepageFeatures />

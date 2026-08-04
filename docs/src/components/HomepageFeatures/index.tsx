@@ -15,7 +15,8 @@ const FeatureList: FeatureItem[] = [
     Svg: require('@site/static/img/build_with_familiar_tools.svg').default,
     description: (
       <>
-        Build GenAI applications using Oracle AI Database and your existing open-source tools while keeping your private enterprise data in place.
+        Build GenAI applications using Oracle AI Database and your existing open-source tools while keeping
+        your private enterprise data in place.
       </>
     ),
   },
@@ -24,7 +25,8 @@ const FeatureList: FeatureItem[] = [
     Svg: require('@site/static/img/ground_models_in_your_data.svg').default,
     description: (
       <>
-        Reduce hallucinations and enrich model knowledge with your structured and unstructured data using retrieval-augmented generation (RAG) and natural language to SQL (NL2SQL).
+        Reduce hallucinations and enrich model knowledge with your structured and unstructured data using
+        retrieval-augmented generation (RAG) and natural language to SQL (NL2SQL).
       </>
     ),
   },
@@ -33,7 +35,8 @@ const FeatureList: FeatureItem[] = [
     Svg: require('@site/static/img/test_and_refine_ai_solutions.svg').default,
     description: (
       <>
-          Configure models, tune prompts and parameters, prepare embeddings, and evaluate results in a single iterative workflow.
+        Configure models, tune prompts and parameters, prepare embeddings, and evaluate results in a single
+        iterative workflow.
       </>
     ),
   },

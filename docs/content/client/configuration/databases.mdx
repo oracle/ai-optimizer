@@ -18,7 +18,7 @@ To use this functionality of the **AI Optimizer**, you will need access to an **
 
 To configure the Database from the **AI Optimizer**, navigate to `Configuration -> Databases`:
 
-![Database Config](../../_assets/images/database_config.png)
+![Database Config](../../_assets/images/database-config.png)
 
 ### CORE Database
 
@@ -26,11 +26,11 @@ The first database configured must use the alias **CORE**. The **CORE** database
 
 ### Additional Databases
 
-Once the **CORE** database is configured, additional databases can be added with custom aliases by selecting **Add New...** from the database dropdown. These databases can be used for Vector Search and NL2SQL operations. 
+Once the **CORE** database is configured, additional databases can be added with custom aliases by selecting **Add New...** from the database dropdown. These databases can be used for Vector Search and NL2SQL operations.
 
 The currently selected database is used for all Splitting and Embedding, NL2SQL, and Vector Search operations, so when you have more than one database, be sure to select the correct database.
 
-![Database Add New](../../_assets/images/database_add_new.png)
+![Database Add New](../../_assets/images/database-add-new.png)
 
 ### Configuration Fields
 
@@ -40,14 +40,14 @@ Provide the following inputs:
 - **Username**: The pre-created [database username](../../guides/database#database-user)
 - **Password**: The password for the **Username**
 - **DSN (Connect String)**: The full connection string or [TNS Alias](../../guides/database#using-a-wallettns_admin-directory) for the Database.
-    This is normally in the form of:
-    ```
-    (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=<hostname>)(PORT=<port>))(CONNECT_DATA=(SERVICE_NAME=<serviceName>)))
-    ```
-    or
-    ```
-    //<hostname>:<port>/<serviceName>
-    ```
+  This is normally in the form of:
+  ```
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=<hostname>)(PORT=<port>))(CONNECT_DATA=(SERVICE_NAME=<serviceName>)))
+  ```
+  or
+  ```
+  //<hostname>:<port>/<serviceName>
+  ```
 - **Wallet Password** (_Optional_): If the connection to the database uses mTLS, provide the wallet password. ⭐️ Review [Using a Wallet](../../guides/database#using-a-wallettns_admin-directory) for additional setup instructions.
 
 Once all fields are set, click the `Create` or `Save` button.

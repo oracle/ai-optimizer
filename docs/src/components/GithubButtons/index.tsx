@@ -22,9 +22,7 @@ function loadGithubButtons(scriptUrl: string): Promise<void> {
   }
 
   return new Promise((resolve) => {
-    const existingScript = document.getElementById(
-      githubButtonsScriptId,
-    ) as HTMLScriptElement | null;
+    const existingScript = document.getElementById(githubButtonsScriptId) as HTMLScriptElement | null;
 
     if (existingScript) {
       existingScript.addEventListener('load', () => resolve(), {once: true});
@@ -55,13 +53,11 @@ export default function GithubButtons(): ReactNode {
         return;
       }
 
-      buttonsRef.current
-        ?.querySelectorAll<HTMLAnchorElement>('a[data-github-button]')
-        .forEach((anchor) => {
-          window.githubButtons?.render(anchor, (button) => {
-            anchor.parentNode?.replaceChild(button, anchor);
-          });
+      buttonsRef.current?.querySelectorAll<HTMLAnchorElement>('a[data-github-button]').forEach((anchor) => {
+        window.githubButtons?.render(anchor, (button) => {
+          anchor.parentNode?.replaceChild(button, anchor);
         });
+      });
     });
 
     return () => {
@@ -76,7 +72,8 @@ export default function GithubButtons(): ReactNode {
         data-color-scheme={colorMode}
         data-github-button
         data-icon="octicon-cloud-download"
-        href={`${repositoryUrl}/releases/latest`}>
+        href={`${repositoryUrl}/releases/latest`}
+      >
         Download
       </a>
       <a
@@ -85,7 +82,8 @@ export default function GithubButtons(): ReactNode {
         data-github-button
         data-icon="octicon-star"
         data-show-count="true"
-        href={repositoryUrl}>
+        href={repositoryUrl}
+      >
         Star
       </a>
       <a
@@ -94,7 +92,8 @@ export default function GithubButtons(): ReactNode {
         data-github-button
         data-icon="octicon-repo-forked"
         data-show-count="true"
-        href={`${repositoryUrl}/fork`}>
+        href={`${repositoryUrl}/fork`}
+      >
         Fork
       </a>
     </div>
