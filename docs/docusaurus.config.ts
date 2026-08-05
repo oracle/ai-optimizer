@@ -28,6 +28,7 @@ const config: Config = {
   onBrokenLinks: 'throw',
 
   markdown: {
+    mermaid: true,
     hooks: {
       onBrokenMarkdownImages: process.env.NODE_ENV === 'production' ? 'throw' : 'warn',
     },
@@ -75,6 +76,8 @@ const config: Config = {
       },
     ],
   ],
+
+  themes: ['@docusaurus/theme-mermaid'],
 
   themeConfig: {
     // Replace with your project's social card
