@@ -2,7 +2,7 @@
   "label": "Configuration",
   "position": 25,
   "link": {
-    "type": "doc",
-    "id": "intro"
+    "type": "generated-index",
+    "slug": "/client/configuration"
   }
 }
