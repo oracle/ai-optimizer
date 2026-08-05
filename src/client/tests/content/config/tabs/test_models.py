@@ -208,18 +208,37 @@ class TestClearClientModels:
         from client.app.content.config.tabs.models import _clear_client_models
 
         state = make_model_state(ll_model={"provider": "openai", "id": "gpt-5-mini"})
-        with patch(f"{MODULE}.state", state):
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers.update_client_settings"),
+        ):
             _clear_client_models("openai", "gpt-5-mini")
 
         assert state["settings"]["client_settings"]["ll_model"]["id"] is None
         assert state["settings"]["client_settings"]["ll_model"]["provider"] is None
+
+    def test_persists_cleared_references(self, make_model_state):
+        """Cleared references are persisted before settings are refreshed."""
+        from client.app.content.config.tabs.models import _clear_client_models
+
+        state = make_model_state(ll_model={"provider": "openai", "id": "gpt-5-mini"})
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers.update_client_settings") as mock_update,
+        ):
+            _clear_client_models("openai", "gpt-5-mini")
+
+        mock_update.assert_called_once_with({"ll_model": {"provider": None, "id": None}})
 
     def test_leaves_ll_model_on_mismatch(self, make_model_state):
         """ll_model is untouched when provider/id do not match."""
         from client.app.content.config.tabs.models import _clear_client_models
 
         state = make_model_state(ll_model={"provider": "openai", "id": "gpt-5-mini"})
-        with patch(f"{MODULE}.state", state):
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers.update_client_settings"),
+        ):
             _clear_client_models("anthropic", "sonnet")
 
         assert state["settings"]["client_settings"]["ll_model"]["id"] == "gpt-5-mini"
@@ -230,7 +249,10 @@ class TestClearClientModels:
         from client.app.content.config.tabs.models import _clear_client_models
 
         state = make_model_state(vector_search={"provider": "cohere", "id": "embed-v3"})
-        with patch(f"{MODULE}.state", state):
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers.update_client_settings"),
+        ):
             _clear_client_models("cohere", "embed-v3")
 
         assert state["settings"]["client_settings"]["vector_search"]["id"] is None
@@ -255,13 +277,17 @@ class TestClearClientModels:
             "judge_model": {"provider": "anthropic", "id": "sonnet"},
         }
         state = make_model_state(testbed=tb)
-        with patch(f"{MODULE}.state", state):
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers.update_client_settings") as mock_update,
+        ):
             _clear_client_models("openai", "gpt-5-mini")
 
         testbed = state["settings"]["client_settings"]["testbed"]
         assert testbed["qa_ll_model"] is None
         assert testbed["qa_embed_model"] is None
         assert testbed["judge_model"] == {"provider": "anthropic", "id": "sonnet"}
+        mock_update.assert_called_once_with({"testbed": testbed})
 
     def test_handles_already_none_testbed_keys(self, make_model_state):
         """Already-None testbed keys do not raise."""

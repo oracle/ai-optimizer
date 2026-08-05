@@ -1,5 +1,6 @@
 ---
 title: Environment Variables
+description: Configure environment variables.
 sidebar_position: 0
 ---
 
@@ -34,3 +35,49 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 | `AIO_SERVER_SSL_KEY_FILE`  | Path to the TLS private key in PEM format                                                                                                          | _(none)_           |
 | `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the API Server to become ready at startup                                                                             | `180`              |
 | `AIO_MAX_CLIENTS`          | Maximum number of distinct client sessions cached in memory                                                                                        | `64`               |
+
+### OCI CLI
+
+These settings populate the DEFAULT OCI profile. See [OCI Configuration](../client/configuration/oci) for authentication requirements and supported authentication types.
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_OCI_CLI_AUTH` | Authentication type, such as `api_key` or `instance_principal` | _(none)_ |
+| `AIO_OCI_CLI_TENANCY` | Tenancy OCID | _(none)_ |
+| `AIO_OCI_CLI_REGION` | OCI region | _(none)_ |
+| `AIO_OCI_CLI_USER` | User OCID | _(none)_ |
+| `AIO_OCI_CLI_FINGERPRINT` | API key fingerprint | _(none)_ |
+| `AIO_OCI_CLI_KEY_FILE` | Path to a private key in PEM format | _(none)_ |
+| `AIO_OCI_CLI_KEY_CONTENT` | Inline private-key content | _(none)_ |
+| `AIO_OCI_CLI_PASSPHRASE` | Private-key passphrase | _(none)_ |
+| `AIO_OCI_CLI_SECURITY_TOKEN_FILE` | Path to a security-token file | _(none)_ |
+
+#### OCI GenAI
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_GENAI_COMPARTMENT_ID` | Compartment OCID for OCI GenAI inference | _(none)_ |
+| `AIO_GENAI_REGION` | Region for the OCI GenAI service endpoint | _(none)_ |
+
+#### OCI Object Storage Source Lock
+
+Pin the Split & Embed tab's OCI source compartment and, optionally, its bucket for every user of the deployment. The compartment must resolve against the active OCI profile. The bucket is only applied when the compartment resolves and the bucket exists in that compartment.
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID` | Compartment OCID pinned as the Split & Embed source compartment. When the OCID resolves, the compartment selector is locked for all users. | _(none)_ |
+| `AIO_OCI_SOURCE_BUCKET_NAME` | Bucket pinned within the configured source compartment. If the compartment does not resolve or the bucket does not exist there, this value is ignored. | _(none)_ |
+
+
+### Models
+
+These settings provide API keys or service URLs and enable matching built-in models at startup.
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_COHERE_API_KEY` | Cohere API key | _(none)_ |
+| `AIO_OPENAI_API_KEY` | OpenAI API key | _(none)_ |
+| `AIO_PPLX_API_KEY` | Perplexity AI API key | _(none)_ |
+| `AIO_ON_PREM_OLLAMA_URL` | Ollama API URL, such as `http://127.0.0.1:11434` | _(none)_ |
+| `AIO_ON_PREM_HF_URL` | Hugging Face TEI URL, such as `http://127.0.0.1:8080` | _(none)_ |
+| `AIO_ON_PREM_VLLM_URL` | vLLM API URL, such as `http://localhost:8000/v1` | _(none)_ |

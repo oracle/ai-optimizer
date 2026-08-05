@@ -52,28 +52,38 @@ def _get_supported_models(model_type: str) -> list[dict[str, Any]]:
 
 
 def _clear_client_models(provider: str, model_id: str) -> None:
-    """Clear model references from client_settings that match this model."""
+    """Clear and persist client-setting references that match this model."""
     cs = state["settings"]["client_settings"]
+    updates: dict[str, Any] = {}
 
     # ll_model uses ModelIdentity dict structure
     ll = cs.get("ll_model", {})
     if isinstance(ll, dict) and ll.get("provider") == provider and ll.get("id") == model_id:
         cs["ll_model"]["id"] = None
         cs["ll_model"]["provider"] = None
+        updates["ll_model"] = {"provider": None, "id": None}
 
     # vector_search uses ModelIdentity for embedding model
     vs = cs.get("vector_search", {})
     if isinstance(vs, dict) and vs.get("provider") == provider and vs.get("id") == model_id:
         cs["vector_search"]["id"] = None
         cs["vector_search"]["provider"] = None
+        updates["vector_search"] = {"provider": None, "id": None}
 
     # testbed has multiple model references
     tb = cs.get("testbed", {})
     if isinstance(tb, dict):
+        testbed_updates = {}
         for key in ("qa_ll_model", "qa_embed_model", "judge_model"):
             ref = tb.get(key)
             if isinstance(ref, dict) and ref.get("provider") == provider and ref.get("id") == model_id:
                 tb[key] = None
+                testbed_updates[key] = None
+        if testbed_updates:
+            updates["testbed"] = tb
+
+    if updates:
+        helpers.update_client_settings(updates)
 
 
 #####################################################
@@ -134,9 +144,7 @@ def _remove_model(provider: str, model_id: str) -> bool:
 #####################################################
 # Dialog helpers
 #####################################################
-def _initialize_model(
-    action: str, model_type: str, model_id: str | None, model_provider: str | None
-) -> dict[str, Any]:
+def _initialize_model(action: str, model_type: str, model_id: str | None, model_provider: str | None) -> dict[str, Any]:
     """Initialize model configuration based on action type."""
     if action == "edit" and model_provider and model_id:
         return _fetch_model(model_provider, model_id) or {}
@@ -145,9 +153,7 @@ def _initialize_model(
 
 def _render_provider_selection(model: dict, supported_models: list, action: str) -> tuple[dict, list, bool]:
     """Render provider selection UI and return updated model, provider models, and OCI flag."""
-    provider_index = next(
-        (i for i, item in enumerate(supported_models) if item["provider"] == model["provider"]), None
-    )
+    provider_index = next((i for i, item in enumerate(supported_models) if item["provider"] == model["provider"]), None)
     disable_for_oci = model.get("provider") == "oci"
 
     model["provider"] = st.selectbox(

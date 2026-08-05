@@ -1,0 +1,59 @@
+---
+title: Oracle Cloud Infrastructure
+description: Set up OCI authentication, runtime configuration, and OCI Generative AI model loading.
+sidebar_position: 20
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+Use this guide to configure OCI outside the client interface. For the interactive workflow, see [OCI Configuration](../client/configuration/oci).
+
+## Prerequisites
+
+To use API-key authentication, [generate an API key](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm#two) and collect the configuration values OCI provides.
+
+## OCI CLI Configuration File
+
+Depending on the runtime environment, either [bare metal](#bare-metal) or a [container](#container), your local [OCI CLI configuration file](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm) can configure the **AI Optimizer** for OCI access.
+
+In addition to the standard configuration file entries, add these entries to enable OCI Generative AI services:
+
+- **genai_region**: the region for the OCI Generative AI service
+- **genai_compartment_id**: the compartment OCID for the OCI Generative AI service
+
+### Bare Metal
+
+During startup, the **AI Optimizer** automatically looks for and consumes an [OCI CLI configuration file](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm) for OCI access.
+
+### Container
+
+When starting the container, volume-mount the configuration directory at `/app/.oci`.
+
+For example:
+
+```bash
+podman run -v ~/.oci:/app/.oci -p 8501:8501 -it --rm ai-optimizer-aio
+```
+
+## Environment Variables
+
+OCI can also be configured with [OCI CLI environment variables](./env-vars#oci-cli), including variables for OCI Generative AI.
+
+## Authentication Types
+
+The following authentication types are supported through the `AIO_OCI_CLI_AUTH` variable or the `authentication` field in the configuration file:
+
+| Value | Description | Use Case |
+|---|---|---|
+| `api_key` | API key with user, fingerprint, tenancy, and private key | Default; local development and service accounts |
+| `instance_principal` | Instance Principals security token | OCI compute instances with dynamic group policies |
+| `resource_principal` | Resource Principals signer | OCI Functions and other resource-principal-enabled services |
+| `oke_workload_identity` | OKE workload identity resource principal | Pods running on Oracle Kubernetes Engine |
+| `security_token` | Security token from file with private key | OCI Cloud Shell and token-based authentication |
+
+## Loading OCI GenAI Models at Startup
+
+When a usable OCI profile already has a GenAI compartment OCID and region persisted—from a previous configuration, a [configuration file](#oci-cli-configuration-file), or [environment variables](#environment-variables)—the **AI Optimizer** loads that region's models automatically at startup.
+
+For the interactive alternative, see [Loading OCI GenAI Models](../client/configuration/oci#loading-oci-genai-models).
