@@ -102,6 +102,12 @@ const config: Config = {
         },
       ],
     },
+    docs: {
+      sidebar: {
+        hideable: true,
+        autoCollapseCategories: true,
+      },
+    },
     footer: {
       style: 'dark',
       copyright: `Universal Permissive License © 2024, ${new Date().getFullYear()} Oracle and/or its affiliates.`,
