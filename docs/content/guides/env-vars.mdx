@@ -36,9 +36,22 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 | `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the API Server to become ready at startup                                                                             | `180`              |
 | `AIO_MAX_CLIENTS`          | Maximum number of distinct client sessions cached in memory                                                                                        | `64`               |
 
+### Database
+
+These variables configure the CORE database connection. See [Database Configuration](./database) for connection formats, wallet setup, and required privileges.
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_DB_USERNAME` | Database username | _(none)_ |
+| `AIO_DB_PASSWORD` | Database password | _(none)_ |
+| `AIO_DB_DSN` | Connection string or TNS alias | _(none)_ |
+| `AIO_DB_WALLET_PASSWORD` | Wallet password for mTLS connections | _(none)_ |
+| `AIO_DB_WALLET_LOCATION` | Path to the wallet directory for mTLS connections | _(none)_ |
+| `AIO_DB_POOL_SIZE` | Maximum database connection pool size | `5` |
+
 ### OCI CLI
 
-These settings populate the DEFAULT OCI profile. See [OCI Configuration](../client/configuration/oci) for authentication requirements and supported authentication types.
+These settings populate the DEFAULT OCI profile. See [OCI Configuration](./oracle-cloud-infra.mdx) for authentication requirements and supported authentication types.
 
 | Variable | Description | Default |
 |---|---|---|
@@ -81,3 +94,9 @@ These settings provide API keys or service URLs and enable matching built-in mod
 | `AIO_ON_PREM_OLLAMA_URL` | Ollama API URL, such as `http://127.0.0.1:11434` | _(none)_ |
 | `AIO_ON_PREM_HF_URL` | Hugging Face TEI URL, such as `http://127.0.0.1:8080` | _(none)_ |
 | `AIO_ON_PREM_VLLM_URL` | vLLM API URL, such as `http://localhost:8000/v1` | _(none)_ |
+
+### NL2SQL
+
+| Variable | Description | Default |
+|---|---|---|
+| `AIO_SQLCL_HOME` | Overrides the SQLcl connection-store directory | _(temporary directory)_ |

@@ -17,7 +17,11 @@ The [**Oracle AI Database**](https://www.oracle.com/database/) sits at the core 
 The **AI Optimizer** can be used to interact with language models without having the database configured, but additional functionality such as RAG and NL2SQL, will not be available without the database.
 :::
 
-## Run Oracle AI Database Free Locally
+### Database Configuration
+
+You can configure the connection to an Oracle AI Database in the [client](../client/configuration/databases) page or by setting [environment variables](../guides/env-vars#database). The **AI Optimizer** supports multiple database connections, but only one can be active at a time.
+
+## Run Local Oracle AI Database Free
 
 Provisioning an on-premises database or an Oracle Cloud database is outside the scope of this guide.
 
@@ -27,7 +31,7 @@ For a local development environment, you can run Oracle AI Database Free in a co
 
 After the database is ready, create a database user as described in [Database User](#database-user). When configuring the **AI Optimizer** on the same host, use `//localhost:1521/FREEPDB1` as the connect string.
 
-## Using a Wallet/TNS_ADMIN Directory
+## Using a Wallet/TNS_ADMIN
 
 For mTLS database connectivity, or to use a TNS alias instead of a full connect string, use the contents of a `TNS_ADMIN` directory.
 
