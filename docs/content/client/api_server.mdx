@@ -10,11 +10,9 @@ The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) includes an API S
 
 ![Server Configuration](../_assets/images/api-server-config.png)
 
-Connected clients share database, model, OCI, and prompt configurations. This shared catalog avoids duplicating connection details, credentials, and model definitions for every client that uses the same API Server.
+Connected clients share database, model, OCI, and prompt configurations. Each client can separately select a database, language model, OCI profile, enabled tools, and Vector Search options, making independent experiments possible on the same server.
 
-Each client separately selects a database, language model, OCI profile, enabled tools, and Vector Search options. This lets users run independent experiments while using the same shared resources. A client ID partitions these settings and conversation history, but it is not a security or tenant-isolation boundary.
-
-For deployment guidance when multiple users share an API Server, including how to protect shared configuration and isolate untrusted workloads, see [Access Control](../guides/access-control).
+When several people use one server, [separate client sessions](../server/multi-user-sessions) keep their conversations and working selections apart. To protect the shared configuration resources, see [Access Control](../guides/access-control).
 
 ## Server Configuration
 

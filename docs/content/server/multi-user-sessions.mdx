@@ -1,0 +1,69 @@
+---
+title: Multi-User Sessions
+description: Run separate client sessions on one AI Optimizer Server.
+sidebar_position: 5
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+One **AI Optimizer Server** can serve many GUI, IDE, MCP, and external clients. Clients on the same server share configured resources, while each client ID keeps its own working session.
+
+## Working on a Shared Server
+
+| Shared by all clients | Kept per client session |
+|---|---|
+| Database connections and vector stores | Conversation history |
+| Model configurations and API credentials | Selected database, language model, and OCI profile |
+| OCI profiles | Enabled tools and Vector Search settings |
+| Prompt configurations | Language model parameters and Testbed model selections |
+
+Two users can select different databases and tools without changing what is available to each other. Adding a database, modifying a model, or editing a prompt changes shared configuration for every client.
+
+For a trusted group, give each participant a separate browser or external-client session. Each participant can keep an independent conversation and tool selection while using the same configured models, databases, prompts, and vector stores. The [Racing Championship](../use-cases/racing) use case applies this model: each participant chooses a different driver, while the group shares the prepared database and document collection.
+
+## Client IDs
+
+A client ID selects the settings and conversation history for an API session. It does not authenticate a client or provide access isolation.
+
+- The **AI Optimizer GUI client** generates a random ID for each browser session. You can view the current ID under **☰** > **About**.
+- **IDE and MCP clients** use the `server` client by default. See [IDE Integration](../advanced-guides/ide-integration) to copy GUI settings to that client.
+- **External applications** choose their own ID. Send it in the `client` header on chat requests or the `client` query parameter on settings requests.
+
+When a chat request omits the `client` header, it uses the `server` client. You can review and copy settings to this client from the [API Server](../client/api_server) page in the GUI. Settings requests that omit `?client=...` operate on `CONFIGURED`.
+
+For example, two external applications can use separate sessions:
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "X-API-Key: $AIO_API_KEY" -H "client: team-a" \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello"}]}'
+
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "X-API-Key: $AIO_API_KEY" -H "client: team-b" \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+A client ID can contain 1-255 printable ASCII characters. Path separators (`/`, `\`) and the bare components `.` and `..` are rejected. When the server receives a new ID, it creates a session using the configured defaults.
+
+### Reserved Client IDs
+
+| Client ID | Purpose |
+|---|---|
+| `CONFIGURED` | The default settings template. New clients start with these settings, and settings requests that omit `?client=...` operate on it directly. |
+| `server` | The session used for chat requests that omit the `client` header. It is the default identity for external and IDE clients. |
+| `FACTORY` | Built-in factory defaults. |
+
+These IDs are protected and are never evicted from the in-memory store.
+
+## Session Capacity and Lifetime
+
+The server keeps client settings in memory up to the configured [`AIO_MAX_CLIENTS`](../guides/env-vars#server) limit. When it reaches the limit, it removes the least recently used client settings; protected clients are never removed.
+
+The next request for an evicted client creates settings from the configured defaults. Conversation history is stored separately in memory and is lost when the server restarts. Raise the limit if you expect many simultaneous clients.
+
+## Security Boundary
+
+Client IDs organize sessions; they do not restrict access. Anyone with the API key can use any client ID, including `server`. [Access Control](../guides/access-control#choose-a-deployment-boundary) covers the deployment choices for trusted collaborators, external applications, and untrusted users.

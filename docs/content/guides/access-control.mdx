@@ -7,45 +7,17 @@ sidebar_position: 10
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-One **AI Optimizer** [API Server](../server/intro) can serve many clients at once. These can include GUI sessions, IDE or MCP connections, and external applications.
+One **AI Optimizer Server** can serve many GUI sessions, IDE or MCP clients, and external applications. Teams sharing one server use [separate client sessions](../server/multi-user-sessions) to keep conversations and working selections apart while using the same configured resources.
 
-Clients that access the same API Server share resources such as database connections and model configurations. Each client selects which shared resources its session uses.
+## Choose a Deployment Boundary
 
-In shared deployments, you can [protect the shared configuration](#protecting-the-shared-configuration) controls with a password.
+- **Trusted collaborators:** Use one server and [protect shared configuration](#protecting-the-shared-configuration) controls with a password.
+- **External applications:** Authenticate requests with the API key.
+- **Untrusted users or tenants:** Use separate deployments with different API keys.
 
-## What Is Shared vs. Isolated
+## Client IDs and Access Boundary
 
-The server has shared configuration that every client can use. Each client chooses how to use that configuration for its own session.
-
-### Shared Configuration across all clients
-
-These are configured once on the server and are available to every client:
-
-- **Database** connections (aliases, DSNs, vector stores)
-- **Model** configurations (which models exist, their endpoints and API keys)
-- **OCI** profiles
-- **Prompt** configurations
-- The **API Server key** (`AIO_API_KEY`)
-
-When a client adds a database or enables a model, every client can use it.
-
-### Isolated per client
-
-Each client keeps its own selected settings and conversation history:
-
-- **Selected language model** and its parameters (temperature, max tokens, top-p, penalties)
-- **Selected database** alias
-- **Selected OCI** profile
-- **Enabled tools** (Vector Search, NL2SQL)
-- **Vector Search settings** (selected store, search type, top-k, thresholds)
-- **Testbed** model selections
-- **Conversation history**
-
-For example, two clients can choose different configured databases and models without changing what is available to other clients.
-
-## Client IDs and Access
-
-A client ID selects the client-specific settings and conversation history described above. It does not authenticate a client or restrict access to a session.
+A client ID selects a session; it does not authenticate a client or restrict access to a session.
 
 Any client with the API key can use any client ID, including `server`. A client that knows or guesses another client ID can read that session's conversation history and submit requests using its settings.
 
@@ -53,11 +25,9 @@ Any client with the API key can use any client ID, including `server`. A client 
 Use client IDs to separate conversation context and client settings. To isolate untrusted tenants, run separate deployments of the **AI Optimizer** with different API keys.
 :::
 
-For request details and client-ID behavior, see [AI Optimizer Server](../server/intro#client-ids).
-
 ## Protecting the Shared Configuration
 
-Because the configuration is shared, GUI controls can change settings that affect every client including: adding or deleting databases, editing models, resetting settings, and exporting configuration that contains secrets.
+The password gate keeps unauthenticated browser sessions from changing shared configuration, including adding or deleting databases, editing models, resetting settings, and exporting configuration that contains secrets.
 
 For shared or multi-client deployments, set a **shared password** to protect these controls using the [`AIO_CLIENT_PASSWORD`](../guides/env-vars#client) environment variable to enable the gate.
 
