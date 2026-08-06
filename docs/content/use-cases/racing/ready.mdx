@@ -1,110 +1,13 @@
 ---
-title: Racing Championship
-description: Multi-User Racing Scenario.
-sidebar_position: 5
+title: "Ready to Race?"
+description: Run the Racing Championship demonstration.
+sidebar_position: 10
 ---
 
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-This use case is a synthetic Racing Simulator Championship. You'll play the role of a driver in a 100-driver, 20-team season and ask the same questions four different ways, watching the answers improve as each grounding mechanism is added.
-
-:::danger[Keep it Clean!]
-Run this use case in a clean demo environment, such as the one created by the [Walkthrough](../walkthrough). It imports racing prompts, creates and resets racing database objects, and adds a vector store for the driver documents.
-:::
-
-## What You'll See
-
-| Step | Settings | What it demonstrates |
-|------|----------|----------------------|
-| **LLM-only** | NL2SQL off, Vector Search off | The model has no idea who your driver is, so it refuses, hedges, or hallucinates. |
-| **+ NL2SQL** | NL2SQL on | Exact answers from `drivers`, `race_results`, and `driver_standings` via SQLcl MCP. |
-| **+ Vector Search** | Vector Search on, NL2SQL off | Coaching, briefing, and debrief context retrieved from per-driver Markdown notes. |
-| **Both together** | NL2SQL on, Vector Search on | Questions that need both facts and context, answered in one turn. |
-| **Final Reveal** | NL2SQL on | A late Round 6 insert updates the live database, and the assistant calculates the championship from the new structured standings. |
-
-## Before You Begin
-
-You'll need:
-
-- A configured **AI Optimizer** from the [Walkthrough](../walkthrough), or any equivalent install where you have an enabled chat model, an enabled embedding model, and a [database connection](../client/configuration/databases).
-- A chat model with solid tool use.
-- An Oracle AI Database connection with rights to create tables and views (the `DB_DEVELOPER_ROLE` granted in the Walkthrough is sufficient).
-- The [SQLcl MCP Server](../guides/sqlcl-mcp-server) configured for **NL2SQL**, pointed at the same database.
-
-## Running with Several Participants
-
-Give each participant a [separate browser or external-client session](../server/multi-user-sessions) and a different driver number. Their conversations and tool selections remain separate while the group uses the same prepared database, models, prompts, and vector stores.
-
-## Setup
-
-Everything you need lives under [`docs/demos/racing/`](https://github.com/oracle/ai-optimizer/tree/main/docs/demos/racing) in the source repository:
-
-| File | Purpose |
-|------|---------|
-| [`schema.sql`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/schema.sql) | Oracle DDL plus seed data for 20 teams, 100 drivers, and Rounds 1–5. Round 6 is scheduled but has no team points yet. |
-| [`prompts.json`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/prompts.json) | A motorsport-analyst prompt bundle that tunes the **NL2SQL**, **Vector Search**, and combined-mode prompts for this dataset. |
-| [`corpus/`](https://github.com/oracle/ai-optimizer/tree/main/docs/demos/racing/corpus) | 100 per-driver Markdown briefings used in Step 3. |
-| [`finale_insert.sql`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/finale_insert.sql) | The late Round 6 team-points insert used during the Final Reveal. |
-
-Download the files you need from the GitHub links above, and keep them together in a local `racing/` directory.
-
-### Load the schema
-
-Connect to your Oracle AI Database as the user the **AI Optimizer** is configured to use, and run `schema.sql`.
-
-If you are using the database created during the [Walkthrough](../walkthrough), it runs in a container that can't see your local checkout, so copy the demo files into the container first and then load the script from inside it:
-
-```bash
-podman cp /path/to/racing ai-optimizer-db:/tmp/racing
-podman exec -it ai-optimizer-db sqlplus '<AIO_DB_USERNAME>/<AIO_DB_PASSWORD>@<AIO_DB_DSN>'
-```
-
-`AIO_DB_USERNAME`, `AIO_DB_PASSWORD`, and `AIO_DB_DSN` are the username, password, and connection string configured in **Configuration** > **Databases**. The Walkthrough uses `WALKTHROUGH`, `OrA_41_OpTIMIZER`, and `//localhost:1521/FREEPDB1`.
-
-```sql
-@/tmp/racing/schema.sql
-```
-
-Use the CORE database created by the Walkthrough for this demo. `schema.sql` drops and recreates the racing tables, so run it only in a database or schema you are happy to reset. It then seeds Rounds 1-5 for all 100 drivers.
-
-The per-team strength factor is randomized on every reset, so the pre-finale standings and the eventual champion change each time you re-run the script.
-
-### Verify the seed
-
-Confirm that the seed contains a known driver with results before Round 6:
-
-```sql
-SELECT driver_label, team_id FROM drivers WHERE driver_code = 'Driver001';
-
-SELECT COUNT(*) FROM race_results rr JOIN drivers d USING (driver_id)
-WHERE d.driver_code = 'Driver001';
-```
-
-### Import the prompts
-
-In the **AI Optimizer**, navigate to **Tools** > **Prompts**, select **Upload**, choose the `prompts.json` file you downloaded, then select **Upload Prompts**.
-
-This installs:
-
-- A motorsport-analyst system prompt
-- An **NL2SQL** prompt
-- A **Vector Search** prompt that grounds answers in the retrieved driver documents
-- A combined-mode classifier and synthesis prompt that routes structured vs. narrative asks
-
-See [Prompt Engineering](../client/tools/prompts) for more on managing prompts.
-
-### Enable Models
-
-Enable the language and embedding models if they are not already enabled. In the **AI Optimizer**, navigate to **Configuration** > **Models**.
-
-The demo has been tuned against the on-premises models used in the [Walkthrough](../walkthrough): [Ollama](https://ollama.com/) `granite4.1:8b` with `mxbai-embed-large`. Other Language Models may work, especially larger ones, but may require some prompt engineering.
-
-See [Model Configuration](../client/configuration/models) for more on configuring models.
-
-## Ready to Race?
-
-Before starting the demo, confirm that:
+Before starting the demo, confirm that all [setup](./setup) steps have been completed:
 
 <label><input type="checkbox" /> <code>schema.sql</code> completed successfully.</label><br />
 <label><input type="checkbox" /> The racing prompts were imported.</label><br />
@@ -183,7 +86,7 @@ Which team is leading before Round 6?
 Summarize my driver briefing.
 ```
 
-**What to look for:** the agent calls SQLcl and queries `drivers`, `race_results`, and the `driver_standings` / `team_standings` views, returning exact numbers for your driver and the championship through Round 5. For `Summarize my driver briefing.`, with only **NL2SQL** enabled, it should say that the structured database does not have that information.
+**What to look for:** the agent calls SQLcl to query the relevant racing tables and views, returning exact numbers for your driver and the championship through Round 5. For `Summarize my driver briefing.`, with only **NL2SQL** enabled, it should say that the structured database does not have that information.
 
 > These answers come from the live database in real time, not a nightly extract or a stale dashboard. But notice what it can't answer yet: anything about coaching, debriefs, or Round 6 before the final insert.
 
@@ -257,7 +160,7 @@ Compare Driver <N> with Driver <M> using both database results and driver notes.
 
 Before this step, ask the model who won the championship. With no Round 6 results loaded, the prompt instructs the model to say the finale has not been recorded yet and to refuse to name a winner.
 
-Now load the Round 6 team points. As the same database user, run `finale_insert.sql` from the copy you downloaded or extracted:
+Now load the Round 6 team points. As the same database user, run `finale_insert.sql` from your `racing/` directory:
 
 ```sql
 @/path/to/racing/finale_insert.sql
@@ -280,7 +183,6 @@ Which teams were in contention before Round 6, and how did the final Round 6 dat
 
 Why could NL2SQL not answer the final championship winner before the Round 6 insert?
 
-Show me the SQL used to calculate the final championship standings.
 ```
 
 **What to look for:** the model queries `championship_team_standings`, presents pre-finale team points, Round 6 points, and final totals as a table, and names the champion. It will also explain why it couldn't answer this question a few minutes earlier.
@@ -328,7 +230,7 @@ Variations on each step, organized by what they demonstrate.
 
 ## Resetting Between Runs
 
-To re-run the use case from scratch, open **Configuration** > **Databases** and delete the vector store you created. [Database Configuration](../client/configuration/databases) shows the available vector-store controls.
+To re-run the use case from scratch, open **Configuration** > **Databases** and delete the vector store you created. [Database Configuration](../../client/configuration/databases) shows the available vector-store controls.
 
 Then re-run `schema.sql`, re-embed the downloaded `driver_<NNN>.md` file during Step 3, and run `finale_insert.sql` during the Final Reveal. If you customized any of the racing prompts in the **AI Optimizer**, click **Reset Instructions** on each, and the originals will be re-installed from `prompts.json` on the next import.
 
@@ -336,6 +238,7 @@ Because `schema.sql` randomizes per-team form on every reset, the pre-finale sta
 
 ## What's Next?
 
+- Extend the Racing Championship with [Deep Data Security](./dds).
 - Build your own use case. Swap in your own DDL and seed data, write a `prompts.json` that teaches the model your schema, and curate a document corpus that mirrors the qualitative side of your domain. The four-step progression (**LLM-only → NL2SQL → Vector Search → both**) is reusable.
-- Try the [Testbed](../client/testbed) to evaluate the same questions against different models, prompts, or embedding strategies.
-- Read [Agents and Flows](../advanced-guides/agents/intro) to understand how the **AI Optimizer** routes each turn between the **NL2SQL** agent, the **Vector Search** flow, and the combined-mode classifier.
+- Try the [Testbed](../../client/testbed) to evaluate the same questions against different models, prompts, or embedding strategies.
+- Read [Agents and Flows](../../advanced-guides/agents/intro) to understand how the **AI Optimizer** routes each turn between the **NL2SQL** agent, the **Vector Search** flow, and the combined-mode classifier.

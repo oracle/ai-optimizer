@@ -1,0 +1,81 @@
+---
+title: Setup
+description: Prepare the Racing Championship demonstration.
+sidebar_position: 5
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+## Before You Begin
+
+You'll need:
+
+- A configured **AI Optimizer** from the [Walkthrough](../../walkthrough), or any equivalent install where you have an enabled chat model, an enabled embedding model, and a [database connection](../../client/configuration/databases).
+- A chat model with solid tool use.
+- An Oracle AI Database connection with rights to create tables and views (the `DB_DEVELOPER_ROLE` granted in the Walkthrough is sufficient).
+- The [SQLcl MCP Server](../../guides/sqlcl-mcp-server) configured for **NL2SQL**, pointed at the same database.
+
+Everything you need lives under [`docs/demos/racing/`](https://github.com/oracle/ai-optimizer/tree/main/docs/demos/racing) in the source repository:
+
+| File | Purpose |
+|------|---------|
+| [`schema.sql`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/schema.sql) | Oracle DDL plus seed data for 20 teams, 100 drivers, and Rounds 1–5. Round 6 is scheduled but has no team points yet. |
+| [`prompts.json`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/prompts.json) | A motorsport-analyst prompt bundle that tunes the **NL2SQL**, **Vector Search**, and combined-mode prompts for this dataset. |
+| [`corpus/`](https://github.com/oracle/ai-optimizer/tree/main/docs/demos/racing/corpus) | 100 per-driver Markdown briefings used in Step 3. |
+| [`finale_insert.sql`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/finale_insert.sql) | The late Round 6 team-points insert used during the Final Reveal. |
+
+Download the files you need from the GitHub links above, and keep them together in a local `racing/` directory.
+
+## Load the schema
+
+Connect to your Oracle AI Database as the user the **AI Optimizer** is configured to use, and run `schema.sql`.
+
+If you are using the database created during the [Walkthrough](../../walkthrough), it runs in a container that can't see your local checkout, so copy the demo files into the container first and then load the script from inside it:
+
+```bash
+podman cp /path/to/racing ai-optimizer-db:/tmp/racing
+podman exec -it ai-optimizer-db sqlplus '<AIO_DB_USERNAME>/<AIO_DB_PASSWORD>@<AIO_DB_DSN>'
+```
+
+`AIO_DB_USERNAME`, `AIO_DB_PASSWORD`, and `AIO_DB_DSN` are the username, password, and connection string configured in **Configuration** > **Databases**. The Walkthrough uses `WALKTHROUGH`, `OrA_41_OpTIMIZER`, and `//localhost:1521/FREEPDB1`.
+
+```sql
+@/tmp/racing/schema.sql
+```
+
+Use the CORE database created by the Walkthrough for this demo. `schema.sql` drops and recreates the racing tables, so run it only in a database or schema you are happy to reset. It then seeds Rounds 1-5 for all 100 drivers.
+
+The per-team strength factor is randomized on every reset, so the pre-finale standings and the eventual champion change each time you re-run the script.
+
+### Verify the seed
+
+Confirm that the seed contains a known driver with results before Round 6:
+
+```sql
+SELECT driver_label, team_id FROM drivers WHERE driver_code = 'Driver001';
+
+SELECT COUNT(*) FROM race_results rr JOIN drivers d USING (driver_id)
+WHERE d.driver_code = 'Driver001';
+```
+
+## Import the prompts
+
+In the **AI Optimizer**, navigate to **Tools** > **Prompts**, select **Upload**, choose the `prompts.json` file you downloaded, then select **Upload Prompts**.
+
+This installs:
+
+- A motorsport-analyst system prompt
+- An **NL2SQL** prompt
+- A **Vector Search** prompt that grounds answers in the retrieved driver documents
+- A combined-mode classifier and synthesis prompt that routes structured vs. narrative asks
+
+See [Prompt Engineering](../../client/tools/prompts) for more on managing prompts.
+
+## Enable Models
+
+Enable the language and embedding models if they are not already enabled. In the **AI Optimizer**, navigate to **Configuration** > **Models**.
+
+The demo has been tuned against the on-premises models used in the [Walkthrough](../../walkthrough): [Ollama](https://ollama.com/) `granite4.1:8b` with `mxbai-embed-large`. Other Language Models may work, especially larger ones, but may require some prompt engineering.
+
+See [Model Configuration](../../client/configuration/models) for more on configuring models.

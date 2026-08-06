@@ -1,0 +1,219 @@
+---
+title: "Racing Championship: Deep Data Security"
+description: Extend the Racing Championship with Oracle Deep Data Security.
+sidebar_label: Deep Data Security
+pagination_next: null
+sidebar_position: 15
+---
+
+import DeepDataSecurityPrivileges from '../../_assets/partials/deep-data-security-privileges.mdx';
+
+{/*
+Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+spell-checker: ignore deepsec multiselect NL2SQL relref sqlplus Snetterton standings tnsadmin
+*/}
+
+The [Racing Championship](./) shows how the AI Optimizer augments a model with live racing data. [Oracle Deep Data
+Security](../../client/tools/dds) (DDS) adds the next constraint: the assistant should use only the data the person
+asking is allowed to see.
+
+In this extension, `TALENT_SCOUT` can assess Team 1's drivers but cannot see their confidential `SKILL_PROFILE` notes.
+Create that policy in the AI Optimizer, then compare direct SQL and NL2SQL results. Both respect the same policy because
+the database enforces it.
+
+---
+
+## What you'll build
+
+A single scenario you can demo in a few minutes:
+
+| Object | Name (suggested) | Purpose |
+|--------|------------------|---------|
+| Data role | `TALENT_SCOUT_ROLE` | The principal the policy authorizes. |
+| Data grant | `DG_TALENT_SCOUT_DRIVERS` | On `DRIVERS`: `SELECT` on **all columns except `SKILL_PROFILE`** (column masking), filtered to a single team with a **row predicate** (`team_id = 1`). |
+| End user | `TALENT_SCOUT` | A talent scout who needs to assess a team's drivers without seeing their confidential skill profiles. |
+
+Net effect: `TALENT_SCOUT` can assess only Team 1's drivers and never sees `SKILL_PROFILE`. The schema owner still
+sees everything (owners are not subject to their own data grants — that is exactly why you test as the end user).
+
+:::tip[Running it Again?]
+If you have already completed this DDS demo in the same clean environment, creating `TALENT_SCOUT_ROLE`,
+`DG_TALENT_SCOUT_DRIVERS`, or `TALENT_SCOUT` again may show an "already exists" error. That is fine... you can skip the creation step and continue to the next step. The policy is still in effect.
+:::
+
+---
+
+## Prerequisites
+
+1. **Oracle AI Database 26ai.** DDS is only available in 26ai. If the connected database does not support it, the
+   **Deep Data Security** tab shows a *"not available"* notice instead of the management UI.
+2. **The racing schema is loaded.** Complete [Setup](./setup) so `DRIVERS`, `RACE_RESULTS`,
+   etc. exist in the AI Optimizer's configured database user (referred to below as `<SCHEMA>`).
+3. **DDS privileges on `<SCHEMA>`.** As a DBA, grant the configured user the [Deep Data Security
+   privileges](../../guides/database#deep-data-security-privileges) below. In the commands, replace
+   `<DATABASE_USER>` with `<SCHEMA>`.
+
+   <DeepDataSecurityPrivileges />
+
+---
+
+## Step 1 — Confirm DDS is available (UI)
+
+1. In the AI Optimizer, open **Tools** > **Deep Data Security**.
+2. The page renders three stacked sections: **Data Roles**, **End Users**, and **Data Grants**.
+   - If you instead see *"Deep Data Security is not available on the **`<database>`** database. It requires Oracle AI
+     Database 26ai,"* your database build does not support DDS — switch the **Configuration** > **Databases** connection
+     to a 26ai database.
+   - If an action is disabled, the page shows an inline hint with the exact `GRANT … TO <user>;` it needs (for
+     example, *"Assigning data roles requires: `GRANT ANY DATA ROLE to <user>;`"*). A missing privilege disables only
+     its related action; the rest of the demo still works. Revisit the grants in Prerequisites.
+
+---
+
+## Step 2 — Create the data role (UI)
+
+1. Go to the **Data Roles** section.
+2. Click **Create Data Role**. In the dialog, set:
+   - **Data role name:** `TALENT_SCOUT_ROLE`
+   - **Mapped to:** leave blank (a local role; you would fill this in only to map to an external identity-provider
+     application role).
+3. Click **Create**.
+4. The new role appears with **Enabled by Default = Yes**. It becomes active when assigned to `TALENT_SCOUT` in Step 4.
+
+---
+
+## Step 3 — Create the data grant: column + row policy (UI)
+
+This is where the actual access policy is written.
+
+1. Go to the **Data Grants** section.
+2. Fill in the grant builder:
+   - **Data grant name:** `DG_TALENT_SCOUT_DRIVERS`
+   - **Object (table/view):** `DRIVERS`
+   - **Privileges:** `SELECT`
+   - **Columns:** choose **All columns except**, then in the column picker select `SKILL_PROFILE`.
+     This authorizes every column on `DRIVERS` *except* `SKILL_PROFILE`, so that column is masked for the grantee.
+   - **Row predicate:** `team_id = 1`
+     A SQL `WHERE` expression evaluated per row; only Team 1's drivers are visible.
+   - **Grant to data role:** `TALENT_SCOUT_ROLE`
+3. Review the generated statement shown in the preview block. It should read close to:
+
+   ```sql
+   CREATE DATA GRANT DG_TALENT_SCOUT_DRIVERS
+     AS SELECT (ALL COLUMNS EXCEPT "SKILL_PROFILE") ON DRIVERS
+     WHERE team_id = 1
+     TO TALENT_SCOUT_ROLE;
+   ```
+
+   Review the statement before creating the grant.
+4. Click **Create Data Grant**. It now appears (expanded per column) in the data-grants list.
+
+> **Tip — pick columns that show well.** `SKILL_PROFILE` is the scouting attribute, so masking it is the clearest
+> "before/after." `VEHICLE_SETUP` and `DRIVING_STYLE` are good secondary choices.
+
+---
+
+## Step 4 — Create the end user (UI)
+
+1. Go to the **End Users** section.
+2. Click **Create End User**. In the dialog, set:
+   - **End user name:** `TALENT_SCOUT`
+   - **Schema (for name resolution):** leave the default (`<SCHEMA>`, the connected user). This is the schema that
+     `TALENT_SCOUT`'s unqualified object names resolve against.
+   - **No password field:** the end user is provisioned server-side with the **same password as the connected
+     database user** (`<SCHEMA>`). You will use that password when you connect as `TALENT_SCOUT` in Step 5.
+   - **Assigned data roles:** select `TALENT_SCOUT_ROLE`. This grants the role to the end user and requires
+     `GRANT ANY DATA ROLE` from Prerequisites. If the
+     multiselect is disabled, you are missing that privilege.
+3. Click **Create**. `TALENT_SCOUT` appears in the list with its account status.
+
+---
+
+## Step 5 — Test that the policy is enforced
+
+The schema owner (`<SCHEMA>`) is not subject to its own data grants, so the comparison must use `TALENT_SCOUT`.
+First compare direct SQL, then ask the same questions through the Chatbot.
+
+### 5a — Compare direct SQL
+
+Connect **as the owner** and look at Driver 1's row in full:
+
+```sql
+-- As <SCHEMA>: owner bypasses data grants, sees everything
+SELECT driver_code, team_id, skill_profile
+FROM   drivers
+WHERE driver_id = 1;
+```
+
+Now connect **as the end user** and run the equivalent query against the owner's table:
+
+```sql
+-- As TALENT_SCOUT (for example: sqlplus 'TALENT_SCOUT/<password>@<dsn>')
+SELECT driver_code, team_id, skill_profile
+FROM   <SCHEMA>.drivers
+ORDER  BY driver_id;
+```
+
+**What to look for:**
+
+- Only **Team 1** drivers are returned (the `team_id = 1` row predicate).
+- `SKILL_PROFILE` comes back **masked (NULL)** for those rows (the `ALL COLUMNS EXCEPT` column policy).
+- The owner query, by contrast, returned every team and the real `SKILL_PROFILE` text.
+
+That difference, owner vs. end user against the *same* table, is the policy working.
+
+### 5b — Ask through Chatbot
+
+Now ask the same questions through the Chatbot. The prompt does not change; only the database identity does.
+
+1. Keep the active database set to `<SCHEMA>`.
+2. In the Chatbot sidebar, select **NL2SQL** under **Tool Selection**.
+3. In **Tools** > **Deep Data Security**, set **Connect tools as** to `TALENT_SCOUT`.
+4. Return to the Chatbot and enable **Deep Data Security** in the sidebar. The **NL2SQL** tool now connects as
+   `TALENT_SCOUT`.
+5. Ask:
+
+   ```text
+   List the drivers and their skill profiles.
+
+   How many drivers are there in total, and which teams are they on?
+   ```
+
+   **What to look for:** the agent's answers cover only Team 1's drivers, and skill-profile values come back empty or
+   "not available" — the same masking and row filter you saw in SQL, now enforced on the agent's generated query.
+6. Turn **Deep Data Security** off in the Chatbot sidebar and ask the same questions. The agent now sees all teams and
+   the real skill profiles because it is using the owner connection again.
+
+---
+
+## Step 6 — More policies to try
+
+Each is built the same way in the **Data Grants** section; only the highlighted fields change.
+
+| Goal | Object | Privileges | Columns | Row predicate |
+|------|--------|-----------|---------|---------------|
+| Hide penalties from talent scouts | `RACE_RESULTS` | `SELECT` | All columns except `PENALTIES` | *(none)* |
+| Show one team's results only | `RACE_RESULTS` | `SELECT` | All columns | `driver_id IN (SELECT driver_id FROM <SCHEMA>.drivers WHERE team_id = 1)` |
+| Expose only published team points | `TEAM_RACE_POINTS` | `SELECT` | All columns except `RACE_CONTROL_NOTE` | `publication_status = 'PUBLISHED'` |
+
+Re-run the Step 5 checks as `TALENT_SCOUT` after each to see the effect. The "published team points" policy pairs
+nicely with the use case's Final Reveal: a talent scout sees a team's points only once `publication_status` flips to
+published.
+
+---
+
+## Troubleshooting
+
+- **Deep Data Security shows "not available":** the active database is not 26ai. Switch connections in
+  **Configuration** > **Databases**.
+- **Buttons / fields are greyed out:** the configured user is missing a DDS privilege. The disabled control shows the
+  exact `GRANT … TO <user>;` it needs (e.g. the **Assigned data roles** multiselect needs `GRANT ANY DATA ROLE`).
+  Grant it (Prerequisites) and reload.
+- **`TALENT_SCOUT` sees all rows / unmasked columns:** the data role is not reaching the end user. Check that
+  **Deep Data Security** is enabled in the Chatbot sidebar, `TALENT_SCOUT_ROLE` was **granted to `TALENT_SCOUT`**
+  (Step 4 → **Assigned data roles**, or **Edit** next to the end user), and `DG_TALENT_SCOUT_DRIVERS` was granted to
+  `TALENT_SCOUT_ROLE`.
+- **`TALENT_SCOUT` sees no rows at all:** DDS is deny-by-default — without a matching data grant the end user sees nothing.
+  Confirm the grant exists and that your row predicate matches real data (Team 1 has drivers in the seed).

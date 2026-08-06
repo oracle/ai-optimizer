@@ -1,0 +1,30 @@
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+To use all Deep Data Security management actions, grant the following privileges to the configured database user. Replace `<DATABASE_USER>` with that username. The privileges are optional: unsupported databases show an availability warning, and a missing privilege disables only its related action.
+
+```sql
+GRANT CREATE DATA ROLE TO "<DATABASE_USER>";
+GRANT DROP DATA ROLE TO "<DATABASE_USER>";
+GRANT CREATE END USER TO "<DATABASE_USER>";
+GRANT DROP END USER TO "<DATABASE_USER>";
+GRANT CREATE DATA GRANT TO "<DATABASE_USER>";
+GRANT CREATE END USER CONTEXT TO "<DATABASE_USER>";
+GRANT CREATE END USER SECURITY CONTEXT TO "<DATABASE_USER>";
+GRANT ADMINISTER ANY DATA GRANT TO "<DATABASE_USER>";
+GRANT GRANT ANY DATA ROLE TO "<DATABASE_USER>";
+-- Read access so the tool can list data roles, role grants, and end users
+GRANT SELECT ON DBA_DATA_ROLES TO "<DATABASE_USER>";
+GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "<DATABASE_USER>";
+GRANT SELECT ON DBA_END_USERS TO "<DATABASE_USER>";
+```
+
+To let **Vector Search** and **NL2SQL** connect *as* a Deep Data Security end user, the end user must be able to log in. `CREATE SESSION` cannot be granted directly to an end user; a standard database role carries it through a data role. As a privileged user, create that role once and let `<DATABASE_USER>` grant it:
+
+```sql
+CREATE ROLE AIO_DDS_ROLE;
+GRANT CREATE SESSION TO AIO_DDS_ROLE;
+GRANT AIO_DDS_ROLE TO "<DATABASE_USER>" WITH ADMIN OPTION;
+```
+
+The tool grants `AIO_DDS_ROLE` to each locally managed data role it creates, so an end user assigned that data role can be connected as.
