@@ -152,17 +152,20 @@ async def test_client_config_langgraph(app_client, auth_headers):
 @pytest.mark.anyio
 @pytest.mark.parametrize("client", ["inspector", "mcp-inspector", "npx-inspector"])
 async def test_client_config_inspector_aliases(app_client, auth_headers, client):
-    """Inspector client variants return the inspector command configuration."""
+    """Inspector client variants return an importable HTTP configuration."""
     resp = await app_client.get(f"/mcp/client-config?client={client}", headers=auth_headers)
 
     assert resp.status_code == 200
 
     body = resp.json()
 
-    assert body["command"] == "npx -y @modelcontextprotocol/inspector"
-    assert body["transport"] == "Streamable HTTP"
-    assert body["url"] == f"http://test{settings.server_url_prefix}/mcp"
-    assert body["headers"]["X-API-Key"] == reveal(settings.api_key)
+    server = body["mcpServers"]["oracle-ai-optimizer"]
+
+    assert server == {
+        "type": "http",
+        "url": f"http://test{settings.server_url_prefix}/mcp",
+        "headers": {"X-API-Key": reveal(settings.api_key)},
+    }
 
 
 @pytest.mark.unit

@@ -70,3 +70,37 @@ The **AI Optimizer** Client fails to load in certain network environments.  The 
 
 **_Solution_**:
 This is typically caused by a corporate firewall, deep packet inspection (DPI), or SSL inspection appliance corrupting the unencrypted HTTP traffic.  Enable HTTPS on the client to encrypt the connection end-to-end.  See [TLS / HTTPS](./advanced-guides/tls) for configuration details.
+
+## MCP Client Connections
+
+### Authentication Fails
+
+**_Problem_**:
+An MCP client receives `403 Forbidden` when connecting to the AI Optimizer Server.
+
+**_Solution_**:
+The `X-API-Key` header is missing or incorrect. Generate the configuration for the selected client again and re-import it. For a standalone deployment, confirm that the client configuration uses the same value as `AIO_API_KEY`.
+
+### Connection Is Refused
+
+**_Problem_**:
+An MCP client cannot connect to the AI Optimizer Server.
+
+**_Solution_**:
+Confirm that the server is running and that the generated MCP URL is reachable from the client. Generate the configuration again if the server address or URL prefix has changed.
+
+### Tools Are Not Visible
+
+**_Problem_**:
+An MCP client connects successfully but does not show the expected tools.
+
+**_Solution_**:
+Follow [Verify the Connection](./guides/mcp-clients#verify-the-connection) to check the MCP health and tools endpoints. For NL2SQL, confirm that SQLcl is available and a database is configured. See [SQLcl MCP Server](./guides/sqlcl-mcp-server).
+
+### Claude Desktop Cannot Start the Bridge
+
+**_Problem_**:
+Claude Desktop cannot start the generated `mcp-remote` configuration.
+
+**_Solution_**:
+Confirm that `npx` is available to Claude Desktop. If necessary, use the full path to `npx` in the generated configuration.

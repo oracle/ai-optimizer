@@ -117,15 +117,7 @@ Registering a tool makes it available on the MCP server, but something still nee
 
 ### External MCP Clients
 
-Any MCP-compatible client can connect to the **AI Optimizer** server and use registered tools directly.  Configure the client to connect to the `/mcp` endpoint with an `X-API-Key` header.
-
-Examples of MCP clients that can consume tools this way:
-
-- [Claude Desktop](https://modelcontextprotocol.io/quickstart/user)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
-- [VS Code Copilot](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)
-- [Cursor](https://docs.cursor.com/context/model-context-protocol)
-- Any client that supports the [MCP specification](https://modelcontextprotocol.io/)
+Any MCP-compatible client can connect to the **AI Optimizer** server and use registered tools directly. See [External MCP Clients](../guides/mcp-clients) for generated configuration and client-specific setup. The client connects to the `/mcp` endpoint with an `X-API-Key` header.
 
 With this approach the tool is available immediately after registration — no additional server-side code is needed.
 

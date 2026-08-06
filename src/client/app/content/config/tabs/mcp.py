@@ -22,6 +22,11 @@ MCP_CLIENTS = {
         "language": "json",
         "description": "Generic MCP client configuration using Streamable HTTP.",
     },
+    "inspector": {
+        "label": "MCP Inspector",
+        "language": "json",
+        "description": "Configuration to import into MCP Inspector.",
+    },
     "cline": {
         "label": "Cline for VS Code",
         "language": "json",
@@ -38,6 +43,7 @@ MCP_CLIENTS = {
         "description": "Configuration for Claude Desktop using mcp-remote as an HTTP bridge.",
     },
 }
+
 
 ###################################
 # Helpers
@@ -208,7 +214,8 @@ def display_mcp() -> None:
 
                 st.code(
                     get_mcp_client(selected_client),
-                    language=client_meta["language"],)
+                    language=client_meta["language"],
+                )
     else:
         st.error("MCP Server is not running!", icon="🛑")
         st.stop()

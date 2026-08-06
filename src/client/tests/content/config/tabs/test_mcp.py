@@ -160,6 +160,30 @@ class TestGetMcpClient:
             params={"client": "claude-desktop"},
         )
 
+    def test_returns_json_for_inspector(self):
+        """Inspector configuration is rendered as importable JSON."""
+        config = {
+            "mcpServers": {
+                "oracle-ai-optimizer": {
+                    "type": "http",
+                    "url": "http://test/mcp",
+                    "headers": {"X-API-Key": "test-key"},
+                }
+            }
+        }
+
+        with patch(f"{MODULE}.api_get", return_value=config) as mock_api_get:
+            from client.app.content.config.tabs.mcp import get_mcp_client
+
+            result = get_mcp_client("inspector")
+
+        assert json.loads(result) == config
+        mock_api_get.assert_called_once_with(
+            "client-config",
+            api_prefix="/mcp",
+            params={"client": "inspector"},
+        )
+
     def test_http_error_returns_empty_json(self):
         """HTTP error is caught and an empty JSON object string is returned."""
         with patch(f"{MODULE}.api_get", side_effect=make_http_error(500)):
@@ -186,6 +210,17 @@ class TestGetMcpClient:
             result = get_mcp_client("generic")
 
         assert result == "{}"
+
+
+def test_inspector_client_metadata_uses_json():
+    """Inspector configuration is offered as importable JSON."""
+    from client.app.content.config.tabs.mcp import MCP_CLIENTS
+
+    assert MCP_CLIENTS["inspector"] == {
+        "label": "MCP Inspector",
+        "language": "json",
+        "description": "Configuration to import into MCP Inspector.",
+    }
 
 
 # ---------------------------------------------------------------------------
