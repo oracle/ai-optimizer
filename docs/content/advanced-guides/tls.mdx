@@ -1,7 +1,7 @@
 ---
 title: TLS / HTTPS
 description: Configure HTTPS for the AI Optimizer Server and Client.
-sidebar_position: 1
+sidebar_position: 20
 ---
 
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
@@ -9,7 +9,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 The **AI Optimizer Server** and **AI Optimizer Client** can serve HTTPS instead of HTTP. Configure TLS with `AIO_*_SSL_*` [environment variables](../guides/env-vars) before starting the component.
 
-Choose one certificate option for each component:
+You can choose one certificate option for each component:
 
 - **No TLS:** The default. Use HTTP for local desktop experimentation.
 - **Generated self-signed certificate:** Encrypts local development traffic, but browsers do not trust the certificate by default.
@@ -17,7 +17,13 @@ Choose one certificate option for each component:
 
 ## Generated Self-Signed Certificates
 
-Set one SSL variable for the component you want to secure, without setting certificate paths:
+The **AI Optimizer** can automatically generate self-signed certificates for local deployments. The generated certificate is valid for `localhost` and the machine's hostname. 
+
+:::note[Browser warning]
+Browsers show a warning for a self-signed certificate. It is intended for local development; use a certificate trusted by the browser or operating system for a shared deployment.
+:::
+
+To have the certificcates automatically generated, set one SSL variable for the component you want to secure, without setting certificate paths:
 
 ```dotenv
 # API Server
@@ -37,15 +43,15 @@ uv run python src/entrypoint.py server
 uv run python src/entrypoint.py client
 ```
 
-The application generates a localhost certificate and key at `<project-root>/tmp/ssl/` for bare-metal installations and `/app/tmp/ssl/` in the container image. It reuses the pair while that directory persists. The container's default temporary directory is not retained when the container is replaced.
+A localhost certificate and key will be placed at `<project-root>/tmp/ssl/` for bare-metal installations and `/app/tmp/ssl/` in the container image.
 
-:::note[Browser warning]
-Browsers show a warning for a self-signed certificate. It is intended for local development; use a certificate trusted by the browser or operating system for a shared deployment.
-:::
+
 
 ## Provided Certificates
 
-Provide both a PEM-encoded certificate and its private key. If either path is omitted, the application generates a self-signed pair instead.
+To use your own certificates, provide both a PEM-encoded certificate and its private key. The certificate must cover the hostname users connect to, and the process must be able to read both files.
+
+If either path is omitted and `*_SSL=true`, the **AI Optimizer** generates a self-signed pair instead.
 
 ### API Server
 
@@ -62,8 +68,6 @@ AIO_CLIENT_SSL=true
 AIO_CLIENT_SSL_CERT_FILE=/path/to/cert.pem
 AIO_CLIENT_SSL_KEY_FILE=/path/to/key.pem
 ```
-
-The certificate file can include intermediate CA certificates. The certificate must cover the hostname users connect to, and the process must be able to read both files.
 
 ## All-in-One Container
 
@@ -87,22 +91,4 @@ AIO_CLIENT_SSL_KEY_FILE=/app/tls/key.pem
 
 ## Kubernetes and Helm
 
-For Kubernetes deployments that use the chart's Server and Client, terminate TLS at the ingress or gateway. The [Helm chart ingress TLS example](https://github.com/oracle/ai-optimizer/tree/main/helm#example-6-ingress-with-tls) shows how to reference a Kubernetes TLS Secret.
-
-You can enable TLS directly on a Client pod when it is accessed without ingress or gateway TLS. Set `client.ssl.enabled` to `true`; this also configures the Client health probes for HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
-
-```yaml
-client:
-  ssl:
-    enabled: true
-    certFile: /app/tls/tls.crt
-    keyFile: /app/tls/tls.key
-  volumes:
-    - name: tls
-      secret:
-        secretName: client-tls
-  volumeMounts:
-    - name: tls
-      mountPath: /app/tls
-      readOnly: true
-```
+For ingress, gateway, and direct Client-pod TLS in a Helm deployment, see [Kubernetes / Helm](./k8s-helm#https-and-public-access).
