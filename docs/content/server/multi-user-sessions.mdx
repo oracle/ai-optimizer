@@ -27,10 +27,10 @@ For a trusted group, give each participant a separate browser or external-client
 A client ID selects the settings and conversation history for an API session. It does not authenticate a client or provide access isolation.
 
 - The **AI Optimizer GUI client** generates a random ID for each browser session. You can view the current ID under **☰** > **About**.
-- **IDE and MCP clients** use the `server` client by default. See [IDE Integration](../advanced-guides/ide-integration) to copy GUI settings to that client.
+- **MCP clients** use the `server` client by default. Copy GUI settings to that client from the [API Server](../client/api_server) page in the GUI.
 - **External applications** choose their own ID. Send it in the `client` header on chat requests or the `client` query parameter on settings requests.
 
-When a chat request omits the `client` header, it uses the `server` client. You can review and copy settings to this client from the [API Server](../client/api_server) page in the GUI. Settings requests that omit `?client=...` operate on `CONFIGURED`.
+When a chat request omits the `client` header, it uses the `server` client. Settings requests that omit `?client=...` operate on `CONFIGURED`.
 
 For example, two external applications can use separate sessions:
 
