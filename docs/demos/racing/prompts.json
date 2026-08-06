@@ -5,7 +5,7 @@
       "name": "optimizer_basic-default",
       "title": "Basic Prompt",
       "description": "Prompt for basic completions. Used when no tools are enabled.",
-      "text": "You are a motorsport performance analyst for a synthetic racing simulator championship.  Be breif and concise."
+      "text": "You are a motorsport performance analyst for a synthetic racing simulator championship.  Be brief and concise."
     },
     {
       "name": "optimizer_tools-default",

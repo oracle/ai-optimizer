@@ -7,7 +7,7 @@ spell-checker: ignore deepsec multiselect NL2SQL relref sqlplus Snetterton stand
 
 # Racing Championship — Deep Data Security Runbook
 
-This runbook extends the [Racing Championship use-case](https://oracle.github.io/ai-optimizer/use-case/racing-championship/)
+This runbook extends the [Racing Championship use case](https://oracle.github.io/ai-optimizer/use-cases/racing/)
 with [Oracle Deep Data Security](https://oracle.github.io/ai-optimizer/client/tools/deepsec/) (DDS). You will
 add a row- and column-level access policy to the racing schema **from the AI Optimizer UI**, then confirm that the
 policy is enforced — including on the **NL2SQL** agent, which sees only the data the policy allows.
@@ -42,7 +42,7 @@ end user).
 1. **Oracle AI Database 26ai.** DDS is only available in 26ai. If the connected database does not support it, the
    **Deep Data Security** tab shows a *"not available"* notice instead of the management UI.
 2. **The racing schema is loaded.** Complete *Setup → Load the schema* from the
-   [use-case](https://oracle.github.io/ai-optimizer/use-case/racing-championship/) so `DRIVERS`, `RACE_RESULTS`,
+   [use case](https://oracle.github.io/ai-optimizer/use-cases/racing/) so `DRIVERS`, `RACE_RESULTS`,
    etc. exist in the AI Optimizer's configured database user (referred to below as `<SCHEMA>`).
 3. **DDS privileges on `<SCHEMA>`.** The configured user needs the optional DDS privileges from the
    [Database Configuration](https://oracle.github.io/ai-optimizer/client/configuration/databases/) docs. As a DBA:
