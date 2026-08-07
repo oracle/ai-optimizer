@@ -92,9 +92,12 @@ kubectl create secret generic db-authn \
   --from-literal=password='YourSecurePassword123!' \
   --from-literal=service='adb_service_high'
 
-# Create OCI config secret (for database operator)
-# Use the helper script to create from your ~/.oci/config
-python scripts/oci_config.py --config ~/.oci/config --secret-name oci-config-file
+# Create an OCI config Secret for the AI Optimizer Server.
+# The packaged helper requires Python 3 but no third-party Python packages.
+python3 scripts/oci_config.py \
+  --config ~/.oci/config \
+  --secret-name oci-config-file |
+  kubectl apply -f -
 ```
 
 Then install:

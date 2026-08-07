@@ -258,10 +258,13 @@ For database connection requirements, see [Database](../guides/database).
 
 #### OCI and Model Credentials
 
-For a non-OKE installation, the helper below generates and applies an `oci-config-file` Kubernetes Secret from your OCI config file:
+For a non-OKE installation, the packaged helper generates an `oci-config-file` Kubernetes Secret from your OCI config file. It requires Python 3 but no third-party Python packages.
 
 ```bash
-python helm/scripts/oci_config.py --config ~/.oci/config --namespace ai-optimizer | sh
+python3 helm/scripts/oci_config.py \
+  --config ~/.oci/config \
+  --namespace ai-optimizer |
+  kubectl apply -f -
 ```
 
 Reference it in the existing `server:` section to make the configuration available to the running Server:
