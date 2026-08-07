@@ -7,6 +7,8 @@ sidebar_position: 5
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
+import {GitHubSourceLink} from '@site/src/components/GitHubSourceLink';
+
 ## Before You Begin
 
 You'll need:
@@ -16,14 +18,14 @@ You'll need:
 - An Oracle AI Database connection with rights to create tables and views (the `DB_DEVELOPER_ROLE` granted in the Walkthrough is sufficient).
 - The [SQLcl MCP Server](../../guides/sqlcl-mcp-server) configured for **NL2SQL**, pointed at the same database.
 
-Everything you need lives under [`docs/demos/racing/`](https://github.com/oracle/ai-optimizer/tree/main/docs/demos/racing) in the source repository:
+Everything you need lives under <GitHubSourceLink path="docs/demos/racing" type="tree"><code>docs/demos/racing/</code></GitHubSourceLink> in the source repository:
 
-| File | Purpose |
-|------|---------|
-| [`schema.sql`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/schema.sql) | Oracle DDL plus seed data for 20 teams, 100 drivers, and Rounds 1–5. Round 6 is scheduled but has no team points yet. |
-| [`prompts.json`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/prompts.json) | A motorsport-analyst prompt bundle that tunes the **NL2SQL**, **Vector Search**, and combined-mode prompts for this dataset. |
-| [`corpus/`](https://github.com/oracle/ai-optimizer/tree/main/docs/demos/racing/corpus) | 100 per-driver Markdown briefings used in Step 3. |
-| [`finale_insert.sql`](https://github.com/oracle/ai-optimizer/blob/main/docs/demos/racing/finale_insert.sql) | The late Round 6 team-points insert used during the Final Reveal. |
+| File                                                                                                           | Purpose                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| <GitHubSourceLink path="docs/demos/racing/schema.sql"><code>schema.sql</code></GitHubSourceLink>               | Oracle DDL plus seed data for 20 teams, 100 drivers, and Rounds 1–5. Round 6 is scheduled but has no team points yet.        |
+| <GitHubSourceLink path="docs/demos/racing/prompts.json"><code>prompts.json</code></GitHubSourceLink>           | A motorsport-analyst prompt bundle that tunes the **NL2SQL**, **Vector Search**, and combined-mode prompts for this dataset. |
+| <GitHubSourceLink path="docs/demos/racing/corpus" type="tree"><code>corpus/</code></GitHubSourceLink>          | 100 per-driver Markdown briefings used in Step 3.                                                                            |
+| <GitHubSourceLink path="docs/demos/racing/finale_insert.sql"><code>finale_insert.sql</code></GitHubSourceLink> | The late Round 6 team-points insert used during the Final Reveal.                                                            |
 
 Download the files you need from the GitHub links above, and keep them together in a local `racing/` directory.
 

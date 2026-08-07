@@ -7,7 +7,7 @@ sidebar_position: 15
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-import ReleaseSourceExtract from '../_assets/partials/release-source-extract.mdx';
+import {GitHubSourceExtract, GitHubSourceLink} from '@site/src/components/GitHubSourceLink';
 
 The **AI Optimizer** is designed to run in container orchestration environments such as [Kubernetes](https://kubernetes.io/), including managed [Oracle Kubernetes Engine (OKE)](https://www.oracle.com/uk/cloud/cloud-native/kubernetes-engine/). The Helm chart deploys separate Server and Client workloads, with optional Ollama and Oracle AI Database resources. For `ADB-S` deployments, the chart can use the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator).
 
@@ -31,7 +31,7 @@ The command examples use a Linux/macOS-compatible shell and Podman. Where applic
 
 ### Download and Extract the AI Optimizer
 
-<ReleaseSourceExtract />
+<GitHubSourceExtract />
 
 ### Build the Server and Client Images
 
@@ -67,7 +67,6 @@ helm repo update
 - Kubernetes 1.23+
 - `kubectl` configured for the target cluster.
 
-
 ### Push the Images to a Registry
 
 Set the registry host and namespace that your cluster can access, then sign in before pushing images.
@@ -80,6 +79,7 @@ REGISTRY="${REGISTRY_HOST}/<registry-namespace>"
 
 podman login "${REGISTRY_HOST}"
 ```
+
 Where `<registry-namespace>` is your tenancy and compartment path, such as `mytenancy/mycompartment`.
 
 Tag the images for the registry, then push them:
@@ -153,7 +153,7 @@ global:
     - registry-creds
 ```
 
-When two examples use the same top-level key, such as `server:`, add their settings to the existing section rather than duplicating the key. The chart's complete [`values.yaml`](https://github.com/oracle/ai-optimizer/blob/main/helm/values.yaml) lists every available option.
+When two examples use the same top-level key, such as `server:`, add their settings to the existing section rather than duplicating the key. The chart's complete <GitHubSourceLink path="helm/values.yaml"><code>values.yaml</code></GitHubSourceLink> lists every available option.
 
 :::danger[Keep secrets out of values files]
 Use Kubernetes Secrets rather than committing credentials to a values file.
@@ -192,7 +192,7 @@ server:
       tag: "<pinned-database-image-tag>"
 ```
 
-The extracted release also includes complete local examples in `helm/examples/values-kind-sidb-free.yaml` and `helm/examples/values-kind-adb-free.yaml`.
+The extracted source archive also includes complete local examples in `helm/examples/values-kind-sidb-free.yaml` and `helm/examples/values-kind-adb-free.yaml`.
 
 For `SIDB-FREE` and `ADB-FREE`, enable persistent storage to keep database data when the database Pod is replaced. The chart creates a PersistentVolumeClaim and uses the cluster's default storage class unless you specify `storageClass`:
 
@@ -357,7 +357,7 @@ The bundled observability components require substantial memory and retain their
 
 ### Install or Upgrade
 
-Install the published chart using the values file in the extracted release directory:
+Install the published chart using the values file in the extracted source directory:
 
 ```bash
 helm upgrade --install ai-optimizer ai-optimizer/ai-optimizer \
@@ -379,7 +379,7 @@ Open `http://localhost:8501` in a browser.
 
 ### HTTPS and Public Access
 
-For public Kubernetes access, terminate TLS at an ingress or gateway. The [Helm chart ingress TLS example](https://github.com/oracle/ai-optimizer/tree/main/helm#example-6-ingress-with-tls) shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
+For public Kubernetes access, terminate TLS at an ingress or gateway. The <GitHubSourceLink path="helm#example-6-ingress-with-tls" type="tree">Helm chart ingress TLS example</GitHubSourceLink> shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
 
 You can enable TLS directly on a Client pod when it is accessed without ingress or gateway TLS. Set `client.ssl.enabled` to `true`; this also configures the Client health probes for HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
 
