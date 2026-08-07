@@ -19,6 +19,12 @@ The **AI Optimizer** is designed to run in container orchestration environments 
 
 A **container runtime**, such as [Podman](https://podman.io/) or [Docker](https://www.docker.com/), is required to build the Server and Client images.
 
+:::note
+
+The command examples use a Linux/macOS-compatible shell and Podman. Where applicable, replace `podman` with `docker` to use Docker.
+
+:::
+
 **Helm 3** is required to install the chart. The Helm CLI can be installed from [https://helm.sh/docs/intro/install/](https://helm.sh/docs/intro/install/).
 
 ⭐️ Depending on the deployment path, you may also need additional tools, which are documented in each path.
@@ -49,7 +55,7 @@ helm repo add ai-optimizer https://oracle.github.io/ai-optimizer/helm
 helm repo update
 ```
 
-### Choose a Deployment Path
+## Choose a Deployment Path
 
 - **Existing cluster:** Tag the built images for a registry your cluster can access, push them, then install the Helm chart.
 - **Local evaluation:** Use [Kind](https://kind.sigs.k8s.io/) to load the built images directly into a local Kubernetes cluster. Skip to [Try It Locally with Kind](#try-it-locally-with-kind).
@@ -57,6 +63,7 @@ helm repo update
 ## Deploy to an Existing Cluster
 
 **Additional Requirements:**
+
 - Kubernetes 1.23+
 - `kubectl` configured for the target cluster.
 
@@ -73,7 +80,7 @@ REGISTRY="${REGISTRY_HOST}/<registry-namespace>"
 
 podman login "${REGISTRY_HOST}"
 ```
-where `<registry-namespace>` is your tenancy and compartment path, such as `mytenancy/mycompartment`.
+Where `<registry-namespace>` is your tenancy and compartment path, such as `mytenancy/mycompartment`.
 
 Tag the images for the registry, then push them:
 
@@ -119,7 +126,7 @@ mkdir -p deploy
 
 Then create `deploy/values.yaml` with the following starter configuration.
 
-Replace the registry host, namespace, and version with the values used when building the images.
+Replace `<registry-host>/<registry-namespace>` with the `${REGISTRY}` value used to tag and push the images, and replace `<version>` with the `${APP_VERSION}` value used to build them.
 
 ```yaml
 global:
@@ -162,6 +169,30 @@ Choose a database mode when the deployment needs a chart-managed or external Ora
 | `ADB-FREE` | Running Autonomous Database Free in the cluster. | Requires a pinned database image. Its data is ephemeral unless you enable persistent storage. |
 | `ADB-S` | Connecting to an OCI Autonomous Database. | Requires the Oracle Database Operator CRD when the chart creates the database resource. |
 | `OTHER` | Connecting to another Oracle database. | Requires connection details and usable credentials in a Secret. |
+
+For `SIDB-FREE`, use:
+
+```yaml
+server:
+  database:
+    type: SIDB-FREE
+    image:
+      repository: container-registry.oracle.com/database/free
+      tag: "<pinned-database-image-tag>"
+```
+
+For `ADB-FREE`, use:
+
+```yaml
+server:
+  database:
+    type: ADB-FREE
+    image:
+      repository: container-registry.oracle.com/database/adb-free
+      tag: "<pinned-database-image-tag>"
+```
+
+The extracted release also includes complete local examples in `helm/examples/values-kind-sidb-free.yaml` and `helm/examples/values-kind-adb-free.yaml`.
 
 For `SIDB-FREE` and `ADB-FREE`, enable persistent storage to keep database data when the database Pod is replaced. The chart creates a PersistentVolumeClaim and uses the cluster's default storage class unless you specify `storageClass`:
 
@@ -368,15 +399,32 @@ client:
 ## Try It Locally with Kind
 
 **Additional Requirements:**
+
 - [Kind](https://kind.sigs.k8s.io/)
 
 ### Create a Kind Cluster
 
-```bash
-kind create cluster -n ai-optimizer
+Create `kind-cluster-config.yaml` with a port mapping from `localhost:8501` to the Client's NodePort:
+
+```yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8501
+        listenAddress: "127.0.0.1"
+        protocol: TCP
 ```
 
-### Load the images
+The packaged Kind values file configures the Client Service to use the matching NodePort, `30080`. Create the cluster with the configuration file:
+
+```bash
+kind create cluster -n ai-optimizer --config kind-cluster-config.yaml
+```
+
+### Load the Images
 
 ```bash
 kind load docker-image localhost/ai-optimizer-client:${APP_VERSION} -n ai-optimizer
@@ -387,7 +435,7 @@ kind load docker-image localhost/ai-optimizer-server:${APP_VERSION} -n ai-optimi
 The following command generates temporary inline API and cookie secrets for local evaluation. For a shared or persistent deployment, use Kubernetes Secrets as described in [Create Kubernetes Secrets](#create-kubernetes-secrets).
 :::
 
-### Install the chart
+### Install the Chart
 
 ```bash
 helm upgrade --install ai-optimizer ai-optimizer/ai-optimizer \
@@ -403,8 +451,4 @@ helm upgrade --install ai-optimizer ai-optimizer/ai-optimizer \
 
 ### Access the Client
 
-```bash
-kubectl -n ai-optimizer port-forward svc/ai-optimizer-client-http 8501:8501
-```
-
-Open `http://localhost:8501` in a browser.
+After the installation completes, open `http://localhost:8501` in a browser.

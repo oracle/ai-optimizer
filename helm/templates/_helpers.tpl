@@ -384,7 +384,7 @@ Define serviceName and serviceUrl of the Ollama Server for API Server Access.
 {{- end -}}
 
 {{- define "ai-optimizer.ollama.serviceUrl" -}}
-http://{{ include "ai-optimizer.ollama.serviceName" . }}.{{ .Release.Namespace }}.svc:11434
+http://{{ include "ai-optimizer.ollama.serviceName" . }}.{{ .Release.Namespace }}.svc:{{ .Values.ollama.service.http.port | default 11434 }}
 {{- end -}}
 
 

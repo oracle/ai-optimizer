@@ -16,6 +16,9 @@ spec:
     - protocol: TCP
       port: {{ .Values.client.service.port | default 8501 }}
       targetPort: 8501
+      {{- with .Values.client.service.nodePort }}
+      nodePort: {{ . }}
+      {{- end }}
   selector:
     app.kubernetes.io/component: client
     {{- include "ai-optimizer.selectorLabels" . | nindent 4 }}

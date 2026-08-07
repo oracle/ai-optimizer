@@ -14,7 +14,7 @@ The Oracle AI Optimizer enables developers and data scientists to explore Large 
 
 ## Prerequisites
 
-- Kubernetes 1.18+
+- Kubernetes 1.23+
 - Helm 3.0+
 - Oracle Database (one of):
   - Autonomous Database Shared (ADB-S) - requires OCI account
