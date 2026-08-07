@@ -7,90 +7,89 @@ sidebar_position: 15
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **AI Optimizer** is designed to run in container orchestration environments such as [Kubernetes](https://kubernetes.io/), including the managed [Oracle Kubernetes Engine (OKE)](https://www.oracle.com/uk/cloud/cloud-native/kubernetes-engine/). 
+import ReleaseSourceExtract from '../_assets/partials/release-source-extract.mdx';
 
-The Helm chart deploys separate Server and Client workloads, with optional Ollama and selected Oracle AI Database resources.   The **AI Optimizer** uses the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) to manage the Oracle AI Databases resources.
+The **AI Optimizer** is designed to run in container orchestration environments such as [Kubernetes](https://kubernetes.io/), including managed [Oracle Kubernetes Engine (OKE)](https://www.oracle.com/uk/cloud/cloud-native/kubernetes-engine/). The Helm chart deploys separate Server and Client workloads, with optional Ollama and Oracle AI Database resources. For `ADB-S` deployments, the chart can use the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator).
 
-![OCI OKE deployment](../_assets/images/k8s-infra-oci.png)<sub>OCI OKE deployment with separate Server and Client workloads and a GPU node pool for model inference.</sub>
+![OCI OKE deployment](../_assets/images/k8s-infra-oci.png)
 
-## Before You Install
+<sub>OCI OKE deployment with separate Server and Client workloads and a GPU node pool for model inference.</sub>
 
-Before you begin, make sure you have a Kubernetes 1.23+ cluster and Helm 3. This guide walks you through preparing images and secrets, choosing a database configuration, and installing the chart into a namespace.
+## Prerequisites
 
-When installing from a local checkout, add the SigNoz repository and fetch the chart dependencies:
+A **container runtime**, such as [Podman](https://podman.io/) or [Docker](https://www.docker.com/), is required to build the Server and Client images.
+
+**Helm 3** is required to install the chart. The Helm CLI can be installed from [https://helm.sh/docs/intro/install/](https://helm.sh/docs/intro/install/).
+
+⭐️ Depending on the deployment path, you may also need additional tools, which are documented in each path.
+
+### Download and Extract the AI Optimizer
+
+<ReleaseSourceExtract />
+
+### Build the Server and Client Images
 
 ```bash
-cd helm
-helm repo add --force-update signoz https://charts.signoz.io
-helm dependency build
+APP_VERSION="$(sed -nE 's/^__version__ = "([^"]+)"/\1/p' src/_version.py)"
+
+podman build -f src/client/Dockerfile -t localhost/ai-optimizer-client:${APP_VERSION} .
+podman build -f src/server/Dockerfile -t localhost/ai-optimizer-server:${APP_VERSION} .
 ```
 
-Published chart releases already include their dependencies.
-
-### Create a Values File
-
-Helm uses a YAML configuration file, conventionally named `values.yaml`, to describe your deployment. This guide covers the common settings; the chart's complete [`values.yaml`](https://github.com/oracle/ai-optimizer/blob/main/helm/values.yaml) lists every available option. As you work through this guide, add the relevant YAML sections to one local `values.yaml` file. The installation command later passes that file to Helm with `--values values.yaml`.
-
-When two snippets use the same top-level key, such as `server:`, combine their settings into one section rather than adding duplicate keys.
-
-### Images
-
 :::note[Use pinned images]
-The chart rejects `latest`, `head`, and `canary` image tags. Provide immutable image tags with `server.image.tag` and `client.image.tag`, or leave both empty to use the chart's `appVersion`.
+The chart rejects `latest`, `head`, and `canary` image tags. Use the same immutable version in the image tags and chart configuration.
 :::
 
-Build and push the Server and Client images to a registry your cluster can access. Set `APP_VERSION` to the version of the **AI Optimizer** you are deploying:
+### Helm Chart Repository
+
+Add the published chart repository:
 
 ```bash
-APP_VERSION=0.0.0
-REGISTRY=iad.ocir.io/<registry-namespace>
+helm repo add ai-optimizer https://oracle.github.io/ai-optimizer/helm
+helm repo update
+```
 
-podman build -f src/client/Dockerfile -t ${REGISTRY}/ai-optimizer-client:${APP_VERSION} .
-podman build -f src/server/Dockerfile -t ${REGISTRY}/ai-optimizer-server:${APP_VERSION} .
+### Choose a Deployment Path
+
+- **Existing cluster:** Tag the built images for a registry your cluster can access, push them, then install the Helm chart.
+- **Local evaluation:** Use [Kind](https://kind.sigs.k8s.io/) to load the built images directly into a local Kubernetes cluster. Skip to [Try It Locally with Kind](#try-it-locally-with-kind).
+
+## Deploy to an Existing Cluster
+
+**Additional Requirements:**
+- Kubernetes 1.23+
+- `kubectl` configured for the target cluster.
+
+
+### Push the Images to a Registry
+
+Set the registry host and namespace that your cluster can access, then sign in before pushing images.
+
+For example, if using the [Oracle Cloud Infrastructure Container Registry (**OCIR**)](https://www.oracle.com/uk/cloud/cloud-native/container-registry/) in the Ashburn region, use:
+
+```bash
+REGISTRY_HOST="iad.ocir.io"
+REGISTRY="${REGISTRY_HOST}/<registry-namespace>"
+
+podman login "${REGISTRY_HOST}"
+```
+where `<registry-namespace>` is your tenancy and compartment path, such as `mytenancy/mycompartment`.
+
+Tag the images for the registry, then push them:
+
+```bash
+podman tag localhost/ai-optimizer-client:${APP_VERSION} \
+  ${REGISTRY}/ai-optimizer-client:${APP_VERSION}
+podman tag localhost/ai-optimizer-server:${APP_VERSION} \
+  ${REGISTRY}/ai-optimizer-server:${APP_VERSION}
 
 podman push ${REGISTRY}/ai-optimizer-client:${APP_VERSION}
 podman push ${REGISTRY}/ai-optimizer-server:${APP_VERSION}
 ```
 
-Use fully qualified image repositories:
+### Create Kubernetes Secrets
 
-```yaml
-server:
-  image:
-    repository: iad.ocir.io/example/ai-optimizer-server
-    tag: "<version>"
-client:
-  image:
-    repository: iad.ocir.io/example/ai-optimizer-client
-    tag: "<version>"
-```
-
-Alternatively, set `global.imageRegistry` and use unqualified component repositories:
-
-```yaml
-global:
-  imageRegistry: iad.ocir.io/example
-server:
-  image:
-    repository: ai-optimizer-server
-    tag: "<version>"
-client:
-  image:
-    repository: ai-optimizer-client
-    tag: "<version>"
-```
-
-For a private registry, create an image-pull Secret in the release namespace and reference it with `global.imagePullSecrets`:
-
-```yaml
-global:
-  imagePullSecrets:
-    - registry-creds
-```
-
-### API and Cookie Secrets
-
-Create an API-key Secret for Server authentication and a stable cookie-signing Secret for the Client:
+Create a namespace, the API key used by the Client and Server, and the Client cookie-signing key:
 
 ```bash
 kubectl create namespace ai-optimizer
@@ -100,35 +99,93 @@ kubectl -n ai-optimizer create secret generic optimizer-cookie-key \
   --from-literal=cookieSecret="$(openssl rand -base64 32)"
 ```
 
-Reference them from your values file:
+If your image registry is private, also create a registry pull Secret. Substitute the credentials supplied by your registry:
+
+```bash
+kubectl -n ai-optimizer create secret docker-registry registry-creds \
+  --docker-server="${REGISTRY_HOST}" \
+  --docker-username='<registry-username>' \
+  --docker-password='<registry-password>'
+```
+
+### Create a Values File
+
+Helm uses a YAML configuration file, conventionally named `values.yaml`, to describe a deployment.
+
+Create its directory in the repository root:
+```bash
+mkdir -p deploy
+```
+
+Then create `deploy/values.yaml` with the following starter configuration.
+
+Replace the registry host, namespace, and version with the values used when building the images.
 
 ```yaml
 global:
   api:
     secretName: optimizer-api-key
 
+server:
+  image:
+    repository: <registry-host>/<registry-namespace>/ai-optimizer-server
+    tag: "<version>"
+
 client:
+  image:
+    repository: <registry-host>/<registry-namespace>/ai-optimizer-client
+    tag: "<version>"
   cookieSecretName: optimizer-cookie-key
 ```
 
-:::warning[Keep secrets out of values files]
-Use Kubernetes Secrets rather than committing credentials to a values file. The chart requires either `global.api.secretName` or `global.api.apiKey`, and either `client.cookieSecretName` or `client.cookieSecret`.
+For a private registry, add the pull Secret to the existing `global:` section:
+
+```yaml
+global:
+  imagePullSecrets:
+    - registry-creds
+```
+
+When two examples use the same top-level key, such as `server:`, add their settings to the existing section rather than duplicating the key. The chart's complete [`values.yaml`](https://github.com/oracle/ai-optimizer/blob/main/helm/values.yaml) lists every available option.
+
+:::danger[Keep secrets out of values files]
+Use Kubernetes Secrets rather than committing credentials to a values file.
 :::
 
-## Configure the Database
+### Configure the Database
 
-Set `server.database.type` to select the database deployment mode.
+Choose a database mode when the deployment needs a chart-managed or external Oracle database. To run the Server without a database configuration, leave `server.database.type` empty. The chart then omits database resources and database environment variables; database-backed features such as RAG and NL2SQL are unavailable.
 
 | Mode | Use when | Notes |
 | --- | --- | --- |
-| `SIDB-FREE` | Running Oracle Database Free in the cluster. | Provide a pinned `server.database.image.tag`. |
-| `ADB-FREE` | Running Autonomous Database Free in the cluster. | Provide a pinned `server.database.image.tag`. |
-| `ADB-S` | Connecting to an OCI Autonomous Database. | Requires the Oracle Database Operator CRD unless using existing database resources. |
-| `OTHER` | Connecting to another Oracle database. | Provide the connection details and usable credentials in a Secret. |
+| `SIDB-FREE` | Running Oracle Database Free in the cluster. | Requires a pinned database image. Its data is ephemeral unless you enable persistent storage. |
+| `ADB-FREE` | Running Autonomous Database Free in the cluster. | Requires a pinned database image. Its data is ephemeral unless you enable persistent storage. |
+| `ADB-S` | Connecting to an OCI Autonomous Database. | Requires the Oracle Database Operator CRD when the chart creates the database resource. |
+| `OTHER` | Connecting to another Oracle database. | Requires connection details and usable credentials in a Secret. |
 
-Leave `server.database.type` empty to omit database resources and database environment variables.
+For `SIDB-FREE` and `ADB-FREE`, enable persistent storage to keep database data when the database Pod is replaced. The chart creates a PersistentVolumeClaim and uses the cluster's default storage class unless you specify `storageClass`:
 
-For an external database, provide a DSN and an existing Secret containing its credentials:
+```yaml
+server:
+  database:
+    persistence:
+      enabled: true
+      storageClass: fast-ssd # optional; omit to use the cluster default
+      size: 50Gi
+```
+
+The claim is retained when you uninstall the release so you can recover the database. Set `global.cleanupPVCs=true` only when Helm should delete chart-managed PVCs with the release.
+
+For an external database, first create a Secret containing the credentials:
+
+```bash
+kubectl -n ai-optimizer create secret generic db-authn \
+  --from-literal=username='<database-username>' \
+  --from-literal=password='<database-password>' \
+  --from-literal=service='mydbhost.example.com:1521/MYSERVICE'
+```
+
+Then add its connection details:
 
 ```yaml
 server:
@@ -140,7 +197,7 @@ server:
       secretName: db-authn
 ```
 
-For `ADB-S`, provide the database OCID, TNS alias, and OCI configuration. On OKE, prefer workload identity:
+For `ADB-S`, provide the database OCID and TNS alias. On OKE, set `oke: true` to use workload identity; the required IAM policies must already exist:
 
 ```yaml
 server:
@@ -155,19 +212,43 @@ server:
     region: us-ashburn-1
 ```
 
+For an `ADB-S` deployment outside OKE, configure OCI credentials for OraOperator by following the [OraOperator project](https://github.com/oracle/oracle-database-operator). Then reference the ConfigMap and API-key Secret that it creates:
+
+```yaml
+server:
+  ociConfig:
+    configMapName: <operator-config-map>
+    keySecretName: <operator-api-key-secret>
+```
+
 For database connection requirements, see [Database](../guides/database).
 
-## OCI and Model Credentials
+### Optional Configuration
 
-For a non-OKE installation, create an OCI configuration Secret from an OCI config file:
+#### OCI and Model Credentials
+
+For a non-OKE installation, the helper below generates and applies an `oci-config-file` Kubernetes Secret from your OCI config file:
 
 ```bash
 python helm/scripts/oci_config.py --config ~/.oci/config --namespace ai-optimizer | sh
 ```
 
-This creates an `oci-config-file` Secret. Reference it with `server.ociConfig.fileSecretName`. See [Oracle Cloud Infrastructure](../guides/oracle-cloud-infra) for the available authentication methods.
+Reference it in the existing `server:` section to make the configuration available to the running Server:
 
-Provide third-party model credentials through Secret references. For example:
+```yaml
+server:
+  ociConfig:
+    fileSecretName: oci-config-file
+```
+
+This Secret does not configure OraOperator for an `ADB-S` deployment; use the OraOperator guidance above for that case. See [Oracle Cloud Infrastructure](../guides/oracle-cloud-infra) for Server authentication methods.
+
+To use a third-party model provider, create its API-key Secret and reference it in the existing `server:` section. For example:
+
+```bash
+kubectl -n ai-optimizer create secret generic openai-secret \
+  --from-literal=apiKey='<api-key>'
+```
 
 ```yaml
 server:
@@ -179,7 +260,21 @@ server:
 
 For model configuration after deployment, see [AI Models](../guides/ai-models).
 
-## Optional Components
+#### Application Settings
+
+Add application environment settings through the chart-managed environment Secret:
+
+```yaml
+server:
+  envSecret:
+    content:
+      AIO_LOG_LEVEL: INFO
+      AIO_GENAI_REGION: us-chicago-1
+```
+
+Values in `server.envSecret.content` override chart-generated dotenv settings. Process environment values injected into the pod take precedence over the dotenv file. See [Environment Variables](../guides/env-vars) for application settings.
+
+#### Client and Ollama
 
 The Client is enabled by default. Disable it only when another client will connect to the Server:
 
@@ -198,19 +293,7 @@ ollama:
       nvidia.com/gpu: 1
 ```
 
-To provide application environment settings through the chart, use the chart-managed environment Secret:
-
-```yaml
-server:
-  envSecret:
-    content:
-      AIO_LOG_LEVEL: INFO
-      AIO_GENAI_REGION: us-chicago-1
-```
-
-The chart combines its generated dotenv settings with `server.envSecret.content`; values in `content` override generated dotenv settings. Process environment values injected into the pod take precedence over the dotenv file. See [Environment Variables](../guides/env-vars) for application settings.
-
-## Observability
+#### Observability
 
 Set `server.otel.enabled` to export OpenTelemetry data to your own collector:
 
@@ -235,35 +318,22 @@ server:
 ```
 
 :::note[SigNoz storage]
-The bundled observability components require substantial memory and retain their persistent volumes after uninstall. Set `global.cleanupPVCs=true` only when you intend to delete the telemetry storage.
+The bundled observability components require substantial memory and retain their persistent volumes after uninstall. Set `global.cleanupPVCs=true` only when you intend to delete the chart-managed database and telemetry storage.
 :::
 
-## Install or Upgrade
+### Install or Upgrade
 
-Install from the published chart repository:
+Install the published chart using the values file in the extracted release directory:
 
 ```bash
-helm repo add ai-optimizer https://oracle.github.io/ai-optimizer/helm
-helm repo update
-helm show values ai-optimizer/ai-optimizer
-
 helm upgrade --install ai-optimizer ai-optimizer/ai-optimizer \
+  --version "${APP_VERSION}" \
   --namespace ai-optimizer \
   --create-namespace \
-  --values values.yaml
+  --values deploy/values.yaml
 ```
 
-Or install from a local checkout after building its dependencies:
-
-```bash
-cd helm
-helm dependency build
-
-helm upgrade --install ai-optimizer . \
-  --namespace ai-optimizer \
-  --create-namespace \
-  --values values.yaml
-```
+### Access the Client
 
 With the Client enabled, access it locally:
 
@@ -271,40 +341,69 @@ With the Client enabled, access it locally:
 kubectl -n ai-optimizer port-forward svc/ai-optimizer-client-http 8501:8501
 ```
 
-Open `http://localhost:8501` in a browser. For public Kubernetes access, terminate TLS at an ingress or gateway. See [TLS / HTTPS](./tls).
+Open `http://localhost:8501` in a browser.
 
-Before applying local chart changes, render and lint them:
+### HTTPS and Public Access
 
-```bash
-helm lint . --values values.yaml
-helm template ai-optimizer . --namespace ai-optimizer --values values.yaml
+For public Kubernetes access, terminate TLS at an ingress or gateway. The [Helm chart ingress TLS example](https://github.com/oracle/ai-optimizer/tree/main/helm#example-6-ingress-with-tls) shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
+
+You can enable TLS directly on a Client pod when it is accessed without ingress or gateway TLS. Set `client.ssl.enabled` to `true`; this also configures the Client health probes for HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
+
+```yaml
+client:
+  ssl:
+    enabled: true
+    certFile: /app/tls/tls.crt
+    keyFile: /app/tls/tls.key
+  volumes:
+    - name: tls
+      secret:
+        secretName: client-tls
+  volumeMounts:
+    - name: tls
+      mountPath: /app/tls
+      readOnly: true
 ```
 
 ## Try It Locally with Kind
 
-[Kind](https://kind.sigs.k8s.io/) is useful for chart development and local testing. Create a cluster, build the Server and Client images, and load them into Kind:
+**Additional Requirements:**
+- [Kind](https://kind.sigs.k8s.io/)
+
+### Create a Kind Cluster
 
 ```bash
 kind create cluster -n ai-optimizer
+```
 
-APP_VERSION=0.0.0
-podman build -f src/client/Dockerfile -t localhost/ai-optimizer-client:${APP_VERSION} .
-podman build -f src/server/Dockerfile -t localhost/ai-optimizer-server:${APP_VERSION} .
+### Load the images
 
+```bash
 kind load docker-image localhost/ai-optimizer-client:${APP_VERSION} -n ai-optimizer
 kind load docker-image localhost/ai-optimizer-server:${APP_VERSION} -n ai-optimizer
 ```
 
-Use one of the provided examples, such as [`values-kind-sidb-free.yaml`](https://github.com/oracle/ai-optimizer/blob/main/helm/examples/values-kind-sidb-free.yaml), then install and port-forward the Client service:
+:::note[Local Kind credentials]
+The following command generates temporary inline API and cookie secrets for local evaluation. For a shared or persistent deployment, use Kubernetes Secrets as described in [Create Kubernetes Secrets](#create-kubernetes-secrets).
+:::
+
+### Install the chart
 
 ```bash
-helm upgrade --install ai-optimizer ./helm \
+helm upgrade --install ai-optimizer ai-optimizer/ai-optimizer \
+  --version "${APP_VERSION}" \
   --namespace ai-optimizer \
   --create-namespace \
   --set-string global.api.apiKey="$(openssl rand -base64 32)" \
   --set-string client.cookieSecret="$(openssl rand -base64 32)" \
+  --set-string server.image.tag="${APP_VERSION}" \
+  --set-string client.image.tag="${APP_VERSION}" \
   --values helm/examples/values-kind-sidb-free.yaml
+```
 
+### Access the Client
+
+```bash
 kubectl -n ai-optimizer port-forward svc/ai-optimizer-client-http 8501:8501
 ```
 
