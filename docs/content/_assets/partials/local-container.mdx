@@ -3,6 +3,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import ReleaseSourceExtract from './release-source-extract.mdx';
 
 :::tip[Same... but different!]
 
@@ -29,15 +30,7 @@ Set-Alias podman docker
 
 :::
 
-1. Download and extract the [latest release](https://github.com/oracle/ai-optimizer/releases/latest) of the **AI Optimizer**:
-
-   ```bash
-   curl -LO https://github.com/oracle/ai-optimizer/releases/latest/download/ai-optimizer-src.tar.gz
-   mkdir ai-optimizer
-   tar zxf ai-optimizer-src.tar.gz -C ai-optimizer
-
-   cd ai-optimizer
-   ```
+1. <ReleaseSourceExtract />
 
 1. Build the container image.
 

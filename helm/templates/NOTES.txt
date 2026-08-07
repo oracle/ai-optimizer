@@ -223,7 +223,8 @@ SigNoz uninstall cleanup:
   The chart runs a pre-delete hook that removes the SigNoz ClickHouseInstallation
   and active ClickHouse resources created by the ClickHouse operator.
 {{- if .Values.global.cleanupPVCs }}
-  global.cleanupPVCs=true: SigNoz ClickHouse PVCs will also be deleted.
+  global.cleanupPVCs=true: chart-managed database and SigNoz ClickHouse PVCs
+  will also be deleted.
 {{- else }}
   global.cleanupPVCs=false: SigNoz ClickHouse PVCs are preserved. To discard
   telemetry data on uninstall, set global.cleanupPVCs=true before uninstalling.

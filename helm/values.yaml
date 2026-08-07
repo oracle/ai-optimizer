@@ -56,12 +56,10 @@ global:
   # Example: [mirror-creds]
   imagePullSecrets: []
 
-  # -- When true, the SigNoz uninstall cleanup hook deletes every PVC
-  # created by this release — ClickHouse plus the StatefulSet-owned
-  # `volumeClaimTemplates` PVCs (zookeeper, signoz-db, …) that Kubernetes
-  # retains by default. The sweep is scoped to `app.kubernetes.io/instance=<release>`,
-  # so parallel installs in the same namespace each clean only their own.
-  # Defaults to false so telemetry data survives uninstall unless explicitly discarded.
+  # -- When true, Helm deletes the chart-managed database data PVC and the
+  # SigNoz uninstall cleanup hook deletes its ClickHouse and StatefulSet-owned
+  # PVCs (zookeeper, signoz-db, …). Defaults to false so data survives uninstall
+  # unless explicitly discarded.
   cleanupPVCs: false
 
 # -----------------------
@@ -193,10 +191,6 @@ server:
       # -- Kubernetes access modes for the data PersistentVolumeClaim.
       accessModes:
         - ReadWriteOnce
-      # -- Delete the data PersistentVolumeClaim when this release is uninstalled.
-      # By default it is retained to protect database data.
-      cleanupOnUninstall: false
-
     # -- For ADB-S, OCID of the Autonomous Database
     # Exclude for SIDB-FREE/ADB-FREE/OTHER
     oci:

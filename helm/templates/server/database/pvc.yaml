@@ -10,7 +10,7 @@ metadata:
   labels:
     app.kubernetes.io/component: database
     {{- include "ai-optimizer.labels" . | nindent 4 }}
-  {{- if not .Values.server.database.persistence.cleanupOnUninstall }}
+  {{- if not .Values.global.cleanupPVCs }}
   annotations:
     helm.sh/resource-policy: keep
   {{- end }}

@@ -1781,8 +1781,6 @@ class TestContainerDatabasePersistence:
         volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "db-data")
         assert volume["persistentVolumeClaim"]["claimName"] == pvc["metadata"]["name"]
 
-    def test_cleanup_on_uninstall_allows_helm_to_delete_pvc(self):
-        pvc = _database_pvc(
-            self._render_persistent("SIDB-FREE", "server.database.persistence.cleanupOnUninstall=true")
-        )
+    def test_global_pvc_cleanup_allows_helm_to_delete_pvc(self):
+        pvc = _database_pvc(self._render_persistent("SIDB-FREE", "global.cleanupPVCs=true"))
         assert "helm.sh/resource-policy" not in pvc.get("metadata", {}).get("annotations", {})

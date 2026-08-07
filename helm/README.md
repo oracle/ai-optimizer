@@ -419,7 +419,7 @@ server:
       size: 50Gi
 ```
 
-Omit `storageClass` to use the cluster default. The claim is retained on uninstall by default. Set `cleanupOnUninstall: true` when Helm should delete it with the release.
+Omit `storageClass` to use the cluster default. The claim is retained on uninstall by default. Set `global.cleanupPVCs=true` when Helm should delete it with the release.
 
 ## Upgrading
 
@@ -452,9 +452,9 @@ helm uninstall ai-optimizer
 
 When `signoz.enabled=true`, the chart runs a `pre-delete` cleanup hook that
 removes the SigNoz ClickHouseInstallation and active ClickHouse resources
-created by the operator. ClickHouse PVCs are preserved by default. Set
-`global.cleanupPVCs=true` before uninstall if you also want Helm uninstall to
-delete the SigNoz ClickHouse PVCs and their telemetry data.
+created by the operator. PVCs are retained by default. Set
+`global.cleanupPVCs=true` before uninstall to delete chart-managed database
+data PVCs and SigNoz PVCs with their telemetry data.
 
 **Note**: Secrets with `helm.sh/resource-policy: keep` annotation (like database credentials) will be retained. Delete them manually if needed:
 
