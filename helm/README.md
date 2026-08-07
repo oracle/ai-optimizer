@@ -404,7 +404,7 @@ server:
 
 ### Persistent Storage for Databases
 
-When using SIDB-FREE or ADB-FREE, configure persistent volumes:
+SIDB-FREE and ADB-FREE store their data in the container by default. Enable persistence to create a PersistentVolumeClaim and retain data when the database Pod is replaced:
 
 ```yaml
 server:
@@ -412,11 +412,14 @@ server:
     type: "SIDB-FREE"
     image:
       repository: container-registry.oracle.com/database/free
+      tag: "<pinned-database-version>"
     persistence:
       enabled: true
       storageClass: "fast-ssd"
       size: 50Gi
 ```
+
+Omit `storageClass` to use the cluster default. The claim is retained on uninstall by default. Set `cleanupOnUninstall: true` when Helm should delete it with the release.
 
 ## Upgrading
 

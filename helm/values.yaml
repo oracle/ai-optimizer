@@ -182,6 +182,21 @@ server:
       # -- For SIDB-FREE/ADB-FREE, tag of the image.
       tag: ""
 
+    # -- Persistent storage for SIDB-FREE and ADB-FREE data files.
+    # Disabled by default, so the database data is ephemeral.
+    persistence:
+      enabled: false
+      # -- StorageClass to request. Leave empty to use the cluster default.
+      storageClass: ""
+      # -- Requested size for the data PersistentVolumeClaim.
+      size: 50Gi
+      # -- Kubernetes access modes for the data PersistentVolumeClaim.
+      accessModes:
+        - ReadWriteOnce
+      # -- Delete the data PersistentVolumeClaim when this release is uninstalled.
+      # By default it is retained to protect database data.
+      cleanupOnUninstall: false
+
     # -- For ADB-S, OCID of the Autonomous Database
     # Exclude for SIDB-FREE/ADB-FREE/OTHER
     oci:

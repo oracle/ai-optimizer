@@ -86,6 +86,25 @@ def _client_deployment(docs: list[dict]) -> dict:
     raise AssertionError("client Deployment not found in rendered output")
 
 
+def _database_deployment(docs: list[dict]) -> dict:
+    """Return the chart-managed database Deployment document."""
+    for d in docs:
+        if (
+            d.get("kind") == "Deployment"
+            and d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "database"
+        ):
+            return d
+    raise AssertionError("database Deployment not found in rendered output")
+
+
+def _database_pvc(docs: list[dict]) -> dict:
+    """Return the chart-managed database PersistentVolumeClaim document."""
+    for d in docs:
+        if d.get("kind") == "PersistentVolumeClaim":
+            return d
+    raise AssertionError("database PersistentVolumeClaim not found in rendered output")
+
+
 def _cookie_env(deployment: dict) -> dict:
     """Return the AIO_CLIENT_COOKIE_SECRET env var dict from the client container."""
     env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
@@ -1708,3 +1727,62 @@ class TestClientOciSourceBucketEnv:
         bucket_entry = _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME")
         assert compartment_entry is not None and compartment_entry["value"] == self._COMPARTMENT_OCID
         assert bucket_entry is not None and bucket_entry["value"] == self._BUCKET_NAME
+
+
+class TestContainerDatabasePersistence:
+    """SIDB-FREE and ADB-FREE can opt into a chart-managed data PVC."""
+
+    _COOKIE = "client.cookieSecret=ccccccccccccccccccccccccccccccccc"
+
+    def test_disabled_by_default_keeps_database_data_ephemeral(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=example.com/oracle/database",
+            "server.database.image.tag=1.0.0",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert not [d for d in docs if d.get("kind") == "PersistentVolumeClaim"]
+        deployment = _database_deployment(docs)
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
+        assert "/opt/oracle/oradata" not in {m["mountPath"] for m in container["volumeMounts"]}
+
+    def _render_persistent(self, database_type: str, *extra_sets: str) -> list[dict]:
+        result = _render(
+            self._COOKIE,
+            f"server.database.type={database_type}",
+            "server.database.image.repository=example.com/oracle/database",
+            "server.database.image.tag=1.0.0",
+            "server.database.persistence.enabled=true",
+            *extra_sets,
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        return _docs(result.stdout)
+
+    @pytest.mark.parametrize(
+        ("database_type", "data_mount_path"),
+        [("SIDB-FREE", "/opt/oracle/oradata"), ("ADB-FREE", "/u01/data")],
+    )
+    def test_enabled_creates_and_mounts_data_pvc(self, database_type: str, data_mount_path: str):
+        docs = self._render_persistent(
+            database_type,
+            "server.database.persistence.storageClass=fast-ssd",
+            "server.database.persistence.size=20Gi",
+        )
+        pvc = _database_pvc(docs)
+        assert pvc["spec"]["storageClassName"] == "fast-ssd"
+        assert pvc["spec"]["resources"]["requests"]["storage"] == "20Gi"
+        assert pvc["metadata"]["annotations"]["helm.sh/resource-policy"] == "keep"
+
+        deployment = _database_deployment(docs)
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
+        assert {m["mountPath"] for m in container["volumeMounts"]} >= {data_mount_path}
+        volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "db-data")
+        assert volume["persistentVolumeClaim"]["claimName"] == pvc["metadata"]["name"]
+
+    def test_cleanup_on_uninstall_allows_helm_to_delete_pvc(self):
+        pvc = _database_pvc(
+            self._render_persistent("SIDB-FREE", "server.database.persistence.cleanupOnUninstall=true")
+        )
+        assert "helm.sh/resource-policy" not in pvc.get("metadata", {}).get("annotations", {})

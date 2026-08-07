@@ -811,6 +811,11 @@ name and the consumer-side reference stay in lock-step.
 {{- printf "%s-%s-1521" (include "ai-optimizer.fullname" .) (include "ai-optimizer.server.database.dbName" .) -}}
 {{- end -}}
 
+{{/* Name of the chart-managed data PVC for a container database. */}}
+{{- define "ai-optimizer.server.database.dataPvcName" -}}
+{{- printf "%s-%s-data" (include "ai-optimizer.fullname" .) (include "ai-optimizer.server.database.dbName" .) -}}
+{{- end -}}
+
 
 {{/* ******************************************
 Resource name of the AutonomousDatabase CR (ADB-S).
