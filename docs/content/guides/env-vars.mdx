@@ -203,7 +203,51 @@ These settings provide API keys or service URLs and enable matching built-in mod
 | ----------------------- | ---------------------------------------------------------------------- | ------- |
 | `AIO_OTEL_LOGS_ENABLED` | Enables application log export after OTLP tracing has been configured. | `false` |
 
-OpenTelemetry endpoints, protocols, exporters, sampling, and OpenInference payload visibility use their standard integration variables.
+The **AI Optimizer** honors the standard [OpenTelemetry SDK environment variables](https://opentelemetry.io/docs/languages/sdk-configuration/). The most relevant ones for operators are listed below.
+
+#### Endpoint and protocol
+
+| Variable                             | Description                                                              | Default                   |
+| ------------------------------------ | ------------------------------------------------------------------------ | ------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`        | OTLP receiver URL (all signals)                                          | _(unset = OTLP disabled)_ |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace-specific endpoint (overrides the generic one)                      | _(unset)_                 |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`   | Log-specific endpoint (overrides the generic one)                        | _(unset)_                 |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`        | `grpc` or `http/protobuf` (all signals)                                  | `grpc`                    |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Trace-specific protocol (overrides the generic one)                      | _(unset)_                 |
+| `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL`   | Log-specific protocol (overrides the generic one)                        | _(unset)_                 |
+| `OTEL_EXPORTER_OTLP_INSECURE`        | If `true`, skips TLS for gRPC OTLP. Required for plaintext local SigNoz. | `false`                   |
+| `OTEL_EXPORTER_OTLP_HEADERS`         | Comma-separated `k=v` headers (for example, vendor authentication)      | _(unset)_                 |
+
+#### Exporter selection
+
+| Variable               | Description                                                                                                                                 | Default |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `OTEL_TRACES_EXPORTER` | Comma-separated list. Supported values: `otlp`, `console`, `none`. Unsupported values are ignored.                                          | `otlp`  |
+| `OTEL_LOGS_EXPORTER`   | Comma-separated list. Supported values: `otlp`, `none`. Set to `none` to disable log export when `AIO_OTEL_LOGS_ENABLED=true` is in effect. | `otlp`  |
+
+#### Resource attributes
+
+| Variable                   | Description                                                                                                      | Default               |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `OTEL_SERVICE_NAME`        | Service name shown in the backend                                                                                | `ai-optimizer-server` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated `k=v` attributes attached to every span (for example, `deployment.environment=prd,service.namespace=ai`) | _(unset)_      |
+
+#### Sampling
+
+| Variable                  | Description                                                                                    | Default                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------- |
+| `OTEL_TRACES_SAMPLER`     | Sampler. Common: `parentbased_always_on` (default), `parentbased_traceidratio` (probabilistic) | `parentbased_always_on` |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampler argument (for ratio sampler: `0.0`–`1.0`, for example `0.1` for 10%)                   | _(none)_                |
+
+#### Batch span processor tuning
+
+The `OTEL_BSP_*` family (`OTEL_BSP_MAX_QUEUE_SIZE`, `OTEL_BSP_SCHEDULE_DELAY`, and others) is honored by the SDK without code changes. Tune it in production if you observe span drops or back-pressure. See the [SDK configuration specification](https://opentelemetry.io/docs/languages/sdk-configuration/general/) for the full list.
+
+#### OpenInference payload visibility
+
+OpenInference payload fields are hidden by default. Set the relevant `OPENINFERENCE_HIDE_*` variables to `false` only for a backend approved to retain prompts, responses, or retrieved content. See [Opting into full payloads](../advanced-guides/observability/intro#opting-into-full-payloads) for the supported variables and their effects.
+
+For more information on observability in the **AI Optimizer**, see the [advanced guide](../advanced-guides/observability/intro).
 
 ## Containers and Kubernetes
 

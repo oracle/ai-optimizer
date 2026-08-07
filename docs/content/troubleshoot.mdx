@@ -1,6 +1,8 @@
 ---
 title: Troubleshooting
 hide_title: true
+pagination_next: null
+pagination_prev: null
 sidebar_position: 35
 ---
 
@@ -104,3 +106,43 @@ Claude Desktop cannot start the generated `mcp-remote` configuration.
 
 **_Solution_**:
 Confirm that `npx` is available to Claude Desktop. If necessary, use the full path to `npx` in the generated configuration.
+
+## Observability
+
+### Telemetry Does Not Initialize
+
+**_Problem_**:
+The server does not log `OTel telemetry initialized` at startup, or it logs `OTLP grpc exporter requested but not installed`.
+
+**_Solution_**:
+Install the optional dependencies with `uv sync --extra server --extra otel`. Then configure an OTLP endpoint with `OTEL_EXPORTER_OTLP_ENDPOINT`, or set `OTEL_TRACES_EXPORTER=console` for local debugging. If an OTLP exporter remains unavailable after installation, check the startup logs for a `not installed; skipping` warning.
+
+### Traces Do Not Reach the Backend
+
+**_Problem_**:
+The server logs `OTel telemetry initialized`, but traces do not appear in the backend.
+
+**_Solution_**:
+For a plaintext gRPC collector, set `OTEL_EXPORTER_OTLP_INSECURE=true`. Alternatively, configure `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` with an `http://` endpoint. Confirm that the server can reach the collector's OTLP port.
+
+### Resource Attributes Are Missing
+
+**_Problem_**:
+A value supplied through `OTEL_RESOURCE_ATTRIBUTES` is not visible on spans.
+
+**_Solution_**:
+Use a comma-separated list of `key=value` pairs, without spaces or semicolons. For example:
+
+```dotenv
+OTEL_RESOURCE_ATTRIBUTES=k1=v1,k2=v2
+```
+
+### Requested Exporter Is Ignored
+
+**_Problem_**:
+Setting `OTEL_TRACES_EXPORTER` does not produce the expected exporter behavior.
+
+**_Solution_**:
+Use only the supported values: `otlp`, `console`, or `none`. To export to both an OTLP backend and stdout, set `OTEL_TRACES_EXPORTER=otlp,console`.
+
+For configuration details and trace investigation workflows, see [Observability](./advanced-guides/observability/intro).

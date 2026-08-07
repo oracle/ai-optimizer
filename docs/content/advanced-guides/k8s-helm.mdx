@@ -329,18 +329,22 @@ ollama:
 
 #### Observability
 
-Set `server.otel.enabled` to export OpenTelemetry data to your own collector:
+Set `server.otel.enabled` to export OpenTelemetry data to your own collector. Provide an endpoint for a separately deployed SigNoz, Jaeger, Tempo, or vendor collector:
 
 ```yaml
 server:
   otel:
     enabled: true
-    endpoint: https://otel.example.com:4317
+    endpoint: http://signoz-otel-collector.observability.svc.cluster.local:4317
+    insecure: true # plaintext gRPC inside the cluster
+    resourceAttributes:
+      service.namespace: ai-optimizer
+    # logsEnabled: true # opt-in; review backend retention first
     headersSecret:
       name: otel-headers
 ```
 
-Alternatively, enable the bundled SigNoz stack:
+Alternatively, enable the bundled SigNoz stack. The chart automatically sets the server's OTLP endpoint to the in-cluster collector; configure only the OpenTelemetry options that differ from their defaults:
 
 ```yaml
 signoz:
@@ -348,12 +352,18 @@ signoz:
 server:
   otel:
     enabled: true
-    insecure: true
+    insecure: true # the in-chart collector serves plaintext gRPC
 ```
+
+The published image already includes the `[otel]` extra, so `enabled: true` works with the default image. Within Kubernetes, `service.instance.id` uses `HOSTNAME` (the pod name), and `deployment.environment` uses the chart's `global.env` value.
+
+When tracing is enabled, the chart requires an endpoint unless `tracesExporter: console` is configured for local debugging or `signoz.enabled=true` provides the in-chart collector. `helm template` and `helm install` fail fast when no usable tracing endpoint is available.
 
 :::note[SigNoz storage]
 The bundled observability components require substantial memory and retain their persistent volumes after uninstall. Set `global.cleanupPVCs=true` only when you intend to delete the chart-managed database and telemetry storage.
 :::
+
+For instrumentation coverage, local and container deployment, and trace investigation, see [Observability](./observability/intro).
 
 ### Install or Upgrade
 

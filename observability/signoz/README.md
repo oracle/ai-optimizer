@@ -139,4 +139,4 @@ These attributes are emitted by the server's instrumentation; the panels filter 
 
 The `openinference.span.kind` attribute is emitted on every OpenInference span (`LLM`, `RETRIEVER`, `EMBEDDING`, etc.) but the v1 dashboard does not depend on it. Filtering by `llm.model_name exists` covers LLM spans without needing that key indexed, which matters because `openinference.span.kind` takes longer to register in SigNoz than `llm.model_name` after the first traffic. To add an embedding-latency panel, recreate it manually in the UI once your install has indexed `openinference.span.kind`: filter on `openinference.span.kind = EMBEDDING`, aggregate p95 of `durationNano`. Then export the dashboard JSON and overwrite `helm/observability/signoz/dashboards/ai-optimizer-overview.json`.
 
-For a fuller catalog of what each span carries, see [Reading Traces](../../docs/content/observability/reading-traces.md).
+For a fuller catalog of what each span carries, see [Observability](../../docs/content/advanced-guides/observability/intro.mdx).
