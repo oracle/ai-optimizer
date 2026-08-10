@@ -83,12 +83,13 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
 
     if client in {"inspector", "mcp-inspector", "npx-inspector"}:
         return {
-            "command": "npx -y @modelcontextprotocol/inspector",
-            "transport": "Streamable HTTP",
-            "url": url,
-            "headers": {
-                "X-API-Key": api_key,
-            },
+            "mcpServers": {
+                "oracle-ai-optimizer": {
+                    "type": "http",
+                    "url": url,
+                    "headers": {"X-API-Key": api_key},
+                }
+            }
         }
 
     if client in {"claude", "claude-desktop"}:

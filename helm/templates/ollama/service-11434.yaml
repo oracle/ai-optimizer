@@ -11,9 +11,9 @@ metadata:
     app.kubernetes.io/component: ollama
     {{- include "ai-optimizer.labels" . | nindent 4 }}
 spec:
-  type: "ClusterIP"
+  type: {{ .Values.ollama.service.http.type }}
   ports:
-    - port: 11434
+    - port: {{ .Values.ollama.service.http.port | default 11434 }}
       targetPort: api
       protocol: TCP
       name: api

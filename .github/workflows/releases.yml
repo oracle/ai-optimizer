@@ -59,8 +59,12 @@ jobs:
 
       - name: Build and Push Source
         run: |
-          zip -r $RUNNER_TEMP/${{ steps.names.outputs.src }}.zip src pyproject.toml uv.lock .python-version .dockerignore
-          tar -czf "$RUNNER_TEMP/${{ steps.names.outputs.src }}.tar.gz" src pyproject.toml uv.lock .python-version .dockerignore
+          zip -r $RUNNER_TEMP/${{ steps.names.outputs.src }}.zip \
+            src pyproject.toml uv.lock .python-version .dockerignore \
+            helm/scripts/oci_config.py helm/examples
+          tar -czf "$RUNNER_TEMP/${{ steps.names.outputs.src }}.tar.gz" \
+            src pyproject.toml uv.lock .python-version .dockerignore \
+            helm/scripts/oci_config.py helm/examples
           gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ steps.names.outputs.src }}.zip" --clobber
           gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ steps.names.outputs.src }}.tar.gz" --clobber
         env:
@@ -73,7 +77,7 @@ jobs:
           cd opentofu
           zip -r $RUNNER_TEMP/${{ steps.names.outputs.iac }}.zip . \
             -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" \
-            -x "cfgmgt/stage/*.*" "*.tfplan*" "examples/*" "*.md" ".gitignore" "*pycache*"
+            -x "cfgmgt/stage/*.*" "*.tfplan*" "README.md" "TESTING.md" ".gitignore" "*pycache*"
           gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ steps.names.outputs.iac }}.zip" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

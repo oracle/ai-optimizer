@@ -1,0 +1,187 @@
+---
+title: AI Models
+description: Choose, run, and configure language and embedding models.
+sidebar_position: 25
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+The AI Optimizer needs a [language model](#language-models) for chat and Natural Language to SQL (NL2SQL). To use Retrieval-Augmented Generation (RAG), it also needs an [embedding model](#embedding-models). Configure the selected models in [Configuration > Models](../client/configuration/models).
+
+## Language Models
+
+Language models generate chat responses, perform NL2SQL tasks, and can provide Vector Search features such as store discovery, document grading, and prompt rephrasing. Choose a model that supports the capabilities your application needs.
+
+## Embedding Models
+
+Embedding models convert documents and queries into vectors for similarity search. Choose an embedding model that fits your data, performance requirements, and deployment constraints.
+
+## Choose and Set Up a Provider
+
+The AI Optimizer uses [LiteLLM](https://docs.litellm.ai/docs/providers) to connect to model providers and compatible endpoints. Whether you run models locally or use a cloud provider, choose the option that fits your deployment, data-handling requirements, and available hardware.
+
+---
+
+<Tabs groupId="model-provider">
+<TabItem value="oci-genai" label="OCI GenAI">
+
+### OCI GenAI
+
+[OCI GenAI](https://docs.oracle.com/en-us/iaas/Content/generative-ai/home.htm) is a fully managed service in Oracle Cloud Infrastructure (OCI) for integrating language models into writing assistance, summarization, analysis, and chat applications.
+
+Follow the [Getting Started](https://docs.oracle.com/en-us/iaas/Content/generative-ai/getting-started.htm) guide to deploy the service in your OCI tenancy.
+
+OCI GenAI models are not added one at a time. Instead, the **AI Optimizer** loads the chat and embedding models available in your configured Region—either interactively from the OCI tab, or automatically at startup when a usable profile already has a GenAI Compartment OCID and Region persisted. See [Loading OCI GenAI Models](../client/configuration/oci#loading-oci-genai-models) for the client workflow.
+
+:::tip[Skip the GUI!]
+The GenAI Compartment OCID and Region can be supplied through the [Models environment variables](./env-vars#models).
+
+Alternatively, specify the following in the `~/.oci/config` file under the appropriate OCI profile:
+
+```shell
+genai_compartment_id=<OCI Compartment OCID of the OCI GenAI Service>
+genai_region=<OCI GenAI Region>
+```
+:::
+
+</TabItem>
+<TabItem value="openai-compatible" label="OpenAI-Compatible">
+
+### OpenAI-Compatible
+
+Many AI runners provide OpenAI-compatible APIs. Configure these with LiteLLM OpenAI-compatible providers such as `openai_like` or `custom_openai`. The Provider URL will normally be a local address, and the API key can often be left blank.
+
+</TabItem>
+<TabItem value="ollama" label="Ollama">
+
+### Ollama
+
+[Ollama](https://ollama.com/) is an open-source project that simplifies running language and embedding models on-premises.
+
+When configuring an Ollama model in the **AI Optimizer**, set the **Provider URL** (for example, `http://127.0.0.1:11434`) and leave the API key blank. Substitute the IP address with the address of the host where Ollama is running.
+
+:::tip[Skip the GUI!]
+Ollama models can be enabled through the [Models environment variables](./env-vars#models).
+:::
+
+### Pulling Models
+
+You do not need to use the command line to make an Ollama model available. A **Pull** button appears next to any Ollama model on the _Models_ tab that has not been pulled to the Ollama server.
+
+![Ollama Pull](../_assets/images/models-ollama-pull.png)
+
+Click **Pull** and the **AI Optimizer** downloads the model from the Ollama registry.
+
+### Quick Start
+
+Example of running `granite4.1:8b` on a Linux host:
+
+1. Install Ollama:
+
+   ```shell
+   sudo curl -fsSL https://ollama.com/install.sh | sh
+   ```
+
+1. Pull the `granite4.1:8b` model:
+
+   ```shell
+   ollama pull granite4.1:8b
+   ```
+
+1. Start Ollama:
+
+   ```shell
+   ollama serve
+   ```
+
+For more information and instructions on running Ollama on other platforms, see the [Ollama GitHub Repository](https://github.com/ollama/ollama/blob/main/README.md#quickstart).
+
+</TabItem>
+<TabItem value="huggingface" label="HuggingFace">
+
+### HuggingFace
+
+[HuggingFace](https://huggingface.co/) is a platform where the machine learning community collaborates on models, datasets, and applications. In the **AI Optimizer**, the built-in HuggingFace embedding configuration is intended for a Hugging Face Text Embeddings Inference (TEI) endpoint.
+
+:::tip[Skip the GUI!]
+The built-in HuggingFace TEI configuration can be enabled through the [Models environment variables](./env-vars#models).
+:::
+
+### Quick Start
+
+Example of running `thenlper/gte-base` in a container:
+
+1. Set the image based on CPU or GPU:
+
+   - For CPUs: `export HF_IMAGE=ghcr.io/huggingface/text-embeddings-inference:cpu-1.2`
+   - For GPUs: `export HF_IMAGE=ghcr.io/huggingface/text-embeddings-inference:0.6`
+
+1. Define a temporary volume:
+
+   ```bash
+   export TMP_VOLUME=/tmp/hf_data
+   mkdir -p $TMP_VOLUME
+   ```
+
+1. Define the model:
+
+   ```bash
+   export HF_MODEL=thenlper/gte-base
+   ```
+
+1. Start the container:
+
+   ```bash
+   podman run -d -p 8080:80 -v $TMP_VOLUME:/data --name hftei-gte-base \
+      --pull always $HF_IMAGE --model-id $HF_MODEL --max-client-batch-size 5024
+   ```
+
+1. Determine the IP address:
+
+   ```bash
+   podman inspect hftei-gte-base | grep IPA
+   ```
+
+   **NOTE:** If there is no IP address, use `127.0.0.1`.
+
+</TabItem>
+</Tabs>
+
+---
+
+## CPU Optimization
+
+When running models on CPU-only systems (without GPU acceleration), smaller models provide significantly better performance and responsiveness. The **AI Optimizer** includes built-in optimizations for CPU-friendly models.
+
+### Recommended CPU-Friendly Models
+
+Small local models are often a better fit for CPU-only systems. When an Ollama server is configured with `AIO_ON_PREM_OLLAMA_URL`, the **AI Optimizer** discovers pulled Ollama models and enables them automatically.
+
+Examples of CPU-friendly model choices include:
+
+| Model | Parameters | Max Tokens | Use Case |
+|-------|-----------|------------|----------|
+| `llama3.2:1b` | 1B | 2048 | Fast responses, simple Q&A |
+| `granite4.1:8b` | 8B | 2048 | Balanced performance/quality |
+| `gemma3:1b` | 1B | 2048 | Lightweight, efficient |
+
+### Vector Search Optimization
+
+When a selected model name includes a parameter count below 7B, such as `llama3.2:1b` or `gemma3:1b`, the **AI Optimizer** automatically disables these Vector Search features:
+
+- **Store Discovery**: Uses the Language Model to select the most appropriate Vector Store. When disabled, you must select the Vector Store manually if more than one is available.
+- **Document Grading**: Evaluates retrieved documents for relevance before they are used.
+- **Prompt Rephrase**: Rephrases queries using the conversation context to improve retrieval.
+
+Disabling these features reduces the number of Language Model calls and can significantly improve response times. You can manually enable or disable each feature using the checkboxes in the Vector Search sidebar, regardless of model size.
+
+### Performance Tips
+
+1. **Model Selection**: Choose the smallest model that meets your quality requirements
+2. **Reduce Top K**: Lower the number of retrieved documents (for example, Top K = 3-5)
+3. **Lower Max Tokens**: Reduce maximum output tokens to speed up generation
+4. **Temperature 0**: Use temperature 0 for deterministic, faster responses

@@ -86,6 +86,131 @@ def _client_deployment(docs: list[dict]) -> dict:
     raise AssertionError("client Deployment not found in rendered output")
 
 
+def _client_service(docs: list[dict]) -> dict:
+    """Return the client Service document."""
+    for document in docs:
+        if (
+            document.get("kind") == "Service"
+            and document.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "client"
+        ):
+            return document
+    raise AssertionError("client Service not found in rendered output")
+
+
+def _ollama_service(docs: list[dict]) -> dict:
+    """Return the Ollama Service document."""
+    for document in docs:
+        if (
+            document.get("kind") == "Service"
+            and document.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "ollama"
+        ):
+            return document
+    raise AssertionError("Ollama Service not found in rendered output")
+
+
+def test_client_service_renders_configured_node_port():
+    """A fixed NodePort lets Kind map a stable host port to the client."""
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "client.service.type=NodePort",
+        "client.service.nodePort=30080",
+    )
+    assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+
+    service = _client_service(_docs(result.stdout))
+    assert service["spec"]["type"] == "NodePort"
+    assert service["spec"]["ports"][0]["nodePort"] == 30080
+
+
+def test_client_service_rejects_node_port_for_cluster_ip():
+    """A ClusterIP Service cannot request a fixed node port."""
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "client.service.type=ClusterIP",
+        "client.service.nodePort=30080",
+    )
+    assert result.returncode != 0, "render unexpectedly accepted nodePort for ClusterIP"
+    assert "/client/service/type" in result.stderr
+    assert "NodePort" in result.stderr and "LoadBalancer" in result.stderr
+
+
+def test_client_load_balancer_service_renders_configured_node_port():
+    """LoadBalancer Services may request a fixed node port."""
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "client.service.type=LoadBalancer",
+        "client.service.nodePort=30080",
+    )
+    assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+
+    service = _client_service(_docs(result.stdout))
+    assert service["spec"]["type"] == "LoadBalancer"
+    assert service["spec"]["ports"][0]["nodePort"] == 30080
+
+
+@pytest.mark.parametrize(
+    "value_path",
+    ["server.service.type", "client.service.type", "ollama.service.http.type"],
+)
+def test_external_name_service_type_is_rejected(value_path: str):
+    """ExternalName is unsupported because chart Services front chart workloads."""
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        f"{value_path}=ExternalName",
+    )
+    assert result.returncode != 0, f"render unexpectedly accepted {value_path}=ExternalName"
+    assert f"/{value_path.replace('.', '/')}" in result.stderr
+
+
+@pytest.mark.parametrize("service_type", ["NodePort", "LoadBalancer"])
+def test_ollama_service_renders_configured_type(service_type: str):
+    """The Ollama Service must honor every externally accessible supported type."""
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "ollama.enabled=true",
+        f"ollama.service.http.type={service_type}",
+    )
+    assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+
+    service = _ollama_service(_docs(result.stdout))
+    assert service["spec"]["type"] == service_type
+
+
+def test_ollama_service_port_updates_service_and_server_url():
+    """The Server must connect through the configured Ollama Service port."""
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "ollama.enabled=true",
+        "ollama.service.http.port=18080",
+    )
+    assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+
+    docs = _docs(result.stdout)
+    service_port = _ollama_service(docs)["spec"]["ports"][0]
+    assert service_port["port"] == 18080
+    assert service_port["targetPort"] == "api"
+    assert "AIO_ON_PREM_OLLAMA_URL=http://test-ai-optimizer-ollama-11434.default.svc:18080" in _server_env_content(docs)
+
+
+def _database_deployment(docs: list[dict]) -> dict:
+    """Return the chart-managed database Deployment document."""
+    for d in docs:
+        if (
+            d.get("kind") == "Deployment"
+            and d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "database"
+        ):
+            return d
+    raise AssertionError("database Deployment not found in rendered output")
+
+
+def _database_pvc(docs: list[dict]) -> dict:
+    """Return the chart-managed database PersistentVolumeClaim document."""
+    for d in docs:
+        if d.get("kind") == "PersistentVolumeClaim":
+            return d
+    raise AssertionError("database PersistentVolumeClaim not found in rendered output")
+
+
 def _cookie_env(deployment: dict) -> dict:
     """Return the AIO_CLIENT_COOKIE_SECRET env var dict from the client container."""
     env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
@@ -1708,3 +1833,60 @@ class TestClientOciSourceBucketEnv:
         bucket_entry = _client_env(deployment, "AIO_OCI_SOURCE_BUCKET_NAME")
         assert compartment_entry is not None and compartment_entry["value"] == self._COMPARTMENT_OCID
         assert bucket_entry is not None and bucket_entry["value"] == self._BUCKET_NAME
+
+
+class TestContainerDatabasePersistence:
+    """SIDB-FREE and ADB-FREE can opt into a chart-managed data PVC."""
+
+    _COOKIE = "client.cookieSecret=ccccccccccccccccccccccccccccccccc"
+
+    def test_disabled_by_default_keeps_database_data_ephemeral(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.type=SIDB-FREE",
+            "server.database.image.repository=example.com/oracle/database",
+            "server.database.image.tag=1.0.0",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert not [d for d in docs if d.get("kind") == "PersistentVolumeClaim"]
+        deployment = _database_deployment(docs)
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
+        assert "/opt/oracle/oradata" not in {m["mountPath"] for m in container["volumeMounts"]}
+
+    def _render_persistent(self, database_type: str, *extra_sets: str) -> list[dict]:
+        result = _render(
+            self._COOKIE,
+            f"server.database.type={database_type}",
+            "server.database.image.repository=example.com/oracle/database",
+            "server.database.image.tag=1.0.0",
+            "server.database.persistence.enabled=true",
+            *extra_sets,
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        return _docs(result.stdout)
+
+    @pytest.mark.parametrize(
+        ("database_type", "data_mount_path"),
+        [("SIDB-FREE", "/opt/oracle/oradata"), ("ADB-FREE", "/u01/data")],
+    )
+    def test_enabled_creates_and_mounts_data_pvc(self, database_type: str, data_mount_path: str):
+        docs = self._render_persistent(
+            database_type,
+            "server.database.persistence.storageClass=fast-ssd",
+            "server.database.persistence.size=20Gi",
+        )
+        pvc = _database_pvc(docs)
+        assert pvc["spec"]["storageClassName"] == "fast-ssd"
+        assert pvc["spec"]["resources"]["requests"]["storage"] == "20Gi"
+        assert pvc["metadata"]["annotations"]["helm.sh/resource-policy"] == "keep"
+
+        deployment = _database_deployment(docs)
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
+        assert {m["mountPath"] for m in container["volumeMounts"]} >= {data_mount_path}
+        volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "db-data")
+        assert volume["persistentVolumeClaim"]["claimName"] == pvc["metadata"]["name"]
+
+    def test_global_pvc_cleanup_allows_helm_to_delete_pvc(self):
+        pvc = _database_pvc(self._render_persistent("SIDB-FREE", "global.cleanupPVCs=true"))
+        assert "helm.sh/resource-policy" not in pvc.get("metadata", {}).get("annotations", {})

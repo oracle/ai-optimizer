@@ -132,11 +132,11 @@ These attributes are emitted by the server's instrumentation; the panels filter 
 |---|---|---|
 | `service.name = ai-optimizer-server` | OTel resource | All panels |
 | `http.route` | FastAPI instrumentor | Request rate / latency / error rate by route |
-| `http.status_code` | FastAPI instrumentor | Error rate panels |
+| `http.response.status_code` → `response_status_code` | FastAPI/ASGI instrumentor → SigNoz trace field | Error rate panels |
 | `llm.model_name` | OpenInference LangChain instrumentor | LLM call rate panel (filter `exists`), token panel grouping |
 | `llm.token_count.total` | OpenInference LangChain instrumentor | Token sum panel |
 | `openinference.span.kind` | OpenInference LangChain instrumentor | Not used by panels in v1 — see note below |
 
 The `openinference.span.kind` attribute is emitted on every OpenInference span (`LLM`, `RETRIEVER`, `EMBEDDING`, etc.) but the v1 dashboard does not depend on it. Filtering by `llm.model_name exists` covers LLM spans without needing that key indexed, which matters because `openinference.span.kind` takes longer to register in SigNoz than `llm.model_name` after the first traffic. To add an embedding-latency panel, recreate it manually in the UI once your install has indexed `openinference.span.kind`: filter on `openinference.span.kind = EMBEDDING`, aggregate p95 of `durationNano`. Then export the dashboard JSON and overwrite `helm/observability/signoz/dashboards/ai-optimizer-overview.json`.
 
-For a fuller catalog of what each span carries, see [Reading Traces](../../docs/content/observability/reading-traces.md).
+For a fuller catalog of what each span carries, see [Observability](../../docs/content/advanced-guides/observability/intro.mdx).

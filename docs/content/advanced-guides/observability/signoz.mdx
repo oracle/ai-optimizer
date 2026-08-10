@@ -1,0 +1,180 @@
+---
+title: SigNoz Quickstart
+pagination_next: null
+sidebar_position: 10
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+spell-checker: ignore signoz otlp clickhouse
+*/}
+
+import {GitHubSourceLink} from '@site/src/components/GitHubSourceLink';
+
+:::note[Running on Kubernetes?]
+The bundled Helm chart can deploy SigNoz alongside the application as a subchart. Set both `signoz.enabled=true` and `server.otel.enabled=true`; the chart then configures the [**AI Optimizer Server**](../../server/intro.mdx) OTLP endpoint automatically. See the Helm chart's [observability configuration](../k8s-helm#observability) for Kubernetes deployment.
+:::
+
+This quickstart connects a SigNoz installation to the **AI Optimizer Server**. At the end, you can find server traces in SigNoz, optionally correlate application logs, and load the repository's starter dashboard and alerts.
+
+For another OTLP-compatible backend, use [Observability](./intro#export-to-a-telemetry-backend) to configure its receiver instead.
+
+## Prerequisites
+
+- A SigNoz installation. Follow the current [SigNoz installation documentation](https://signoz.io/docs/install/) for its deployment, prerequisites, networking, upgrades, and lifecycle management.
+- The [**AI Optimizer Server**](../../server/intro.mdx) installed with the `[otel]` extra (see [Observability](./intro) for the install command).
+- An OTLP receiver address reachable from the [**AI Optimizer Server**](../../server/intro.mdx) process. SigNoz shows this address as part of its installation and ingestion setup.
+
+## Access SigNoz on Kubernetes
+
+When the bundled Helm chart deploys SigNoz and no ingress or gateway exposes its frontend, identify the frontend Service and its HTTP port from the Helm deployment. Then forward that Service to a local port:
+
+```bash
+kubectl -n <namespace> port-forward \
+  svc/<signoz-frontend-service> 8080:<frontend-service-port>
+```
+
+Keep the command running, then open [http://localhost:8080](http://localhost:8080).
+
+With the default chart configuration, the administrator credentials are stored in the Secret configured by `signoz.auth.secretName` (`signoz-authn` by default). With read access to Secrets in the release namespace, print the password in clear text:
+
+```bash
+kubectl -n <namespace> get secret <signoz-auth-secret> \
+  -o jsonpath='{.data.password}' | base64 --decode; echo
+```
+
+The administrator email is stored in the Secret's `email` key. On macOS, replace `base64 --decode` with `base64 -D`. If you use custom SigNoz authentication, use the credentials from that setup instead.
+
+## 1. Prepare a Standalone SigNoz Installation
+
+If you are not using the bundled Helm chart, install SigNoz and create an administrator account using the [current SigNoz documentation](https://signoz.io/docs/install/). This guide uses a local plaintext gRPC collector at `http://localhost:4317` as its example; replace it with the endpoint for your installation.
+
+For the bundled Helm deployment, skip this step and configure the server through the Kubernetes / Helm path below.
+
+## 2. Configure the Server
+
+Choose the configuration path that matches the server deployment. These examples use the default OTLP gRPC protocol.
+
+### Bare-Metal
+
+Add the following variables to `src/.env.{AIO_ENV}`:
+
+```dotenv
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+OTEL_EXPORTER_OTLP_INSECURE=true
+```
+
+For a temporary shell configuration, export the same values before starting the entrypoint:
+
+```bash
+export OTEL_TRACES_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_INSECURE=true
+```
+
+Replace `localhost` with the reachable SigNoz collector address. Setting `OTEL_TRACES_EXPORTER=otlp` replaces a previous console-only debugging configuration.
+
+### Container
+
+Pass the same variables to the existing server container through its environment configuration, then recreate the container. Do not add them to a host-side `src/.env.{AIO_ENV}` file; host environment variables do not propagate into a container.
+
+### Kubernetes / Helm
+
+Configure the chart through the [Helm observability settings](../k8s-helm#observability). When the bundled SigNoz stack is enabled, the chart configures the collector endpoint automatically.
+
+### HTTP/Protobuf Receiver
+
+For an HTTP/protobuf receiver instead of gRPC, set its endpoint and `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`. See [Export to a Telemetry Backend](./intro#export-to-a-telemetry-backend) for the complete protocol and TLS configuration.
+
+:::warning[Why OTEL_EXPORTER_OTLP_INSECURE=true is required]
+The local SigNoz collector accepts plaintext gRPC on its exposed OTLP port. Without this variable, the gRPC exporter attempts a TLS connection. Remove this variable when the collector endpoint is protected by TLS.
+:::
+
+To also ship application logs to SigNoz (correlated to traces by `trace_id`/`span_id`), explicitly enable log export:
+
+```dotenv
+AIO_OTEL_LOGS_ENABLED=true
+```
+
+For a shell configuration, use `export AIO_OTEL_LOGS_ENABLED=true`. Log export is opt-in. Review [Application Logs](./intro#application-logs) before enabling it for a shared or vendor-managed backend.
+
+## 3. Verify End-to-End
+
+Restart the [**AI Optimizer Server**](../../server/intro.mdx) using the mechanism for its deployment. For bare-metal, run:
+
+```bash
+uv run python src/entrypoint.py server
+```
+
+Look for the startup log line:
+
+```
+OTel telemetry initialized: service=ai-optimizer-server exporters=['otlp']
+```
+
+If the line is absent or `exporters=[]`, see [Troubleshooting](../../troubleshoot#observability).
+
+For a container deployment, inspect the existing container logs after recreating it. For Kubernetes, inspect the server pod logs.
+
+Generate a request against the reachable server URL:
+
+```bash
+curl http://localhost:8000/v1/healthz
+```
+
+In the SigNoz UI, use the **Services** and **Traces** views:
+
+1. **Services** view: `ai-optimizer-server` appears after the collector flushes. Request rate, p99 latency, and error rate populate from incoming traffic.
+2. **Traces** view: Filter by service `ai-optimizer-server` and open any trace. The flame graph shows the FastAPI `SERVER` span as the root, with two short ASGI `http send` child spans (`http.response.start` and `http.response.body`).
+
+When outbound calls are made (LLM provider APIs, OCI SDK requests, etc.), additional `CLIENT` spans appear nested under the parent SERVER span automatically.
+
+## 4. Load the Starter Dashboards and Alerts
+
+The repository ships a curated set of SigNoz assets under <GitHubSourceLink path="helm/observability/signoz" type="tree"><code>helm/observability/signoz/</code></GitHubSourceLink>:
+
+- One overview dashboard: request rate, p95 latency, 5xx rate, LLM call rate, and LLM tokens by model.
+- Three starter alert rules: 5xx spike, chat-completions p95 breach, and telemetry silence (no traces received).
+
+For the bundled Kubernetes deployment with the default chart authentication, the setup job reconciles these assets on each Helm revision:
+
+1. Send a representative [chat completion](./intro#verify-telemetry), then wait about 30 seconds for SigNoz to index the LLM attributes.
+2. Rerun the [Helm upgrade command](../k8s-helm#install-or-upgrade) used for the release, including its chart version and values file. The new revision reruns the setup job and reconciles the assets.
+3. Access the console as described in [Access SigNoz on Kubernetes](#access-signoz-on-kubernetes).
+
+Do not run the standalone bootstrap script against a bundled deployment with the default chart authentication; it creates duplicate dashboards and alerts.
+
+If you use custom SigNoz authentication, the chart does not render the setup job. Use the bootstrap process below after port-forwarding the SigNoz console, with credentials from your existing SigNoz administrator account.
+
+### Standalone or Custom-Authentication Deployment
+
+For a standalone SigNoz installation, or a bundled Kubernetes deployment with custom SigNoz authentication, loading the assets requires a local checkout of the AI Optimizer repository.
+
+Before loading the assets, send a representative [chat completion](./intro#verify-telemetry). A `/v1/healthz` request is not sufficient because it does not create the LLM attributes used by the dashboard. Wait about 30 seconds for SigNoz to index the LLM attributes.
+
+Return to the AI Optimizer repository root. The bundled bootstrap script loads both dashboards and alerts through SigNoz's HTTP API. Pass the admin credentials you set on first UI visit; the script prompts for your password and logs in for you:
+
+```bash
+cd <path-to-ai-optimizer>
+observability/signoz/bootstrap-signoz.py \
+  --host http://localhost:8080     \
+  --email <admin-email>
+```
+
+For CI or SSO setups, pass a pre-fetched JWT as `--token` (or `$SIGNOZ_TOKEN`) to bypass the login step. Dashboards can be imported through **Dashboards → New dashboard → Import JSON**, but alerts must be loaded through the script or created in the UI. After loading, attach a notification channel to each alert.
+
+Run the script only for a fresh installation: each run creates another copy of every dashboard and alert. The committed JSON is the source of truth. Export changes made in the UI back to `helm/observability/signoz/` so they can be reproduced in a new installation. The directory's <GitHubSourceLink path="observability/signoz/README.md">README</GitHubSourceLink> describes the complete asset workflow.
+
+## Networking
+
+Use the collector address that is reachable from the [**AI Optimizer Server**](../../server/intro.mdx), not necessarily the address used to open the SigNoz UI.
+
+| [**AI Optimizer Server**](../../server/intro.mdx) location | SigNoz location           | `OTEL_EXPORTER_OTLP_ENDPOINT`                                                                                                                                                |
+| ------------------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bare-metal, same host as SigNoz      | Local SigNoz deployment   | `http://localhost:4317`                                                                                                                                                      |
+| Docker container on macOS or Windows | Local SigNoz deployment   | `http://host.docker.internal:4317`                                                                                                                                           |
+| Docker container on Linux            | Local SigNoz deployment   | Use an address reachable from the container, such as the Docker bridge gateway or a shared Docker network.                                                                   |
+| Different host or VM                 | Remote SigNoz             | `http://<signoz-host>:4317`                                                                                                                                                  |
+| Kubernetes cluster                   | SigNoz running in-cluster | The cluster-internal DNS, e.g. `http://signoz-otel-collector.monitoring:4317`. Set via the chart's [`server.otel.*` values](../k8s-helm#observability), not the raw env var. |

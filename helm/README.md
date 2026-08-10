@@ -14,7 +14,7 @@ The Oracle AI Optimizer enables developers and data scientists to explore Large 
 
 ## Prerequisites
 
-- Kubernetes 1.18+
+- Kubernetes 1.23+
 - Helm 3.0+
 - Oracle Database (one of):
   - Autonomous Database Shared (ADB-S) - requires OCI account
@@ -92,9 +92,12 @@ kubectl create secret generic db-authn \
   --from-literal=password='YourSecurePassword123!' \
   --from-literal=service='adb_service_high'
 
-# Create OCI config secret (for database operator)
-# Use the helper script to create from your ~/.oci/config
-python scripts/oci_config.py --config ~/.oci/config --secret-name oci-config-file
+# Create an OCI config Secret for the AI Optimizer Server.
+# The packaged helper requires Python 3 but no third-party Python packages.
+python3 scripts/oci_config.py \
+  --config ~/.oci/config \
+  --secret-name oci-config-file |
+  kubectl apply -f -
 ```
 
 Then install:
@@ -404,7 +407,7 @@ server:
 
 ### Persistent Storage for Databases
 
-When using SIDB-FREE or ADB-FREE, configure persistent volumes:
+SIDB-FREE and ADB-FREE store their data in the container by default. Enable persistence to create a PersistentVolumeClaim and retain data when the database Pod is replaced:
 
 ```yaml
 server:
@@ -412,11 +415,14 @@ server:
     type: "SIDB-FREE"
     image:
       repository: container-registry.oracle.com/database/free
+      tag: "<pinned-database-version>"
     persistence:
       enabled: true
       storageClass: "fast-ssd"
       size: 50Gi
 ```
+
+Omit `storageClass` to use the cluster default. The claim is retained on uninstall by default. Set `global.cleanupPVCs=true` when Helm should delete it with the release.
 
 ## Upgrading
 
@@ -449,9 +455,9 @@ helm uninstall ai-optimizer
 
 When `signoz.enabled=true`, the chart runs a `pre-delete` cleanup hook that
 removes the SigNoz ClickHouseInstallation and active ClickHouse resources
-created by the operator. ClickHouse PVCs are preserved by default. Set
-`global.cleanupPVCs=true` before uninstall if you also want Helm uninstall to
-delete the SigNoz ClickHouse PVCs and their telemetry data.
+created by the operator. PVCs are retained by default. Set
+`global.cleanupPVCs=true` before uninstall to delete chart-managed database
+data PVCs and SigNoz PVCs with their telemetry data.
 
 **Note**: Secrets with `helm.sh/resource-policy: keep` annotation (like database credentials) will be retained. Delete them manually if needed:
 

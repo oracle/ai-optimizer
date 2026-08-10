@@ -1,0 +1,148 @@
+---
+title: Troubleshooting
+hide_title: true
+pagination_next: null
+pagination_prev: null
+sidebar_position: 35
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+## Startup Time
+
+**_Problem_**:
+After starting the **AI Optimizer**, it takes a long time to load the first page.
+
+**_Solution_**:
+This is normally the result of a configured database that is inaccessible. Depending on how you've configured the database, if `retry_count`, and `retry_delay` is set but the database is inaccessible, the **AI Optimizer** will appear to hang for the duration of `retry_count * retry_delay` during the startup.
+
+## Embedding Rate Limits
+
+**_Problem_**:
+During embedding, especially when using trial keys, you may experience a failure due to rate limits. For example:
+
+```
+Operation Failed: Unexpected error: status_code: 429, body:  
+data=None message='trial token rate limit exceeded, limit is 100000 tokens per minute'.
+```
+
+**_Solution_**:
+Set a rate limit based on the API Key restrictions.
+
+
+## Testbed Evaluation
+
+**_Problem_**:
+During the Evaluation in the **Testbed**, a database error occurs: `DPY-4011: the database or network closed the connection`
+
+**_Solution_**:
+Increase the memory of the vector_memory_size.  If this is an Oracle Autonomous Database, scale up the CPU.
+
+## Autonomous Database behind VPN
+
+**_Problem_**:
+Connection to an Autonomous database while inside a VPN fails.
+
+**_Solution_**:
+Update the database connection string to include a `https_proxy` and `https_proxy_port`.
+
+  For example:
+   
+  ```text
+  ADB_HIGH =
+  (DESCRIPTION = 
+    (ADDRESS = 
+      (PROTOCOL = tcps)(HOST = <adb_host>)(PORT = 1522)
+      (HTTPS_PROXY = <proxy_host>)(HTTPS_PROXY_PORT = <proxy_port>)  # <-- Add
+    )
+    (CONNECT_DATA = 
+      (SERVICE_NAME = <serviceName>)
+      (SECURITY = 
+        (ssl_server_dn_match=yes)
+      )
+    )
+  )
+  ```
+
+## Client Fails to Load on Corporate Networks
+
+**_Problem_**:
+The **AI Optimizer** Client fails to load in certain network environments.  The browser console shows a JavaScript file (`index.<hash>.js`) blocked with `NS_ERROR_CORRUPTED_CONNECTION` (Firefox) or a similar connection error.
+
+**_Solution_**:
+This is typically caused by a corporate firewall, deep packet inspection (DPI), or SSL inspection appliance corrupting the unencrypted HTTP traffic.  Enable HTTPS on the client to encrypt the connection end-to-end.  See [TLS / HTTPS](./advanced-guides/tls) for configuration details.
+
+## MCP Client Connections
+
+### Authentication Fails
+
+**_Problem_**:
+An MCP client receives `403 Forbidden` when connecting to the AI Optimizer Server.
+
+**_Solution_**:
+The `X-API-Key` header is missing or incorrect. Generate the configuration for the selected client again and re-import it. For a standalone deployment, confirm that the client configuration uses the same value as `AIO_API_KEY`.
+
+### Connection Is Refused
+
+**_Problem_**:
+An MCP client cannot connect to the AI Optimizer Server.
+
+**_Solution_**:
+Confirm that the server is running and that the generated MCP URL is reachable from the client. Generate the configuration again if the server address or URL prefix has changed.
+
+### Tools Are Not Visible
+
+**_Problem_**:
+An MCP client connects successfully but does not show the expected tools.
+
+**_Solution_**:
+Follow [Verify the Connection](./guides/mcp-clients#verify-the-connection) to check the MCP health and tools endpoints. For NL2SQL, confirm that SQLcl is available and a database is configured. See [SQLcl MCP Server](./guides/sqlcl-mcp-server).
+
+### Claude Desktop Cannot Start the Bridge
+
+**_Problem_**:
+Claude Desktop cannot start the generated `mcp-remote` configuration.
+
+**_Solution_**:
+Confirm that `npx` is available to Claude Desktop. If necessary, use the full path to `npx` in the generated configuration.
+
+## Observability
+
+### Telemetry Does Not Initialize
+
+**_Problem_**:
+The server does not log `OTel telemetry initialized` at startup, or it logs `OTLP grpc exporter requested but not installed`.
+
+**_Solution_**:
+Install the optional dependencies with `uv sync --extra server --extra otel`. Then configure an OTLP endpoint with `OTEL_EXPORTER_OTLP_ENDPOINT`, or set `OTEL_TRACES_EXPORTER=console` for local debugging. If an OTLP exporter remains unavailable after installation, check the startup logs for a `not installed; skipping` warning.
+
+### Traces Do Not Reach the Backend
+
+**_Problem_**:
+The server logs `OTel telemetry initialized`, but traces do not appear in the backend.
+
+**_Solution_**:
+For a plaintext gRPC collector, set `OTEL_EXPORTER_OTLP_INSECURE=true`. Alternatively, configure `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` with an `http://` endpoint. Confirm that the server can reach the collector's OTLP port.
+
+### Resource Attributes Are Missing
+
+**_Problem_**:
+A value supplied through `OTEL_RESOURCE_ATTRIBUTES` is not visible on spans.
+
+**_Solution_**:
+Use a comma-separated list of `key=value` pairs, without spaces or semicolons. For example:
+
+```dotenv
+OTEL_RESOURCE_ATTRIBUTES=k1=v1,k2=v2
+```
+
+### Requested Exporter Is Ignored
+
+**_Problem_**:
+Setting `OTEL_TRACES_EXPORTER` does not produce the expected exporter behavior.
+
+**_Solution_**:
+Use only the supported values: `otlp`, `console`, or `none`. To export to both an OTLP backend and stdout, set `OTEL_TRACES_EXPORTER=otlp,console`.
+
+For configuration details and trace investigation workflows, see [Observability](./advanced-guides/observability/intro).

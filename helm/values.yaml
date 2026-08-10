@@ -56,12 +56,10 @@ global:
   # Example: [mirror-creds]
   imagePullSecrets: []
 
-  # -- When true, the SigNoz uninstall cleanup hook deletes every PVC
-  # created by this release — ClickHouse plus the StatefulSet-owned
-  # `volumeClaimTemplates` PVCs (zookeeper, signoz-db, …) that Kubernetes
-  # retains by default. The sweep is scoped to `app.kubernetes.io/instance=<release>`,
-  # so parallel installs in the same namespace each clean only their own.
-  # Defaults to false so telemetry data survives uninstall unless explicitly discarded.
+  # -- When true, Helm deletes the chart-managed database data PVC and the
+  # SigNoz uninstall cleanup hook deletes its ClickHouse and StatefulSet-owned
+  # PVCs (zookeeper, signoz-db, …). Defaults to false so data survives uninstall
+  # unless explicitly discarded.
   cleanupPVCs: false
 
 # -----------------------
@@ -131,7 +129,8 @@ server:
     # -- Image tag. Empty defaults to Chart.appVersion.
     tag: ""
 
-  # service: type of Kubernetes service to expose server port.
+  # service: Kubernetes Service configuration. Supported types are ClusterIP,
+  # NodePort, and LoadBalancer.
   service:
     type: "ClusterIP"
     # -- Service port the server is reachable on (also used by the client to
@@ -182,6 +181,17 @@ server:
       # -- For SIDB-FREE/ADB-FREE, tag of the image.
       tag: ""
 
+    # -- Persistent storage for SIDB-FREE and ADB-FREE data files.
+    # Disabled by default, so the database data is ephemeral.
+    persistence:
+      enabled: false
+      # -- StorageClass to request. Leave empty to use the cluster default.
+      storageClass: ""
+      # -- Requested size for the data PersistentVolumeClaim.
+      size: 50Gi
+      # -- Kubernetes access modes for the data PersistentVolumeClaim.
+      accessModes:
+        - ReadWriteOnce
     # -- For ADB-S, OCID of the Autonomous Database
     # Exclude for SIDB-FREE/ADB-FREE/OTHER
     oci:
@@ -499,12 +509,16 @@ client:
     tag: ""
     pullPolicy: IfNotPresent
 
-  # service: type of Kubernetes service to expose the HTTP port.
+  # service: Kubernetes Service configuration. Supported types are ClusterIP,
+  # NodePort, and LoadBalancer.
   service:
     type: "ClusterIP"
     # -- Service port the client is reachable on. The container always
     # listens on 8501.
     port: 8501
+    # -- Fixed node port when type is NodePort. Leave unset to let Kubernetes
+    # allocate one.
+    nodePort: null
 
   # ssl: enable HTTPS on the Streamlit server.
   # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
@@ -711,10 +725,14 @@ ollama:
     tag: "0.23.1"
     pullPolicy: IfNotPresent
 
-  # service: type of Kubernetes service to expose the HTTP port.
+  # service: Kubernetes Service configuration. Supported types are ClusterIP,
+  # NodePort, and LoadBalancer.
   service:
     http:
       type: "ClusterIP"
+      # -- Service port used by in-cluster clients. The Ollama container always
+      # listens on 11434.
+      port: 11434
 
   # models: to automatically deploy if enabled
   models:

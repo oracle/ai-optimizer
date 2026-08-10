@@ -16,7 +16,7 @@ from server.app.core.settings import settings
 
 LOGGER = logging.getLogger(__name__)
 
-NO_KEY_PROVIDERS = {"ollama", "huggingface", "hosted_vllm"}
+NO_KEY_PROVIDERS = {"ollama", "huggingface", "hosted_vllm", "openai_like", "custom_openai"}
 CONNECT_TIMEOUT = 3.0
 READ_TIMEOUT = 5.0
 

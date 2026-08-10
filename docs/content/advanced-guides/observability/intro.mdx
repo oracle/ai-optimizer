@@ -1,0 +1,318 @@
+---
+title: Observability
+description: Export and inspect AI Optimizer Server traces and application logs with OpenTelemetry.
+sidebar_position: 0
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+*/}
+
+The [**AI Optimizer Server**](../../server/intro.mdx) can emit [OpenTelemetry](https://opentelemetry.io) traces to its logs or to an OTLP-compatible trace backend, such as [SigNoz](https://signoz.io), [Jaeger](https://www.jaegertracing.io), or [Grafana Tempo](https://grafana.com/oss/tempo).
+
+Use telemetry to investigate request latency, model calls, token usage, tool and retriever activity, and application errors. Instrumentation runs on the [**AI Optimizer Server**](../../server/intro.mdx).
+
+:::info[Disabled by Default]
+
+Telemetry is **opt-in** and disabled by default. Enable it for each deployment that should export telemetry.
+
+:::
+
+## Enable Telemetry
+
+Start with the console exporter below to familiarize yourself with the telemetry capabilities of the **AI Optimizer**. If you need to retain, search, aggregate, or alert on telemetry, skip to [Export to a Telemetry Backend](#export-to-a-telemetry-backend) or use the [SigNoz Quickstart](./signoz).
+
+Enabling the console exporter depends on how the **AI Optimizer** is deployed.
+
+### Bare-Metal
+
+If you followed the [bare-metal Quick Start](../../quick-start#bare-metal-installation), the telemetry packages are already installed.
+
+Otherwise, install them from the repository root:
+
+```bash
+uv sync --all-extras
+```
+
+Set [`OTEL_TRACES_EXPORTER`](../../guides/env-vars#exporter-selection) in the [`src/.env.{AIO_ENV}`](../../guides/env-vars.mdx) file:
+
+```dotenv
+OTEL_TRACES_EXPORTER=console
+```
+
+Then restart the **AI Optimizer**.
+
+### Container
+
+The all-in-one and [**AI Optimizer Server**](../../server/intro.mdx) container images include the telemetry packages. Add the console exporter to the environment passed to the existing container, either directly or through an environment file:
+
+```dotenv
+OTEL_TRACES_EXPORTER=console
+```
+
+Then recreate the container to apply the updated environment.
+
+### Kubernetes / Helm
+
+Enable the console exporter in the [Helm chart](../k8s-helm) values file used by the deployment:
+
+```yaml
+server:
+  otel:
+    enabled: true
+    tracesExporter: console
+```
+
+Apply the updated values to the Helm release. See [Kubernetes / Helm](../k8s-helm#observability) for the complete deployment procedure.
+
+:::warning[Console exporter cost]
+The console exporter writes completed spans as JSON to the [**AI Optimizer Server**](../../server/intro.mdx) logs, flushes synchronously for each span, and can produce significant output. Use it to inspect telemetry without a backend; do not enable it in production.
+:::
+
+## Verify Telemetry
+
+View the [**AI Optimizer Server**](../../server/intro#view-server-logs) logs to verify telemetry.
+
+Confirm that the logs contain the initialization message:
+
+```text
+OTel telemetry initialized: service=ai-optimizer-server exporters=['console']
+```
+
+If this message is absent, see [Telemetry Does Not Initialize](../../troubleshoot#telemetry-does-not-initialize).
+
+Send a health request to the reachable [**AI Optimizer Server**](../../server/intro.mdx) URL. The example uses `http://localhost:8000`; replace it with the URL for the deployment when required:
+
+```bash
+curl http://localhost:8000/v1/healthz
+```
+
+Then find the completed `GET /v1/healthz` `SERVER` span in the logs.
+
+To inspect orchestration and LLM spans, configure a model provider and send a chat request. Use the API key shown on the [API Server](../../client/api_server) page or configured for the deployment.
+
+Export that value in the shell that sends the request:
+
+```bash
+export AIO_API_KEY='<server-api-key>'
+```
+
+Then send a chat completion, replacing the example URL when required:
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "X-API-Key: $AIO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"What is Oracle Database?"}]}'
+```
+
+In the [**AI Optimizer Server**](../../server/intro.mdx) logs, find the `POST /v1/chat/completions` `SERVER` span. Its `context.trace_id` identifies spans from the request; `context.span_id` and `parent_id` show their relationships. Start and end times show the total request duration and where child operations spent that time.
+
+## Instrumentation Coverage
+
+Telemetry covers HTTP traffic, LangChain and LangGraph orchestration, LLM invocations, outbound HTTP requests, and application logs on the [**AI Optimizer Server**](../../server/intro.mdx):
+
+| Source                | Signal | What's captured                                                                                                                                                                                                                                      |
+| --------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FastAPI               | Trace  | One `SERVER` span per inbound HTTP request, including route, method, status code, and client network information                                                                                                                                     |
+| LangChain / LangGraph | Trace  | Spans for supported chains, agents, tools, retrievers, and graph-node invocations. LLM calls routed through supported integrations can include semantic attributes for the model and token counts. Prompt and response values are hidden by default. |
+| `httpx`               | Trace  | One `CLIENT` span per instrumented outbound request, including LLM provider APIs, MCP, and other HTTP services                                                                                                                                       |
+| `requests`            | Trace  | One `CLIENT` span per instrumented outbound request, including requests made by the OCI SDK                                                                                                                                                          |
+| Python `logging`      | Log    | Eligible records from application code, uvicorn, and non-exporter dependencies, correlated with the active trace and span                                                                                                                            |
+
+A chat request normally produces a `SERVER` span, orchestration spans, an LLM span, and child outbound spans. The exact spans and names depend on the selected agent, tools, model integration, and instrumentor versions.
+
+## Understand a Trace
+
+An illustrative chat request can contain spans like:
+
+```text
+POST /v1/chat/completions                            SERVER     5.4s
+└── LangGraph: invoke                                INTERNAL   5.3s
+    ├── retrieve_documents                           INTERNAL   180ms
+    ├── format_prompt                                INTERNAL   3ms
+    └── ChatLiteLLM.invoke                           INTERNAL   5.0s   ← OpenInference kind: LLM
+        └── HTTP POST api.openai.com/v1/chat/...     CLIENT     4.95s
+```
+
+The LangChain LLM span carries semantic model information when the integration supplies it. Its child `httpx` span carries transport-level information, such as URL, status, and duration. These spans describe different layers of the same call.
+
+Use the span IDs and kinds to interpret the tree:
+
+- The `SERVER` span measures the whole request.
+- An LLM span measures model work. Compare its duration with the request duration to identify latency dominated by the model provider.
+- Retriever, tool, and `CLIENT` spans identify time spent in the corresponding operation or outbound service.
+
+### Inspect an LLM Span
+
+Find a span whose `openinference.span.kind` is `LLM`. Its name can contain the model class or operation, such as `ChatLiteLLM` or `ChatOpenAI`. Depending on the framework and provider metadata, the span can include:
+
+| Attribute                                              | Meaning                                                                     | Hidden by default? |
+| ------------------------------------------------------ | --------------------------------------------------------------------------- | ------------------ |
+| `openinference.span.kind`                              | Span category: `LLM`, `CHAIN`, `RETRIEVER`, `TOOL`, `EMBEDDING`, and others | No                 |
+| `llm.model_name`                                       | Model identifier reported by the integration                                | No                 |
+| `llm.provider`                                         | Provider name reported by the integration                                   | No                 |
+| `llm.token_count.prompt`                               | Tokens reported for the input                                               | No                 |
+| `llm.token_count.completion`                           | Tokens reported for the output                                              | No                 |
+| `llm.token_count.total`                                | Total tokens reported for the invocation                                    | No                 |
+| `llm.invocation_parameters`                            | Temperature, maximum tokens, and other recorded call options                | No                 |
+| `input.value`                                          | Serialized input recorded by the instrumentor                               | **Yes**            |
+| `output.value`                                         | Serialized output recorded by the instrumentor                              | **Yes**            |
+| `llm.input_messages.*` / `llm.output_messages.*`       | Per-message content                                                         | **Yes**            |
+| `llm.prompt_template.variables` / `.template`          | Variables substituted into a prompt template                                | **Yes**            |
+| `retrieval.documents.*.document.content` / `.metadata` | Retrieved document content and metadata                                     | **Yes**            |
+| `tool.parameters`                                      | Tool call inputs                                                            | **Yes**            |
+
+For non-LLM spans, the relevant attributes vary. OpenInference spans use `openinference.span.kind` to identify the type of work represented.
+
+## Control Exported Data
+
+Trace payload visibility and application log export use separate settings. Application logs can be exported only when OTLP trace export is active. The `OPENINFERENCE_HIDE_*` settings control OpenInference trace attributes; they do not remove content that application code writes to logs.
+
+For Kubernetes / Helm, configure log export, resource attributes, and sampling with `server.otel.logsEnabled`, `server.otel.resourceAttributes`, `server.otel.sampler`, and `server.otel.samplerArg`. Add `OPENINFERENCE_HIDE_*` settings through `server.otel.extraEnv`.
+
+### Application Logs
+
+:::warning
+Application log export to OTLP is **disabled by default**, even when tracing is configured. Enable it only for a backend intended to retain application logs.
+:::
+
+To export logs alongside OTLP traces, set [`AIO_OTEL_LOGS_ENABLED`](../../guides/env-vars#observability):
+
+```dotenv
+AIO_OTEL_LOGS_ENABLED=true
+```
+
+Logs emitted while a span is active include its `trace_id` and `span_id`, which allows a compatible backend to show the records associated with a trace. Logs from application code, uvicorn, and non-exporter dependencies are eligible for export.
+
+With [`OTEL_TRACES_EXPORTER`](../../guides/env-vars#exporter-selection) set only to `console`, application logs continue to use the existing `stdout` logging configuration and are not duplicated to OTLP.
+
+### Trace Payload Visibility
+
+Traces hide prompt and response payloads by default. User chat text, retrieved RAG context, model responses, prompt-template variables, and tool parameters can contain deployment-specific or private content.
+
+Model names, duration, invocation parameters, and token counts are not hidden by the payload settings when the framework or model provider supplies those attributes. Attribute availability varies by operation, framework, provider, and response metadata.
+
+Enable only the payload categories needed for the investigation. For example, the following setting reveals `output.value` while message-level and choice attributes remain hidden:
+
+```dotenv
+OPENINFERENCE_HIDE_OUTPUTS=false
+```
+
+The following setting reveals input values, including retrieved document content, prompt-template variables, and tool parameters:
+
+```dotenv
+OPENINFERENCE_HIDE_INPUTS=false
+```
+
+The instrumentor exports only attributes that the framework creates. The settings control these categories:
+
+| Setting                                                                        | Payload category                                                                                                           |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `OPENINFERENCE_HIDE_INPUTS` / `OPENINFERENCE_HIDE_OUTPUTS`                     | `input.value` / `output.value`, plus retrieved document content, prompt-template variables, and tool parameters for inputs |
+| `OPENINFERENCE_HIDE_INPUT_MESSAGES` / `OPENINFERENCE_HIDE_OUTPUT_MESSAGES`     | `llm.input_messages.*` / `llm.output_messages.*`                                                                           |
+| `OPENINFERENCE_HIDE_INPUT_TEXT` / `OPENINFERENCE_HIDE_OUTPUT_TEXT`             | Input / output text attributes                                                                                             |
+| `OPENINFERENCE_HIDE_INPUT_IMAGES`                                              | Input image attributes                                                                                                     |
+| `OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS` / `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT` | Embedding vectors / text                                                                                                   |
+| `OPENINFERENCE_HIDE_PROMPTS` / `OPENINFERENCE_HIDE_CHOICES`                    | `llm.prompts` / `llm.choices`                                                                                              |
+
+#### Full Payload Export
+
+:::warning[Full payload export]
+In an isolated development environment, set all configured visibility settings to `false` only when every telemetry destination is approved to retain the resulting payloads. This includes the OTLP backend and, when the console exporter is enabled, the [**AI Optimizer Server**](../../server/intro#view-server-logs) logs. Full payload export can include prompts, responses, images, embedding data, retrieved content, and tool parameters.
+:::
+
+```dotenv
+OPENINFERENCE_HIDE_INPUTS=false
+OPENINFERENCE_HIDE_OUTPUTS=false
+OPENINFERENCE_HIDE_INPUT_MESSAGES=false
+OPENINFERENCE_HIDE_OUTPUT_MESSAGES=false
+OPENINFERENCE_HIDE_INPUT_TEXT=false
+OPENINFERENCE_HIDE_OUTPUT_TEXT=false
+OPENINFERENCE_HIDE_INPUT_IMAGES=false
+OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS=false
+OPENINFERENCE_HIDE_EMBEDDINGS_TEXT=false
+OPENINFERENCE_HIDE_PROMPTS=false
+OPENINFERENCE_HIDE_CHOICES=false
+```
+
+Choose these settings per deployment and restore the defaults after the investigation.
+
+### Resource Attributes and Sampling
+
+The [**AI Optimizer Server**](../../server/intro.mdx) sets these resource attributes by default. Operator-supplied values through [`OTEL_RESOURCE_ATTRIBUTES`](../../guides/env-vars#resource-attributes) take precedence.
+
+| Attribute                | Source                                                                                  | Example                           |
+| ------------------------ | --------------------------------------------------------------------------------------- | --------------------------------- |
+| `service.name`           | [`OTEL_SERVICE_NAME`](../../guides/env-vars#resource-attributes), else built-in default | `ai-optimizer-server`             |
+| `service.version`        | Application version from package metadata                                               | Installed release version         |
+| `deployment.environment` | `AIO_ENV` (default `dev`)                                                               | `prd`                             |
+| `service.instance.id`    | `HOSTNAME`, else a per-process UUID                                                     | `ai-optimizer-server-7c5b9-fzmp2` |
+
+Tracing uses the OpenTelemetry SDK's parent-based, always-on sampler by default. For a production deployment, review the [`OTEL_TRACES_SAMPLER`](../../guides/env-vars#sampling) and batch span processor settings before selecting trace volume. The [Environment Variables](../../guides/env-vars#observability) guide contains the complete OpenTelemetry and OpenInference reference.
+
+## Export to a Telemetry Backend
+
+The console exporter does not require a telemetry backend. To retain, search, aggregate, or alert on telemetry, first deploy or obtain access to a backend with an OTLP receiver. The receiver supplies the hostname, IP address, or Kubernetes service name used in the endpoint. The examples below represent that address as `<collector-host>`.
+
+For bare-metal and container installations, replace the console exporter setting with the OTLP exporter and receiver endpoint:
+
+```dotenv
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=https://<collector-host>:4317
+```
+
+To retain console output while also sending traces to the backend, set `OTEL_TRACES_EXPORTER=otlp,console`.
+
+For Kubernetes / Helm with an existing collector, set:
+
+```yaml
+server:
+  otel:
+    enabled: true
+    tracesExporter: otlp
+    endpoint: http://<collector-host>:4317
+    insecure: true # plaintext gRPC inside the cluster
+```
+
+Alternatively, enable the bundled SigNoz stack. The chart configures the receiver endpoint automatically:
+
+```yaml
+signoz:
+  enabled: true
+server:
+  otel:
+    enabled: true
+    tracesExporter: otlp
+    insecure: true # the in-chart collector serves plaintext gRPC
+```
+
+The default OTLP protocol is gRPC. For an HTTP/protobuf receiver, set [`OTEL_EXPORTER_OTLP_PROTOCOL`](../../guides/env-vars#endpoint-and-protocol) to `http/protobuf`. For a plaintext gRPC receiver, set [`OTEL_EXPORTER_OTLP_INSECURE`](../../guides/env-vars#endpoint-and-protocol) to `true`; do not enable it for a TLS-protected receiver. Hosted receivers can require authentication through [`OTEL_EXPORTER_OTLP_HEADERS`](../../guides/env-vars#endpoint-and-protocol).
+
+For Kubernetes, use the corresponding `server.otel.protocol`, `server.otel.insecure`, and `server.otel.headersSecret` values. Treat header values as credentials: do not commit them in a populated environment file or Helm values file, and use the deployment platform's secret-management facilities in shared environments.
+
+After applying the backend configuration, confirm that the [**AI Optimizer Server**](../../server/intro#view-server-logs) logs list the OTLP exporter:
+
+```text
+OTel telemetry initialized: service=ai-optimizer-server exporters=['otlp']
+```
+
+If the console exporter is also retained, the message lists both exporters:
+
+```text
+OTel telemetry initialized: service=ai-optimizer-server exporters=['console', 'otlp']
+```
+
+Send the health or chat request from [Verify Telemetry](#verify-telemetry), then find the generated trace in the backend. See [Traces Do Not Reach the Backend](../../troubleshoot#traces-do-not-reach-the-backend) for connection troubleshooting. For a complete SigNoz workflow, see [SigNoz Quickstart](./signoz).
+
+## Limitations
+
+### Console Exporter
+
+- Aggregated data, alerting, and searchable history require a telemetry backend. Console output is a per-process diagnostic stream.
+
+### Coverage Gaps
+
+- FastMCP server-side dispatch is not wrapped in dedicated spans. Tool calls can appear through LangChain spans and outbound `httpx` spans, but not as separate MCP-handler spans.
+- Streamlit client-side activity is not instrumented. Client requests appear in the traces they trigger on the [**AI Optimizer Server**](../../server/intro.mdx).
+- The [**AI Optimizer Server**](../../server/intro.mdx) exports traces and optional logs; it does not emit an OpenTelemetry metrics signal. Compatible backends can derive request rate, latency, and error-rate views from trace data.

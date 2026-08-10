@@ -384,7 +384,7 @@ Define serviceName and serviceUrl of the Ollama Server for API Server Access.
 {{- end -}}
 
 {{- define "ai-optimizer.ollama.serviceUrl" -}}
-http://{{ include "ai-optimizer.ollama.serviceName" . }}.{{ .Release.Namespace }}.svc:11434
+http://{{ include "ai-optimizer.ollama.serviceName" . }}.{{ .Release.Namespace }}.svc:{{ .Values.ollama.service.http.port | default 11434 }}
 {{- end -}}
 
 
@@ -809,6 +809,11 @@ name and the consumer-side reference stay in lock-step.
 *********************************************** */}}
 {{- define "ai-optimizer.server.database.serviceName" -}}
 {{- printf "%s-%s-1521" (include "ai-optimizer.fullname" .) (include "ai-optimizer.server.database.dbName" .) -}}
+{{- end -}}
+
+{{/* Name of the chart-managed data PVC for a container database. */}}
+{{- define "ai-optimizer.server.database.dataPvcName" -}}
+{{- printf "%s-%s-data" (include "ai-optimizer.fullname" .) (include "ai-optimizer.server.database.dbName" .) -}}
 {{- end -}}
 
 

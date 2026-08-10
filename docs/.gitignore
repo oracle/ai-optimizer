@@ -1,9 +1,20 @@
-##############################################################################
-# Documentation Specific
-##############################################################################
-/themes/
-/public/
-hugo_stats.json
+# Dependencies
+/node_modules
 
-# Temporary lock file while building
-/.hugo_build.lock
+# Production
+/build
+
+# Generated files
+.docusaurus
+.cache-loader
+
+# Misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

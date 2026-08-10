@@ -1,0 +1,130 @@
+---
+title: 💬 Chatbot
+sidebar_position: 5
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+import LanguageParametersImage from '../_assets/images/chatbot-lm-params.png';
+import ToolkitImage from '../_assets/images/chatbot-toolkit.png';
+import VectorSearchOptionsImage from '../_assets/images/chatbot-vs-options.png';
+
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a Chatbot to experiment with Language Model settings and AI tools. It allows you to manually find an appropriate configuration for your AI project before launching it into production.
+
+There are a number of configurations you can experiment with to explore AI, RAG, and NL2SQL capabilities to understand their behavior without requiring deep technical knowledge.
+
+## History and Context
+
+Interactions with the AI models are stored as conversation history in the model's **context window**. When _History and Context_ is enabled, previous interactions from enabled turns are provided to the model so that it can use them to guide the next response. When _History and Context_ is disabled, only the current user input is provided.
+
+![History and Context](../_assets/images/chatbot-history-context.png)
+
+Use the "Clear" button to reset the "context window" and start a fresh interaction with a model.
+
+## Language Model Parameters
+
+<div className="doc-media-row">
+  <img
+    src={LanguageParametersImage}
+    alt="Language model parameter controls in the Chatbot"
+  />
+
+  <div>
+
+You can select from enabled models to experiment with. To enable, disable, or add models, use the [Configuration - Models](configuration/models) page. Choose a Language Model based on your requirements, which may include:
+
+**Privacy Concerns** - Locally run, open-source models offer more control over your data.
+
+**Accuracy & Knowledge** - Some models excel in factual correctness. When using Retrieval-Augmented Generation, grounding responses in retrieved sources can reduce the importance of a model's built-in knowledge.
+
+**Speed & Efficiency** - Smaller models run faster and require fewer resources. When using Retrieval-Augmented Generation, a smaller model with good natural-language capabilities can be more useful than a larger model with extensive built-in knowledge.
+
+  </div>
+</div>
+
+**Cost & Accessibility** - Some models are free, cheaper, or available for local use.
+
+Once you've selected a model, you can change its parameters to control behavior such as response length, creativity, and repetition. Hover over the help icon next to a parameter for more information. Here are some general guidelines:
+
+**Response Length & Repetition** - _Maximum Output Tokens_ controls the maximum response length, while _Frequency Penalty_ discourages repeated words and phrases.
+
+**Creativity** - _Temperature_ and _Top P_ influence how unpredictable or original the model's output is. Higher values make responses more varied; lower values make them more focused.
+
+**Novelty** - _Presence Penalty_ encourages the model to introduce new topics or ideas rather than repeat those already mentioned.
+
+For more details on the parameters, ask the Chatbot or review [Concepts for Generative AI](https://docs.oracle.com/en-us/iaas/Content/generative-ai/concepts.htm).
+
+## Toolkit
+
+<div className="doc-media-row">
+  <img
+    src={ToolkitImage}
+    alt="Vector Search and NL2SQL tools in the Chatbot"
+  />
+
+  <div>
+
+The **AI Optimizer** provides tools to augment Large Language Models with your proprietary data, including:
+
+    <ul>
+      <li><a href="#vector-search">Vector Search</a> for unstructured data</li>
+      <li><a href="#nl2sql-natural-language-to-sql">NL2SQL</a> for interacting with structured data using natural language</li>
+    </ul>
+
+  </div>
+</div>
+
+### Vector Search
+
+<div className="doc-media-row">
+  <img
+    src={VectorSearchOptionsImage}
+    alt="Vector Search options in the Chatbot"
+  />
+
+  <div>
+    <p>Once you've created embeddings using <a href="tools/split-embed">Split/Embed</a>, the Vector Search tool is available. After selecting Vector Search, you can configure the following options:</p>
+
+    <ul>
+      <li><strong>Store Discovery:</strong> Dynamically discover vector stores for Retrieval-Augmented Generation.</li>
+      <li><strong>Prompt Rephrase:</strong> Rephrase the user prompt, based on context and history, for a more meaningful vector search.</li>
+      <li><strong>Document Grading:</strong> Grade vector search results to determine their relevance. Results judged irrelevant are not used to generate the response.</li>
+    </ul>
+
+  </div>
+</div>
+
+#### Vector Store
+
+When Store Discovery is enabled, the **AI Optimizer** identifies vector stores to use for each search. To use a specific Vector Store instead, disable Store Discovery and select the Vector Store options manually. To choose a different Vector Store, click the "Reset" button to clear the current selections and display the available options.
+
+![Chatbot Vector Search](../_assets/images/chatbot-vs-store.png)
+
+Choose the type of search to perform and its additional parameters.
+
+### NL2SQL (Natural Language to SQL)
+
+The Natural Language to SQL (NL2SQL) tool enables users to query structured data stored in Oracle AI Database by using natural language instead of SQL statements.
+
+The **AI Optimizer** uses a local [SQLcl MCP proxy](../guides/sqlcl-mcp-server) for NL2SQL. Container installations include SQLcl and register the proxy automatically at startup. For bare-metal installations, install SQLcl so that the `sql` command is available on `PATH`.
+
+⭐️ For more information about SQLcl and its MCP capabilities, see the [Oracle SQLcl MCP server documentation](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html).
+
+To enable NL2SQL, configure and select a database with valid credentials in [Configuration → Databases](configuration/databases). The NL2SQL tool becomes available when both the database connection and SQLcl proxy are available. You can then issue natural language queries against structured data, such as the dataset shown in the example below:
+
+![Customer Data](../_assets/images/vscode-customer-table.png)
+
+To interact with the tool, navigate to **Chatbot**, select NL2SQL from the tool dropdown menu, and enter a query such as:
+
+```text
+Can you give me the list of customers?
+```
+
+The response returned by the tool will be equivalent to the result of an actual SQL query executed against the database:
+
+![NL2SQL Example](../_assets/images/chatbot-nl2sql-output.png)
+
+By using this tool, the **AI Optimizer** allows users to query structured data without writing any SQL code, simplifying data access and exploration.
+
+You can experiment freely with your own structured datasets and progressively issue more complex natural language queries to explore the full capabilities of the NL2SQL tool.

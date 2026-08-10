@@ -1,0 +1,96 @@
+---
+title: External MCP Clients
+description: Connect external MCP clients to the AI Optimizer Server.
+pagination_next: null
+sidebar_position: 35
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) exposes an [MCP](https://modelcontextprotocol.io/) endpoint at `/mcp`. MCP-compatible clients can use the tools, prompts, and resources registered by the server, including Vector Search tools and SQLcl tools when NL2SQL is configured.
+
+External clients use the resources configured on the AI Optimizer Server. To use Vector Search, split and embed content first. To use NL2SQL, configure a database and [SQLcl MCP Server](./sqlcl-mcp-server).
+
+## Authority and Execution Location
+
+The `X-API-Key` authorizes the holder to invoke the tools published by the AI Optimizer Server. Provide it only to users and systems authorized to use those server-side operations.
+
+When SQLcl is configured, the AI Optimizer Server launches the `sql` process and executes SQLcl commands locally. External MCP clients send requests over HTTP; they do not run SQLcl on their own workstation. SQLcl uses restrict level `4` by default. Operators can set `AIO_SQLCL_MCP_LEVEL` to a lower level when additional SQLcl capabilities are required; see [SQLcl MCP Server](./sqlcl-mcp-server).
+
+External MCP clients can use all tools registered on the server that are available at the configured SQLcl restrict level. The built-in NL2SQL agent uses only its connection, schema, query, and request-status tools.
+
+## Get Client Configuration
+
+Start the AI Optimizer Server and obtain its API key. In the included GUI, the key is available on the [API Server](../client/api_server) page. For standalone deployments, configure `AIO_API_KEY` before starting the server. See [Environment Variables](./env-vars).
+
+The recommended approach is to use the client configuration generated in **Configuration** > **MCP Server** in the GUI. It provides the settings or command required by the selected client. Alternatively, request the configuration from the server:
+
+```bash
+curl -H "X-API-Key: $AIO_API_KEY" \
+  "http://localhost:8000/mcp/client-config?client=generic"
+```
+
+This command assumes that the server is available locally on its default port. For another deployment, replace `http://localhost:8000` with the reachable AI Optimizer Server URL.
+
+The generated configuration is the source of truth: it includes the deployment's URL, any server URL prefix, and the required `X-API-Key` header.
+
+:::danger[Secrets Inside!]
+The configurations contains a secret to access the server, so do not commit or share it.
+:::
+
+| Client                         | Query value      | Connection type            |
+| ------------------------------ | ---------------- | -------------------------- |
+| Generic Streamable HTTP client | `generic`        | Streamable HTTP            |
+| MCP Inspector                  | `inspector`      | Streamable HTTP diagnostic |
+| Cline for VS Code              | `cline`          | Streamable HTTP            |
+| LangGraph                      | `langgraph`      | Streamable HTTP            |
+| Claude Desktop                 | `claude-desktop` | Local `mcp-remote` bridge  |
+
+To retrieve Cline, LangGraph, or Claude Desktop configuration, replace `generic` in the command above with the client's query value. The GUI provides an importable JSON configuration for MCP Inspector.
+
+For a client that is not listed, select **Generic Streamable HTTP** in the GUI, or use `client=generic` in the command. Use that configuration only when the client accepts Streamable HTTP server entries.
+
+## MCP Inspector
+
+The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) is a developer tool for inspecting MCP servers. In the GUI, select **MCP Inspector** under **Configuration** > **MCP Server** and save the displayed JSON as `mcp.json`. The generated configuration includes the required API key header; import it unchanged.
+
+To use the configuration from the command line, run:
+
+```bash
+npx -y @modelcontextprotocol/inspector --cli \
+  --config mcp.json \
+  --server oracle-ai-optimizer \
+  --method tools/list
+```
+
+To use the web client, start MCP Inspector:
+
+```bash
+npx -y @modelcontextprotocol/inspector
+```
+
+Then use **Import from client config** to import the saved `mcp.json` file.
+
+## Cline for VS Code
+
+In the GUI, select **Cline for VS Code**, then add the generated `oracle-ai-optimizer` entry under `mcpServers` in Cline's MCP server settings. This configuration uses Streamable HTTP and includes Cline's `type` field.
+
+## LangGraph
+
+In the GUI, select **LangGraph**, then use the generated `url` and `headers` values when creating a Streamable HTTP MCP client in your LangGraph application. The LangGraph variant deliberately omits the `type` field.
+
+## Claude Desktop
+
+Claude Desktop runs local MCP server processes. In the GUI, select **Claude Desktop** to generate a configuration that uses `mcp-remote` to bridge a local process to the AI Optimizer's HTTP endpoint. Add the generated `oracle-ai-optimizer` entry under `mcpServers` in Claude Desktop's configuration, then restart Claude Desktop. Node.js must be available so that the `npx` command in the generated configuration can run `mcp-remote`.
+
+## Verify the Connection
+
+Confirm that the MCP server is healthy and has registered tools:
+
+```bash
+curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/healthz
+curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/tools
+```
+
+The tools response lists the registered tools. Then use the client to ask a question that requires one of them.

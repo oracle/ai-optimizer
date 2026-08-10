@@ -56,6 +56,10 @@ spec:
                   name: {{ include "ai-optimizer.server.databaseSecret" . }}
                   key: {{ default "password" .Values.server.database.authn.passwordKey }}
           volumeMounts:
+            {{- if .Values.server.database.persistence.enabled }}
+            - name: db-data
+              mountPath: "/opt/oracle/oradata"
+            {{- end }}
             - name: db-init-scripts
               mountPath: "/opt/oracle/scripts/startup"
           {{- else }}
@@ -73,12 +77,24 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-optimizer.server.databaseSecret" . }}
                   key: {{ default "password" .Values.server.database.authn.passwordKey }}
+          {{- if .Values.server.database.persistence.enabled }}
+          volumeMounts:
+            - name: db-data
+              mountPath: "/u01/data"
           {{- end }}
-      {{- if eq (include "ai-optimizer.server.database.isSIDB" .) "true" }}
+          {{- end }}
+      {{- if or .Values.server.database.persistence.enabled (eq (include "ai-optimizer.server.database.isSIDB" .) "true") }}
       volumes:
+        {{- if .Values.server.database.persistence.enabled }}
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: {{ include "ai-optimizer.server.database.dataPvcName" . }}
+        {{- end }}
+        {{- if eq (include "ai-optimizer.server.database.isSIDB" .) "true" }}
         - name: db-init-scripts
           configMap:
             name: {{ include "ai-optimizer.fullname" . }}-db-init
+        {{- end }}
       {{- end }}
 {{- end }}
 {{- end }}

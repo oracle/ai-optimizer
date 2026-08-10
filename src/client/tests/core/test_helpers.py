@@ -515,6 +515,28 @@ class TestEnabledModelsLookup:
 
 
 # ---------------------------------------------------------------------------
+# available_models_lookup
+# ---------------------------------------------------------------------------
+class TestAvailableModelsLookup:
+    """Tests for available_models_lookup."""
+
+    def test_excludes_enabled_models_that_are_not_available(self):
+        """Only enabled models with an available status are returned."""
+        state = _make_state()
+        state["settings"]["model_configs"] = [
+            {"id": "ready", "type": "embed", "enabled": True, "provider": "openai", "status": "available"},
+            {"id": "down", "type": "embed", "enabled": True, "provider": "ollama", "status": "unreachable"},
+            {"id": "key", "type": "embed", "enabled": True, "provider": "openai", "status": "no_key"},
+        ]
+        with patch(f"{MODULE}.state", state):
+            from client.app.core.helpers import available_models_lookup
+
+            result = available_models_lookup("embed")
+
+        assert list(result) == ["openai/ready"]
+
+
+# ---------------------------------------------------------------------------
 # build_payload
 # ---------------------------------------------------------------------------
 class TestBuildPayload:

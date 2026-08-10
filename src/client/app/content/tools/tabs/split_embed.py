@@ -1112,7 +1112,7 @@ def _initialize_and_validate_config() -> tuple[dict, list, dict | None]:
         st.error("Database is not configured. Disabling Embedding.", icon="🛑")
         st.stop()
 
-    embed_models_enabled = helpers.enabled_models_lookup("embed")
+    embed_models_enabled = helpers.available_models_lookup("embed")
     if not embed_models_enabled:
         LOGGER.debug("Embedding Disabled (no Embedding Models)")
         st.error("No embedding models are configured and/or enabled. Disabling Embedding.", icon="🛑")

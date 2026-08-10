@@ -1,0 +1,148 @@
+---
+title: Infrastructure as Code
+description: Deploy the AI Optimizer in Oracle Cloud Infrastructure with OpenTofu.
+sidebar_position: 10
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+import {GitHubSourceLink, OciResourceManagerStackLink} from '@site/src/components/GitHubSourceLink';
+
+The **AI Optimizer** includes [OpenTofu](https://opentofu.org/) infrastructure as code (**IaC**) in the <GitHubSourceLink path="opentofu" type="tree"><code>opentofu/</code></GitHubSourceLink> directory for deploying into Oracle Cloud Infrastructure (OCI). You can either deploy the IaC from [OCI Resource Manager](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/resourcemanager.htm) or from a local checkout using OpenTofu or Terraform.
+
+The stack provisions compute, networking, load balancer, Oracle AI Database resources, and the **AI Optimizer** platform. It can provision a new Autonomous Database or connect the deployment to an existing Autonomous Database or other Oracle database.
+
+## OCI Resource Manager
+
+To get started with OCI Resource Manager, select **Deploy to Oracle Cloud**:
+
+<OciResourceManagerStackLink>
+  <img
+    src="https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg"
+    alt="Deploy to Oracle Cloud"
+  />
+</OciResourceManagerStackLink>
+
+### Terms
+
+After signing in to OCI, review and accept the terms.
+
+![Resource Manager stack information](../_assets/images/iac-stack-information.png)
+
+Select **Next** to configure variables.
+
+### Deployment Type
+
+Choose the deployment type that suits your use case, then select it under **Infrastructure to Deploy**.
+
+| Deployment | Use case |
+| --- | --- |
+| **AlwaysFree** | An Always Free-compatible VM deployment with a free-tier Autonomous Database. |
+| **VM** | An all-in-one Server and Client deployment for development or small-scale use. |
+| **Kubernetes** | Separate Server and Client deployments on Oracle Kubernetes Engine (OKE). |
+
+![Resource Manager infrastructure selection](../_assets/images/iac-stack-infra-selection.png)
+
+### Options
+
+The available compute, database, networking, and load-balancer options depend on the selected deployment type. The following sections highlight the common configuration choices.
+
+#### Models and Compute
+
+VM deployments can use a GPU shape. Kubernetes deployments can add a GPU node pool. A VM deployment can also install Ollama and pull the default models; CPU-only Ollama deployments are intended for development use. For model configuration after deployment, see [AI Models](../guides/ai-models).
+
+:::note[Models Needed]
+GPU deployments install Ollama and pull the default models. For a CPU VM deployment, select **Install Ollama** to do the same; otherwise, configure a model before using model-dependent features.
+:::
+
+#### Network
+
+**Access Control for Application GUI** controls browser access to the Client, and **Access Control for Application API Server** controls direct access to the Server API. Both values accept comma-separated CIDR ranges. Their default, `127.0.0.0/8`, does not permit access from external client networks.
+
+:::warning[Access Denied]
+The default access-control values block external clients. Before using the Client or Server, replace them with the smallest CIDR ranges required for your client networks. For an individual workstation, use a single-host `/32` range.
+:::
+
+To use the Client, set **Access Control for Application GUI** under **Load Balancer Options** to the smallest CIDR ranges required for your users. If users or applications call the Server API directly, also set **Access Control for Application API Server**.
+![Application access-control settings](../_assets/images/iac-stack-access-control.png)
+
+For example:
+
+```text
+192.168.1.0/24,10.0.0.0/16,203.0.113.42/32
+```
+
+#### Database
+
+To provision a new Autonomous Database, leave **Bring Your Own Oracle Database?** unselected. To connect to an existing Autonomous Database or other Oracle database, select it, choose the value under **Bring Your Own Database - Type**, and provide its connection details.
+
+#### Kubernetes API Endpoint
+
+For OKE, leave **API Endpoint Access Control** empty when deploying through Resource Manager.
+
+![OKE API endpoint access-control settings](../_assets/images/iac-stack-oke-api-access-control.png)
+
+#### TLS
+
+The stack terminates TLS at the load balancer. Set **TLS Termination** to one of the following:
+
+- `none` for HTTP only.
+- `self-signed` to generate a certificate. Retrieve the sensitive `ssl_ca_certificate` stack output and add it to the trust store of browsers, operating systems, or other clients that connect to the deployment.
+- `provided` to supply PEM-encoded certificate and private-key content.
+
+![Load-balancer TLS settings](../_assets/images/iac-stack-tls.png)
+
+For the application's other TLS deployment options, see [TLS / HTTPS](./tls).
+
+### Review and Apply
+
+Review the plan and costs, then select **Apply** to create the stack.
+
+![Resource Manager review and apply](../_assets/images/iac-stack-review-apply.png)
+
+### Outputs
+
+After the apply job succeeds, use the stack outputs to open the Client or Server API URL. The Server output points to its OpenAPI documentation. Initial image pulls and application startup can take several minutes after the infrastructure job completes. If a URL is not ready, wait a few minutes and try again.
+
+![Resource Manager outputs](../_assets/images/iac-stack-outputs.png)
+
+### Clean Up
+
+To remove a Resource Manager deployment, open its stack in OCI and select **Destroy**.
+
+## OpenTofu
+
+Use OpenTofu or Terraform 1.5 or later when deploying from a local checkout. Before continuing, follow the <GitHubSourceLink path="opentofu" type="tree">OpenTofu README</GitHubSourceLink> to configure prerequisites and OCI credentials. Then start from the example closest to your deployment:
+
+| Example                                                                                                                    | Deployment                              |
+| -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| <GitHubSourceLink path="opentofu/examples/vm-new-adb.tfvars"><code>vm-new-adb.tfvars</code></GitHubSourceLink>             | VM with a new Autonomous Database       |
+| <GitHubSourceLink path="opentofu/examples/vm-byo-adb.tfvars"><code>vm-byo-adb.tfvars</code></GitHubSourceLink>             | VM with an existing Autonomous Database |
+| <GitHubSourceLink path="opentofu/examples/vm-byo-other-db.tfvars"><code>vm-byo-other-db.tfvars</code></GitHubSourceLink>   | VM with another Oracle database         |
+| <GitHubSourceLink path="opentofu/examples/k8s-new-adb.tfvars"><code>k8s-new-adb.tfvars</code></GitHubSourceLink>           | OKE with a new Autonomous Database      |
+| <GitHubSourceLink path="opentofu/examples/k8s-byo-other-db.tfvars"><code>k8s-byo-other-db.tfvars</code></GitHubSourceLink> | OKE with another Oracle database        |
+| <GitHubSourceLink path="opentofu/examples/always-free.tfvars"><code>always-free.tfvars</code></GitHubSourceLink>           | Always Free VM and Autonomous Database  |
+
+If you choose an OKE example, set `k8s_api_endpoint_allowed_cidrs` to a reachable source CIDR, typically your public IP address with a `/32` suffix.
+
+The example files contain placeholders. Copy one to `terraform.tfvars`, replace the OCI and database values, then run:
+
+```bash
+cd opentofu
+cp examples/vm-new-adb.tfvars terraform.tfvars
+tofu init
+tofu plan
+tofu apply
+```
+
+### Clean Up
+
+To remove a local deployment, run:
+
+```bash
+cd opentofu
+tofu destroy
+```
+
+Review the destruction plan before confirming it. This removes resources managed by the stack.

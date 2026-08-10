@@ -1,0 +1,8 @@
+{
+  "label": "Racing Championship",
+  "position": 5,
+  "link": {
+    "type": "doc",
+    "id": "use-cases/racing/intro"
+  }
+}

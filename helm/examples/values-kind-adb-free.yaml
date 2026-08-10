@@ -18,6 +18,9 @@ client:
   image:
     repository: localhost/ai-optimizer-client
     tag: "0.0.0"
+  service:
+    type: NodePort
+    nodePort: 30080
 ollama:
   enabled: true
   replicaCount: 1

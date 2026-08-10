@@ -23,7 +23,7 @@ from client.app.core import sidebar
 from client.app.core.api import api_delete, api_get, api_post
 from client.app.core.auth import is_authenticated, locked_notice
 from client.app.core.helpers import (
-    enabled_models_lookup,
+    available_models_lookup,
     extract_error_detail,
     selectbox_index,
     state_configs_lookup,
@@ -319,8 +319,8 @@ def _check_prerequisites() -> tuple[list, list, bool]:
         LOGGER.debug("Testbed Disabled (Database not configured)")
         st.error("Database is not configured. Disabling Testbed.", icon="🛑")
 
-    ll_models_enabled = enabled_models_lookup("ll")
-    available_ll_models = list(ll_models_enabled.keys())
+    ll_models_available = available_models_lookup("ll")
+    available_ll_models = list(ll_models_available.keys())
     if not available_ll_models:
         st.error(
             "No OpenAI compatible language models are configured and/or enabled." + " Disabling Testing Framework.",
@@ -332,8 +332,8 @@ def _check_prerequisites() -> tuple[list, list, bool]:
 
     # If no eligible Embedding Model; disable Generate Test Set
     gen_testset_disabled = False
-    embed_models_enabled = enabled_models_lookup("embed")
-    available_embed_models = list(embed_models_enabled.keys())
+    embed_models_available = available_models_lookup("embed")
+    available_embed_models = list(embed_models_available.keys())
     if not available_embed_models:
         st.warning(
             "No embedding models are configured and/or enabled. Disabling Test Set Generation.",

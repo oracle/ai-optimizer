@@ -1,0 +1,30 @@
+---
+title: AI Optimizer Client
+sidebar_position: 0
+pagination_prev: null
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+The included web-based client is built with [Streamlit](https://streamlit.io/) and communicates with the [AI Optimizer Server](../server/intro) through its REST API.
+
+:::tip[BYO Client]
+You can replace the included client with any client that can communicate with the REST API.
+:::
+
+The client provides a simple interface for working with the **AI Optimizer**. You can:
+
+- [Interact with language models](./chatbot)
+- [Accelerate chatbot response testing](./testbed)
+- [Experiment with prompt engineering](./tools/prompts)
+- [Split and embed documents](./tools/split-embed)
+- [Configure Deep Data Security](./tools/dds)
+- [Set up databases, models, and access to Oracle Cloud Infrastructure](./configuration)
+
+## Choose a Path
+
+- **Chat with a language model:** Configure a [language model](./configuration/models), then open the [Chatbot](./chatbot).
+- **Query your data with a chatbot:** Configure an [Oracle AI Database](./configuration/databases), make [SQLcl MCP Server](../guides/sqlcl-mcp-server.mdx) available, then enable **NL2SQL** in the [Chatbot](./chatbot).
+- **Build a [RAG chatbot](./chatbot#vector-search):** Configure an [Oracle AI Database](./configuration/databases) and [language and embedding models](./configuration/models). Then use [Split/Embed](./tools/split-embed) to create a vector store.
+- **Evaluate AI Models with Data:** Use the [Testbed](./testbed) to see how different model configurations perform with your data.

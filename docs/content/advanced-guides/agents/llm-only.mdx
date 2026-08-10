@@ -1,0 +1,25 @@
+---
+title: LLM-Only Agent
+sidebar_position: 5
+---
+
+The [LLM-Only agent](./intro) provides a pure conversational experience with no tools or external data sources. It is the simplest agent in the **AI Optimizer**.
+
+```mermaid
+flowchart TD
+    prompt["Fetch system prompt (optimizer_basic-default)"] --> build["Build AgentSpec (no tools)"]
+    build --> load["Load into runtime"]
+    load --> session["Create chat session"]
+    session --> input["User message"]
+    input --> history{"Chat history enabled?"}
+    history -->|Yes| stateful["Append to persistent conversation"]
+    history -->|No| excluded["Store turn, exclude from LLM context"]
+    stateful --> execute["Execute LLM call"]
+    excluded --> execute
+    execute --> reply["Return response"]
+```
+
+- The system prompt is fetched from the MCP server (`optimizer_basic-default`). If unavailable, a default instruction is used.
+- `build_llm_only_agentspec` creates a portable AgentSpec Agent with no tools — pure LLM conversation.
+- The session manages conversation state. Turns are always stored and returned by the history API. When `chat_history` is disabled, turns are excluded from future LLM context and remain available to inspect or clear through the history API.
+- Failed turns are fully rolled back — the user message and any partial response are removed so subsequent turns are not corrupted.

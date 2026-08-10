@@ -790,7 +790,7 @@ class TestCheckPrerequisites:
         mock_st = MagicMock()
         with (
             patch(f"{MODULE}._is_db_configured", return_value=True),
-            patch(f"{MODULE}.enabled_models_lookup", side_effect=_mock_enabled_models),
+            patch(f"{MODULE}.available_models_lookup", side_effect=_mock_enabled_models),
             patch(f"{MODULE}.st", mock_st),
         ):
             ll, embed, disabled = _check_prerequisites()
@@ -806,7 +806,7 @@ class TestCheckPrerequisites:
         mock_st.stop.side_effect = SystemExit
         with (
             patch(f"{MODULE}._is_db_configured", return_value=False),
-            patch(f"{MODULE}.enabled_models_lookup", return_value={}),
+            patch(f"{MODULE}.available_models_lookup", return_value={}),
             patch(f"{MODULE}.st", mock_st),
             pytest.raises(SystemExit),
         ):
@@ -825,7 +825,7 @@ class TestCheckPrerequisites:
         mock_st.stop.side_effect = SystemExit
         with (
             patch(f"{MODULE}._is_db_configured", return_value=True),
-            patch(f"{MODULE}.enabled_models_lookup", side_effect=_no_ll),
+            patch(f"{MODULE}.available_models_lookup", side_effect=_no_ll),
             patch(f"{MODULE}.st", mock_st),
             pytest.raises(SystemExit),
         ):
@@ -844,7 +844,7 @@ class TestCheckPrerequisites:
         mock_st = MagicMock()
         with (
             patch(f"{MODULE}._is_db_configured", return_value=True),
-            patch(f"{MODULE}.enabled_models_lookup", side_effect=_no_embed),
+            patch(f"{MODULE}.available_models_lookup", side_effect=_no_embed),
             patch(f"{MODULE}.st", mock_st),
         ):
             _, embed, disabled = _check_prerequisites()
@@ -871,7 +871,7 @@ class TestCheckPrerequisites:
         mock_st = MagicMock()
         with (
             patch(f"{MODULE}._is_db_configured", return_value=True),
-            patch(f"{MODULE}.enabled_models_lookup", side_effect=_mixed_embed),
+            patch(f"{MODULE}.available_models_lookup", side_effect=_mixed_embed),
             patch(f"{MODULE}.st", mock_st),
         ):
             _, embed, _ = _check_prerequisites()

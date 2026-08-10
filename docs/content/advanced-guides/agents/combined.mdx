@@ -1,0 +1,40 @@
+---
+title: Combined Router
+sidebar_position: 20
+---
+
+The Combined router is an orchestrator that routes queries to VecSearch, NL2SQL, or both. Unlike the other agents and flows, it does not have an AgentSpec definition — it coordinates existing sub-sessions at runtime.
+
+```mermaid
+flowchart TD
+    query["User query"] --> classify["LLM classification call"]
+    classify --> route{"Route decision"}
+    route -->|nl2sql| nl2sql["NL2SQL Agent"]
+    route -->|vecsearch| vecsearch["VecSearch Flow"]
+    route -->|both| parallel["Run both in parallel"]
+    nl2sql --> answer_sql["Return NL2SQL answer"]
+    vecsearch --> answer_vs["Return VecSearch answer"]
+    parallel --> nl2sql_p["NL2SQL Agent"]
+    parallel --> vecsearch_p["VecSearch Flow"]
+    vecsearch_p --> relevant{"Retrieved documents relevant?"}
+    nl2sql_p --> synth["LLM synthesizes results"]
+    relevant -->|Yes| synth
+    relevant -->|No| answer_sql_p["Return NL2SQL answer"]
+    nl2sql_p --> answer_sql_p
+    synth --> answer_both["Return combined answer"]
+```
+
+- The classifier prompts the LLM to respond with exactly one word — `nl2sql`, `vecsearch`, or `both` — based on the user's question. Unrecognized responses default to `both`.
+- When routed to a single tool, the query is dispatched directly to the corresponding sub-session.
+- When routed to `both`, the sub-sessions run in parallel. If VecSearch finds relevant documents, both results are fed into a synthesis LLM call to produce a unified response; otherwise, the router returns the NL2SQL answer directly.
+- The system prompt is fetched from the MCP server (`optimizer_tools-default`). If unavailable, a default instruction is used.
+- Token usage from the classifier, sub-sessions, and synthesis calls is aggregated.
+- Requires both a configured [VecSearch](vecsearch/) flow and an [NL2SQL](nl2sql/) agent to be available.
+
+## Model Use and Fallbacks
+
+The router uses the selected primary language model for both classification and synthesis, as well as for the NL2SQL and VecSearch sub-sessions. There is no separate classifier-model setting in the client. Applications that need a smaller, dedicated model for the lightweight classification and synthesis calls must provide it through custom runtime wiring.
+
+Classification adds one language-model call to every combined request; synthesis adds another when both routes return relevant results. Consider this additional latency and token use when selecting a model for high-throughput or cost-sensitive workloads.
+
+If classification fails or produces an unrecognized result, the router runs both routes. If synthesis fails, it returns the NL2SQL and VecSearch answers under labelled headings instead.

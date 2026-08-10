@@ -1,0 +1,94 @@
+---
+title: TLS / HTTPS
+description: Configure HTTPS for the AI Optimizer Server and Client.
+sidebar_position: 20
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+The **AI Optimizer Server** and **AI Optimizer Client** can serve HTTPS instead of HTTP. Configure TLS with `AIO_*_SSL_*` [environment variables](../guides/env-vars) before starting the component.
+
+You can choose one certificate option for each component:
+
+- **No TLS:** The default. Use HTTP for local desktop experimentation.
+- **Generated self-signed certificate:** Encrypts local development traffic, but browsers do not trust the certificate by default.
+- **Provided certificate:** Use a certificate and key issued or managed by your organization for deployments reached by other users.
+
+## Generated Self-Signed Certificates
+
+The **AI Optimizer** can automatically generate self-signed certificates for local deployments. The generated certificate is valid for `localhost` and the machine's hostname. 
+
+:::note[Browser warning]
+Browsers show a warning for a self-signed certificate. It is intended for local development; use a certificate trusted by the browser or operating system for a shared deployment.
+:::
+
+To have the certificcates automatically generated, set one SSL variable for the component you want to secure, without setting certificate paths:
+
+```dotenv
+# API Server
+AIO_SERVER_SSL=true
+
+# AI Optimizer Client
+AIO_CLIENT_SSL=true
+```
+
+Then run its matching command:
+
+```bash
+# API Server
+uv run python src/entrypoint.py server
+
+# AI Optimizer Client
+uv run python src/entrypoint.py client
+```
+
+A localhost certificate and key will be placed at `<project-root>/tmp/ssl/` for bare-metal installations and `/app/tmp/ssl/` in the container image.
+
+
+
+## Provided Certificates
+
+To use your own certificates, provide both a PEM-encoded certificate and its private key. The certificate must cover the hostname users connect to, and the process must be able to read both files.
+
+If either path is omitted and `*_SSL=true`, the **AI Optimizer** generates a self-signed pair instead.
+
+### API Server
+
+```dotenv
+AIO_SERVER_SSL=true
+AIO_SERVER_SSL_CERT_FILE=/path/to/cert.pem
+AIO_SERVER_SSL_KEY_FILE=/path/to/key.pem
+```
+
+### AI Optimizer Client
+
+```dotenv
+AIO_CLIENT_SSL=true
+AIO_CLIENT_SSL_CERT_FILE=/path/to/cert.pem
+AIO_CLIENT_SSL_KEY_FILE=/path/to/key.pem
+```
+
+## All-in-One Container
+
+Pass the required variables at container startup, and mount provided certificate files into the container:
+
+```bash
+podman run \
+  --env-file src/.env.dev \
+  -v /path/to/tls:/app/tls:ro \
+  -p 8501:8501 \
+  -it --rm localhost/ai-optimizer-aio:latest
+```
+
+In the environment file, use the mounted paths, for example:
+
+```dotenv
+AIO_CLIENT_SSL=true
+AIO_CLIENT_SSL_CERT_FILE=/app/tls/cert.pem
+AIO_CLIENT_SSL_KEY_FILE=/app/tls/key.pem
+```
+
+## Kubernetes and Helm
+
+For ingress, gateway, and direct Client-pod TLS in a Helm deployment, see [Kubernetes / Helm](./k8s-helm#https-and-public-access).

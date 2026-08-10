@@ -1,32 +1,51 @@
-# Oracle AI Optimizer & Toolkit - Documentation
+# AI Optimizer Documentation
 
-## Description
+This site is built with [Docusaurus](https://docusaurus.io/). Documentation source files are in `content/`.
 
-This directory contains the documentation for the the [**Oracle AI Optimizer & Toolkit**](https://github.com/oracle/ai-optimizer).
+## Local Development
 
+From this directory, run:
 
-Documentation is versioned as part of the GitHub deployment process.  Documents in the `main` branch are v0.0.0 while each major release is per its version number.  All the latest major release documents will be made available as well as the last version of the previous major release.
+```bash
+npm ci
+npm run start
+```
 
-## Getting Started - Documentation
+The development server reloads when documentation or site assets change.
 
-The **Oracle AI Optimizer & Toolkit** documentation is powered by [Hugo](https://gohugo.io/) using the [Relearn](https://github.com/McShelby/hugo-theme-relearn) theme.
+## Documentation Images
 
-To contribute to the documentation, install [Hugo](https://gohugo.io/installation/). Installation instructions vary per Operating System.
+Organize images by ownership rather than placing every image in `static/img`.
 
-From the `docs` directory:
+- Use `static/img/` for site-wide branding and user-interface assets, such as the logo, favicon, and social card.
+- Use a section's `assets/` directory for images owned by that section.
+- Use `content/assets/` only for documentation images shared by unrelated sections.
 
-1. Download the [Relearn](https://github.com/McShelby/hugo-theme-relearn) theme
-   ```bash
-   mkdir -p themes/relearn
-   ```
+For example:
 
-   ```bash
-   curl -L $(curl -s https://api.github.com/repos/McShelby/hugo-theme-relearn/releases/latest \
-      | grep "tarball_url" | cut -d '"' -f 4) \
-      | tar -xz -C themes/relearn --strip-components=1 --exclude='*/exampleSite'
-   ```
+```text
+content/
+  client/
+    chatbot.mdx
+    assets/
+      chatbot/
+        history-and-context.png
+  advanced/
+    iac.md
+    assets/
+      iac/
+        architecture.png
+  assets/
+    architecture/
+      shared-diagram.png
+```
 
-1. Start Hugo: `hugo serve`
+Reference section-owned images with a relative Markdown path:
 
-This will serve the documentation on `http://localhost:1313/ai-optimizer/` for review.
+```md
+![History and context settings](./assets/chatbot/history-and-context.png)
+```
 
+Use lowercase, hyphenated, descriptive filenames. Provide meaningful alternative text for each image, and avoid page-number or otherwise opaque names.
+
+See the [Docusaurus asset documentation](https://docusaurus.io/docs/markdown-features/assets) for additional image and asset options.

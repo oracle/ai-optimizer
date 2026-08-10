@@ -150,10 +150,10 @@ class TestRule2ReachableWithKey:
 
 
 class TestRule3NoKeyAllowedProvider:
-    """Rule 3: Reachable + no api_key + ollama/huggingface/hosted_vllm → usable=True."""
+    """Rule 3: Reachable keyless providers are usable."""
 
     @pytest.mark.anyio
-    @pytest.mark.parametrize("provider", ["huggingface", "hosted_vllm"])
+    @pytest.mark.parametrize("provider", ["huggingface", "hosted_vllm", "openai_like", "custom_openai"])
     async def test_no_key_allowed_providers(self, provider):
         """Reachable keyless model with allowed provider is usable."""
         settings.model_configs = [
