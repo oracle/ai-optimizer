@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-The **AI Optimizer** natively supports the [Oracle SQLcl MCP Server](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) for Natural Language to SQL (NL2SQL) capabilities. 
+The **AI Optimizer** natively supports the [Oracle SQLcl MCP Server](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) for Natural Language to SQL (NL2SQL) capabilities.
 
 When SQLcl is available and databases are configured, the SQLcl MCP server is **automatically registered** at startup as a proxy under the `sqlcl` namespace.
 
@@ -61,17 +61,32 @@ At startup, the **AI Optimizer**:
 
 1. Discovers the `sql` binary on the system path
 2. Creates connection store entries for each configured database
-3. Launches SQLcl as a child process using stdio transport
+3. Launches SQLcl as a child process on the [AI Optimizer Server](../server/intro.mdx) using stdio transport
 4. Mounts the SQLcl MCP server as a proxy, making NL2SQL tools available alongside the built-in tools
+
+SQLcl commands run on the AI Optimizer Server. External MCP clients send requests to that server and do not run the `sql` binary themselves.
 
 ### SQLcl Home Directory
 
-The SQLcl connection store is created in a temporary directory unless a SQLcl home is configured. The **AI Optimizer** uses [`AIO_SQLCL_HOME`](./env-vars#nl2sql) first, then `SQLCL_HOME`. 
+The SQLcl connection store is created in a temporary directory unless a SQLcl home is configured. The **AI Optimizer** uses [`AIO_SQLCL_HOME`](./env-vars#nl2sql) first, then `SQLCL_HOME`.
 
 To choose the location explicitly, set `AIO_SQLCL_HOME` to a writable directory before starting the **AI Optimizer**:
+
 ```bash
 export AIO_SQLCL_HOME=/path/to/sqlcl/home
 ```
+
+### SQLcl Restrict Level
+
+The AI Optimizer Server starts SQLcl with `-R` and the resolved `AIO_SQLCL_MCP_LEVEL` value. The default restrict level is `4`, which blocks host commands, scripts, and configuration-changing SQLcl commands.
+
+Set `AIO_SQLCL_MCP_LEVEL` to an integer from `0` to `4` before starting the server when a lower level is required:
+
+```bash
+export AIO_SQLCL_MCP_LEVEL=4
+```
+
+Values outside this range prevent the server from starting. The restrict level does not change Oracle Database privileges. Configure NL2SQL connections with database accounts that have only the required permissions.
 
 :::note[SQLcl Not Found?]
 If SQLcl is not installed or the `sql` binary is not on the system path, the NL2SQL functionality will be unavailable. The **AI Optimizer** will log a warning and continue without it.

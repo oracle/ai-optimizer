@@ -103,35 +103,35 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 
 ### Authentication
 
-| Variable      | Description                                                                                                                                                           | Default       |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| Variable      | Description                                                                                                                                                                                      | Default       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
 | `AIO_API_KEY` | API key for authenticating requests to the [**AI Optimizer Server**](../server/intro.mdx). If unset, a key is generated at startup and displayed on the [API Server](../client/api_server) page. | _(generated)_ |
 
 ### Client
 
-| Variable                   | Description                                                                                                                                                                | Default     |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `AIO_CLIENT_ADDRESS`       | Client listen address                                                                                                                                                      | `localhost` |
-| `AIO_CLIENT_PORT`          | Client listen port                                                                                                                                                         | `8501`      |
-| `AIO_CLIENT_COOKIE_SECRET` | Signing key for the client's XSRF cookies. Multi-replica deployments must provide the same value to every replica.                                                         | _(none)_    |
+| Variable                   | Description                                                                                                                                                                                                    | Default     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `AIO_CLIENT_ADDRESS`       | Client listen address                                                                                                                                                                                          | `localhost` |
+| `AIO_CLIENT_PORT`          | Client listen port                                                                                                                                                                                             | `8501`      |
+| `AIO_CLIENT_COOKIE_SECRET` | Signing key for the client's XSRF cookies. Multi-replica deployments must provide the same value to every replica.                                                                                             | _(none)_    |
 | `AIO_CLIENT_PASSWORD`      | Shared password gating configuration and shared-state controls in the GUI client. This does not replace [**AI Optimizer Server**](../server/intro.mdx) authentication. See [Access Control](./access-control). | _(none)_    |
-| `AIO_CLIENT_SSL`           | Enables TLS for the Client                                                                                                                                                 | `false`     |
-| `AIO_CLIENT_SSL_CERT_FILE` | Path to a TLS certificate in PEM format                                                                                                                                    | _(none)_    |
-| `AIO_CLIENT_SSL_KEY_FILE`  | Path to a TLS private key in PEM format                                                                                                                                    | _(none)_    |
+| `AIO_CLIENT_SSL`           | Enables TLS for the Client                                                                                                                                                                                     | `false`     |
+| `AIO_CLIENT_SSL_CERT_FILE` | Path to a TLS certificate in PEM format                                                                                                                                                                        | _(none)_    |
+| `AIO_CLIENT_SSL_KEY_FILE`  | Path to a TLS private key in PEM format                                                                                                                                                                        | _(none)_    |
 
 ### Server
 
-| Variable                   | Description                                                                                                                                        | Default            |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `AIO_SERVER_URL`           | URL the client uses to reach the [**AI Optimizer Server**](../server/intro.mdx). Set it when the client connects to a separately deployed, remote, or reverse-proxied instance.                                | _(auto-detected)_  |
+| Variable                   | Description                                                                                                                                                                            | Default            |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `AIO_SERVER_URL`           | URL the client uses to reach the [**AI Optimizer Server**](../server/intro.mdx). Set it when the client connects to a separately deployed, remote, or reverse-proxied instance.        | _(auto-detected)_  |
 | `AIO_SERVER_URL_PREFIX`    | URL path prefix for the [**AI Optimizer Server**](../server/intro.mdx), such as `/optimizer`                                                                                           | _(none)_           |
 | `AIO_SERVER_ADDRESS`       | [**AI Optimizer Server**](../server/intro.mdx) bind address. A standalone instance uses `0.0.0.0`; client autostart uses `127.0.0.1`. Clients should connect through `AIO_SERVER_URL`. | component-specific |
 | `AIO_SERVER_PORT`          | [**AI Optimizer Server**](../server/intro.mdx) listen port                                                                                                                             | `8000`             |
 | `AIO_SERVER_SSL`           | Enables TLS for the [**AI Optimizer Server**](../server/intro.mdx)                                                                                                                     | `false`            |
-| `AIO_SERVER_SSL_CERT_FILE` | Path to a TLS certificate in PEM format. When TLS is enabled without a certificate, a self-signed certificate is generated.                        | _(none)_           |
-| `AIO_SERVER_SSL_KEY_FILE`  | Path to the TLS private key in PEM format                                                                                                          | _(none)_           |
+| `AIO_SERVER_SSL_CERT_FILE` | Path to a TLS certificate in PEM format. When TLS is enabled without a certificate, a self-signed certificate is generated.                                                            | _(none)_           |
+| `AIO_SERVER_SSL_KEY_FILE`  | Path to the TLS private key in PEM format                                                                                                                                              | _(none)_           |
 | `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the [**AI Optimizer Server**](../server/intro.mdx) to become ready at startup                                                                             | `180`              |
-| `AIO_MAX_CLIENTS`          | Maximum number of distinct client sessions cached in memory                                                                                        | `64`               |
+| `AIO_MAX_CLIENTS`          | Maximum number of distinct client sessions cached in memory                                                                                                                            | `64`               |
 
 ### Database
 
@@ -193,9 +193,10 @@ These settings provide API keys or service URLs and enable matching built-in mod
 
 ### NL2SQL
 
-| Variable         | Description                                    | Default                 |
-| ---------------- | ---------------------------------------------- | ----------------------- |
-| `AIO_SQLCL_HOME` | Overrides the SQLcl connection-store directory | _(temporary directory)_ |
+| Variable              | Description                                       | Default                 |
+| --------------------- | ------------------------------------------------- | ----------------------- |
+| `AIO_SQLCL_HOME`      | Overrides the SQLcl connection-store directory    | _(temporary directory)_ |
+| `AIO_SQLCL_MCP_LEVEL` | SQLcl MCP restrict level; integer from `0` to `4` | `4`                     |
 
 ### Observability
 
@@ -216,7 +217,7 @@ The **AI Optimizer** honors the standard [OpenTelemetry SDK environment variable
 | `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Trace-specific protocol (overrides the generic one)                      | _(unset)_                 |
 | `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL`   | Log-specific protocol (overrides the generic one)                        | _(unset)_                 |
 | `OTEL_EXPORTER_OTLP_INSECURE`        | If `true`, skips TLS for gRPC OTLP. Required for plaintext local SigNoz. | `false`                   |
-| `OTEL_EXPORTER_OTLP_HEADERS`         | Comma-separated `k=v` headers (for example, vendor authentication)      | _(unset)_                 |
+| `OTEL_EXPORTER_OTLP_HEADERS`         | Comma-separated `k=v` headers (for example, vendor authentication)       | _(unset)_                 |
 
 #### Exporter selection
 
@@ -227,10 +228,10 @@ The **AI Optimizer** honors the standard [OpenTelemetry SDK environment variable
 
 #### Resource attributes
 
-| Variable                   | Description                                                                                                      | Default               |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `OTEL_SERVICE_NAME`        | Service name shown in the backend                                                                                | `ai-optimizer-server` |
-| `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated `k=v` attributes attached to every span (for example, `deployment.environment=prd,service.namespace=ai`) | _(unset)_      |
+| Variable                   | Description                                                                                                              | Default               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| `OTEL_SERVICE_NAME`        | Service name shown in the backend                                                                                        | `ai-optimizer-server` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated `k=v` attributes attached to every span (for example, `deployment.environment=prd,service.namespace=ai`) | _(unset)_             |
 
 #### Sampling
 

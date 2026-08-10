@@ -12,6 +12,14 @@ The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) exposes an [MCP](
 
 External clients use the resources configured on the AI Optimizer Server. To use Vector Search, split and embed content first. To use NL2SQL, configure a database and [SQLcl MCP Server](./sqlcl-mcp-server).
 
+## Authority and Execution Location
+
+The `X-API-Key` authorizes the holder to invoke the tools published by the AI Optimizer Server. Provide it only to users and systems authorized to use those server-side operations.
+
+When SQLcl is configured, the AI Optimizer Server launches the `sql` process and executes SQLcl commands locally. External MCP clients send requests over HTTP; they do not run SQLcl on their own workstation. SQLcl uses restrict level `4` by default. Operators can set `AIO_SQLCL_MCP_LEVEL` to a lower level when additional SQLcl capabilities are required; see [SQLcl MCP Server](./sqlcl-mcp-server).
+
+External MCP clients can use all tools registered on the server that are available at the configured SQLcl restrict level. The built-in NL2SQL agent uses only its connection, schema, query, and request-status tools.
+
 ## Get Client Configuration
 
 Start the AI Optimizer Server and obtain its API key. In the included GUI, the key is available on the [API Server](../client/api_server) page. For standalone deployments, configure `AIO_API_KEY` before starting the server. See [Environment Variables](./env-vars).
@@ -25,19 +33,19 @@ curl -H "X-API-Key: $AIO_API_KEY" \
 
 This command assumes that the server is available locally on its default port. For another deployment, replace `http://localhost:8000` with the reachable AI Optimizer Server URL.
 
-The generated configuration is the source of truth: it includes the deployment's URL, any server URL prefix, and the required `X-API-Key` header. 
+The generated configuration is the source of truth: it includes the deployment's URL, any server URL prefix, and the required `X-API-Key` header.
 
 :::danger[Secrets Inside!]
 The configurations contains a secret to access the server, so do not commit or share it.
 :::
 
-| Client                         | Query value      | Connection type              |
-| ------------------------------ | ---------------- | ---------------------------- |
-| Generic Streamable HTTP client | `generic`        | Streamable HTTP              |
-| MCP Inspector                  | `inspector`      | Streamable HTTP diagnostic   |
-| Cline for VS Code              | `cline`          | Streamable HTTP              |
-| LangGraph                      | `langgraph`      | Streamable HTTP              |
-| Claude Desktop                 | `claude-desktop` | Local `mcp-remote` bridge    |
+| Client                         | Query value      | Connection type            |
+| ------------------------------ | ---------------- | -------------------------- |
+| Generic Streamable HTTP client | `generic`        | Streamable HTTP            |
+| MCP Inspector                  | `inspector`      | Streamable HTTP diagnostic |
+| Cline for VS Code              | `cline`          | Streamable HTTP            |
+| LangGraph                      | `langgraph`      | Streamable HTTP            |
+| Claude Desktop                 | `claude-desktop` | Local `mcp-remote` bridge  |
 
 To retrieve Cline, LangGraph, or Claude Desktop configuration, replace `generic` in the command above with the client's query value. The GUI provides an importable JSON configuration for MCP Inspector.
 

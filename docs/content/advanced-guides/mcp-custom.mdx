@@ -7,7 +7,9 @@ sidebar_position: 25
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **AI Optimizer** exposes an [MCP](https://modelcontextprotocol.io/) server built on [FastMCP](https://gofastmcp.com/).  All registered tools are available over the MCP protocol at the `/mcp` endpoint and through the REST API at `/mcp/tools`.
+The **AI Optimizer** exposes an [MCP](https://modelcontextprotocol.io/) server built on [FastMCP](https://gofastmcp.com/). All registered tools are available over the MCP protocol at the `/mcp` endpoint and through the REST API at `/mcp/tools`.
+
+An external client that presents a valid `X-API-Key` can invoke the tools registered on the API server. When SQLcl is registered, its process and commands run on the API server, not the client's workstation. SQLcl restrict level `4` is the default; an operator can configure a lower level with `AIO_SQLCL_MCP_LEVEL` when additional SQLcl capabilities are required. See [SQLcl MCP Server](../guides/sqlcl-mcp-server).
 
 Developers can add custom tools by dropping a Python file into the tools package — no other files need to be edited.
 
@@ -34,11 +36,11 @@ def register_add_tool():
         return a + b
 ```
 
-Restart the server and the tool is immediately available to any MCP client.  The registry automatically discovers every `register_*` function in the `src/server/app/mcp/tools/` package at startup.
+Restart the server and the tool is immediately available to any MCP client. The registry automatically discovers every `register_*` function in the `src/server/app/mcp/tools/` package at startup.
 
 ## How Auto-Discovery Works
 
-During startup, `register_mcp_tools()` in `src/server/app/mcp/tools/registry.py` scans the package for Python modules, imports each one, and calls every function whose name starts with `register_`.  Utility modules (`schemas.py`, `registry.py`, `__init__.py`) are skipped automatically.
+During startup, `register_mcp_tools()` in `src/server/app/mcp/tools/registry.py` scans the package for Python modules, imports each one, and calls every function whose name starts with `register_`. Utility modules (`schemas.py`, `registry.py`, `__init__.py`) are skipped automatically.
 
 This means adding a tool is a single-file operation:
 
@@ -51,7 +53,7 @@ This means adding a tool is a single-file operation:
 
 ### 1. Create the Tool File
 
-Add a new Python file under `src/server/app/mcp/tools/`.  Each file should contain:
+Add a new Python file under `src/server/app/mcp/tools/`. Each file should contain:
 
 - A **registration function** (named `register_*`) that decorates the tool with `@mcp.tool()`.
 - An optional **private implementation function** (`_impl`) to keep business logic separate from the registration boilerplate.
@@ -66,15 +68,15 @@ from server.app.core.mcp import mcp
 
 The `@mcp.tool()` decorator accepts the following parameters:
 
-| Parameter | Description |
-|-----------|-------------|
-| `name` | Unique tool identifier.  Prefix with `optimizer_` by convention. |
-| `title` | Human-readable display name. |
-| `tags` | Set of strings for categorization (e.g. `{"math", "optimizer"}`). |
+| Parameter     | Description                                                        |
+| ------------- | ------------------------------------------------------------------ |
+| `name`        | Unique tool identifier. Prefix with `optimizer_` by convention.    |
+| `title`       | Human-readable display name.                                       |
+| `tags`        | Set of strings for categorization (e.g. `{"math", "optimizer"}`).  |
 | `annotations` | Optional hints: `readOnlyHint`, `idempotentHint`, `openWorldHint`. |
-| `timeout` | Execution timeout in seconds (default varies by FastMCP). |
+| `timeout`     | Execution timeout in seconds (default varies by FastMCP).          |
 
-The decorated function's **docstring** is sent to the LLM as the tool description, so make it clear and concise.  Function **parameters** with type hints become the tool's input schema automatically.
+The decorated function's **docstring** is sent to the LLM as the tool description, so make it clear and concise. Function **parameters** with type hints become the tool's input schema automatically.
 
 ### 3. Define a Response Model (Optional)
 
@@ -113,7 +115,7 @@ The response will include your new tool alongside the built-in tools.
 
 ## Using Custom Tools
 
-Registering a tool makes it available on the MCP server, but something still needs to *call* it.  There are two ways a custom tool can be used:
+Registering a tool makes it available on the MCP server, but something still needs to _call_ it. There are two ways a custom tool can be used:
 
 ### External MCP Clients
 
@@ -123,11 +125,13 @@ With this approach the tool is available immediately after registration — no a
 
 ### Internal Agent Use (AgentSpec)
 
-The **AI Optimizer** uses [AgentSpec](./agents/intro) to define agents and flows as portable configurations.  There are two ways to bind MCP tools to an agent:
+The **AI Optimizer** uses [AgentSpec](./agents/intro) to define agents and flows as portable configurations. There are two ways to bind MCP tools to an agent:
 
-**MCPToolBox** — Connects to the MCP server and discovers *all* available tools at runtime.  The built-in NL2SQL Agent uses this pattern.  Any custom tool registered on the server is automatically available without code changes.
+**MCPToolBox** — Connects to the MCP server and discovers tools at runtime. It can use a `tool_filter` to expose only named tools. The built-in NL2SQL Agent uses a filter for its connection, schema, query, and request-status tools; custom toolboxes can omit the filter to discover all available tools.
 
-**MCPTool** — References a single tool by name with explicit inputs and outputs, wired into a flow graph.  The built-in VecSearch Flow uses this pattern.  Adding a tool requires modifying the flow definition.
+The built-in NL2SQL agent is therefore not the same surface as an external MCP client. External clients can use all tools registered by the API server and permitted by the SQLcl restrict level, while the built-in agent receives only `sqlcl_connect`, `sqlcl_schema_information`, `sqlcl_sql_run`, and `sqlcl_request_status`.
+
+**MCPTool** — References a single tool by name with explicit inputs and outputs, wired into a flow graph. The built-in VecSearch Flow uses this pattern. Adding a tool requires modifying the flow definition.
 
 #### Example: Agent with MCPToolBox
 

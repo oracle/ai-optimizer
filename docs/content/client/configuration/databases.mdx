@@ -55,3 +55,11 @@ Provide the following inputs:
 - **Wallet Password** (_Optional_): If the connection to the database uses mTLS, provide the wallet password. ⭐️ Review [Using a Wallet](../../guides/database#using-a-wallettns_admin) for additional setup instructions.
 
 Once all fields are set, click the `Create` or `Save` button.
+
+### NL2SQL Access
+
+NL2SQL uses the database account configured for its saved SQLcl connection. Configure an account with only the permissions needed for the required objects, such as `CREATE SESSION` and `SELECT` on specific tables or views.
+
+SQLcl restrict level `4` blocks host commands, scripts, and configuration-changing SQLcl commands by default. It does not change what SQL statements the configured database account can run. Prompts, MCP tool selection, and AgentSpec configuration do not change database authorization.
+
+The NL2SQL prompt requests read-only queries, but the SQL tool can submit DML, DDL, and PL/SQL if the configured account has those privileges. Use a database account with appropriate permissions for the intended operations.

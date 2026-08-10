@@ -2,11 +2,11 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-NL2SQL Agent — AgentSpec definition with dynamic MCP tool discovery.
+NL2SQL Agent — AgentSpec definition with a restricted SQLcl MCP tool inventory.
 
-Defines an AgentSpecAgent that uses an MCPToolBox to dynamically discover
-all tools from the MCP server at runtime. The system prompt guides the LLM
-to use sqlcl_* tools for database operations.
+Defines an AgentSpecAgent that uses an MCPToolBox to discover only the SQLcl
+tools required by NL2SQL. The system prompt guides the LLM to use sqlcl_*
+tools for database operations.
 
 No runtime imports.
 """
@@ -19,6 +19,13 @@ from server.app.agentspec.adapters.mcp import build_mcp_transport
 from server.app.agentspec.agent_llm_only import build_llm_config
 from server.app.core.schemas import ClientSettings
 
+NL2SQL_SQLCL_TOOLS = (
+    "sqlcl_connect",
+    "sqlcl_schema_information",
+    "sqlcl_sql_run",
+    "sqlcl_request_status",
+)
+
 
 def build_nl2sql_agentspec(
     client_settings: ClientSettings,
@@ -26,11 +33,11 @@ def build_nl2sql_agentspec(
     api_key: str,
     system_prompt: str,
 ) -> AgentSpecAgent:
-    """Build a pyagentspec Agent definition for NL2SQL with dynamic tool discovery.
+    """Build a pyagentspec Agent definition with the SQLcl tools required by NL2SQL.
 
-    The agent uses an MCPToolBox to discover all available tools from the
-    MCP server at runtime. This means new tools (e.g. sqlcl_list-connections)
-    are automatically available without code changes.
+    The agent uses an MCPToolBox restricted to connection, schema, query, and
+    request-status tools. Other proxy tools remain available to separately
+    authenticated external MCP clients.
 
     Parameters
     ----------
@@ -57,6 +64,12 @@ def build_nl2sql_agentspec(
         llm_config=llm_config,
         system_prompt=system_prompt,
         tools=[],
-        toolboxes=[MCPToolBox(name="sqlcl-tools", client_transport=transport)],
+        toolboxes=[
+            MCPToolBox(
+                name="sqlcl-tools",
+                client_transport=transport,
+                tool_filter=list(NL2SQL_SQLCL_TOOLS),
+            )
+        ],
         human_in_the_loop=True,
     )
