@@ -1,5 +1,146 @@
 ---
-title: SpringAI
+title: Spring AI
 sidebar_position: 30
+pagination_prev: null
 pagination_next: null
 ---
+
+The AI Optimizer can generate a Spring AI application that uses the language model, embedding model, prompt, and Oracle AI Database vector store selected in the console. The generated application exposes an OpenAI-compatible RAG API that you can use as a starting point for a Java service.
+
+## Before you begin
+
+Prepare the following configuration in the [AI Optimizer Client](../client/intro):
+
+1. Configure and select a [database](../client/configuration/databases).
+1. Configure and select matching [language and embedding models](../client/configuration/models).
+1. Create and populate a vector store with [Split/Embed](../client/tools/split-embed).
+1. In the Chatbot, enable [Vector Search](../client/chatbot#vector-search). To export a specific store, disable **Store Discovery** and select that store.
+
+:::note[Supported model providers]
+The template is available when the selected language and embedding models both use OpenAI or both use Ollama. The AI Optimizer supports mixed-provider configurations, but it cannot generate a Spring AI template for them.
+:::
+
+## Download the template
+
+1. In the AI Optimizer, open **Configuration** > **Settings**.
+1. Under **Source Code Templates**, select **Download SpringAI**.
+1. Extract `spring_ai.zip`.
+
+The download contains a Maven project and a generated `start.sh`. The script includes the current model, database, vector-store, and prompt settings. It expects provider and service API keys from the environment. Treat the generated configuration as sensitive: review it before use and do not commit it to source control.
+
+## Run the application
+
+The generated project requires JDK 21, Maven, and a reachable database and model provider. Before starting it, set a service API key. For an OpenAI template, also set the provider API key:
+
+```shell
+export AI_SERVICE_API_KEY='<service-api-key>'
+export OPENAI_API_KEY='<openai-api-key>' # OpenAI templates only
+```
+
+On macOS or Linux, make the startup script executable and run it:
+
+```shell
+chmod +x start.sh
+```
+
+### Initialize the vector store on first start
+
+Before the first start, set `app.vector-store.initialize` to `true` in `src/main/resources/application-dev.yml`:
+
+```yaml
+app:
+  vector-store:
+    initialize: true
+```
+
+The application then copies the selected AI Optimizer vector store into its `<vector_store>_SPRINGAI` table. After the copy completes, stop the application, set the property back to `false`, and restart it.
+
+```shell
+./start.sh
+```
+
+`start.sh` selects the matching Maven profile (`openai` or `ollama`) and starts the application on port 9090. Edit the generated script when its connection details, credentials, or service API key differ in the target environment.
+
+Leave the application running in this terminal. Open a second terminal to call its API.
+
+## Call the RAG API
+
+All `/v1` API endpoints require the `X-API-Key` header. Its value must match `AI_SERVICE_API_KEY` in `start.sh`.
+
+```shell
+export AI_SERVICE_API_KEY='<service-api-key>'
+
+curl -N http://localhost:9090/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "X-API-Key: ${AI_SERVICE_API_KEY}" \
+  -d '{
+    "model": "server",
+    "messages": [{"role": "user", "content": "What does this documentation cover?"}],
+    "stream": false
+  }'
+```
+
+Set `stream` to `true` to receive server-sent events.
+
+### Other API calls
+
+The same API key is required for the remaining `/v1` endpoints. For example, call the configured language model without RAG:
+
+```shell
+curl --get http://localhost:9090/v1/service/llm \
+  --data-urlencode 'message=Summarize the deployment plan.' \
+  -H "X-API-Key: ${AI_SERVICE_API_KEY}"
+```
+
+Add text to the Spring AI vector store:
+
+```shell
+curl --request POST http://localhost:9090/v1/service/store-chunks \
+  -H 'Content-Type: application/json' \
+  -H "X-API-Key: ${AI_SERVICE_API_KEY}" \
+  -d '["First chunk of text.", "Second chunk of text."]'
+```
+
+To identify the configured language model, call `GET /v1/models` with the same `X-API-Key` header.
+
+## API endpoints
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/v1/chat/completions` | `POST` | Generate a RAG response in an OpenAI-compatible format. |
+| `/v1/models` | `GET` | Return the configured language model. |
+| `/v1/service/llm` | `GET` | Send a prompt directly to the language model without RAG. Pass the prompt as the `message` query parameter. |
+| `/v1/service/search` | `GET` | Search the vector store. Pass `message` and, optionally, `topk` query parameters. |
+| `/v1/service/store-chunks` | `POST` | Embed and add a JSON list of text chunks to the Spring AI vector store. |
+
+## Use the MCP RAG tool
+
+The generated project includes a synchronous Spring AI WebMVC MCP server. Its default transport is SSE and it exposes the `getRag` tool, which answers a question using the configured vector store. The generated `X-API-Key` protection applies only to `/v1` endpoints, not to the MCP SSE endpoint. Keep the MCP server local during development or configure access controls in the deployment environment before exposing it.
+
+To inspect it locally, start the application, then start the [MCP Inspector](../guides/mcp-clients#mcp-inspector). This optional workflow requires Node.js and npm:
+
+```shell
+export DANGEROUSLY_OMIT_AUTH=true
+npx @modelcontextprotocol/inspector
+```
+
+This Inspector setting permits a local connection to the generated unauthenticated MCP endpoint. Open the Inspector at `http://127.0.0.1:6274`, select **SSE** as the transport, and enter `http://localhost:9090/sse` as the server URL. Set the request timeout to 200 seconds, connect, and invoke `getRag`.
+
+## Deploy on Oracle Backend for Microservices and AI
+
+The download includes `application-obaas.yml`, an Oracle Backend for Microservices and AI profile. It retains the selected model, vector-store, and prompt settings while obtaining datasource credentials from the deployment environment. For OpenAI templates, it also includes the configured API key. Treat the file as sensitive configuration; before deployment, either protect it appropriately or replace provider credentials with deployment-managed configuration.
+
+Configure the following deployment settings:
+
+1. Set `SPRING_PROFILES_ACTIVE=obaas` (or the equivalent platform setting) so that Spring Boot loads this profile instead of the local `dev` profile.
+1. Set `APP_SECURITY_API_KEY` to protect the application's `/v1` endpoints.
+1. Set the datasource properties required by the platform. For OpenAI templates, also provide or protect the provider API key.
+1. For the initial deployment, set `APP_VECTOR_STORE_INITIALIZE=true` so the selected vector store is copied into the Spring AI table. Remove the setting or set it to `false` after the copy completes.
+
+Review the generated file, then build with the provider profile used by the template:
+
+```shell
+mvn clean package -P <openai|ollama>
+```
+
+Deploy the resulting service using the [Oracle Backend for Microservices and AI application deployment guide](https://oracle.github.io/microservices-backend/obaas/docs/deploy/overview/). That guide owns the current container-registry, Kubernetes, Helm, secret, and gateway procedures.
