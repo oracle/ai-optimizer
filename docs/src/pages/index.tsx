@@ -35,7 +35,7 @@ export default function Home(): ReactNode {
     <Layout
       wrapperClassName={styles.homePage}
       title={`${siteConfig.title}`}
-      description="Description will go into a meta tag in <head />"
+      description="Build, test, and optimize AI applications with Oracle AI Database and familiar open-source tools."
     >
       <HomepageHeader />
       <main>

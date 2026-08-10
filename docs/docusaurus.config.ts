@@ -58,6 +58,10 @@ const config: Config = {
           },
         },
         blog: false,
+        gtag: {
+          trackingID: 'G-5X6Y5V1JN7',
+          anonymizeIP: true,
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -80,8 +84,7 @@ const config: Config = {
   themes: ['@docusaurus/theme-mermaid'],
 
   themeConfig: {
-    // Replace with your project's social card
-    image: 'img/docusaurus-social-card.jpg',
+    image: 'img/aio_logo_130_130.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },
