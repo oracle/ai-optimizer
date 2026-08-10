@@ -12,7 +12,7 @@ The [**AI Optimizer Server**](../../server/intro.mdx) can emit [OpenTelemetry](h
 
 Use telemetry to investigate request latency, model calls, token usage, tool and retriever activity, and application errors. Instrumentation runs on the [**AI Optimizer Server**](../../server/intro.mdx).
 
-:::note[Disabled by Default]
+:::info[Disabled by Default]
 
 Telemetry is **opt-in** and disabled by default. Enable it for each deployment that should export telemetry.
 
@@ -20,7 +20,9 @@ Telemetry is **opt-in** and disabled by default. Enable it for each deployment t
 
 ## Enable Telemetry
 
-Enabling telemetry depends on how the **AI Optimizer** is deployed.
+Start with the console exporter below to familiarize yourself with the telemetry capabilities of the **AI Optimizer**. If you need to retain, search, aggregate, or alert on telemetry, skip to [Export to a Telemetry Backend](#export-to-a-telemetry-backend) or use the [SigNoz Quickstart](./signoz).
+
+Enabling the console exporter depends on how the **AI Optimizer** is deployed.
 
 ### Bare-Metal
 

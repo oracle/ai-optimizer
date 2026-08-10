@@ -132,7 +132,7 @@ These attributes are emitted by the server's instrumentation; the panels filter 
 |---|---|---|
 | `service.name = ai-optimizer-server` | OTel resource | All panels |
 | `http.route` | FastAPI instrumentor | Request rate / latency / error rate by route |
-| `http.status_code` | FastAPI instrumentor | Error rate panels |
+| `http.response.status_code` → `response_status_code` | FastAPI/ASGI instrumentor → SigNoz trace field | Error rate panels |
 | `llm.model_name` | OpenInference LangChain instrumentor | LLM call rate panel (filter `exists`), token panel grouping |
 | `llm.token_count.total` | OpenInference LangChain instrumentor | Token sum panel |
 | `openinference.span.kind` | OpenInference LangChain instrumentor | Not used by panels in v1 — see note below |
