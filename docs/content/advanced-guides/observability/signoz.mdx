@@ -1,0 +1,229 @@
+---
+title: SigNoz Quickstart
+sidebar_position: 10
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+
+spell-checker: ignore signoz otlp clickhouse
+*/}
+
+:::note[Running on Kubernetes?]
+The bundled Helm chart can deploy SigNoz alongside the application as a subchart. Set both `signoz.enabled=true` and `server.otel.enabled=true`; the chart then configures the [**AI Optimizer Server**](../../server/intro.mdx) OTLP endpoint automatically. See the Helm chart's [observability configuration](../k8s-helm#observability) for Kubernetes deployment.
+:::
+
+## Prerequisites
+
+- Docker Engine 20.10+ or Docker Desktop on macOS or Linux, with the Docker Compose v2 plugin. For Windows, use Docker Engine inside WSL 2. See the [SigNoz prerequisites](https://signoz.io/docs/install/docker/#prerequisites).
+- At least 4 GB of memory available to Docker, and open ports `8080`, `4317`, and `4318` on the SigNoz host.
+- The [**AI Optimizer Server**](../../server/intro.mdx) installed with the `[otel]` extra (see [Observability](./intro) for the install command).
+- Outbound network reachability from the [**AI Optimizer Server**](../../server/intro.mdx) process to the SigNoz host on the OTLP ports (`4317` for gRPC, `4318` for HTTP).
+
+## 1. Stand Up SigNoz
+
+SigNoz's supported Docker installation uses Foundry, which generates the Compose files and starts the SigNoz services. Create a working directory and install `foundryctl`:
+
+```bash
+mkdir -p tmp/signoz
+cd tmp/signoz
+curl -fsSL https://signoz.io/foundry.sh | bash
+```
+
+Create `casting.yaml` with the following content:
+
+```yaml
+apiVersion: v1alpha1
+kind: Installation
+metadata:
+  name: signoz
+spec:
+  deployment:
+    flavor: compose
+    mode: docker
+```
+
+Deploy SigNoz:
+
+```bash
+foundryctl cast -f casting.yaml
+docker ps
+```
+
+The first run pulls several gigabytes of images and takes a few minutes. When the stack is healthy:
+
+| Endpoint      | URL                  | Purpose               |
+| ------------- | -------------------- | --------------------- |
+| Frontend (UI) | `http://<host>:8080` | Web console           |
+| OTLP gRPC     | `<host>:4317`        | Default span receiver |
+| OTLP HTTP     | `<host>:4318`        | Alternate receiver    |
+
+Open [http://localhost:8080](http://localhost:8080) in your browser to reach the SigNoz UI. The first visit prompts you to create an admin account; complete this before continuing.
+
+## 2. Configure the Server
+
+Set the following variables in your `src/.env.{AIO_ENV}` file (or export them in the shell before launching the entrypoint):
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+OTEL_EXPORTER_OTLP_INSECURE=true
+```
+
+If the [**AI Optimizer Server**](../../server/intro.mdx) runs elsewhere, replace `localhost` with the reachable SigNoz host address described in [Networking](#networking).
+
+If `OTEL_TRACES_EXPORTER=console` was previously set for local debugging, remove or comment it out so the OTLP exporter takes effect.
+
+:::warning[Why OTEL_EXPORTER_OTLP_INSECURE=true is required]
+The local SigNoz collector accepts plaintext gRPC on its exposed OTLP port. Without this variable, the gRPC exporter attempts a TLS connection. Remove this variable when the collector endpoint is protected by TLS.
+:::
+
+To also ship application logs to SigNoz (correlated to traces by `trace_id`/`span_id`), explicitly enable log export:
+
+```bash
+AIO_OTEL_LOGS_ENABLED=true
+```
+
+Log export is opt-in. Review [Application Logs](./intro#application-logs) before enabling it for a shared or vendor-managed backend.
+
+## 3. Verify End-to-End
+
+Restart the [**AI Optimizer Server**](../../server/intro.mdx) and confirm initialization succeeded:
+
+```bash
+uv run python src/entrypoint.py server
+```
+
+Look for the startup log line:
+
+```
+OTel telemetry initialized: service=ai-optimizer-server exporters=['otlp']
+```
+
+If the line is absent or `exporters=[]`, see [Troubleshooting](../../troubleshoot#observability).
+
+Generate a request:
+
+```bash
+curl http://localhost:8000/v1/healthz
+```
+
+Return to the SigNoz UI at [http://localhost:8080](http://localhost:8080). Use the left-hand navigation:
+
+1. **Services** view: `ai-optimizer-server` appears after the collector flushes. Request rate, p99 latency, and error rate populate from incoming traffic.
+2. **Traces** view: Filter by service `ai-optimizer-server` and open any trace. The flame graph shows the FastAPI `SERVER` span as the root, with two short ASGI `http send` child spans (`http.response.start` and `http.response.body`).
+
+When outbound calls are made (LLM provider APIs, OCI SDK requests, etc.), additional `CLIENT` spans appear nested under the parent SERVER span automatically.
+
+## Explore Traces and Logs
+
+`GET /v1/healthz` verifies the telemetry path but does not exercise the agent. Send a representative chat completion before investigating orchestration or loading the starter dashboards; see [Verify Telemetry](./intro#verify-telemetry) for the request and prerequisites.
+
+### Read a Trace
+
+In **Traces**, filter by service `ai-optimizer-server`, sort by duration descending, and open a chat trace. SigNoz renders the spans as a flame graph (waterfall):
+
+- Each horizontal bar is a span; its width is its duration.
+- Indentation shows parent/child relationships.
+- The widest child span is usually the operation that dominates the request latency.
+
+For example, an LLM span that takes nearly as long as the root `POST /v1/chat/completions` span indicates that the model call, rather than the application or retriever, is the main source of latency. Select an LLM span to view its attributes. See [Inspect an LLM Span](./intro#inspect-an-llm-span) for the attributes and payload-visibility defaults.
+
+### Read Correlated Logs
+
+When [application log export](./intro#application-logs) is enabled, records emitted while a span is active include that span's `trace_id` and `span_id`. In SigNoz, open a trace, select a span, and use **Go to Logs** to open the matching log records. Alternatively, in **Logs**, filter by `service.name = ai-optimizer-server` and then by `trace_id`.
+
+Useful filters include:
+
+| Filter                                                           | Purpose                                                  |
+| ---------------------------------------------------------------- | -------------------------------------------------------- |
+| `severity_text = ERROR` and `service.name = ai-optimizer-server` | All recent errors across the [**AI Optimizer Server**](../../server/intro.mdx) |
+| `trace_id = <id from a slow trace>`                              | Everything the app logged while a particular request ran |
+| `body contains "<exception or pattern>"`                         | Free-text search across logs                             |
+
+## Monitor the Service
+
+In **Services → `ai-optimizer-server`**, FastAPI request spans populate request rate, 5xx error rate, and p50/p95/p99 latency. Slice these by route to distinguish `/v1/chat/completions` from health checks and other endpoints.
+
+Common starting alert thresholds are:
+
+- `p99 latency > 10s for 5 minutes`
+- `error rate > 1% for 5 minutes`
+- `request rate drops to 0 for 2 minutes`
+
+## Investigation Workflows
+
+### Slow Request
+
+1. Filter **Traces** by `http.route` and the relevant time window, then sort by duration.
+2. Open a slow trace and find the widest child span.
+3. For an LLM span, check `llm.model_name` and `llm.invocation_parameters`; for a retriever or HTTP span, compare its status, host, and duration with other traces.
+
+### Unexpected Answer
+
+By default, prompts and responses are not exported. For development-only prompt investigation, review [Full Payload Export](./intro#full-payload-export), restart the [**AI Optimizer Server**](../../server/intro.mdx), and rerun the request. Inspect LLM `input.value` and `output.value`, then retriever spans for supplied context. Restore the defaults before using a shared environment.
+
+### Warning During a Request
+
+Open the slow or failed trace, use **Go to Logs** to filter the log view to its `trace_id`, and compare the log timeline with the span timing.
+
+### Estimate Chat Cost
+
+In **Traces**, group the sum of `llm.token_count.prompt` and `llm.token_count.completion` by `llm.model_name`. Multiply the totals by the provider's current token rates in a dashboard or spreadsheet. SigNoz captures the token counts; provider pricing remains deployment-specific.
+
+## Saved Views
+
+Save the filters your team uses most often as a small operational runbook:
+
+| Saved View             | Filter                                                                             | When to use                                    |
+| ---------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Slow chat requests** | service=`ai-optimizer-server`, `http.route`=`/v1/chat/completions`, duration > p95 | Daily check on tail latency                    |
+| **5xx errors**         | service=`ai-optimizer-server`, `response_status_code` >= 500                       | First click when paged                         |
+| **Failed LLM calls**   | `openinference.span.kind`=`LLM`, status=ERROR                                      | Provider outages, rate limits, bad credentials |
+| **Expensive prompts**  | `openinference.span.kind`=`LLM`, `llm.token_count.prompt` > 4000                   | Catch runaway prompt growth                    |
+| **Recent error logs**  | `severity_text` = `ERROR`, service=`ai-optimizer-server`, last 1h                  | Quick look at current application errors       |
+
+## 4. Load the Starter Dashboards and Alerts
+
+The repository ships a curated set of SigNoz assets under [`helm/observability/signoz/`](https://github.com/oracle/ai-optimizer/tree/main/helm/observability/signoz) so a fresh install does not start from a blank UI:
+
+- One overview dashboard: request rate, p95 latency, 5xx rate, LLM call rate, and LLM tokens by model.
+- Three starter alert rules: 5xx spike, chat-completions p95 breach, and telemetry silence (no traces received).
+
+Before loading the assets, send a chat completion and wait for the collector to flush. A `/v1/healthz` request is not sufficient because it does not create the LLM attributes used by the dashboard. See [Verify Telemetry](./intro#verify-telemetry) for a request example.
+
+The fastest path is the bundled bootstrap script, which loads both dashboards and alerts via SigNoz's HTTP API. Pass the admin credentials you set on first UI visit; the script prompts for your password and logs in for you:
+
+```bash
+observability/signoz/bootstrap-signoz.py \
+  --host http://localhost:8080     \
+  --email <admin-email>
+```
+
+For CI or SSO setups, pass a pre-fetched JWT as `--token` (or `$SIGNOZ_TOKEN`) to bypass the login step. Dashboards can be imported through **Dashboards → New dashboard → Import JSON**, but alerts must be loaded through the script or created in the UI. The directory's [README](https://github.com/oracle/ai-optimizer/blob/main/observability/signoz/README.md) describes the full workflow. Ingest at least one chat completion before bootstrapping, because SigNoz indexes LLM-related attribute keys only after it receives them in actual spans.
+
+The committed JSON is the source of truth. Export changes made in the UI back to `helm/observability/signoz/` so they can be reproduced in a new installation.
+
+## Networking
+
+The endpoint URL depends on where the [**AI Optimizer Server**](../../server/intro.mdx) runs relative to the SigNoz host.
+
+| [**AI Optimizer Server**](../../server/intro.mdx) location | SigNoz location           | `OTEL_EXPORTER_OTLP_ENDPOINT`                                                                                                                                                |
+| ------------------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bare-metal, same host as SigNoz      | Local Foundry deployment  | `http://localhost:4317`                                                                                                                                                      |
+| Docker container on macOS or Windows | Local Foundry deployment  | `http://host.docker.internal:4317`                                                                                                                                           |
+| Docker container on Linux            | Local Foundry deployment  | Use an address reachable from the container, such as the Docker bridge gateway or a shared Docker network.                                                                   |
+| Different host or VM                 | Remote SigNoz             | `http://<signoz-host>:4317` (open the firewall on `4317` / `4318`)                                                                                                           |
+| Kubernetes cluster                   | SigNoz running in-cluster | The cluster-internal DNS, e.g. `http://signoz-otel-collector.monitoring:4317`. Set via the chart's [`server.otel.*` values](../k8s-helm#observability), not the raw env var. |
+
+When the [**AI Optimizer Server**](../../server/intro.mdx) is running in a container, set the variable at container launch (for example, `docker run -e OTEL_EXPORTER_OTLP_ENDPOINT=...`) rather than in `src/.env.{AIO_ENV}`, because host environment variables do not propagate into a child container.
+
+## Managing the Local Stack
+
+Foundry renders the generated Compose file under `pours/deployment/`. Do not edit generated files directly; update `casting.yaml` and run `foundryctl cast -f casting.yaml` again. For status and logs, use the generated Compose file:
+
+```bash
+docker compose -f pours/deployment/compose.yaml ps
+docker compose -f pours/deployment/compose.yaml logs -f signoz-signoz-0
+```
+
+For upgrades, shutdown, or removal, follow the current [SigNoz Docker installation guide](https://signoz.io/docs/install/docker/). Review the generated Compose configuration before deleting volumes because doing so removes collected telemetry and UI-managed configuration.
