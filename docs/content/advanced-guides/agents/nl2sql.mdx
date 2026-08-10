@@ -3,7 +3,7 @@ title: NL2SQL Agent
 sidebar_position: 10
 ---
 
-The NL2SQL agent enables natural language queries against structured data in Oracle Database.
+The [NL2SQL agent](./intro) enables natural language queries against structured data in [Oracle Database](../../client/configuration/databases).
 
 ```mermaid
 flowchart TD
@@ -19,4 +19,4 @@ flowchart TD
 - `build_nl2sql_agentspec` creates a portable AgentSpec Agent with an `MCPToolBox` that discovers available structured database tools at runtime.
 - The session augments the agent's system prompt with the configured database connection name, model, and thread ID so the LLM passes them to the SQL execution tool calls.
 - The system prompt is fetched from the MCP server (`optimizer_nl2sql-tools-default`). If unavailable, a default instruction is used.
-- Requires a configured structured database connection.
+- Requires a configured structured [database connection](../../client/configuration/databases) and [SQLcl MCP Server](../../guides/sqlcl-mcp-server).

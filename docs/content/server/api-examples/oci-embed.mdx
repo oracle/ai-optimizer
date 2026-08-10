@@ -9,7 +9,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 ## Overview
 
-There are two API workflows for creating a vector store from documents in OCI Object Storage:
+There are two API workflows for creating a [vector store](../../client/tools/split-embed) from documents in [OCI Object Storage](../../client/configuration/oci):
 
 1. **Single-call** — `POST /v1/embed/oci/store` downloads objects and schedules an embedding job in one request. Recommended when the only source is an OCI bucket.
 2. **Two-step** — `POST /v1/oci/objects/download` followed by `POST /v1/embed/`. Use this when you need to combine OCI objects with other sources (local uploads, web URLs, SQL query results) before embedding.
