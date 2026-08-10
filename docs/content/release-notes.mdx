@@ -7,3 +7,37 @@ sidebar_position: 40
 
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+## v2.4.0 — 10 August 2026
+
+This release adds [Oracle Deep Data Security](./client/tools/dds.mdx) support, expands model and embedding workflows, and refreshes the installation, deployment, and documentation experience.
+
+### Upgrade considerations
+
+- macOS x86_64 is no longer a supported installation target. macOS support is limited to Apple silicon (`arm64`).
+- Existing bare-metal environments should be recreated with `uv sync --all-extras` before starting the application with `uv run python src/entrypoint.py client`.
+- The model configuration API now reports runtime availability through `status` instead of the previous `usable` Boolean. Possible values are `available`, `unreachable`, `not_pulled`, and `no_key`.
+- Helm service types are limited to `ClusterIP`, `NodePort`, and `LoadBalancer`.
+ 
+### Highlights
+
+- **Oracle Deep Data Security:** Create and manage data roles, end users, and data grants from the client. Vector Search and NL2SQL can connect as a selected end user so that database-enforced row- and column-level access applies to tool results.
+- **Model configuration:** Model availability now distinguishes between available, unreachable, missing-key, and not-yet-pulled states. Enabled model endpoints are rechecked in the background, allowing a provider such as Ollama to recover without restarting the AI Optimizer. Ollama discovery, model pulling, duplicate handling, and configuration persistence have also been improved.
+- **New local model defaults:** `granite4.1:8b` and `mxbai-embed-large` are included as disabled Ollama configurations, and the Helm deployment pulls them by default when its bundled Ollama service is enabled.
+- **Split and Embed:** Local files and OCI Object Storage objects can be grouped into one vector store per filename. SQL query results can also be used as a document source. Embedding-job persistence, cancellation, staging, cleanup, and behavior during CORE database reconnection have been made more robust.
+- **SQLcl MCP:** SQLcl runs with a configurable restrict level through `AIO_SQLCL_MCP_LEVEL`, which defaults to the most restrictive level, `4`. Saved connections can be recreated when needed, and NL2SQL remains unavailable without preventing server startup when SQLcl is not installed.
+
+### Deployment and configuration
+
+- Bare-metal installation and development now use [uv](https://docs.astral.sh/uv/) with a committed lock file. Python 3.11 and 3.12 are supported.
+- The Helm chart can provision optional persistent storage for chart-managed SIDB-FREE and ADB-FREE databases. It also supports a fixed client `nodePort` and configurable Ollama service type and port.
+- The bundled [SigNoz](https://signoz.io/) chart dependency has been updated.
+- Settings import continues to accept legacy database configuration fields, while model reachability and Deep Data Security session state are treated as runtime-only configuration.
+
+### Documentation
+
+- The documentation framework has updated.
+- Installation, configuration, client, server, Helm, observability, TLS, infrastructure, and troubleshooting guidance has been reorganized and rewritten.
+- A new end-to-end walkthrough and an expanded racing use case cover local models, vector stores, RAG, NL2SQL, and Deep Data Security.
+
+For the complete set of changes, see [`v2.3.2...v2.4.0`](https://github.com/oracle/ai-optimizer/compare/v2.3.2...v2.4.0).
