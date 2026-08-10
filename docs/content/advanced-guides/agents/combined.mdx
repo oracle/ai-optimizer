@@ -30,3 +30,11 @@ flowchart TD
 - The system prompt is fetched from the MCP server (`optimizer_tools-default`). If unavailable, a default instruction is used.
 - Token usage from the classifier, sub-sessions, and synthesis calls is aggregated.
 - Requires both a configured [VecSearch](vecsearch/) flow and an [NL2SQL](nl2sql/) agent to be available.
+
+## Model Use and Fallbacks
+
+The router uses the selected primary language model for both classification and synthesis, as well as for the NL2SQL and VecSearch sub-sessions. There is no separate classifier-model setting in the client. Applications that need a smaller, dedicated model for the lightweight classification and synthesis calls must provide it through custom runtime wiring.
+
+Classification adds one language-model call to every combined request; synthesis adds another when both routes return relevant results. Consider this additional latency and token use when selecting a model for high-throughput or cost-sensitive workloads.
+
+If classification fails or produces an unrecognized result, the router runs both routes. If synthesis fails, it returns the NL2SQL and VecSearch answers under labelled headings instead.
