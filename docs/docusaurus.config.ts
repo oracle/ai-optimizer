@@ -58,10 +58,14 @@ const config: Config = {
           },
         },
         blog: false,
-        gtag: {
-          trackingID: 'G-5X6Y5V1JN7',
-          anonymizeIP: true,
-        },
+        ...(process.env.NODE_ENV === 'production'
+          ? {
+              gtag: {
+                trackingID: 'G-5X6Y5V1JN7',
+                anonymizeIP: true,
+              },
+            }
+          : {}),
         theme: {
           customCss: './src/css/custom.css',
         },

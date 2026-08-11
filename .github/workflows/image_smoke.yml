@@ -11,7 +11,9 @@ on:
     paths:
       - "src/**"
       - ".dockerignore"
+      - ".python-version"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/image_smoke.yml"
 
   # Allows running this workflow manually
@@ -37,12 +39,15 @@ jobs:
           - name: aio
             dockerfile: src/Dockerfile
             smoke_env: "-e API_SERVER_KEY=test-key-for-ci"
+            smoke_url: http://127.0.0.1:8501
           - name: client
             dockerfile: src/client/Dockerfile
             smoke_env: "-e API_SERVER_KEY=test-key-for-ci -e API_SERVER_URL=http://localhost -e API_SERVER_PORT=8000"
+            smoke_url: http://127.0.0.1:8501
           - name: server
             dockerfile: src/server/Dockerfile
             smoke_env: "-e API_SERVER_KEY=test-key-for-ci"
+            smoke_url: ""
 
     name: Build & Test - ${{ matrix.build.name }}
 
@@ -76,6 +81,7 @@ jobs:
           echo "Testing ${{ matrix.build.name }} container startup..."
 
           docker run -d --name "$NAME" \
+            ${{ matrix.build.smoke_url && '-p 8501:8501' || '' }} \
             ${{ matrix.build.smoke_env }} \
             ${{ matrix.build.name }}:${{ github.sha }}
 
@@ -87,11 +93,28 @@ jobs:
 
           if docker ps --filter "name=$NAME" --filter "status=running" --format '{{.Names}}' | grep -qx "$NAME"; then
             echo "✅ ${{ matrix.build.name }} container started and is still running"
+          else
+            echo "❌ ${{ matrix.build.name }} container failed to start or crashed"
+            docker logs "$NAME" 2>&1 || true
+            exit 1
+          fi
+
+          if [ -z "${{ matrix.build.smoke_url }}" ]; then
             docker stop "$NAME"
             exit 0
           fi
 
-          echo "❌ ${{ matrix.build.name }} container failed to start or crashed"
+          echo "Waiting for ${{ matrix.build.smoke_url }} to return a successful response..."
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error "${{ matrix.build.smoke_url }}" >/dev/null; then
+              echo "✅ ${{ matrix.build.name }} client returned a successful response"
+              docker stop "$NAME"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "❌ ${{ matrix.build.name }} client did not return a successful response"
           docker logs "$NAME" 2>&1 || true
           exit 1
 

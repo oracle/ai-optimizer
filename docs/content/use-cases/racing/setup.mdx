@@ -14,8 +14,8 @@ import {GitHubSourceLink} from '@site/src/components/GitHubSourceLink';
 You'll need:
 
 - A configured **AI Optimizer** from the [Walkthrough](../../walkthrough), or any equivalent install where you have an enabled chat model, an enabled embedding model, and a [database connection](../../client/configuration/databases).
-- A chat model with solid tool use.
-- An Oracle AI Database connection with rights to create tables and views (the `DB_DEVELOPER_ROLE` granted in the Walkthrough is sufficient).
+- A chat model with [solid tool use](../../guides/ai-models#choose-a-chat-model-with-reliable-tool-use).
+- An [Oracle AI Database connection](../../guides/database.mdx) with rights to create tables and views (the `DB_DEVELOPER_ROLE` granted in the Walkthrough is sufficient).
 - The [SQLcl MCP Server](../../guides/sqlcl-mcp-server) configured for **NL2SQL**, pointed at the same database.
 
 Everything you need lives under <GitHubSourceLink path="docs/demos/racing" type="tree"><code>docs/demos/racing/</code></GitHubSourceLink> in the source repository:
@@ -33,7 +33,7 @@ Download the files you need from the GitHub links above, and keep them together 
 
 Connect to your Oracle AI Database as the user the **AI Optimizer** is configured to use, and run `schema.sql`.
 
-If you are using the database created during the [Walkthrough](../../walkthrough), it runs in a container that can't see your local checkout, so copy the demo files into the container first and then load the script from inside it:
+If you are using the database created during the [Walkthrough](../../walkthrough), it runs in a container that cannot access files on your host. Copy the demo directory into the container first, then load the script from inside it:
 
 ```bash
 podman cp /path/to/racing ai-optimizer-db:/tmp/racing

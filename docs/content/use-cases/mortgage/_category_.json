@@ -1,0 +1,8 @@
+{
+  "label": "Mortgage Lending",
+  "position": 6,
+  "link": {
+    "type": "doc",
+    "id": "use-cases/mortgage/intro"
+  }
+}

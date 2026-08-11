@@ -137,6 +137,8 @@ async def chat_stream(
                     chunk = event["content"]
                     collected.append(chunk)
                     yield f"data: {json.dumps(StreamChunkEvent(content=chunk).model_dump())}\n\n"
+                elif etype == "heartbeat":
+                    yield ": keep-alive\n\n"
                 elif etype == "_meta":
                     route = event.get("route")
                     vs_metadata = event.get("vs_metadata")

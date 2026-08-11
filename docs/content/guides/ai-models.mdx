@@ -16,6 +16,23 @@ The AI Optimizer needs a [language model](#language-models) for chat and Natural
 
 Language models generate chat responses, perform NL2SQL tasks, and can provide Vector Search features such as store discovery, document grading, and prompt rephrasing. Choose a model that supports the capabilities your application needs.
 
+### Choose a Chat Model with Reliable Tool Use
+
+Tool use is a chat model's ability to recognize when it needs an external capability, select the appropriate tool, send valid structured arguments, and use the tool's result in its response. For example, a model might use a database tool to answer a question about your data instead of trying to answer from its existing knowledge.
+
+Reliable tool use is important for agentic AI. An agent relies on the model to decide when to query data, retrieve relevant documents, or take another configured action. A model with weak tool use can select an inappropriate tool, produce invalid arguments, repeat unnecessary calls, or fail to use the result correctly.
+
+When evaluating chat models, first confirm that the provider documents support for function or tool calling. Then test each candidate with representative tasks that require the agent to choose the correct tool, provide valid arguments, handle a tool error, and accurately use the returned result. Prefer the model that performs these tasks consistently in your environment, rather than selecting one based only on general chat quality.
+
+#### Example: `granite4.1:8b`
+
+To evaluate the `granite4.1:8b` model:
+
+1. Open the [Granite 4.1 8B model card](https://huggingface.co/ibm-granite/granite-4.1-8b). Its **Tool-calling** section states that it "comes with enhanced tool calling capabilities, enabling seamless integration with external functions and APIs."
+1. Configure the model and try a task that needs a tool, such as enabling **NL2SQL** for information that is available only in a database. Confirm that the model calls the expected tool with appropriate inputs and uses the returned data in its answer.
+
+Documented support is a starting point, not a guarantee that a model will work well for every task. Test the model with the tools and requests that your application uses.
+
 ## Embedding Models
 
 Embedding models convert documents and queries into vectors for similarity search. Choose an embedding model that fits your data, performance requirements, and deployment constraints.

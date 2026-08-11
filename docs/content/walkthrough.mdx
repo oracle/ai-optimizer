@@ -49,6 +49,31 @@ You will run four container images to establish the "Infrastructure":
 
 To enable the _ChatBot_ functionality, access to a Language Model is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _granite4.1:8b_ model.
 
+:::tip[Same... but different!]
+
+The commands in this section work in a macOS/Linux shell or PowerShell 7. The documentation will reference `podman` commands. If applicable to your environment, `podman` can be substituted with `docker`.
+
+If you are using `docker`, consider aliasing the `podman` command for convenience:
+
+<Tabs>
+<TabItem value="macos-linux" label="Linux/macOS">
+
+```bash
+alias podman=docker
+```
+
+</TabItem>
+<TabItem value="powershell" label="PowerShell">
+
+```powershell
+Set-Alias podman docker
+```
+
+</TabItem>
+</Tabs>
+
+:::
+
 1.  Start the _Ollama_ container:
 
               <Tabs groupId="llm">
@@ -135,29 +160,28 @@ The **AI Optimizer** provides an easy-to-use front-end for experimenting with La
 AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The **AI Optimizer** uses these capabilities to provide more accurate and relevant Language Model responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
 
 <OracleAiDatabaseFree />
+   5. Create a [database user](./guides/database#database-user) for the walkthrough:
 
-1. Create a [database user](./guides/database#database-user) for the walkthrough:
+      ```bash
+      podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
+      ```
 
-   ```bash
-   podman exec -it ai-optimizer-db sqlplus '/ as sysdba'
-   ```
+      ```sql
+      alter session set container=FREEPDB1;
 
-   ```sql
-   alter session set container=FREEPDB1;
-
-   CREATE TABLESPACE IF NOT EXISTS USERS DATAFILE '/opt/oracle/oradata/FREE/FREEPDB1/users_01.dbf' SIZE 100M;
-   CREATE USER "WALKTHROUGH" IDENTIFIED BY OrA_41_OpTIMIZER
-       DEFAULT TABLESPACE "USERS"
-       TEMPORARY TABLESPACE "TEMP";
-   GRANT "DB_DEVELOPER_ROLE" TO "WALKTHROUGH";
-   ALTER USER "WALKTHROUGH" DEFAULT ROLE ALL;
-   ALTER USER "WALKTHROUGH" QUOTA UNLIMITED ON USERS;
-   -- For Deep Data Security
-   CREATE ROLE AIO_DDS_ROLE;
-   GRANT CREATE SESSION TO AIO_DDS_ROLE;
-   GRANT AIO_DDS_ROLE TO "WALKTHROUGH" WITH ADMIN OPTION;
-   EXIT;
-   ```
+      CREATE TABLESPACE IF NOT EXISTS USERS DATAFILE '/opt/oracle/oradata/FREE/FREEPDB1/users_01.dbf' SIZE 100M;
+      CREATE USER "WALKTHROUGH" IDENTIFIED BY OrA_41_OpTIMIZER
+         DEFAULT TABLESPACE "USERS"
+         TEMPORARY TABLESPACE "TEMP";
+      GRANT "DB_DEVELOPER_ROLE" TO "WALKTHROUGH";
+      ALTER USER "WALKTHROUGH" DEFAULT ROLE ALL;
+      ALTER USER "WALKTHROUGH" QUOTA UNLIMITED ON USERS;
+      -- For Deep Data Security
+      CREATE ROLE AIO_DDS_ROLE;
+      GRANT CREATE SESSION TO AIO_DDS_ROLE;
+      GRANT AIO_DDS_ROLE TO "WALKTHROUGH" WITH ADMIN OPTION;
+      EXIT;
+      ```
 
 ## Configuration
 
@@ -187,14 +211,14 @@ This command does not return as it holds the tunnel open. Leave it running in it
 
 With the "Infrastructure" in-place, you're ready to configure the **AI Optimizer**.
 
-In a web browser, navigate to `http://localhost:8501`:
+In a web browser, navigate to [`http://localhost:8501`](http://localhost:8501):
 ![Chatbot](_assets/images/chatbot-no-models.png)
 
 Notice that there are no language models configured to use. Let's start the configuration.
 
 ### Configure the Language Model
 
-To configure the On-Premises Language Model, navigate to the _Configuration_ screen and _Models_ tab:
+To configure the On-Premises Language Model, navigate to **Configuration** > **Models**:
 
 1. Enable the `granite4.1:8b` model that you pulled earlier by clicking the _Edit_ button
    ![Configure Language Model](_assets/images/models-edit.png)
@@ -242,30 +266,27 @@ To configure Oracle AI Database Free, navigate to the _Configuration_ screen and
 
 With the embedding model and database configured, you can now split and embed documents for use in **Vector Search**.
 
-Navigate to the _Tools_ screen and _Split/Embed_ tab:
+Navigate to **Tools** > **Split/Embed**:
 
 1. Change the **Knowledge Base Source** to `Web`
-1. Enter the URL:
+   ![Split and Embed](_assets/images/split-embed-web.png)
+1. Enter the URL and press Enter:
+   ![Split and Embed Web Pages](_assets/images/split-embed-web-pages.png)
    ```text
    https://docs.oracle.com/en/database/oracle/oracle-database/26/xeinl/oracle-ai-database-free-installation-guide-linux.pdf
    ```
-1. Press Enter
-1. Give the Vector Store an Alias: `WALKTHROUGH`
+
+1. Give the Vector Store an Alias: `WALKTHROUGH` and press Enter
+   ![Split and Embed Populate](_assets/images/split-embed-populate-walkthrough.png)
 1. Click _Populate Vector Store_
 1. Please be patient...
 
 :::info[Performance: Grab a beverage of your choosing...]
 Depending on the infrastructure, the embedding process can take a few minutes. As long as the "Populating Vector Store..." timer is running... it's working.
-:::
-
-![Split and Embed](_assets/images/split-embed-web.png)
-
-:::note[Thumb Twiddling]
 
 You can watch the progress of the embedding by streaming the server logs:
 
 `podman exec -it ai-optimizer-aio tail -f /app/src/apiserver_8000.log`
-
 :::
 
 ### Query the Vector Store
@@ -306,7 +327,7 @@ Responses may vary, but generally the _ChatBot_'s response will be inaccurate, i
 - Not understanding that there is an Oracle AI Database release. This is known as **knowledge-cutoff**.
 - Suggestions of requiring unrelated software. These are **hallucinations**.
 
-Now select "Vector Search" in the Toolkit options, enable "Prompt Rephrase"
+Now select "Vector Search" in the Toolkit options, ensure "Store Discovery" and "Document Grading" are disabled, while "Prompt Rephrase" is enabled.
 
 ![Enable RAG](_assets/images/chatbot-enable-vs.png)
 
@@ -332,7 +353,7 @@ Under "Vector Search Details" you should see the PDF source, the vector store ta
 You should now have a solid foundation using the **AI Optimizer**.
 
 :::info[Try a full Use Case]
-The [Racing Championship use-case](./use-cases/racing) walks the same **AI Optimizer** through an end-to-end demo that shows the progressive value of **NL2SQL**, **Vector Search**, and combined-mode grounding against a synthetic racing championship dataset. See all [Use Cases](./use-cases/intro) for more.
+The [Use Cases](./use-cases/intro) walk you through using your new **AI Optimizer** installation through an end-to-end demo that shows the progressive value of **NL2SQL**, **Vector Search**, and combined-mode grounding a synthetic dataset. 
 :::
 
 To take your experiments further, consider exploring:

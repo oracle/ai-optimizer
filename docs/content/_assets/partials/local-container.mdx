@@ -5,31 +5,6 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import ReleaseSourceExtract from './release-source-extract.mdx';
 
-:::tip[Same... but different!]
-
-The commands in this section work in a macOS/Linux shell or PowerShell 7. The documentation will reference `podman` commands. If applicable to your environment, `podman` can be substituted with `docker`.
-
-If you are using `docker`, consider aliasing the `podman` command for convenience:
-
-<Tabs>
-<TabItem value="macos-linux" label="Linux/macOS">
-
-```bash
-alias podman=docker
-```
-
-</TabItem>
-<TabItem value="powershell" label="PowerShell">
-
-```powershell
-Set-Alias podman docker
-```
-
-</TabItem>
-</Tabs>
-
-:::
-
 1. <ReleaseSourceExtract />
 
 1. Build the container image.

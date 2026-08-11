@@ -1,0 +1,33 @@
+---
+title: Mortgage Lending
+description: Explore mortgage application data with NL2SQL and Vector Search.
+slug: /use-cases/mortgage/
+pagination_prev: use-cases/intro
+sidebar_position: 5
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+Explore how the **AI Optimizer** grounds responses in mortgage application data and lending-policy documents. Work through a small portfolio of labelled mortgagors, such as `MORTGAGOR_001`, and see how the answers change as structured data and documents are added.
+
+:::danger[Keep it Clean!]
+Run this use case in a clean demo environment, such as the one created by the [Walkthrough](../../walkthrough). It imports mortgage prompts, creates and resets mortgage database objects, and adds a vector store for policy and application documents. 
+
+The lender, applications, and criteria are demonstration data only: they contain no PII and do not produce lending decisions.
+:::
+
+## What You'll Explore
+
+| Step              | Settings                      | What it demonstrates                                                                             |
+| ----------------- | ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| **LLM-only**      | NL2SQL off, Vector Search off | The model has no knowledge of this lender or portfolio.                                          |
+| **NL2SQL**        | NL2SQL on                     | Live portfolio questions, including average salary by location, LTV, LTI, and expenditure.       |
+| **Vector Search** | Vector Search on, NL2SQL off  | Lending criteria, evidence standards, and application-pack context.                              |
+| **Both together** | NL2SQL on, Vector Search on   | A screening discussion that compares a mortgagor's data record with policy documents.            |
+
+The policy covers income evidence, expenditure, loan-to-value, loan-to-income, and affordability resilience; the kinds of factors considered in responsible lending.
+
+After exploring the grounded workflow, extend it with [Deep Data Security](./dds) to see row- and column-level access enforced on NL2SQL queries.
+
+Complete the [Setup](./setup) before you begin.
