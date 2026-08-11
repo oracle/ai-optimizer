@@ -56,9 +56,9 @@ What is the average annual salary of mortgagors in Leeds?
 
 Show each mortgagor's LTV and LTI, highest first by LTV.
 
-Which applications have an LTV above 85%?
-
 Compare the requested loan amount and monthly committed expenditure for MORTGAGOR_005 and MORTGAGOR_008.
+
+Are there any mortgagors who do not meet our lending criteria?
 ```
 
 **What to look for:** the agent calls SQLcl to query `mortgage_applications` and `mortgage_application_summary`, returning current values and aggregates. For a question about criteria or evidence, with only **NL2SQL** enabled, it should say that the structured database does not have that information.

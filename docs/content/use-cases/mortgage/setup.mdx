@@ -48,9 +48,10 @@ podman exec -it ai-optimizer-db sqlplus '<AIO_DB_USERNAME>/<AIO_DB_PASSWORD>@<AI
 Confirm that the seed contains the mortgage summary view:
 
 ```sql
-SELECT mortgagor_label, property_location, requested_loan_amount, loan_to_value_pct
-FROM mortgage_application_summary
-ORDER BY mortgagor_label;
+SELECT mortgagor_label, property_location, 
+       requested_loan_amount, loan_to_value_pct
+  FROM mortgage_application_summary
+ ORDER BY mortgagor_label;
 ```
 
 ## Import the prompts
@@ -68,10 +69,10 @@ See [Prompt Engineering](../../client/tools/prompts) for more on managing prompt
 
 ## Enable models
 
-Enable the language and embedding models if they are not already enabled. In the **AI Optimizer**, navigate to **Configuration** > **Models**.
+The demo has been tuned against the on-premises models used in the [Walkthrough](../../walkthrough): [Ollama](https://ollama.com/) `granite4.1:8b` with `mxbai-embed-large`. Other Language Models may work, especially larger ones, but may require some prompt engineering.
+
+See [Model Configuration](../../client/configuration/models) for more on configuring models.
 
 ## Embed the corpus
 
 In **Tools** > **Split/Embed**, create one vector store from all files in `corpus/`. Use an alias such as `MORTGAGE_DEMO_DOCS`.
-
-Keep the same embedding model selected for embedding and retrieval. Embed the complete corpus in one shared store so each step can retrieve the relevant policy and application documents.
