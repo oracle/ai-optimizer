@@ -82,6 +82,7 @@ async def test_streams_happy_path(app_client, auth_headers, monkeypatch):
     """Aggregates streamed chunks into completion payload with metadata."""
 
     async def fake_stream(*_args, **_kwargs) -> AsyncGenerator[Dict[str, Any], None]:
+        yield {"type": "heartbeat"}
         yield {"type": "stream", "content": "Hello"}
         yield {"type": "stream", "content": " world"}
         yield {
@@ -111,6 +112,7 @@ async def test_streams_happy_path(app_client, auth_headers, monkeypatch):
 
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/event-stream")
+    assert ": keep-alive\n\n" in resp.text
 
     payloads = await _collect_sse(resp)
     assert payloads[-1] == "[DONE]"
@@ -266,9 +268,7 @@ async def test_streams_ollama_integration(app_client, auth_headers):
         assert token_usage, (
             "Expected token_usage on the completion event — UsageMetadataCallbackHandler should observe usage"
         )
-        assert token_usage.get("total_tokens", 0) > 0, (
-            f"Expected non-zero total_tokens, got {token_usage}"
-        )
+        assert token_usage.get("total_tokens", 0) > 0, f"Expected non-zero total_tokens, got {token_usage}"
     finally:
         settings.client_settings = original_settings
         _client_store.clear()

@@ -1,0 +1,127 @@
+---
+title: Ready to Review?
+description: Explore the Mortgage Lending use case.
+sidebar_position: 10
+---
+
+{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+
+Before starting, confirm that all [setup](./setup) steps have been completed:
+
+<label><input type="checkbox" /> <code>schema.sql</code> completed successfully.</label><br />
+<label><input type="checkbox" /> The mortgage prompts were imported.</label><br />
+<label><input type="checkbox" /> A language model and an embedding model are enabled.</label><br />
+<label><input type="checkbox" /> The shared vector store is populated.</label><br />
+<label><input type="checkbox" /> <strong>NL2SQL</strong> appears under <strong>Tool Selection</strong> in the Chatbot sidebar.</label>
+
+## Explore the Portfolio
+
+Open **Chatbot**. Before each step, use **Tool Selection** in the sidebar to match the settings shown.
+
+### Step 1: LLM-only
+
+:::note[Settings]
+**Vector Search:** Off; **NL2SQL:** Off
+:::
+
+#### Ask:
+
+```text
+What are Harbourstone's criteria for fixed-term contract income?
+
+What is the average annual salary of mortgagors in Leeds?
+```
+
+**What to look for:** the model either refuses, hedges, or makes up an answer. It has no knowledge of this lender's criteria or the mortgage portfolio.
+
+> The model can discuss mortgages in general, but it does not know the data or policy for this use case. Next, connect it to the application data.
+
+### Context and Grounding
+
+The model's trained knowledge does not include this portfolio. The **AI Optimizer** augments answers at runtime: NL2SQL retrieves current application data, while Vector Search retrieves the lender's criteria and application packs.
+
+The following steps show how the answer changes as structured data, documents, and then both sources become available.
+
+### Step 2: Add NL2SQL
+
+:::note[Settings]
+**Vector Search:** Off; **NL2SQL:** On
+:::
+
+#### Ask:
+
+```text
+What is the average annual salary of mortgagors in Leeds?
+
+Show each mortgagor's LTV and LTI, highest first by LTV.
+
+Compare the requested loan amount and monthly committed expenditure for MORTGAGOR_005 and MORTGAGOR_008.
+
+Are there any mortgagors who do not meet our lending criteria?
+```
+
+**What to look for:** the agent calls SQLcl to query `mortgage_applications` and `mortgage_application_summary`, returning current values and aggregates. For a question about criteria or evidence, with only **NL2SQL** enabled, it should say that the structured database does not have that information.
+
+> These answers come from the live database, not a static report. The data explains the size and shape of an application, but it does not explain the policy behind it.
+
+### Step 3: Add Vector Search
+
+:::note[Settings]
+**Vector Search:** On; **NL2SQL:** Off
+:::
+
+#### Ask:
+
+```text
+What are the lending criteria?
+
+What evidence is expected for fixed-term contract income?
+
+Summarize the application pack for MORTGAGOR_003.
+
+What circumstances require enhanced review under the policy?
+```
+
+**What to look for:** the model retrieves the criteria, evidence standard, review playbook, or named application pack. It can explain the policy and the document context, but it cannot calculate the portfolio values without NL2SQL.
+
+> The documents explain the policy and the review context. The numbers that determine whether a threshold is met still live in the database.
+
+### Step 4: Both Together
+
+:::note[Settings]
+**Vector Search:** On; **NL2SQL:** On
+:::
+
+#### Ask:
+
+```text
+Using MORTGAGOR_007's application data and the policy documents, which factors require enhanced review?
+
+Which mortgagors are outside the LTV or LTI threshold, and what does the policy say about the relevant review factors?
+
+Does MORTGAGOR_003's application record align with the policy requirements for fixed-term contract income?
+```
+
+**What to look for:** the combined-mode classifier routes these questions to both tools and synthesizes one response. The answer separates database facts from policy context, then explains whether the application is within a threshold, requires enhanced review, needs evidence, or is outside a threshold. It does not make an approval or decline.
+
+> Neither tool gets here alone. The application data provides the facts; the policy documents explain what those facts mean in a review.
+
+## More questions to try
+
+| Prompt                                                                               | Demonstrates                             |
+| ------------------------------------------------------------------------------------ | ---------------------------------------- |
+| What is the average verified annual salary in Bristol?                               | Location-filtered aggregate.             |
+| Which location has the highest average requested loan amount?                        | `GROUP BY` aggregate.                    |
+| Which application has the highest LTI multiple?                                      | View-based ranking.                      |
+| What does the policy say about using property value as affordability evidence?       | Policy retrieval.                        |
+| For MORTGAGOR_005, compare the high-LTV flag with the application-pack review notes. | Structured data plus document narrative. |
+
+## Resetting
+
+To re-run the use case from scratch, delete the shared vector store in **Configuration** > **Databases**, re-run `schema.sql`, and re-embed the corpus. The seed is deterministic, so you can repeat the experiment with the same answers.
+
+## What's Next?
+
+- Extend this use case with [Deep Data Security](./dds) to restrict which application rows and columns an NL2SQL user can access.
+- Try the [Testbed](../../client/testbed) to evaluate the same questions against different models, prompts, or embedding strategies.

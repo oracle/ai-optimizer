@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-1.  Start the container:
+1.  Start the database container:
 
     ```bash
     podman run -d --name ai-optimizer-db -p 1521:1521 container-registry.oracle.com/database/free:latest-lite
@@ -12,25 +12,25 @@ import TabItem from '@theme/TabItem';
 
 1.  Wait until the database is ready:
 
-{/* prettier-ignore */}
-   <Tabs>
-   <TabItem value="macos-linux" label="Linux/macOS">
+    {/* prettier-ignore */}
+    <Tabs>
+    <TabItem value="macos-linux" label="Linux/macOS">
 
     ```bash
     until podman logs ai-optimizer-db 2>&1 | grep -q 'DATABASE IS READY TO USE!'; do sleep 5; done
     ```
 
-{/* prettier-ignore */}
-   </TabItem>
-   <TabItem value="powershell" label="PowerShell">
+    {/* prettier-ignore */}
+    </TabItem>
+    <TabItem value="powershell" label="PowerShell">
 
     ```powershell
     while (-not (podman logs ai-optimizer-db 2>&1 | Select-String -Quiet 'DATABASE IS READY TO USE!')) { Start-Sleep -Seconds 5 }
     ```
 
-{/* prettier-ignore */}
-   </TabItem>
-   </Tabs>
+    {/* prettier-ignore */}
+    </TabItem>
+    </Tabs>
 
 1.  Set `vector_memory_size`:
 
@@ -45,7 +45,7 @@ import TabItem from '@theme/TabItem';
 
 1.  Restart the database and wait for a new ready message:
 
-          <Tabs>
+    <Tabs>
 
     <TabItem value="macos-linux" label="Linux/macOS">
 
@@ -55,7 +55,7 @@ import TabItem from '@theme/TabItem';
     until [ "$(podman logs ai-optimizer-db 2>&1 | grep -c 'DATABASE IS READY TO USE!')" -gt "$ready_lines" ]; do sleep 5; done
     ```
 
-          </TabItem>
+    </TabItem>
 
     <TabItem value="powershell" label="PowerShell">
 
@@ -65,6 +65,6 @@ import TabItem from '@theme/TabItem';
     while (@(podman logs ai-optimizer-db 2>&1 | Select-String 'DATABASE IS READY TO USE!').Count -le $readyLines) { Start-Sleep -Seconds 5 }
     ```
 
-          </TabItem>
+    </TabItem>
 
     </Tabs>

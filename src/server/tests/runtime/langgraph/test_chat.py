@@ -6,6 +6,7 @@ Tests for LangGraph ChatOrchestrator.
 """
 # spell-checker: disable
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -268,9 +269,7 @@ class TestChatOrchestratorCache(_LangGraphChatMixin, CacheBase):
                 await orch.refresh_prompts()
 
             stored_identity = orch._session_cache[("c1", "llm_only")][2]
-            stored_compartment = stored_identity.get("_oci_resolved", {}).get(
-                "genai_compartment_id"
-            )
+            stored_compartment = stored_identity.get("_oci_resolved", {}).get("genai_compartment_id")
             assert stored_compartment == "ocid1.compartment.oc1..B", (
                 "After refresh_prompts the cached identity should describe the "
                 "session that was actually rebuilt (current OCI state), "
@@ -393,6 +392,29 @@ class TestExecuteChatStream(_LangGraphChatMixin, StreamBase):
         session.graph.nodes = {}
         return session
 
+    @pytest.mark.anyio
+    async def test_emits_heartbeats_while_waiting_for_a_response(self, monkeypatch):
+        """Keep a quiet stream active until the model produces a response."""
+        monkeypatch.setattr(
+            "server.app.runtime.langgraph.chat._STREAM_HEARTBEAT_INTERVAL",
+            0.01,
+        )
+        orch = self.make_orchestrator(tools_enabled=["NL2SQL"])
+        mock_session = self._mock_agent_session()
+
+        async def delayed_run(_self, _session, _history_messages, _question, queue):
+            await asyncio.sleep(0.03)
+            await queue.put({"type": "stream", "content": "done"})
+
+        with (
+            patch.object(orch, "_build_session", new_callable=AsyncMock, return_value=mock_session),
+            patch.object(self.ChatOrchestratorClass, "_run_agent_streaming", delayed_run),
+        ):
+            events = [event async for event in orch.execute_chat_stream("test", "c1")]
+
+        assert any(event["type"] == "heartbeat" for event in events)
+        assert {"type": "stream", "content": "done"} in events
+
 
 # ---------------------------------------------------------------------------
 # TestApiKeyLiveness
@@ -510,8 +532,7 @@ class TestCombinedPromptFetch:
 
         assert session._classifier_prompt == get_factory_text(CLASSIFIER_PROMPT_NAME)
         assert any(
-            CLASSIFIER_PROMPT_NAME in str(c) and "validation" in str(c)
-            for c in mock_logger.warning.call_args_list
+            CLASSIFIER_PROMPT_NAME in str(c) and "validation" in str(c) for c in mock_logger.warning.call_args_list
         )
 
     @pytest.mark.anyio
@@ -540,8 +561,7 @@ class TestCombinedPromptFetch:
 
         assert session._synthesis_template == get_factory_text(SYNTHESIS_PROMPT_NAME)
         assert any(
-            SYNTHESIS_PROMPT_NAME in str(c) and "validation" in str(c)
-            for c in mock_logger.warning.call_args_list
+            SYNTHESIS_PROMPT_NAME in str(c) and "validation" in str(c) for c in mock_logger.warning.call_args_list
         )
 
     @pytest.mark.anyio
@@ -614,22 +634,29 @@ class TestCombinedSessionOciAuth:
                 resolve_client=lambda _c: cs,
             )
 
-            with patch(
-                "server.app.runtime.langgraph.chat.build_vecsearch_graph",
-                new=AsyncMock(return_value=mock_compiled_graph()),
-            ), patch(
-                "server.app.runtime.langgraph.chat.build_nl2sql_graph",
-                new=AsyncMock(return_value=mock_compiled_graph()),
-            ), patch(
-                "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
-                new=AsyncMock(return_value=""),
-            ), patch(
-                "server.app.runtime.langgraph.chat.fetch_prompt_with_fallback",
-                new=AsyncMock(side_effect=lambda _u, _k, name: get_factory_text(name) or ""),
-            ), patch(
-                "server.app.runtime.langgraph.chat.find_model",
-                return_value=None,
-            ), patch("server.app.runtime.langgraph.chat.CombinedSession") as mock_combined_cls:
+            with (
+                patch(
+                    "server.app.runtime.langgraph.chat.build_vecsearch_graph",
+                    new=AsyncMock(return_value=mock_compiled_graph()),
+                ),
+                patch(
+                    "server.app.runtime.langgraph.chat.build_nl2sql_graph",
+                    new=AsyncMock(return_value=mock_compiled_graph()),
+                ),
+                patch(
+                    "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
+                    new=AsyncMock(return_value=""),
+                ),
+                patch(
+                    "server.app.runtime.langgraph.chat.fetch_prompt_with_fallback",
+                    new=AsyncMock(side_effect=lambda _u, _k, name: get_factory_text(name) or ""),
+                ),
+                patch(
+                    "server.app.runtime.langgraph.chat.find_model",
+                    return_value=None,
+                ),
+                patch("server.app.runtime.langgraph.chat.CombinedSession") as mock_combined_cls,
+            ):
                 mock_combined_cls.return_value = MagicMock(spec=CombinedSession)
                 await orch._build_combined_session(cs, client="c1")
 
@@ -648,22 +675,29 @@ class TestCombinedSessionOciAuth:
         cs = mock_client_settings(provider="ollama", model_id=TEST_OLLAMA_MODEL_ID)
         orch = _make_orchestrator(cs=cs)
 
-        with patch(
-            "server.app.runtime.langgraph.chat.build_vecsearch_graph",
-            new=AsyncMock(return_value=mock_compiled_graph()),
-        ), patch(
-            "server.app.runtime.langgraph.chat.build_nl2sql_graph",
-            new=AsyncMock(return_value=mock_compiled_graph()),
-        ), patch(
-            "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
-            new=AsyncMock(return_value=""),
-        ), patch(
-            "server.app.runtime.langgraph.chat.fetch_prompt_with_fallback",
-            new=AsyncMock(side_effect=lambda _u, _k, name: get_factory_text(name) or ""),
-        ), patch(
-            "server.app.runtime.langgraph.chat.find_model",
-            return_value=None,
-        ), patch("server.app.runtime.langgraph.chat.CombinedSession") as mock_combined_cls:
+        with (
+            patch(
+                "server.app.runtime.langgraph.chat.build_vecsearch_graph",
+                new=AsyncMock(return_value=mock_compiled_graph()),
+            ),
+            patch(
+                "server.app.runtime.langgraph.chat.build_nl2sql_graph",
+                new=AsyncMock(return_value=mock_compiled_graph()),
+            ),
+            patch(
+                "server.app.runtime.langgraph.chat.fetch_prompt_for_route",
+                new=AsyncMock(return_value=""),
+            ),
+            patch(
+                "server.app.runtime.langgraph.chat.fetch_prompt_with_fallback",
+                new=AsyncMock(side_effect=lambda _u, _k, name: get_factory_text(name) or ""),
+            ),
+            patch(
+                "server.app.runtime.langgraph.chat.find_model",
+                return_value=None,
+            ),
+            patch("server.app.runtime.langgraph.chat.CombinedSession") as mock_combined_cls,
+        ):
             mock_combined_cls.return_value = MagicMock(spec=CombinedSession)
             await orch._build_combined_session(cs, client="c1")
 

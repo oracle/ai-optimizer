@@ -66,6 +66,7 @@ from server.app.runtime.langgraph.vecsearch import build_vecsearch_graph
 LOGGER = logging.getLogger(__name__)
 
 SessionType = Union[GraphFlowSession, AgentGraphSession, CombinedSession]
+_STREAM_HEARTBEAT_INTERVAL = 15.0
 
 ROUTE_PROMPTS.update(
     {
@@ -103,9 +104,7 @@ class ChatOrchestrator:
     def _validate_llm(cs: Any) -> None:
         """Raise LLMConfigurationError if provider or model ID is missing."""
         if cs.ll_model.provider is None or cs.ll_model.id is None:
-            raise LLMConfigurationError(
-                "No language model configured. Set a provider and model ID in client settings."
-            )
+            raise LLMConfigurationError("No language model configured. Set a provider and model ID in client settings.")
 
     @staticmethod
     def _build_identity(cs_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -201,9 +200,7 @@ class ChatOrchestrator:
         graph = await build_llm_only_graph(cs, self._server_url, self.api_key, checkpointer=MemorySaver())
         return AgentGraphSession(graph)
 
-    async def _build_nl2sql_agent_session(
-        self, cs: ClientSettings, client: str = ""
-    ) -> NL2SQLGraphSession:
+    async def _build_nl2sql_agent_session(self, cs: ClientSettings, client: str = "") -> NL2SQLGraphSession:
         """Build an NL2SQL agent session from client settings."""
         # Resolve the effective tool alias with the real client id so a Deep Data Security
         # 'connect as' override routes NL2SQL to the end-user connection (and raises
@@ -348,7 +345,8 @@ class ChatOrchestrator:
         resurface the off-turn as context.
         """
         return [
-            e for e in self.history.get(client)
+            e
+            for e in self.history.get(client)
             if e.get("history_enabled", True) and e.get("role") in ("user", "assistant")
         ]
 
@@ -592,15 +590,24 @@ class ChatOrchestrator:
         async with self._stream_locks[(client, route)]:
             cs = self._resolve_client(client)
             task = self._create_streaming_task(session, route, cs, question, client, queue)
+            loop = asyncio.get_running_loop()
+            next_heartbeat = loop.time() + _STREAM_HEARTBEAT_INTERVAL
 
             try:
                 while True:
                     if task.done() and queue.empty():
                         break
                     try:
-                        event = await asyncio.wait_for(queue.get(), timeout=0.1)
+                        event = await asyncio.wait_for(
+                            queue.get(),
+                            timeout=min(0.1, max(0.0, next_heartbeat - loop.time())),
+                        )
                     except asyncio.TimeoutError:
+                        if loop.time() >= next_heartbeat:
+                            yield {"type": "heartbeat"}
+                            next_heartbeat = loop.time() + _STREAM_HEARTBEAT_INTERVAL
                         continue
+                    next_heartbeat = loop.time() + _STREAM_HEARTBEAT_INTERVAL
                     if event.get("type") == "stream":
                         collected.append(event.get("content", ""))
                     elif event.get("type") == "_token_usage":

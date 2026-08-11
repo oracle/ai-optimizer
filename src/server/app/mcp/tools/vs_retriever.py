@@ -32,6 +32,7 @@ LOGGER = logging.getLogger(__name__)
 TABLE_SELECTION_TEMPERATURE = 0.0
 TABLE_SELECTION_MAX_TOKENS = 4096
 DEFAULT_MAX_TABLES = 3
+RETRIEVER_TIMEOUT_SECONDS = 360.0
 _FENCED_JSON_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL | re.IGNORECASE)
 
 
@@ -392,7 +393,7 @@ def register_retriever_tool():
         title="Vector Search Retriever",
         tags={"vector-search", "optimizer"},
         annotations={"readOnlyHint": True, "openWorldHint": True},
-        timeout=60.0,
+        timeout=RETRIEVER_TIMEOUT_SECONDS,
     )
     async def retriever(
         thread_id: str,
