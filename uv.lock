@@ -3,16 +3,16 @@ revision = 3
 requires-python = ">=3.11, <3.13"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version >= '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
-    "python_full_version < '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version >= '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
+    "python_full_version >= '3.12' and platform_machine == 'arm64' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
+    "python_full_version < '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
-    "python_full_version >= '3.12' and platform_machine == 'arm64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'arm64' and sys_platform == 'darwin'",
 ]
 required-markers = [
@@ -74,7 +74,6 @@ all = [
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-logging" },
     { name = "opentelemetry-instrumentation-requests" },
-    { name = "oracleagentmemory" },
     { name = "pyagentspec" },
     { name = "pypdf" },
     { name = "streamlit" },
@@ -110,7 +109,6 @@ server = [
     { name = "litellm" },
     { name = "llama-index-core" },
     { name = "oci" },
-    { name = "oracleagentmemory" },
     { name = "pyagentspec" },
     { name = "pypdf" },
     { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
@@ -163,7 +161,6 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'otel'", specifier = "==0.65b0" },
     { name = "opentelemetry-instrumentation-logging", marker = "extra == 'otel'", specifier = "==0.65b0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'otel'", specifier = "==0.65b0" },
-    { name = "oracleagentmemory", marker = "extra == 'server'", specifier = ">=26.6.0" },
     { name = "oracledb", specifier = "~=4.0" },
     { name = "pyagentspec", marker = "extra == 'server'", specifier = "==26.1.2" },
     { name = "pydantic-settings", specifier = "==2.15.0" },
@@ -3372,27 +3369,6 @@ wheels = [
 ]
 
 [[package]]
-name = "oracleagentmemory"
-version = "26.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "anyio" },
-    { name = "cryptography" },
-    { name = "exceptiongroup" },
-    { name = "litellm" },
-    { name = "numpy" },
-    { name = "oracledb" },
-    { name = "pydantic" },
-    { name = "typing-extensions" },
-    { name = "urllib3" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/9e/c7f9cfdd9205512563d68465c07b5bc7b9117bf7cbc36d3718af19d7cbfc/oracleagentmemory-26.6.0-cp311-none-any.whl", hash = "sha256:bccab0574f16adbab9e73a3fc5c4545caab7822b9c76fdc453829f5fa29ab038", size = 514759, upload-time = "2026-07-07T09:35:44.451Z" },
-    { url = "https://files.pythonhosted.org/packages/3d/6c/bba8e452d79ddf8f1ab4991cb788201a260fcb51992036a585d72f51ff4f/oracleagentmemory-26.6.0-cp312-none-any.whl", hash = "sha256:a6e4af4423ab1abf3b982ffee1d5c2e732f5097254eac0f161fba21e28da8cc1", size = 493669, upload-time = "2026-07-07T09:35:45.841Z" },
-]
-
-[[package]]
 name = "oracledb"
 version = "4.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4958,13 +4934,13 @@ version = "2.13.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version >= '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
-    "python_full_version < '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version >= '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
+    "python_full_version < '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
 ]
@@ -5014,13 +4990,13 @@ version = "0.28.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version >= '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
-    "python_full_version < '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version >= '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
+    "python_full_version < '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
 ]
@@ -5082,8 +5058,8 @@ version = "5.8.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
-    "python_full_version < '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
     "python_full_version >= '3.12' and platform_machine == 'arm64' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and platform_machine != 'arm64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'arm64' and sys_platform == 'darwin'",
 ]
 dependencies = [
@@ -5108,11 +5084,11 @@ version = "5.15.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version >= '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
 ]
