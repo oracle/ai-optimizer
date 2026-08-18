@@ -1,4 +1,4 @@
-# Harbourstone Home Finance — Affordability Review Playbook
+# Gonzap Home Finance — Affordability Review Playbook
 
 Document status: Fictional demonstration guidance. Not a real lender policy or lending advice.
 
