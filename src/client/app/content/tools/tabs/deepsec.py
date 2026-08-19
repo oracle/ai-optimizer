@@ -214,7 +214,13 @@ def _set_connect_as(end_user: str) -> bool:
 def _clear_connect_as() -> None:
     """Tear down the managed connect-as connection and clear the in-memory selection."""
     try:
-        api_delete("deepsec/connect-as", extra_headers=_client_header(), toast="Connect-as cleared.")
+        api_delete(
+            "deepsec/connect-as",
+            extra_headers=_client_header(),
+            toast="Connect-as cleared.",
+            # Clearing also rebuilds SQLcl's connection store on the server.
+            timeout=60,
+        )
     except httpx.HTTPStatusError as exc:
         _error("Clear failed", exc)
         return
