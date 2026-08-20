@@ -243,6 +243,33 @@ server:
     region: us-ashburn-1
 ```
 
+#### Reuse an OBaaS ADB-S Wallet
+
+When AI Optimizer is installed as an OBaaS subchart and both applications use
+the same `ADB-S`, OBaaS owns the `AutonomousDatabase` resource and its wallet
+Secrets. Configure AI Optimizer to reuse those resources instead of creating
+another set. In the OBaaS values file, set both `useExisting: true` and
+`existingWalletSource: obaas`:
+
+```yaml
+ai-optimizer:
+  server:
+    database:
+      type: ADB-S
+      adb:
+        useExisting: true
+        existingWalletSource: obaas
+        serviceName: <adb-tns-alias>
+      privAuthn:
+        secretName: <shared-privileged-database-secret>
+```
+
+`existingWalletSource: obaas` takes effect only with `useExisting: true`.
+With `useExisting: true` and no source selection, AI Optimizer expects
+pre-existing wallet resources that use its default naming convention. With
+`useExisting: false`, it creates and manages those resources using the same
+default names. Explicit wallet Secret names take precedence when configured.
+
 For an `ADB-S` deployment outside OKE, configure OCI credentials for OraOperator by following the [OraOperator project](https://github.com/oracle/oracle-database-operator). Then reference the ConfigMap and API-key Secret that it creates:
 
 ```yaml

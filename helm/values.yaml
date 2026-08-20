@@ -202,14 +202,14 @@ server:
     # This is useful when deploying as a subchart of another chart (e.g., obaas) that
     # already manages the ADB wallet secrets.
     adb:
-      # -- Set to true to use existing ADB secrets instead of creating new ones.
-      # When true, the chart will NOT create AutonomousDatabase or wallet-pass resources,
-      # assuming they already exist with the standard naming convention:
-      # <fullname>-adb-tns-admin-<Release.Revision> and <fullname>-adb-wallet-pass-<Release.Revision>,
-      # where <fullname> resolves to the chart's `ai-optimizer.fullname` helper
-      # (typically "<release>-ai-optimizer", or just "<release>" when the release
-      # name already contains the chart name).
+      # -- Set to true to reuse existing ADB wallet secrets instead of creating them.
+      # When true, the chart does not create an AutonomousDatabase resource.
       useExisting: false
+      # -- Naming convention for existing ADB wallet secrets. When useExisting is
+      # true, set to "obaas" to reuse <release>-adb-tns-admin-<Release.Revision>
+      # and <release>-adb-wallet-pass-<Release.Revision>. Explicit wallet secret
+      # names below take precedence over this setting.
+      existingWalletSource: ""
       # -- (Optional) Override the TNS admin secret name. If empty, uses default naming.
       tnsAdminSecretName: ""
       # -- (Optional) Override the wallet password secret name. If empty, uses default naming.
