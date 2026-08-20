@@ -37,6 +37,7 @@ coverage.xml
 htmlcov/
 test-results.xml
 **/.ruff_cache
+**/.uv-cache
 
 ##############################################################################
 # AI Code Assists
