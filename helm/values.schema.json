@@ -122,6 +122,7 @@
               "additionalProperties": false,
               "properties": {
                 "useExisting": { "type": "boolean" },
+                "existingWalletSource": { "type": "string", "enum": ["", "obaas"] },
                 "tnsAdminSecretName": { "type": "string" },
                 "walletPassSecretName": { "type": "string" },
                 "walletPassSecretKey": { "type": "string" },

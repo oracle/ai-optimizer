@@ -725,6 +725,8 @@ supporting either existing secrets or auto-generated ones.
 {{- $tnsAdmin := $adb.tnsAdminSecretName | default "" -}}
 {{- if ne $tnsAdmin "" -}}
   {{- $tnsAdmin -}}
+{{- else if and ($adb.useExisting | default false) (eq ($adb.existingWalletSource | default "") "obaas") -}}
+  {{- printf "%s-adb-tns-admin-%d" .Release.Name .Release.Revision -}}
 {{- else -}}
   {{- printf "%s-adb-tns-admin-%d" (include "ai-optimizer.fullname" .) .Release.Revision -}}
 {{- end -}}
@@ -735,6 +737,8 @@ supporting either existing secrets or auto-generated ones.
 {{- $walletPass := $adb.walletPassSecretName | default "" -}}
 {{- if ne $walletPass "" -}}
   {{- $walletPass -}}
+{{- else if and ($adb.useExisting | default false) (eq ($adb.existingWalletSource | default "") "obaas") -}}
+  {{- printf "%s-adb-wallet-pass-%d" .Release.Name .Release.Revision -}}
 {{- else -}}
   {{- printf "%s-adb-wallet-pass-%d" (include "ai-optimizer.fullname" .) .Release.Revision -}}
 {{- end -}}

@@ -528,6 +528,83 @@ class TestApplicationEnvironmentNames:
         assert "AIO_DB_WALLET_PASSWORD" in env_names
         assert "DB_WALLET_PASSWORD" not in env_names
 
+    def test_adb_wallet_binding_can_reuse_obaas_wallet(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.type=ADB-S",
+            "server.database.adb.useExisting=true",
+            "server.database.adb.existingWalletSource=obaas",
+            "server.database.adb.serviceName=mydb_low",
+            "server.database.privAuthn.secretName=db-priv-authn",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        deployment = _server_deployment(_docs(result.stdout))
+        volumes = deployment["spec"]["template"]["spec"]["volumes"]
+        tns_admin = next(volume for volume in volumes if volume["name"] == "tns-admin")
+
+        assert tns_admin["secret"]["secretName"] == "test-adb-tns-admin-1"
+        wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password["valueFrom"]["secretKeyRef"] == {
+            "name": "test-adb-wallet-pass-1",
+            "key": "test-adb-wallet-pass-1",
+        }
+
+    def test_adb_wallet_source_uses_aio_names_without_existing_wallets(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.type=ADB-S",
+            "server.database.oci.ocid=ocid1.autonomousdatabase.oc1..test",
+            "server.database.adb.existingWalletSource=obaas",
+            "server.database.adb.serviceName=mydb_low",
+            "server.database.adb.skipCrdCheck=true",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        deployment = _server_deployment(docs)
+        volumes = deployment["spec"]["template"]["spec"]["volumes"]
+        tns_admin = next(volume for volume in volumes if volume["name"] == "tns-admin")
+
+        assert tns_admin["secret"]["secretName"] == "test-ai-optimizer-adb-tns-admin-1"
+        wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password["valueFrom"]["secretKeyRef"] == {
+            "name": "test-ai-optimizer-adb-wallet-pass-1",
+            "key": "test-ai-optimizer-adb-wallet-pass-1",
+        }
+        assert _autonomousdatabase_doc(docs) is not None
+
+    def test_explicit_adb_wallet_names_override_obaas_source(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.type=ADB-S",
+            "server.database.adb.useExisting=true",
+            "server.database.adb.existingWalletSource=obaas",
+            "server.database.adb.serviceName=mydb_low",
+            "server.database.adb.tnsAdminSecretName=custom-tns-admin",
+            "server.database.adb.walletPassSecretName=custom-wallet-password",
+            "server.database.adb.walletPassSecretKey=custom-wallet-key",
+            "server.database.privAuthn.secretName=db-priv-authn",
+        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        deployment = _server_deployment(_docs(result.stdout))
+        volumes = deployment["spec"]["template"]["spec"]["volumes"]
+        tns_admin = next(volume for volume in volumes if volume["name"] == "tns-admin")
+
+        assert tns_admin["secret"]["secretName"] == "custom-tns-admin"
+        wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password["valueFrom"]["secretKeyRef"] == {
+            "name": "custom-wallet-password",
+            "key": "custom-wallet-key",
+        }
+
+    def test_adb_wallet_source_rejects_unknown_value(self):
+        result = _render(
+            self._COOKIE,
+            "server.database.adb.existingWalletSource=unsupported",
+        )
+
+        assert result.returncode != 0, "render unexpectedly accepted an unknown existingWalletSource"
+        assert "/server/database/adb/existingWalletSource" in result.stderr
+
     def test_chart_managed_env_file_uses_aio_names(self):
         result = _render(
             self._COOKIE,

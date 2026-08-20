@@ -492,9 +492,7 @@ async def test_import_oci_forwards_genai_touched(app_client, auth_headers, mock_
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
     assert resp.status_code == 200
     kwargs = mock_persist.await_args_list[-1].kwargs
-    assert kwargs.get("oci_user_touched") == {
-        "PROD": {"genai_compartment_id", "genai_region"}
-    }
+    assert kwargs.get("oci_user_touched") == {"PROD": {"genai_compartment_id", "genai_region"}}
 
 
 async def test_import_oci_without_genai_fields_omits_touched(app_client, auth_headers, mock_persist):

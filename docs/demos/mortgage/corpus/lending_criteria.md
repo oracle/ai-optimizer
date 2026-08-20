@@ -1,4 +1,4 @@
-# Harbourstone Home Finance — Residential lending criteria
+# Gonzap Home Finance — Residential lending criteria
 
 Document status: Fictional demonstration policy. Not a real lender policy or lending advice.
 

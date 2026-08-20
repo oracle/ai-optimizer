@@ -14,6 +14,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from runtime_config_fields import RUNTIME_ONLY_FIELDS
+from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.settings import (
     ImportSectionResult,
@@ -85,9 +86,7 @@ def _apply_oci_import(
     if incoming is None:
         return None
     principal_profiles = {
-        cfg.auth_profile.casefold()
-        for cfg in settings.oci_configs
-        if cfg.authentication in PRINCIPAL_OCI_AUTH_TYPES
+        cfg.auth_profile.casefold() for cfg in settings.oci_configs if cfg.authentication in PRINCIPAL_OCI_AUTH_TYPES
     }
     importable = [oci for oci in incoming if oci.auth_profile.casefold() not in principal_profiles]
     skipped_profiles = [oci.auth_profile for oci in incoming if oci.auth_profile.casefold() in principal_profiles]
@@ -97,9 +96,7 @@ def _apply_oci_import(
     created, updated = upsert_list_field("oci_configs", importable)
     for item in created + updated:
         item.usable = False
-    result.oci_configs = ImportSectionResult(
-        created=len(created), updated=len(updated), skipped=len(skipped_profiles)
-    )
+    result.oci_configs = ImportSectionResult(created=len(created), updated=len(updated), skipped=len(skipped_profiles))
     return touched
 
 
@@ -127,6 +124,12 @@ def _restore_prompts(saved: dict[str, str]) -> None:
     for pc in settings.prompt_configs:
         pc.text = saved.get(pc.name, pc.text)
     register_mcp_prompts()
+
+
+async def _refresh_prompts_if_updated(result: SettingsImportResult) -> None:
+    """Rebuild cached chat sessions after a persisted prompt update."""
+    if result.prompt_configs and result.prompt_configs.updated:
+        await get_orchestrator().refresh_prompts()
 
 
 SENSITIVE_FIELDS = {
@@ -400,6 +403,8 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             _client_store.clear()
             _client_store.update(snapshot["store"])
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
+
+        await _refresh_prompts_if_updated(result)
 
         return result
 

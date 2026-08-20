@@ -37,7 +37,7 @@ CREATE TABLE mortgage_applications (
 );
 
 INSERT INTO lenders (lender_name)
-VALUES ('Harbourstone Home Finance (fictional)');
+VALUES ('Gonzap Home Finance (fictional)');
 
 INSERT INTO mortgage_applications (
   application_reference, mortgagor_label, lender_id, application_type, property_location,

@@ -8,6 +8,19 @@ sidebar_position: 40
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
+## v2.4.1 — 20 August 2026
+
+This maintenance release improves the Oracle Backend as a Service (OBaaS) deployment, the mortgage demonstration, and client configuration workflows.
+
+### Highlights
+
+- **Mortgage demonstration:** The mortgage corpus, prompts, and Deep Data Security walkthrough have been updated to reflect the current sample data and policy flow.
+- **Client reliability:** Testbed requests now remain disabled while they run, and clearing a Deep Data Security connect-as selection allows additional time for the server to rebuild its SQLcl connection store.
+- **Settings import:** Updating saved prompts through settings import now refreshes cached chat sessions so they use the updated prompts.
+- **OBaaS deployment:** When AI Optimizer is installed as an [Oracle Backend as a Service](https://oracle.github.io/microservices-backend/obaas/) subchart and shares an Autonomous Database Shared instance, it can reuse the wallet resources managed by Oracle Database Base Service.
+
+For the complete set of changes, see [`v2.4.0...v2.4.1`](https://github.com/oracle/ai-optimizer/compare/v2.4.0...v2.4.1).
+
 ## v2.4.0 — 10 August 2026
 
 This release adds [Oracle Deep Data Security](./client/tools/dds.mdx) support, expands model and embedding workflows, and refreshes the installation, deployment, and documentation experience.

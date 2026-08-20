@@ -237,6 +237,8 @@ helm install ai-optimizer . \
 | `server.database.image.repository` | Container image for SIDB/ADB-FREE | `""` | See examples |
 | `server.database.image.tag` | Container image tag for in-cluster DB images | `""` | Required for SIDB-FREE/ADB-FREE |
 | `server.database.oci.ocid` | ADB-S OCID (for ADB-S only) | `""` | |
+| `server.database.adb.useExisting` | Reuse existing ADB wallet resources | `false` | |
+| `server.database.adb.existingWalletSource` | Naming convention for existing ADB wallet Secrets | `""` | `obaas` |
 | `server.database.other.dsn` | Full DSN (for OTHER only) | `""` | Either dsn OR (host+port+serviceName) |
 | `server.database.other.host` | Database host (for OTHER only) | `""` | Required if dsn not provided |
 | `server.database.other.port` | Database port (for OTHER only) | `""` | Required if dsn not provided |
@@ -254,6 +256,12 @@ helm install ai-optimizer . \
 - **ADB-FREE**: Autonomous Oracle AI Database Free (containerized)
 - **ADB-S**: Autonomous Database Shared (managed OCI service)
 - **OTHER**: External/bring-your-own database (requires host, port, and serviceName)
+
+When AI Optimizer is installed as the OBaaS subchart and both use the same ADB-S,
+set `server.database.adb.useExisting=true` and
+`server.database.adb.existingWalletSource=obaas`. AI Optimizer then reuses the
+OBaaS wallet Secrets for the release. Explicit ADB wallet Secret names take
+precedence when supplied.
 
 #### Server OCI Configuration
 

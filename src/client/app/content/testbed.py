@@ -710,20 +710,25 @@ def main() -> None:
     button_load_disabled = button_load_disabled or "runtime_testbed_qa" in state
 
     col_left, col_center, _, col_right = st.columns([3, 3, 4, 3])
-
-    if not button_load_disabled:
-        state.runtime_testbed_running = "runtime_load_tests" in state and state.runtime_load_tests is True
-    else:
-        state.runtime_testbed_running = True
+    testset_request = state.get("runtime_testbed_request")
+    if testset_request is None:
+        state.pop("runtime_testbed_running", None)
+    testbed_running = testset_request is not None
 
     if col_left.button(
         button_text,
         key="runtime_load_tests",
         width="stretch",
-        disabled=state.runtime_testbed_running,
+        disabled=button_load_disabled or testbed_running,
     ):
         assert endpoint is not None
-        _process_testset_request(endpoint, api_params, testset_source)
+        state.runtime_testbed_running = True
+        state.runtime_testbed_request = {
+            "endpoint": endpoint,
+            "api_params": api_params,
+            "testset_source": testset_source,
+        }
+        st.rerun()
 
     col_center.button(
         "Reset",
@@ -732,15 +737,27 @@ def main() -> None:
         width="stretch",
         on_click=_reset_testset,
         kwargs={"cache": True},
+        disabled=testbed_running,
     )
     col_right.button(
         "⚠ Delete Test Set",
         key="runtime_delete_test_set",
         type="tertiary",
         width="stretch",
-        disabled=not state.runtime_testbed["testset_id"] or not is_authenticated(),
+        disabled=testbed_running or not state.runtime_testbed["testset_id"] or not is_authenticated(),
         on_click=_qa_delete,
     )
+
+    if testset_request:
+        try:
+            _process_testset_request(
+                testset_request["endpoint"],
+                testset_request["api_params"],
+                testset_request["testset_source"],
+            )
+        finally:
+            state.pop("runtime_testbed_running", None)
+            state.pop("runtime_testbed_request", None)
 
     # Show/Edit Q&A Tests
     if "runtime_testbed_qa" in state:

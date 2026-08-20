@@ -1,4 +1,4 @@
-# Harbourstone Home Finance — Income Evidence Standard
+# Gonzap Home Finance — Income Evidence Standard
 
 Document status: Fictional demonstration policy. Not a real lender policy or lending advice.
 

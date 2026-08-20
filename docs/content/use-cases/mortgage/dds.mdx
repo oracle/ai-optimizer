@@ -52,43 +52,7 @@ The end user can see only rows where `property_location = 'Leeds'`. For those ro
 
 The role is now available to assign to an end user.
 
-## Step 3: Create the data grant
-
-In **Data Grants**, create the policy that defines the reviewer’s access:
-
-1. Set **Data grant name** to `DG_LEEDS_APPLICATION_SUMMARY`.
-2. Set **Object (table/view)** to `MORTGAGE_APPLICATION_SUMMARY`.
-3. Select the `SELECT` privilege.
-4. For **Columns**, choose **All columns except**, then select:
-   - `TOTAL_VERIFIED_ANNUAL_INCOME`
-   - `MONTHLY_COMMITTED_EXPENDITURE`
-   - `MONTHLY_HOUSEHOLD_EXPENDITURE`
-5. Set **Row predicate** to:
-
-   ```sql
-   property_location = 'Leeds'
-   ```
-
-6. Set **Grant to data role** to `MORTGAGE_REVIEWER_ROLE`.
-7. Review the generated statement. It should be close to:
-
-   ```sql
-   CREATE DATA GRANT DG_LEEDS_APPLICATION_SUMMARY
-     AS SELECT (
-       ALL COLUMNS EXCEPT
-         "TOTAL_VERIFIED_ANNUAL_INCOME",
-         "MONTHLY_COMMITTED_EXPENDITURE",
-         "MONTHLY_HOUSEHOLD_EXPENDITURE"
-     ) ON MORTGAGE_APPLICATION_SUMMARY
-     WHERE property_location = 'Leeds'
-     TO MORTGAGE_REVIEWER_ROLE;
-   ```
-
-8. Select **Create Data Grant**.
-
-This policy leaves LTV, LTI, employment type, requested loan amount, and location available. The reviewer can assess a case against the lending criteria without receiving the detailed financial inputs used to calculate those measures.
-
-## Step 4: Create the end user
+## Step 3: Create the end user
 
 1. In **End Users**, select **Create End User**.
 2. Set **End user name** to `LEEDS_REVIEWER`.
@@ -97,6 +61,32 @@ This policy leaves LTV, LTI, employment type, requested loan amount, and locatio
 5. Select **Create**.
 
 The end user is provisioned with the configured database user's password. Use that password only for the direct-SQL comparison in the next step.
+
+## Step 4: Create the data grant
+
+In **Data Grants**, create the policy that defines the reviewer’s access:
+
+1. Set **Data grant name** to `DG_LEEDS_APPLICATION_SUMMARY`.
+2. Set **Object (table/view)** to `MORTGAGE_APPLICATIONS`.
+3. Select the `SELECT` privilege.
+4. Set **Row predicate** to:
+
+   ```sql
+   PROPERTY_LOCATION='Leeds'
+   ```
+
+5. Set **Grant to data role** to `MORTGAGE_REVIEWER_ROLE`.
+6. Review the generated statement. It should be close to:
+
+   ```sql
+   CREATE DATA GRANT DG_LEEDS_APPLICATION_SUMMARY
+     AS SELECT ON MORTGAGE_APPLICATIONS WHERE PROPERTY_LOCATION='Leeds'
+     TO MORTGAGE_REVIEWER_ROLE;
+   ```
+
+8. Select **Create Data Grant**.
+
+This policy leaves LTV, LTI, employment type, requested loan amount, and location available. The reviewer can assess a case against the lending criteria without receiving the detailed financial inputs used to calculate those measures.
 
 ## Step 5: Test the policy
 
@@ -107,29 +97,15 @@ The schema owner is not subject to its own data grants, so compare the owner wit
 As `<SCHEMA>`, query the full summary view:
 
 ```sql
-SELECT mortgagor_label,
-       property_location,
-       total_verified_annual_income,
-       monthly_committed_expenditure,
-       monthly_household_expenditure,
-       loan_to_value_pct,
-       loan_to_income_multiple
-FROM mortgage_application_summary
-ORDER BY mortgagor_label;
+SELECT property_location
+FROM mortgage_application_summary;
 ```
 
 Then connect as `LEEDS_REVIEWER` and query the same owner view:
 
 ```sql
-SELECT mortgagor_label,
-       property_location,
-       total_verified_annual_income,
-       monthly_committed_expenditure,
-       monthly_household_expenditure,
-       loan_to_value_pct,
-       loan_to_income_multiple
-FROM <SCHEMA>.mortgage_application_summary
-ORDER BY mortgagor_label;
+SELECT property_location
+  FROM <SCHEMA>.mortgage_application_summary;
 ```
 
 **What to look for:** the reviewer sees only the Leeds applications. The three detailed financial columns return `NULL`; the LTV and LTI measures remain visible. The owner sees the whole portfolio and the unmasked values.
