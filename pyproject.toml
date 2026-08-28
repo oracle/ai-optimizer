@@ -61,7 +61,7 @@ otel = [
     "opentelemetry-instrumentation-httpx==0.65b0",
     "opentelemetry-instrumentation-logging==0.65b0",
     "opentelemetry-instrumentation-requests==0.65b0",
-    "openinference-instrumentation-langchain==0.1.72"
+    "openinference-instrumentation-langchain==0.1.73"
 ]
 
 # - all: all-in-one installation (server (langgraph) + client)
