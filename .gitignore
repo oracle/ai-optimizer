@@ -20,11 +20,15 @@ test-results-*.xml
 **/.DS_Store
 **/*.swp
 **/*.pem
+src/client/app/.streamlit/secrets.toml
+src/client/app/.streamlit/dev-oidc-bootstrap.json
+src/client/app/.streamlit/dev-oidc-web-client-secret
 
 # ##############################################################################
 # # Python
 # ##############################################################################
 .pytest_cache
+.uv-cache
 *.py[cod]
 *$py.class
 **/*.egg-info
