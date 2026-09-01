@@ -85,11 +85,13 @@ async def test_genai_listing_contains_openai_lineup_in_configured_region(
     obvious instead of leaving it as an unexplained skip.
     """
     configured_region = os.environ["AIO_GENAI_REGION"]
-    openai_in_region = sorted({
-        m["model_name"]
-        for m in live_oci_genai_models
-        if (m.get("vendor") or "").lower() == "openai" and m.get("region") == configured_region
-    })
+    openai_in_region = sorted(
+        {
+            m["model_name"]
+            for m in live_oci_genai_models
+            if (m.get("vendor") or "").lower() == "openai" and m.get("region") == configured_region
+        }
+    )
     assert openai_in_region, (
         f"no OpenAI-family models in {configured_region} — check the AIO_GENAI_REGION "
         f"matches OCI's documented hosting regions"
@@ -102,9 +104,9 @@ async def test_genai_listing_contains_openai_lineup_in_configured_region(
             for m in live_oci_genai_models
             if m.get("model_name") == model_name and m.get("region") == configured_region
         ]
-        assert any(
-            "CHAT" in (caps or []) for caps in capabilities_seen
-        ), f"{model_name} is OpenAI-vendor in {configured_region} but has no CHAT capability"
+        assert any("CHAT" in (caps or []) for caps in capabilities_seen), (
+            f"{model_name} is OpenAI-vendor in {configured_region} but has no CHAT capability"
+        )
 
 
 async def test_enable_genai_models(app_client, auth_headers, live_oci_profile):

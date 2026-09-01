@@ -14,7 +14,7 @@ External clients use the resources configured on the AI Optimizer Server. To use
 
 ## Authority and Execution Location
 
-The `X-API-Key` authorizes the holder to invoke the tools published by the AI Optimizer Server. Provide it only to users and systems authorized to use those server-side operations.
+In a shared API-key deployment, the `X-API-Key` authorizes the holder to invoke the tools published by the AI Optimizer Server. In a principal-authenticated deployment, use the bearer credential issued to the authenticated principal. Provide credentials only to users and systems authorized to use those server-side operations.
 
 When SQLcl is configured, the AI Optimizer Server launches the `sql` process and executes SQLcl commands locally. External MCP clients send requests over HTTP; they do not run SQLcl on their own workstation. SQLcl uses restrict level `4` by default. Operators can set `AIO_SQLCL_MCP_LEVEL` to a lower level when additional SQLcl capabilities are required; see [SQLcl MCP Server](./sqlcl-mcp-server).
 
@@ -22,7 +22,7 @@ External MCP clients can use all tools registered on the server that are availab
 
 ## Get Client Configuration
 
-Start the AI Optimizer Server and obtain its API key. In the included GUI, the key is available on the [API Server](../client/api_server) page. For standalone deployments, configure `AIO_API_KEY` before starting the server. See [Environment Variables](./env-vars).
+Start the AI Optimizer Server and obtain the credential for its configured authentication mode. In the included GUI, the API key is available on the [API Server](../client/api_server) page. For standalone shared-key deployments, configure `AIO_API_KEY` before starting the server. See [Environment Variables](./env-vars).
 
 The recommended approach is to use the client configuration generated in **Configuration** > **MCP Server** in the GUI. It provides the settings or command required by the selected client. Alternatively, request the configuration from the server:
 
@@ -31,12 +31,19 @@ curl -H "X-API-Key: $AIO_API_KEY" \
   "http://localhost:8000/mcp/client-config?client=generic"
 ```
 
+For a principal-authenticated deployment, send the bearer credential instead:
+
+```bash
+curl -H "Authorization: Bearer $AIO_ACCESS_TOKEN" \
+  "http://localhost:8000/mcp/client-config?client=generic"
+```
+
 This command assumes that the server is available locally on its default port. For another deployment, replace `http://localhost:8000` with the reachable AI Optimizer Server URL.
 
-The generated configuration is the source of truth: it includes the deployment's URL, any server URL prefix, and the required `X-API-Key` header.
+The generated configuration is the source of truth: it includes the deployment's URL, any server URL prefix, and the credential header used by the request (`X-API-Key` for shared API-key mode or `Authorization` for principal-authenticated mode).
 
 :::danger[Secrets Inside!]
-The configurations contains a secret to access the server, so do not commit or share it.
+The configuration contains a credential to access the server, so do not commit or share it.
 :::
 
 | Client                         | Query value      | Connection type            |
@@ -53,7 +60,7 @@ For a client that is not listed, select **Generic Streamable HTTP** in the GUI, 
 
 ## MCP Inspector
 
-The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) is a developer tool for inspecting MCP servers. In the GUI, select **MCP Inspector** under **Configuration** > **MCP Server** and save the displayed JSON as `mcp.json`. The generated configuration includes the required API key header; import it unchanged.
+The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) is a developer tool for inspecting MCP servers. In the GUI, select **MCP Inspector** under **Configuration** > **MCP Server** and save the displayed JSON as `mcp.json`. The generated configuration includes the required credential header; import it unchanged.
 
 To use the configuration from the command line, run:
 
@@ -86,7 +93,7 @@ Claude Desktop runs local MCP server processes. In the GUI, select **Claude Desk
 
 ## Verify the Connection
 
-Confirm that the MCP server is healthy and has registered tools:
+For a shared API-key deployment, confirm that the MCP server is healthy and has registered tools:
 
 ```bash
 curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/healthz

@@ -185,6 +185,6 @@ async def test_pull_no_api_base_returns_400(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_pull_model_no_auth(app_client):
-    """Pull without auth returns 403."""
+    """Pull without auth returns 401."""
     resp = await app_client.post(PULL_URL)
-    assert resp.status_code == 403
+    assert resp.status_code == 401

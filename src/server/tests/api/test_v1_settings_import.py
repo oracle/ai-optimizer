@@ -66,9 +66,9 @@ def mock_register_mcp_prompts():
 
 
 async def test_import_no_auth(app_client):
-    """POST /import without API key returns 403."""
+    """POST /import without credentials returns 401."""
     resp = await app_client.post(ENDPOINT, json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -738,8 +738,8 @@ async def test_import_case_insensitive(app_client, auth_headers, mock_persist):
 # ---------------------------------------------------------------------------
 
 
-async def test_import_client_settings_applied(app_client, auth_headers, mock_persist):
-    """client_settings are applied to the default CONFIGURED client."""
+async def test_import_client_settings_applied(app_client, auth_headers, test_auth_mode, owned_client_key, mock_persist):
+    """client_settings are applied to the default API-key or owned principal client."""
     payload = {"client_settings": {"database": {"alias": "ANALYTICS"}, "oci": {"auth_profile": "PROD"}}}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -747,16 +747,28 @@ async def test_import_client_settings_applied(app_client, auth_headers, mock_per
     assert resp.status_code == 200
     data = resp.json()
     assert data["client_settings"] is True
-    assert _client_store["CONFIGURED"].database.alias == "ANALYTICS"
-    assert _client_store["CONFIGURED"].oci.auth_profile == "PROD"
+    client_settings = _client_store["CONFIGURED"] if test_auth_mode is None else _client_store[owned_client_key]
+    assert client_settings.database.alias == "ANALYTICS"
+    assert client_settings.oci.auth_profile == "PROD"
 
 
-async def test_import_client_settings_custom_client(app_client, auth_headers, mock_persist):
-    """client_settings with explicit client param targets that client only."""
+async def test_import_client_settings_custom_client(
+    app_client, auth_headers, test_auth_mode, owned_session_key, mock_persist
+):
+    """client_settings target the requested raw client or owned session only."""
     payload = {"client_settings": {"database": {"alias": "ANALYTICS"}, "oci": {"auth_profile": "PROD"}}}
 
-    resp = await app_client.post(f"{ENDPOINT}?client=MY_SESSION", json=payload, headers=auth_headers)
+    if test_auth_mode is None:
+        client_key = "MY_SESSION"
+        request_url = f"{ENDPOINT}?client=MY_SESSION"
+        request_headers = auth_headers
+    else:
+        client_key = owned_session_key("MY_SESSION")
+        request_url = ENDPOINT
+        request_headers = {**auth_headers, "X-AIO-Session": "MY_SESSION"}
+
+    resp = await app_client.post(request_url, json=payload, headers=request_headers)
 
     assert resp.status_code == 200
-    assert _client_store["MY_SESSION"].database.alias == "ANALYTICS"
+    assert _client_store[client_key].database.alias == "ANALYTICS"
     assert "CONFIGURED" not in _client_store

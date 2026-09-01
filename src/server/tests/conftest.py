@@ -60,19 +60,74 @@ atexit.register(lambda: setattr(logging, "raiseExceptions", False))
 # Suppress "Task was destroyed but it is pending!" from asyncio logger.
 # oracledb's async pool machinery can leave background connection tasks
 # pending when a pool is created against an unreachable host and then closed.
-logging.getLogger("asyncio").addFilter(
-    lambda record: "Task was destroyed but it is pending" not in record.getMessage()
-)
+logging.getLogger("asyncio").addFilter(lambda record: "Task was destroyed but it is pending" not in record.getMessage())
 
 from pyagentspec.flows.flow import Flow
 from pyagentspec.flows.nodes import EndNode, LlmNode
 
 from server.app.agentspec.adapters.litellm import LiteLlmConfig
+from server.app.core.auth import Principal
+from server.app.core.secrets import reveal
+from server.app.core.sessions import OwnedSession
 from server.app.core.settings import settings
 from server.app.database.schemas import DatabaseConfig
 from server.app.main import app
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
+
+# ---------------------------------------------------------------------------
+# Authentication matrix fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(params=[None, "dev"], ids=["api-key", "development"])
+def test_auth_mode(request, monkeypatch):
+    """Run authenticated HTTP tests with each currently supported auth posture."""
+    monkeypatch.setattr(settings, "auth_mode", request.param)
+    return request.param
+
+
+@pytest.fixture
+def dev_principal(test_auth_mode, monkeypatch):
+    """Provide a deterministic administrator principal in development mode."""
+    if test_auth_mode != "dev":
+        return None
+    principal = Principal(
+        issuer=settings.auth_dev_issuer,
+        subject="api-test-user",
+        roles=frozenset({"aio.api", *settings.auth_admin_claim_values}),
+        authentication_method="oidc",
+    )
+    monkeypatch.setattr("server.app.core.auth._decode_oidc_token", lambda _token: principal)
+    return principal
+
+
+@pytest.fixture
+def auth_headers(test_auth_mode, dev_principal):
+    """Authenticate with the credential required by the selected auth posture."""
+    del dev_principal
+    if test_auth_mode is None:
+        return {"X-API-Key": reveal(settings.api_key)}
+    return {"Authorization": "Bearer api-test-token"}
+
+
+@pytest.fixture
+def owned_session_key(dev_principal):
+    """Return the transport client key for a selected session in either mode."""
+
+    def _key(session_id: str = "default") -> str:
+        if dev_principal is None:
+            return session_id
+        return OwnedSession(dev_principal, session_id).client_key
+
+    return _key
+
+
+@pytest.fixture
+def owned_client_key(owned_session_key):
+    """Return the client key assigned to the deterministic default session."""
+    return owned_session_key()
+
 
 # ---------------------------------------------------------------------------
 # Oracle container and constants
@@ -234,14 +289,6 @@ async def app_client():
         base_url="http://test",
     ) as client:
         yield client
-
-
-@pytest.fixture
-def auth_headers():
-    """Headers dict with a valid API key."""
-    from server.app.core.secrets import reveal
-
-    return {"X-API-Key": reveal(settings.api_key)}
 
 
 # ---------------------------------------------------------------------------

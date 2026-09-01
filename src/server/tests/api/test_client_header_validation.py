@@ -5,18 +5,18 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Contract tests for the `Client:` header (and `client` query param on
 `/v1/settings/*`).
 
-These tests pin the Pydantic `ClientId` contract at every endpoint that
-accepts the identifier, so a malformed value is rejected with 422 before
-any handler logic runs. The contract rejects path separators, whitespace,
-null / control characters, and bare dot-components, while permitting
-identifiers persisted by the prior unconstrained API (e.g. `team:blue`,
-`alice+dev@example.com`) so they stay reachable across the upgrade.
+These tests exercise the client boundary in both supported authentication
+postures. In API-key mode, a malformed raw client value is rejected with 422
+by FastAPI. In development principal mode, the middleware replaces caller
+supplied client values with the principal-owned session client before FastAPI
+sees them.
 """
 # spell-checker: disable
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from server.tests.api.conftest import _create_mock_pool
 from server.tests.constants import TEST_OPENAI_MODEL_KEY
@@ -73,10 +73,16 @@ def mock_embed_deps():
     mock_cfg = MagicMock()
     mock_cfg.pool = pool
     mock_cfg.usable = True
+    seen_clients: list[str] = []
+
+    def _get_client_db_config(client):
+        seen_clients.append(client)
+        return mock_cfg, pool
+
     with (
         patch(
             "server.app.api.v1.endpoints.embed._get_client_db_config",
-            return_value=(mock_cfg, pool),
+            side_effect=_get_client_db_config,
         ),
         patch(
             "server.app.api.v1.endpoints.embed.get_vector_store_files",
@@ -90,36 +96,42 @@ def mock_embed_deps():
             },
         ),
     ):
-        yield
+        yield seen_clients
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 @pytest.mark.parametrize("bad_client", INVALID_CLIENT_VALUES)
-async def test_embed_rejects_invalid_client_header(app_client, auth_headers, bad_client):
-    """Invalid Client header → 422 before any embed handler runs."""
+async def test_embed_client_header_contract(
+    app_client, auth_headers, bad_client, test_auth_mode, owned_client_key, mock_embed_deps
+):
+    """Raw invalid clients reject in API-key mode and are replaced in development mode."""
     resp = await app_client.get(
         "/v1/embed/MY_VS/files",
         headers={**auth_headers, "Client": bad_client},
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    if test_auth_mode is None:
+        assert resp.status_code == 422
+        assert mock_embed_deps == []
+    else:
+        assert resp.status_code == 200
+        assert mock_embed_deps == [owned_client_key]
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 @pytest.mark.parametrize("good_client", VALID_CLIENT_VALUES)
-async def test_embed_accepts_valid_client_header(app_client, auth_headers, good_client, mock_embed_deps):
-    """Valid Client header passes validation (endpoint may still error on other grounds, but not 422)."""
-    del mock_embed_deps
+async def test_embed_accepts_valid_client_header(
+    app_client, auth_headers, good_client, test_auth_mode, owned_client_key, mock_embed_deps
+):
+    """Valid client requests authenticate and use the expected client key."""
     resp = await app_client.get(
         "/v1/embed/MY_VS/files",
         headers={**auth_headers, "Client": good_client},
     )
-    assert resp.status_code != 422, (
-        f"Valid client {good_client!r} was rejected with 422: {resp.text}"
-    )
+    assert resp.status_code == 200
+    expected_client = good_client if test_auth_mode is None else owned_client_key
+    assert mock_embed_deps == [expected_client]
 
 
 # ---------------------------------------------------------------------------
@@ -129,22 +141,29 @@ async def test_embed_accepts_valid_client_header(app_client, auth_headers, good_
 
 @pytest.fixture
 def mock_testbed_deps():
-    """Stub CORE pool so `POST /v1/testbed/testset_generate` can reach header validation."""
+    """Stub testbed dependencies so the normalized client can be observed."""
     conn = AsyncMock()
     pool = _create_mock_pool(conn)
-    with patch(
-        "server.app.api.v1.endpoints.testbed.get_core_pool",
-        return_value=pool,
+    seen_clients: list[str] = []
+
+    def _capture_client(client):
+        seen_clients.append(client)
+        raise HTTPException(status_code=418, detail="client captured")
+
+    with (
+        patch("server.app.api.v1.endpoints.testbed.get_core_pool", return_value=pool),
+        patch("server.app.api.v1.endpoints.testbed.get_oci_profile", side_effect=_capture_client),
     ):
-        yield
+        yield seen_clients
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 @pytest.mark.parametrize("bad_client", INVALID_CLIENT_VALUES)
-async def test_testbed_rejects_invalid_client_header(app_client, auth_headers, bad_client, mock_testbed_deps):
-    """Invalid Client header → 422 before any testbed handler runs."""
-    del mock_testbed_deps
+async def test_testbed_client_header_contract(
+    app_client, auth_headers, bad_client, test_auth_mode, owned_client_key, mock_testbed_deps
+):
+    """Raw invalid clients reject in API-key mode and are replaced in development mode."""
     import io as _io
 
     resp = await app_client.post(
@@ -153,9 +172,12 @@ async def test_testbed_rejects_invalid_client_header(app_client, auth_headers, b
         files=[("files", ("a.pdf", _io.BytesIO(b"%PDF-"), "application/pdf"))],
         headers={**auth_headers, "Client": bad_client},
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    if test_auth_mode is None:
+        assert resp.status_code == 422
+        assert mock_testbed_deps == []
+    else:
+        assert resp.status_code == 418
+        assert mock_testbed_deps == [owned_client_key]
 
 
 # ---------------------------------------------------------------------------
@@ -166,29 +188,35 @@ async def test_testbed_rejects_invalid_client_header(app_client, auth_headers, b
 @pytest.mark.unit
 @pytest.mark.anyio
 @pytest.mark.parametrize("bad_client", INVALID_CLIENT_VALUES)
-async def test_chat_history_rejects_invalid_client_header(app_client, auth_headers, bad_client):
-    """Invalid Client header on GET /v1/chat/history → 422."""
+async def test_chat_history_client_header_contract(
+    app_client, auth_headers, bad_client, test_auth_mode, owned_client_key
+):
+    """Raw invalid clients reject in API-key mode and are replaced in development mode."""
     resp = await app_client.get(
         "/v1/chat/history",
         headers={**auth_headers, "Client": bad_client},
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    if test_auth_mode is None:
+        assert resp.status_code == 422
+    else:
+        assert resp.status_code == 200
+        assert resp.json()["client"] == owned_client_key
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 @pytest.mark.parametrize("good_client", VALID_CLIENT_VALUES)
-async def test_chat_history_accepts_valid_client_header(app_client, auth_headers, good_client):
-    """Valid Client header on GET /v1/chat/history passes validation."""
+async def test_chat_history_accepts_valid_client_header(
+    app_client, auth_headers, good_client, test_auth_mode, owned_client_key
+):
+    """Valid client requests authenticate and use the expected client key."""
     resp = await app_client.get(
         "/v1/chat/history",
         headers={**auth_headers, "Client": good_client},
     )
-    assert resp.status_code != 422, (
-        f"Valid client {good_client!r} was rejected with 422: {resp.text}"
-    )
+    assert resp.status_code == 200
+    expected_client = good_client if test_auth_mode is None else owned_client_key
+    assert resp.json()["client"] == expected_client
 
 
 # ---------------------------------------------------------------------------
@@ -196,19 +224,48 @@ async def test_chat_history_accepts_valid_client_header(app_client, auth_headers
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def mock_oci_deps():
+    """Stub OCI work and capture the client-scoped temporary directory."""
+    seen_clients: list[str] = []
+
+    def _capture_temp_directory(client, _function):
+        seen_clients.append(client)
+        return MagicMock()
+
+    with (
+        patch("server.app.api.v1.endpoints.oci._find_oci_profile", return_value=MagicMock()),
+        patch(
+            "server.app.api.v1.endpoints.oci.get_temp_directory",
+            side_effect=_capture_temp_directory,
+        ),
+        patch(
+            "server.app.api.v1.endpoints.oci.download_bucket_objects_to_dir",
+            new_callable=AsyncMock,
+            return_value=([], []),
+        ),
+    ):
+        yield seen_clients
+
+
 @pytest.mark.unit
 @pytest.mark.anyio
 @pytest.mark.parametrize("bad_client", INVALID_CLIENT_VALUES)
-async def test_oci_download_rejects_invalid_client_header(app_client, auth_headers, bad_client):
-    """Invalid Client header on POST /v1/oci/objects/download/... → 422."""
+async def test_oci_download_client_header_contract(
+    app_client, auth_headers, bad_client, test_auth_mode, owned_client_key, mock_oci_deps
+):
+    """Raw invalid clients reject in API-key mode and are replaced in development mode."""
     resp = await app_client.post(
         "/v1/oci/objects/download/my-bucket/DEFAULT",
         json=["file.txt"],
         headers={**auth_headers, "Client": bad_client},
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    if test_auth_mode is None:
+        assert resp.status_code == 422
+        assert mock_oci_deps == []
+    else:
+        assert resp.status_code == 200
+        assert mock_oci_deps == [owned_client_key]
 
 
 # ---------------------------------------------------------------------------
@@ -223,28 +280,32 @@ async def test_oci_download_rejects_invalid_client_header(app_client, auth_heade
     # `""` is skipped — missing query params fall back to the default
     [v for v in INVALID_CLIENT_VALUES_QUERY_ONLY if v != ""],
 )
-async def test_settings_rejects_invalid_client_query(app_client, auth_headers, bad_client):
-    """Invalid `client` query param on GET /v1/settings → 422."""
+async def test_settings_client_query_contract(app_client, auth_headers, bad_client, test_auth_mode, owned_client_key):
+    """Raw invalid clients reject in API-key mode and are replaced in development mode."""
     resp = await app_client.get(
         "/v1/settings",
         params={"client": bad_client},
         headers=auth_headers,
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    if test_auth_mode is None:
+        assert resp.status_code == 422
+    else:
+        assert resp.status_code == 200
+        assert resp.json()["client_settings"]["client"] == owned_client_key
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 @pytest.mark.parametrize("good_client", VALID_CLIENT_VALUES)
-async def test_settings_accepts_valid_client_query(app_client, auth_headers, good_client):
-    """Valid `client` query param on GET /v1/settings passes validation."""
+async def test_settings_accepts_valid_client_query(
+    app_client, auth_headers, good_client, test_auth_mode, owned_client_key
+):
+    """Valid client requests authenticate and use the expected client key."""
     resp = await app_client.get(
         "/v1/settings",
         params={"client": good_client},
         headers=auth_headers,
     )
-    assert resp.status_code != 422, (
-        f"Valid client {good_client!r} was rejected with 422: {resp.text}"
-    )
+    assert resp.status_code == 200
+    expected_client = good_client if test_auth_mode is None else owned_client_key
+    assert resp.json()["client_settings"]["client"] == expected_client

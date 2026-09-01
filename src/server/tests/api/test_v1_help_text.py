@@ -15,9 +15,9 @@ pytestmark = pytest.mark.anyio
 
 @pytest.mark.unit
 async def test_get_all_help_no_auth(app_client):
-    """GET /v1/help without auth returns 403."""
+    """GET /v1/help without auth returns 401."""
     resp = await app_client.get("/v1/help")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -66,6 +66,6 @@ async def test_get_help_not_found(app_client, auth_headers):
 
 @pytest.mark.unit
 async def test_get_help_no_auth(app_client):
-    """GET /v1/help/{key} without auth returns 403."""
+    """GET /v1/help/{key} without auth returns 401."""
     resp = await app_client.get("/v1/help/temperature")
-    assert resp.status_code == 403
+    assert resp.status_code == 401

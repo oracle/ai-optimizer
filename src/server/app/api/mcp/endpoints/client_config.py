@@ -41,12 +41,12 @@ def _api_key() -> str:
     return api_key
 
 
-def _streamable_http_entry(url: str, api_key: str, include_type: bool = True) -> dict:
+def _streamable_http_entry(url: str, headers: dict[str, str], include_type: bool = True) -> dict:
     """Return a Streamable HTTP MCP server entry."""
     entry = {
         "transport": "streamable-http",
         "url": url,
-        "headers": {"X-API-Key": api_key},
+        "headers": headers,
     }
 
     if include_type:
@@ -55,16 +55,17 @@ def _streamable_http_entry(url: str, api_key: str, include_type: bool = True) ->
     return entry
 
 
-def _client_config(client: str, url: str, api_key: str) -> dict:
+def _client_config(client: str, url: str, headers: dict[str, str]) -> dict:
     """Return client-specific MCP configuration."""
     client = client.lower().strip()
+    header_name, header_value = next(iter(headers.items()))
 
     if client in {"cline", "vscode"}:
         return {
             "mcpServers": {
                 "oracle-ai-optimizer": _streamable_http_entry(
                     url=url,
-                    api_key=api_key,
+                    headers=headers,
                     include_type=True,
                 )
             }
@@ -75,7 +76,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
             "mcpServers": {
                 "oracle-ai-optimizer": _streamable_http_entry(
                     url=url,
-                    api_key=api_key,
+                    headers=headers,
                     include_type=False,
                 )
             }
@@ -87,7 +88,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
                 "oracle-ai-optimizer": {
                     "type": "http",
                     "url": url,
-                    "headers": {"X-API-Key": api_key},
+                    "headers": headers,
                 }
             }
         }
@@ -104,7 +105,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
                         "--transport",
                         "http-only",
                         "--header",
-                        f"X-API-Key: {api_key}",
+                        f"{header_name}: {header_value}",
                     ],
                 }
             }
@@ -115,7 +116,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
             "mcpServers": {
                 "oracle-ai-optimizer": _streamable_http_entry(
                     url=url,
-                    api_key=api_key,
+                    headers=headers,
                     include_type=True,
                 )
             }
@@ -131,6 +132,15 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
 async def get_client_config(request: Request, client: str = "generic"):
     """Return a ready-to-use MCP client configuration object."""
     url = _mcp_url(request)
-    api_key = _api_key()
+    authorization = request.headers.get("authorization")
+    if authorization:
+        headers = {"Authorization": authorization}
+    elif settings.auth_mode is None:
+        headers = {"X-API-Key": _api_key()}
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="MCP client configuration requires a replayable bearer credential.",
+        )
 
-    return _client_config(client=client, url=url, api_key=api_key)
+    return _client_config(client=client, url=url, headers=headers)

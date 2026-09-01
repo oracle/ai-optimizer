@@ -11,24 +11,10 @@ import pytest
 from starlette.requests import Request
 
 from server.app.api.v1.endpoints import chat as chat_endpoint
-from server.app.core.auth import Principal
 from server.app.core.settings import _client_store, settings
 from server.tests.conftest import make_test_model_config
 from server.tests.constants import TEST_OLLAMA_MODEL_ID
 from server.tests.runtime.shared_helpers import ollama_available
-
-
-@pytest.fixture
-def auth_headers(monkeypatch):
-    """Use a stable principal while endpoint tests exercise OIDC request handling."""
-    principal = Principal(
-        issuer=settings.auth_dev_issuer,
-        subject="chat-test-user",
-        roles=frozenset({"aio.api", *settings.auth_admin_claim_values}),
-        authentication_method="oidc",
-    )
-    monkeypatch.setattr("server.app.core.auth._decode_oidc_token", lambda _token: principal)
-    return {"Authorization": "Bearer chat-test-token"}
 
 
 async def _collect_sse(response) -> List[str]:
@@ -236,7 +222,7 @@ async def test_streams_exception_translated_to_error_event(app_client, auth_head
 @pytest.mark.integration
 @pytest.mark.anyio
 @pytest.mark.skipif(not ollama_available(), reason="ollama not running at 127.0.0.1:11434")
-async def test_streams_ollama_integration(app_client, auth_headers):
+async def test_streams_ollama_integration(app_client, auth_headers, test_auth_mode, owned_client_key):
     """Streams a short prompt end-to-end against a running Ollama instance.
 
     Verifies real token-by-token streaming reaches the SSE consumer:
@@ -260,10 +246,11 @@ async def test_streams_ollama_integration(app_client, auth_headers):
         new_settings.ll_model.provider = "ollama"
         new_settings.ll_model.id = TEST_OLLAMA_MODEL_ID
         new_settings.tools_enabled = []
-        new_settings.client = "server"
+        client_key = "server" if test_auth_mode is None else owned_client_key
+        new_settings.client = client_key
 
         settings.client_settings = new_settings
-        _client_store["server"] = new_settings
+        _client_store[client_key] = new_settings
         settings.model_configs = [
             *original_models,
             make_test_model_config(

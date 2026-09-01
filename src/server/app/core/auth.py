@@ -228,13 +228,18 @@ class PrincipalAuthMiddleware:
             headers = [(key, value) for key, value in scope.get("headers", []) if key.lower() != b"client"]
             headers.append((b"client", owned_session.client_key.encode("ascii")))
             scope["headers"] = headers
-            query = [
-                (key, value)
-                for key, value in parse_qsl(scope.get("query_string", b"").decode(), keep_blank_values=True)
-                if key != "client"
-            ]
-            query.append(("client", owned_session.client_key))
-            scope["query_string"] = urlencode(query).encode("ascii")
+            # ``client`` is the session selector for API endpoints, but it is
+            # the output-format selector on the MCP client-config endpoint.
+            # Do not replace the latter or every principal request becomes the
+            # unsupported internal client-key variant.
+            if scope.get("path") != "/mcp/client-config":
+                query = [
+                    (key, value)
+                    for key, value in parse_qsl(scope.get("query_string", b"").decode(), keep_blank_values=True)
+                    if key != "client"
+                ]
+                query.append(("client", owned_session.client_key))
+                scope["query_string"] = urlencode(query).encode("ascii")
             context_token = _owned_session_context.set(owned_session)
             try:
                 await self.app(scope, receive, send)

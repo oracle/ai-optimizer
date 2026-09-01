@@ -16,9 +16,9 @@ pytestmark = pytest.mark.anyio
 
 @pytest.mark.unit
 async def test_list_tools_no_auth(app_client):
-    """GET /mcp/tools without auth returns 403."""
+    """GET /mcp/tools without auth returns 401."""
     resp = await app_client.get("/mcp/tools")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit

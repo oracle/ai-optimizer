@@ -11,11 +11,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.app.core.settings import SettingsBase, settings
+from server.app.database.config import close_pool
 from server.app.database.schemas import DatabaseConfig
+from server.tests.conftest import make_core_db_config
 
 MODULE = "server.app.main"
 
-pytestmark = [pytest.mark.unit, pytest.mark.anyio]
+pytestmark = pytest.mark.anyio
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +42,7 @@ def _restore_settings_state():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.unit
 class TestApplyConfiguredOverlay:
     """Tests for _apply_configured_overlay."""
 
@@ -165,10 +168,12 @@ class TestApplyConfiguredOverlay:
 class TestLifespan:
     """Tests for the FastAPI lifespan context manager."""
 
-    async def test_core_db_failure_continues(self):
-        """CORE database init failure should be logged but not crash the app."""
+    @pytest.mark.unit
+    async def test_core_db_failure_blocks_development_startup(self):
+        """CORE database init failure should block development OIDC startup."""
         mock_db = MagicMock()
         with (
+            patch.object(settings, "auth_mode", "dev"),
             patch(f"{MODULE}.get_database_settings", return_value=mock_db),
             patch(f"{MODULE}.init_core_database", new_callable=AsyncMock, side_effect=Exception("db down")),
             patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
@@ -189,10 +194,13 @@ class TestLifespan:
         ):
             from server.app.main import lifespan
 
-            async with lifespan(MagicMock()):
-                pass  # lifespan should yield without error
+            with pytest.raises(Exception, match="db down"):
+                async with lifespan(MagicMock()):
+                    pass
 
-    async def test_configured_persist_runs_after_load_oci_profiles(self):
+    @pytest.mark.integration
+    @pytest.mark.db
+    async def test_configured_persist_runs_after_load_oci_profiles(self, live_core_db):
         """Regression: persisting CONFIGURED before OCI load erases the saved GenAI overlay.
 
         load_oci_profiles() is what populates settings.oci_configs and applies the
@@ -208,8 +216,6 @@ class TestLifespan:
             call_order.append(f"persist_settings:{client}")
 
         with (
-            patch(f"{MODULE}.get_database_settings", return_value=MagicMock()),
-            patch(f"{MODULE}.init_core_database", new_callable=AsyncMock),
             patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
             patch(f"{MODULE}.apply_env_overrides"),
             patch(f"{MODULE}.load_factory_prompts"),
@@ -238,13 +244,13 @@ class TestLifespan:
             f"CONFIGURED persist must run after load_oci_profiles; got {call_order}"
         )
 
-    async def test_cleanup_on_exit(self):
+    @pytest.mark.integration
+    @pytest.mark.db
+    async def test_cleanup_on_exit(self, live_core_db):
         """Exiting lifespan should call close_sqlcl_proxy and close_pool."""
         mock_transport = MagicMock()
-        saved_db_configs = list(settings.database_configs)
+        saved_db_configs = [live_core_db]
         with (
-            patch(f"{MODULE}.get_database_settings", return_value=MagicMock()),
-            patch(f"{MODULE}.init_core_database", new_callable=AsyncMock),
             patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
             patch(f"{MODULE}.apply_env_overrides"),
             patch(f"{MODULE}.load_factory_prompts"),
@@ -269,3 +275,16 @@ class TestLifespan:
             mock_close_sqlcl.assert_awaited_once_with()
             # close_pool called once per database config
             assert mock_close_pool.await_count == len(saved_db_configs)
+
+
+@pytest.fixture
+async def live_core_db(oracle_db_container, monkeypatch):
+    """Provide the real CORE config used by development OIDC lifespan tests."""
+    del oracle_db_container
+    core_db = make_core_db_config()
+    monkeypatch.setattr(settings, "auth_mode", "dev")
+    monkeypatch.setattr(settings, "database_configs", [core_db])
+    try:
+        yield core_db
+    finally:
+        await close_pool(core_db.pool)

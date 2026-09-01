@@ -203,85 +203,85 @@ async def _poll_until_terminal(
 
 
 # ---------------------------------------------------------------------------
-# Auth tests — 403 without API key
+# Auth tests — 401 without credentials
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
 async def test_drop_vs_no_auth(app_client):
-    """DELETE /{vs} rejects requests without API key."""
+    """DELETE /{vs} rejects requests without credentials."""
     resp = await app_client.delete("/v1/embed/test_vs")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_get_files_no_auth(app_client):
-    """GET /{vs}/files rejects requests without API key."""
+    """GET /{vs}/files rejects requests without credentials."""
     resp = await app_client.get("/v1/embed/test_vs/files")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_comment_no_auth(app_client):
-    """PATCH /comment rejects requests without API key."""
+    """PATCH /comment rejects requests without credentials."""
     resp = await app_client.patch("/v1/embed/comment", json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_sql_store_no_auth(app_client):
-    """POST /sql/store rejects requests without API key."""
+    """POST /sql/store rejects requests without credentials."""
     resp = await app_client.post("/v1/embed/sql/store", json={"query": "SELECT 1"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_web_store_no_auth(app_client):
-    """POST /web/store rejects requests without API key."""
+    """POST /web/store rejects requests without credentials."""
     resp = await app_client.post("/v1/embed/web/store", json=["https://example.com"])
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_local_store_no_auth(app_client):
-    """POST /local/store rejects requests without API key."""
+    """POST /local/store rejects requests without credentials."""
     resp = await app_client.post("/v1/embed/local/store")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_split_embed_no_auth(app_client):
-    """POST / rejects requests without API key."""
+    """POST / rejects requests without credentials."""
     resp = await app_client.post("/v1/embed/", json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_embed_oci_store_no_auth(app_client):
-    """POST /oci/store rejects requests without API key."""
+    """POST /oci/store rejects requests without credentials."""
     resp = await app_client.post("/v1/embed/oci/store", json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_refresh_no_auth(app_client):
-    """POST /refresh rejects requests without API key."""
+    """POST /refresh rejects requests without credentials."""
     resp = await app_client.post("/v1/embed/refresh", json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_list_jobs_no_auth(app_client):
-    """GET /jobs rejects requests without API key."""
+    """GET /jobs rejects requests without credentials."""
     resp = await app_client.get("/v1/embed/jobs")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_get_job_no_auth(app_client):
-    """GET /jobs/{job_id} rejects requests without API key."""
+    """GET /jobs/{job_id} rejects requests without credentials."""
     resp = await app_client.get("/v1/embed/jobs/abc123")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +425,7 @@ async def test_sql_store_with_db_alias(app_client, auth_headers, mock_client_db)
 
 
 @pytest.mark.anyio
-async def test_sql_store_acquires_client_lock(app_client, auth_headers):
+async def test_sql_store_acquires_client_lock(app_client, auth_headers, test_auth_mode, owned_client_key):
     """[P2] /embed/sql/store must serialise on _client_lock so a
     concurrent /embed/ retry-restore sees a stable shared dir.
 
@@ -475,7 +475,8 @@ async def test_sql_store_acquires_client_lock(app_client, auth_headers):
         )
 
     assert resp.status_code == 200
-    assert "server" in acquisitions, (
+    expected_client = "server" if test_auth_mode is None else owned_client_key
+    assert expected_client in acquisitions, (
         "/embed/sql/store did not acquire _client_lock; a concurrent "
         "/embed/ retry restore could observe a new file appearing in "
         "shared mid-restore"
@@ -483,7 +484,7 @@ async def test_sql_store_acquires_client_lock(app_client, auth_headers):
 
 
 @pytest.mark.anyio
-async def test_web_store_acquires_client_lock(app_client, auth_headers):
+async def test_web_store_acquires_client_lock(app_client, auth_headers, test_auth_mode, owned_client_key):
     """[P2] /embed/web/store must serialise on _client_lock — same race
     as /embed/sql/store (see that test for the full reasoning).
     """
@@ -553,7 +554,8 @@ async def test_web_store_acquires_client_lock(app_client, auth_headers):
             headers=auth_headers,
         )
 
-    assert "server" in acquisitions, (
+    expected_client = "server" if test_auth_mode is None else owned_client_key
+    assert expected_client in acquisitions, (
         "/embed/web/store did not acquire _client_lock; a concurrent "
         "/embed/ retry restore could observe a new file appearing in "
         "shared mid-restore"
@@ -686,7 +688,7 @@ async def test_oci_download_offloads_blocking_sdk_to_thread(app_client, auth_hea
 
 
 @pytest.mark.anyio
-async def test_oci_download_objects_acquires_client_lock(app_client, auth_headers):
+async def test_oci_download_objects_acquires_client_lock(app_client, auth_headers, test_auth_mode, owned_client_key):
     """[P2] OCI's /objects/download endpoint must serialise on
     _client_lock — same race as the embed store endpoints
     (see ``test_sql_store_acquires_client_lock`` for the full
@@ -724,7 +726,8 @@ async def test_oci_download_objects_acquires_client_lock(app_client, auth_header
         )
 
     assert resp.status_code == 200
-    assert "server" in acquisitions, (
+    expected_client = "server" if test_auth_mode is None else owned_client_key
+    assert expected_client in acquisitions, (
         "/oci/objects/download did not acquire _client_lock; a "
         "concurrent /embed/ retry restore could observe a new file "
         "appearing in shared mid-restore"
@@ -2656,7 +2659,7 @@ async def test_client_lock_normalizes_key():
 
 
 @pytest.mark.anyio
-async def test_local_store_acquires_per_client_lock(app_client, auth_headers):
+async def test_local_store_acquires_per_client_lock(app_client, auth_headers, test_auth_mode, owned_session_key):
     """`store_local_file` must take the per-client promotion lock.
 
     Without serialization, the staging→temp_directory backup/rename
@@ -2687,17 +2690,23 @@ async def test_local_store_acquires_per_client_lock(app_client, auth_headers):
             ),
             patch.object(embed_mod, "_client_lock", recording_client_lock),
         ):
+            if test_auth_mode is None:
+                request_headers = {**auth_headers, "Client": "lock-client-a"}
+                expected_client = "lock-client-a"
+            else:
+                request_headers = {**auth_headers, "X-AIO-Session": "lock-client-a"}
+                expected_client = owned_session_key("lock-client-a")
             resp = await app_client.post(
                 "/v1/embed/local/store",
                 files=[("files", ("a.txt", io.BytesIO(b"alpha"), "text/plain"))],
-                headers={**auth_headers, "Client": "lock-client-a"},
+                headers=request_headers,
             )
     assert resp.status_code == 200
-    assert "lock-client-a" in locks_acquired
+    assert expected_client in locks_acquired
 
 
 @pytest.mark.anyio
-async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
+async def test_split_embed_acquires_per_client_lock(app_client, auth_headers, test_auth_mode, owned_session_key):
     """`split_embed` must take the same per-client promotion lock as store_local_file.
 
     `_prepare_work_dir` empties the shared temp_directory; without
@@ -2739,6 +2748,12 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
             patch.object(embed_mod, "_submit_split_embed_under_lock", submit_mock),
         ):
             (tmp_path / "work_unique").mkdir()
+            if test_auth_mode is None:
+                request_headers = {**auth_headers, "Client": "lock-client-b"}
+                expected_client = "lock-client-b"
+            else:
+                request_headers = {**auth_headers, "X-AIO-Session": "lock-client-b"}
+                expected_client = owned_session_key("lock-client-b")
             resp = await app_client.post(
                 "/v1/embed/",
                 json={
@@ -2747,10 +2762,10 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
                 },
-                headers={**auth_headers, "Client": "lock-client-b"},
+                headers=request_headers,
             )
     del resp  # status irrelevant — this test only pins the lock acquisition
-    assert "lock-client-b" in locks_acquired
+    assert expected_client in locks_acquired
     submit_mock.assert_awaited_once()
 
 
@@ -3341,8 +3356,8 @@ async def test_get_job_unknown_id_returns_404(app_client, auth_headers):
 
 @job_store_test
 @pytest.mark.anyio
-async def test_jobs_scoped_per_client(app_client, auth_headers):
-    """A job created under one Client header is invisible to another."""
+async def test_jobs_scoped_per_client(app_client, auth_headers, test_auth_mode):
+    """A job created under one raw client or owned session is invisible to another."""
     import tempfile
     import tempfile as _tf
     from pathlib import Path
@@ -3390,8 +3405,9 @@ async def test_jobs_scoped_per_client(app_client, auth_headers):
                 new_callable=AsyncMock,
             ),
         ):
-            client_a = {**auth_headers, "Client": "client-a"}
-            client_b = {**auth_headers, "Client": "client-b"}
+            client_header = "Client" if test_auth_mode is None else "X-AIO-Session"
+            client_a = {**auth_headers, client_header: "client-a"}
+            client_b = {**auth_headers, client_header: "client-b"}
             post_a = await app_client.post(
                 "/v1/embed/",
                 json={
@@ -3427,7 +3443,9 @@ async def test_jobs_scoped_per_client(app_client, auth_headers):
 
 @job_store_test
 @pytest.mark.anyio
-async def test_list_jobs_active_only_excludes_terminal_rows(app_client, auth_headers):
+async def test_list_jobs_active_only_excludes_terminal_rows(
+    app_client, auth_headers, test_auth_mode, owned_session_key
+):
     """``GET /v1/embed/jobs?active_only=true`` returns only non-terminal jobs.
 
     The status panel polls every 2 seconds; without this filter every
@@ -3445,14 +3463,19 @@ async def test_list_jobs_active_only_excludes_terminal_rows(app_client, auth_hea
     from server.app.api.v1.schemas.embed import EmbedJobStatus
     from server.app.embed import jobs as jobs_mod
 
-    client_header = {**auth_headers, "Client": "filter-client"}
+    if test_auth_mode is None:
+        client_key = "filter-client"
+        client_header = {**auth_headers, "Client": "filter-client"}
+    else:
+        client_key = owned_session_key("filter-client")
+        client_header = {**auth_headers, "X-AIO-Session": "filter-client"}
     now = _dt.datetime.now(_dt.timezone.utc)
 
     def _row(job_id: str, status: EmbedJobStatus) -> jobs_mod._JobRow:
         return jobs_mod._JobRow(
             target_db="CORE",
             job_id=job_id,
-            client="filter-client",
+            client=client_key,
             owner_pod="pod-1",
             status=status,
             progress=None,
@@ -4504,7 +4527,9 @@ async def test_split_embed_restores_files_when_locked_db_snapshot_raises_503(app
 
 
 @pytest.mark.anyio
-async def test_split_embed_holds_client_lock_through_submission(app_client, auth_headers):
+async def test_split_embed_holds_client_lock_through_submission(
+    app_client, auth_headers, test_auth_mode, owned_client_key
+):
     """[P2] ``manager.submit`` must run inside the per-client lock.
 
     Reviewer concern: if the lock is released after ``_prepare_work_dir``
@@ -4547,9 +4572,11 @@ async def test_split_embed_holds_client_lock_through_submission(app_client, auth
         side_acquired = asyncio.Event()
         side_can_release = asyncio.Event()
 
+        expected_client = "server" if test_auth_mode is None else owned_client_key
+
         async def _side_acquirer():
             side_started.set()
-            async with embed_endpoints._client_lock("server"):
+            async with embed_endpoints._client_lock(expected_client):
                 side_acquired.set()
                 await side_can_release.wait()
 

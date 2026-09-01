@@ -236,7 +236,7 @@ async def test_client_config_structure(app_client, auth_headers):
     assert server_entry["type"] == "streamableHttp"
     assert server_entry["transport"] == "streamable-http"
     assert urlparse(server_entry["url"]).path.endswith("/mcp")
-    assert "X-API-Key" in server_entry["headers"]
+    assert server_entry["headers"] == auth_headers
 
 
 # ---------------------------------------------------------------------------

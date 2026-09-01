@@ -24,6 +24,13 @@ from server.tests.constants import TEST_OPENAI_MODEL_ID
 SETTINGS_MODULE = "server.app.api.v1.endpoints.settings"
 
 
+def _client_target(auth_headers, auth_mode, session_id: str) -> tuple[str, dict[str, str]]:
+    """Address a raw client in API-key mode or an owned session in dev mode."""
+    if auth_mode is None:
+        return f"?client={session_id}", auth_headers
+    return "", {**auth_headers, "X-AIO-Session": session_id}
+
+
 @pytest.fixture(autouse=True)
 def _populate_configs():
     """Ensure settings has at least one DB, OCI, and Model config for sensitive-field tests."""
@@ -170,7 +177,7 @@ async def test_get_client_settings_uses_standard_projection(app_client, auth_hea
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_update_client_settings_database_alias(app_client, auth_headers):
+async def test_update_client_settings_database_alias(app_client, auth_headers, test_auth_mode, owned_client_key):
     """PUT /settings updates database.alias in memory."""
     resp = await app_client.put(
         "/v1/settings",
@@ -180,12 +187,15 @@ async def test_update_client_settings_database_alias(app_client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     assert body["database"]["alias"] == "NEW_DB"
-    assert settings.client_settings.database.alias == "NEW_DB"
+    if test_auth_mode is None:
+        assert settings.client_settings.database.alias == "NEW_DB"
+    else:
+        assert _client_store[owned_client_key].database.alias == "NEW_DB"
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_update_client_settings_oci_profile(app_client, auth_headers):
+async def test_update_client_settings_oci_profile(app_client, auth_headers, test_auth_mode, owned_client_key):
     """PUT /settings updates oci.auth_profile in memory."""
     resp = await app_client.put(
         "/v1/settings",
@@ -195,7 +205,10 @@ async def test_update_client_settings_oci_profile(app_client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     assert body["oci"]["auth_profile"] == "PROD"
-    assert settings.client_settings.oci.auth_profile == "PROD"
+    if test_auth_mode is None:
+        assert settings.client_settings.oci.auth_profile == "PROD"
+    else:
+        assert _client_store[owned_client_key].oci.auth_profile == "PROD"
 
 
 @pytest.mark.unit
@@ -216,7 +229,7 @@ async def test_update_client_settings_partial(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_update_client_settings_dds_field_merge(app_client, auth_headers):
+async def test_update_client_settings_dds_field_merge(app_client, auth_headers, test_auth_mode, owned_client_key):
     """PUT /settings field-merges deep_data_security so a lone {enabled} keeps end_user/alias."""
     dds = settings.client_settings.deep_data_security
     dds.enabled = False
@@ -235,8 +248,9 @@ async def test_update_client_settings_dds_field_merge(app_client, auth_headers):
     assert body["end_user"] == "SCOUT1"  # preserved by the field-merge
     assert body["alias"] == "CORE::SCOUT1"
     assert body["base_alias"] == "CORE"
-    assert settings.client_settings.deep_data_security.enabled is True
-    assert settings.client_settings.deep_data_security.end_user == "SCOUT1"
+    client_settings = settings.client_settings if test_auth_mode is None else _client_store[owned_client_key]
+    assert client_settings.deep_data_security.enabled is True
+    assert client_settings.deep_data_security.end_user == "SCOUT1"
 
 
 @pytest.mark.unit
@@ -271,28 +285,30 @@ async def test_get_client_settings_reflects_put(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_client_settings_isolation(app_client, auth_headers):
-    """Different client IDs get independent settings; default is unaffected."""
+async def test_client_settings_isolation(app_client, auth_headers, test_auth_mode, owned_session_key):
+    """Different API-key clients or owned sessions get independent settings."""
+    query_a, headers_a = _client_target(auth_headers, test_auth_mode, "AAA")
+    query_b, headers_b = _client_target(auth_headers, test_auth_mode, "BBB")
     # Update two separate clients
     resp_a = await app_client.put(
-        "/v1/settings?client=AAA",
+        f"/v1/settings{query_a}",
         json={"database": {"alias": "DB_AAA"}},
-        headers=auth_headers,
+        headers=headers_a,
     )
     assert resp_a.status_code == 200
 
     resp_b = await app_client.put(
-        "/v1/settings?client=BBB",
+        f"/v1/settings{query_b}",
         json={"database": {"alias": "DB_BBB"}},
-        headers=auth_headers,
+        headers=headers_b,
     )
     assert resp_b.status_code == 200
 
     # Each client sees only its own value
-    get_a = await app_client.get("/v1/settings?client=AAA", headers=auth_headers)
+    get_a = await app_client.get(f"/v1/settings{query_a}", headers=headers_a)
     assert get_a.json()["client_settings"]["database"]["alias"] == "DB_AAA"
 
-    get_b = await app_client.get("/v1/settings?client=BBB", headers=auth_headers)
+    get_b = await app_client.get(f"/v1/settings{query_b}", headers=headers_b)
     assert get_b.json()["client_settings"]["database"]["alias"] == "DB_BBB"
 
     # Default (CONFIGURED) still has the original default alias
@@ -303,9 +319,10 @@ async def test_client_settings_isolation(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_client_settings_sees_server_configs(app_client, auth_headers):
+async def test_client_settings_sees_server_configs(app_client, auth_headers, test_auth_mode, owned_session_key):
     """GET /settings includes shared server configs alongside client settings."""
-    resp = await app_client.get("/v1/settings?client=NEW_CLIENT", headers=auth_headers)
+    query, headers = _client_target(auth_headers, test_auth_mode, "NEW_CLIENT")
+    resp = await app_client.get(f"/v1/settings{query}", headers=headers)
     assert resp.status_code == 200
     body = resp.json()
 
@@ -316,7 +333,8 @@ async def test_client_settings_sees_server_configs(app_client, auth_headers):
 
     # Per-client settings are also present
     assert "client_settings" in body
-    assert body["client_settings"]["client"] == "NEW_CLIENT"
+    expected_client = "NEW_CLIENT" if test_auth_mode is None else owned_session_key("NEW_CLIENT")
+    assert body["client_settings"]["client"] == expected_client
 
 
 # ---------------------------------------------------------------------------
@@ -334,25 +352,28 @@ async def test_post_settings_no_auth(app_client):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_post_settings_creates_client(app_client, auth_headers):
-    """POST /settings creates a new client session with skeleton defaults."""
-    resp = await app_client.post("/v1/settings?client=FRESH", headers=auth_headers)
+async def test_post_settings_creates_client(app_client, auth_headers, test_auth_mode, owned_session_key):
+    """POST /settings creates a raw client or principal-owned session with skeleton defaults."""
+    query, headers = _client_target(auth_headers, test_auth_mode, "FRESH")
+    resp = await app_client.post(f"/v1/settings{query}", headers=headers)
     assert resp.status_code == 201
     body = resp.json()
 
     assert "client_settings" in body
-    assert body["client_settings"]["client"] == "FRESH"
+    expected_client = "FRESH" if test_auth_mode is None else owned_session_key("FRESH")
+    assert body["client_settings"]["client"] == expected_client
     assert body["client_settings"]["database"]["alias"] == "CORE"
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_post_settings_duplicate_returns_409(app_client, auth_headers):
+async def test_post_settings_duplicate_returns_409(app_client, auth_headers, test_auth_mode):
     """POST /settings returns 409 if client already exists."""
-    resp1 = await app_client.post("/v1/settings?client=DUP", headers=auth_headers)
+    query, headers = _client_target(auth_headers, test_auth_mode, "DUP")
+    resp1 = await app_client.post(f"/v1/settings{query}", headers=headers)
     assert resp1.status_code == 201
 
-    resp2 = await app_client.post("/v1/settings?client=DUP", headers=auth_headers)
+    resp2 = await app_client.post(f"/v1/settings{query}", headers=headers)
     assert resp2.status_code == 409
 
 
@@ -414,15 +435,17 @@ async def test_post_settings_includes_server_configs(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_post_then_get_round_trip(app_client, auth_headers):
-    """POST /settings followed by GET /settings returns the same client."""
-    post_resp = await app_client.post("/v1/settings?client=ROUND", headers=auth_headers)
+async def test_post_then_get_round_trip(app_client, auth_headers, test_auth_mode, owned_session_key):
+    """POST /settings followed by GET /settings returns the same client or session."""
+    query, headers = _client_target(auth_headers, test_auth_mode, "ROUND")
+    post_resp = await app_client.post(f"/v1/settings{query}", headers=headers)
     assert post_resp.status_code == 201
 
-    get_resp = await app_client.get("/v1/settings?client=ROUND", headers=auth_headers)
+    get_resp = await app_client.get(f"/v1/settings{query}", headers=headers)
     assert get_resp.status_code == 200
     body = get_resp.json()
-    assert body["client_settings"]["client"] == "ROUND"
+    expected_client = "ROUND" if test_auth_mode is None else owned_session_key("ROUND")
+    assert body["client_settings"]["client"] == expected_client
 
 
 # ---------------------------------------------------------------------------
@@ -440,33 +463,35 @@ async def test_delete_settings_no_auth(app_client):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_settings_success(app_client, auth_headers):
-    """DELETE /settings removes an existing client and calls delete_row."""
+async def test_delete_settings_success(app_client, auth_headers, test_auth_mode, owned_session_key):
+    """DELETE /settings removes an existing client/session and calls delete_row."""
     # Create a client first
-    _client_store["TEMP"] = ClientSettings(client="TEMP")
+    client_key = "TEMP" if test_auth_mode is None else owned_session_key("TEMP")
+    _client_store[client_key] = ClientSettings(client=client_key)
+    query, headers = _client_target(auth_headers, test_auth_mode, "TEMP")
 
     with patch(f"{SETTINGS_MODULE}.delete_row", new_callable=AsyncMock) as mock_del:
-        resp = await app_client.delete("/v1/settings?client=TEMP", headers=auth_headers)
+        resp = await app_client.delete(f"/v1/settings{query}", headers=headers)
 
     assert resp.status_code == 204
-    assert "TEMP" not in _client_store
-    mock_del.assert_awaited_once_with("TEMP")
+    assert client_key not in _client_store
+    mock_del.assert_awaited_once_with(client_key)
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_settings_configured_forbidden(app_client, auth_headers):
-    """DELETE /settings returns 403 for the CONFIGURED client."""
+async def test_delete_settings_configured_forbidden(app_client, auth_headers, test_auth_mode):
+    """API-key mode protects CONFIGURED; principal mode cannot address it by query."""
     resp = await app_client.delete("/v1/settings?client=CONFIGURED", headers=auth_headers)
-    assert resp.status_code == 403
+    assert resp.status_code == (403 if test_auth_mode is None else 404)
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_settings_factory_forbidden(app_client, auth_headers):
-    """DELETE /settings returns 403 for the FACTORY client."""
+async def test_delete_settings_factory_forbidden(app_client, auth_headers, test_auth_mode):
+    """API-key mode protects FACTORY; principal mode cannot address it by query."""
     resp = await app_client.delete("/v1/settings?client=FACTORY", headers=auth_headers)
-    assert resp.status_code == 403
+    assert resp.status_code == (403 if test_auth_mode is None else 404)
 
 
 @pytest.mark.unit
@@ -479,10 +504,10 @@ async def test_delete_settings_not_found(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_settings_missing_param(app_client, auth_headers):
-    """DELETE /settings returns 422 when client param is missing."""
+async def test_delete_settings_missing_param(app_client, auth_headers, test_auth_mode):
+    """Missing client is a validation error only before principal session binding."""
     resp = await app_client.delete("/v1/settings", headers=auth_headers)
-    assert resp.status_code == 422
+    assert resp.status_code == (422 if test_auth_mode is None else 404)
 
 
 # ---------------------------------------------------------------------------
@@ -529,13 +554,15 @@ async def test_copy_to_server_no_auth(app_client):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_copy_to_server_success(app_client, auth_headers):
-    """POST /settings/server/copy copies source client settings to server."""
-    _client_store["SOURCE"] = ClientSettings(client="SOURCE")
-    _client_store["SOURCE"].database.alias = "MY_DB"
+async def test_copy_to_server_success(app_client, auth_headers, test_auth_mode, owned_session_key):
+    """POST /settings/server/copy copies a source client/session to server."""
+    source_key = "SOURCE" if test_auth_mode is None else owned_session_key("SOURCE")
+    _client_store[source_key] = ClientSettings(client=source_key)
+    _client_store[source_key].database.alias = "MY_DB"
+    query, headers = _client_target(auth_headers, test_auth_mode, "SOURCE")
 
     with patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True):
-        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+        resp = await app_client.post(f"/v1/settings/server/copy{query}", headers=headers)
 
     assert resp.status_code == 200
     body = resp.json()

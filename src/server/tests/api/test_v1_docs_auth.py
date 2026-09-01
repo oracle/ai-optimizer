@@ -11,16 +11,15 @@ surfaces (/redoc, /docs/oauth2-redirect) are no longer exposed.
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from server.app.core.settings import settings
 from server.app.main import app
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_openapi_json_requires_auth(app_client):
-    """GET /v1/openapi.json without X-API-Key is rejected."""
+    """GET /v1/openapi.json without credentials is rejected."""
     resp = await app_client.get("/v1/openapi.json")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -38,26 +37,24 @@ async def test_openapi_json_with_valid_key(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_openapi_json_wrong_key(app_client):
-    """GET /v1/openapi.json with a wrong key is rejected."""
+    """GET /v1/openapi.json with invalid credentials is rejected."""
     resp = await app_client.get("/v1/openapi.json", headers={"X-API-Key": "not-the-key"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_openapi_json_injects_root_path_servers():
+async def test_openapi_json_injects_root_path_servers(auth_headers):
     """Under a non-empty root_path, the schema's servers include that prefix.
 
     Matches FastAPI's built-in /openapi.json behavior so Swagger UI and
     generated clients target the prefixed deployment correctly.
     """
-    assert settings.api_key is not None
-    api_key_value = settings.api_key.get_secret_value()
     async with AsyncClient(
         transport=ASGITransport(app=app, root_path="/api"),
         base_url="http://test",
     ) as client:
-        resp = await client.get("/v1/openapi.json", headers={"X-API-Key": api_key_value})
+        resp = await client.get("/v1/openapi.json", headers=auth_headers)
     assert resp.status_code == 200
     servers = resp.json().get("servers", [])
     assert {"url": "/api"} in servers
@@ -107,17 +104,17 @@ async def test_swagger_docs_shell_uses_deferred_spec(app_client):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_default_redoc_disabled(app_client):
+async def test_default_redoc_disabled(app_client, auth_headers):
     """FastAPI's default /redoc route must not be exposed."""
-    resp = await app_client.get("/redoc")
+    resp = await app_client.get("/redoc", headers=auth_headers)
     assert resp.status_code == 404
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_oauth2_redirect_disabled(app_client):
+async def test_oauth2_redirect_disabled(app_client, auth_headers):
     """FastAPI's default /docs/oauth2-redirect route must not be exposed."""
-    resp = await app_client.get("/docs/oauth2-redirect")
+    resp = await app_client.get("/docs/oauth2-redirect", headers=auth_headers)
     assert resp.status_code == 404
 
 
