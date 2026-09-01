@@ -35,6 +35,7 @@ server = [
     "faiss-cpu==1.15.0",
     "fastmcp==3.4.7",
     "giskard==2.19.2",
+    "itsdangerous>=2.2.0",
     "langchain-litellm==0.7.0",
     "langchain-mcp-adapters==0.3.2",
     "langchain-oracledb==1.5.0",
